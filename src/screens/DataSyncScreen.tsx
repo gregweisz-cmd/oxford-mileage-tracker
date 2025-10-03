@@ -135,16 +135,45 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
     try {
       setLoading(true);
       
-      // API sync is disabled - use export/import workflow instead
-      Alert.alert(
-        'Manual Sync Not Available',
-        'API sync is currently disabled. Please use the export/import workflow:\n\n1. Tap "Export Data" to create a file\n2. Import the file in the web portal\n3. This ensures all your data is synced properly',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Export Data Instead', onPress: handleExportData }
-        ]
-      );
-      return;
+      // Test connection to cloud backend
+      const isConnected = await ApiSyncService.testConnection();
+      
+      if (!isConnected) {
+        Alert.alert(
+          'Connection Failed',
+          'Unable to connect to the cloud backend. Please check your internet connection and try again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Export Data Instead', onPress: handleExportData }
+          ]
+        );
+        return;
+      }
+      
+      // Get all data from local database
+      const [employees, mileageEntries, receipts, timeTracking] = await Promise.all([
+        DatabaseService.getEmployees(),
+        DatabaseService.getMileageEntries(),
+        DatabaseService.getReceipts(),
+        DatabaseService.getTimeTrackingEntries()
+      ]);
+      
+      // Sync to cloud backend
+      const syncResult = await ApiSyncService.syncToBackend({
+        employees,
+        mileageEntries,
+        receipts,
+        timeTracking
+      });
+      
+      if (syncResult.success) {
+        Alert.alert('Sync Successful', 'Your data has been successfully synced to the cloud backend!');
+        // Refresh status
+        loadSyncStatus();
+      } else {
+        Alert.alert('Sync Failed', `Failed to sync data: ${syncResult.error || 'Unknown error'}`);
+      }
+      
     } catch (error) {
       console.error('Error during manual sync:', error);
       Alert.alert('Sync Error', 'An error occurred during sync. Please try again.');
