@@ -1797,6 +1797,16 @@ app.get('/api/export/excel', (req, res) => {
   });
 });
 
+// Health check endpoint for mobile app
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    message: 'Oxford House Mileage Tracker Backend API', 
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
+
 // Serve the admin interface
 app.get('/', (req, res) => {
   res.json({ message: 'Oxford House Mileage Tracker Backend API', status: 'running' });

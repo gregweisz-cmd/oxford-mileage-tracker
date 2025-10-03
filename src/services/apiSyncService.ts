@@ -2,8 +2,8 @@ import { Platform } from 'react-native';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking } from '../types';
 
 // API Configuration
-// Use localhost for web testing, but use network IP for mobile device access
-const API_BASE_URL = Platform.OS === 'web' ? 'http://localhost:3000/api' : 'http://192.168.86.101:3000/api';
+// Use cloud backend URL for all platforms
+const API_BASE_URL = 'https://oxford-mileage-backend.onrender.com/api';
 
 export interface ApiSyncConfig {
   baseUrl: string;
@@ -67,10 +67,23 @@ export class ApiSyncService {
    */
   static async testConnection(): Promise<boolean> {
     try {
-      // For now, always return false since the backend API is not implemented
-      // The web portal uses mock data and doesn't have a real API endpoint
-      console.log('⚠️ ApiSync: Backend API not implemented - using export/import workflow instead');
-      return false;
+      console.log('🔄 ApiSync: Testing connection to cloud backend...');
+      
+      const response = await fetch(`${this.config.baseUrl}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: this.config.timeout
+      });
+      
+      if (response.ok) {
+        console.log('✅ ApiSync: Successfully connected to cloud backend');
+        return true;
+      } else {
+        console.log('⚠️ ApiSync: Cloud backend responded with status:', response.status);
+        return false;
+      }
     } catch (error) {
       console.error('❌ ApiSync: Connection test failed:', error);
       return false;
