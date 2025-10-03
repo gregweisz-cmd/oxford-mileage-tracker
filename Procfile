@@ -1,1 +1,1 @@
-web: cd admin-web/backend && node server.js
+web: node server.js

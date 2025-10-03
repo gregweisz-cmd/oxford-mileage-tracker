@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "admin-web/backend/server.js",
   "scripts": {
-    "start": "cd admin-web/backend && node server.js"
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=16.0.0",
