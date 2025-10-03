@@ -4,8 +4,8 @@ services:
     env: node
     plan: free
     rootDir: admin-web/backend
-    buildCommand: cd admin-web/backend && npm install
-    startCommand: cd admin-web/backend && node server.js
+    buildCommand: npm install
+    startCommand: node server.js
     envVars:
       - key: NODE_ENV
         value: production
