@@ -1,0 +1,1016 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  TextInput,
+  ScrollView,
+  Modal,
+} from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { MaterialIcons } from '@expo/vector-icons';
+import { GpsTrackingService } from '../services/gpsTrackingService';
+import { DatabaseService } from '../services/database';
+import { GpsTrackingSession, Employee, LocationDetails } from '../types';
+import { useGpsTracking } from '../contexts/GpsTrackingContext';
+import { formatLocation } from '../utils/locationFormatter';
+import LocationCaptureModal from '../components/LocationCaptureModal';
+import SimpleNavigationButton from '../components/SimpleNavigationButton';
+import UnifiedHeader from '../components/UnifiedHeader';
+import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
+import { useTips } from '../contexts/TipsContext';
+import { TipCard } from '../components/TipCard';
+import { useTheme } from '../contexts/ThemeContext';
+import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
+
+interface GpsTrackingScreenProps {
+  navigation: any;
+  route?: any;
+}
+
+export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
+  const { colors } = useTheme();
+  const { isTracking, currentSession, currentDistance, setCurrentDistance, startTracking, stopTracking } = useGpsTracking();
+  const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
+  const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+  const [trackingForm, setTrackingForm] = useState({
+    odometerReading: '',
+    purpose: '',
+    notes: '',
+  });
+  const [trackingTime, setTrackingTime] = useState(0);
+  const [showLocationOptionsModal, setShowLocationOptionsModal] = useState(false);
+  const [showStartLocationModal, setShowStartLocationModal] = useState(false);
+  const [showEndLocationModal, setShowEndLocationModal] = useState(false);
+  const [showOxfordHouseSearchModal, setShowOxfordHouseSearchModal] = useState(false);
+  const [startLocationDetails, setStartLocationDetails] = useState<LocationDetails | null>(null);
+  const [endLocationDetails, setEndLocationDetails] = useState<LocationDetails | null>(null);
+  const [lastDestination, setLastDestination] = useState<LocationDetails | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const [purposeSuggestions, setPurposeSuggestions] = useState<PurposeSuggestion[]>([]);
+  const [showPurposeSuggestions, setShowPurposeSuggestions] = useState(false);
+
+  useEffect(() => {
+    loadEmployee();
+  }, []);
+
+  // Separate effect for timer that only restarts when session ID changes
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isTracking && currentSession) {
+      // Check if this is a new session
+      const isNewSession = sessionIdRef.current !== currentSession.id;
+      
+      if (isNewSession) {
+        console.log('⏰ GPS Screen: New session detected, starting timer:', currentSession.id);
+        sessionIdRef.current = currentSession.id;
+        setTrackingTime(0); // Reset timer for new session
+      }
+      
+      const startTime = currentSession.startTime.getTime(); // Capture start time
+      
+      interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setTrackingTime(elapsed);
+      }, 1000);
+    } else {
+      sessionIdRef.current = null;
+      setTrackingTime(0);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isTracking, currentSession?.id]); // Only restart when tracking status or session ID changes
+
+  // Poll for distance updates while tracking
+  useEffect(() => {
+    let distanceInterval: NodeJS.Timeout;
+    
+    if (isTracking) {
+      console.log('📍 GPS Screen: Starting distance polling...');
+      distanceInterval = setInterval(() => {
+        const distance = GpsTrackingService.getCurrentDistance();
+        console.log('📍 GPS Screen: Polling distance:', distance);
+        setCurrentDistance(distance);
+      }, 1000); // Update every second for responsive UI
+    }
+
+    return () => {
+      if (distanceInterval) {
+        clearInterval(distanceInterval);
+      }
+    };
+  }, [isTracking]);
+
+  // Handle selected address from SavedAddressesScreen
+  useEffect(() => {
+    const autoStartFromSavedAddress = async () => {
+      if (route?.params?.selectedAddress && currentEmployee && !isTracking) {
+        const selectedAddress = route.params.selectedAddress;
+        
+        // Validate that we have the required form data
+        if (!trackingForm.odometerReading.trim() || !trackingForm.purpose.trim()) {
+          Alert.alert('Missing Information', 'Please enter odometer reading and purpose before selecting a location.');
+          navigation.setParams({ selectedAddress: undefined });
+          return;
+        }
+        
+        console.log('🚀 GPS: Auto-starting with saved address:', selectedAddress.name);
+        console.log('🚀 GPS: Odometer:', trackingForm.odometerReading);
+        console.log('🚀 GPS: Purpose:', trackingForm.purpose);
+        
+        // Set the start location
+        const locationDetails = {
+          name: selectedAddress.name,
+          address: selectedAddress.address,
+          latitude: selectedAddress.latitude,
+          longitude: selectedAddress.longitude
+        };
+        setStartLocationDetails(locationDetails);
+        
+        // Clear the route params to avoid re-triggering
+        navigation.setParams({ selectedAddress: undefined });
+        
+        try {
+          // Check if this is the first GPS tracking session of the day
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, today);
+          
+          // If no daily odometer reading exists, create one from the current odometer reading
+          if (!existingReading && trackingForm.odometerReading) {
+            console.log('📝 Creating daily odometer reading from GPS tracking:', trackingForm.odometerReading);
+            await DatabaseService.createDailyOdometerReading({
+              employeeId: currentEmployee.id,
+              date: today,
+              odometerReading: Number(trackingForm.odometerReading),
+              notes: 'Auto-captured from first GPS tracking session'
+            });
+          }
+
+          console.log('🚀 GPS: Calling startTracking with saved address data...');
+          await startTracking(
+            currentEmployee.id,
+            trackingForm.purpose,
+            Number(trackingForm.odometerReading),
+            trackingForm.notes
+          );
+
+          setTrackingTime(0);
+
+          Alert.alert('GPS Tracking Started', 'Your location is now being tracked. Use the red Stop button in the header when you reach your destination.');
+        } catch (error) {
+          console.error('❌ GPS: Error starting tracking:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Failed to start GPS tracking. Please check location permissions.';
+          Alert.alert('GPS Tracking Error', errorMessage);
+        }
+      }
+    };
+    
+    autoStartFromSavedAddress();
+  }, [route?.params?.selectedAddress, currentEmployee, isTracking]);
+
+  const loadEmployee = async () => {
+    try {
+      const employees = await DatabaseService.getEmployees();
+      const employee = employees.find(emp => emp.name === 'Greg Weisz') || employees[0]; // Use Greg Weisz or first employee
+      setCurrentEmployee(employee);
+      
+      // Set employee for tips context and load GPS tracking tips
+      if (employee) {
+        setTipsEmployee(employee);
+        if (showTips) {
+          await loadTipsForScreen('GpsTrackingScreen', 'on_load');
+        }
+      }
+      
+      // Set base address as default start location if available
+      if (employee?.baseAddress) {
+        setStartLocationDetails({
+          name: 'Home Base',
+          address: employee.baseAddress,
+          latitude: undefined,
+          longitude: undefined
+        });
+      }
+      
+      // Load last destination from recent entries
+      if (employee) {
+        console.log('🔍 GPS: Loading recent entries for employee:', employee.name);
+        const recentEntries = await DatabaseService.getMileageEntries(employee.id);
+        console.log('🔍 GPS: Found', recentEntries.length, 'recent entries');
+        
+        if (recentEntries.length > 0) {
+          const lastEntry = recentEntries[0]; // Most recent entry
+          console.log('🔍 GPS: Last entry:', {
+            id: lastEntry.id,
+            endLocation: lastEntry.endLocation,
+            endLocationDetails: lastEntry.endLocationDetails
+          });
+          
+          if (lastEntry.endLocationDetails) {
+            console.log('🔍 GPS: Setting last destination:', lastEntry.endLocationDetails.name);
+            setLastDestination(lastEntry.endLocationDetails);
+          } else {
+            console.log('🔍 GPS: No end location details found in last entry');
+          }
+        } else {
+          console.log('🔍 GPS: No recent entries found');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading employee:', error);
+    }
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    setTrackingForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const validateForm = (): boolean => {
+    if (!trackingForm.odometerReading.trim() || isNaN(Number(trackingForm.odometerReading)) || Number(trackingForm.odometerReading) < 0) {
+      Alert.alert('Validation Error', 'Please enter a valid starting odometer reading');
+      return false;
+    }
+    if (!trackingForm.purpose.trim()) {
+      Alert.alert('Validation Error', 'Purpose is required');
+      return false;
+    }
+    return true;
+  };
+
+  const handleStartTracking = async () => {
+    if (!validateForm() || !currentEmployee) return;
+
+    console.log('🔍 GPS: Starting GPS tracking, showing location options modal');
+    // Show location options modal first
+    setShowLocationOptionsModal(true);
+  };
+
+  const handleLocationOption = (option: 'lastDestination' | 'baseAddress' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation') => {
+    console.log('🔍 GPS: Location option selected:', option);
+    console.log('🔍 GPS: Closing location options modal');
+    setShowLocationOptionsModal(false);
+    
+    // Add a small delay to ensure modal closes before proceeding
+    setTimeout(() => {
+      if (option === 'lastDestination' && lastDestination) {
+        console.log('🔍 GPS: Using last destination:', lastDestination.name);
+        // Use last destination as starting point
+        setStartLocationDetails(lastDestination);
+        startGpsTracking();
+      } else if (option === 'baseAddress' && currentEmployee?.baseAddress) {
+        console.log('🔍 GPS: Using base address:', currentEmployee.baseAddress);
+        // Use base address as starting point
+        setStartLocationDetails({
+          name: 'Base Address',
+          address: currentEmployee.baseAddress
+        });
+        startGpsTracking();
+      } else if (option === 'favoriteAddresses') {
+        console.log('🔍 GPS: Navigating to favorite addresses');
+        // Navigate to SavedAddressesScreen with fromGpsTracking flag
+        navigation.navigate('SavedAddresses', { fromGpsTracking: true });
+      } else if (option === 'oxfordHouse') {
+        console.log('🔍 GPS: Showing Oxford House search modal');
+        // Show Oxford House search modal
+        setShowOxfordHouseSearchModal(true);
+      } else if (option === 'newLocation') {
+        console.log('🔍 GPS: Showing manual location entry modal');
+        // Show manual location entry modal
+        setShowStartLocationModal(true);
+      }
+    }, 100);
+  };
+
+  const startGpsTracking = async () => {
+    try {
+      // Check if this is the first GPS tracking session of the day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee!.id, today);
+      
+      // If no daily odometer reading exists, create one from the current odometer reading
+      if (!existingReading && trackingForm.odometerReading) {
+        console.log('📝 Creating daily odometer reading from GPS tracking:', trackingForm.odometerReading);
+        await DatabaseService.createDailyOdometerReading({
+          employeeId: currentEmployee!.id,
+          date: today,
+          odometerReading: Number(trackingForm.odometerReading),
+          notes: 'Auto-captured from first GPS tracking session'
+        });
+      }
+
+      await startTracking(
+        currentEmployee!.id,
+        trackingForm.purpose,
+        Number(trackingForm.odometerReading),
+        trackingForm.notes
+      );
+
+      setTrackingTime(0);
+
+      Alert.alert('GPS Tracking Started', 'Your location is now being tracked. Tap "Stop Tracking" when you reach your destination.');
+    } catch (error) {
+      console.error('Error starting tracking:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to start GPS tracking. Please check location permissions.';
+      Alert.alert('GPS Tracking Error', errorMessage);
+    }
+  };
+
+  const handleStartLocationConfirm = async (locationDetails: LocationDetails) => {
+    setStartLocationDetails(locationDetails);
+    setShowStartLocationModal(false);
+    startGpsTracking();
+  };
+
+  const handleStopTracking = async () => {
+    // Show end location capture modal first
+    setShowEndLocationModal(true);
+  };
+
+  const handleOxfordHouseSelected = (house: any) => {
+    // Convert Oxford House to LocationDetails format
+    const locationDetails: LocationDetails = {
+      name: house.name,
+      address: `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`
+    };
+    
+    setStartLocationDetails(locationDetails);
+    setShowOxfordHouseSearchModal(false);
+    startGpsTracking();
+  };
+
+  const handleEndLocationConfirm = async (locationDetails: LocationDetails, endingOdometer?: number) => {
+    setEndLocationDetails(locationDetails);
+    setShowEndLocationModal(false);
+
+    try {
+      const completedSession = await stopTracking();
+      
+      // Calculate actual miles from odometer if provided
+      let actualMiles = completedSession?.totalMiles || 0;
+      if (endingOdometer && trackingForm.odometerReading) {
+        actualMiles = endingOdometer - Number(trackingForm.odometerReading);
+        console.log(`🚗 GPS: Calculated miles from odometer: ${actualMiles} (${endingOdometer} - ${trackingForm.odometerReading})`);
+      }
+      
+      if (completedSession && currentEmployee) {
+        console.log('🚗 GPS Trip completed, saving to database:', {
+          employeeId: currentEmployee.id,
+          employeeName: currentEmployee.name,
+          date: completedSession.startTime,
+          startLocation: startLocationDetails?.name || completedSession.startLocation || 'Unknown',
+          endLocation: endLocationDetails?.name || completedSession.endLocation || 'Unknown',
+          purpose: completedSession.purpose,
+          miles: completedSession.totalMiles,
+          odometerReading: completedSession.odometerReading,
+          isGpsTracked: true
+        });
+
+        await DatabaseService.createMileageEntry({
+          employeeId: currentEmployee.id,
+          oxfordHouseId: currentEmployee.oxfordHouseId,
+          date: completedSession.startTime,
+          odometerReading: completedSession.odometerReading,
+          startLocation: startLocationDetails?.name || completedSession.startLocation || 'Unknown',
+          endLocation: endLocationDetails?.name || completedSession.endLocation || 'Unknown',
+          startLocationDetails: startLocationDetails || undefined,
+          endLocationDetails: endLocationDetails || undefined,
+          purpose: completedSession.purpose,
+          miles: actualMiles, // Use calculated miles from odometer if available
+          notes: completedSession.notes,
+          isGpsTracked: true,
+        });
+
+        console.log('✅ GPS Trip saved successfully!');
+
+        // Update last destination for next trip
+        if (endLocationDetails) {
+          console.log('🔍 GPS: Updating last destination:', endLocationDetails.name);
+          setLastDestination(endLocationDetails);
+        }
+
+        Alert.alert(
+          'Tracking Complete',
+          `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles${endingOdometer ? ' (from odometer)' : ' (GPS tracked)'}\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', endLocationDetails || undefined)}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      }
+
+      setTrackingTime(0);
+      setStartLocationDetails(null);
+      setEndLocationDetails(null);
+    } catch (error) {
+      console.error('Error stopping tracking:', error);
+      Alert.alert('Error', 'Failed to stop GPS tracking');
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
+
+  const formatDistance = (miles: number): string => {
+    if (miles < 0.1) {
+      return `${(miles * 5280).toFixed(0)} ft`;
+    } else {
+      return `${miles.toFixed(1)} mi`;
+    }
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <UnifiedHeader
+        title="GPS Tracking"
+        showBackButton={true}
+        onBackPress={() => navigation.goBack()}
+        rightButton={isTracking ? {
+          icon: 'stop',
+          onPress: handleStopTracking,
+          color: '#f44336'
+        } : undefined}
+      />
+
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Tracking Status */}
+        <View style={styles.statusContainer}>
+          <View style={[styles.statusCard, isTracking && styles.statusCardActive]}>
+            <MaterialIcons 
+              name={isTracking ? "gps-fixed" : "gps-off"} 
+              size={32} 
+              color={isTracking ? "#4CAF50" : "#666"} 
+            />
+            <Text style={[styles.statusText, isTracking && styles.statusTextActive]}>
+              {isTracking ? 'GPS Tracking Active' : 'GPS Tracking Inactive'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Simple Navigation Button */}
+        <SimpleNavigationButton 
+          isTracking={isTracking}
+          currentDistance={currentDistance}
+        />
+
+        {/* Current Stats */}
+        {isTracking && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <MaterialIcons name="timer" size={24} color="#2196F3" />
+              <Text style={styles.statValue}>{formatTime(trackingTime)}</Text>
+              <Text style={styles.statLabel}>Duration</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Tracking Form */}
+        {/* Tips Display */}
+        {showTips && tips.length > 0 && (
+          <View style={styles.tipsContainer}>
+            <ScrollView 
+              style={styles.tipsScrollView} 
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
+            >
+              {tips.map((tip) => (
+                <TipCard
+                  key={tip.id}
+                  tip={tip}
+                  onDismiss={dismissTip}
+                  onMarkSeen={markTipAsSeen}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {!isTracking && (
+          <View style={styles.formContainer}>
+            <Text style={styles.sectionTitle}>Trip Details</Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Starting Odometer Reading *</Text>
+              <TextInput
+                style={styles.input}
+                value={trackingForm.odometerReading}
+                onChangeText={(value) => handleInputChange('odometerReading', value)}
+                placeholder="e.g., 12345"
+                keyboardType="numeric"
+                placeholderTextColor="#999"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Purpose *</Text>
+              <TextInput
+                style={styles.input}
+                value={trackingForm.purpose}
+                onChangeText={(value) => handleInputChange('purpose', value)}
+                placeholder="e.g., Client visit, Meeting, Training"
+                placeholderTextColor="#999"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Notes (Optional)</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={trackingForm.notes}
+                onChangeText={(value) => handleInputChange('notes', value)}
+                placeholder="Additional notes about this trip..."
+                placeholderTextColor="#999"
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Action Buttons */}
+        <View style={styles.actionsContainer}>
+          {!isTracking ? (
+            <TouchableOpacity
+              style={styles.startButton}
+              onPress={handleStartTracking}
+            >
+              <MaterialIcons name="play-arrow" size={24} color="#fff" />
+              <Text style={styles.startButtonText}>Start GPS Tracking</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.trackingActiveContainer}>
+              <View style={styles.trackingActiveCard}>
+                <MaterialIcons name="gps-fixed" size={32} color="#4CAF50" />
+                <Text style={styles.trackingActiveText}>GPS Tracking Active</Text>
+                <Text style={styles.trackingActiveSubtext}>
+                  Use the "Stop Tracking" button in the top-right corner to end tracking
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Instructions */}
+        <View style={styles.instructionsContainer}>
+          <Text style={styles.instructionsTitle}>How GPS Tracking Works:</Text>
+          <Text style={styles.instructionsText}>
+            • Enter the purpose of your trip{'\n'}
+            • Tap "Start GPS Tracking" and confirm your start location{'\n'}
+            • The app will automatically track your route and distance{'\n'}
+            • Tap "Stop Tracking" and confirm your end location{'\n'}
+            • Your trip will be automatically saved with detailed location info{'\n'}
+            • Vehicle is automatically set to "Personal Vehicle"{'\n'}
+            • Make sure location services are enabled for accurate tracking
+          </Text>
+        </View>
+      </ScrollView>
+
+      {/* Location Options Modal */}
+      <Modal
+        visible={showLocationOptionsModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowLocationOptionsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Choose Starting Location</Text>
+            <Text style={styles.modalSubtitle}>Where are you starting your trip from?</Text>
+
+            <TouchableOpacity
+              style={[styles.locationOptionButton, !lastDestination && styles.disabledButton]}
+              onPress={() => {
+                console.log('🔍 GPS: Last destination button pressed');
+                handleLocationOption('lastDestination');
+              }}
+              disabled={!lastDestination}
+            >
+              <MaterialIcons name="location-on" size={24} color="#4CAF50" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Start from Last Destination</Text>
+                <Text style={styles.locationOptionSubtitle}>
+                  {lastDestination ? `${lastDestination.name} (${lastDestination.address})` : 'No previous destination found'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.locationOptionButton, !currentEmployee?.baseAddress && styles.disabledButton]}
+              onPress={() => {
+                console.log('🔍 GPS: Base address button pressed');
+                handleLocationOption('baseAddress');
+              }}
+              disabled={!currentEmployee?.baseAddress}
+            >
+              <MaterialIcons name="home" size={24} color="#2196F3" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Start from Base Address</Text>
+                <Text style={styles.locationOptionSubtitle}>
+                  {currentEmployee?.baseAddress || 'No base address set'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleLocationOption('favoriteAddresses')}
+            >
+              <MaterialIcons name="star" size={24} color="#FFC107" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Choose from Favorite Addresses</Text>
+                <Text style={styles.locationOptionSubtitle}>Select from your saved favorite locations</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleLocationOption('oxfordHouse')}
+            >
+              <MaterialIcons name="home" size={24} color="#9C27B0" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Search Oxford Houses</Text>
+                <Text style={styles.locationOptionSubtitle}>Search and select from Oxford House locations</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleLocationOption('newLocation')}
+            >
+              <MaterialIcons name="add-location" size={24} color="#FF9800" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Enter New Starting Point</Text>
+                <Text style={styles.locationOptionSubtitle}>Manually enter location name and address</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalButtonSecondary}
+              onPress={() => {
+                console.log('🔍 GPS: Cancel button pressed');
+                setShowLocationOptionsModal(false);
+              }}
+            >
+              <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Start Location Capture Modal */}
+      <LocationCaptureModal
+        visible={showStartLocationModal}
+        onClose={() => setShowStartLocationModal(false)}
+        onConfirm={handleStartLocationConfirm}
+        title="Capture Start Location"
+        locationType="start"
+        currentEmployee={currentEmployee}
+      />
+
+      {/* End Location Capture Modal */}
+      <LocationCaptureModal
+        visible={showEndLocationModal}
+        onClose={() => setShowEndLocationModal(false)}
+        onConfirm={handleEndLocationConfirm}
+        title="Capture End Location"
+        locationType="end"
+        currentEmployee={currentEmployee}
+        startingOdometer={trackingForm.odometerReading ? Number(trackingForm.odometerReading) : undefined}
+      />
+
+      {/* Oxford House Search Modal */}
+      <Modal
+        visible={showOxfordHouseSearchModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowOxfordHouseSearchModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Oxford House</Text>
+            <Text style={styles.modalSubtitle}>Choose your starting location from Oxford Houses</Text>
+            
+            <OxfordHouseSearchInput
+              value=""
+              onChangeText={() => {}}
+              placeholder="Search for Oxford House..."
+              label="Start Location"
+              onHouseSelected={handleOxfordHouseSelected}
+              allowManualEntry={true}
+              employeeId={currentEmployee?.id}
+            />
+
+            <TouchableOpacity
+              style={styles.modalButtonSecondary}
+              onPress={() => setShowOxfordHouseSearchModal(false)}
+            >
+              <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  header: {
+    backgroundColor: '#2196F3',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+  },
+  statusContainer: {
+    marginBottom: 20,
+  },
+  statusCard: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statusCardActive: {
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+  },
+  statusText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 8,
+  },
+  statusTextActive: {
+    color: '#4CAF50',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  statCard: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    minWidth: 120,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  formContainer: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  actionsContainer: {
+    marginBottom: 20,
+  },
+  startButton: {
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  startButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  stopButton: {
+    backgroundColor: '#f44336',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  stopButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  trackingActiveContainer: {
+    alignItems: 'center',
+  },
+  trackingActiveCard: {
+    backgroundColor: '#e8f5e8',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    maxWidth: 300,
+  },
+  trackingActiveText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  trackingActiveSubtext: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  instructionsContainer: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  instructionsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  instructionsText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  locationOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#f8f9fa',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  disabledButton: {
+    backgroundColor: '#f0f0f0',
+    borderColor: '#d0d0d0',
+    opacity: 0.6,
+  },
+  locationOptionText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  locationOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  locationOptionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 18,
+  },
+  modalButtonSecondary: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalButtonSecondaryText: {
+    color: '#2196F3',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  tipsContainer: {
+    marginTop: 8,
+    maxHeight: 200,
+    borderRadius: 12,
+    backgroundColor: '#f8f9fa',
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  tipsScrollView: {
+    maxHeight: 180,
+  },
+});

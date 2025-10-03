@@ -1,0 +1,35 @@
+{
+  "employees": [
+    {
+      "id": "emp-3",
+      "name": "Greg Weisz",
+      "email": "greg.weisz@oxfordhouse.org",
+      "position": "Outreach Worker",
+      "phoneNumber": "+15551234569",
+      "baseAddress": "321 Worker Drive, Greensboro, NC 27401",
+      "costCenter": "North Carolina",
+      "createdAt": "2024-01-01T10:00:00Z"
+    }
+  ],
+  "mileageEntries": [
+    {
+      "id": "mileage-test-1",
+      "employeeId": "emp-3",
+      "employeeName": "Greg Weisz",
+      "date": "2024-12-19T10:00:00Z",
+      "startLocation": "Greensboro Office",
+      "endLocation": "Client Home - Winston-Salem",
+      "purpose": "Manual test entry",
+      "miles": 28.5,
+      "odometerReading": 125000,
+      "notes": "This is a test manual entry created today",
+      "hoursWorked": 8.0,
+      "isGpsTracked": false,
+      "createdAt": "2024-12-19T10:00:00Z"
+    }
+  ],
+  "receipts": [],
+  "dailyOdometerReadings": [],
+  "savedAddresses": [],
+  "lastSyncTime": "2024-12-19T10:00:00Z"
+}

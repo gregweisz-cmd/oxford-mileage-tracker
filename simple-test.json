@@ -1,0 +1,37 @@
+{
+  "employees": [
+    {
+      "id": "test-emp-1",
+      "name": "Test Employee",
+      "email": "test@example.com",
+      "position": "Test Position",
+      "phoneNumber": "123-456-7890",
+      "baseAddress": "123 Test St",
+      "costCenter": "Test Center",
+      "createdAt": "2024-12-19T10:00:00Z"
+    }
+  ],
+  "mileageEntries": [
+    {
+      "id": "test-mileage-1",
+      "employeeId": "test-emp-1",
+      "employeeName": "Test Employee",
+      "date": "2024-12-19T10:00:00Z",
+      "startLocation": "Test Start",
+      "endLocation": "Test End",
+      "purpose": "Test Purpose",
+      "miles": 10.5,
+      "odometerReading": 100000,
+      "notes": "Test notes",
+      "hoursWorked": 8.0,
+      "isGpsTracked": false,
+      "createdAt": "2024-12-19T10:00:00Z"
+    }
+  ],
+  "receipts": [],
+  "dailyOdometerReadings": [],
+  "savedAddresses": [],
+  "lastSyncTime": "2024-12-19T10:00:00Z"
+}
+
+

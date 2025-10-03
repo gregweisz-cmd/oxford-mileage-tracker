@@ -1,29 +1,53 @@
 {
   "expo": {
-    "name": "oxford-mileage-tracker",
-    "slug": "oxford-mileage-tracker",
+    "name": "OH Staff Tracker",
+    "slug": "oh-staff-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#2196F3"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "OH Staff Tracker needs location access to automatically track mileage for Oxford House employees.",
+        "NSCameraUsageDescription": "OH Staff Tracker needs camera access to take photos of receipts for expense tracking.",
+        "NSPhotoLibraryUsageDescription": "OH Staff Tracker needs photo library access to select receipt images for expense tracking."
+      }
     },
     "android": {
+      "package": "com.oxfordhouse.ohstafftracker",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2196F3"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Oxford House Tracker to use your location to help track mileage."
+        }
+      ]
+    ],
+    "extra": {
+      "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
     }
   }
 }
