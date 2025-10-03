@@ -1,0 +1,12 @@
+{
+  "name": "oxford-mileage-backend-root",
+  "version": "1.0.0",
+  "main": "admin-web/backend/server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}
