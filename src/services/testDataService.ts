@@ -13,7 +13,8 @@ export class TestDataService {
         phoneNumber: '555-0123',
         baseAddress: '230 Wagner St Troutman, NC 28166',
         costCenters: ['AL-SOR'],
-        selectedCostCenters: ['AL-SOR']
+        selectedCostCenters: ['AL-SOR'],
+        defaultCostCenter: 'AL-SOR'
       },
       {
         name: 'Sarah Johnson',
@@ -24,7 +25,8 @@ export class TestDataService {
         phoneNumber: '555-0124',
         baseAddress: '123 Main St Charlotte, NC 28201',
         costCenters: ['AL-SOR'],
-        selectedCostCenters: ['AL-SOR']
+        selectedCostCenters: ['AL-SOR'],
+        defaultCostCenter: 'AL-SOR'
       },
       {
         name: 'Mike Rodriguez',
@@ -35,7 +37,8 @@ export class TestDataService {
         phoneNumber: '555-0125',
         baseAddress: '456 Oak Ave Raleigh, NC 27601',
         costCenters: ['CC003'],
-        selectedCostCenters: ['CC003']
+        selectedCostCenters: ['CC003'],
+        defaultCostCenter: 'CC003'
       },
       {
         name: 'Lisa Chen',
@@ -46,7 +49,32 @@ export class TestDataService {
         phoneNumber: '555-0126',
         baseAddress: '789 Pine St Asheville, NC 28801',
         costCenters: ['CC001', 'CC004'],
-        selectedCostCenters: ['CC001', 'CC004']
+        selectedCostCenters: ['CC001', 'CC004'],
+        defaultCostCenter: 'CC001'
+      },
+      {
+        name: 'Alex Szary',
+        email: 'alex.szary@oxfordhouse.org',
+        password: 'Alexwelcome1',
+        oxfordHouseId: 'test-house-005',
+        position: 'Staff Member',
+        phoneNumber: '555-0127',
+        baseAddress: '321 Elm St Durham, NC 27701',
+        costCenters: ['Program Services'],
+        selectedCostCenters: ['Program Services'],
+        defaultCostCenter: 'Program Services'
+      },
+      {
+        name: 'Jackson Longan',
+        email: 'jackson.longan@oxfordhouse.org',
+        password: 'Jacksonwelcome1',
+        oxfordHouseId: 'test-house-006',
+        position: 'Staff Member',
+        phoneNumber: '555-0128',
+        baseAddress: '654 Maple Ave Greensboro, NC 27401',
+        costCenters: ['Program Services'],
+        selectedCostCenters: ['Program Services'],
+        defaultCostCenter: 'Program Services'
       }
     ];
 
