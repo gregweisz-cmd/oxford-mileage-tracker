@@ -7,9 +7,9 @@ export interface EesRule {
 class EesRulesService {
   private static rules: EesRule[] = [
     {
-      costCenter: 'PS-Unfunded',
+      costCenter: 'AL-SOR',
       maxAmount: 600,
-      description: 'PS-Unfunded EES limit'
+      description: 'AL-SOR EES limit'
     },
     {
       costCenter: 'CC001',

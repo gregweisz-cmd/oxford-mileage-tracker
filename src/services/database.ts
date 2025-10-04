@@ -43,7 +43,31 @@ export class DatabaseService {
   
   static async initDatabase(): Promise<void> {
     if (this.isInitialized) {
-      console.log('Database already initialized, skipping...');
+      console.log('Database already initialized, but ensuring employee setup...');
+      // Skip table creation but ensure employee setup
+      try {
+        console.log('🔧 Database: Checking employee setup on reinitialize...');
+        const allEmployees = await this.getEmployees();
+        console.log('🔧 Database: Found employees:', allEmployees.length);
+        
+        // Ensure there's always a current employee set
+        const currentEmployee = await this.getCurrentEmployee();
+        if (!currentEmployee) {
+          console.log('🔧 Database: No current employee session found, setting up default...');
+          const employeesAfterImport = await this.getEmployees();
+          console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
+          if (employeesAfterImport.length > 0) {
+            const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
+            console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
+            await this.setCurrentEmployee(defaultEmployee.id);
+            console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
+          }
+        } else {
+          console.log('✅ Database: Current employee session exists:', currentEmployee.name);
+        }
+      } catch (error) {
+        console.error('❌ Database: Error setting up employees and employee session:', error);
+      }
       return;
     }
     
@@ -305,6 +329,39 @@ export class DatabaseService {
         console.error('❌ Database: Failed to initialize sync integration service:', error);
       }
       
+      // Ensure there are employees in the database (create test employees if none exist)
+      try {
+        console.log('🔧 Database: Checking employee setup...');
+        const allEmployees = await this.getEmployees();
+        console.log('🔧 Database: Found employees:', allEmployees.length);
+        
+        if (allEmployees.length === 0) {
+          console.log('🔧 Database: No employees found, creating test employees...');
+          const { TestDataService } = await import('./testDataService');
+          await TestDataService.initializeTestData();
+          console.log('✅ Database: Test employees created successfully');
+        }
+        
+        // Ensure there's always a current employee set
+        console.log('🔧 Database: Checking current employee session...');
+        const currentEmployee = await this.getCurrentEmployee();
+        if (!currentEmployee) {
+          console.log('🔧 Database: No current employee session found, setting up default...');
+          const employeesAfterImport = await this.getEmployees();
+          console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
+          if (employeesAfterImport.length > 0) {
+            const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
+            console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
+            await this.setCurrentEmployee(defaultEmployee.id);
+            console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
+          }
+        } else {
+          console.log('✅ Database: Current employee session exists:', currentEmployee.name);
+        }
+      } catch (error) {
+        console.error('❌ Database: Error setting up employees and employee session:', error);
+      }
+      
       this.isInitialized = true;
     } catch (error) {
       console.error('Error initializing database:', error);
@@ -321,9 +378,18 @@ export class DatabaseService {
     const database = await getDatabase();
     const result = await database.getFirstAsync('SELECT * FROM current_employee') as any;
     
-    if (!result) return null;
+    console.log('🔐 Database: Getting current employee...');
+    console.log('🔐 Database: Session result:', result);
     
+    if (!result) {
+      console.log('⚠️ Database: No current employee session found');
+      return null;
+    }
+    
+    console.log('🔐 Database: Found session for employee ID:', result.employeeId);
     const employee = await this.getEmployeeById(result.employeeId);
+    console.log('🔐 Database: Retrieved employee:', employee?.name);
+    
     return employee;
   }
 
@@ -895,37 +961,47 @@ export class DatabaseService {
         updatedAt: new Date(row.updatedAt)
       }));
 
-      // Calculate totals
-      const totalMiles = processedMileageEntries.reduce((sum, entry) => sum + entry.miles, 0);
-      
-      // Calculate total hours from time tracking (preferred) or mileage entries (fallback)
-      const totalTimeTrackingHours: number = monthlyTimeTracking.reduce((sum: number, entry: any) => sum + (entry.hours || 0), 0);
-      const totalMileageHours = processedMileageEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
-      const totalHours: number = totalTimeTrackingHours > 0 ? totalTimeTrackingHours : totalMileageHours;
-      
-      const totalReceipts = processedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
+  // Calculate totals
+  const totalMiles = processedMileageEntries.reduce((sum, entry) => sum + entry.miles, 0);
+  
+  // Calculate total hours from both time tracking and mileage entries (combined)
+  const totalTimeTrackingHours: number = monthlyTimeTracking.reduce((sum: number, entry: any) => sum + (entry.hours || 0), 0);
+  const totalMileageHours = processedMileageEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
+  const totalHours: number = totalTimeTrackingHours + totalMileageHours;
+  
+  console.log('🕒 Database: Hours calculation debug:', {
+    timeTrackingEntries: monthlyTimeTracking.length,
+    timeTrackingHours: totalTimeTrackingHours,
+    mileageEntriesWithHours: processedMileageEntries.filter(e => e.hoursWorked > 0).length,
+    mileageHours: totalMileageHours,
+    finalTotalHours: totalHours,
+    timeTrackingEntryDetails: monthlyTimeTracking.map((e: any) => ({ date: e.date, hours: e.hours, category: e.category })),
+    mileageEntriesWithHoursDetails: processedMileageEntries.filter(e => e.hoursWorked > 0).map(e => ({ date: e.date.toISOString(), hoursWorked: e.hoursWorked, purpose: e.purpose }))
+  });
+  
+  const totalReceipts = processedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
 
-      console.log('📊 Database: Dashboard stats calculated:', {
-        recentMileageEntries: processedRecentMileageEntries.length,
-        recentReceipts: processedRecentReceipts.length,
-        totalMiles,
-        totalHours,
-        totalReceipts,
-        monthlyMileageEntries: processedMileageEntries.length,
-        monthlyReceipts: processedReceipts.length
-      });
+  console.log('📊 Database: Dashboard stats calculated:', {
+    recentMileageEntries: processedRecentMileageEntries.length,
+    recentReceipts: processedRecentReceipts.length,
+    totalMiles,
+    totalHours,
+    totalReceipts,
+    monthlyMileageEntries: processedMileageEntries.length,
+    monthlyReceipts: processedReceipts.length
+  });
 
-      return {
-        recentMileageEntries: processedRecentMileageEntries,
-        recentReceipts: processedRecentReceipts,
-        monthlyStats: {
-          totalMiles,
-          totalHours,
-          totalReceipts,
-          mileageEntries: processedMileageEntries,
-          receipts: processedReceipts
-        }
-      };
+  return {
+    recentMileageEntries: processedRecentMileageEntries,
+    recentReceipts: processedRecentReceipts,
+    monthlyStats: {
+      totalMiles,
+      totalHours,
+      totalReceipts,
+      mileageEntries: processedMileageEntries,
+      receipts: processedReceipts
+    }
+  };
     } catch (error) {
       console.error('❌ Database: Error getting dashboard stats:', error);
       // Return empty stats on error
@@ -1726,6 +1802,39 @@ export class DatabaseService {
         console.log(`ℹ️ Column ${migration.column} already exists in mileage_entries table`);
       }
     }
+  }
+
+
+  // Monthly Report Methods
+  static async updateMonthlyReport(reportId: string, updates: Partial<MonthlyReport>): Promise<void> {
+    const database = await getDatabase();
+    
+    console.log('🔄 Database: Updating monthly report:', reportId, updates);
+    
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+    
+    if (fields.length > 0) {
+      const setClause = fields.map(field => `${field} = ?`).join(', ');
+      const updateQuery = `UPDATE monthly_reports SET ${setClause}, updatedAt = ? WHERE id = ?`;
+      
+      await database.runAsync(updateQuery, [...values, new Date().toISOString(), reportId]);
+      
+      console.log('✅ Database: Monthly report updated successfully');
+    }
+  }
+
+  static async deleteMonthlyReport(reportId: string): Promise<void> {
+    const database = await getDatabase();
+    
+    console.log('🗑️ Database: Deleting monthly report:', reportId);
+    
+    await database.runAsync(
+      'DELETE FROM monthly_reports WHERE id = ?',
+      [reportId]
+    );
+    
+    console.log('✅ Database: Monthly report deleted successfully');
   }
 
 }

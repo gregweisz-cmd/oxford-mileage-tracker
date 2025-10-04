@@ -3,6 +3,8 @@
     "name": "OH Staff Tracker",
     "slug": "oh-staff-tracker",
     "version": "1.0.0",
+    "owner": "goosew27",
+    "privacy": "public",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -47,7 +49,16 @@
       ]
     ],
     "extra": {
-      "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+      "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE",
+      "eas": {
+        "projectId": "d303cc80-9dcf-4d5c-952b-d50df5cb04f0"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d303cc80-9dcf-4d5c-952b-d50df5cb04f0"
     }
   }
 }

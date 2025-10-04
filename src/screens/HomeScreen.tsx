@@ -26,6 +26,7 @@ import LogoutService from '../services/logoutService';
 import { useTheme } from '../contexts/ThemeContext';
 import { BaseAddressDetectionService } from '../services/baseAddressDetectionService';
 import { CostCenterImportService } from '../services/costCenterImportService';
+import { COST_CENTERS } from '../constants/costCenters';
 
 interface HomeScreenProps {
   navigation: any;
@@ -265,15 +266,14 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     }, [])
   );
 
-  const loadEmployeeData = async (employeeId: string) => {
+  const loadEmployeeData = async (employeeId: string, employeeParam?: Employee) => {
     try {
       console.log('🏠 Loading employee data for ID:', employeeId);
-      console.log('🏠 Available employees:', availableEmployees.length);
-      console.log('🏠 Current employee:', currentEmployee?.name);
       
-      const employee = availableEmployees.find(emp => emp.id === employeeId) || currentEmployee;
-      if (!employee) {
-        console.log('❌ No employee found for ID:', employeeId);
+      // Use provided employee parameter or fall back to currentEmployee
+      const employee = employeeParam || currentEmployee;
+      if (!employee || employee.id !== employeeId) {
+        console.log('❌ Employee not found or ID mismatch:', { employeeId, employee: employee?.name });
         return;
       }
 
@@ -386,21 +386,22 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     try {
       setLoading(true);
       
-      // Initialize database first
-      console.log('Initializing database...');
-      await DatabaseService.initDatabase();
-      console.log('Database initialized successfully!');
+      console.log('🏠 HomeScreen: Loading employee data...');
       
-      // Wait a bit for database to be ready
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Database should already be initialized by AppInitializer
+      // Small delay to ensure any async operations from app startup are complete
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       // Get the current logged-in employee
+      console.log('🏠 HomeScreen: Getting current employee...');
       const employee = await DatabaseService.getCurrentEmployee();
       
       if (!employee) {
-        console.log('❌ No current employee found');
+        console.log('❌ HomeScreen: No current employee found');
         return;
       }
+      
+      console.log('✅ HomeScreen: Found employee:', employee.name, employee.id);
       
       console.log('👤 Current employee:', employee.name, employee.id);
       
@@ -424,7 +425,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       }
       
       // Load data for the viewing employee
-      await loadEmployeeData(employee.id);
+      await loadEmployeeData(employee.id, employee);
       
       // Check for base address suggestions
       await checkBaseAddressSuggestion(employee);
@@ -650,25 +651,6 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       setSelectedCostCenters(currentEmployee.selectedCostCenters || []);
       setDefaultCostCenter(currentEmployee.defaultCostCenter || '');
       setShowCostCentersModal(true);
-      
-      // Auto-import cost centers if they haven't been imported yet
-      if (!currentEmployee.costCenters || currentEmployee.costCenters.length === 0) {
-        try {
-          console.log('📊 HomeScreen: Auto-importing cost centers...');
-          const costCenters = await CostCenterImportService.importAndUpdateCostCenters();
-          
-          // Update current employee with imported cost centers
-          const updatedEmployee = await DatabaseService.getEmployeeById(currentEmployee.id);
-          if (updatedEmployee) {
-            setCurrentEmployee(updatedEmployee);
-          }
-          
-          console.log('✅ HomeScreen: Auto-imported cost centers:', costCenters.length);
-        } catch (error) {
-          console.error('❌ HomeScreen: Error auto-importing cost centers:', error);
-          // Don't show error to user, just log it
-        }
-      }
     }
   };
 
@@ -1273,24 +1255,6 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               Select all cost centers you can bill to. You can choose a default for new entries.
             </Text>
             
-            {/* Import Cost Centers Button - Only show if no cost centers loaded */}
-            {(!currentEmployee?.costCenters || currentEmployee.costCenters.length === 0) && (
-              <TouchableOpacity 
-                style={styles.importCostCentersButton}
-                onPress={handleImportCostCenters}
-                disabled={importingCostCenters}
-              >
-                <MaterialIcons 
-                  name={importingCostCenters ? "sync" : "cloud-download"} 
-                  size={20} 
-                  color="#fff" 
-                />
-                <Text style={styles.importCostCentersButtonText}>
-                  {importingCostCenters ? 'Importing...' : 'Import from Google Sheet'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            
             <ScrollView style={styles.costCentersList} showsVerticalScrollIndicator={false}>
               {/* Selected Cost Centers Section */}
               {selectedCostCenters.length > 0 && (
@@ -1338,9 +1302,9 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                 <Text style={styles.costCentersSectionTitle}>
                   {selectedCostCenters.length > 0 ? 'Available Cost Centers' : 'All Cost Centers'}
                 </Text>
-                {currentEmployee?.costCenters
-                  ?.filter(costCenter => !selectedCostCenters.includes(costCenter))
-                  ?.map((costCenter) => (
+                {COST_CENTERS
+                  .filter(costCenter => !selectedCostCenters.includes(costCenter))
+                  .map((costCenter) => (
                     <View key={costCenter} style={styles.costCenterItem}>
                       <TouchableOpacity
                         style={styles.costCenterCheckbox}

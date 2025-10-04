@@ -1,5 +1,6 @@
 // Data Sync Service - Handles data synchronization between mobile app and web portal
 export class DataSyncService {
+  private static readonly API_BASE_URL = 'http://localhost:3002/api';
   // Mock data for demonstration
   private static mockEmployees = [
     {
@@ -84,39 +85,67 @@ export class DataSyncService {
   ];
 
   static async getEmployees() {
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(this.mockEmployees);
-      }, 100);
-    });
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/employees`);
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        console.warn('Failed to fetch employees from backend, using mock data');
+        return this.mockEmployees;
+      }
+    } catch (error) {
+      console.warn('Error fetching employees from backend, using mock data:', error);
+      return this.mockEmployees;
+    }
   }
 
   static async getMileageEntries() {
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(this.mockMileageEntries);
-      }, 100);
-    });
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/mileage-entries`);
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        console.warn('Failed to fetch mileage entries from backend, using mock data');
+        return this.mockMileageEntries;
+      }
+    } catch (error) {
+      console.warn('Error fetching mileage entries from backend, using mock data:', error);
+      return this.mockMileageEntries;
+    }
   }
 
   static async getReceipts() {
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(this.mockReceipts);
-      }, 100);
-    });
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/receipts`);
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        console.warn('Failed to fetch receipts from backend, using mock data');
+        return this.mockReceipts;
+      }
+    } catch (error) {
+      console.warn('Error fetching receipts from backend, using mock data:', error);
+      return this.mockReceipts;
+    }
   }
 
   static async getTimeTracking() {
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(this.mockTimeTracking);
-      }, 100);
-    });
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/time-tracking`);
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        console.warn('Failed to fetch time tracking from backend, using mock data');
+        return this.mockTimeTracking;
+      }
+    } catch (error) {
+      console.warn('Error fetching time tracking from backend, using mock data:', error);
+      return this.mockTimeTracking;
+    }
   }
 
   static async exportData() {

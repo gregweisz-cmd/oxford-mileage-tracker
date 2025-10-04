@@ -226,12 +226,12 @@ function ensureTablesExist() {
       
       db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-              ['emp1', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'iitywim', 'house1', 'Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["PS-Unfunded"]', now, now]);
+              ['emp1', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'iitywim', 'house1', 'Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["AL-SOR"]', now, now]);
       
       // Add mobile app employee
       db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-              ['mg71acdmrlh5uvfa50a', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'iitywim', 'test-house-001', 'Regional Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["PS-Unfunded", "G&A", "Fundraising"]', now, now]);
+              ['mg71acdmrlh5uvfa50a', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'iitywim', 'test-house-001', 'Regional Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["AL-SOR", "G&A", "Fundraising"]', now, now]);
 
       db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
@@ -248,7 +248,7 @@ function ensureTablesExist() {
       // Insert sample cost centers if they don't exist
       db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              ['cc1', 'PS-Unfunded', 'Program Services - Unfunded', 'Unfunded program services', 1, now, now]);
+              ['cc1', 'AL-SOR', 'Program Services - Alabama', 'Alabama program services', 1, now, now]);
       
       db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -433,7 +433,7 @@ function createSampleDatabase() {
           if (!err && row.count === 0) {
             db.run(`INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-                    ['emp1', 'Greg Weisz', 'greg@example.com', 'iitywim', 'house1', 'Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["PS-Unfunded"]', now, now]);
+                    ['emp1', 'Greg Weisz', 'greg@example.com', 'iitywim', 'house1', 'Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["AL-SOR"]', now, now]);
           }
         });
 
@@ -444,7 +444,7 @@ function createSampleDatabase() {
         // Insert sample cost centers
         db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                ['cc1', 'PS-Unfunded', 'Program Services - Unfunded', 'Unfunded program services', 1, now, now]);
+                ['cc1', 'AL-SOR', 'Program Services - Alabama', 'Alabama program services', 1, now, now]);
         
         db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -457,7 +457,7 @@ function createSampleDatabase() {
         // Insert sample per diem monthly rules
         db.run(`INSERT OR IGNORE INTO per_diem_monthly_rules (id, costCenter, maxAmount, description, createdAt, updatedAt)
                 VALUES (?, ?, ?, ?, ?, ?)`,
-                ['pdmr1', 'PS-Unfunded', 350.00, 'Standard per diem monthly limit', now, now]);
+                ['pdmr1', 'AL-SOR', 350.00, 'Standard per diem monthly limit', now, now]);
         
         db.run(`INSERT OR IGNORE INTO per_diem_monthly_rules (id, costCenter, maxAmount, description, createdAt, updatedAt)
                 VALUES (?, ?, ?, ?, ?, ?)`,
@@ -606,7 +606,7 @@ app.get('/api/employees/:id', (req, res) => {
     // Fix corrupted costCenters data
     if (row.costCenters === '[object Object]') {
       console.log('🔧 Fixing corrupted costCenters for employee:', id);
-      row.costCenters = '["PS-Unfunded", "G&A", "Fundraising"]';
+      row.costCenters = '["AL-SOR", "G&A", "Fundraising"]';
       
       // Update the database with the correct value
       db.run('UPDATE employees SET costCenters = ? WHERE id = ?', [row.costCenters, id], (updateErr) => {

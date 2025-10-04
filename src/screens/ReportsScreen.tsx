@@ -46,8 +46,7 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
     try {
       setLoading(true);
       
-      const employees = await DatabaseService.getEmployees();
-      const employee = employees.find(emp => emp.name === 'Greg Weisz') || employees[0]; // Use Greg Weisz or first employee
+      const employee = await DatabaseService.getCurrentEmployee(); // Use current logged-in employee
       
       if (employee) {
         setCurrentEmployee(employee);
@@ -248,6 +247,63 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
+  const submitMonthlyReport = (reportId: string) => {
+    Alert.alert(
+      'Submit Report',
+      'Are you sure you want to submit this report? Once submitted, it cannot be edited.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Submit',
+          onPress: async () => {
+            try {
+              await DatabaseService.updateMonthlyReport(reportId, { status: 'submitted' });
+              
+              // Update local state
+              setReports(prev => prev.map(report => 
+                report.id === reportId 
+                  ? { ...report, status: 'submitted' as const }
+                  : report
+              ));
+              
+              Alert.alert('Success', 'Report submitted successfully');
+            } catch (error) {
+              console.error('Error submitting monthly report:', error);
+              Alert.alert('Error', 'Failed to submit report');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const deleteMonthlyReport = (reportId: string) => {
+    Alert.alert(
+      'Delete Draft Report',
+      'Are you sure you want to delete this draft report? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DatabaseService.deleteMonthlyReport(reportId);
+              
+              // Remove from local state
+              setReports(prev => prev.filter(report => report.id !== reportId));
+              
+              Alert.alert('Success', 'Draft report deleted successfully');
+            } catch (error) {
+              console.error('Error deleting monthly report:', error);
+              Alert.alert('Error', 'Failed to delete draft report');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const getCurrentMonthYear = () => {
     const now = new Date();
     return { month: now.getMonth() + 1, year: now.getFullYear() };
@@ -333,31 +389,25 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
                   </View>
                 </View>
 
-                <View style={styles.reportActions}>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => viewReportEntries(report)}
-                  >
-                    <MaterialIcons name="list" size={16} color="#FF9800" />
-                    <Text style={styles.actionButtonText}>View Entries</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => shareReportLocally(report)}
-                  >
-                    <MaterialIcons name="share" size={16} color="#2196F3" />
-                    <Text style={styles.actionButtonText}>Share</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => exportToSlack(report)}
-                  >
-                    <MaterialIcons name="send" size={16} color="#4CAF50" />
-                    <Text style={styles.actionButtonText}>Export to Slack</Text>
-                  </TouchableOpacity>
-                </View>
+                {/* Action buttons - only show Submit/Delete for drafts */}
+                {report.status === 'draft' && (
+                  <View style={styles.reportActions}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
+                      onPress={() => submitMonthlyReport(report.id)}
+                    >
+                      <MaterialIcons name="check" size={16} color="#fff" />
+                      <Text style={[styles.actionButtonText, { color: '#fff' }]}>Submit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: '#f44336' }]}
+                      onPress={() => deleteMonthlyReport(report.id)}
+                    >
+                      <MaterialIcons name="delete" size={16} color="#fff" />
+                      <Text style={[styles.actionButtonText, { color: '#fff' }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             ))
           )}

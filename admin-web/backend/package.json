@@ -7,8 +7,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "build": "echo 'No build step needed for Node.js backend'",
-    "heroku-postbuild": "echo 'Heroku postbuild script'",
-    "render-start": "node server.js"
+    "heroku-postbuild": "echo 'Heroku postbuild script'"
   },
   "engines": {
     "node": ">=16.0.0",

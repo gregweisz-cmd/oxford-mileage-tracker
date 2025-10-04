@@ -46,12 +46,16 @@ import {
 
 // PDF generation imports
 import { jsPDF } from 'jspdf';
+import TabPdfExportService from './services/tabPdfExportService';
 
 // Report completeness checker
 import { ReportCompletenessService, CompletenessReport, CompletenessIssue } from './services/reportCompletenessService';
 
 // Report approval service
 import { ReportApprovalService } from './services/reportApprovalService';
+
+// User settings component
+import UserSettings from './components/UserSettings';
 
 
 // Props interface for the StaffPortal component
@@ -290,13 +294,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Report submission and approval state
   const [reportStatus, setReportStatus] = useState<'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision'>('draft');
-  const [submissionLoading, setSubmissionLoading] = useState(false);
-  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
-  const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'revision'>('approve');
-  const [approvalComments, setApprovalComments] = useState('');
+  // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
   // Calculate days in the current month
   const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
+
+  // Debug logging for delete button visibility
+  console.log('🔍 StaffPortal Debug:', {
+    reportStatus,
+    isAdminView,
+    showDeleteButton: (reportStatus === 'draft' || reportStatus === 'submitted') && !isAdminView
+  });
   
   // Format month name
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -310,13 +318,33 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       let employee: any = null;
       let costCenters: string[] = ['NC.F-SAPTBG']; // Default fallback
       
+      // Map common employee IDs to backend IDs
+      const employeeIdMap: { [key: string]: string } = {
+        'emp001': 'emp2', // Map emp001 to Sarah Johnson
+        'emp002': 'emp3', // Map emp002 to Mike Rodriguez
+        'emp003': 'emp4', // Map emp003 to Lisa Chen
+      };
+      
+      // Use mapped ID or original ID
+      const backendEmployeeId = employeeIdMap[employeeId] || employeeId;
+      
       try {
         // Fetch employee details from backend
-        const employeeResponse = await fetch(`http://localhost:3002/api/employees/${employeeId}`);
+        const employeeResponse = await fetch(`http://localhost:3002/api/employees/${backendEmployeeId}`);
         if (!employeeResponse.ok) {
-          throw new Error('Failed to fetch employee data');
+          // If employee not found, silently try with fallback ID
+          console.log(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
+          const fallbackResponse = await fetch(`http://localhost:3002/api/employees/emp2`);
+          if (fallbackResponse.ok) {
+            employee = await fallbackResponse.json();
+            console.log('✅ Successfully loaded fallback employee data for:', employee.name);
+          } else {
+            throw new Error('Failed to fetch employee data');
+          }
+        } else {
+          employee = await employeeResponse.json();
+          console.log('✅ Successfully loaded employee data for:', employee.name);
         }
-        employee = await employeeResponse.json();
         
         // Parse costCenters if it's a JSON string
         if (employee.costCenters) {
@@ -627,6 +655,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
+
+  // Handle delete report
+  const handleDeleteReport = async (reportId: string) => {
+    try {
+      // Remove from local storage
+      const savedReports = JSON.parse(localStorage.getItem('savedReports') || '[]');
+      const updatedReports = savedReports.filter((report: any) => report.id !== reportId);
+      localStorage.setItem('savedReports', JSON.stringify(updatedReports));
+      
+      // Update the allReports state
+      setAllReports(updatedReports);
+      
+      alert('Report deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting report:', error);
+      alert('Error deleting report. Please try again.');
+    }
+  };
+
 
   // Handle cell editing
   const handleCellEdit = (rowIndex: number, field: string, currentValue: any) => {
@@ -2027,6 +2074,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setSignatureImage(savedSignature || null);
         setSupervisorSignature(savedSupervisorSignature || null);
         
+        // Also load the report status
+        if (savedReport.status) {
+          setReportStatus(savedReport.status);
+        }
+        
         alert('Expense report loaded successfully!');
       }
       
@@ -2242,148 +2294,46 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setLoading(true);
       
       try {
-        // Check if jsPDF library is available
-        if (typeof jsPDF === 'undefined') {
-          throw new Error('jsPDF library not loaded');
-        }
-
-        // Create a new PDF document
-        const pdf = new jsPDF('l', 'mm', 'letter'); // Letter size, landscape orientation
-        let isFirstPage = true;
-
-        // Generate PDF pages directly from data instead of capturing HTML
-        // Starting data-driven PDF generation
-
-        // Page 1: Approval Cover Sheet
-        // Generating Approval Cover Sheet
-        await generateApprovalCoverSheet(pdf, employeeData, isFirstPage);
-        isFirstPage = false;
-
-        // Page 2: Summary Sheet
-        // Generating Summary Sheet
-        pdf.addPage('l'); // Landscape orientation for Summary Sheet
-        await generateSummarySheet(pdf, employeeData);
-
-        // Page 3+: Cost Center Travel Sheets
-        console.log('Generating Cost Center Sheets...');
-        employeeData.costCenters.forEach((costCenter, index) => {
-          pdf.addPage();
-          generateCostCenterSheet(pdf, employeeData, costCenter, index + 1);
-        });
-
-        // Page N: Timesheet
-        // Generating Timesheet
-        pdf.addPage();
-        await generateTimesheet(pdf, employeeData);
-
-        // Page N+1: Receipt Management
-        if (receipts.length > 0) {
-          // Generating Receipt Management
-          pdf.addPage();
-          await generateReceiptManagement(pdf, receipts);
-        }
-
-      // Add receipt images if they exist
-      if (receipts.length > 0) {
-        pdf.addPage();
-        pdf.setFontSize(16);
-        pdf.text('Receipt Images', 20, 20);
+        // Prepare data for PDF export with comprehensive safety checks
+        const exportData = {
+          ...employeeData,
+          // Ensure all arrays exist
+          costCenters: employeeData.costCenters || [],
+          dailyEntries: employeeData.dailyEntries || [],
+          otherExpenses: (employeeData as any).otherExpenses || [],
+          dailyOdometerReadings: (employeeData as any).dailyOdometerReadings || [],
+          // Ensure all numeric values exist
+          airRailBus: (employeeData as any).airRailBus || 0,
+          vehicleRentalFuel: (employeeData as any).vehicleRentalFuel || 0,
+          parkingTolls: (employeeData as any).parkingTolls || 0,
+          groundTransportation: (employeeData as any).groundTransportation || 0,
+          hotelsAirbnb: (employeeData as any).hotelsAirbnb || 0,
+          perDiem: (employeeData as any).perDiem || 0,
+          phoneInternetFax: (employeeData as any).phoneInternetFax || 0,
+          shippingPostage: (employeeData as any).shippingPostage || 0,
+          printingCopying: (employeeData as any).printingCopying || 0,
+          officeSupplies: (employeeData as any).officeSupplies || 0,
+          eesSupplies: (employeeData as any).eesSupplies || 0,
+          devices: (employeeData as any).devices || 0,
+          gaHours: (employeeData as any).gaHours || 0,
+          holidayHours: (employeeData as any).holidayHours || 0,
+          ptoHours: (employeeData as any).ptoHours || 0,
+          stdLtdHours: (employeeData as any).stdLtdHours || 0,
+          pflPfmlHours: (employeeData as any).pflPfmlHours || 0,
+          employeeSignature: signatureImage,
+          supervisorSignature: supervisorSignature
+        } as any;
         
-        let yPosition = 40;
+        // Use the new comprehensive PDF export service
+        await TabPdfExportService.exportAllTabsInOnePDF(
+          exportData,
+          receipts as any,
+          [] // Empty time tracking array for now
+        );
         
-        // Process each receipt image
-        const processReceiptImage = async (receipt: any, currentYPosition: number) => {
-          if (receipt.imageUri && currentYPosition < 250) {
-            try {
-              // Create image element to get dimensions
-              const img = new Image();
-              img.src = receipt.imageUri;
-              
-              await new Promise((resolve) => {
-                img.onload = () => {
-                  const maxWidth = 170; // Max width in mm
-                  const maxHeight = 100; // Max height in mm
-                  
-                  let imgWidth = img.width;
-                  let imgHeight = img.height;
-                  
-                  // Scale down if too large
-                  if (imgWidth > maxWidth) {
-                    imgHeight = (imgHeight * maxWidth) / imgWidth;
-                    imgWidth = maxWidth;
-                  }
-                  if (imgHeight > maxHeight) {
-                    imgWidth = (imgWidth * maxHeight) / imgHeight;
-                    imgHeight = maxHeight;
-                  }
-                  
-                  // Add receipt info
-                  pdf.setFontSize(10);
-                  pdf.text(`${receipt.vendor} - $${receipt.amount}`, 20, currentYPosition);
-                  currentYPosition += 10;
-                  
-                  // Add image
-                  if (receipt.imageUri) {
-                    pdf.addImage(receipt.imageUri, 'PNG', 20, currentYPosition, imgWidth, imgHeight);
-                  }
-                  currentYPosition += imgHeight + 20;
-                  
-                  resolve(currentYPosition);
-                };
-              });
-              
-              return currentYPosition;
-            } catch (error) {
-              console.warn(`Failed to add receipt image: ${error}`);
-              return currentYPosition;
-            }
-          }
-          return currentYPosition;
-        };
+        // PDF export completed successfully
+        alert('Complete PDF exported successfully with all tabs!');
         
-        for (const receipt of receipts) {
-          yPosition = await processReceiptImage(receipt, yPosition);
-          
-          // Add new page if needed
-          if (yPosition > 250) {
-            pdf.addPage();
-            yPosition = 20;
-          }
-        }
-      }
-
-      // Generate filename in format: WEISZ, GREG SEP-25 EXPENSES
-      const nameParts = employeeData.name.split(' ');
-      const lastName = nameParts[nameParts.length - 1].toUpperCase();
-      const firstName = nameParts[0].toUpperCase();
-      
-      // Map month names to abbreviations
-      const monthMap: { [key: string]: string } = {
-        'January': 'JAN',
-        'February': 'FEB',
-        'March': 'MAR',
-        'April': 'APR',
-        'May': 'MAY',
-        'June': 'JUN',
-        'July': 'JUL',
-        'August': 'AUG',
-        'September': 'SEP',
-        'October': 'OCT',
-        'November': 'NOV',
-        'December': 'DEC'
-      };
-      
-      const monthAbbr = monthMap[employeeData.month] || 'UNK';
-      const yearShort = employeeData.year.toString().slice(-2);
-      const filename = `${lastName}, ${firstName} ${monthAbbr}-${yearShort} EXPENSES.pdf`;
-      
-      // Saving PDF
-      
-      // Save the PDF
-      pdf.save(filename);
-      
-      // PDF export completed successfully
-      alert('Complete PDF exported successfully!');
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert(`Error generating PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -2508,6 +2458,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               {employeeData.costCenters.length >= 5 && <Tab label={`Cost Ctr #5 Travel`} />}
               <Tab label="Timesheet" />
               <Tab label="Receipt Management" />
+              <Tab label="Settings" />
             </Tabs>
           </Box>
       </AppBar>
@@ -2689,20 +2640,32 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
                     <TableCell sx={{ width: '30%', textAlign: 'left' }}></TableCell>
-                    {employeeData.costCenters.map((center, index) => (
-                      <TableCell key={index} align="center" sx={{ width: '14%' }}>
-                        Cost Center #{index + 1}
-                      </TableCell>
-                    ))}
+                    <TableCell align="center" sx={{ width: '14%' }}>
+                      Cost Center #1
+                    </TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center" sx={{ width: '14%' }}>
+                            Cost Center #{index + 2}
+                          </TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="center" sx={{ width: '14%' }}>SUBTOTALS (by category)</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.50' }}>
                     <TableCell sx={{ width: '30%', textAlign: 'left' }}></TableCell>
-                    {employeeData.costCenters.map((center, index) => (
-                      <TableCell key={index} align="center" sx={{ width: '14%' }}>{center}</TableCell>
-                    ))}
+                    <TableCell align="center" sx={{ width: '14%' }}>{employeeData.costCenters[0]}</TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center" sx={{ width: '14%' }}>{center}</TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="center" sx={{ width: '14%' }}></TableCell>
                   </TableRow>
                 </TableHead>
@@ -2718,35 +2681,51 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">
                       ${employeeData.totalMileageAmount.toFixed(2)}
                     </TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">
-                        $0.00
-                      </TableCell>
-                    ))}
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">
+                            $0.00
+                          </TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="right"><strong>${employeeData.totalMileageAmount.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ pl: 8 }}>Air / Rail / Bus</TableCell>
                     <TableCell align="center">$0.00</TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
-                    ))}
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ pl: 8 }}>Vehicle Rental / Fuel</TableCell>
                     <TableCell align="center">$0.00</TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
-                    ))}
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ pl: 8 }}>Parking / Tolls</TableCell>
                     <TableCell align="center">$0.00</TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
-                    ))}
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
@@ -2768,9 +2747,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   <TableRow>
                     <TableCell sx={{ pl: 8 }}>PER DIEM</TableCell>
                     <TableCell align="right">${employeeData.perDiem.toFixed(2)}</TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
-                    ))}
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="right">${employeeData.perDiem.toFixed(2)}</TableCell>
                   </TableRow>
                   
@@ -2785,11 +2768,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">
                       ${employeeData.phoneInternetFax.toFixed(2)}
                     </TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">
-                        $0.00
-                      </TableCell>
-                    ))}
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">
+                            $0.00
+                          </TableCell>
+                        ))}
+                      </>
+                    )}
                     <TableCell align="right"><strong>${employeeData.phoneInternetFax.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
@@ -3980,7 +3967,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       <Dialog open={reportsDialogOpen} onClose={() => setReportsDialogOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">All Submitted Reports</Typography>
+            <Typography variant="h6" component="div">All Submitted Reports</Typography>
             <IconButton onClick={() => setReportsDialogOpen(false)}>
               <CloseIcon />
             </IconButton>
@@ -4068,7 +4055,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             <Button
                               size="small"
                               variant="outlined"
@@ -4106,6 +4093,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 Export PDF
                               </Button>
                             )}
+                            {(report.status === 'draft' || report.status === 'submitted') && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="error"
+                                startIcon={<DeleteIcon />}
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete the ${report.status} report for ${monthNames[report.month - 1]} ${report.year}? This action cannot be undone.`)) {
+                                    handleDeleteReport(report.id);
+                                  }
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            )}
                           </Box>
                         </TableCell>
                       </TableRow>
@@ -4130,7 +4132,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h6">Report Completeness Check</Typography>
+            <Typography variant="h6" component="div">Report Completeness Check</Typography>
             {completenessReport && (
               <Chip 
                 label={`Score: ${completenessReport.overallScore}/100`}
@@ -4232,6 +4234,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           <Button onClick={() => setCompletenessDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Settings Tab */}
+      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 4 : 4}>
+        <UserSettings 
+          employeeId={employeeId} 
+          onSettingsUpdate={(settings) => {
+            // Optional callback when settings are updated
+            console.log('Settings updated:', settings);
+          }} 
+        />
+      </TabPanel>
 
     </Container>
   );

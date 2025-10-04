@@ -12,7 +12,8 @@ export class TestDataService {
         position: 'Manager',
         phoneNumber: '555-0123',
         baseAddress: '230 Wagner St Troutman, NC 28166',
-        costCenters: ['PS-Unfunded']
+        costCenters: ['AL-SOR'],
+        selectedCostCenters: ['AL-SOR']
       },
       {
         name: 'Sarah Johnson',
@@ -22,7 +23,8 @@ export class TestDataService {
         position: 'Case Manager',
         phoneNumber: '555-0124',
         baseAddress: '123 Main St Charlotte, NC 28201',
-        costCenters: ['CC001', 'CC002']
+        costCenters: ['AL-SOR'],
+        selectedCostCenters: ['AL-SOR']
       },
       {
         name: 'Mike Rodriguez',
@@ -32,7 +34,8 @@ export class TestDataService {
         position: 'House Manager',
         phoneNumber: '555-0125',
         baseAddress: '456 Oak Ave Raleigh, NC 27601',
-        costCenters: ['CC003']
+        costCenters: ['CC003'],
+        selectedCostCenters: ['CC003']
       },
       {
         name: 'Lisa Chen',
@@ -42,7 +45,8 @@ export class TestDataService {
         position: 'Administrative Assistant',
         phoneNumber: '555-0126',
         baseAddress: '789 Pine St Asheville, NC 28801',
-        costCenters: ['CC001', 'CC004']
+        costCenters: ['CC001', 'CC004'],
+        selectedCostCenters: ['CC001', 'CC004']
       }
     ];
 
