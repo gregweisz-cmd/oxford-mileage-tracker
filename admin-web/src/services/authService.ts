@@ -86,7 +86,7 @@ export class AuthService {
       // In production, you'd hash and compare passwords properly
       
       // Determine role based on position/hierarchy
-      const userRole = this.determineUserRole(employee.position, employee.name);
+      const userRole = this.determineUserRole(employee.position, employee.name, employee.email);
       
       const user: User = {
         id: employee.id,
@@ -127,12 +127,14 @@ export class AuthService {
   }
 
   // Determine user role based on position and name
-  private determineUserRole(position: string, name: string): UserRole {
+  private determineUserRole(position: string, name: string, email?: string): UserRole {
     const positionLower = position.toLowerCase();
     const nameLower = name.toLowerCase();
+    const emailLower = email?.toLowerCase() || '';
 
     // Admin users (hardcoded for now)
-    if (nameLower.includes('greg') || nameLower.includes('admin') || positionLower.includes('executive director')) {
+    if (nameLower.includes('greg') || nameLower.includes('goose') || nameLower.includes('admin') || 
+        positionLower.includes('executive director') || emailLower.includes('greg.weisz')) {
       return 'admin';
     }
 

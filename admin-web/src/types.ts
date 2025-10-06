@@ -51,8 +51,14 @@ export interface Employee {
   id: string;
   name: string;
   email: string;
-  costCenters?: string[];
-  baseAddress?: string;
+  password: string;
+  oxfordHouseId: string;
+  position: string;
+  phoneNumber: string;
+  baseAddress: string;
+  costCenters: string[];
+  selectedCostCenters: string[];
+  defaultCostCenter: string;
   createdAt: Date;
   updatedAt: Date;
 }

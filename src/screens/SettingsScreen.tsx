@@ -17,6 +17,7 @@ import { DeviceIntelligenceService, DeviceSettings, UserInterfacePreferences, Of
 import { PerformanceOptimizationService, LoadingStrategy } from '../services/performanceOptimizationService';
 import { DeviceControlService, DeviceControlSettings } from '../services/deviceControlService';
 import { Employee } from '../types';
+import { DatabaseService } from '../services/database';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTips } from '../contexts/TipsContext';
 
@@ -24,13 +25,13 @@ interface SettingsScreenProps {
   navigation: any;
   route?: {
     params?: {
-      currentEmployee?: Employee;
+      currentEmployeeId?: string;
     };
   };
 }
 
 export default function SettingsScreen({ navigation, route }: SettingsScreenProps) {
-  const currentEmployee = route?.params?.currentEmployee || null;
+  const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const { theme, setTheme, colors } = useTheme();
   const { showTips, setShowTips, resetAllTips } = useTips();
   // State for device settings
@@ -46,8 +47,20 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
+    loadEmployee();
+  }, []);
+
+  useEffect(() => {
     loadSettings();
   }, [currentEmployee]);
+
+  const loadEmployee = async () => {
+    const employeeId = route?.params?.currentEmployeeId;
+    if (employeeId) {
+      const employee = await DatabaseService.getEmployeeById(employeeId);
+      setCurrentEmployee(employee);
+    }
+  };
 
   const loadSettings = async () => {
     if (!currentEmployee?.id) {

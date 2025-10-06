@@ -8,22 +8,28 @@ import {
   TextInput,
   ScrollView,
   Modal,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { DatabaseService } from '../services/database';
 import { GpsTrackingSession, Employee, LocationDetails } from '../types';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import { formatLocation } from '../utils/locationFormatter';
 import LocationCaptureModal from '../components/LocationCaptureModal';
+import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
+import { CostCenterAiService, CostCenterSuggestion } from '../services/costCenterAiService';
 import SimpleNavigationButton from '../components/SimpleNavigationButton';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
 import { useTips } from '../contexts/TipsContext';
 import { TipCard } from '../components/TipCard';
 import { useTheme } from '../contexts/ThemeContext';
-import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
+import { COST_CENTERS } from '../constants/costCenters';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -49,12 +55,46 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [endLocationDetails, setEndLocationDetails] = useState<LocationDetails | null>(null);
   const [lastDestination, setLastDestination] = useState<LocationDetails | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const odometerInputRef = useRef<TextInput>(null);
+  const purposeInputRef = useRef<TextInput>(null);
+  const notesInputRef = useRef<TextInput>(null);
   const [purposeSuggestions, setPurposeSuggestions] = useState<PurposeSuggestion[]>([]);
   const [showPurposeSuggestions, setShowPurposeSuggestions] = useState(false);
+  const [costCenterSuggestions, setCostCenterSuggestions] = useState<CostCenterSuggestion[]>([]);
+  const [showCostCenterSuggestions, setShowCostCenterSuggestions] = useState(false);
+  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
+  const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
+  const [isEditingOdometer, setIsEditingOdometer] = useState(false);
 
   useEffect(() => {
     loadEmployee();
+    
+    // Reset all states when component mounts to prevent stuck modals
+    return () => {
+      setShowLocationOptionsModal(false);
+      setShowStartLocationModal(false);
+      setShowEndLocationModal(false);
+      setShowOxfordHouseSearchModal(false);
+      setShowPurposeSuggestions(false);
+    };
   }, []);
+
+  // Reset modal states when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      // Reset all modal states when screen is focused
+      setShowLocationOptionsModal(false);
+      setShowStartLocationModal(false);
+      setShowEndLocationModal(false);
+      setShowOxfordHouseSearchModal(false);
+      setShowPurposeSuggestions(false);
+      
+      // Refresh GPS tracking status in case it's a new day
+      if (currentEmployee) {
+        checkGpsTrackingStatus(currentEmployee.id);
+      }
+    }, [currentEmployee])
+  );
 
   // Separate effect for timer that only restarts when session ID changes
   useEffect(() => {
@@ -75,7 +115,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setTrackingTime(elapsed);
-      }, 1000);
+      }, 1000) as any;
     } else {
       sessionIdRef.current = null;
       setTrackingTime(0);
@@ -98,7 +138,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         const distance = GpsTrackingService.getCurrentDistance();
         console.log('📍 GPS Screen: Polling distance:', distance);
         setCurrentDistance(distance);
-      }, 1000); // Update every second for responsive UI
+      }, 1000) as any; // Update every second for responsive UI
     }
 
     return () => {
@@ -115,8 +155,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         const selectedAddress = route.params.selectedAddress;
         
         // Validate that we have the required form data
-        if (!trackingForm.odometerReading.trim() || !trackingForm.purpose.trim()) {
-          Alert.alert('Missing Information', 'Please enter odometer reading and purpose before selecting a location.');
+        if (!trackingForm.purpose.trim()) {
+          Alert.alert('Missing Information', 'Please enter purpose before selecting a location.');
           navigation.setParams({ selectedAddress: undefined });
           return;
         }
@@ -185,6 +225,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       // Set employee for tips context and load GPS tracking tips
       if (employee) {
+        // Initialize cost center
+        const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
+        setSelectedCostCenter(costCenter);
+        
+        // Check if GPS tracking has been started today
+        await checkGpsTrackingStatus(employee.id);
+        
         setTipsEmployee(employee);
         if (showTips) {
           await loadTipsForScreen('GpsTrackingScreen', 'on_load');
@@ -230,19 +277,138 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
   };
 
+  const checkGpsTrackingStatus = async (employeeId: string) => {
+    try {
+      // Use device's local timezone instead of UTC
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      console.log('🚗 GPS: Checking GPS status for date:', today.toISOString().split('T')[0]);
+      
+      // Check if there's a daily odometer reading for today
+      const existingReading = await DatabaseService.getDailyOdometerReading(employeeId, today);
+      
+      if (existingReading) {
+        console.log('🚗 GPS: Daily odometer reading exists, GPS tracking has been started today');
+        console.log('🚗 GPS: Current odometer reading:', existingReading.odometerReading);
+        setHasStartedGpsToday(true);
+        
+        // Set the odometer reading from the existing reading
+        setTrackingForm(prev => ({
+          ...prev,
+          odometerReading: existingReading.odometerReading.toString()
+        }));
+      } else {
+        console.log('🚗 GPS: No daily odometer reading found, GPS tracking not started today');
+        setHasStartedGpsToday(false);
+      }
+    } catch (error) {
+      console.error('Error checking GPS tracking status:', error);
+      setHasStartedGpsToday(false);
+    }
+  };
+
   const handleInputChange = (field: string, value: string) => {
+    // Prevent changes to odometer reading if GPS tracking has been started today
+    if (field === 'odometerReading' && hasStartedGpsToday && !isEditingOdometer) {
+      return;
+    }
+    
     setTrackingForm(prev => ({ ...prev, [field]: value }));
+    
+    // If purpose is being entered and we have location details, get AI suggestions
+    if (field === 'purpose' && value.length > 2 && startLocationDetails && endLocationDetails) {
+      getPurposeSuggestions();
+    }
+  };
+
+  const handleEditOdometer = () => {
+    setIsEditingOdometer(true);
+  };
+
+  const handleSaveOdometer = async () => {
+    try {
+      if (!currentEmployee || !trackingForm.odometerReading) {
+        Alert.alert('Error', 'Please enter a valid odometer reading');
+        return;
+      }
+
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      
+      console.log('🔧 GPS: Updating odometer reading to:', trackingForm.odometerReading);
+      
+      // Update the daily odometer reading
+      await DatabaseService.updateDailyOdometerReadingByEmployeeAndDate(currentEmployee.id, dateStr, {
+        odometerReading: parseFloat(trackingForm.odometerReading),
+        notes: 'Updated by user'
+      });
+      
+      console.log('✅ GPS: Odometer reading updated successfully');
+
+      setIsEditingOdometer(false);
+      Alert.alert('Success', 'Starting odometer reading updated successfully');
+      
+      // Refresh the GPS tracking status to get the updated odometer reading
+      if (currentEmployee) {
+        await checkGpsTrackingStatus(currentEmployee.id);
+      }
+    } catch (error) {
+      console.error('Error updating odometer reading:', error);
+      Alert.alert('Error', 'Failed to update odometer reading');
+    }
+  };
+
+  const handleCancelOdometerEdit = () => {
+    setIsEditingOdometer(false);
+    // Reload the current odometer reading
+    if (currentEmployee) {
+      checkGpsTrackingStatus(currentEmployee.id);
+    }
+  };
+
+  const getPurposeSuggestions = async () => {
+    if (!currentEmployee || !startLocationDetails || !endLocationDetails) return;
+    
+    try {
+      const [purposeSuggestions, costCenterSuggestions] = await Promise.all([
+        TripPurposeAiService.getSuggestionsForRoute(
+          startLocationDetails.name,
+          endLocationDetails.name,
+          currentEmployee.id
+        ),
+        CostCenterAiService.getSuggestionsForTrip(
+          startLocationDetails.name,
+          endLocationDetails.name,
+          trackingForm.purpose,
+          currentEmployee.id
+        )
+      ]);
+      
+      setPurposeSuggestions(purposeSuggestions);
+      setShowPurposeSuggestions(purposeSuggestions.length > 0);
+      
+      setCostCenterSuggestions(costCenterSuggestions);
+      setShowCostCenterSuggestions(costCenterSuggestions.length > 0);
+    } catch (error) {
+      console.error('Error getting AI suggestions:', error);
+    }
   };
 
   const validateForm = (): boolean => {
-    if (!trackingForm.odometerReading.trim() || isNaN(Number(trackingForm.odometerReading)) || Number(trackingForm.odometerReading) < 0) {
-      Alert.alert('Validation Error', 'Please enter a valid starting odometer reading');
-      return false;
+    // Only validate odometer reading on first GPS session of the day
+    if (!hasStartedGpsToday) {
+      if (!trackingForm.odometerReading.trim() || isNaN(Number(trackingForm.odometerReading)) || Number(trackingForm.odometerReading) < 0) {
+        Alert.alert('Validation Error', 'Please enter a valid starting odometer reading');
+        return false;
+      }
     }
+    
     if (!trackingForm.purpose.trim()) {
       Alert.alert('Validation Error', 'Purpose is required');
       return false;
     }
+    
     return true;
   };
 
@@ -292,9 +458,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
   const startGpsTracking = async () => {
     try {
-      // Check if this is the first GPS tracking session of the day
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Check if this is the first GPS tracking session of the day using device's local timezone
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      console.log('🚗 GPS: Starting GPS tracking for date:', today.toISOString().split('T')[0]);
       
       const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee!.id, today);
       
@@ -356,7 +524,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     try {
       const completedSession = await stopTracking();
       
-      // Calculate actual miles from odometer if provided
+      // Calculate actual miles from odometer if provided, otherwise use GPS miles
       let actualMiles = completedSession?.totalMiles || 0;
       if (endingOdometer && trackingForm.odometerReading) {
         actualMiles = endingOdometer - Number(trackingForm.odometerReading);
@@ -371,7 +539,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           startLocation: startLocationDetails?.name || completedSession.startLocation || 'Unknown',
           endLocation: endLocationDetails?.name || completedSession.endLocation || 'Unknown',
           purpose: completedSession.purpose,
-          miles: completedSession.totalMiles,
+          miles: actualMiles,
           odometerReading: completedSession.odometerReading,
           isGpsTracked: true
         });
@@ -389,6 +557,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           miles: actualMiles, // Use calculated miles from odometer if available
           notes: completedSession.notes,
           isGpsTracked: true,
+          costCenter: selectedCostCenter,
         });
 
         console.log('✅ GPS Trip saved successfully!');
@@ -414,6 +583,23 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setTrackingTime(0);
       setStartLocationDetails(null);
       setEndLocationDetails(null);
+      
+      // Reset all modal states to ensure screen is responsive
+      setShowLocationOptionsModal(false);
+      setShowStartLocationModal(false);
+      setShowEndLocationModal(false);
+      setShowOxfordHouseSearchModal(false);
+      setShowPurposeSuggestions(false);
+      
+      // Reset form state for next trip
+      setTrackingForm({
+        odometerReading: '',
+        purpose: '',
+        notes: '',
+      });
+      
+      // Reset cost center selection
+      setSelectedCostCenter('');
     } catch (error) {
       console.error('Error stopping tracking:', error);
       Alert.alert('Error', 'Failed to stop GPS tracking');
@@ -443,7 +629,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
       <UnifiedHeader
         title="GPS Tracking"
         showBackButton={true}
@@ -516,32 +703,125 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           <View style={styles.formContainer}>
             <Text style={styles.sectionTitle}>Trip Details</Text>
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Starting Odometer Reading *</Text>
-              <TextInput
-                style={styles.input}
-                value={trackingForm.odometerReading}
-                onChangeText={(value) => handleInputChange('odometerReading', value)}
-                placeholder="e.g., 12345"
-                keyboardType="numeric"
-                placeholderTextColor="#999"
-              />
-            </View>
+            {/* Only show odometer input on first GPS session of the day */}
+            {!hasStartedGpsToday && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Starting Odometer Reading *</Text>
+                <TextInput
+                  ref={odometerInputRef}
+                  style={styles.input}
+                  value={trackingForm.odometerReading}
+                  onChangeText={(value) => handleInputChange('odometerReading', value)}
+                  placeholder="e.g., 12345"
+                  keyboardType="numeric"
+                  placeholderTextColor="#999"
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => {
+                    purposeInputRef.current?.focus();
+                  }}
+                />
+              </View>
+            )}
+            
+            {/* Show current odometer reading if GPS has been started today */}
+            {hasStartedGpsToday && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Daily Starting Odometer</Text>
+                {!isEditingOdometer ? (
+                  <View style={styles.odometerDisplay}>
+                    <Text style={styles.odometerValue}>{trackingForm.odometerReading}</Text>
+                    <Text style={styles.odometerNote}>
+                      Set from first GPS session today
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.editOdometerButton}
+                      onPress={handleEditOdometer}
+                    >
+                      <MaterialIcons name="edit" size={16} color="#2196F3" />
+                      <Text style={styles.editOdometerButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.odometerEditContainer}>
+                    <TextInput
+                      style={styles.input}
+                      value={trackingForm.odometerReading}
+                      onChangeText={(value) => handleInputChange('odometerReading', value)}
+                      placeholder="e.g., 12345"
+                      keyboardType="numeric"
+                      placeholderTextColor="#999"
+                      autoFocus={true}
+                    />
+                    <View style={styles.odometerEditButtons}>
+                      <TouchableOpacity
+                        style={styles.saveOdometerButton}
+                        onPress={handleSaveOdometer}
+                      >
+                        <MaterialIcons name="check" size={16} color="#fff" />
+                        <Text style={styles.saveOdometerButtonText}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.cancelOdometerButton}
+                        onPress={handleCancelOdometerEdit}
+                      >
+                        <MaterialIcons name="close" size={16} color="#666" />
+                        <Text style={styles.cancelOdometerButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Purpose *</Text>
               <TextInput
+                ref={purposeInputRef}
                 style={styles.input}
                 value={trackingForm.purpose}
                 onChangeText={(value) => handleInputChange('purpose', value)}
                 placeholder="e.g., Client visit, Meeting, Training"
                 placeholderTextColor="#999"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => {
+                  notesInputRef.current?.focus();
+                }}
               />
+              
+              {/* AI Purpose Suggestions */}
+              {showPurposeSuggestions && purposeSuggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <Text style={styles.suggestionsTitle}>🤖 AI Suggestions</Text>
+                  {purposeSuggestions.slice(0, 3).map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.suggestionItem}
+                      onPress={() => {
+                        setTrackingForm(prev => ({ ...prev, purpose: suggestion.purpose }));
+                        setShowPurposeSuggestions(false);
+                      }}
+                    >
+                      <View style={styles.suggestionContent}>
+                        <Text style={styles.suggestionText}>{suggestion.purpose}</Text>
+                        <Text style={styles.suggestionReason}>{suggestion.reasoning}</Text>
+                      </View>
+                      <View style={styles.confidenceBadge}>
+                        <Text style={styles.confidenceText}>
+                          {Math.round(suggestion.confidence * 100)}%
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Notes (Optional)</Text>
               <TextInput
+                ref={notesInputRef}
                 style={[styles.input, styles.textArea]}
                 value={trackingForm.notes}
                 onChangeText={(value) => handleInputChange('notes', value)}
@@ -549,8 +829,63 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 placeholderTextColor="#999"
                 multiline
                 numberOfLines={3}
+                returnKeyType="done"
+                blurOnSubmit={true}
               />
             </View>
+
+            {/* Cost Center Selector - only show if user has multiple cost centers */}
+            {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Cost Center</Text>
+                <View style={styles.costCenterSelector}>
+                  {currentEmployee.selectedCostCenters.map((costCenter) => (
+                    <TouchableOpacity
+                      key={costCenter}
+                      style={[
+                        styles.costCenterOption,
+                        selectedCostCenter === costCenter && styles.costCenterOptionSelected
+                      ]}
+                      onPress={() => setSelectedCostCenter(costCenter)}
+                    >
+                      <Text style={[
+                        styles.costCenterOptionText,
+                        selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
+                      ]}>
+                        {costCenter}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                
+                {/* AI Cost Center Suggestions */}
+                {showCostCenterSuggestions && costCenterSuggestions.length > 0 && (
+                  <View style={styles.suggestionsContainer}>
+                    <Text style={styles.suggestionsTitle}>🤖 AI Cost Center Suggestions</Text>
+                    {costCenterSuggestions.slice(0, 3).map((suggestion, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.suggestionItem}
+                        onPress={() => {
+                          setSelectedCostCenter(suggestion.costCenter);
+                          setShowCostCenterSuggestions(false);
+                        }}
+                      >
+                        <View style={styles.suggestionContent}>
+                          <Text style={styles.suggestionText}>{suggestion.costCenter}</Text>
+                          <Text style={styles.suggestionReason}>{suggestion.reasoning}</Text>
+                        </View>
+                        <View style={styles.confidenceBadge}>
+                          <Text style={styles.confidenceText}>
+                            {Math.round(suggestion.confidence * 100)}%
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         )}
 
@@ -736,7 +1071,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -1012,5 +1348,181 @@ const styles = StyleSheet.create({
   },
   tipsScrollView: {
     maxHeight: 180,
+  },
+  
+  // Cost Center Selector Styles
+  costCenterSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  costCenterOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  costCenterOptionSelected: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  costCenterOptionText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  costCenterOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  inputDisabled: {
+    backgroundColor: '#f5f5f5',
+    color: '#999',
+    borderColor: '#e0e0e0',
+  },
+  disabledText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  
+  // AI Purpose Suggestions Styles
+  suggestionsContainer: {
+    marginTop: 8,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+  },
+  suggestionsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  suggestionContent: {
+    flex: 1,
+    marginRight: 8,
+  },
+  suggestionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 2,
+  },
+  suggestionReason: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  confidenceBadge: {
+    backgroundColor: '#2196F3',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  confidenceText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  
+  // Odometer Display Styles
+  odometerDisplay: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  odometerValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  odometerNote: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  
+  // Odometer Edit Styles
+  editOdometerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginTop: 8,
+    alignSelf: 'center',
+  },
+  editOdometerButtonText: {
+    color: '#2196F3',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  odometerEditContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  odometerEditButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 12,
+  },
+  saveOdometerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+    flex: 1,
+  },
+  saveOdometerButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  cancelOdometerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+    flex: 1,
+  },
+  cancelOdometerButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });

@@ -8,11 +8,15 @@ import {
   TextInput,
   Alert,
   Modal,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
-import { MileageEntry, Employee, TimeTracking } from '../types';
+import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataService';
+import { Employee } from '../types';
+import { COST_CENTERS } from '../constants/costCenters';
 
 interface HoursWorkedScreenProps {
   navigation: any;
@@ -21,24 +25,21 @@ interface HoursWorkedScreenProps {
 const TIME_CATEGORIES = [
   'Working Hours',
   'G&A Hours',
-  'Holiday Hours', 
+  'Holiday Hours',
   'PTO Hours',
   'STD/LTD Hours',
   'PFL/PFML Hours'
 ];
 
-interface DayHours {
-  date: Date;
-  hours: number;
-  entries: MileageEntry[];
-  timeTracking: TimeTracking[];
-}
-
 export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [daysWithHours, setDaysWithHours] = useState<DayHours[]>([]);
+  const [daysWithHours, setDaysWithHours] = useState<UnifiedDayData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<UnifiedDayData | null>(null);
+  const [timeTrackingInputs, setTimeTrackingInputs] = useState<{[key: string]: number}>({});
+  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -52,106 +53,124 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Get current employee
-      const employees = await DatabaseService.getEmployees();
-      let employee = employees[0];
+      const employee = await DatabaseService.getCurrentEmployee();
       
       if (!employee) {
-        // Create a default employee for demo
-        employee = await DatabaseService.createEmployee({
-          name: 'Demo Employee',
-          email: 'demo@oxfordhouse.org',
-          password: 'demo123',
-          oxfordHouseId: 'demo-house',
-          position: 'House Manager',
-          phoneNumber: '555-0123',
-          baseAddress: '123 Main Street, Oxford House, NC 27514',
-          costCenters: ['NC.F-SAPTBG']
-        });
+        console.error('❌ HoursWorkedScreen: No current employee found');
+        setLoading(false);
+        return;
       }
       
       setCurrentEmployee(employee);
       
-      // Get all entries for the current month
-      const monthEntries = await DatabaseService.getMileageEntries(
+      // Use unified data service to get month data
+      console.log('🕒 HoursWorkedScreen: Loading unified data for month:', currentMonth.getMonth() + 1, 'year:', currentMonth.getFullYear());
+      const monthData = await UnifiedDataService.getMonthData(
         employee.id,
         currentMonth.getMonth() + 1,
         currentMonth.getFullYear()
       );
       
-      // Get all time tracking entries for the current month
-      const timeTrackingEntries = await DatabaseService.getTimeTrackingEntries(
-        employee.id,
-        currentMonth.getMonth() + 1,
-        currentMonth.getFullYear()
-      );
-      
-      // Group entries by date and calculate hours
-      const daysMap = new Map<string, DayHours>();
-      
-      // Initialize all days of the month
-      const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-        const dateKey = date.toISOString().split('T')[0];
-        daysMap.set(dateKey, {
-          date,
-          hours: 0,
-          entries: [],
-          timeTracking: []
-        });
-      }
-      
-      // Add entries to their respective days
-      monthEntries.forEach(entry => {
-        const dateKey = entry.date.toISOString().split('T')[0];
-        const dayData = daysMap.get(dateKey);
-        if (dayData) {
-          dayData.entries.push(entry);
-          // Don't add hours here - we'll calculate them separately to avoid double counting
-          const entryHours = entry.hoursWorked || 0;
-          if (entryHours > 0) {
-            console.log(`📊 Found ${entryHours} hours from mileage entry on ${dateKey}`);
-          }
-        }
-      });
-      
-      // Add time tracking entries to their respective days
-      timeTrackingEntries.forEach(tracking => {
-        const dateKey = tracking.date.toISOString().split('T')[0];
-        const dayData = daysMap.get(dateKey);
-        if (dayData) {
-          dayData.timeTracking.push(tracking);
-          // Don't add hours here - we'll calculate them separately to avoid double counting
-          const trackingHours = tracking.hours || 0;
-          if (trackingHours > 0) {
-            console.log(`⏰ Found ${trackingHours} hours from time tracking (${tracking.category}) on ${dateKey}`);
-          }
-        }
-      });
-      
-      // Now calculate total hours for each day, prioritizing time tracking over mileage
-      daysMap.forEach((dayData, dateKey) => {
-        const mileageHours = dayData.entries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
-        const timeTrackingHours = dayData.timeTracking.reduce((sum, entry) => sum + entry.hours, 0);
-        
-        // If there are time tracking entries, use those; otherwise use mileage hours
-        if (timeTrackingHours > 0) {
-          dayData.hours = timeTrackingHours;
-          console.log(`⏰ Using time tracking hours for ${dateKey}: ${timeTrackingHours}`);
-        } else {
-          dayData.hours = mileageHours;
-          console.log(`📊 Using mileage hours for ${dateKey}: ${mileageHours}`);
-        }
-      });
-      
-      setDaysWithHours(Array.from(daysMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime()));
+      // Show ALL days of the month (not just days with existing hours)
+      // This allows users to enter hours for any day
+      setDaysWithHours(monthData);
       
     } catch (error) {
-      console.error('Error loading hours data:', error);
-      Alert.alert('Error', 'Failed to load hours data');
+      console.error('❌ HoursWorkedScreen: Error loading data:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+
+  const handleEditHours = (day: UnifiedDayData) => {
+    setSelectedDay(day);
+    
+    // Initialize inputs with existing hours breakdown
+    const inputs: {[key: string]: number} = {};
+    TIME_CATEGORIES.forEach(category => {
+      let categoryKey: keyof typeof day.hoursBreakdown;
+      switch (category) {
+        case 'Working Hours':
+          categoryKey = 'workingHours';
+          break;
+        case 'G&A Hours':
+          categoryKey = 'gahours';
+          break;
+        case 'Holiday Hours':
+          categoryKey = 'holidayHours';
+          break;
+        case 'PTO Hours':
+          categoryKey = 'ptoHours';
+          break;
+        case 'STD/LTD Hours':
+          categoryKey = 'stdLtdHours';
+          break;
+        case 'PFL/PFML Hours':
+          categoryKey = 'pflPfmlHours';
+          break;
+        default:
+          categoryKey = 'workingHours';
+      }
+      inputs[category] = day.hoursBreakdown[categoryKey] || 0;
+    });
+    
+    // Initialize cost center - use existing or default
+    const costCenter = day.costCenter || currentEmployee?.defaultCostCenter || currentEmployee?.selectedCostCenters?.[0] || '';
+    setSelectedCostCenter(costCenter);
+    
+    setTimeTrackingInputs(inputs);
+    setShowEditModal(true);
+  };
+
+  const handleSaveHours = async () => {
+    if (!selectedDay || !currentEmployee) return;
+
+    try {
+      // Convert inputs to hours breakdown format
+      const hoursBreakdown = {
+        workingHours: timeTrackingInputs['Working Hours'] || 0,
+        gahours: timeTrackingInputs['G&A Hours'] || 0,
+        holidayHours: timeTrackingInputs['Holiday Hours'] || 0,
+        ptoHours: timeTrackingInputs['PTO Hours'] || 0,
+        stdLtdHours: timeTrackingInputs['STD/LTD Hours'] || 0,
+        pflPfmlHours: timeTrackingInputs['PFL/PFML Hours'] || 0
+      };
+      
+      // Use unified service to update hours
+      await UnifiedDataService.updateDayHours(
+        currentEmployee.id,
+        selectedDay.date,
+        hoursBreakdown,
+        selectedCostCenter
+      );
+      
+      setShowEditModal(false);
+      setSelectedDay(null);
+      setTimeTrackingInputs({});
+      
+      // Reload data to reflect changes
+      await loadData();
+      
+    } catch (error) {
+      console.error('❌ HoursWorkedScreen: Error saving hours:', error);
+      Alert.alert('Error', 'Failed to save hours');
+    }
+  };
+
+  const getTotalHoursForDay = (day: UnifiedDayData) => {
+    return day.totalHours;
+  };
+
+  const formatDate = (date: Date) => {
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const year = date.getFullYear().toString().slice(-2);
+    return `${month}/${day}/${year}`;
+  };
+
+  const getMonthName = (date: Date) => {
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -164,106 +183,181 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
     setCurrentMonth(newMonth);
   };
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const getTotalHours = () => {
-    return daysWithHours.reduce((sum, day) => sum + day.hours, 0);
-  };
-
-  const getDaysWithHours = () => {
-    return daysWithHours.filter(day => day.hours > 0).length;
-  };
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
-        <StatusBar style="auto" />
+        <Text>Loading hours data...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
+        <StatusBar style="light" />
       
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Hours Worked Summary</Text>
-        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Hours Worked</Text>
+        <View style={styles.placeholder} />
       </View>
 
       {/* Month Navigation */}
       <View style={styles.monthNavigation}>
-        <TouchableOpacity onPress={() => navigateMonth('prev')}>
-          <MaterialIcons name="chevron-left" size={24} color="#2196F3" />
+        <TouchableOpacity onPress={() => navigateMonth('prev')} style={styles.navButton}>
+          <MaterialIcons name="chevron-left" size={24} color="#007AFF" />
         </TouchableOpacity>
-        
-        <Text style={styles.monthTitle}>
-          {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        <Text style={styles.monthTitle}>{getMonthName(currentMonth)}</Text>
+        <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
+          <MaterialIcons name="chevron-right" size={24} color="#007AFF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Summary */}
+      <View style={styles.summary}>
+        <Text style={styles.summaryText}>
+          {daysWithHours.filter(day => day.totalHours > 0).length} days with hours • {daysWithHours.reduce((sum, day) => sum + day.totalHours, 0)} total hours
         </Text>
-        
-        <TouchableOpacity onPress={() => navigateMonth('next')}>
-          <MaterialIcons name="chevron-right" size={24} color="#2196F3" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Edit Note */}
-      <View style={styles.editNoteContainer}>
-        <View style={styles.editNote}>
-          <MaterialIcons name="info" size={16} color="#2196F3" />
-          <Text style={styles.editNoteText}>
-            To edit hours, go to the Time Tracking screen
-          </Text>
-        </View>
-      </View>
-
-      {/* Summary Stats */}
-      <View style={styles.summaryContainer}>
-        <View style={styles.summaryCard}>
-          <MaterialIcons name="access-time" size={24} color="#FF5722" />
-          <Text style={styles.summaryValue}>{getTotalHours().toFixed(1)}h</Text>
-          <Text style={styles.summaryLabel}>Total Hours</Text>
-        </View>
-        
-        <View style={styles.summaryCard}>
-          <MaterialIcons name="event" size={24} color="#4CAF50" />
-          <Text style={styles.summaryValue}>{getDaysWithHours()}</Text>
-          <Text style={styles.summaryLabel}>Days Worked</Text>
-        </View>
+        <Text style={styles.instructionText}>
+          Tap on any day to enter or edit hours
+        </Text>
       </View>
 
       {/* Days List */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {daysWithHours.map((day) => (
-          <View
-            key={day.date.toISOString()}
-            style={styles.dayCard}
-          >
-            <View style={styles.dayInfo}>
-              <Text style={styles.dayDate}>{formatDate(day.date)}</Text>
-              <Text style={styles.dayEntries}>
-                {day.entries.length} {day.entries.length === 1 ? 'entry' : 'entries'}
+      <ScrollView style={styles.daysList} showsVerticalScrollIndicator={false}>
+        {daysWithHours.length === 0 ? (
+          <View style={styles.emptyState}>
+            <MaterialIcons name="schedule" size={48} color="#ccc" />
+            <Text style={styles.emptyText}>Loading calendar...</Text>
+            <Text style={styles.emptySubtext}>Please wait while we load the days</Text>
+          </View>
+        ) : (
+          daysWithHours.map((day) => (
+            <TouchableOpacity
+              key={day.date.toISOString()}
+              style={styles.dayCard}
+              onPress={() => handleEditHours(day)}
+            >
+              <View style={styles.dayInfo}>
+                <Text style={styles.dayDate}>{formatDate(day.date)}</Text>
+                <Text style={[styles.dayHours, getTotalHoursForDay(day) === 0 && styles.dayHoursZero]}>
+                  {getTotalHoursForDay(day)} hours
+                </Text>
+              </View>
+              <View style={styles.dayDetails}>
+                {getTotalHoursForDay(day) > 0 ? (
+                  <>
+                    {day.hoursBreakdown.workingHours > 0 && (
+                      <Text style={styles.hourDetail}>Working: {day.hoursBreakdown.workingHours}h</Text>
+                    )}
+                    {day.hoursBreakdown.gahours > 0 && (
+                      <Text style={styles.hourDetail}>G&A: {day.hoursBreakdown.gahours}h</Text>
+                    )}
+                    {day.hoursBreakdown.holidayHours > 0 && (
+                      <Text style={styles.hourDetail}>Holiday: {day.hoursBreakdown.holidayHours}h</Text>
+                    )}
+                    {day.hoursBreakdown.ptoHours > 0 && (
+                      <Text style={styles.hourDetail}>PTO: {day.hoursBreakdown.ptoHours}h</Text>
+                    )}
+                    {day.hoursBreakdown.stdLtdHours > 0 && (
+                      <Text style={styles.hourDetail}>STD/LTD: {day.hoursBreakdown.stdLtdHours}h</Text>
+                    )}
+                    {day.hoursBreakdown.pflPfmlHours > 0 && (
+                      <Text style={styles.hourDetail}>PFL/PFML: {day.hoursBreakdown.pflPfmlHours}h</Text>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.tapToAddText}>Tap to add hours</Text>
+                )}
+              </View>
+              <MaterialIcons name="edit" size={20} color="#007AFF" />
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+
+      {/* Edit Hours Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowEditModal(false)}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>
+              Edit Hours - {selectedDay ? formatDate(selectedDay.date) : ''}
+            </Text>
+            <TouchableOpacity onPress={handleSaveHours}>
+              <Text style={styles.saveButton}>Save</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {TIME_CATEGORIES.map((category) => (
+              <View key={category} style={styles.inputRow}>
+                <Text style={styles.inputLabel}>{category}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={timeTrackingInputs[category]?.toString() || '0'}
+                  onChangeText={(text) => {
+                    const value = parseFloat(text) || 0;
+                    setTimeTrackingInputs(prev => ({
+                      ...prev,
+                      [category]: value
+                    }));
+                  }}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  selectTextOnFocus={true}
+                  returnKeyType="done"
+                  blurOnSubmit={true}
+                />
+              </View>
+            ))}
+
+            {/* Cost Center Selector - only show if user has multiple cost centers */}
+            {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
+              <View style={styles.costCenterSection}>
+                <Text style={styles.costCenterLabel}>Cost Center</Text>
+                <View style={styles.costCenterSelector}>
+                  {currentEmployee.selectedCostCenters.map((costCenter) => (
+                    <TouchableOpacity
+                      key={costCenter}
+                      style={[
+                        styles.costCenterOption,
+                        selectedCostCenter === costCenter && styles.costCenterOptionSelected
+                      ]}
+                      onPress={() => setSelectedCostCenter(costCenter)}
+                    >
+                      <Text style={[
+                        styles.costCenterOptionText,
+                        selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
+                      ]}>
+                        {costCenter}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            <View style={styles.totalSection}>
+              <Text style={styles.totalLabel}>Total Hours:</Text>
+              <Text style={styles.totalValue}>
+                {Object.values(timeTrackingInputs).reduce((sum, hours) => sum + hours, 0)}
               </Text>
             </View>
-            
-            <View style={styles.dayHours}>
-              <Text style={styles.hoursValue}>{day.hours.toFixed(1)}h</Text>
-              <MaterialIcons name="info" size={20} color="#999" />
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </View>
+          </ScrollView>
+        </View>
+      </Modal>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -276,11 +370,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
   },
   header: {
     backgroundColor: '#2196F3',
@@ -296,87 +385,74 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  headerSpacer: {
+  placeholder: {
     width: 24,
   },
   monthNavigation: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#e0e0e0',
+  },
+  navButton: {
+    padding: 8,
   },
   monthTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  editNoteContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  editNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#e3f2fd',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#2196F3',
-  },
-  editNoteText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#1976D2',
-    fontWeight: '500',
-  },
-  summaryContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  summaryCard: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 5,
-  },
-  summaryValue: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#333',
-    marginTop: 4,
   },
-  summaryLabel: {
-    fontSize: 12,
+  summary: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  summaryText: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 4,
+  },
+  instructionText: {
+    fontSize: 14,
     color: '#666',
-    marginTop: 2,
   },
-  content: {
+  daysList: {
     flex: 1,
-    padding: 20,
+    padding: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#666',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
   dayCard: {
     backgroundColor: '#fff',
-    padding: 16,
     borderRadius: 12,
+    padding: 16,
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   dayInfo: {
     flex: 1,
@@ -385,149 +461,138 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-  },
-  dayEntries: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 2,
+    marginBottom: 4,
   },
   dayHours: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  dayHoursZero: {
+    color: '#999',
+  },
+  dayDetails: {
+    flex: 2,
+    marginLeft: 16,
+  },
+  hourDetail: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  tapToAddText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  costCenterSection: {
+    marginBottom: 20,
+  },
+  costCenterLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  costCenterSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  costCenterOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  costCenterOptionSelected: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  costCenterOptionText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  costCenterOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  hoursValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FF5722',
-    marginRight: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    width: '90%',
-    maxWidth: 400,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  cancelButton: {
+    fontSize: 16,
+    color: '#007AFF',
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  hoursInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
-    backgroundColor: '#f9f9f9',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalButtonSecondary: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#2196F3',
-    marginRight: 8,
-  },
-  modalButtonSecondaryText: {
-    color: '#2196F3',
-    fontSize: 16,
     fontWeight: '600',
-    textAlign: 'center',
+    color: '#333',
   },
-  modalButtonPrimary: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#2196F3',
-    marginLeft: 8,
-  },
-  modalButtonPrimaryText: {
-    color: '#fff',
+  saveButton: {
     fontSize: 16,
+    color: '#007AFF',
     fontWeight: '600',
-    textAlign: 'center',
   },
-  timeTrackingInputsContainer: {
-    maxHeight: 300,
-    marginBottom: 20,
+  modalContent: {
+    flex: 1,
+    padding: 16,
   },
-  timeTrackingInputRow: {
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
-    paddingHorizontal: 5,
-  },
-  timeTrackingLabel: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-  timeTrackingInput: {
-    width: 80,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 8,
-    fontSize: 16,
-    color: '#333',
-    backgroundColor: '#f9f9f9',
-    textAlign: 'center',
-  },
-  workingHoursRow: {
-    backgroundColor: '#e3f2fd',
-    borderRadius: 8,
-    padding: 8,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: '#2196F3',
-  },
-  workingHoursLabel: {
-    fontWeight: 'bold',
-    color: '#1976D2',
-    fontSize: 18,
-  },
-  workingHoursInput: {
-    width: 100,
-    borderWidth: 2,
-    borderColor: '#2196F3',
+    justifyContent: 'space-between',
     backgroundColor: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  hoursSummary: {
-    backgroundColor: '#f5f5f5',
-    padding: 12,
     borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    padding: 16,
+    marginBottom: 12,
   },
-  hoursSummaryTitle: {
+  inputLabel: {
     fontSize: 16,
-    fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    flex: 1,
   },
-  hoursSummaryText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 2,
+  input: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'right',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 80,
+  },
+  totalSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    padding: 16,
+    marginTop: 16,
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  totalValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

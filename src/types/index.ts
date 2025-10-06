@@ -52,7 +52,6 @@ export interface DailyOdometerReading {
   employeeId: string;
   date: Date; // Date for this reading (YYYY-MM-DD)
   odometerReading: number; // Starting odometer reading for the day
-  endOdometerReading?: number; // Calculated end reading (start + total miles for day)
   notes?: string; // Optional notes
   createdAt: Date;
   updatedAt: Date;
@@ -103,6 +102,7 @@ export interface Receipt {
   description?: string;
   category: string;
   imageUri: string;
+  costCenter?: string; // Cost center for this specific receipt
   createdAt: Date;
   updatedAt: Date;
 }
@@ -114,6 +114,36 @@ export interface TimeTracking {
   category: 'Working Hours' | 'G&A Hours' | 'Holiday Hours' | 'PTO Hours' | 'STD/LTD Hours' | 'PFL/PFML Hours';
   hours: number;
   description?: string;
+  costCenter?: string; // Cost center for this specific time tracking entry
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DailyDescription {
+  id: string;
+  employeeId: string;
+  date: Date;
+  description: string;
+  costCenter?: string; // Cost center for this specific daily description
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CostCenterSummary {
+  id: string;
+  employeeId: string;
+  costCenter: string;
+  month: number;
+  year: number;
+  totalHours: number;
+  totalMiles: number;
+  totalReceipts: number;
+  totalPerDiem: number;
+  totalExpenses: number;
+  mileageEntries: number;
+  receiptEntries: number;
+  timeTrackingEntries: number;
+  descriptionEntries: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -146,10 +176,12 @@ export type RootStackParamList = {
   Receipts: undefined;
   AddReceipt: undefined;
   HoursWorked: undefined;
+  DailyDescription: undefined;
+  CostCenterReporting: undefined;
   Admin: undefined;
   ManagerDashboard: undefined;
   SavedAddresses: undefined;
   DataSync: undefined;
   EmployeeProfile: undefined;
-  Settings: { currentEmployee?: Employee };
+  Settings: { currentEmployeeId?: string };
 };

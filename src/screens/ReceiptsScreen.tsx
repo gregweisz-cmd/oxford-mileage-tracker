@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { DatabaseService } from '../services/database';
 import { PdfService } from '../services/pdfService';
 import { Receipt, Employee } from '../types';
@@ -25,22 +26,37 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
   const [loading, setLoading] = useState(true);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedReceiptIds, setSelectedReceiptIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadData();
   }, []);
 
+  // Refresh data when screen comes into focus (e.g., after adding a receipt)
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('📄 ReceiptsScreen: Screen focused, refreshing data');
+      loadData();
+    }, [])
+  );
+
   const loadData = async () => {
     try {
       setLoading(true);
       
-      const employees = await DatabaseService.getEmployees();
-      const employee = employees[0]; // For demo, use first employee
+      // Get the current logged-in employee instead of the first employee
+      const employee = await DatabaseService.getCurrentEmployee();
       
       if (employee) {
         setCurrentEmployee(employee);
         const employeeReceipts = await DatabaseService.getReceipts(employee.id);
         setReceipts(employeeReceipts);
+        console.log('📄 ReceiptsScreen: Loaded', employeeReceipts.length, 'receipts for', employee.name);
+      } else {
+        console.log('📄 ReceiptsScreen: No current employee found');
+        setReceipts([]);
       }
     } catch (error) {
       console.error('Error loading receipts:', error);
@@ -159,6 +175,11 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
     setShowImageModal(true);
   };
 
+  const viewReceiptDetails = (receipt: Receipt) => {
+    setSelectedReceipt(receipt);
+    setShowDetailsModal(true);
+  };
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', {
       month: 'short',
@@ -176,6 +197,70 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
       totals[receipt.category] = (totals[receipt.category] || 0) + receipt.amount;
       return totals;
     }, {} as Record<string, number>);
+  };
+
+  // Multi-select functions
+  const toggleMultiSelectMode = () => {
+    setMultiSelectMode(!multiSelectMode);
+    setSelectedReceiptIds(new Set());
+  };
+
+  const toggleReceiptSelection = (receiptId: string) => {
+    const newSelectedIds = new Set(selectedReceiptIds);
+    if (newSelectedIds.has(receiptId)) {
+      newSelectedIds.delete(receiptId);
+    } else {
+      newSelectedIds.add(receiptId);
+    }
+    setSelectedReceiptIds(newSelectedIds);
+  };
+
+  const selectAllReceipts = () => {
+    const allIds = new Set(receipts.map(receipt => receipt.id));
+    setSelectedReceiptIds(allIds);
+  };
+
+  const clearSelection = () => {
+    setSelectedReceiptIds(new Set());
+  };
+
+  const deleteSelectedReceipts = () => {
+    if (selectedReceiptIds.size === 0) {
+      Alert.alert('No Selection', 'Please select receipts to delete');
+      return;
+    }
+
+    const selectedCount = selectedReceiptIds.size;
+    Alert.alert(
+      'Delete Selected Receipts',
+      `Are you sure you want to delete ${selectedCount} receipt${selectedCount > 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const deletePromises = Array.from(selectedReceiptIds).map(id => 
+                DatabaseService.deleteReceipt(id)
+              );
+              await Promise.all(deletePromises);
+              
+              Alert.alert('Success', `${selectedCount} receipt${selectedCount > 1 ? 's' : ''} deleted successfully`);
+              setMultiSelectMode(false);
+              setSelectedReceiptIds(new Set());
+              loadData(); // Refresh the list
+            } catch (error) {
+              console.error('Error deleting receipts:', error);
+              Alert.alert('Error', 'Failed to delete some receipts');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -196,10 +281,25 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Receipts</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('AddReceipt')}>
-          <MaterialIcons name="add" size={24} color="#fff" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {multiSelectMode ? `Select Receipts (${selectedReceiptIds.size})` : 'Receipts'}
+        </Text>
+        <View style={styles.headerRight}>
+          {multiSelectMode ? (
+            <>
+              <TouchableOpacity onPress={clearSelection} style={styles.headerButton}>
+                <MaterialIcons name="clear" size={24} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={deleteSelectedReceipts} style={styles.headerButton}>
+                <MaterialIcons name="delete" size={24} color="#fff" />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity onPress={() => navigation.navigate('AddReceipt')}>
+              <MaterialIcons name="add" size={24} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -250,9 +350,51 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
           </View>
         )}
 
+        {/* Multi-select Controls */}
+        {receipts.length > 0 && (
+          <View style={styles.multiSelectContainer}>
+            <View style={styles.multiSelectHeader}>
+              <Text style={styles.sectionTitle}>All Receipts</Text>
+              <TouchableOpacity
+                style={styles.multiSelectButton}
+                onPress={toggleMultiSelectMode}
+              >
+                <MaterialIcons 
+                  name={multiSelectMode ? "close" : "checklist"} 
+                  size={20} 
+                  color="#2196F3" 
+                />
+                <Text style={styles.multiSelectButtonText}>
+                  {multiSelectMode ? 'Cancel' : 'Select'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            {multiSelectMode && (
+              <View style={styles.multiSelectActions}>
+                <TouchableOpacity
+                  style={styles.selectAllButton}
+                  onPress={selectAllReceipts}
+                >
+                  <MaterialIcons name="select-all" size={16} color="#2196F3" />
+                  <Text style={styles.selectAllButtonText}>Select All</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.clearAllButton}
+                  onPress={clearSelection}
+                >
+                  <MaterialIcons name="clear" size={16} color="#666" />
+                  <Text style={styles.clearAllButtonText}>Clear All</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Receipts List */}
         <View style={styles.receiptsContainer}>
-          <Text style={styles.sectionTitle}>All Receipts</Text>
+          {!multiSelectMode && <Text style={styles.sectionTitle}>All Receipts</Text>}
           
           {receipts.length === 0 ? (
             <View style={styles.emptyState}>
@@ -264,10 +406,26 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
             </View>
           ) : (
             receipts.map((receipt) => (
-              <View key={receipt.id} style={styles.receiptCard}>
+              <View key={receipt.id} style={[
+                styles.receiptCard,
+                multiSelectMode && selectedReceiptIds.has(receipt.id) && styles.receiptCardSelected
+              ]}>
+                {multiSelectMode && (
+                  <TouchableOpacity
+                    style={styles.checkboxContainer}
+                    onPress={() => toggleReceiptSelection(receipt.id)}
+                  >
+                    <MaterialIcons
+                      name={selectedReceiptIds.has(receipt.id) ? "check-box" : "check-box-outline-blank"}
+                      size={24}
+                      color={selectedReceiptIds.has(receipt.id) ? "#2196F3" : "#ccc"}
+                    />
+                  </TouchableOpacity>
+                )}
+                
                 <TouchableOpacity
                   style={styles.receiptImageContainer}
-                  onPress={() => viewReceiptImage(receipt)}
+                  onPress={() => multiSelectMode ? toggleReceiptSelection(receipt.id) : viewReceiptImage(receipt)}
                 >
                   <Image source={{ uri: receipt.imageUri }} style={styles.receiptThumbnail} />
                   <View style={styles.imageOverlay}>
@@ -275,7 +433,10 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
                   </View>
                 </TouchableOpacity>
                 
-                <View style={styles.receiptInfo}>
+                <TouchableOpacity
+                  style={styles.receiptInfo}
+                  onPress={() => viewReceiptDetails(receipt)}
+                >
                   <View style={styles.receiptHeader}>
                     <Text style={styles.receiptVendor}>{receipt.vendor}</Text>
                     <Text style={styles.receiptAmount}>${receipt.amount.toFixed(2)}</Text>
@@ -289,14 +450,23 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
                     </View>
                     <Text style={styles.receiptDate}>{formatDate(receipt.date)}</Text>
                   </View>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => deleteReceipt(receipt)}
-                >
-                  <MaterialIcons name="delete" size={20} color="#f44336" />
+                  
+                  {receipt.costCenter && (
+                    <View style={styles.costCenterBadge}>
+                      <MaterialIcons name="business" size={14} color="#2196F3" />
+                      <Text style={styles.costCenterText}>{receipt.costCenter}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
+
+                {!multiSelectMode && (
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => deleteReceipt(receipt)}
+                  >
+                    <MaterialIcons name="delete" size={20} color="#f44336" />
+                  </TouchableOpacity>
+                )}
               </View>
             ))
           )}
@@ -331,6 +501,75 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
                   <Text style={styles.imageAmount}>${selectedReceipt.amount.toFixed(2)}</Text>
                 </View>
               </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Receipt Details Modal */}
+      <Modal
+        visible={showDetailsModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowDetailsModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.detailsModalContent}>
+            <View style={styles.detailsHeader}>
+              <Text style={styles.detailsTitle}>Receipt Details</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowDetailsModal(false)}
+              >
+                <MaterialIcons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            {selectedReceipt && (
+              <ScrollView style={styles.detailsContent}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Vendor:</Text>
+                  <Text style={styles.detailValue}>{selectedReceipt.vendor}</Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Amount:</Text>
+                  <Text style={styles.detailValue}>${selectedReceipt.amount.toFixed(2)}</Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Category:</Text>
+                  <Text style={styles.detailValue}>{selectedReceipt.category}</Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Cost Center:</Text>
+                  <Text style={styles.detailValue}>{selectedReceipt.costCenter || 'Not assigned'}</Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Date:</Text>
+                  <Text style={styles.detailValue}>{formatDate(selectedReceipt.date)}</Text>
+                </View>
+                
+                {selectedReceipt.description && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Description:</Text>
+                    <Text style={styles.detailValue}>{selectedReceipt.description}</Text>
+                  </View>
+                )}
+                
+                <TouchableOpacity
+                  style={styles.viewImageButton}
+                  onPress={() => {
+                    setShowDetailsModal(false);
+                    setShowImageModal(true);
+                  }}
+                >
+                  <MaterialIcons name="image" size={20} color="#fff" />
+                  <Text style={styles.viewImageButtonText}>View Receipt Image</Text>
+                </TouchableOpacity>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -629,6 +868,174 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  
+  // Multi-select styles
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerButton: {
+    marginLeft: 12,
+  },
+  multiSelectContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  multiSelectHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  multiSelectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  multiSelectButtonText: {
+    color: '#2196F3',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  multiSelectActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#e3f2fd',
+  },
+  selectAllButtonText: {
+    color: '#2196F3',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f5',
+  },
+  clearAllButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  checkboxContainer: {
+    padding: 8,
+    marginRight: 8,
+  },
+  receiptCardSelected: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#2196F3',
+    borderWidth: 2,
+  },
+  
+  // Cost center badge styles
+  costCenterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  costCenterText: {
+    color: '#2196F3',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  
+  // Details modal styles
+  detailsModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    margin: 20,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  detailsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  detailsContent: {
+    padding: 20,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  detailLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 16,
+    color: '#333',
+    flex: 2,
+    textAlign: 'right',
+  },
+  viewImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2196F3',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  viewImageButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
 

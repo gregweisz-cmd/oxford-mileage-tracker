@@ -308,6 +308,137 @@ export class TipsService {
         trigger: 'manual',
         icon: 'cloud-sync',
         dismissible: true
+      },
+
+      // New Features Tips - Daily Descriptions
+      {
+        id: 'daily_descriptions_intro',
+        title: 'Daily Descriptions 📝',
+        message: 'Track what you did on days with little or no driving. Perfect for office days, meetings, or administrative work.',
+        category: 'getting_started',
+        priority: 'medium',
+        screen: 'HomeScreen',
+        trigger: 'on_load',
+        icon: 'description',
+        dismissible: true
+      },
+      {
+        id: 'daily_descriptions_usage',
+        title: 'How to Use Daily Descriptions ✍️',
+        message: 'Tap any day to add a description of your activities. This helps with expense reporting and time tracking.',
+        category: 'getting_started',
+        priority: 'medium',
+        screen: 'DailyDescriptionScreen',
+        trigger: 'on_load',
+        icon: 'edit-note',
+        dismissible: true
+      },
+
+      // New Features Tips - Cost Center Reporting
+      {
+        id: 'cost_center_reports_intro',
+        title: 'Cost Center Reports 📊',
+        message: 'View comprehensive reports by cost center. See all your mileage, receipts, hours, and descriptions organized by project.',
+        category: 'reports',
+        priority: 'medium',
+        screen: 'HomeScreen',
+        trigger: 'on_load',
+        icon: 'analytics',
+        dismissible: true
+      },
+      {
+        id: 'cost_center_reports_usage',
+        title: 'Understanding Cost Center Reports 📈',
+        message: 'Navigate by month to see aggregated data. Each cost center shows totals for mileage, receipts, hours worked, and daily descriptions.',
+        category: 'reports',
+        priority: 'medium',
+        screen: 'CostCenterReportingScreen',
+        trigger: 'on_load',
+        icon: 'bar-chart',
+        dismissible: true
+      },
+
+      // New Features Tips - Enhanced Hours Worked
+      {
+        id: 'hours_worked_editing',
+        title: 'Edit Hours Directly ⏰',
+        message: 'You can now edit hours directly on the Hours Worked page! Tap any day to modify your working hours, G&A hours, PTO, etc.',
+        category: 'getting_started',
+        priority: 'high',
+        screen: 'HomeScreen',
+        trigger: 'on_load',
+        icon: 'schedule',
+        dismissible: true
+      },
+      {
+        id: 'hours_worked_tips',
+        title: 'Hours Worked Tips 💡',
+        message: 'Tap any day to edit hours. Use the cost center selector if you have multiple cost centers. All changes save automatically.',
+        category: 'getting_started',
+        priority: 'medium',
+        screen: 'HoursWorkedScreen',
+        trigger: 'on_load',
+        icon: 'edit',
+        dismissible: true
+      },
+
+      // New Features Tips - Simplified Odometer
+      {
+        id: 'simplified_odometer',
+        title: 'Simplified Odometer Tracking 🚗',
+        message: 'GPS tracking now uses a simplified odometer system. Just enter your starting odometer reading once per day!',
+        category: 'gps_tracking',
+        priority: 'medium',
+        screen: 'GpsTrackingScreen',
+        trigger: 'on_load',
+        icon: 'speed',
+        dismissible: true
+      },
+      {
+        id: 'odometer_cumulative',
+        title: 'Cumulative Odometer Calculation 📏',
+        message: 'The app automatically calculates your current odometer reading by adding miles driven to your starting reading. No need to enter end readings!',
+        category: 'gps_tracking',
+        priority: 'low',
+        screen: 'GpsTrackingScreen',
+        trigger: 'after_action',
+        icon: 'calculate',
+        dismissible: true
+      },
+
+      // New Features Tips - Cost Center Selector
+      {
+        id: 'cost_center_selector_receipts',
+        title: 'Cost Center Selection 💼',
+        message: 'Choose the appropriate cost center for each receipt. This ensures expenses are allocated to the correct project or department.',
+        category: 'receipts',
+        priority: 'medium',
+        screen: 'AddReceiptScreen',
+        trigger: 'on_load',
+        icon: 'business',
+        dismissible: true
+      },
+      {
+        id: 'cost_center_selector_mileage',
+        title: 'Cost Center for Mileage 🛣️',
+        message: 'Select the cost center for your mileage entries. This helps track travel expenses by project or department.',
+        category: 'mileage',
+        priority: 'medium',
+        screen: 'MileageEntryScreen',
+        trigger: 'on_load',
+        icon: 'account-balance',
+        dismissible: true
+      },
+      {
+        id: 'cost_center_selector_gps',
+        title: 'GPS Cost Center Selection 🎯',
+        message: 'Choose the cost center for your GPS-tracked trips. This ensures accurate expense allocation for each project.',
+        category: 'gps_tracking',
+        priority: 'medium',
+        screen: 'GpsTrackingScreen',
+        trigger: 'on_load',
+        icon: 'my-location',
+        dismissible: true
       }
     ];
 
@@ -427,15 +558,15 @@ export class TipsService {
     try {
       const db = await this.getDb();
       
-      const totalResult = await db.getFirstAsync('SELECT COUNT(*) as count FROM tips');
+      const totalResult = await db.getFirstAsync('SELECT COUNT(*) as count FROM tips') as { count: number } | null;
       const seenResult = await db.getFirstAsync(
         'SELECT COUNT(*) as count FROM user_tip_progress WHERE user_id = ? AND has_seen = 1', 
         [userId]
-      );
+      ) as { count: number } | null;
       const dismissedResult = await db.getFirstAsync(
         'SELECT COUNT(*) as count FROM user_tip_progress WHERE user_id = ? AND has_dismissed = 1', 
         [userId]
-      );
+      ) as { count: number } | null;
 
       const totalTips = totalResult?.count || 0;
       const tipsSeen = seenResult?.count || 0;

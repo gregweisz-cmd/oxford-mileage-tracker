@@ -674,6 +674,164 @@ app.delete('/api/employees/:id', (req, res) => {
   });
 });
 
+// Bulk update employees
+app.put('/api/employees/bulk-update', (req, res) => {
+  const { employeeIds, updates } = req.body;
+  
+  if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
+    return res.status(400).json({ error: 'Employee IDs array is required' });
+  }
+  
+  if (!updates || Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'Updates object is required' });
+  }
+  
+  // Build dynamic update query
+  const updateFields = [];
+  const values = [];
+  
+  Object.keys(updates).forEach(key => {
+    if (updates[key] !== undefined && updates[key] !== null) {
+      updateFields.push(`${key} = ?`);
+      values.push(updates[key]);
+    }
+  });
+  
+  if (updateFields.length === 0) {
+    return res.status(400).json({ error: 'No valid fields to update' });
+  }
+  
+  values.push(new Date().toISOString()); // updatedAt
+  values.push(...employeeIds); // for the IN clause
+  
+  const placeholders = employeeIds.map(() => '?').join(',');
+  const query = `UPDATE employees SET ${updateFields.join(', ')}, updatedAt = ? WHERE id IN (${placeholders})`;
+  
+  db.run(query, values, function(err) {
+    if (err) {
+      console.error('Error bulk updating employees:', err);
+      res.status(500).json({ error: 'Failed to update employees' });
+    } else {
+      res.json({ 
+        success: true, 
+        updatedCount: this.changes,
+        message: `Successfully updated ${this.changes} employees`
+      });
+    }
+  });
+});
+
+// Bulk delete employees
+app.delete('/api/employees/bulk-delete', (req, res) => {
+  const { employeeIds } = req.body;
+  
+  if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
+    return res.status(400).json({ error: 'Employee IDs array is required' });
+  }
+  
+  const placeholders = employeeIds.map(() => '?').join(',');
+  const query = `DELETE FROM employees WHERE id IN (${placeholders})`;
+  
+  db.run(query, employeeIds, function(err) {
+    if (err) {
+      console.error('Error bulk deleting employees:', err);
+      res.status(500).json({ error: 'Failed to delete employees' });
+    } else {
+      res.json({ 
+        success: true, 
+        deletedCount: this.changes,
+        message: `Successfully deleted ${this.changes} employees`
+      });
+    }
+  });
+});
+
+// Bulk create employees
+app.post('/api/employees/bulk-create', (req, res) => {
+  const { employees } = req.body;
+  
+  if (!employees || !Array.isArray(employees) || employees.length === 0) {
+    return res.status(400).json({ error: 'Employees array is required' });
+  }
+  
+  const results = {
+    success: true,
+    totalProcessed: employees.length,
+    successful: 0,
+    failed: 0,
+    errors: [],
+    createdEmployees: []
+  };
+  
+  let processedCount = 0;
+  
+  employees.forEach((employee, index) => {
+    const { name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter } = employee;
+    
+    // Validate required fields
+    if (!name || !email || !password || !oxfordHouseId) {
+      results.failed++;
+      results.errors.push(`Employee ${index + 1}: Missing required fields`);
+      processedCount++;
+      if (processedCount === employees.length) {
+        res.json(results);
+      }
+      return;
+    }
+    
+    const now = new Date().toISOString();
+    const query = `INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    
+    const values = [
+      oxfordHouseId, // Use oxfordHouseId as the primary key
+      name,
+      email,
+      password,
+      oxfordHouseId,
+      position || '',
+      phoneNumber || '',
+      baseAddress || '',
+      JSON.stringify(costCenters || []),
+      JSON.stringify(selectedCostCenters || []),
+      defaultCostCenter || 'Program Services',
+      now,
+      now
+    ];
+    
+    db.run(query, values, function(err) {
+      processedCount++;
+      
+      if (err) {
+        results.failed++;
+        results.errors.push(`Employee ${index + 1} (${name}): ${err.message}`);
+      } else {
+        results.successful++;
+        results.createdEmployees.push({
+          id: this.lastID,
+          name,
+          email,
+          password,
+          oxfordHouseId,
+          position,
+          phoneNumber,
+          baseAddress,
+          costCenters,
+          selectedCostCenters,
+          defaultCostCenter,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+      
+      if (processedCount === employees.length) {
+        results.success = results.failed === 0;
+        res.json(results);
+      }
+    });
+  });
+});
+
 // Get all mileage entries
 app.get('/api/mileage-entries', (req, res) => {
   const { employeeId, month, year } = req.query;

@@ -5,6 +5,7 @@ import { CssBaseline, Box, Button } from '@mui/material';
 // Import all portal components
 import StaffPortal from './StaffPortal';
 import SupervisorPortal from './components/SupervisorPortal';
+import { AdminPortal } from './components/AdminPortal';
 import LoginForm from './components/LoginForm';
 import AuthService from './services/authService';
 
@@ -79,6 +80,8 @@ const App: React.FC = () => {
     const userRole = currentUser?.role || 'employee';
 
     switch (userRole) {
+      case 'admin':
+        return <AdminPortal adminId={currentUser.id} adminName={currentUser.name} />;
       case 'supervisor':
         return <SupervisorPortal supervisorId={currentUser.id} supervisorName={currentUser.name} />;
       case 'employee':

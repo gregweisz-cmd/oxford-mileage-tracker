@@ -15,6 +15,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
+import { DashboardService } from '../services/dashboardService';
 import { PerDiemService } from '../services/perDiemService';
 import { DemoDataService } from '../services/demoDataService';
 import { PermissionService } from '../services/permissionService';
@@ -32,9 +33,7 @@ interface HomeScreenProps {
   navigation: any;
   route?: {
     params?: {
-      currentEmployee?: Employee;
-      onLogout?: () => void;
-      onEmployeeUpdate?: (employee: Employee) => void;
+      currentEmployeeId?: string;
     };
   };
 }
@@ -241,11 +240,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     },
   });
 
-  // Get logout function from route params or navigation state
-  const logoutFunction = route?.params?.onLogout || navigation.getState()?.routes?.find((r: any) => r.name === 'Home')?.params?.onLogout;
-
   const handleLogout = async () => {
-    console.log('🚪 HomeScreen: Logging out user...');
     try {
       // Use the LogoutService to handle logout
       await LogoutService.logout();
@@ -261,36 +256,23 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   // Refresh data when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      console.log('🏠 HomeScreen: Screen focused, refreshing data...');
       loadData();
     }, [])
   );
 
   const loadEmployeeData = async (employeeId: string, employeeParam?: Employee) => {
     try {
-      console.log('🏠 Loading employee data for ID:', employeeId);
       
       // Use provided employee parameter or fall back to currentEmployee
       const employee = employeeParam || currentEmployee;
       if (!employee || employee.id !== employeeId) {
-        console.log('❌ Employee not found or ID mismatch:', { employeeId, employee: employee?.name });
+        console.error('Employee not found or ID mismatch:', { employeeId, employee: employee?.name });
         return;
       }
 
-      console.log('👤 Employee found:', employee.name, employee.id);
 
-      // Get all dashboard data in one optimized call
-      const dashboardData = await DatabaseService.getDashboardStats(employeeId);
-      
-      console.log('🏠 HomeScreen: Dashboard data received:', {
-        recentMileageEntries: dashboardData.recentMileageEntries.length,
-        recentReceipts: dashboardData.recentReceipts.length,
-        totalMiles: dashboardData.monthlyStats.totalMiles,
-        totalHours: dashboardData.monthlyStats.totalHours,
-        totalReceipts: dashboardData.monthlyStats.totalReceipts,
-        mileageEntries: dashboardData.monthlyStats.mileageEntries.length,
-        receipts: dashboardData.monthlyStats.receipts.length
-      });
+      // Get all dashboard data using unified service
+      const dashboardData = await DashboardService.getDashboardStats(employeeId);
       
       // Set recent entries and receipts
       setRecentEntries(dashboardData.recentMileageEntries);
@@ -322,14 +304,6 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       
       setTotalExpensesThisMonth(expenseBreakdown.totalExpenses);
       
-      console.log('🏠 HomeScreen: Final calculated values:', {
-        totalMilesThisMonth: dashboardData.monthlyStats.totalMiles,
-        totalHoursThisMonth: dashboardData.monthlyStats.totalHours,
-        totalReceiptsThisMonth: dashboardData.monthlyStats.totalReceipts,
-        perDiemThisMonth: perDiemCalculation.totalPerDiem,
-        totalExpensesThisMonth: expenseBreakdown.totalExpenses,
-        recentEntriesCount: dashboardData.recentMileageEntries.length
-      });
     } catch (error) {
       console.error('Error loading employee data:', error);
     }
@@ -386,24 +360,18 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     try {
       setLoading(true);
       
-      console.log('🏠 HomeScreen: Loading employee data...');
       
       // Database should already be initialized by AppInitializer
       // Small delay to ensure any async operations from app startup are complete
       await new Promise(resolve => setTimeout(resolve, 200));
       
       // Get the current logged-in employee
-      console.log('🏠 HomeScreen: Getting current employee...');
       const employee = await DatabaseService.getCurrentEmployee();
       
       if (!employee) {
-        console.log('❌ HomeScreen: No current employee found');
         return;
       }
       
-      console.log('✅ HomeScreen: Found employee:', employee.name, employee.id);
-      
-      console.log('👤 Current employee:', employee.name, employee.id);
       
       setCurrentEmployee(employee);
       
@@ -912,7 +880,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
         }
         leftButton={{
           icon: 'settings',
-          onPress: () => navigation.navigate('Settings', { currentEmployee }),
+          onPress: () => navigation.navigate('Settings', { currentEmployeeId: currentEmployee?.id }),
           color: '#fff'
         }}
         rightButton={{
@@ -1100,6 +1068,16 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
             <Text style={dynamicStyles.actionButtonSecondaryText}>Hours Worked</Text>
           </TouchableOpacity>
           
+          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={() => navigation.navigate('DailyDescription')}>
+            <MaterialIcons name="description" size={24} color={colors.primary} />
+            <Text style={dynamicStyles.actionButtonSecondaryText}>Daily Description</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={() => navigation.navigate('CostCenterReporting')}>
+            <MaterialIcons name="assessment" size={24} color={colors.primary} />
+            <Text style={dynamicStyles.actionButtonSecondaryText}>Cost Center Reports</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewReports}>
             <MaterialIcons name="assessment" size={24} color={colors.primary} />
             <Text style={dynamicStyles.actionButtonSecondaryText}>View Reports</Text>
@@ -1153,16 +1131,29 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
             </TouchableOpacity>
           </View>
           
-          {recentEntries.length === 0 ? (
+          {recentEntries.filter(entry => {
+            const entryDate = new Date(entry.date);
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            return entryDate >= oneWeekAgo;
+          }).length === 0 ? (
             <View style={styles.quickActionsEmptyState}>
               <MaterialIcons name="directions-car" size={48} color="#ccc" />
-              <Text style={styles.quickActionsEmptyStateText}>No recent entries</Text>
+              <Text style={styles.quickActionsEmptyStateText}>No entries this week</Text>
               <Text style={styles.quickActionsEmptyStateSubtext}>
-                Add your first mileage entry to get started
+                Add a mileage entry to see it here
               </Text>
             </View>
           ) : (
-            recentEntries.slice(0, 3).map((entry) => (
+            recentEntries
+              .filter(entry => {
+                const entryDate = new Date(entry.date);
+                const oneWeekAgo = new Date();
+                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                return entryDate >= oneWeekAgo;
+              })
+              .slice(0, 3)
+              .map((entry) => (
               <View key={entry.id} style={styles.quickActionsEntryCard}>
                 <View style={styles.quickActionsEntryContent}>
                   <View style={styles.quickActionsEntryInfo}>
@@ -1171,14 +1162,20 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                       {formatLocationRoute(entry)}
                     </Text>
                     <Text style={styles.quickActionsEntryPurpose}>{entry.purpose}</Text>
-                  </View>
-                  <View style={styles.quickActionsEntryActions}>
                     <Text style={styles.quickActionsEntryMiles}>{entry.miles.toFixed(1)} mi</Text>
+                  </View>
+                  <View style={styles.quickActionsButtonContainer}>
                     <TouchableOpacity
                       style={styles.quickActionsEditButton}
                       onPress={() => handleEditEntry(entry.id)}
                     >
                       <MaterialIcons name="edit" size={18} color="#2196F3" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.quickActionsDeleteButton}
+                      onPress={() => handleDeleteEntry(entry.id)}
+                    >
+                      <MaterialIcons name="delete" size={18} color="#f44336" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1941,6 +1938,16 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     backgroundColor: '#e3f2fd',
+  },
+  quickActionsButtonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionsDeleteButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#ffebee',
   },
   quickActionsEmptyState: {
     alignItems: 'center',

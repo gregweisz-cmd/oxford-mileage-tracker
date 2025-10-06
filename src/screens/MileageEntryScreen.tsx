@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 import { useNotifications } from '../contexts/NotificationContext';
 import { TripChainingAiService, TripChainSuggestion } from '../services/tripChainingAiService';
 import TripChainingModal from '../components/TripChainingModal';
+import { COST_CENTERS } from '../constants/costCenters';
 
 interface MileageEntryScreenProps {
   navigation: any;
@@ -66,6 +67,14 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const [tripChainingSuggestions, setTripChainingSuggestions] = useState<TripChainSuggestion[]>([]);
   const [showTripChainingModal, setShowTripChainingModal] = useState(false);
   const [loadingChainingSuggestions, setLoadingChainingSuggestions] = useState(false);
+  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
+  const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
+  
+  // TextInput refs for keyboard navigation
+  const odometerInputRef = useRef<TextInput>(null);
+  const purposeInputRef = useRef<TextInput>(null);
+  const milesInputRef = useRef<TextInput>(null);
+  const notesInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     const initializeAndLoad = async () => {
@@ -150,6 +159,10 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       
       // Set employee for tips context and load mileage entry tips
       if (employee) {
+        // Initialize cost center
+        const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
+        setSelectedCostCenter(costCenter);
+        
         setTipsEmployee(employee);
         if (showTips) {
           await loadTipsForScreen('MileageEntryScreen', 'on_load');
@@ -163,8 +176,37 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           startLocation: employee.baseAddress
         }));
       }
+      
+      // Check if GPS has been started today
+      await checkGpsTrackingStatus();
     } catch (error) {
       console.error('Error loading employee:', error);
+    }
+  };
+
+  const checkGpsTrackingStatus = async () => {
+    if (!currentEmployee) return;
+    
+    try {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const dateStr = today.toISOString().split('T')[0];
+      
+      const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, today);
+      
+      if (existingReading) {
+        setHasStartedGpsToday(true);
+        // Set the odometer reading from the existing reading
+        setFormData(prev => ({
+          ...prev,
+          odometerReading: existingReading.odometerReading.toString()
+        }));
+      } else {
+        setHasStartedGpsToday(false);
+      }
+    } catch (error) {
+      console.error('Error checking GPS tracking status:', error);
+      setHasStartedGpsToday(false);
     }
   };
 
@@ -345,9 +387,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       Alert.alert('Validation Error', 'End location is required');
       return false;
     }
-    if (!formData.odometerReading.trim() || isNaN(Number(formData.odometerReading)) || Number(formData.odometerReading) < 0) {
-      Alert.alert('Validation Error', 'Please enter a valid starting odometer reading');
-      return false;
+    // Only validate odometer reading on first GPS session of the day
+    if (!hasStartedGpsToday) {
+      if (!formData.odometerReading.trim() || isNaN(Number(formData.odometerReading)) || Number(formData.odometerReading) < 0) {
+        Alert.alert('Validation Error', 'Please enter a valid starting odometer reading');
+        return false;
+      }
     }
     if (!formData.purpose.trim()) {
       Alert.alert('Validation Error', 'Purpose is required');
@@ -405,6 +450,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         miles: Number(formData.miles),
         notes: formData.notes.trim(),
         isGpsTracked: formData.isGpsTracked,
+        costCenter: selectedCostCenter,
       };
 
       if (isEditing && route.params?.entryId) {
@@ -570,7 +616,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   return (
-    <View style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
       <UnifiedHeader
         title={isEditing ? 'Edit Entry' : 'Add Mileage Entry'}
         showBackButton={true}
@@ -670,21 +717,39 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           </Modal>
         )}
 
-        {/* Odometer Reading */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Starting Odometer Reading *</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.odometerReading}
-            onChangeText={(value) => handleInputChange('odometerReading', value)}
-            placeholder="e.g., 12345"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-          />
-          <Text style={styles.helpText}>
-            Enter the odometer reading at the start of this trip
-          </Text>
-        </View>
+        {/* Odometer Reading - only show input on first session of day */}
+        {!hasStartedGpsToday ? (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Starting Odometer Reading *</Text>
+            <TextInput
+              ref={odometerInputRef}
+              style={styles.input}
+              value={formData.odometerReading}
+              onChangeText={(value) => handleInputChange('odometerReading', value)}
+              placeholder="e.g., 12345"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                purposeInputRef.current?.focus();
+              }}
+            />
+            <Text style={styles.helpText}>
+              Enter the odometer reading at the start of this trip
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Daily Starting Odometer</Text>
+            <View style={styles.odometerDisplay}>
+              <Text style={styles.odometerValue}>{formData.odometerReading}</Text>
+              <Text style={styles.odometerNote}>
+                Set from first GPS session today
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Start Location */}
         <EnhancedLocationInput
@@ -721,11 +786,17 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           </View>
           
           <TextInput
+            ref={purposeInputRef}
             style={styles.input}
             value={formData.purpose}
             onChangeText={(value) => handleInputChange('purpose', value)}
             placeholder="e.g., Client visit, Meeting, Training"
             placeholderTextColor="#999"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              milesInputRef.current?.focus();
+            }}
           />
           
           {/* AI Purpose Suggestions */}
@@ -775,12 +846,18 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           <Text style={styles.label}>Miles *</Text>
           <View style={styles.milesContainer}>
             <TextInput
+              ref={milesInputRef}
               style={[styles.input, styles.milesInput]}
               value={formData.miles}
               onChangeText={(value) => handleInputChange('miles', value)}
               placeholder="0.0"
               keyboardType="numeric"
               placeholderTextColor="#999"
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                notesInputRef.current?.focus();
+              }}
             />
             <View style={styles.buttonContainer}>
               <TouchableOpacity
@@ -846,6 +923,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Notes (Optional)</Text>
           <TextInput
+            ref={notesInputRef}
             style={[styles.input, styles.textArea]}
             value={formData.notes}
             onChangeText={(value) => handleInputChange('notes', value)}
@@ -853,8 +931,36 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             placeholderTextColor="#999"
             multiline
             numberOfLines={3}
+            returnKeyType="done"
+            blurOnSubmit={true}
           />
         </View>
+
+        {/* Cost Center Selector - only show if user has multiple cost centers */}
+        {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Cost Center</Text>
+            <View style={styles.costCenterSelector}>
+              {currentEmployee.selectedCostCenters.map((costCenter) => (
+                <TouchableOpacity
+                  key={costCenter}
+                  style={[
+                    styles.costCenterOption,
+                    selectedCostCenter === costCenter && styles.costCenterOptionSelected
+                  ]}
+                  onPress={() => setSelectedCostCenter(costCenter)}
+                >
+                  <Text style={[
+                    styles.costCenterOptionText,
+                    selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
+                  ]}>
+                    {costCenter}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Save Button */}
         <TouchableOpacity
@@ -877,7 +983,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         startLocation={formData.startLocation}
         endLocation={formData.endLocation}
       />
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -1233,5 +1340,54 @@ const styles = StyleSheet.create({
   },
   tipsScrollView: {
     maxHeight: 180,
+  },
+  
+  // Cost Center Selector Styles
+  costCenterSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  costCenterOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  costCenterOptionSelected: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  costCenterOptionText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  costCenterOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  
+  // Odometer Display Styles
+  odometerDisplay: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  odometerValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  odometerNote: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

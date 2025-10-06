@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -24,7 +26,10 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  
+  const passwordInputRef = useRef<TextInput>(null);
   const [showEmployeeList, setShowEmployeeList] = useState(false);
 
   useEffect(() => {
@@ -66,7 +71,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
       if (employee) {
         // Employee exists and password matches, log them in
-        await DatabaseService.setCurrentEmployee(employee.id);
+        await DatabaseService.setCurrentEmployee(employee.id, stayLoggedIn);
         onLogin(employee);
       } else {
         // Employee doesn't exist or password is wrong
@@ -123,7 +128,8 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     >
       <StatusBar style="light" />
       
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
         {/* Header */}
         <View style={styles.header}>
           <MaterialIcons name="work" size={80} color="#fff" />
@@ -144,12 +150,22 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                // Focus password input
+                passwordInputRef.current?.focus();
+              }}
+              ref={(input) => {
+                // Store ref for potential future use
+              }}
             />
           </View>
 
           <View style={styles.inputContainer}>
             <MaterialIcons name="lock" size={24} color="#666" style={styles.inputIcon} />
             <TextInput
+              ref={passwordInputRef}
               style={styles.input}
               placeholder="Enter your password"
               placeholderTextColor="#999"
@@ -158,8 +174,24 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
+              returnKeyType="done"
+              blurOnSubmit={true}
+              onSubmitEditing={handleLogin}
             />
           </View>
+
+          {/* Stay Logged In Checkbox */}
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => setStayLoggedIn(!stayLoggedIn)}
+          >
+            <View style={styles.checkbox}>
+              {stayLoggedIn && (
+                <MaterialIcons name="check" size={20} color="#2196F3" />
+              )}
+            </View>
+            <Text style={styles.checkboxLabel}>Stay logged in</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.loginButton, loading && styles.loginButtonDisabled]}
@@ -211,7 +243,8 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             </View>
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -270,6 +303,28 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     fontSize: 16,
     color: '#333',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    borderRadius: 4,
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
   },
   loginButton: {
     backgroundColor: '#2196F3',

@@ -3,22 +3,9 @@ import { Platform } from 'react-native';
 import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription, CostCenterSummary } from '../types';
 import { MileageAnalysisService } from './mileageAnalysisService';
 import { ApiSyncService } from './apiSyncService';
-// Removed SyncIntegrationService import to break circular dependency
+import { SyncIntegrationService } from './syncIntegrationService';
 
 let db: SQLite.SQLiteDatabase | null = null;
-
-// Callback system to avoid circular dependency
-let syncCallback: ((operation: string, entityType: string, data: any) => void) | null = null;
-
-export const setSyncCallback = (callback: (operation: string, entityType: string, data: any) => void) => {
-  syncCallback = callback;
-};
-
-const queueSyncOperation = (operation: string, entityType: string, data: any) => {
-  if (syncCallback) {
-    syncCallback(operation, entityType, data);
-  }
-};
 
 const getDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
   if (!db) {
@@ -44,7 +31,7 @@ export class DatabaseService {
       
       // Queue the sync operation for batch processing
       const entityType = operation.replace('add', '').toLowerCase();
-      queueSyncOperation('create', entityType as any, data);
+      SyncIntegrationService.queueSyncOperation('create', entityType as any, data);
       
       
     } catch (error) {
@@ -62,16 +49,15 @@ export class DatabaseService {
         // Ensure there's always a current employee set
         const currentEmployee = await this.getCurrentEmployee();
         if (!currentEmployee) {
-          // COMMENTED OUT FOR TESTING - Don't auto-login
-          // console.log('🔧 Database: No current employee session found, setting up default...');
-          // const employeesAfterImport = await this.getEmployees();
-          // console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
-          // if (employeesAfterImport.length > 0) {
-          //   const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
-          //   console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
-          //   await this.setCurrentEmployee(defaultEmployee.id);
-          //   console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
-          // }
+          console.log('🔧 Database: No current employee session found, setting up default...');
+          const employeesAfterImport = await this.getEmployees();
+          console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
+          if (employeesAfterImport.length > 0) {
+            const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
+            console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
+            await this.setCurrentEmployee(defaultEmployee.id);
+            console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
+          }
         } else {
           console.log('✅ Database: Current employee session exists:', currentEmployee.name);
         }
@@ -283,19 +269,9 @@ export class DatabaseService {
         CREATE TABLE IF NOT EXISTS current_employee (
           id INTEGER PRIMARY KEY,
           employeeId TEXT NOT NULL,
-          lastLogin TEXT NOT NULL,
-          stayLoggedIn INTEGER DEFAULT 0
+          lastLogin TEXT NOT NULL
         );
       `);
-
-      // Add stayLoggedIn column to existing current_employee tables (migration)
-      try {
-        await database.execAsync(`
-          ALTER TABLE current_employee ADD COLUMN stayLoggedIn INTEGER DEFAULT 0;
-        `);
-      } catch (error) {
-        // Column might already exist, ignore error
-      }
 
       // Create performance indexes
       console.log('Creating database indexes for performance...');
@@ -326,8 +302,7 @@ export class DatabaseService {
       
       // Initialize sync integration service
       try {
-        // Initialize sync integration service
-        // Note: SyncIntegrationService will register its callback via setSyncCallback
+        await SyncIntegrationService.initialize();
         console.log('✅ Database: Sync integration service initialized');
       } catch (error) {
         console.error('❌ Database: Failed to initialize sync integration service:', error);
@@ -346,14 +321,19 @@ export class DatabaseService {
           console.log('✅ Database: Test employees created successfully');
         }
         
-        // Clear any existing current employee session for testing
-        await this.clearCurrentEmployee();
-        
-        // Check if user wants to stay logged in
+        // Ensure there's always a current employee set
         console.log('🔧 Database: Checking current employee session...');
         const currentEmployee = await this.getCurrentEmployee();
         if (!currentEmployee) {
-          console.log('🔧 Database: No current employee session found');
+          console.log('🔧 Database: No current employee session found, setting up default...');
+          const employeesAfterImport = await this.getEmployees();
+          console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
+          if (employeesAfterImport.length > 0) {
+            const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
+            console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
+            await this.setCurrentEmployee(defaultEmployee.id);
+            console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
+          }
         } else {
           console.log('✅ Database: Current employee session exists:', currentEmployee.name);
         }
@@ -377,44 +357,35 @@ export class DatabaseService {
     const database = await getDatabase();
     const result = await database.getFirstAsync('SELECT * FROM current_employee') as any;
     
+    console.log('🔐 Database: Getting current employee...');
+    console.log('🔐 Database: Session result:', result);
     
     if (!result) {
+      console.log('⚠️ Database: No current employee session found');
       return null;
     }
     
+    console.log('🔐 Database: Found session for employee ID:', result.employeeId);
     const employee = await this.getEmployeeById(result.employeeId);
+    console.log('🔐 Database: Retrieved employee:', employee?.name);
     
     return employee;
   }
 
-  static async setCurrentEmployee(employeeId: string, stayLoggedIn: boolean = false): Promise<void> {
+  static async setCurrentEmployee(employeeId: string): Promise<void> {
     const database = await getDatabase();
     
     // Clear existing current employee and set new one
     await database.execAsync('DELETE FROM current_employee');
     await database.runAsync(
-      'INSERT INTO current_employee (employeeId, lastLogin, stayLoggedIn) VALUES (?, ?, ?)',
-      [employeeId, new Date().toISOString(), stayLoggedIn ? 1 : 0]
+      'INSERT INTO current_employee (employeeId, lastLogin) VALUES (?, ?)',
+      [employeeId, new Date().toISOString()]
     );
   }
 
   static async clearCurrentEmployee(): Promise<void> {
     const database = await getDatabase();
     await database.execAsync('DELETE FROM current_employee');
-  }
-
-  static async getCurrentEmployeeSession(): Promise<{employeeId: string, stayLoggedIn: boolean} | null> {
-    const database = await getDatabase();
-    const result = await database.getFirstAsync('SELECT employeeId, stayLoggedIn FROM current_employee') as any;
-    
-    if (result) {
-      return {
-        employeeId: result.employeeId,
-        stayLoggedIn: result.stayLoggedIn === 1
-      };
-    }
-    
-    return null;
   }
 
 
@@ -658,7 +629,11 @@ export class DatabaseService {
 
     query += ' ORDER BY date DESC';
 
+    console.log('🔍 Database Query:', query);
+    console.log('🔍 Query Params:', params);
+
     const result = await database.getAllAsync(query, params);
+    console.log('🔍 Raw Database Result:', result);
     
     return result.map((row: any) => ({
       ...row,
@@ -1223,35 +1198,6 @@ export class DatabaseService {
       `UPDATE daily_odometer_readings SET ${fields.join(', ')} WHERE id = ?`,
       values
     );
-  }
-
-  static async updateDailyOdometerReadingByEmployeeAndDate(employeeId: string, dateStr: string, updates: Partial<DailyOdometerReading>): Promise<void> {
-    const database = await getDatabase();
-    const now = new Date().toISOString();
-    
-    const fields = [];
-    const values = [];
-    
-    if (updates.odometerReading !== undefined) {
-      fields.push('odometerReading = ?');
-      values.push(updates.odometerReading);
-    }
-    if (updates.notes !== undefined) {
-      fields.push('notes = ?');
-      values.push(updates.notes);
-    }
-    
-    fields.push('updatedAt = ?');
-    values.push(now);
-    values.push(employeeId);
-    values.push(dateStr);
-    
-    await database.runAsync(
-      `UPDATE daily_odometer_readings SET ${fields.join(', ')} WHERE employeeId = ? AND date = ?`,
-      values
-    );
-    
-    console.log('🔧 Database: Updated daily odometer reading for employee:', employeeId, 'date:', dateStr, 'updates:', updates);
   }
 
   static async deleteDailyOdometerReading(id: string): Promise<void> {
@@ -2222,32 +2168,5 @@ export class DatabaseService {
     );
     
     console.log('✅ Database: Cost center summary deleted successfully');
-  }
-
-  /**
-   * Clean up old demo/test receipts that shouldn't be in production
-   */
-  static async cleanupOldReceipts(): Promise<void> {
-    const database = await getDatabase();
-    
-    try {
-      // Delete all receipts from Comcast and Verizon (old demo data)
-      const result = await database.runAsync(
-        'DELETE FROM receipts WHERE vendor LIKE ? OR vendor LIKE ?',
-        ['%Comcast%', '%Verizon%']
-      );
-      
-      console.log(`🧹 Database: Cleaned up ${result.changes} old demo receipts`);
-      
-      // Also clean up any receipts without proper cost center assignments
-      const result2 = await database.runAsync(
-        'DELETE FROM receipts WHERE costCenter IS NULL OR costCenter = ""'
-      );
-      
-      console.log(`🧹 Database: Cleaned up ${result2.changes} receipts without cost centers`);
-      
-    } catch (error) {
-      console.error('❌ Database: Error cleaning up old receipts:', error);
-    }
   }
 }

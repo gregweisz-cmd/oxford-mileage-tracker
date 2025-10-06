@@ -24,6 +24,8 @@ import GpsTrackingScreen from './src/screens/GpsTrackingScreen';
 import ReceiptsScreen from './src/screens/ReceiptsScreen';
 import AddReceiptScreen from './src/screens/AddReceiptScreen';
 import HoursWorkedScreen from './src/screens/HoursWorkedScreen';
+import DailyDescriptionScreen from './src/screens/DailyDescriptionScreen';
+import CostCenterReportingScreen from './src/screens/CostCenterReportingScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import ManagerDashboardScreen from './src/screens/ManagerDashboardScreen';
 import SavedAddressesScreen from './src/screens/SavedAddressesScreen';
@@ -55,11 +57,18 @@ export default function App() {
       // Create Greg Weisz June 2024 demo data from actual expense report
       await DemoDataService.createGregJune2024Data();
       
-      // Check if user is already logged in
-      const employee = await DatabaseService.getCurrentEmployee();
-      if (employee) {
-        setCurrentEmployee(employee);
-        setIsAuthenticated(true);
+      // Clean up old demo receipts (Comcast, Verizon, etc.)
+      await DatabaseService.cleanupOldReceipts();
+      
+      // Check if user is already logged in and wants to stay logged in
+      const currentSession = await DatabaseService.getCurrentEmployeeSession();
+      
+      if (currentSession && currentSession.stayLoggedIn) {
+        const employee = await DatabaseService.getEmployeeById(currentSession.employeeId);
+        if (employee) {
+          setCurrentEmployee(employee);
+          setIsAuthenticated(true);
+        }
       }
     } catch (error) {
       console.error('Error initializing app:', error);
@@ -77,7 +86,7 @@ export default function App() {
     setCurrentEmployee(null);
     setIsAuthenticated(false);
     // Clear current employee from database
-    await DatabaseService.setCurrentEmployee('');
+    await DatabaseService.clearCurrentEmployee();
   };
 
   const handleEmployeeUpdate = (updatedEmployee: Employee) => {
@@ -131,11 +140,6 @@ export default function App() {
             <Stack.Screen 
               name="Home" 
               component={HomeScreen}
-              initialParams={{
-                currentEmployee, 
-                onLogout: handleLogout,
-                onEmployeeUpdate: handleEmployeeUpdate 
-              } as any}
             />
             <Stack.Screen name="MileageEntry" component={MileageEntryScreen} />
             <Stack.Screen name="Reports" component={ReportsScreen} />
@@ -143,6 +147,8 @@ export default function App() {
             <Stack.Screen name="Receipts" component={ReceiptsScreen} />
             <Stack.Screen name="AddReceipt" component={AddReceiptScreen} />
             <Stack.Screen name="HoursWorked" component={HoursWorkedScreen} />
+            <Stack.Screen name="DailyDescription" component={DailyDescriptionScreen} />
+            <Stack.Screen name="CostCenterReporting" component={CostCenterReportingScreen} />
             <Stack.Screen name="Admin" component={AdminScreen} />
             <Stack.Screen name="ManagerDashboard" component={ManagerDashboardScreen} />
             <Stack.Screen name="SavedAddresses" component={SavedAddressesScreen} />
@@ -151,7 +157,7 @@ export default function App() {
               name="Settings" 
               component={SettingsScreen}
               initialParams={{
-                currentEmployee
+                currentEmployeeId: currentEmployee?.id
               } as any}
             />
           </Stack.Navigator>

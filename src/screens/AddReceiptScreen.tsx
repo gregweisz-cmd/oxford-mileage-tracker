@@ -12,9 +12,12 @@ import {
   Modal,
   FlatList,
   Dimensions,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -29,6 +32,7 @@ import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 import { useNotifications } from '../contexts/NotificationContext';
 import { CategoryAiService, CategorySuggestion } from '../services/categoryAiService';
 import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiService';
+import { COST_CENTERS } from '../constants/costCenters';
 
 interface AddReceiptScreenProps {
   navigation: any;
@@ -74,6 +78,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const [currentLocation, setCurrentLocation] = useState<{latitude: number, longitude: number} | null>(null);
   const [vendorSearchTimeout, setVendorSearchTimeout] = useState<NodeJS.Timeout | null>(null);
   const vendorInputRef = useRef<TextInput>(null);
+  const amountInputRef = useRef<TextInput>(null);
+  const descriptionInputRef = useRef<TextInput>(null);
 
   // Category AI state
   const [categorySuggestions, setCategorySuggestions] = useState<CategorySuggestion[]>([]);
@@ -81,12 +87,21 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const [showCategorySuggestions, setShowCategorySuggestions] = useState(false);
   const [perDiemEligibility, setPerDiemEligibility] = useState<PerDiemEligibility | null>(null);
   const [autoPerDiemEnabled, setAutoPerDiemEnabled] = useState(true);
+  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
 
   useEffect(() => {
     loadEmployee();
     requestPermissions();
     requestLocationPermissions();
   }, []);
+
+  // Refresh employee data when screen comes into focus (to get updated cost centers)
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('📄 AddReceiptScreen: Screen focused, refreshing employee data...');
+      loadEmployee();
+    }, [])
+  );
 
   // Load category suggestions when vendor and amount are entered
   useEffect(() => {
@@ -150,12 +165,19 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
   const loadEmployee = async () => {
     try {
-      const employees = await DatabaseService.getEmployees();
-      const employee = employees[0]; // For demo, use first employee
+      console.log('📄 AddReceiptScreen: Loading current employee...');
+      const employee = await DatabaseService.getCurrentEmployee();
+      console.log('📄 AddReceiptScreen: Current employee loaded:', employee?.name, employee?.id);
+      console.log('📄 AddReceiptScreen: Employee cost centers:', employee?.selectedCostCenters);
       setCurrentEmployee(employee);
       
-      // Set employee for tips context and load receipt tips
+      // Initialize cost center
       if (employee) {
+        const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
+        console.log('📄 AddReceiptScreen: Setting selected cost center to:', costCenter);
+        setSelectedCostCenter(costCenter);
+        
+        // Set employee for tips context and load receipt tips
         setTipsEmployee(employee);
         if (showTips) {
           await loadTipsForScreen('AddReceiptScreen', 'on_load');
@@ -234,7 +256,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         }
       }, 300); // 300ms debounce
       
-      setVendorSearchTimeout(timeout);
+      setVendorSearchTimeout(timeout as any);
     } else if (field === 'vendor' && value.length < 2) {
       setShowVendorSuggestions(false);
       setVendorSuggestions([]);
@@ -465,7 +487,50 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     const isValid = await validateForm();
     if (!isValid || !currentEmployee || !imageUri) return;
 
+    // Prevent duplicate saves by checking if already saving
+    if (loading) {
+      console.log('🚫 AddReceipt: Save already in progress, ignoring duplicate call');
+      return;
+    }
+
     setLoading(true);
+    try {
+      // Check for duplicate receipts (same vendor, amount, and date)
+      const existingReceipts = await DatabaseService.getReceiptsByCategoryAndDate(
+        currentEmployee.id,
+        formData.category,
+        formData.date
+      );
+      
+      const duplicateReceipt = existingReceipts.find(receipt => 
+        receipt.vendor.toLowerCase() === formData.vendor.toLowerCase() &&
+        Math.abs(receipt.amount - Number(formData.amount)) < 0.01 // Allow for small rounding differences
+      );
+      
+      if (duplicateReceipt) {
+        Alert.alert(
+          'Duplicate Receipt',
+          `A receipt for ${formData.vendor} with amount $${formData.amount} already exists for this date. Do you want to add it anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Anyway', onPress: () => proceedWithSave() }
+          ]
+        );
+        return;
+      }
+      
+      await proceedWithSave();
+    } catch (error) {
+      console.error('Error saving receipt:', error);
+      Alert.alert('Error', 'Failed to save receipt');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const proceedWithSave = async () => {
+    if (!currentEmployee || !imageUri) return;
+    
     try {
       // For Car Rental Fuel, combine with existing Car Rental if it exists
       if (formData.category === 'Rental Car Fuel') {
@@ -496,6 +561,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             category: 'Rental Car', // Change category to Rental Car
             description: formData.description.trim(),
             imageUri,
+            costCenter: selectedCostCenter,
           };
           await DatabaseService.createReceipt(receiptData);
           Alert.alert('Success', 'Rental car fuel saved as rental car receipt');
@@ -522,6 +588,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             vendor: `${formData.vendor.trim()} + ${existingFuel[0].vendor}`,
             category: 'Rental Car',
             imageUri,
+            costCenter: selectedCostCenter,
           };
           await DatabaseService.createReceipt(receiptData);
           // Delete the fuel receipt
@@ -541,6 +608,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         category: formData.category,
         description: formData.description.trim(),
         imageUri,
+        costCenter: selectedCostCenter,
       };
 
       await DatabaseService.createReceipt(receiptData);
@@ -579,14 +647,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     } catch (error) {
       console.error('Error saving receipt:', error);
       Alert.alert('Error', 'Failed to save receipt');
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
+        <StatusBar style="auto" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -761,6 +828,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             onChangeText={(value) => handleInputChange('vendor', value)}
             placeholder="e.g., Shell Gas Station, McDonald's"
             placeholderTextColor="#999"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              amountInputRef.current?.focus();
+            }}
             onFocus={() => {
               if (vendorSuggestions.length > 0) {
                 setShowVendorSuggestions(true);
@@ -837,12 +909,18 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Amount *</Text>
           <TextInput
+            ref={amountInputRef}
             style={styles.input}
             value={formData.amount}
             onChangeText={(value) => handleInputChange('amount', value)}
             placeholder="0.00"
             keyboardType="numeric"
             placeholderTextColor="#999"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              descriptionInputRef.current?.focus();
+            }}
           />
         </View>
 
@@ -850,6 +928,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Description (Optional)</Text>
           <TextInput
+            ref={descriptionInputRef}
             style={[styles.input, styles.textArea]}
             value={formData.description}
             onChangeText={(value) => handleInputChange('description', value)}
@@ -857,6 +936,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             placeholderTextColor="#999"
             multiline
             numberOfLines={3}
+            returnKeyType="done"
+            blurOnSubmit={true}
           />
         </View>
 
@@ -885,6 +966,32 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             ))}
           </View>
         </View>
+
+        {/* Cost Center Selector - show if user has cost centers assigned */}
+        {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 0 && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Cost Center</Text>
+            <View style={styles.costCenterSelector}>
+              {currentEmployee.selectedCostCenters.map((costCenter) => (
+                <TouchableOpacity
+                  key={costCenter}
+                  style={[
+                    styles.costCenterOption,
+                    selectedCostCenter === costCenter && styles.costCenterOptionSelected
+                  ]}
+                  onPress={() => setSelectedCostCenter(costCenter)}
+                >
+                  <Text style={[
+                    styles.costCenterOptionText,
+                    selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
+                  ]}>
+                    {costCenter}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Category AI Suggestions */}
         {showCategorySuggestions && categorySuggestions.length > 0 && (
@@ -986,7 +1093,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           </Text>
         </TouchableOpacity>
       </ScrollView>
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -1420,6 +1528,33 @@ const styles = StyleSheet.create({
   },
   toggleButtonActive: {
     // Additional styles for active state if needed
+  },
+  
+  // Cost Center Selector Styles
+  costCenterSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  costCenterOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  costCenterOptionSelected: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  costCenterOptionText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  costCenterOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
 
