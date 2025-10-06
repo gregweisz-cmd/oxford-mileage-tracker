@@ -461,6 +461,18 @@ export class TestDataService {
         costCenters: ['Program Services'],
         selectedCostCenters: ['Program Services'],
         defaultCostCenter: 'Program Services'
+      },
+      {
+        name: 'Tim Diehl',
+        email: 'tim.diehl@oxfordhouse.org',
+        password: 'Timwelcome1',
+        oxfordHouseId: '5cf055ff1af1bf261b344ed4',
+        position: 'Director of Technology',
+        phoneNumber: '19083075545',
+        baseAddress: 'Corporate Office',
+        costCenters: ['Program Services'],
+        selectedCostCenters: ['Program Services'],
+        defaultCostCenter: 'Program Services'
       }
     ];
 
