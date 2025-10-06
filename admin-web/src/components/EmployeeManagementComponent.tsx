@@ -96,16 +96,35 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
 
   // Helper function to safely parse costCenters
   const parseCostCenters = (costCenters: any): string[] => {
+    console.log('🔍 parseCostCenters input:', costCenters, 'type:', typeof costCenters, 'isArray:', Array.isArray(costCenters));
+    
     if (Array.isArray(costCenters)) {
+      console.log('✅ Returning array as-is:', costCenters);
       return costCenters;
     }
     if (typeof costCenters === 'string') {
       try {
-        return JSON.parse(costCenters);
-      } catch {
+        const parsed = JSON.parse(costCenters);
+        console.log('✅ Parsed JSON string:', parsed);
+        return parsed;
+      } catch (error) {
+        console.log('❌ Failed to parse JSON, returning as single item:', costCenters);
         return [costCenters];
       }
     }
+    if (costCenters && typeof costCenters === 'object') {
+      console.log('🔧 Handling object type:', costCenters);
+      // If it's an object, try to extract values or convert to array
+      if (costCenters.toString && costCenters.toString() === '[object Object]') {
+        console.log('❌ Detected [object Object], returning empty array');
+        return [];
+      }
+      // Try to convert object to array of values
+      const values = Object.values(costCenters);
+      console.log('✅ Converted object to array:', values);
+      return values.filter(v => typeof v === 'string') as string[];
+    }
+    console.log('❌ Unknown type, returning empty array');
     return [];
   };
 

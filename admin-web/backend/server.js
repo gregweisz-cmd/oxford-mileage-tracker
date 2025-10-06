@@ -586,7 +586,26 @@ app.get('/api/employees', (req, res) => {
       res.status(500).json({ error: err.message });
       return;
     }
-    res.json(rows);
+    
+    // Parse JSON fields for each employee
+    const parsedRows = rows.map(row => {
+      try {
+        return {
+          ...row,
+          costCenters: row.costCenters ? JSON.parse(row.costCenters) : [],
+          selectedCostCenters: row.selectedCostCenters ? JSON.parse(row.selectedCostCenters) : []
+        };
+      } catch (parseErr) {
+        console.error('Error parsing employee data for', row.id, ':', parseErr);
+        return {
+          ...row,
+          costCenters: [],
+          selectedCostCenters: []
+        };
+      }
+    });
+    
+    res.json(parsedRows);
   });
 });
 
