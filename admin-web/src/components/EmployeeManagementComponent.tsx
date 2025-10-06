@@ -28,7 +28,9 @@ import {
   Tooltip,
   Checkbox,
   Tabs,
-  Tab
+  Tab,
+  OutlinedInput,
+  ListItemText,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -36,10 +38,12 @@ import {
   Delete,
   Edit,
   Add,
-  Clear
+  Clear,
+  LockReset
 } from '@mui/icons-material';
 import { BulkImportService, BulkImportResult, EmployeeImportData } from '../services/bulkImportService';
 import { Employee } from '../types';
+import { COST_CENTERS } from '../constants/costCenters';
 
 interface EmployeeManagementProps {
   onImportComplete: (result: BulkImportResult) => void;
@@ -92,39 +96,31 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [showBulkEditDialog, setShowBulkEditDialog] = useState(false);
   const [bulkEditData, setBulkEditData] = useState<Partial<Employee>>({});
+  const [selectedCostCenters, setSelectedCostCenters] = useState<string[]>([]);
+  const [defaultCostCenter, setDefaultCostCenter] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper function to safely parse costCenters
   const parseCostCenters = (costCenters: any): string[] => {
-    console.log('🔍 parseCostCenters input:', costCenters, 'type:', typeof costCenters, 'isArray:', Array.isArray(costCenters));
-    
     if (Array.isArray(costCenters)) {
-      console.log('✅ Returning array as-is:', costCenters);
       return costCenters;
     }
     if (typeof costCenters === 'string') {
       try {
-        const parsed = JSON.parse(costCenters);
-        console.log('✅ Parsed JSON string:', parsed);
-        return parsed;
-      } catch (error) {
-        console.log('❌ Failed to parse JSON, returning as single item:', costCenters);
+        return JSON.parse(costCenters);
+      } catch {
         return [costCenters];
       }
     }
     if (costCenters && typeof costCenters === 'object') {
-      console.log('🔧 Handling object type:', costCenters);
       // If it's an object, try to extract values or convert to array
       if (costCenters.toString && costCenters.toString() === '[object Object]') {
-        console.log('❌ Detected [object Object], returning empty array');
         return [];
       }
       // Try to convert object to array of values
       const values = Object.values(costCenters);
-      console.log('✅ Converted object to array:', values);
       return values.filter(v => typeof v === 'string') as string[];
     }
-    console.log('❌ Unknown type, returning empty array');
     return [];
   };
 
@@ -233,6 +229,9 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   // Individual Employee Management
   const handleEditEmployee = (employee: Employee) => {
     setEditingEmployee(employee);
+    const costCenters = parseCostCenters(employee.costCenters);
+    setSelectedCostCenters(costCenters);
+    setDefaultCostCenter(employee.defaultCostCenter || costCenters[0] || '');
     setShowEmployeeDialog(true);
   };
 
@@ -252,20 +251,43 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       createdAt: new Date(),
       updatedAt: new Date()
     });
+    setSelectedCostCenters(['Program Services']);
+    setDefaultCostCenter('Program Services');
     setShowEmployeeDialog(true);
   };
 
   const handleSaveEmployee = async () => {
     if (!editingEmployee) return;
     
+    // Validate that at least one cost center is selected
+    if (selectedCostCenters.length === 0) {
+      alert('Please select at least one cost center.');
+      return;
+    }
+    
+    // Validate that default cost center is selected if multiple cost centers are assigned
+    if (selectedCostCenters.length > 1 && !defaultCostCenter) {
+      alert('Please select a default cost center when multiple cost centers are assigned.');
+      return;
+    }
+    
     try {
+      const updatedEmployee = {
+        ...editingEmployee,
+        costCenters: selectedCostCenters,
+        selectedCostCenters: selectedCostCenters,
+        defaultCostCenter: defaultCostCenter || selectedCostCenters[0]
+      };
+      
       if (editingEmployee.id) {
-        await onUpdateEmployee(editingEmployee.id, editingEmployee);
+        await onUpdateEmployee(editingEmployee.id, updatedEmployee);
       } else {
-        await onCreateEmployee(editingEmployee);
+        await onCreateEmployee(updatedEmployee);
       }
       setShowEmployeeDialog(false);
       setEditingEmployee(null);
+      setSelectedCostCenters([]);
+      setDefaultCostCenter('');
     } catch (error) {
       console.error('Error saving employee:', error);
     }
@@ -277,6 +299,20 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         await onDeleteEmployee(employeeId);
       } catch (error) {
         console.error('Error deleting employee:', error);
+      }
+    }
+  };
+
+  const handleResetPassword = async (employee: Employee) => {
+    const newPassword = `${employee.name.split(' ')[0]}welcome1`;
+    
+    if (window.confirm(`Reset password for ${employee.name} to "${newPassword}"?`)) {
+      try {
+        await onUpdateEmployee(employee.id, { password: newPassword });
+        alert(`Password reset successfully for ${employee.name}`);
+      } catch (error) {
+        console.error('Error resetting password:', error);
+        alert('Error resetting password. Please try again.');
       }
     }
   };
@@ -356,6 +392,15 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             onClick={() => handleEditEmployee(employee)}
                           >
                             <Edit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Reset Password">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleResetPassword(employee)}
+                            color="primary"
+                          >
+                            <LockReset />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete Employee">
@@ -565,7 +610,11 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       {/* Employee Edit Dialog */}
       <Dialog 
         open={showEmployeeDialog} 
-        onClose={() => setShowEmployeeDialog(false)}
+        onClose={() => {
+          setShowEmployeeDialog(false);
+          setSelectedCostCenters([]);
+          setDefaultCostCenter('');
+        }}
         maxWidth="md"
         fullWidth
       >
@@ -648,12 +697,70 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     })}
                   />
                 </Box>
+                
+                {/* Cost Centers Selection */}
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <InputLabel>Cost Centers</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedCostCenters}
+                    onChange={(e) => {
+                      const value = e.target.value as string[];
+                      setSelectedCostCenters(value);
+                      // If only one cost center is selected, set it as default
+                      if (value.length === 1) {
+                        setDefaultCostCenter(value[0]);
+                      }
+                      // If default cost center is removed, clear it
+                      if (value.length > 1 && !value.includes(defaultCostCenter)) {
+                        setDefaultCostCenter('');
+                      }
+                    }}
+                    input={<OutlinedInput label="Cost Centers" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {(selected as string[]).map((value) => (
+                          <Chip key={value} label={value} size="small" />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    {COST_CENTERS.map((costCenter: string) => (
+                      <MenuItem key={costCenter} value={costCenter}>
+                        <Checkbox checked={selectedCostCenters.indexOf(costCenter) > -1} />
+                        <ListItemText primary={costCenter} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                {/* Default Cost Center Selection - Only show if multiple cost centers are selected */}
+                {selectedCostCenters.length > 1 && (
+                  <FormControl fullWidth sx={{ mt: 2 }}>
+                    <InputLabel>Default Cost Center</InputLabel>
+                    <Select
+                      value={defaultCostCenter}
+                      onChange={(e) => setDefaultCostCenter(e.target.value)}
+                      label="Default Cost Center"
+                    >
+                      {selectedCostCenters.map((costCenter) => (
+                        <MenuItem key={costCenter} value={costCenter}>
+                          {costCenter}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
               </Box>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowEmployeeDialog(false)}>
+          <Button onClick={() => {
+            setShowEmployeeDialog(false);
+            setSelectedCostCenters([]);
+            setDefaultCostCenter('');
+          }}>
             Cancel
           </Button>
           <Button onClick={handleSaveEmployee} variant="contained">

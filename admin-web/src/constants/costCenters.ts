@@ -1,10 +1,7 @@
 // Cost Centers for Oxford House Staff Tracker
-// Now dynamically loaded from API with fallback to hardcoded list
+// Updated from Google Sheet data - Listed in alphabetical order
 
-import { costCenterApiService } from '../services/costCenterApiService';
-
-// Fallback cost centers (used when API is unavailable)
-export const FALLBACK_COST_CENTERS = [
+export const COST_CENTERS = [
   'AL / HI / LA',
   'AL-SOR',
   'AL-SUBG',
@@ -91,32 +88,4 @@ export const FALLBACK_COST_CENTERS = [
   'WI.MIL',
 ] as const;
 
-// Legacy export for backward compatibility
-export const COST_CENTERS = FALLBACK_COST_CENTERS;
-
-export type CostCenter = typeof FALLBACK_COST_CENTERS[number];
-
-/**
- * Get cost centers from API with fallback
- * This is the new preferred way to get cost centers
- */
-export const getCostCenters = async (): Promise<string[]> => {
-  try {
-    return await costCenterApiService.getCostCenterNames();
-  } catch (error) {
-    console.warn('Failed to fetch cost centers from API, using fallback:', error);
-    return [...FALLBACK_COST_CENTERS];
-  }
-};
-
-/**
- * Get cost center objects from API with fallback
- */
-export const getCostCenterObjects = async () => {
-  try {
-    return await costCenterApiService.getCostCenters();
-  } catch (error) {
-    console.warn('Failed to fetch cost center objects from API, using fallback:', error);
-    return costCenterApiService.getFallbackCostCenters();
-  }
-};
+export type CostCenter = typeof COST_CENTERS[number];

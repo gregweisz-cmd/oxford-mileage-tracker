@@ -590,17 +590,49 @@ app.get('/api/employees', (req, res) => {
     // Parse JSON fields for each employee
     const parsedRows = rows.map(row => {
       try {
+        // Handle corrupted "[object Object]" entries
+        let costCenters = [];
+        let selectedCostCenters = [];
+        
+        if (row.costCenters) {
+          if (row.costCenters === '[object Object]' || row.costCenters === '[object Object]') {
+            console.log('🔧 Fixing corrupted costCenters for employee:', row.id);
+            costCenters = ['Program Services']; // Default fallback
+          } else {
+            try {
+              costCenters = JSON.parse(row.costCenters);
+            } catch (parseErr) {
+              console.log('⚠️ Failed to parse costCenters for', row.id, ':', row.costCenters);
+              costCenters = ['Program Services']; // Default fallback
+            }
+          }
+        }
+        
+        if (row.selectedCostCenters) {
+          if (row.selectedCostCenters === '[object Object]' || row.selectedCostCenters === '[object Object]') {
+            console.log('🔧 Fixing corrupted selectedCostCenters for employee:', row.id);
+            selectedCostCenters = ['Program Services']; // Default fallback
+          } else {
+            try {
+              selectedCostCenters = JSON.parse(row.selectedCostCenters);
+            } catch (parseErr) {
+              console.log('⚠️ Failed to parse selectedCostCenters for', row.id, ':', row.selectedCostCenters);
+              selectedCostCenters = ['Program Services']; // Default fallback
+            }
+          }
+        }
+        
         return {
           ...row,
-          costCenters: row.costCenters ? JSON.parse(row.costCenters) : [],
-          selectedCostCenters: row.selectedCostCenters ? JSON.parse(row.selectedCostCenters) : []
+          costCenters,
+          selectedCostCenters
         };
       } catch (parseErr) {
-        console.error('Error parsing employee data for', row.id, ':', parseErr);
+        console.error('❌ Error parsing employee data for', row.id, ':', parseErr);
         return {
           ...row,
-          costCenters: [],
-          selectedCostCenters: []
+          costCenters: ['Program Services'],
+          selectedCostCenters: ['Program Services']
         };
       }
     });
@@ -849,6 +881,231 @@ app.post('/api/employees/bulk-create', (req, res) => {
       }
     });
   });
+});
+
+// ===== COST CENTER MANAGEMENT API ENDPOINTS =====
+
+// Get all cost centers
+app.get('/api/cost-centers', (req, res) => {
+  db.all('SELECT * FROM cost_centers ORDER BY name', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// Get cost center by ID
+app.get('/api/cost-centers/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT * FROM cost_centers WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Cost center not found' });
+      return;
+    }
+    res.json(row);
+  });
+});
+
+// Create new cost center
+app.post('/api/cost-centers', (req, res) => {
+  const { name, description, isActive, code } = req.body;
+  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  const now = new Date().toISOString();
+  
+  // Generate code from name if not provided
+  const costCenterCode = code || name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  
+  db.run(
+    'INSERT INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, now],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, createdAt: now, updatedAt: now });
+    }
+  );
+});
+
+// Update cost center
+app.put('/api/cost-centers/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, description, isActive, code } = req.body;
+  const now = new Date().toISOString();
+  
+  // Generate code from name if not provided
+  const costCenterCode = code || name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  
+  db.run(
+    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, updatedAt = ? WHERE id = ?',
+    [costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Cost center not found' });
+        return;
+      }
+      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, updatedAt: now });
+    }
+  );
+});
+
+// Delete cost center
+app.delete('/api/cost-centers/:id', (req, res) => {
+  const { id } = req.params;
+  
+  db.run('DELETE FROM cost_centers WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (this.changes === 0) {
+      res.status(404).json({ error: 'Cost center not found' });
+      return;
+    }
+    res.json({ message: 'Cost center deleted successfully' });
+  });
+});
+
+// ===== EMPLOYEE PASSWORD MANAGEMENT API ENDPOINTS =====
+
+// Get current employees (for mobile app authentication)
+app.get('/api/current-employees', (req, res) => {
+  db.all('SELECT id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, costCenters FROM employees ORDER BY name', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    // Parse JSON fields for each employee
+    const parsedRows = rows.map(row => {
+      try {
+        let costCenters = [];
+        let selectedCostCenters = [];
+        
+        if (row.costCenters) {
+          if (row.costCenters === '[object Object]') {
+            costCenters = ['Program Services'];
+          } else {
+            try {
+              costCenters = JSON.parse(row.costCenters);
+            } catch (parseErr) {
+              costCenters = ['Program Services'];
+            }
+          }
+        }
+        
+        // Use costCenters as selectedCostCenters if selectedCostCenters doesn't exist
+        selectedCostCenters = [...costCenters];
+        
+        return {
+          ...row,
+          costCenters,
+          selectedCostCenters,
+          defaultCostCenter: costCenters[0] || 'Program Services'
+        };
+      } catch (parseErr) {
+        return {
+          ...row,
+          costCenters: ['Program Services'],
+          selectedCostCenters: ['Program Services'],
+          defaultCostCenter: 'Program Services'
+        };
+      }
+    });
+    
+    res.json(parsedRows);
+  });
+});
+
+// Get employee credentials for authentication
+app.post('/api/employee-login', (req, res) => {
+  const { email, password } = req.body;
+  
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  
+  db.get('SELECT * FROM employees WHERE email = ? AND password = ?', [email, password], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    if (!row) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+    
+    // Parse cost centers
+    let costCenters = [];
+    let selectedCostCenters = [];
+    
+    if (row.costCenters) {
+      try {
+        costCenters = JSON.parse(row.costCenters);
+      } catch (parseErr) {
+        costCenters = ['Program Services'];
+      }
+    }
+    
+    // Use costCenters as selectedCostCenters if selectedCostCenters doesn't exist
+    selectedCostCenters = [...costCenters];
+    
+    // Return employee data without password
+    res.json({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      oxfordHouseId: row.oxfordHouseId,
+      position: row.position,
+      phoneNumber: row.phoneNumber,
+      baseAddress: row.baseAddress,
+      costCenters,
+      selectedCostCenters,
+      defaultCostCenter: costCenters[0] || 'Program Services',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    });
+  });
+});
+
+// Update employee password
+app.put('/api/employees/:id/password', (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body;
+  
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required' });
+  }
+  
+  const now = new Date().toISOString();
+  
+  db.run(
+    'UPDATE employees SET password = ?, updatedAt = ? WHERE id = ?',
+    [password, now, id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Employee not found' });
+        return;
+      }
+      res.json({ message: 'Password updated successfully' });
+    }
+  );
 });
 
 // Get all mileage entries

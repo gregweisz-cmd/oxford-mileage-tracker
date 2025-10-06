@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   TouchableOpacity,
   FlatList,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { COST_CENTERS } from '../constants/costCenters';
+import { getCostCenters } from '../constants/costCenters';
 
 interface CostCenterSelectorProps {
   visible: boolean;
@@ -25,20 +26,34 @@ export default function CostCenterSelector({
   currentValue = '',
 }: CostCenterSelectorProps) {
   const [searchText, setSearchText] = useState('');
+  const [costCenters, setCostCenters] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredCostCenters = COST_CENTERS.filter(center =>
+  const filteredCostCenters = costCenters.filter(center =>
     center.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  // Debug logging
-  React.useEffect(() => {
+  // Load cost centers when modal opens
+  useEffect(() => {
     if (visible) {
-      console.log('🔍 CostCenterSelector opened');
-      console.log('🔍 Total cost centers:', COST_CENTERS.length);
-      console.log('🔍 Filtered cost centers:', filteredCostCenters.length);
-      console.log('🔍 Current value:', currentValue);
+      loadCostCenters();
     }
-  }, [visible, filteredCostCenters.length, currentValue]);
+  }, [visible]);
+
+  const loadCostCenters = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const centers = await getCostCenters();
+      setCostCenters(centers);
+    } catch (err) {
+      setError('Failed to load cost centers');
+      console.error('Error loading cost centers:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSelect = (costCenter: string) => {
     console.log('🔍 Cost center selected:', costCenter);
@@ -85,22 +100,39 @@ export default function CostCenterSelector({
             />
           </View>
 
-          <FlatList
-            data={filteredCostCenters}
-            renderItem={renderCostCenterItem}
-            keyExtractor={(item, index) => `${item}-${index}`}
-            style={styles.list}
-            showsVerticalScrollIndicator={false}
-          />
-
-          {filteredCostCenters.length === 0 && (
-            <View style={styles.emptyState}>
-              <MaterialIcons name="search-off" size={48} color="#ccc" />
-              <Text style={styles.emptyStateText}>No cost centers found</Text>
-              <Text style={styles.emptyStateSubtext}>
-                Try a different search term
-              </Text>
+          {loading ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator size="large" color="#2196F3" />
+              <Text style={styles.loadingText}>Loading cost centers...</Text>
             </View>
+          ) : error ? (
+            <View style={styles.errorState}>
+              <MaterialIcons name="error-outline" size={48} color="#f44336" />
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={loadCostCenters}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <FlatList
+                data={filteredCostCenters}
+                renderItem={renderCostCenterItem}
+                keyExtractor={(item, index) => `${item}-${index}`}
+                style={styles.list}
+                showsVerticalScrollIndicator={false}
+              />
+
+              {filteredCostCenters.length === 0 && !loading && (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="search-off" size={48} color="#ccc" />
+                  <Text style={styles.emptyStateText}>No cost centers found</Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    Try a different search term
+                  </Text>
+                </View>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -185,6 +217,40 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 8,
     textAlign: 'center',
+  },
+  loadingState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  errorState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#f44336',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#2196F3',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

@@ -11,6 +11,7 @@ import {
   Snackbar
 } from '@mui/material';
 import { EmployeeManagementComponent } from './EmployeeManagementComponent';
+import { CostCenterManagement } from './CostCenterManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { BulkImportResult } from '../services/bulkImportService';
 import { Employee } from '../types';
@@ -165,6 +166,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
             <Tab label="Employee Management" />
+            <Tab label="Cost Center Management" />
             <Tab label="Reports & Analytics" />
             <Tab label="System Settings" />
           </Tabs>
@@ -183,6 +185,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         </TabPanel>
 
         <TabPanel value={activeTab} index={1}>
+          <CostCenterManagement />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={2}>
           <Typography variant="h4" gutterBottom>
             Reports & Analytics
           </Typography>
@@ -192,7 +198,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
           </Typography>
         </TabPanel>
 
-        <TabPanel value={activeTab} index={2}>
+        <TabPanel value={activeTab} index={3}>
           <Typography variant="h4" gutterBottom>
             System Settings
           </Typography>
