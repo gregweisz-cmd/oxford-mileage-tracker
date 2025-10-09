@@ -6,7 +6,9 @@ import { CssBaseline, Box, Button } from '@mui/material';
 import StaffPortal from './StaffPortal';
 import SupervisorPortal from './components/SupervisorPortal';
 import { AdminPortal } from './components/AdminPortal';
+import Login from './components/Login';
 import LoginForm from './components/LoginForm';
+import PortalSwitcher from './components/PortalSwitcher';
 // import AuthService from './services/authService'; // Currently unused
 
 // Create theme
@@ -23,15 +25,51 @@ const theme = createTheme({
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentPortal, setCurrentPortal] = useState<'admin' | 'supervisor' | 'staff'>('staff');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Check if user is already logged in
     const checkAuthStatus = async () => {
       try {
-        const user = localStorage.getItem('current_user');
-        if (user) {
-          setCurrentUser(JSON.parse(user));
+        const authToken = localStorage.getItem('authToken');
+        if (authToken) {
+          // Verify token with backend
+          try {
+            const response = await fetch('http://localhost:3002/api/auth/verify', {
+              headers: {
+                'Authorization': `Bearer ${authToken}`
+              }
+            });
+            
+            if (!response.ok) {
+              // Invalid token, clear and force re-login
+              console.warn('Invalid auth token, clearing localStorage');
+              localStorage.clear();
+              setCurrentUser(null);
+              setLoading(false);
+              return;
+            }
+            
+            // Valid token, get employee data
+            const { employee } = await response.json();
+            setCurrentUser(employee);
+            
+            // Set initial portal based on user position
+            const position = employee?.position?.toLowerCase() || '';
+            if (position.includes('admin') || position.includes('ceo')) {
+              setCurrentPortal('admin');
+            } else if (position.includes('supervisor') || position.includes('director')) {
+              setCurrentPortal('supervisor');
+            } else {
+              setCurrentPortal('staff');
+            }
+          } catch (error) {
+            console.error('Error verifying token:', error);
+            // Clear localStorage on error
+            localStorage.clear();
+            setCurrentUser(null);
+          }
         }
       } catch (error) {
         console.error('Error checking auth status:', error);
@@ -44,11 +82,47 @@ const App: React.FC = () => {
   }, []);
 
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('current_user');
-    // Clear all localStorage
-    localStorage.clear();
+  const handleLogout = async () => {
+    try {
+      const authToken = localStorage.getItem('authToken');
+      if (authToken) {
+        // Call logout endpoint
+        await fetch('http://localhost:3002/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Clear state and localStorage regardless of API call success
+      setCurrentUser(null);
+      setCurrentPortal('staff');
+      localStorage.clear();
+    }
+  };
+
+  const handlePortalChange = (portal: 'admin' | 'supervisor' | 'staff') => {
+    setCurrentPortal(portal);
+  };
+
+  const handleLoginSuccess = (employee: any, token: string) => {
+    setCurrentUser(employee);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('currentEmployeeId', employee.id);
+    localStorage.setItem('employeeData', JSON.stringify(employee));
+    
+    // Set initial portal based on user position
+    const position = employee?.position?.toLowerCase() || '';
+    if (position.includes('admin') || position.includes('ceo')) {
+      setCurrentPortal('admin');
+    } else if (position.includes('supervisor') || position.includes('director')) {
+      setCurrentPortal('supervisor');
+    } else {
+      setCurrentPortal('staff');
+    }
   };
 
   if (loading) {
@@ -67,24 +141,19 @@ const App: React.FC = () => {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <LoginForm onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          localStorage.setItem('current_user', JSON.stringify(user));
-        }} />
+        <Login onLoginSuccess={handleLoginSuccess} />
       </ThemeProvider>
     );
   }
 
-  // Determine which portal to show based on user role
+  // Determine which portal to show based on current portal selection
   const renderPortal = () => {
-    const userRole = currentUser?.role || 'employee';
-
-    switch (userRole) {
+    switch (currentPortal) {
       case 'admin':
         return <AdminPortal adminId={currentUser.id} adminName={currentUser.name} />;
       case 'supervisor':
         return <SupervisorPortal supervisorId={currentUser.id} supervisorName={currentUser.name} />;
-      case 'employee':
+      case 'staff':
       default:
         return (
           <StaffPortal
@@ -100,14 +169,12 @@ const App: React.FC = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box>
-        {/* Logout Button */}
-        <Box sx={{ position: 'fixed', top: 16, right: 16, zIndex: 1000 }}>
-          <Button variant="outlined" color="secondary" onClick={handleLogout}>
-            Logout
-          </Button>
-        </Box>
-        
-        {/* Render appropriate portal */}
+        <PortalSwitcher
+          currentUser={currentUser}
+          currentPortal={currentPortal}
+          onPortalChange={handlePortalChange}
+          onLogout={handleLogout}
+        />
         {renderPortal()}
       </Box>
     </ThemeProvider>

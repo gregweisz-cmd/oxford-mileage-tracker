@@ -7,6 +7,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Prevent header shrinking on scroll */
+.MuiAppBar-root {
+  height: 64px !important;
+  min-height: 64px !important;
+  max-height: 64px !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+.MuiToolbar-root {
+  min-height: 64px !important;
+  height: 64px !important;
+  max-height: 64px !important;
+  transform: none !important;
+  transition: none !important;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

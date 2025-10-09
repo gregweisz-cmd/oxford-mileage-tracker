@@ -377,7 +377,6 @@ export class DatabaseService {
     const database = await getDatabase();
     const result = await database.getFirstAsync('SELECT * FROM current_employee') as any;
     
-    
     if (!result) {
       return null;
     }
@@ -445,8 +444,32 @@ export class DatabaseService {
     };
   }
 
-  static async createEmployee(employee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>): Promise<Employee> {
-    const id = this.generateId();
+  static async getEmployeeByEmail(email: string): Promise<Employee | null> {
+    const database = await getDatabase();
+    const result = await database.getFirstAsync('SELECT * FROM employees WHERE email = ?', [email.toLowerCase()]) as any;
+    
+    if (!result) return null;
+    
+    return {
+      id: result.id,
+      name: result.name,
+      email: result.email,
+      password: result.password,
+      oxfordHouseId: result.oxfordHouseId,
+      position: result.position,
+      phoneNumber: result.phoneNumber,
+      baseAddress: result.baseAddress,
+      baseAddress2: result.baseAddress2 || '',
+      costCenters: result.costCenters ? JSON.parse(result.costCenters) : [],
+      selectedCostCenters: result.selectedCostCenters ? JSON.parse(result.selectedCostCenters) : [],
+      defaultCostCenter: result.defaultCostCenter || '',
+      createdAt: new Date(result.createdAt),
+      updatedAt: new Date(result.updatedAt)
+    };
+  }
+
+  static async createEmployee(employee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Employee> {
+    const id = employee.id || this.generateId();
     const now = new Date().toISOString();
     const database = await getDatabase();
     
@@ -524,6 +547,15 @@ export class DatabaseService {
     );
     
     console.log('✅ Database: Employee updated successfully');
+  }
+
+  static async deleteEmployee(id: string): Promise<void> {
+    const database = await getDatabase();
+    
+    await database.runAsync(
+      'DELETE FROM employees WHERE id = ?',
+      [id]
+    );
   }
 
   // Mileage entry operations

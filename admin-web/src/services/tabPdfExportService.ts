@@ -275,6 +275,17 @@ interface TimeTrackingEntry {
 }
 
 export class TabPdfExportService {
+  // Helper function to generate standardized filename
+  private static generateFilename(employeeData: EmployeeExpenseData): string {
+    const nameParts = employeeData.name.split(' ');
+    const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
+    const firstName = nameParts[0] || 'UNKNOWN';
+    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const monthIndex = monthNames.findIndex(month => month === employeeData.month.toUpperCase().substring(0, 3));
+    const monthAbbr = monthIndex >= 0 ? monthNames[monthIndex] : employeeData.month.toUpperCase().substring(0, 3);
+    const yearShort = employeeData.year.toString().slice(-2);
+    return `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
+  }
   static exportApprovalCoverSheet(
     employeeData: EmployeeExpenseData,
     receipts: ReceiptEntry[],
@@ -373,7 +384,7 @@ export class TabPdfExportService {
       }
     }
     
-    doc.save(`Approval_Cover_Sheet_${employeeData.name}_${employeeData.year}_${employeeData.month}.pdf`);
+    doc.save(this.generateFilename(employeeData));
   }
 
   static exportSummarySheet(
@@ -434,7 +445,7 @@ export class TabPdfExportService {
       });
     }
     
-    doc.save(`Summary_Sheet_${employeeData.name}_${employeeData.year}_${employeeData.month}.pdf`);
+    doc.save(this.generateFilename(employeeData));
   }
 
   static exportCostCenterTravel(employeeData: EmployeeExpenseData, costCenterIndex: number): void {
@@ -475,7 +486,7 @@ export class TabPdfExportService {
     safeText(doc,`Total Hours: ${employeeData.totalHours.toFixed(1)}`, 200, finalY);
     safeText(doc,`Total Amount: $${employeeData.totalMileageAmount.toFixed(2)}`, 350, finalY);
     
-    doc.save(`Cost_Center_${costCenterIndex + 1}_Travel_${employeeData.name}_${employeeData.year}_${employeeData.month}.pdf`);
+    doc.save(this.generateFilename(employeeData));
   }
 
   static exportTimesheet(employeeData: EmployeeExpenseData, timeTracking: TimeTrackingEntry[]): void {
@@ -559,7 +570,7 @@ export class TabPdfExportService {
       });
     }
     
-    doc.save(`Timesheet_${employeeData.name}_${employeeData.year}_${employeeData.month}.pdf`);
+    doc.save(this.generateFilename(employeeData));
   }
 
   static exportReceiptManagement(receipts: ReceiptEntry[]): void {
@@ -629,7 +640,7 @@ export class TabPdfExportService {
     await this.addReceiptManagementPage(doc, receipts);
     
     // Save the complete PDF
-    doc.save(`Complete_Expense_Report_${employeeData.name}_${employeeData.year}_${employeeData.month}.pdf`);
+    doc.save(this.generateFilename(employeeData));
     
     console.log('Complete expense report PDF exported successfully!');
   }

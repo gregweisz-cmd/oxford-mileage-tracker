@@ -1,0 +1,170 @@
+/* TipCard Styles for Web Portal */
+
+.tip-card {
+  margin: 16px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #fff;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+  transition: box-shadow 0.2s ease;
+}
+
+.tip-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tip-priority-indicator {
+  height: 4px;
+  width: 100%;
+}
+
+.tip-header {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  padding-bottom: 8px;
+}
+
+.tip-title-container {
+  display: flex;
+  flex: 1;
+}
+
+.tip-icon {
+  font-size: 24px;
+  margin-right: 12px;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.tip-title-text-container {
+  flex: 1;
+}
+
+.tip-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: #333;
+}
+
+.tip-category-container {
+  display: flex;
+  align-items: center;
+}
+
+.tip-category {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+}
+
+.tip-priority-badge {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.tip-dismiss-button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.tip-dismiss-button:hover {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.tip-message {
+  font-size: 14px;
+  line-height: 20px;
+  padding: 0 16px 16px 16px;
+  margin: 0;
+  color: #333;
+}
+
+.tip-actions {
+  padding: 0 16px 16px 16px;
+}
+
+.tip-action-button {
+  background-color: #2196F3;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.tip-action-button:hover {
+  background-color: #1976D2;
+}
+
+.tip-action-button:active {
+  background-color: #1565C0;
+}
+
+/* Tips container styles */
+.tips-container {
+  margin-bottom: 20px;
+}
+
+.tips-scroll-view {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tips-scroll-view::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tips-scroll-view::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.tips-scroll-view::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.tips-scroll-view::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .tip-card {
+    margin: 8px;
+  }
+  
+  .tip-header {
+    padding: 12px;
+  }
+  
+  .tip-message {
+    padding: 0 12px 12px 12px;
+  }
+  
+  .tip-actions {
+    padding: 0 12px 12px 12px;
+  }
+}

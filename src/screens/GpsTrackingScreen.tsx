@@ -219,8 +219,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
   const loadEmployee = async () => {
     try {
-      const employees = await DatabaseService.getEmployees();
-      const employee = employees.find(emp => emp.name === 'Greg Weisz') || employees[0]; // Use Greg Weisz or first employee
+      const employee = await DatabaseService.getCurrentEmployee();
+      if (!employee) {
+        console.error('❌ GPS: No current employee found');
+        return;
+      }
       setCurrentEmployee(employee);
       
       // Set employee for tips context and load GPS tracking tips

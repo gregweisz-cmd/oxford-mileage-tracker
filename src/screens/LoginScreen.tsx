@@ -27,6 +27,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   
   const passwordInputRef = useRef<TextInput>(null);
@@ -63,7 +64,82 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
     setLoading(true);
     try {
-      // Find employee by email and password
+      // Try backend API authentication first
+      const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
+      
+      try {
+        const response = await fetch(`${backendUrl}/api/employee-login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: email.toLowerCase(),
+            password: password
+          }),
+        });
+
+        if (response.ok) {
+          const employeeData = await response.json();
+          // Create or update employee in local database with backend ID
+          const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
+          
+          if (existingEmployee) {
+            // Delete old employee record and create new one with backend ID
+            await DatabaseService.deleteEmployee(existingEmployee.id);
+            
+            // Create new employee with backend data
+            try {
+              await DatabaseService.createEmployee({
+                id: employeeData.id,
+                name: employeeData.name,
+                email: employeeData.email,
+                password: password, // Update password with new value
+                oxfordHouseId: employeeData.oxfordHouseId || '',
+                position: employeeData.position || '',
+                phoneNumber: employeeData.phoneNumber || '',
+                baseAddress: employeeData.baseAddress || '',
+                costCenters: employeeData.costCenters || [],
+                selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
+                defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
+              });
+              
+              // Set current employee with the backend employee ID
+              await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
+              onLogin(employeeData);
+              return;
+            } catch (createError) {
+              console.error('Failed to create employee:', createError);
+              Alert.alert('Error', 'Failed to create employee record');
+              return;
+            }
+          } else {
+            // Create new employee with backend data
+            await DatabaseService.createEmployee({
+              id: employeeData.id,
+              name: employeeData.name,
+              email: employeeData.email,
+              password: password, // Store password locally
+              oxfordHouseId: employeeData.oxfordHouseId || '',
+              position: employeeData.position || '',
+              phoneNumber: employeeData.phoneNumber || '',
+              baseAddress: employeeData.baseAddress || '',
+              costCenters: employeeData.costCenters || [],
+              selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
+              defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
+            });
+            
+            // Set current employee with the new employee ID
+            await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
+            onLogin(employeeData);
+            return;
+          }
+        }
+      } catch (backendError) {
+        console.warn('Backend authentication failed, falling back to local:', backendError);
+      }
+      
+      // Fallback to local authentication
       const employee = employees.find(emp => 
         emp.email.toLowerCase() === email.toLowerCase() &&
         emp.password === password
@@ -171,13 +247,23 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               placeholderTextColor="#999"
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
+              secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="done"
               blurOnSubmit={true}
               onSubmitEditing={handleLogin}
             />
+            <TouchableOpacity
+              style={styles.showPasswordButton}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <MaterialIcons 
+                name={showPassword ? "visibility-off" : "visibility"} 
+                size={24} 
+                color="#666" 
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Stay Logged In Checkbox */}
@@ -303,6 +389,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     fontSize: 16,
     color: '#333',
+  },
+  showPasswordButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   checkboxContainer: {
     flexDirection: 'row',

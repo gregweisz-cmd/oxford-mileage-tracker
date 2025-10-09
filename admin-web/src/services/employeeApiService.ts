@@ -28,8 +28,16 @@ export interface BulkOperationResult {
 export class EmployeeApiService {
   private static baseUrl = 'http://localhost:3002/api';
 
-  static async getAllEmployees(): Promise<Employee[]> {
-    const response = await fetch(`${this.baseUrl}/employees`);
+  static async getAllEmployees(skipCache: boolean = false): Promise<Employee[]> {
+    const url = skipCache 
+      ? `${this.baseUrl}/employees?_t=${Date.now()}` 
+      : `${this.baseUrl}/employees`;
+    const response = await fetch(url, {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch employees');
     }

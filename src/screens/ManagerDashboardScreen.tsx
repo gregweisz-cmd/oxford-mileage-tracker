@@ -71,10 +71,9 @@ export default function ManagerDashboardScreen({ navigation }: ManagerDashboardS
       
       setCurrentManager(manager);
       
-      // Get team members - Alex Szary and Greg Weisz report to Jackson Longan
+      // Get team members - all employees except the manager
       const allEmployees = await DatabaseService.getEmployees();
       const teamEmployees = allEmployees.filter(emp => 
-        (emp.name === 'Alex Szary' || emp.name === 'Greg Weisz') && 
         emp.id !== manager.id
       );
       

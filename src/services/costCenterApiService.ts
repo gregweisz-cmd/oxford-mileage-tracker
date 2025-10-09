@@ -12,7 +12,9 @@ export interface CostCenter {
 }
 
 class CostCenterApiService {
-  private baseUrl = 'http://localhost:3002/api';
+  private baseUrl = __DEV__ 
+    ? 'http://localhost:3002/api' 
+    : 'https://oxford-mileage-backend.onrender.com/api';
   private costCenters: CostCenter[] = [];
   private lastFetch: number = 0;
   private cacheTimeout = 5 * 60 * 1000; // 5 minutes

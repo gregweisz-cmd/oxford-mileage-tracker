@@ -34,6 +34,7 @@ const TIME_CATEGORIES = [
 export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenProps) {
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [timeEntries, setTimeEntries] = useState<TimeTracking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +47,8 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
     date: new Date().toISOString().split('T')[0],
     category: 'Working Hours',
     hours: '',
-    description: ''
+    description: '',
+    costCenter: ''
   });
 
   useEffect(() => {
@@ -61,19 +63,22 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
 
   const loadEmployee = async () => {
     try {
-      const employees = await DatabaseService.getEmployees();
-      const employee = employees.find(emp => emp.name === 'Greg Weisz') || employees[0];
-      setCurrentEmployee(employee);
-      
-      // Set employee for tips context and load time tracking tips
-      if (employee) {
-        setTipsEmployee(employee);
+      const currentEmployee = await DatabaseService.getCurrentEmployee();
+      if (currentEmployee) {
+        setCurrentEmployee(currentEmployee);
+        
+        // Initialize cost center
+        const costCenter = currentEmployee.defaultCostCenter || currentEmployee.selectedCostCenters?.[0] || '';
+        setSelectedCostCenter(costCenter);
+        
+        // Set employee for tips context and load time tracking tips
+        setTipsEmployee(currentEmployee);
         if (showTips) {
           await loadTipsForScreen('TimeTrackingScreen', 'on_load');
         }
       }
     } catch (error) {
-      console.error('Error loading employee:', error);
+      console.error('Error loading current employee:', error);
       Alert.alert('Error', 'Failed to load employee data');
     }
   };
@@ -198,6 +203,7 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
         category: formData.category as TimeTracking['category'],
         hours: Number(formData.hours),
         description: formData.description.trim(),
+        costCenter: selectedCostCenter,
         createdAt: editingEntry?.createdAt || new Date(),
         updatedAt: new Date()
       };
@@ -251,7 +257,8 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
         date: new Date().toISOString().split('T')[0],
         category: 'G&A Hours',
         hours: '',
-        description: ''
+        description: '',
+        costCenter: selectedCostCenter
       });
       setShowAddModal(false);
       setEditingEntry(null);
@@ -268,7 +275,8 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
       date: entry.date.toISOString().split('T')[0],
       category: entry.category,
       hours: entry.hours.toString(),
-      description: entry.description || ''
+      description: entry.description || '',
+      costCenter: entry.costCenter || selectedCostCenter
     });
     setShowAddModal(true);
   };
@@ -427,7 +435,8 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
               date: today,
               category: 'Working Hours',
               hours: '8',
-              description: 'Regular work day'
+              description: 'Regular work day',
+              costCenter: selectedCostCenter
             });
             setShowAddModal(true);
           },
@@ -565,7 +574,8 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
                 date: new Date().toISOString().split('T')[0],
                 category: 'Working Hours',
                 hours: '',
-                description: ''
+                description: '',
+                costCenter: selectedCostCenter
               });
             }}>
               <Text style={styles.cancelButton}>Cancel</Text>
@@ -634,6 +644,32 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
                 numberOfLines={3}
               />
             </View>
+
+            {/* Cost Center Selector - only show if user has multiple cost centers */}
+            {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Cost Center</Text>
+                <View style={styles.costCenterSelector}>
+                  {currentEmployee.selectedCostCenters.map((costCenter) => (
+                    <TouchableOpacity
+                      key={costCenter}
+                      style={[
+                        styles.costCenterOption,
+                        selectedCostCenter === costCenter && styles.costCenterOptionSelected
+                      ]}
+                      onPress={() => setSelectedCostCenter(costCenter)}
+                    >
+                      <Text style={[
+                        styles.costCenterOptionText,
+                        selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
+                      ]}>
+                        {costCenter}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -931,6 +967,32 @@ const styles = StyleSheet.create({
   },
   tipsScrollView: {
     maxHeight: 180,
+  },
+  costCenterSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  costCenterOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  costCenterOptionSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  costCenterOptionText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  costCenterOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
 

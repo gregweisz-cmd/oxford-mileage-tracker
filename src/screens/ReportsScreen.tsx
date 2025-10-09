@@ -190,6 +190,61 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
     setShowDailyModal(true);
   };
 
+  const handleDeleteTrip = async (tripId: string) => {
+    Alert.alert(
+      'Delete Trip',
+      'Are you sure you want to delete this trip? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DatabaseService.deleteMileageEntry(tripId);
+              
+              // Refresh the daily summary data
+              if (selectedDailySummary) {
+                // Load fresh data
+                const employee = await DatabaseService.getCurrentEmployee();
+                if (employee) {
+                  const now = new Date();
+                  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                  const freshSummaries = await DailyMileageService.getDailyMileageSummaries(employee.id, startOfMonth, endOfMonth);
+                  
+                  // Find the updated summary for the same date
+                  const updatedSummary = freshSummaries.find(s => 
+                    s.date.toDateString() === selectedDailySummary.date.toDateString()
+                  );
+                  
+                  if (updatedSummary) {
+                    // Update the selected summary with fresh data
+                    setSelectedDailySummary(updatedSummary);
+                    setDailySummaries(freshSummaries);
+                  } else {
+                    // If no trips left for this date, close the modal
+                    setShowDailyModal(false);
+                    setSelectedDailySummary(null);
+                    setDailySummaries(freshSummaries);
+                  }
+                }
+              }
+              
+              Alert.alert('Success', 'Trip deleted successfully');
+            } catch (error) {
+              console.error('Error deleting trip:', error);
+              Alert.alert('Error', 'Failed to delete trip');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const deleteEntry = async (entryId: string) => {
     Alert.alert(
       'Delete Entry',
@@ -650,7 +705,15 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
                   <View key={trip.id} style={styles.tripCard}>
                     <View style={styles.tripHeader}>
                       <Text style={styles.tripNumber}>Trip {index + 1}</Text>
-                      <Text style={styles.tripMiles}>{trip.miles.toFixed(1)} miles</Text>
+                      <View style={styles.tripHeaderRight}>
+                        <Text style={styles.tripMiles}>{trip.miles.toFixed(1)} miles</Text>
+                        <TouchableOpacity
+                          style={styles.deleteTripButton}
+                          onPress={() => handleDeleteTrip(trip.id)}
+                        >
+                          <MaterialIcons name="delete" size={20} color="#f44336" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                     <Text style={styles.tripPurpose}>{trip.purpose}</Text>
                     <Text style={styles.tripRoute}>
@@ -772,6 +835,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+  },
+  reportSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -998,10 +1066,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2196F3',
   },
+  tripHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   tripMiles: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#4CAF50',
+    marginRight: 12,
+  },
+  deleteTripButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#ffebee',
   },
   tripPurpose: {
     fontSize: 14,

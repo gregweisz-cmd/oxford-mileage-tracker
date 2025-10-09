@@ -9,6 +9,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { OxfordHouse, SavedAddress } from '../types';
@@ -23,6 +24,8 @@ interface OxfordHouseSearchInputProps {
   onHouseSelected?: (house: OxfordHouse) => void;
   allowManualEntry?: boolean;
   employeeId?: string; // Added for saved addresses
+  employeeBaseAddress?: string; // Added for state filtering
+  autoOpen?: boolean; // Automatically open search interface when component mounts
 }
 
 export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
@@ -33,6 +36,8 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
   onHouseSelected,
   allowManualEntry = true,
   employeeId, // Destructure employeeId
+  employeeBaseAddress, // Destructure employeeBaseAddress
+  autoOpen = false, // Destructure autoOpen
 }) => {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,6 +46,9 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
   const [loading, setLoading] = useState(false);
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]); // New state for saved addresses
+  const [selectedState, setSelectedState] = useState<string>(''); // State filter
+  const [availableStates, setAvailableStates] = useState<string[]>([]); // List of states
+  const [isStatePickerVisible, setIsStatePickerVisible] = useState(false);
 
   useEffect(() => {
     loadOxfordHouses();
@@ -49,13 +57,25 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     }
   }, [employeeId]);
 
+  // Auto-open search interface if autoOpen prop is true
+  useEffect(() => {
+    if (autoOpen) {
+      setIsSearchVisible(true);
+    }
+  }, [autoOpen]);
+
   useEffect(() => {
     if (searchQuery.trim()) {
       performSearch(searchQuery);
+    } else if (selectedState) {
+      // If no search query but state is selected, show only houses from that state
+      const filteredByState = allHouses.filter(h => h.state === selectedState);
+      setSearchResults(filteredByState);
     } else {
       setSearchResults(allHouses);
     }
-  }, [searchQuery, allHouses]);
+  }, [searchQuery, allHouses, selectedState]);
+
 
   const loadOxfordHouses = async () => {
     try {
@@ -63,7 +83,27 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
       await OxfordHouseService.initializeOxfordHouses();
       const houses = await OxfordHouseService.getAllOxfordHouses();
       setAllHouses(houses);
-      setSearchResults(houses);
+      
+      // Extract unique states from houses
+      const states = Array.from(new Set(houses.map(h => h.state))).sort();
+      setAvailableStates(states);
+      
+      // Set default state filter based on employee's base address
+      let defaultState = '';
+      if (employeeBaseAddress) {
+        const extractedState = OxfordHouseService.extractStateFromAddress(employeeBaseAddress);
+        if (extractedState && states.includes(extractedState)) {
+          defaultState = extractedState;
+          setSelectedState(extractedState);
+          // Filter houses by default state
+          const filteredHouses = houses.filter(h => h.state === extractedState);
+          setSearchResults(filteredHouses);
+        } else {
+          setSearchResults(houses);
+        }
+      } else {
+        setSearchResults(houses);
+      }
     } catch (error) {
       console.error('Error loading Oxford Houses:', error);
     } finally {
@@ -82,7 +122,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
 
   const performSearch = async (query: string) => {
     try {
-      const oxfordResults = await OxfordHouseService.searchOxfordHouses(query);
+      const oxfordResults = await OxfordHouseService.searchOxfordHouses(query, selectedState);
       const savedResults = await SavedAddressService.searchSavedAddresses(query, employeeId);
       
       // Combine results with saved addresses first
@@ -102,6 +142,18 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
       setSearchResults(combinedResults);
     } catch (error) {
       console.error('Error searching:', error);
+    }
+  };
+  
+  const handleStateFilterChange = async (state: string) => {
+    setSelectedState(state);
+    try {
+      const filteredResults = state 
+        ? await OxfordHouseService.getOxfordHousesByState(state)
+        : await OxfordHouseService.getAllOxfordHouses();
+      setSearchResults(filteredResults);
+    } catch (error) {
+      console.error('Error filtering by state:', error);
     }
   };
 
@@ -219,6 +271,72 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
                 <MaterialIcons name={isManualEntry ? "edit" : "search"} size={24} color="#666" style={styles.searchInputIcon} />
               </View>
 
+              {!isManualEntry && (
+                <View style={styles.stateFilterContainer}>
+                  <Text style={styles.stateFilterLabel}>Filter by State:</Text>
+                  <TouchableOpacity
+                    style={styles.statePickerButton}
+                    onPress={() => setIsStatePickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.statePickerText}>
+                      {selectedState ? selectedState : 'All States'}
+                    </Text>
+                    <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* State Picker Overlay */}
+              {isStatePickerVisible && (
+                <View style={styles.statePickerOverlay}>
+                  <View style={styles.statePickerOverlayContent}>
+                    <View style={styles.statePickerOverlayHeader}>
+                      <Text style={styles.statePickerOverlayTitle}>Select State</Text>
+                      <TouchableOpacity 
+                        onPress={() => setIsStatePickerVisible(false)}
+                        style={styles.statePickerOverlayCloseButton}
+                      >
+                        <MaterialIcons name="close" size={24} color="#666" />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <FlatList
+                      data={['', ...availableStates]}
+                      keyExtractor={(item, index) => index.toString()}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={[
+                            styles.statePickerOverlayItem,
+                            selectedState === item && styles.statePickerOverlayItemSelected
+                          ]}
+                          onPress={() => {
+                            handleStateFilterChange(item);
+                            setIsStatePickerVisible(false);
+                          }}
+                        >
+                          <Text style={[
+                            styles.statePickerOverlayItemText,
+                            selectedState === item && styles.statePickerOverlayItemTextSelected
+                          ]}>
+                            {item || 'All States'}
+                          </Text>
+                          {selectedState === item && (
+                            <MaterialIcons name="check" size={20} color="#2196F3" />
+                          )}
+                        </TouchableOpacity>
+                      )}
+                      style={styles.statePickerOverlayList}
+                      ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                          <Text style={styles.emptyText}>Loading states...</Text>
+                        </View>
+                      }
+                    />
+                  </View>
+                </View>
+              )}
+
               {allowManualEntry && !isManualEntry && (
                 <View style={styles.manualEntryContainer}>
                   <TouchableOpacity
@@ -291,6 +409,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
     </View>
   );
 };
@@ -508,5 +627,97 @@ const styles = StyleSheet.create({
     color: '#FFD700',
     fontWeight: '600',
     marginTop: 2,
+  },
+  stateFilterContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  stateFilterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  statePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    height: 50,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  statePickerText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  // State Picker Overlay Styles
+  statePickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  statePickerOverlayContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '90%',
+    maxHeight: '85%',
+    minHeight: '70%',
+    height: '80%',
+  },
+  statePickerOverlayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  statePickerOverlayTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  statePickerOverlayCloseButton: {
+    padding: 4,
+  },
+  statePickerOverlayList: {
+    flex: 1,
+  },
+  statePickerOverlayItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    minHeight: 48,
+  },
+  statePickerOverlayItemSelected: {
+    backgroundColor: '#f0f8ff',
+  },
+  statePickerOverlayItemText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  statePickerOverlayItemTextSelected: {
+    color: '#2196F3',
+    fontWeight: '600',
   },
 });

@@ -222,7 +222,7 @@ export class TestDataService {
         defaultCostCenter: 'TX-SUBG'
       },
       {
-        name: 'Goose Weisz',
+        name: 'Greg Weisz',
         email: 'greg.weisz@oxfordhouse.org',
         password: 'Gregwelcome1',
         oxfordHouseId: '5cfaed3392dabb58c03d5779',

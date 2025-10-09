@@ -1,9 +1,13 @@
 import { Platform } from 'react-native';
-import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking } from '../types';
+import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
+import { DatabaseService } from './database';
 
 // API Configuration
-// Use cloud backend URL for all platforms
-const API_BASE_URL = 'https://oxford-mileage-backend.onrender.com/api';
+// Use local backend for testing, cloud backend for production
+// For mobile devices, use the computer's local IP address instead of localhost
+const API_BASE_URL = __DEV__ 
+  ? 'http://192.168.86.101:3002/api' 
+  : 'https://oxford-mileage-backend.onrender.com/api';
 
 export interface ApiSyncConfig {
   baseUrl: string;
@@ -73,8 +77,7 @@ export class ApiSyncService {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-        },
-        timeout: this.config.timeout
+        }
       });
       
       if (response.ok) {
@@ -183,6 +186,24 @@ export class ApiSyncService {
       const timeTracking = await this.fetchTimeTracking(employeeId);
       syncData.timeTracking = timeTracking;
       
+      // Fetch daily descriptions
+      const dailyDescriptions = await this.fetchDailyDescriptions(employeeId);
+      syncData.dailyDescriptions = dailyDescriptions;
+      
+      // Sync all data to local database
+      if (mileageEntries.length > 0) {
+        await this.syncMileageEntriesToLocal(mileageEntries);
+      }
+      if (receipts.length > 0) {
+        await this.syncReceiptsToLocal(receipts);
+      }
+      if (timeTracking.length > 0) {
+        await this.syncTimeTrackingToLocal(timeTracking);
+      }
+      if (dailyDescriptions.length > 0) {
+        await this.syncDailyDescriptionsToLocal(dailyDescriptions);
+      }
+      
       this.lastSyncTime = new Date();
       await this.saveLastSyncTime(this.lastSyncTime);
       
@@ -190,7 +211,8 @@ export class ApiSyncService {
         employees: employees.length,
         mileageEntries: mileageEntries.length,
         receipts: receipts.length,
-        timeTracking: timeTracking.length
+        timeTracking: timeTracking.length,
+        dailyDescriptions: dailyDescriptions.length
       });
       
       return {
@@ -544,6 +566,8 @@ export class ApiSyncService {
         baseAddress: emp.baseAddress,
         baseAddress2: emp.baseAddress2 || '',
         costCenters: emp.costCenters ? JSON.parse(emp.costCenters) : [],
+        selectedCostCenters: emp.selectedCostCenters ? JSON.parse(emp.selectedCostCenters) : [],
+        defaultCostCenter: emp.defaultCostCenter || '',
         createdAt: new Date(emp.createdAt),
         updatedAt: new Date(emp.updatedAt)
       };
@@ -637,6 +661,376 @@ export class ApiSyncService {
       createdAt: new Date(entry.createdAt),
       updatedAt: new Date(entry.updatedAt)
     }));
+  }
+
+  /**
+   * Fetch daily descriptions from backend
+   */
+  private static async fetchDailyDescriptions(employeeId?: string): Promise<DailyDescription[]> {
+    const url = employeeId 
+      ? `${this.config.baseUrl}/daily-descriptions?employeeId=${employeeId}`
+      : `${this.config.baseUrl}/daily-descriptions`;
+      
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch daily descriptions: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.map((desc: any) => ({
+      id: desc.id,
+      employeeId: desc.employeeId,
+      date: new Date(desc.date),
+      description: desc.description,
+      costCenter: desc.costCenter,
+      createdAt: new Date(desc.createdAt),
+      updatedAt: new Date(desc.updatedAt)
+    }));
+  }
+
+  /**
+   * Sync daily descriptions from backend to local database
+   */
+  private static async syncDailyDescriptionsToLocal(dailyDescriptions: DailyDescription[]): Promise<void> {
+    try {
+      console.log(`📥 ApiSync: Syncing ${dailyDescriptions.length} daily descriptions to local database...`);
+      
+      for (const desc of dailyDescriptions) {
+        try {
+          // Check if description already exists in local database
+          const existingDesc = await DatabaseService.getDailyDescriptionByDate(desc.employeeId, desc.date);
+          
+          if (existingDesc) {
+            // Update existing description
+            await DatabaseService.updateDailyDescription(existingDesc.id, {
+              description: desc.description,
+              costCenter: desc.costCenter
+            });
+            console.log(`✅ ApiSync: Updated daily description for ${desc.date}`);
+          } else {
+            // Create new description
+            await DatabaseService.createDailyDescription({
+              employeeId: desc.employeeId,
+              date: desc.date,
+              description: desc.description,
+              costCenter: desc.costCenter || ''
+            });
+            console.log(`✅ ApiSync: Created daily description for ${desc.date}`);
+          }
+        } catch (error) {
+          console.error(`❌ ApiSync: Error syncing daily description for ${desc.date}:`, error);
+        }
+      }
+      
+      console.log(`✅ ApiSync: Daily descriptions sync completed`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing daily descriptions to local database:', error);
+    }
+  }
+
+  /**
+   * Sync mileage entries from backend to local database
+   */
+  private static async syncMileageEntriesToLocal(mileageEntries: MileageEntry[]): Promise<void> {
+    try {
+      console.log(`📥 ApiSync: Syncing ${mileageEntries.length} mileage entries to local database...`);
+      
+      for (const entry of mileageEntries) {
+        try {
+          // Check if entry already exists in local database
+          const existingEntry = await DatabaseService.getMileageEntry(entry.id);
+          
+          if (existingEntry) {
+            // Update existing entry - we'll skip this to avoid overwriting local changes
+            // In a full implementation, you'd compare timestamps to determine which is newer
+            console.log(`ℹ️ ApiSync: Mileage entry ${entry.id} already exists locally, skipping`);
+          } else {
+            // Create new entry
+            await DatabaseService.createMileageEntry({
+              employeeId: entry.employeeId,
+              oxfordHouseId: entry.oxfordHouseId,
+              costCenter: entry.costCenter || '',
+              date: entry.date,
+              startLocation: entry.startLocation,
+              endLocation: entry.endLocation,
+              purpose: entry.purpose,
+              miles: entry.miles,
+              odometerReading: entry.odometerReading,
+              notes: entry.notes,
+              hoursWorked: entry.hoursWorked || 0,
+              isGpsTracked: entry.isGpsTracked || false
+            });
+            console.log(`✅ ApiSync: Created mileage entry for ${entry.date}`);
+          }
+        } catch (error) {
+          console.error(`❌ ApiSync: Error syncing mileage entry ${entry.id}:`, error);
+        }
+      }
+      
+      console.log(`✅ ApiSync: Mileage entries sync completed`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing mileage entries to local database:', error);
+    }
+  }
+
+  /**
+   * Sync receipts from backend to local database
+   */
+  private static async syncReceiptsToLocal(receipts: Receipt[]): Promise<void> {
+    try {
+      console.log(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
+      
+      for (const receipt of receipts) {
+        try {
+          // Check if receipt already exists in local database
+          const existingReceipt = await DatabaseService.getReceipt(receipt.id);
+          
+          if (existingReceipt) {
+            // Update existing receipt - skip to avoid overwriting local changes
+            console.log(`ℹ️ ApiSync: Receipt ${receipt.id} already exists locally, skipping`);
+          } else {
+            // Create new receipt
+            await DatabaseService.createReceipt({
+              employeeId: receipt.employeeId,
+              date: receipt.date,
+              amount: receipt.amount,
+              vendor: receipt.vendor,
+              description: receipt.description,
+              category: receipt.category,
+              imageUri: receipt.imageUri,
+              costCenter: receipt.costCenter || ''
+            });
+            console.log(`✅ ApiSync: Created receipt for ${receipt.date}`);
+          }
+        } catch (error) {
+          console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, error);
+        }
+      }
+      
+      console.log(`✅ ApiSync: Receipts sync completed`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing receipts to local database:', error);
+    }
+  }
+
+  /**
+   * Sync time tracking from backend to local database
+   */
+  private static async syncTimeTrackingToLocal(timeTracking: TimeTracking[]): Promise<void> {
+    try {
+      console.log(`📥 ApiSync: Syncing ${timeTracking.length} time tracking entries to local database...`);
+      
+      // Get all existing time tracking entries for this employee to avoid duplicates
+      const existingEntries = await DatabaseService.getTimeTrackingEntries(timeTracking[0]?.employeeId || '');
+      const existingKeys = new Set(existingEntries.map(t => 
+        `${t.date.toDateString()}_${t.category}_${t.hours}`
+      ));
+      
+      let syncedCount = 0;
+      let skippedCount = 0;
+      
+      for (const tracking of timeTracking) {
+        try {
+          const trackingKey = `${tracking.date.toDateString()}_${tracking.category}_${tracking.hours}`;
+          
+          if (existingKeys.has(trackingKey)) {
+            console.log(`ℹ️ ApiSync: Time tracking for ${tracking.date} (${tracking.category}) already exists locally, skipping`);
+            skippedCount++;
+            continue;
+          }
+          
+          // Create new time tracking entry
+          await DatabaseService.createTimeTracking({
+            employeeId: tracking.employeeId,
+            date: tracking.date,
+            hours: tracking.hours,
+            category: tracking.category,
+            description: tracking.description,
+            costCenter: tracking.costCenter || ''
+          });
+          console.log(`✅ ApiSync: Created time tracking for ${tracking.date} (${tracking.category})`);
+          syncedCount++;
+        } catch (error) {
+          console.error(`❌ ApiSync: Error syncing time tracking ${tracking.id}:`, error);
+        }
+      }
+      
+      console.log(`✅ ApiSync: Time tracking sync completed - ${syncedCount} synced, ${skippedCount} skipped`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing time tracking to local database:', error);
+    }
+  }
+
+  /**
+   * Sync mileage entries from backend for a specific employee
+   */
+  static async syncMileageEntriesFromBackend(employeeId: string): Promise<SyncResult> {
+    try {
+      console.log(`📥 ApiSync: Syncing mileage entries for employee ${employeeId}...`);
+      
+      const mileageEntries = await this.fetchMileageEntries(employeeId);
+      
+      if (mileageEntries.length > 0) {
+        await this.syncMileageEntriesToLocal(mileageEntries);
+      }
+      
+      console.log(`✅ ApiSync: Mileage entries sync completed for employee ${employeeId}: ${mileageEntries.length} entries`);
+      
+      return {
+        success: true,
+        data: { mileageEntries },
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      console.error(`❌ ApiSync: Error syncing mileage entries for employee ${employeeId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
+   * Sync receipts from backend for a specific employee
+   */
+  static async syncReceiptsFromBackend(employeeId: string): Promise<SyncResult> {
+    try {
+      console.log(`📥 ApiSync: Syncing receipts for employee ${employeeId}...`);
+      
+      const receipts = await this.fetchReceipts(employeeId);
+      
+      if (receipts.length > 0) {
+        await this.syncReceiptsToLocal(receipts);
+      }
+      
+      console.log(`✅ ApiSync: Receipts sync completed for employee ${employeeId}: ${receipts.length} receipts`);
+      
+      return {
+        success: true,
+        data: { receipts },
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      console.error(`❌ ApiSync: Error syncing receipts for employee ${employeeId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
+   * Sync time tracking from backend for a specific employee
+   */
+  static async syncTimeTrackingFromBackend(employeeId: string): Promise<SyncResult> {
+    try {
+      console.log(`📥 ApiSync: Syncing time tracking for employee ${employeeId}...`);
+      
+      const timeTracking = await this.fetchTimeTracking(employeeId);
+      
+      // Safety check: if there are too many entries, something might be wrong
+      if (timeTracking.length > 1000) {
+        console.warn(`⚠️ ApiSync: Too many time tracking entries (${timeTracking.length}), skipping sync to prevent issues`);
+        return {
+          success: false,
+          error: `Too many time tracking entries (${timeTracking.length}), skipping sync`,
+          timestamp: new Date()
+        };
+      }
+      
+      if (timeTracking.length > 0) {
+        await this.syncTimeTrackingToLocal(timeTracking);
+      }
+      
+      console.log(`✅ ApiSync: Time tracking sync completed for employee ${employeeId}: ${timeTracking.length} entries`);
+      
+      return {
+        success: true,
+        data: { timeTracking },
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      console.error(`❌ ApiSync: Error syncing time tracking for employee ${employeeId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
+   * Sync daily descriptions from backend for a specific employee
+   */
+  static async syncDailyDescriptionsFromBackend(employeeId: string): Promise<SyncResult> {
+    try {
+      console.log(`📥 ApiSync: Syncing daily descriptions for employee ${employeeId}...`);
+      
+      const dailyDescriptions = await this.fetchDailyDescriptions(employeeId);
+      
+      if (dailyDescriptions.length > 0) {
+        await this.syncDailyDescriptionsToLocal(dailyDescriptions);
+      }
+      
+      console.log(`✅ ApiSync: Daily descriptions sync completed for employee ${employeeId}: ${dailyDescriptions.length} descriptions`);
+      
+      return {
+        success: true,
+        data: { dailyDescriptions },
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      console.error(`❌ ApiSync: Error syncing daily descriptions for employee ${employeeId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
+   * Sync all data from backend for a specific employee
+   */
+  static async syncAllDataFromBackend(employeeId: string): Promise<SyncResult> {
+    try {
+      console.log(`📥 ApiSync: Syncing all data for employee ${employeeId}...`);
+      
+      const results = await Promise.all([
+        this.syncMileageEntriesFromBackend(employeeId),
+        this.syncReceiptsFromBackend(employeeId),
+        this.syncTimeTrackingFromBackend(employeeId),
+        this.syncDailyDescriptionsFromBackend(employeeId)
+      ]);
+      
+      const allSuccessful = results.every(result => result.success);
+      
+      if (allSuccessful) {
+        console.log(`✅ ApiSync: All data sync completed successfully for employee ${employeeId}`);
+      } else {
+        console.error(`❌ ApiSync: Some data sync operations failed for employee ${employeeId}`);
+      }
+      
+      return {
+        success: allSuccessful,
+        data: results,
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      console.error(`❌ ApiSync: Error syncing all data for employee ${employeeId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
   }
 
   /**

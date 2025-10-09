@@ -472,12 +472,17 @@ export class AnomalyDetectionService {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       
-      const recent = recentEntries.filter(entry => entry.date >= sevenDaysAgo);
+      const recent = recentEntries.filter(entry => {
+        const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
+        return entryDate >= sevenDaysAgo;
+      });
       
       // Check for potential duplicates with smarter logic
       const potentialDuplicates = recent.filter(entry => {
         // Must be on the same date to be a true duplicate
-        const sameDate = entry.date.toDateString() === newEntry.date.toDateString();
+        const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
+        const newEntryDate = newEntry.date instanceof Date ? newEntry.date : new Date(newEntry.date);
+        const sameDate = entryDate.toDateString() === newEntryDate.toDateString();
         
         // Must have very similar details
         const sameRoute = entry.startLocation === newEntry.startLocation && 
@@ -486,8 +491,14 @@ export class AnomalyDetectionService {
         const samePurpose = entry.purpose === newEntry.purpose;
         
         // Must be created within a short time window (not trip chaining)
-        const timeDiff = Math.abs(entry.createdAt.getTime() - newEntry.createdAt.getTime());
-        const withinShortTime = timeDiff < 30 * 60 * 1000; // Within 30 minutes
+        // Only check time if both entries have createdAt timestamps
+        let withinShortTime = true; // Default to true if no timestamps available
+        if (entry.createdAt && newEntry.createdAt) {
+          const entryTime = entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
+          const newEntryTime = newEntry.createdAt instanceof Date ? newEntry.createdAt : new Date(newEntry.createdAt);
+          const timeDiff = Math.abs(entryTime.getTime() - newEntryTime.getTime());
+          withinShortTime = timeDiff < 30 * 60 * 1000; // Within 30 minutes
+        }
         
         return sameDate && sameRoute && similarMiles && samePurpose && withinShortTime;
       });
@@ -505,7 +516,9 @@ export class AnomalyDetectionService {
       
       // Check for trips that are suspiciously similar but not exact duplicates
       const suspiciousTrips = recent.filter(entry => {
-        const sameDate = entry.date.toDateString() === newEntry.date.toDateString();
+        const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
+        const newEntryDate = newEntry.date instanceof Date ? newEntry.date : new Date(newEntry.date);
+        const sameDate = entryDate.toDateString() === newEntryDate.toDateString();
         const sameRoute = entry.startLocation === newEntry.startLocation && 
                          entry.endLocation === newEntry.endLocation;
         const similarMiles = Math.abs(entry.miles - newEntry.miles) < 5;

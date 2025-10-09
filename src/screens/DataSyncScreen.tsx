@@ -150,24 +150,18 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
         return;
       }
       
-      // Get all data from local database
-      const [employees, mileageEntries, receipts, timeTracking] = await Promise.all([
-        DatabaseService.getEmployees(),
-        DatabaseService.getMileageEntries(),
-        DatabaseService.getReceipts(),
-        DatabaseService.getTimeTrackingEntries()
-      ]);
+      // Get current employee
+      const currentEmployee = await DatabaseService.getCurrentEmployee();
+      if (!currentEmployee) {
+        Alert.alert('No Employee', 'Please log in first to sync data.');
+        return;
+      }
       
-      // Sync to cloud backend
-      const syncResult = await ApiSyncService.syncToBackend({
-        employees,
-        mileageEntries,
-        receipts,
-        timeTracking
-      });
+      // Sync FROM cloud backend to local database
+      const syncResult = await ApiSyncService.syncAllDataFromBackend(currentEmployee.id);
       
       if (syncResult.success) {
-        Alert.alert('Sync Successful', 'Your data has been successfully synced to the cloud backend!');
+        Alert.alert('Sync Successful', 'Your data has been successfully synced from the cloud backend!');
         // Refresh status
         loadSyncStatus();
       } else {
@@ -334,7 +328,7 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Manual Sync Actions</Text>
           <Text style={styles.sectionDescription}>
-            Use these buttons to manually sync your data with the web portal.
+            Use these buttons to manually sync your data with the web portal. "Sync from Backend" pulls the latest data from the web portal to your mobile app.
           </Text>
           
           <View style={styles.buttonRow}>
@@ -345,7 +339,7 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
             >
               <MaterialIcons name="sync" size={24} color="#fff" />
               <Text style={styles.actionButtonText}>
-                {loading ? 'Syncing...' : 'Sync All Data'}
+                {loading ? 'Syncing...' : 'Sync from Backend'}
               </Text>
             </TouchableOpacity>
             

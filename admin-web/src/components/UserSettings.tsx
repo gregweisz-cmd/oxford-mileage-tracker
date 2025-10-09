@@ -141,10 +141,12 @@ interface UserSettingsProps {
 interface UserProfile {
   id: string;
   name: string;
+  preferredName: string;
   email: string;
   position: string;
   phoneNumber: string;
   password: string;
+  oxfordHouseId?: string;
   costCenters: string[];
   baseAddresses: {
     address1: string;
@@ -166,6 +168,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [profile, setProfile] = useState<UserProfile>({
     id: employeeId,
     name: '',
+    preferredName: '',
     email: '',
     position: '',
     phoneNumber: '',
@@ -207,23 +210,74 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
   const loadUserProfile = async () => {
     try {
-      // Load user profile from localStorage or API
-      const savedProfile = localStorage.getItem(`userProfile_${employeeId}`);
-      if (savedProfile) {
-        setProfile(JSON.parse(savedProfile));
-      } else {
-        // Load from API or set default values
+      setLoading(true);
+      
+      // Load employee data from API
+      const response = await fetch(`http://localhost:3002/api/employees/${employeeId}`);
+      if (response.ok) {
+        const employeeData = await response.json();
+        console.log('🔍 Loaded employee data:', employeeData);
+        console.log('🔍 preferredName from API:', employeeData.preferredName);
+        
+        // Parse cost centers if they're stored as JSON string
+        let costCenters = ['NC.F-SAPTBG']; // Default fallback
+        if (employeeData.costCenters) {
+          try {
+            costCenters = typeof employeeData.costCenters === 'string' 
+              ? JSON.parse(employeeData.costCenters) 
+              : employeeData.costCenters;
+          } catch (parseErr) {
+            console.log('Failed to parse costCenters:', employeeData.costCenters);
+            costCenters = ['NC.F-SAPTBG'];
+          }
+        }
+        
+        // Parse selected cost centers if they exist
+        let selectedCostCenters = costCenters;
+        if (employeeData.selectedCostCenters) {
+          try {
+            selectedCostCenters = typeof employeeData.selectedCostCenters === 'string' 
+              ? JSON.parse(employeeData.selectedCostCenters) 
+              : employeeData.selectedCostCenters;
+          } catch (parseErr) {
+            console.log('Failed to parse selectedCostCenters:', employeeData.selectedCostCenters);
+            selectedCostCenters = costCenters;
+          }
+        }
+        
         setProfile(prev => ({
           ...prev,
-          name: 'Current User',
-          email: 'user@oxfordhouse.org',
-          position: 'Field Staff',
-          phoneNumber: '555-0123',
+          id: employeeData.id,
+          name: employeeData.name || 'Current User',
+          preferredName: employeeData.preferredName || '',
+          email: employeeData.email || 'user@oxfordhouse.org',
+          position: employeeData.position || 'Field Staff',
+          phoneNumber: employeeData.phoneNumber || '555-0123',
+          costCenters: selectedCostCenters,
+          baseAddresses: {
+            address1: employeeData.baseAddress || '',
+            address2: employeeData.baseAddress2 || '',
+          },
+          signature: employeeData.signature || '',
+          oxfordHouseId: employeeData.oxfordHouseId || '',
         }));
+      } else {
+        throw new Error('Failed to load employee data');
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
       showMessage('error', 'Failed to load user profile.');
+      
+      // Fallback to default values
+      setProfile(prev => ({
+        ...prev,
+        name: 'Current User',
+        email: 'user@oxfordhouse.org',
+        position: 'Field Staff',
+        phoneNumber: '555-0123',
+      }));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -235,15 +289,49 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const handleSaveProfile = async () => {
     setLoading(true);
     try {
-      // Save to localStorage
-      localStorage.setItem(`userProfile_${employeeId}`, JSON.stringify(profile));
+      // Prepare data for API update
+      const updateData = {
+        name: profile.name,
+        preferredName: profile.preferredName,
+        email: profile.email,
+        oxfordHouseId: profile.oxfordHouseId || '',
+        position: profile.position,
+        phoneNumber: profile.phoneNumber,
+        baseAddress: profile.baseAddresses.address1,
+        baseAddress2: profile.baseAddresses.address2,
+        costCenters: JSON.stringify(profile.costCenters),
+        selectedCostCenters: JSON.stringify(profile.costCenters),
+        defaultCostCenter: profile.costCenters[0] || '',
+        signature: profile.signature,
+      };
       
-      // Call API to update profile
-      // await updateUserProfile(profile);
+      // Log the data being sent
+      console.log('Saving profile data:', updateData);
       
-      showMessage('success', 'Profile updated successfully!');
-      if (onSettingsUpdate) {
-        onSettingsUpdate(profile);
+      // Update via API
+      const response = await fetch(`http://localhost:3002/api/employees/${employeeId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Save response from server:', result);
+        showMessage('success', 'Profile updated successfully!');
+        if (onSettingsUpdate) {
+          onSettingsUpdate(profile);
+        }
+        // Reload the profile to confirm changes were saved
+        console.log('🔄 Reloading profile to verify changes...');
+        await loadUserProfile();
+        console.log('✅ Profile reloaded after save');
+      } else {
+        const errorData = await response.json();
+        console.error('Server error response:', errorData);
+        throw new Error(errorData.error || 'Failed to update profile');
       }
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -370,10 +458,19 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <TextField
-                label="Full Name"
+                label="Full Name (Legal Name)"
                 value={profile.name}
                 onChange={(e) => setProfile(prev => ({ ...prev, name: e.target.value }))}
                 sx={{ minWidth: 250 }}
+                helperText="Used for official reports and documents"
+              />
+              <TextField
+                label="Preferred Name"
+                value={profile.preferredName}
+                onChange={(e) => setProfile(prev => ({ ...prev, preferredName: e.target.value }))}
+                sx={{ minWidth: 250 }}
+                helperText="Display name for app and web portal"
+                placeholder="Leave empty to use legal name"
               />
               <TextField
                 label="Email Address"
@@ -640,7 +737,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <FormControl fullWidth>
                 <InputLabel>Auto-Save Interval</InputLabel>
                 <Select
-                  value={profile.preferences.autoSaveInterval}
+                  value={profile.preferences.autoSaveInterval || 30}
                   onChange={(e) => setProfile(prev => ({
                     ...prev,
                     preferences: { ...prev.preferences, autoSaveInterval: e.target.value as number }
@@ -656,7 +753,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <FormControl fullWidth>
                 <InputLabel>Default Currency</InputLabel>
                 <Select
-                  value={profile.preferences.defaultCurrency}
+                  value={profile.preferences.defaultCurrency || 'USD'}
                   onChange={(e) => setProfile(prev => ({
                     ...prev,
                     preferences: { ...prev.preferences, defaultCurrency: e.target.value }
@@ -671,7 +768,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <FormControl fullWidth>
                 <InputLabel>Theme</InputLabel>
                 <Select
-                  value={profile.preferences.theme}
+                  value={profile.preferences.theme || 'light'}
                   onChange={(e) => setProfile(prev => ({
                     ...prev,
                     preferences: { ...prev.preferences, theme: e.target.value as 'light' | 'dark' }

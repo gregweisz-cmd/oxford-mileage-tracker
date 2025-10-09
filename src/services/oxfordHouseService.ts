@@ -285,50 +285,136 @@ export class OxfordHouseService {
     }
   ];
 
+  // Cache for Oxford Houses
+  private static cachedHouses: OxfordHouse[] | null = null;
+  private static cacheTimestamp: number | null = null;
+  private static readonly CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
   static async initializeOxfordHouses(): Promise<void> {
     try {
-      console.log('Initializing Oxford Houses...');
+      console.log('Initializing Oxford Houses from backend API...');
       
-      // Check if houses already exist
-      const existingHouses = await this.getAllOxfordHouses();
+      // Fetch from backend API
+      await this.fetchFromBackend();
       
-      if (existingHouses.length === 0) {
-        console.log('No Oxford Houses found, creating sample data...');
-        
-        // Create sample houses
-        for (const houseData of this.SAMPLE_HOUSES) {
-          await DatabaseService.createOxfordHouse(houseData);
-        }
-        
-        console.log(`Created ${this.SAMPLE_HOUSES.length} Oxford Houses`);
-      } else {
-        console.log(`Found ${existingHouses.length} existing Oxford Houses`);
-      }
+      console.log(`✅ Initialized ${this.cachedHouses?.length || 0} Oxford Houses from live data`);
     } catch (error) {
       console.error('Error initializing Oxford Houses:', error);
+      
+      // Fallback to local database if API fails
+      try {
+        const localHouses = await DatabaseService.getOxfordHouses();
+        if (localHouses.length > 0) {
+          console.log(`⚠️ Using ${localHouses.length} Oxford Houses from local database`);
+          this.cachedHouses = localHouses;
+        }
+      } catch (dbError) {
+        console.error('Error loading from local database:', dbError);
+      }
+    }
+  }
+
+  private static async fetchFromBackend(): Promise<void> {
+    try {
+      const API_BASE_URL = __DEV__ 
+        ? 'http://192.168.86.101:3002/api' 
+        : 'https://oxford-mileage-backend.onrender.com/api';
+      
+      const response = await fetch(`${API_BASE_URL}/oxford-houses`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Oxford Houses: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Convert API data to OxfordHouse format
+      this.cachedHouses = data.map((house: any, index: number) => ({
+        id: house.id || `oh_${index}`,
+        name: house.name,
+        address: house.address,
+        city: house.city,
+        state: house.state,
+        zipCode: house.zip,
+        phoneNumber: house.phoneNumber || '',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }));
+      
+      this.cacheTimestamp = Date.now();
+      
+      console.log(`✅ Fetched ${this.cachedHouses?.length || 0} Oxford Houses from backend API`);
+    } catch (error) {
+      console.error('❌ Error fetching Oxford Houses from backend:', error);
       throw error;
     }
   }
 
   static async getAllOxfordHouses(): Promise<OxfordHouse[]> {
-    return await DatabaseService.getOxfordHouses();
+    // Check if cache is still valid
+    if (this.cachedHouses && this.cacheTimestamp && (Date.now() - this.cacheTimestamp < this.CACHE_TTL)) {
+      return this.cachedHouses;
+    }
+    
+    // Cache is stale or empty, fetch fresh data
+    try {
+      await this.fetchFromBackend();
+      return this.cachedHouses || [];
+    } catch (error) {
+      console.error('Error fetching Oxford Houses:', error);
+      
+      // Try local database as fallback
+      try {
+        return await DatabaseService.getOxfordHouses();
+      } catch (dbError) {
+        console.error('Error loading from local database:', dbError);
+        return [];
+      }
+    }
   }
 
-  static async searchOxfordHouses(query: string): Promise<OxfordHouse[]> {
-    if (!query.trim()) {
+  static async searchOxfordHouses(query: string, filterState?: string): Promise<OxfordHouse[]> {
+    if (!query.trim() && !filterState) {
       return await this.getAllOxfordHouses();
     }
 
     const allHouses = await this.getAllOxfordHouses();
-    const searchTerm = query.toLowerCase().trim();
+    let filteredHouses = allHouses;
+    
+    // Apply state filter first if provided
+    if (filterState) {
+      filteredHouses = filteredHouses.filter(house => 
+        house.state.toLowerCase() === filterState.toLowerCase()
+      );
+    }
+    
+    // Apply search query if provided
+    if (query.trim()) {
+      const searchTerm = query.toLowerCase().trim();
+      filteredHouses = filteredHouses.filter(house => 
+        house.name.toLowerCase().includes(searchTerm) ||
+        house.address.toLowerCase().includes(searchTerm) ||
+        house.city.toLowerCase().includes(searchTerm) ||
+        house.state.toLowerCase().includes(searchTerm) ||
+        house.zipCode.includes(searchTerm)
+      );
+    }
 
+    return filteredHouses;
+  }
+  
+  static async getOxfordHousesByState(state: string): Promise<OxfordHouse[]> {
+    const allHouses = await this.getAllOxfordHouses();
     return allHouses.filter(house => 
-      house.name.toLowerCase().includes(searchTerm) ||
-      house.address.toLowerCase().includes(searchTerm) ||
-      house.city.toLowerCase().includes(searchTerm) ||
-      house.state.toLowerCase().includes(searchTerm) ||
-      house.zipCode.includes(searchTerm)
+      house.state.toLowerCase() === state.toLowerCase()
     );
+  }
+  
+  static extractStateFromAddress(address: string): string | null {
+    // Try to extract state abbreviation from address
+    // Common patterns: "City, ST Zip" or "City, ST" or just "ST"
+    const stateMatch = address.match(/,\s*([A-Z]{2})[\s,]/);
+    return stateMatch ? stateMatch[1] : null;
   }
 
   static async getOxfordHouseById(id: string): Promise<OxfordHouse | null> {
@@ -337,10 +423,15 @@ export class OxfordHouseService {
   }
 
   static formatHouseDisplay(house: OxfordHouse): string {
-    return `${house.name} - ${house.address}, ${house.city}, ${house.state} ${house.zipCode}`;
+    return `${house.name} (${house.address}, ${house.city}, ${house.state} ${house.zipCode})`;
   }
 
   static formatHouseAddress(house: OxfordHouse): string {
     return `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`;
+  }
+  
+  static formatHouseForSaving(house: OxfordHouse): string {
+    // Format: "OH McLelland (338 W McLelland Ave, Mooresville, NC 28115)"
+    return `${house.name} (${house.address}, ${house.city}, ${house.state} ${house.zipCode})`;
   }
 }

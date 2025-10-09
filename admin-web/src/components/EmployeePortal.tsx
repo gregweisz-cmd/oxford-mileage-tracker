@@ -52,13 +52,20 @@ import {
   FileUpload,
   Refresh
 } from '@mui/icons-material';
-import { DataSyncService } from '../services/dataSyncService';
+import { DataSyncService, Employee, MileageEntry, Receipt as ReceiptType, TimeTracking } from '../services/dataSyncService';
 import { SimpleReportService } from '../services/simpleReportService';
 import { AdvancedTemplateService } from '../services/advancedTemplateService';
 
 interface EmployeePortalProps {
   employee: any;
   onBack?: () => void;
+}
+
+interface EmployeePortalData {
+  employees: Employee[];
+  mileageEntries: MileageEntry[];
+  receipts: ReceiptType[];
+  timeTracking: TimeTracking[];
 }
 
 interface TabPanelProps {
@@ -105,7 +112,7 @@ const COST_CENTERS = [
 
 export default function EmployeePortal({ employee, onBack }: EmployeePortalProps) {
   const [activeTab, setActiveTab] = useState(0);
-  const [data, setData] = useState({
+  const [data, setData] = useState<EmployeePortalData>({
     employees: [],
     mileageEntries: [],
     receipts: [],

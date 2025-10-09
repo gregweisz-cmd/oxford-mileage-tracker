@@ -5,8 +5,12 @@ const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const multer = require('multer');
 const XLSX = require('xlsx');
+const http = require('http');
+const WebSocket = require('ws');
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3002;
 
 // Middleware
@@ -30,6 +34,117 @@ const DB_PATH = path.join(__dirname, '../../oxford_tracker.db');
 // Database connection
 let db;
 
+// WebSocket clients management
+const connectedClients = new Set();
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+  console.log('🔌 WebSocket client connected');
+  connectedClients.add(ws);
+  
+  // Send welcome message
+  ws.send(JSON.stringify({
+    type: 'connection_established',
+    timestamp: new Date().toISOString()
+  }));
+  
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      handleWebSocketMessage(ws, data);
+    } catch (error) {
+      console.error('❌ WebSocket message parsing error:', error);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Invalid message format'
+      }));
+    }
+  });
+  
+  ws.on('close', () => {
+    console.log('🔌 WebSocket client disconnected');
+    connectedClients.delete(ws);
+  });
+  
+  ws.on('error', (error) => {
+    console.error('❌ WebSocket error:', error);
+    connectedClients.delete(ws);
+  });
+});
+
+// Handle WebSocket messages
+function handleWebSocketMessage(ws, data) {
+  switch (data.type) {
+    case 'heartbeat':
+      ws.send(JSON.stringify({ type: 'heartbeat_response' }));
+      break;
+      
+    case 'refresh_request':
+      handleRefreshRequest(ws, data.data);
+      break;
+      
+    case 'data_change':
+      handleDataChangeNotification(data.data);
+      break;
+      
+    default:
+      console.log('🔄 Unknown WebSocket message type:', data.type);
+  }
+}
+
+// Handle refresh requests
+function handleRefreshRequest(ws, requestData) {
+  console.log('🔄 Handling refresh request:', requestData);
+  
+  // Send refresh notification to all clients
+  broadcastToClients({
+    type: 'sync_request',
+    data: requestData
+  });
+}
+
+// Handle data change notifications
+function handleDataChangeNotification(updateData) {
+  console.log('🔄 Broadcasting data change:', updateData);
+  
+  // Broadcast update to all connected clients
+  broadcastToClients({
+    type: 'data_update',
+    data: updateData
+  });
+}
+
+// Broadcast message to all connected clients
+function broadcastToClients(message) {
+  const messageStr = JSON.stringify(message);
+  connectedClients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      try {
+        client.send(messageStr);
+      } catch (error) {
+        console.error('❌ Error sending WebSocket message:', error);
+        connectedClients.delete(client);
+      }
+    }
+  });
+}
+
+// Helper function to broadcast data changes
+function broadcastDataChange(type, action, data, employeeId = null) {
+  const update = {
+    type,
+    action,
+    data,
+    timestamp: new Date(),
+    employeeId
+  };
+  
+  broadcastToClients({
+    type: 'data_update',
+    data: update
+  });
+}
+
 function initDatabase() {
   return new Promise((resolve, reject) => {
     db = new sqlite3.Database(DB_PATH, (err) => {
@@ -43,6 +158,76 @@ function initDatabase() {
         ensureTablesExist().then(resolve).catch(reject);
       }
     });
+  });
+}
+
+async function cleanupDuplicates() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      console.log('🧹 Cleaning up duplicate entries...');
+      
+      // Clean up duplicate mileage entries
+      await new Promise((resolveM, rejectM) => {
+        db.run(`
+          DELETE FROM mileage_entries 
+          WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY employeeId, date, startLocation, endLocation, miles 
+                ORDER BY createdAt DESC
+              ) as rn
+              FROM mileage_entries
+            ) WHERE rn = 1
+          )
+        `, (err) => {
+          if (err) {
+            console.error('❌ Error cleaning up duplicate mileage entries:', err);
+            rejectM(err);
+          } else {
+            db.get('SELECT COUNT(*) as count FROM mileage_entries', (countErr, row) => {
+              if (!countErr) {
+                console.log(`✅ Duplicate mileage entries cleaned up - ${row.count} remaining`);
+              }
+              resolveM();
+            });
+          }
+        });
+      });
+      
+      // Clean up duplicate time tracking entries
+      await new Promise((resolveT, rejectT) => {
+        db.run(`
+          DELETE FROM time_tracking 
+          WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY employeeId, date, category, hours 
+                ORDER BY createdAt DESC
+              ) as rn
+              FROM time_tracking
+            ) WHERE rn = 1
+          )
+        `, (err) => {
+          if (err) {
+            console.error('❌ Error cleaning up duplicate time tracking entries:', err);
+            rejectT(err);
+          } else {
+            db.get('SELECT COUNT(*) as count FROM time_tracking', (countErr, row) => {
+              if (!countErr) {
+                console.log(`✅ Duplicate time tracking entries cleaned up - ${row.count} remaining`);
+              }
+              resolveT();
+            });
+          }
+        });
+      });
+      
+      console.log('✅ All duplicate entries cleaned up');
+      resolve();
+    } catch (error) {
+      console.error('❌ Error during cleanup:', error);
+      reject(error);
+    }
   });
 }
 
@@ -61,6 +246,10 @@ function ensureTablesExist() {
         baseAddress TEXT NOT NULL,
         baseAddress2 TEXT DEFAULT '',
         costCenters TEXT DEFAULT '[]',
+        selectedCostCenters TEXT DEFAULT '[]',
+        defaultCostCenter TEXT DEFAULT '',
+        preferredName TEXT DEFAULT '',
+        signature TEXT DEFAULT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
@@ -110,6 +299,16 @@ function ensureTablesExist() {
         id INTEGER PRIMARY KEY,
         employeeId TEXT NOT NULL,
         lastLogin TEXT NOT NULL
+      )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS daily_descriptions (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        date TEXT NOT NULL,
+        description TEXT NOT NULL,
+        costCenter TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
       )`);
 
       // Create cost center management tables
@@ -221,29 +420,133 @@ function ensureTablesExist() {
         createdAt TEXT NOT NULL
       )`);
 
+      // Add missing columns to existing employees table if they don't exist
+      // Check if columns exist before adding them
+      db.all(`PRAGMA table_info(employees)`, (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(col => col.name);
+          
+          if (!columnNames.includes('selectedCostCenters')) {
+            db.run(`ALTER TABLE employees ADD COLUMN selectedCostCenters TEXT DEFAULT '[]'`, (err) => {
+              if (err) console.log('Note: selectedCostCenters column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('defaultCostCenter')) {
+            db.run(`ALTER TABLE employees ADD COLUMN defaultCostCenter TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: defaultCostCenter column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('signature')) {
+            db.run(`ALTER TABLE employees ADD COLUMN signature TEXT DEFAULT NULL`, (err) => {
+              if (err) console.log('Note: signature column may already exist');
+              else console.log('✅ Added signature column to employees table');
+            });
+          }
+          
+          if (!columnNames.includes('preferredName')) {
+            db.run(`ALTER TABLE employees ADD COLUMN preferredName TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: preferredName column may already exist');
+              else console.log('✅ Added preferredName column to employees table');
+            });
+          }
+        }
+      });
+
+      // Add missing columns to existing mileage_entries table if they don't exist
+      db.all(`PRAGMA table_info(mileage_entries)`, (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(col => col.name);
+          
+          if (!columnNames.includes('costCenter')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN costCenter TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: costCenter column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('startLocationName')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN startLocationName TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: startLocationName column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('startLocationAddress')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN startLocationAddress TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: startLocationAddress column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('startLocationLat')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN startLocationLat REAL DEFAULT 0`, (err) => {
+              if (err) console.log('Note: startLocationLat column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('startLocationLng')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN startLocationLng REAL DEFAULT 0`, (err) => {
+              if (err) console.log('Note: startLocationLng column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('endLocationName')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN endLocationName TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: endLocationName column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('endLocationAddress')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN endLocationAddress TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: endLocationAddress column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('endLocationLat')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN endLocationLat REAL DEFAULT 0`, (err) => {
+              if (err) console.log('Note: endLocationLat column may already exist');
+            });
+          }
+          
+          if (!columnNames.includes('endLocationLng')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN endLocationLng REAL DEFAULT 0`, (err) => {
+              if (err) console.log('Note: endLocationLng column may already exist');
+            });
+          }
+        }
+      });
+
+      // Add missing columns to existing receipts table if they don't exist
+      db.all(`PRAGMA table_info(receipts)`, (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(col => col.name);
+          
+          if (!columnNames.includes('costCenter')) {
+            db.run(`ALTER TABLE receipts ADD COLUMN costCenter TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: costCenter column may already exist');
+            });
+          }
+        }
+      });
+
+      // Add missing columns to existing time_tracking table if they don't exist
+      db.all(`PRAGMA table_info(time_tracking)`, (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(col => col.name);
+          
+          if (!columnNames.includes('costCenter')) {
+            db.run(`ALTER TABLE time_tracking ADD COLUMN costCenter TEXT DEFAULT ''`, (err) => {
+              if (err) console.log('Note: costCenter column may already exist');
+            });
+          }
+        }
+      });
+
       // Insert sample employees if they don't exist
       const now = new Date().toISOString();
       
-      db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-              ['emp1', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'iitywim', 'house1', 'Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["AL-SOR"]', now, now]);
-      
-      // Add mobile app employee
-      db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-              ['mg71acdmrlh5uvfa50a', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'iitywim', 'test-house-001', 'Regional Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["AL-SOR", "G&A", "Fundraising"]', now, now]);
-
-      db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-              ['emp2', 'Sarah Johnson', 'sarah.johnson@oxfordhouse.org', 'password123', 'house2', 'Case Manager', '555-0124', '123 Main St Charlotte, NC 28201', '', '["CC001", "CC002"]', now, now]);
-
-      db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-              ['emp3', 'Mike Rodriguez', 'mike.rodriguez@oxfordhouse.org', 'secure456', 'house3', 'House Manager', '555-0125', '456 Oak Ave Raleigh, NC 27601', '', '["CC003"]', now, now]);
-
-      db.run(`INSERT OR IGNORE INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-              ['emp4', 'Lisa Chen', 'lisa.chen@oxfordhouse.org', 'test789', 'house4', 'Administrative Assistant', '555-0126', '789 Pine St Asheville, NC 28801', '', '["CC001", "CC004"]', now, now]);
+      // REMOVED: All test employees (emp1, emp2, emp3, emp4)
+      // Using bulk-imported employee data only
+      // Bulk import employees have IDs starting with mgfft...
 
       // Insert sample cost centers if they don't exist
       db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
@@ -266,48 +569,18 @@ function ensureTablesExist() {
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
               ['cc5', 'CC004', 'Cost Center 004', 'Administrative services', 1, now, now]);
 
-      // Insert sample mileage entries for testing
-      const currentDate = new Date();
-      const currentMonth = currentDate.getMonth() + 1;
-      const currentYear = currentDate.getFullYear();
-      
-      // Add some sample mileage entries for the current month
-      db.run(`INSERT OR IGNORE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['mile1', 'emp1', 'house1', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-15`, 45000, '230 Wagner St, Troutman, NC 28166', '542 Main Ave SE Hickory, NC', 'Pick up U-haul for house move', 15.2, 'U-haul pickup', 2.5, 1, now, now]);
-
-      db.run(`INSERT OR IGNORE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['mile2', 'emp1', 'house1', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-15`, 45015, '542 Main Ave SE Hickory, NC', '23 Deer Run Dr Asheville, NC', 'House stabilization', 45.8, 'House stabilization work', 3.0, 1, now, now]);
-
-      db.run(`INSERT OR IGNORE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['mile3', 'emp2', 'house2', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-16`, 32000, '123 Main St Charlotte, NC 28201', '456 Oak Ave Raleigh, NC 27601', 'Client visit', 25.5, 'Client meeting', 4.0, 1, now, now]);
-
-      // Add some sample receipts
-      db.run(`INSERT OR IGNORE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['receipt1', 'emp1', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-15`, 89.99, 'U-Haul', 'Truck rental', 'Rental Car', '', now, now]);
-
-      db.run(`INSERT OR IGNORE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['receipt2', 'emp1', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-15`, 45.50, 'Shell', 'Gas for rental truck', 'Rental Car Fuel', '', now, now]);
-
-      db.run(`INSERT OR IGNORE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['receipt3', 'emp2', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-16`, 25.50, 'Starbucks', 'Coffee meeting', 'Per Diem', '', now, now]);
-
-      // Add some sample time tracking
-      db.run(`INSERT OR IGNORE INTO time_tracking (id, employeeId, date, category, hours, description, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['time1', 'emp1', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-15`, 'G&A Hours', 8.0, 'Regular work hours', now, now]);
-
-      db.run(`INSERT OR IGNORE INTO time_tracking (id, employeeId, date, category, hours, description, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              ['time2', 'emp2', `${currentYear}-${currentMonth.toString().padStart(2, '0')}-16`, 'G&A Hours', 8.0, 'Regular work hours', now, now]);
+      // REMOVED: All sample mileage, receipt, and time tracking entries
+      // Real data will come from mobile app and web portal
 
       console.log('✅ All tables ensured to exist with sample data');
-      resolve();
+      
+      // Clean up duplicate entries (mileage, time tracking, etc.)
+      cleanupDuplicates().then(() => {
+        resolve();
+      }).catch((err) => {
+        console.error('❌ Error during cleanup, but continuing:', err);
+        resolve(); // Still resolve even if cleanup fails
+      });
     });
   });
 }
@@ -428,18 +701,8 @@ function createSampleDatabase() {
         // Insert sample data
         const now = new Date().toISOString();
         
-        // Only insert if no employees exist
-        db.get('SELECT COUNT(*) as count FROM employees', (err, row) => {
-          if (!err && row.count === 0) {
-            db.run(`INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-                    ['emp1', 'Greg Weisz', 'greg@example.com', 'iitywim', 'house1', 'Manager', '555-0123', '230 Wagner St, Troutman, NC 28166', '', '["AL-SOR"]', now, now]);
-          }
-        });
-
-        db.run(`INSERT OR IGNORE INTO oxford_houses (id, name, address, city, state, zipCode, phoneNumber, managerId, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                ['house1', 'Sample Oxford House', '123 Main St', 'Troutman', 'NC', '28166', '555-0123', 'emp1', now, now]);
+        // REMOVED: Test employee emp1 and sample Oxford House
+        // Using bulk-imported employee data only
 
         // Insert sample cost centers
         db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
@@ -467,110 +730,11 @@ function createSampleDatabase() {
                 VALUES (?, ?, ?, ?, ?, ?)`,
                 ['pdmr3', 'CC002', 400.00, 'Higher per diem limit for CC002', now, now]);
 
-        // Insert sample mileage entries for current month
-        const currentDate = new Date();
-        const currentMonth = currentDate.getMonth() + 1;
-        const currentYear = currentDate.getFullYear();
+        // REMOVED: All sample mileage, receipt, and time tracking data
+        // Real data will come from mobile app and web portal
         
-        // Add sample mileage entries only if no entries exist
-        db.get('SELECT COUNT(*) as count FROM mileage_entries', (err, row) => {
-          if (!err && row.count === 0) {
-            const may2024Data = [
-              { day: 1, description: "NC State Convention **stayed the night**", hours: 8, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 },
-              { day: 2, description: "NC State Convention **stayed the night**", hours: 8, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 },
-              { day: 3, description: "NC State Convention **stayed the night**", hours: 8, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 },
-              { day: 4, description: "NC State Convention **stayed the night**", hours: 8, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 },
-              { day: 5, description: "Raleigh Marriott Crabtree Valley (4500 Marriott Dr Raleigh, NC) to BA to OH Sharon Amity (252 N Sharon Amity Rd Charlotte, NC) for house stabilization to BA", hours: 8, miles: 237, odometerStart: 145145, odometerEnd: 145382, cost: 105.47 },
-              { day: 6, description: "(off)", hours: 0, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 },
-              { day: 7, description: "(off)", hours: 0, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 },
-              { day: 8, description: "Work from home office: Zoom calls, emails and phone calls", hours: 8, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 },
-              { day: 9, description: "BA to coworker's house (13927 Jonathan's Ridge Mint Hill, NC) to work on computer and scanner to BA to OH Gibson (101 Woodsway Ln Morganton, NC) for house stabilization to BA", hours: 8, miles: 211, odometerStart: 82122, odometerEnd: 82333, cost: 93.90 },
-              { day: 10, description: "Work from home office: Zoom calls, emails and phone calls", hours: 8, miles: 0, odometerStart: 0, odometerEnd: 0, cost: 0 }
-            ];
-
-            may2024Data.forEach(entry => {
-              const sampleDate = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${entry.day.toString().padStart(2, '0')}`;
-              
-              // Parse description to extract start/end locations for mileage entries
-              let startLocation = '230 Wagner St, Troutman, NC 28166'; // Default BA
-              let endLocation = '230 Wagner St, Troutman, NC 28166'; // Default BA
-              let purpose = entry.description;
-              
-              if (entry.description.includes('to BA to OH')) {
-                // Extract locations from complex descriptions
-                const parts = entry.description.split(' to BA to OH ');
-                if (parts.length >= 2) {
-                  startLocation = parts[0].replace('BA to ', '');
-                  endLocation = 'OH ' + parts[1].split(' for ')[0];
-                  purpose = 'house stabilization';
-                }
-              } else if (entry.description.includes('to BA')) {
-                const parts = entry.description.split(' to BA');
-                if (parts.length >= 1) {
-                  startLocation = parts[0].replace('BA to ', '');
-                  endLocation = '230 Wagner St, Troutman, NC 28166';
-                  purpose = 'house stabilization';
-                }
-              }
-              
-              db.run(`INSERT INTO mileage_entries (id, employeeId, date, startLocation, endLocation, purpose, miles, odometerReading, hoursWorked, createdAt, updatedAt)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                      [`mileage_${entry.day}`, 'emp1', sampleDate, startLocation, endLocation, purpose, entry.miles, entry.odometerStart, entry.hours, now, now]);
-            });
-          }
-        });
-
-        // Insert sample receipts only if no receipts exist
-        db.get('SELECT COUNT(*) as count FROM receipts', (err, row) => {
-          if (!err && row.count === 0) {
-            for (let day = 1; day <= 3; day++) {
-              const sampleDate = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-              
-              db.run(`INSERT INTO receipts (id, employeeId, date, category, amount, description, createdAt, updatedAt)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                      [`receipt_${day}`, 'emp1', sampleDate, 'EES', 50.00 + (day * 10), `Sample EES receipt for day ${day}`, now, now]);
-            }
-          }
-        });
-
-        // Insert sample time tracking only if no time tracking exists
-        db.get('SELECT COUNT(*) as count FROM time_tracking', (err, row) => {
-          if (!err && row.count === 0) {
-            const may2024Data = [
-              { day: 1, description: "NC State Convention **stayed the night**", hours: 8 },
-              { day: 2, description: "NC State Convention **stayed the night**", hours: 8 },
-              { day: 3, description: "NC State Convention **stayed the night**", hours: 8 },
-              { day: 4, description: "NC State Convention **stayed the night**", hours: 8 },
-              { day: 5, description: "Raleigh Marriott Crabtree Valley to BA to OH Sharon Amity for house stabilization to BA", hours: 8 },
-              { day: 6, description: "(off)", hours: 0 },
-              { day: 7, description: "(off)", hours: 0 },
-              { day: 8, description: "Work from home office: Zoom calls, emails and phone calls", hours: 8 },
-              { day: 9, description: "BA to coworker's house to work on computer and scanner to BA to OH Gibson for house stabilization to BA", hours: 8 },
-              { day: 10, description: "Work from home office: Zoom calls, emails and phone calls", hours: 8 }
-            ];
-
-            may2024Data.forEach(entry => {
-              const sampleDate = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${entry.day.toString().padStart(2, '0')}`;
-              
-              let category = 'Administrative';
-              if (entry.description.includes('NC State Convention')) {
-                category = 'Conference';
-              } else if (entry.description.includes('Work from home office')) {
-                category = 'Administrative';
-              } else if (entry.description.includes('(off)')) {
-                category = 'Time Off';
-              } else if (entry.description.includes('house stabilization')) {
-                category = 'Field Work';
-              }
-              
-              db.run(`INSERT INTO time_tracking (id, employeeId, date, hoursWorked, category, description, createdAt, updatedAt)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                      [`time_${entry.day}`, 'emp1', sampleDate, entry.hours, category, entry.description, now, now]);
-            });
-          }
-        });
-
-        console.log('✅ Sample database created');
+        
+        console.log('✅ Database tables created (no sample data)');
         resolve();
       });
     });
@@ -673,57 +837,7 @@ app.get('/api/employees/:id', (req, res) => {
   });
 });
 
-// Create new employee
-app.post('/api/employees', (req, res) => {
-  const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters } = req.body;
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  const now = new Date().toISOString();
-
-  db.run(
-    'INSERT INTO employees (id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2 || '', costCenters || '[]', now, now],
-    function(err) {
-      if (err) {
-        console.error('Database error:', err.message);
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ id, message: 'Employee created successfully' });
-    }
-  );
-});
-
-// Update employee
-app.put('/api/employees/:id', (req, res) => {
-  const { id } = req.params;
-  const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters } = req.body;
-  const now = new Date().toISOString();
-
-  db.run(
-    'UPDATE employees SET name = ?, email = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, updatedAt = ? WHERE id = ?',
-    [name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2 || '', costCenters || '[]', now, id],
-    function(err) {
-      if (err) {
-        console.error('Database error:', err.message);
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ message: 'Employee updated successfully' });
-    }
-  );
-});
-
-// Delete employee
-app.delete('/api/employees/:id', (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM employees WHERE id = ?', [id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json({ message: 'Employee deleted successfully' });
-  });
-});
+// ===== BULK OPERATIONS (must come before parameterized routes) =====
 
 // Bulk update employees
 app.put('/api/employees/bulk-update', (req, res) => {
@@ -814,72 +928,111 @@ app.post('/api/employees/bulk-create', (req, res) => {
     createdEmployees: []
   };
   
-  let processedCount = 0;
-  
-  employees.forEach((employee, index) => {
-    const { name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter } = employee;
-    
-    // Validate required fields
-    if (!name || !email || !password || !oxfordHouseId) {
-      results.failed++;
-      results.errors.push(`Employee ${index + 1}: Missing required fields`);
-      processedCount++;
-      if (processedCount === employees.length) {
-        res.json(results);
-      }
-      return;
+  // Process employees sequentially to avoid race conditions
+  const processEmployee = (index) => {
+    if (index >= employees.length) {
+      // All processed
+      results.success = results.failed === 0;
+      return res.json(results);
     }
     
+    const employee = employees[index];
+    const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
     const now = new Date().toISOString();
-    const query = `INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     
-    const values = [
-      oxfordHouseId, // Use oxfordHouseId as the primary key
-      name,
-      email,
-      password,
-      oxfordHouseId,
-      position || '',
-      phoneNumber || '',
-      baseAddress || '',
-      JSON.stringify(costCenters || []),
-      JSON.stringify(selectedCostCenters || []),
-      defaultCostCenter || 'Program Services',
-      now,
-      now
-    ];
-    
-    db.run(query, values, function(err) {
-      processedCount++;
-      
+    db.run(
+      'INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        id,
+        employee.name,
+        employee.email,
+        employee.password || '',
+        employee.oxfordHouseId,
+        employee.position,
+        employee.phoneNumber || '',
+        employee.baseAddress || '',
+        employee.baseAddress2 || '',
+        typeof employee.costCenters === 'string' ? employee.costCenters : JSON.stringify(employee.costCenters || []),
+        typeof employee.selectedCostCenters === 'string' ? employee.selectedCostCenters : JSON.stringify(employee.selectedCostCenters || employee.costCenters || []),
+        employee.defaultCostCenter || (Array.isArray(employee.costCenters) ? employee.costCenters[0] : '') || '',
+        now,
+        now
+      ],
+      function(err) {
+        if (err) {
+          results.failed++;
+          results.errors.push(`Failed to create ${employee.name}: ${err.message}`);
+        } else {
+          results.successful++;
+          results.createdEmployees.push({ id, ...employee });
+        }
+        // Process next employee
+        processEmployee(index + 1);
+      }
+    );
+  };
+  
+  processEmployee(0);
+});
+
+// ===== INDIVIDUAL OPERATIONS =====
+
+// Create new employee
+app.post('/api/employees', (req, res) => {
+  const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters } = req.body;
+  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  const now = new Date().toISOString();
+
+  db.run(
+    'INSERT INTO employees (id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2 || '', costCenters || '[]', now, now],
+    function(err) {
       if (err) {
-        results.failed++;
-        results.errors.push(`Employee ${index + 1} (${name}): ${err.message}`);
-      } else {
-        results.successful++;
-        results.createdEmployees.push({
-          id: this.lastID,
-          name,
-          email,
-          password,
-          oxfordHouseId,
-          position,
-          phoneNumber,
-          baseAddress,
-          costCenters,
-          selectedCostCenters,
-          defaultCostCenter,
-          createdAt: now,
-          updatedAt: now
-        });
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
       }
-      
-      if (processedCount === employees.length) {
-        results.success = results.failed === 0;
-        res.json(results);
+      res.json({ id, message: 'Employee created successfully' });
+    }
+  );
+});
+
+// Update employee
+app.put('/api/employees/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, preferredName, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature } = req.body;
+  const now = new Date().toISOString();
+
+  console.log('📝 Updating employee:', id);
+  console.log('📦 Update data received:', { name, preferredName, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter });
+
+  db.run(
+    'UPDATE employees SET name = ?, preferredName = ?, email = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, updatedAt = ? WHERE id = ?',
+    [name, preferredName || '', email, oxfordHouseId || '', position, phoneNumber, baseAddress, baseAddress2 || '', 
+     typeof costCenters === 'string' ? costCenters : JSON.stringify(costCenters || []),
+     typeof selectedCostCenters === 'string' ? selectedCostCenters : JSON.stringify(selectedCostCenters || []),
+     defaultCostCenter || '', signature || null, now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error updating employee:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
       }
-    });
+      console.log('✅ Employee updated successfully:', id, '- Rows affected:', this.changes);
+      res.json({ message: 'Employee updated successfully', changes: this.changes });
+    }
+  );
+});
+
+// Delete employee
+app.delete('/api/employees/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM employees WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Employee deleted successfully' });
   });
 });
 
@@ -1147,19 +1300,25 @@ app.get('/api/mileage-entries', (req, res) => {
 
 // Create new mileage entry
 app.post('/api/mileage-entries', (req, res) => {
-  const { id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked } = req.body;
+  console.log('📝 POST /api/mileage-entries - Request body:', req.body);
+  
+  const { id, employeeId, oxfordHouseId, date, odometerReading, miles, startLocation, endLocation, purpose, notes, hoursWorked, isGpsTracked, costCenter } = req.body;
   const entryId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
 
+  // Use miles as odometerReading if odometerReading is not provided
+  const finalOdometerReading = odometerReading || miles || 0;
+
   db.run(
-    'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
-    [entryId, employeeId, oxfordHouseId || '', date, odometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, entryId, now, now],
+    'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
+    [entryId, employeeId, oxfordHouseId || '', date, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', entryId, now, now],
     function(err) {
       if (err) {
         console.error('Database error:', err.message);
         res.status(500).json({ error: err.message });
         return;
       }
+      console.log('✅ Mileage entry created successfully:', entryId);
       res.json({ id: entryId, message: 'Mileage entry created successfully' });
     }
   );
@@ -1168,12 +1327,15 @@ app.post('/api/mileage-entries', (req, res) => {
 // Update mileage entry
 app.put('/api/mileage-entries/:id', (req, res) => {
   const { id } = req.params;
-  const { employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked } = req.body;
+  const { employeeId, oxfordHouseId, date, odometerReading, miles, startLocation, endLocation, purpose, notes, hoursWorked, isGpsTracked, costCenter } = req.body;
   const now = new Date().toISOString();
+  
+  // Use miles as odometerReading if odometerReading is not provided
+  const finalOdometerReading = odometerReading || miles || 0;
 
   db.run(
-    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, oxfordHouseId || '', date, odometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, now, id],
+    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
+    [employeeId, oxfordHouseId || '', date, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', now, id],
     function(err) {
       if (err) {
         console.error('Database error:', err.message);
@@ -1371,6 +1533,226 @@ app.delete('/api/time-tracking/:id', (req, res) => {
     }
     res.json({ message: 'Time tracking entry deleted successfully' });
   });
+});
+
+// Daily Descriptions API Routes
+
+// Get daily descriptions
+app.get('/api/daily-descriptions', (req, res) => {
+  const { employeeId, month, year } = req.query;
+  let query = `
+    SELECT dd.*, e.name as employeeName
+    FROM daily_descriptions dd
+    LEFT JOIN employees e ON dd.employeeId = e.id
+  `;
+  const params = [];
+  const conditions = [];
+
+  if (employeeId) {
+    conditions.push('dd.employeeId = ?');
+    params.push(employeeId);
+  }
+
+  if (month && year) {
+    conditions.push('strftime("%m", dd.date) = ? AND strftime("%Y", dd.date) = ?');
+    params.push(month.toString().padStart(2, '0'), year.toString());
+  }
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  query += ' ORDER BY dd.date DESC';
+
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// Create or update daily description
+app.post('/api/daily-descriptions', (req, res) => {
+  const { id, employeeId, date, description, costCenter } = req.body;
+  const descriptionId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
+  const now = new Date().toISOString();
+
+  // Check if a description already exists for this date
+  db.get(
+    'SELECT id FROM daily_descriptions WHERE employeeId = ? AND date = ?',
+    [employeeId, date],
+    (err, row) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      if (row) {
+        // Update existing description
+        db.run(
+          'UPDATE daily_descriptions SET description = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
+          [description, costCenter || '', now, row.id],
+          function(updateErr) {
+            if (updateErr) {
+              res.status(500).json({ error: updateErr.message });
+              return;
+            }
+            res.json({ id: row.id, message: 'Daily description updated successfully' });
+          }
+        );
+      } else {
+        // Create new description
+        db.run(
+          'INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [descriptionId, employeeId, date, description, costCenter || '', now, now],
+          function(insertErr) {
+            if (insertErr) {
+              res.status(500).json({ error: insertErr.message });
+              return;
+            }
+            res.json({ id: descriptionId, message: 'Daily description created successfully' });
+          }
+        );
+      }
+    }
+  );
+});
+
+// Delete daily description
+app.delete('/api/daily-descriptions/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM daily_descriptions WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Daily description deleted successfully' });
+  });
+});
+
+// Saved Addresses API Routes
+
+// Get saved addresses
+app.get('/api/saved-addresses', (req, res) => {
+  const { employeeId } = req.query;
+  
+  if (!employeeId) {
+    res.status(400).json({ error: 'employeeId is required' });
+    return;
+  }
+
+  // For now, return empty array since we don't have a saved_addresses table yet
+  // This can be implemented later when the table is created
+  res.json([]);
+});
+
+// Oxford Houses API Routes
+
+// Cache for Oxford Houses data
+let oxfordHousesCache = null;
+let oxfordHousesCacheTime = null;
+const OXFORD_HOUSES_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+// Fetch Oxford Houses from live website
+async function fetchOxfordHouses() {
+  try {
+    console.log('🏠 Fetching Oxford Houses from oxfordvacancies.com...');
+    
+    const response = await fetch('https://oxfordvacancies.com/oxfordReport.aspx?report=house-name-address-all-houses');
+    const html = await response.text();
+    
+    // Parse the HTML table
+    const houses = [];
+    const tableRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    
+    let match;
+    let isFirstRow = true;
+    
+    while ((match = tableRegex.exec(html)) !== null) {
+      if (isFirstRow) {
+        isFirstRow = false;
+        continue; // Skip header row
+      }
+      
+      const cells = [];
+      const rowHtml = match[1];
+      let cellMatch;
+      
+      while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
+        // Remove HTML tags and decode entities
+        const cellText = cellMatch[1]
+          .replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .trim();
+        cells.push(cellText);
+      }
+      
+      if (cells.length >= 5) {
+        houses.push({
+          name: `OH ${cells[0]}`, // Add "OH" prefix
+          address: cells[1],
+          city: cells[2],
+          state: cells[3],
+          zip: cells[4],
+          fullAddress: `${cells[1]}, ${cells[2]}, ${cells[3]} ${cells[4]}`
+        });
+      }
+    }
+    
+    console.log(`✅ Fetched ${houses.length} Oxford Houses`);
+    return houses;
+  } catch (error) {
+    console.error('❌ Error fetching Oxford Houses:', error);
+    return [];
+  }
+}
+
+// Get all Oxford Houses (with caching)
+app.get('/api/oxford-houses', async (req, res) => {
+  try {
+    // Check if cache is valid
+    if (oxfordHousesCache && oxfordHousesCacheTime && (Date.now() - oxfordHousesCacheTime < OXFORD_HOUSES_CACHE_TTL)) {
+      console.log('📦 Serving Oxford Houses from cache');
+      res.json(oxfordHousesCache);
+      return;
+    }
+    
+    // Fetch fresh data
+    const houses = await fetchOxfordHouses();
+    
+    // Update cache
+    oxfordHousesCache = houses;
+    oxfordHousesCacheTime = Date.now();
+    
+    res.json(houses);
+  } catch (error) {
+    console.error('❌ Error in oxford-houses endpoint:', error);
+    res.status(500).json({ error: 'Failed to fetch Oxford Houses' });
+  }
+});
+
+// Force refresh Oxford Houses cache
+app.post('/api/oxford-houses/refresh', async (req, res) => {
+  try {
+    console.log('🔄 Force refreshing Oxford Houses data...');
+    const houses = await fetchOxfordHouses();
+    
+    // Update cache
+    oxfordHousesCache = houses;
+    oxfordHousesCacheTime = Date.now();
+    
+    res.json({ message: 'Oxford Houses refreshed successfully', count: houses.length });
+  } catch (error) {
+    console.error('❌ Error refreshing Oxford Houses:', error);
+    res.status(500).json({ error: 'Failed to refresh Oxford Houses' });
+  }
 });
 
 // Cost Center Management API Routes
@@ -1764,6 +2146,271 @@ app.get('/api/expense-reports/:employeeId/:month/:year', (req, res) => {
       }
     }
   );
+});
+
+// Comprehensive save endpoint that syncs web portal changes back to source tables
+app.post('/api/expense-reports/sync-to-source', async (req, res) => {
+  const { employeeId, month, year, reportData } = req.body;
+  
+  console.log('🔄 Syncing report data back to source tables for employee:', employeeId);
+  
+  try {
+    // 1. Update employee profile (signature, personal info)
+    if (reportData.employeeSignature || reportData.supervisorSignature) {
+      await new Promise((resolve, reject) => {
+        const updates = [];
+        const values = [];
+        
+        if (reportData.employeeSignature) {
+          updates.push('signature = ?');
+          values.push(reportData.employeeSignature);
+        }
+        
+        values.push(employeeId);
+        
+        const sql = `UPDATE employees SET ${updates.join(', ')}, updatedAt = datetime('now') WHERE id = ?`;
+        
+        db.run(sql, values, (err) => {
+          if (err) reject(err);
+          else {
+            console.log('✅ Employee signature updated');
+            resolve();
+          }
+        });
+      });
+    }
+    
+    // 2a. Sync daily descriptions from the dedicated dailyDescriptions array (new tab-based approach)
+    if (reportData.dailyDescriptions && reportData.dailyDescriptions.length > 0) {
+      for (const desc of reportData.dailyDescriptions) {
+        const descDate = new Date(desc.date);
+        const dateStr = descDate.toISOString().split('T')[0];
+        const hasDescription = desc.description && desc.description.trim();
+        
+        await new Promise((resolve, reject) => {
+          // Check if description exists for this date
+          db.get(
+            'SELECT id FROM daily_descriptions WHERE employeeId = ? AND date = ?',
+            [employeeId, dateStr],
+            (err, row) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+              
+              const now = new Date().toISOString();
+              
+              if (row) {
+                if (hasDescription) {
+                  // Update existing description
+                  db.run(
+                    'UPDATE daily_descriptions SET description = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
+                    [desc.description, desc.costCenter || '', now, row.id],
+                    (updateErr) => {
+                      if (updateErr) reject(updateErr);
+                      else {
+                        console.log(`✅ Updated daily description for date ${dateStr}`);
+                        resolve();
+                      }
+                    }
+                  );
+                } else {
+                  // Delete existing description if it's empty
+                  db.run(
+                    'DELETE FROM daily_descriptions WHERE id = ?',
+                    [row.id],
+                    (deleteErr) => {
+                      if (deleteErr) reject(deleteErr);
+                      else {
+                        console.log(`✅ Deleted empty daily description for date ${dateStr}`);
+                        resolve();
+                      }
+                    }
+                  );
+                }
+              } else if (hasDescription) {
+                // Create new description only if it has content
+                const id = desc.id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
+                db.run(
+                  'INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                  [id, employeeId, dateStr, desc.description, desc.costCenter || '', now, now],
+                  (insertErr) => {
+                    if (insertErr) reject(insertErr);
+                    else {
+                      console.log(`✅ Created daily description for date ${dateStr}`);
+                      resolve();
+                    }
+                  }
+                );
+              } else {
+                // No description to save, resolve immediately
+                resolve();
+              }
+            }
+          );
+        });
+      }
+    }
+    
+    // 2b. Sync time tracking and mileage entries from dailyEntries
+    if (reportData.dailyEntries && reportData.dailyEntries.length > 0) {
+      for (const entry of reportData.dailyEntries) {
+        // Parse the date to match the format in the database
+        const entryDate = new Date(entry.date);
+        const dateStr = entryDate.toISOString().split('T')[0];
+        
+        // Simplified: No parsing needed, daily descriptions are handled above
+        // Only sync mileage and time tracking data here
+        
+        // No complex parsing needed - mileage entries are handled by the mobile app
+        
+        // Sync time tracking data
+        if (entry.hoursWorked > 0) {
+          await new Promise((resolve, reject) => {
+            db.all(
+              'SELECT * FROM time_tracking WHERE employeeId = ? AND date(date) = date(?)',
+              [employeeId, dateStr],
+              async (err, rows) => {
+                if (err) {
+                  reject(err);
+                  return;
+                }
+                
+                // If we found existing entries, update the first one
+                if (rows && rows.length > 0) {
+                  const row = rows[0];
+                  await new Promise((resolveUpdate, rejectUpdate) => {
+                    db.run(
+                      `UPDATE time_tracking 
+                       SET hours = ?, description = ?, updatedAt = datetime('now')
+                       WHERE id = ?`,
+                      [entry.hoursWorked, entry.description || row.description, row.id],
+                      (updateErr) => {
+                        if (updateErr) rejectUpdate(updateErr);
+                        else {
+                          console.log(`✅ Updated time tracking entry ${row.id} for date ${dateStr}`);
+                          resolveUpdate();
+                        }
+                      }
+                    );
+                  });
+                } else if (entry.hoursWorked > 0) {
+                  // Create new time tracking entry if one doesn't exist
+                  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+                  const now = new Date().toISOString();
+                  
+                  await new Promise((resolveInsert, rejectInsert) => {
+                    db.run(
+                      `INSERT INTO time_tracking (id, employeeId, date, category, hours, description, createdAt, updatedAt)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [id, employeeId, dateStr, 'Regular Hours', entry.hoursWorked, entry.description || '', now, now],
+                      (insertErr) => {
+                        if (insertErr) rejectInsert(insertErr);
+                        else {
+                          console.log(`✅ Created new time tracking entry for date ${dateStr}`);
+                          resolveInsert();
+                        }
+                      }
+                    );
+                  });
+                }
+                resolve();
+              }
+            );
+          });
+        }
+      }
+    }
+    
+    // 3. Sync receipts
+    if (reportData.receipts && reportData.receipts.length > 0) {
+      for (const receipt of reportData.receipts) {
+        if (receipt.id) {
+          // Update existing receipt
+          await new Promise((resolve, reject) => {
+            db.run(
+              `UPDATE receipts 
+               SET amount = ?, vendor = ?, category = ?, description = ?, updatedAt = datetime('now')
+               WHERE id = ?`,
+              [receipt.amount, receipt.vendor, receipt.category, receipt.description || '', receipt.id],
+              (err) => {
+                if (err) reject(err);
+                else {
+                  console.log(`✅ Updated receipt ${receipt.id}`);
+                  resolve();
+                }
+              }
+            );
+          });
+        }
+      }
+    }
+    
+    // 4. Also save to expense_reports table for persistence
+    await new Promise((resolve, reject) => {
+      const now = new Date().toISOString();
+      
+      db.get('SELECT id FROM expense_reports WHERE employeeId = ? AND month = ? AND year = ?', 
+        [employeeId, month, year], (err, row) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        if (row) {
+          // Update existing report
+          db.run(
+            `UPDATE expense_reports SET reportData = ?, updatedAt = ? WHERE employeeId = ? AND month = ? AND year = ?`,
+            [JSON.stringify(reportData), now, employeeId, month, year],
+            (updateErr) => {
+              if (updateErr) reject(updateErr);
+              else {
+                console.log('✅ Updated expense report in expense_reports table');
+                resolve();
+              }
+            }
+          );
+        } else {
+          // Create new report
+          const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+          db.run(
+            `INSERT INTO expense_reports (id, employeeId, month, year, reportData, status, createdAt, updatedAt) 
+             VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)`,
+            [id, employeeId, month, year, JSON.stringify(reportData), now, now],
+            (insertErr) => {
+              if (insertErr) reject(insertErr);
+              else {
+                console.log('✅ Created new expense report in expense_reports table');
+                resolve();
+              }
+            }
+          );
+        }
+      });
+    });
+    
+    // Broadcast data change notification via WebSocket
+    broadcastToClients({
+      type: 'data_updated',
+      entity: 'expense_report',
+      employeeId: employeeId,
+      month: month,
+      year: year,
+      timestamp: new Date().toISOString()
+    });
+    
+    res.json({ 
+      success: true, 
+      message: 'Report data synced successfully to source tables' 
+    });
+    
+  } catch (error) {
+    console.error('❌ Error syncing report data:', error);
+    res.status(500).json({ 
+      error: error.message,
+      message: 'Failed to sync report data to source tables' 
+    });
+  }
 });
 
 // Get all expense reports for an employee
@@ -2247,6 +2894,135 @@ app.get('/', (req, res) => {
 });
 
 // Error handling middleware
+// ===== AUTHENTICATION ENDPOINTS =====
+
+// Login endpoint
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+  
+  if (!email || !password) {
+    return res.status(400).json({ 
+      error: 'Email and password are required' 
+    });
+  }
+  
+  // Find employee by email
+  db.get(
+    'SELECT * FROM employees WHERE email = ?',
+    [email],
+    (err, employee) => {
+      if (err) {
+        console.error('Login error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!employee) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      // Check password (plain text for now - should hash in production!)
+      if (employee.password !== password) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      // Parse JSON fields
+      let costCenters = [];
+      let selectedCostCenters = [];
+      
+      try {
+        if (employee.costCenters) {
+          costCenters = JSON.parse(employee.costCenters);
+        }
+        if (employee.selectedCostCenters) {
+          selectedCostCenters = JSON.parse(employee.selectedCostCenters);
+        }
+      } catch (parseErr) {
+        console.error('Error parsing cost centers:', parseErr);
+      }
+      
+      // Don't send password back to client
+      const { password: _, ...employeeData } = employee;
+      
+      // Create session token (simple for now - use JWT in production)
+      const sessionToken = `session_${employee.id}_${Date.now()}`;
+      
+      res.json({
+        success: true,
+        message: 'Login successful',
+        employee: {
+          ...employeeData,
+          costCenters,
+          selectedCostCenters
+        },
+        token: sessionToken
+      });
+    }
+  );
+});
+
+// Verify session endpoint
+app.get('/api/auth/verify', (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  
+  // Extract employee ID from token (simple parsing for now)
+  const employeeId = token.split('_')[1];
+  
+  if (!employeeId) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  
+  // Verify employee exists
+  db.get(
+    'SELECT * FROM employees WHERE id = ?',
+    [employeeId],
+    (err, employee) => {
+      if (err || !employee) {
+        return res.status(401).json({ error: 'Invalid session' });
+      }
+      
+      // Parse JSON fields
+      let costCenters = [];
+      let selectedCostCenters = [];
+      
+      try {
+        if (employee.costCenters) {
+          costCenters = JSON.parse(employee.costCenters);
+        }
+        if (employee.selectedCostCenters) {
+          selectedCostCenters = JSON.parse(employee.selectedCostCenters);
+        }
+      } catch (parseErr) {
+        console.error('Error parsing cost centers:', parseErr);
+      }
+      
+      const { password: _, ...employeeData } = employee;
+      
+      res.json({
+        valid: true,
+        employee: {
+          ...employeeData,
+          costCenters,
+          selectedCostCenters
+        }
+      });
+    }
+  );
+});
+
+// Logout endpoint
+app.post('/api/auth/logout', (req, res) => {
+  // For now, just return success (client will clear token)
+  // In production, you'd invalidate the token in a blacklist/cache
+  res.json({
+    success: true,
+    message: 'Logged out successfully'
+  });
+});
+
 app.use((err, req, res, next) => {
   const timestamp = new Date().toISOString();
   console.error(`[${timestamp}] Error:`, err.stack);
@@ -2266,8 +3042,9 @@ app.use((err, req, res, next) => {
 
 // Initialize database and start server
 initDatabase().then(() => {
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
+    console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/ws`);
     console.log(`📊 Database path: ${DB_PATH}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   });

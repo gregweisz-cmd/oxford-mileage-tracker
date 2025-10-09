@@ -4,14 +4,9 @@ import React, { useState, useEffect } from 'react';
 
 // Material-UI components for spreadsheet-like interface
 import {
-  AppBar,
-  Toolbar, 
-  Typography,
   Container,
   Card,
   CardContent,
-  Tabs,
-  Tab,
   Box,
   Table,
   TableBody,
@@ -29,24 +24,40 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 
 import {
-  Save as SaveIcon,
-  Print as PrintIcon,
-  Download as DownloadIcon,
-  Upload as UploadIcon,
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Send as SendIcon,
-  List as ListIcon,
   Close as CloseIcon,
+  CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 
 // PDF generation imports
-import { jsPDF } from 'jspdf';
 import TabPdfExportService from './services/tabPdfExportService';
+
+// Tips system imports
+import { TipCard } from './components/TipCard';
+import { useWebTips, TipsProvider } from './contexts/TipsContext';
+
+// Real-time sync imports
+import { useRealtimeSync, useRealtimeStatus } from './hooks/useRealtimeSync';
+
+// Data entry imports
+import { DataEntryManager } from './components/DataEntryManager';
+
+// UI Enhancement imports
+import { ToastProvider, useToast } from './contexts/ToastContext';
+import { LoadingOverlay, useLoadingState } from './components/LoadingOverlay';
+import { EnhancedHeader } from './components/EnhancedHeader';
+import { EnhancedTabNavigation, createTabConfig } from './components/EnhancedTabNavigation';
+import { UIEnhancementProvider } from './services/uiEnhancementService';
 
 // Report completeness checker
 import { ReportCompletenessService, CompletenessReport, CompletenessIssue } from './services/reportCompletenessService';
@@ -74,6 +85,7 @@ interface StaffPortalProps {
 interface EmployeeExpenseData {
   employeeId: string;
   name: string;
+  preferredName?: string;
   month: string;
   year: number;
   dateCompleted: string;
@@ -141,95 +153,6 @@ interface ReceiptData {
   imageUri?: string;
 }
 
-// Mock data for Greg Weisz June 2024 (based on uploaded spreadsheet)
-const mockEmployeeData: EmployeeExpenseData = {
-  employeeId: 'greg-weisz-001',
-  name: 'Greg Weisz',
-  month: 'June',
-  year: 2024,
-  dateCompleted: '06/30/24',
-  costCenters: ['NC.F-SAPTBG'],
-  
-  totalMiles: 934,
-  totalMileageAmount: 415.63,
-  totalReceipts: 99.99,
-  totalHours: 160,
-  
-  // Daily entries from the Travel sheet
-  dailyEntries: [
-    { day: 1, date: '06/01/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 2, date: '06/02/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 3, date: '06/03/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, workingHours: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 4, date: '06/04/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, workingHours: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 5, date: '06/05/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, workingHours: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 6, date: '06/06/24', description: 'BA to OH Central (1804 Primrose Pl Durham, NC) to drop off donations to BA to OH Sharon Amity (252 N Sharon Amity Rd Charlotte, NC) for house stabilization to BA', hoursWorked: 8, workingHours: 8, odometerStart: 83510, odometerEnd: 83856, milesTraveled: 346, mileageAmount: 153.97, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 35.00 },
-    { day: 7, date: '06/07/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, workingHours: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 8, date: '06/08/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 9, date: '06/09/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 10, date: '06/10/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 11, date: '06/11/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 12, date: '06/12/24', description: 'BA to coworker\'s house (673 Sand Hill Rd Asheville, NC) to work on new employee\'s computer to BA to OH Sharon Amity (252 N Sharon Amity Rd Charlotte, NC) for house stabilization to BA', hoursWorked: 8, odometerStart: 84011, odometerEnd: 84309, milesTraveled: 298, mileageAmount: 132.61, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 35.00 },
-    { day: 13, date: '06/13/24', description: 'BA to coworker\'s house (204 Hogan St Morganton, NC) to work on reports/training to BA to OH Brittle Creek (1310 Brittle Creek Dr Matthews, NC) for house stabilization to BA', hoursWorked: 8, odometerStart: 84335, odometerEnd: 84547, milesTraveled: 212, mileageAmount: 94.34, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 35.00 },
-    { day: 14, date: '06/14/24', description: 'BA to (14912 Dunbeth Dr Huntersville, NC) to pick up donations to BA', hoursWorked: 8, odometerStart: 84602, odometerEnd: 84650, milesTraveled: 48, mileageAmount: 21.36, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 15, date: '06/15/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 16, date: '06/16/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 17, date: '06/17/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 18, date: '06/18/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 19, date: '06/19/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 20, date: '06/20/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 21, date: '06/21/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 22, date: '06/22/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 23, date: '06/23/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 24, date: '06/24/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 25, date: '06/25/24', description: 'BA to (161 Autumn Frost Ave Troutman, NC) to pick up donations to OH McLelland (338 W McLelland Ave Mooresville, NC) to drop off donations to (161 Autumn Frost Ave Troutman, NC) to pick up donations to OH McLelland to drop off donations to BA', hoursWorked: 8, odometerStart: 84844, odometerEnd: 84874, milesTraveled: 30, mileageAmount: 13.35, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 26, date: '06/26/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 27, date: '06/27/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 28, date: '06/28/24', description: 'Work from home office: Zoom calls, emails and phone calls', hoursWorked: 8, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 29, date: '06/29/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-    { day: 30, date: '06/30/24', description: '(off)', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 },
-  ],
-  
-  // Communication expenses
-  phoneInternetFax: 99.99,
-  shippingPostage: 0,
-  printingCopying: 0,
-  
-  // All other expenses default to 0
-  airRailBus: 0,
-  vehicleRentalFuel: 0,
-  parkingTolls: 0,
-  groundTransportation: 0,
-  hotelsAirbnb: 0,
-  perDiem: 105.00,
-  officeSupplies: 0,
-  eesReceipt: 0,
-  meals: 0,
-  other: 0,
-  
-  baseAddress: '230 Wagner St, Troutman, NC 28166',
-};
-
-// Mock receipt data for Greg Weisz June 2024
-const mockReceipts: ReceiptData[] = [
-  {
-    id: 'receipt-001',
-    date: '06/05/24',
-    amount: 49.99,
-    vendor: 'Verizon Wireless',
-    description: 'Monthly phone service plan',
-    category: 'INTERNET_BILL',
-    imageUri: 'verizon-june-2024.jpg'
-  },
-  {
-    id: 'receipt-002',
-    date: '06/15/24',
-    amount: 50.00,
-    vendor: 'Comcast Internet',
-    description: 'Monthly internet service',
-    category: 'INTERNET_BILL',
-    imageUri: 'comcast-june-2024.jpg'
-  }
-];
 
 // TabPanel component for rendering different expense report sheets
 interface TabPanelProps {
@@ -274,6 +197,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
+  const [dailyDescriptions, setDailyDescriptions] = useState<any[]>([]);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
@@ -286,6 +210,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [reportsDialogOpen, setReportsDialogOpen] = useState(false);
   const [allReports, setAllReports] = useState<any[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Used to force data reload
   
   // Report completeness checker state
   const [completenessReport, setCompletenessReport] = useState<CompletenessReport | null>(null);
@@ -296,15 +221,43 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [reportStatus, setReportStatus] = useState<'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision'>('draft');
   // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
+  // Real-time sync
+  useRealtimeStatus();
+  useRealtimeSync({
+    enabled: true,
+    onUpdate: (update) => {
+      console.log('🔄 StaffPortal: Received real-time update:', update);
+      // Refresh data when updates are received
+      // Note: loadEmployeeData will be called via useEffect on employeeId/reportMonth/reportYear changes
+    },
+    onConnectionChange: (connected) => {
+      console.log(`🔄 StaffPortal: Real-time sync ${connected ? 'connected' : 'disconnected'}`);
+    }
+  });
+
+  // UI Enhancement hooks
+  const { showSuccess, showError } = useToast();
+  const { isLoading: uiLoading, startLoading, stopLoading } = useLoadingState();
+
+  // Tips system integration
+  const { 
+    tips, 
+    showTips, 
+    loadTipsForScreen, 
+    dismissTip, 
+    markTipAsSeen, 
+    setCurrentUserId 
+  } = useWebTips();
+
   // Calculate days in the current month
   const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
 
-  // Debug logging for delete button visibility
-  console.log('🔍 StaffPortal Debug:', {
-    reportStatus,
-    isAdminView,
-    showDeleteButton: (reportStatus === 'draft' || reportStatus === 'submitted') && !isAdminView
-  });
+  // Debug logging for delete button visibility - DISABLED to prevent infinite loop
+  // console.log('🔍 StaffPortal Debug:', {
+  //   reportStatus,
+  //   isAdminView,
+  //   showDeleteButton: (reportStatus === 'draft' || reportStatus === 'submitted') && !isAdminView
+  // });
   
   // Format month name
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -334,7 +287,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         if (!employeeResponse.ok) {
           // If employee not found, silently try with fallback ID
           console.log(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
-          const fallbackResponse = await fetch(`http://localhost:3002/api/employees/emp2`);
+          const fallbackResponse = await fetch(`http://localhost:3002/api/employees/mggwglbfk9dij3oze8l`);
           if (fallbackResponse.ok) {
             employee = await fallbackResponse.json();
             console.log('✅ Successfully loaded fallback employee data for:', employee.name);
@@ -370,25 +323,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
         }
         
-        // Check if this is Greg Weisz June 2024 - use mock data
-        const isGregWeiszJune2024 = employee.name === 'Greg Weisz' && reportMonth === 6 && reportYear === 2024;
-        
-        if (isGregWeiszJune2024) {
-          // Use the comprehensive mock data for Greg Weisz June 2024, but update the dateCompleted
-          // Loading Greg Weisz June 2024 mock data
-          const updatedMockData = {
-            ...mockEmployeeData,
-            dateCompleted: new Date(reportYear, reportMonth, 0).toLocaleDateString('en-US', { 
-              month: '2-digit', 
-              day: '2-digit', 
-              year: '2-digit' 
-            })
-          };
-          setEmployeeData(updatedMockData);
-          setReceipts(mockReceipts);
-        } else {
-          // Load real data from mobile app database for current month
-          // Loading real data for employee
+        // Load real data from mobile app database for current month
+        // Loading real data for employee
           
           const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                             'July', 'August', 'September', 'October', 'November', 'December'];
@@ -396,15 +332,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
           
           // Fetch real data from backend APIs
-          const [mileageResponse, receiptsResponse, timeTrackingResponse] = await Promise.all([
+          const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse] = await Promise.all([
             fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
             fetch(`http://localhost:3002/api/receipts?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
+            fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
+            fetch(`http://localhost:3002/api/daily-descriptions?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
           const receipts = receiptsResponse.ok ? await receiptsResponse.json() : [];
           const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
+          const dailyDescriptions = dailyDescriptionsResponse.ok ? await dailyDescriptionsResponse.json() : [];
           
           const currentMonthMileage = mileageEntries.filter((entry: any) => {
             const entryDate = new Date(entry.date);
@@ -450,8 +388,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               return new Date(a.date).getTime() - new Date(b.date).getTime();
             });
             
-            // Daisy chain all trips together with full location details
-            let daisyChainedDescription = '(off)';
+            // Find daily description for this day
+            const dayDescription = dailyDescriptions.find((desc: any) => {
+              const descDate = new Date(desc.date);
+              return descDate.getUTCDate() === day;
+            });
+            
+            // Build driving summary from mileage entries
+            let drivingSummary = '';
             if (dayMileageEntries.length > 0) {
               const tripSegments: string[] = [];
               
@@ -472,7 +416,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 tripSegments.push(segment);
               });
               
-              daisyChainedDescription = tripSegments.join(' ');
+              drivingSummary = 'Driving: ' + tripSegments.join(' ');
+            }
+            
+            // Concatenate daily description + driving summary
+            let fullDescription = '';
+            if (dayDescription && dayDescription.description) {
+              fullDescription = dayDescription.description.trim();
+              if (drivingSummary) {
+                fullDescription += '\n\n' + drivingSummary;
+              }
+            } else if (drivingSummary) {
+              fullDescription = drivingSummary;
+            } else {
+              fullDescription = ''; // Empty description for blank days
             }
             
             // Calculate total miles for the day
@@ -491,11 +448,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             return {
               day,
               date: dateStr,
-              description: daisyChainedDescription,
+              description: fullDescription,
               hoursWorked: dayTimeTracking?.hours || 0,
-              odometerStart: firstEntry ? (firstEntry.odometerReading - firstEntry.miles) : 0,
-              odometerEnd: lastEntry?.odometerReading || 0,
-              milesTraveled: totalDayMiles,
+              workingHours: dayTimeTracking?.hours || 0, // Set workingHours to match hoursWorked for existing data
+              odometerStart: Math.round(firstEntry?.odometerReading || 0),
+              odometerEnd: Math.round(lastEntry ? (lastEntry.odometerReading + lastEntry.miles) : 0),
+              milesTraveled: Math.round(totalDayMiles),
               mileageAmount: totalDayMiles * 0.445,
               airRailBus: 0,
               vehicleRentalFuel: 0,
@@ -516,6 +474,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const expenseData: EmployeeExpenseData = {
             employeeId: employee.id,
             name: employee.name,
+            preferredName: employee.preferredName,
             month: monthName,
             year: reportYear,
             dateCompleted: new Date(reportYear, reportMonth, 0).toLocaleDateString('en-US', { 
@@ -565,7 +524,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             category: receipt.category,
             imageUri: receipt.imageUri
           })));
-        }
+          setDailyDescriptions(dailyDescriptions);
       } catch (error) {
         console.error('Error loading employee data:', error);
         // Create dynamic fallback data instead of using hardcoded mock data
@@ -587,8 +546,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           return {
             day,
             date: dateStr,
-            description: '(off)',
+            description: '', // Empty description for blank days
             hoursWorked: 0,
+            workingHours: 0, // Add workingHours field to fallback data
             odometerStart: 0,
             odometerEnd: 0,
             milesTraveled: 0,
@@ -606,6 +566,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const fallbackData: EmployeeExpenseData = {
           employeeId: employee?.id || employeeId,
           name: employee?.name || 'Unknown Employee',
+          preferredName: employee?.preferredName,
           month: monthName,
           year: reportYear,
           dateCompleted: new Date(reportYear, reportMonth, 0).toLocaleDateString('en-US', { 
@@ -649,7 +610,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     };
     
     loadEmployeeData();
-  }, [employeeId, reportMonth, reportYear]);
+  }, [employeeId, reportMonth, reportYear, refreshTrigger]);
+
+  // Initialize tips when employee data is loaded
+  useEffect(() => {
+    if (employeeId && !loading) {
+      setCurrentUserId(employeeId);
+      loadTipsForScreen('staff_portal', 'on_load');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId, loading]);
 
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -690,6 +660,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     if (field === 'description') {
       newEntries[row].description = editingValue;
+      
+      // Also update the dailyDescriptions state for proper syncing
+      const updatedDailyDescriptions = [...dailyDescriptions];
+      const entry = newEntries[row];
+      const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${entry.day.toString().padStart(2, '0')}`;
+      const hasDescription = editingValue && editingValue.trim();
+      
+      // Find existing daily description for this date
+      const existingDescIndex = updatedDailyDescriptions.findIndex(desc => desc.date === dateStr);
+      
+      if (existingDescIndex >= 0) {
+        if (hasDescription) {
+          // Update existing description
+          updatedDailyDescriptions[existingDescIndex].description = editingValue;
+        } else {
+          // Remove existing description if it's empty
+          updatedDailyDescriptions.splice(existingDescIndex, 1);
+        }
+      } else if (hasDescription) {
+        // Create new description entry only if it has content
+        updatedDailyDescriptions.push({
+          id: `desc-${entry.day}`,
+          employeeId: employeeData.employeeId,
+          date: dateStr,
+          description: editingValue,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+      
+      setDailyDescriptions(updatedDailyDescriptions);
     } else if (field === 'odometerStart') {
       const value = parseInt(editingValue) || 0;
       newEntries[row].odometerStart = value;
@@ -737,16 +738,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCell(null);
     setEditingValue('');
     
-    // Auto-save changes to backend
+    // Auto-save changes to backend and sync to source tables
     try {
       const reportData = {
         ...updatedData,
         receipts: receipts,
-        signatureImage: signatureImage,
+        employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState
       };
 
-      await fetch('http://localhost:3002/api/expense-reports', {
+      // Sync to source tables (mileage_entries, time_tracking, receipts, employees)
+      await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -755,10 +757,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           employeeId: updatedData.employeeId,
           month: reportMonth,
           year: reportYear,
-          reportData: reportData,
-          status: 'draft'
+          reportData: reportData
         }),
       });
+      
+      console.log('✅ Changes auto-saved and synced to source tables');
     } catch (error) {
       console.error('Error auto-saving changes:', error);
       // Don't show alert for auto-save failures to avoid interrupting user workflow
@@ -782,7 +785,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const updatedEntries = employeeData.dailyEntries.map(entry => {
       if (entry.day === day) {
         if (type === 'costCenter' || type === 'billable') {
-          return { ...entry, hoursWorked: value };
+          // When entering hours in cost center rows, update both hoursWorked and workingHours
+          // since we default all hours to "Working Hours" category
+          return { ...entry, hoursWorked: value, workingHours: value };
         } else if (type === 'workingHours') {
           return { ...entry, workingHours: value };
         }
@@ -804,16 +809,45 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingTimesheetCell(null);
     setEditingTimesheetValue('');
     
-    // Auto-save changes to backend
+    // Save to time tracking API with "Working Hours" as default category
+    try {
+      const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      
+      // Default to "Working Hours" category for all timesheet entries
+      const category = 'Working Hours';
+      
+      // Save to time tracking table
+      await fetch('http://localhost:3002/api/time-tracking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employeeId: employeeData.employeeId,
+          date: dateStr,
+          hours: value,
+          category: category,
+          description: `Hours worked on ${dateStr}`,
+          costCenter: employeeData.costCenters[0] || 'Program Services'
+        }),
+      });
+
+      console.log(`✅ Saved ${value} hours as "${category}" for day ${day}`);
+    } catch (error) {
+      console.error('Error saving to time tracking API:', error);
+    }
+    
+    // Auto-save changes to backend and sync to source tables
     try {
       const reportData = {
         ...updatedData,
         receipts: receipts,
-        signatureImage: signatureImage,
+        employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState
       };
 
-      await fetch('http://localhost:3002/api/expense-reports', {
+      // Sync to source tables
+      await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -822,10 +856,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           employeeId: updatedData.employeeId,
           month: reportMonth,
           year: reportYear,
-          reportData: reportData,
-          status: 'draft'
+          reportData: reportData
         }),
       });
+      
+      console.log('✅ Timesheet changes auto-saved and synced to source tables');
     } catch (error) {
       console.error('Error auto-saving timesheet changes:', error);
       // Don't show alert for auto-save failures to avoid interrupting user workflow
@@ -867,11 +902,40 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const file = event.target.files?.[0];
     if (file && file.type === 'image/png') {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         const result = e.target?.result as string;
         // Signature uploaded successfully
         setSignatureImage(result);
         setSignatureDialogOpen(false);
+        
+        // Auto-save signature
+        if (employeeData) {
+          try {
+            const reportData = {
+              ...employeeData,
+              receipts: receipts,
+              employeeSignature: result,
+              supervisorSignature: supervisorSignatureState
+            };
+
+            await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                employeeId: employeeData.employeeId,
+                month: reportMonth,
+                year: reportYear,
+                reportData: reportData
+              }),
+            });
+            
+            console.log('✅ Signature upload synced to source tables');
+          } catch (error) {
+            console.error('Error syncing signature upload:', error);
+          }
+        }
       };
       reader.readAsDataURL(file);
     } else {
@@ -880,8 +944,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // Remove signature
-  const handleRemoveSignature = () => {
+  const handleRemoveSignature = async () => {
     setSignatureImage(null);
+    
+    // Auto-save signature removal
+    if (employeeData) {
+      try {
+        const reportData = {
+          ...employeeData,
+          receipts: receipts,
+          employeeSignature: null,
+          supervisorSignature: supervisorSignatureState
+        };
+
+        await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            employeeId: employeeData.employeeId,
+            month: reportMonth,
+            year: reportYear,
+            reportData: reportData
+          }),
+        });
+        
+        console.log('✅ Signature removal synced to source tables');
+      } catch (error) {
+        console.error('Error syncing signature removal:', error);
+      }
+    }
   };
 
   // Handle receipt image upload
@@ -1530,7 +1623,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       dataX += colWidths[0];
       
       // Description
-      const description = entry?.description || (day % 7 === 0 ? '(off)' : 'Work from home office: Zoom calls, emails and phone calls');
+      const description = entry?.description || '';
       pdf.text(description, dataX, tableY, { maxWidth: colWidths[1] - 1 });
       dataX += colWidths[1];
       
@@ -1994,24 +2087,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Receipt Management generated
   };
 
-  // Save expense report to backend
+  // Save expense report to backend and sync to source tables
   const handleSaveReport = async () => {
     if (!employeeData) {
-      alert('No employee data to save');
+      showError('No employee data to save');
       return;
     }
 
     try {
-      setLoading(true);
+      startLoading('Saving and syncing report...');
       
       const reportData = {
         ...employeeData,
         receipts: receipts,
-        signatureImage: signatureImage,
+        dailyDescriptions: dailyDescriptions,
+        employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState
       };
 
-      const response = await fetch('http://localhost:3002/api/expense-reports', {
+      // Use the sync endpoint to save AND sync to source tables
+      const response = await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2020,8 +2115,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           employeeId: employeeData.employeeId,
           month: reportMonth,
           year: reportYear,
-          reportData: reportData,
-          status: 'draft'
+          reportData: reportData
         }),
       });
 
@@ -2030,14 +2124,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       await response.json();
-      // Report saved successfully
-      alert('Expense report saved successfully!');
+      showSuccess('Report saved and synced successfully! Changes will appear in the mobile app.');
+      
+      // Refresh the data to update all tabs
+      setRefreshTrigger(prev => prev + 1);
       
     } catch (error) {
       console.error('Error saving report:', error);
-      alert(`Error saving report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showError(`Error saving report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setLoading(false);
+      stopLoading();
     }
   };
 
@@ -2371,97 +2467,69 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   return (
     <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
-      {/* Header similar to spreadsheet */}
-      <AppBar position="static" color="default" elevation={1}>
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            MONTHLY EXPENSE REPORT - OXFORD HOUSE, INC.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button 
-              variant="outlined" 
-              startIcon={<UploadIcon />}
-              onClick={() => setSignatureDialogOpen(true)}
-              disabled={loading || isAdminView}
-            >
-              Signature Capture
-            </Button>
-            <Button 
-              variant="outlined" 
-              startIcon={<ListIcon />}
-              onClick={fetchAllReports}
-              disabled={loading || reportsLoading}
-            >
-              View All Reports
-            </Button>
-            <Button 
-              variant="outlined" 
-              startIcon={<AddIcon />}
-              onClick={handleCheckCompleteness}
-              disabled={loading || completenessLoading}
-              color="secondary"
-            >
-              Check Completeness
-            </Button>
-            <Button 
-              variant="outlined" 
-              startIcon={<SaveIcon />}
-              onClick={handleSaveReport}
-              disabled={loading || isAdminView}
-            >
-              Save
-            </Button>
-            <Button 
-              variant="outlined" 
-              startIcon={<DownloadIcon />}
-              onClick={handleLoadReport}
-              disabled={loading || isAdminView}
-            >
-              Load
-            </Button>
-            <Button 
-              variant="contained" 
-              color="primary"
-              startIcon={<SendIcon />}
-              onClick={handleSubmitReport}
-              disabled={loading || isAdminView}
-            >
-              Submit
-            </Button>
-            <Button 
-              variant="outlined" 
-              startIcon={<PrintIcon />}
-              disabled={loading || isAdminView}
-            >
-              Print
-            </Button>
-            <Button 
-              variant="outlined" 
-              startIcon={<DownloadIcon />}
-              onClick={handleExportPdf}
-              disabled={loading}
-            >
-              Export PDF
-            </Button>
-          </Box>
-        </Toolbar>
-        
-        {/* Tab navigation matching spreadsheet sheets */}
-          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tabs value={activeTab} onChange={handleTabChange}>
-              <Tab label="Approval Cover Sheet" />
-              <Tab label="Summary Sheet" />
-              {employeeData.costCenters.length >= 1 && <Tab label={`Cost Ctr #1 Travel`} />}
-              {employeeData.costCenters.length >= 2 && <Tab label={`Cost Ctr #2 Travel`} />}
-              {employeeData.costCenters.length >= 3 && <Tab label={`Cost Ctr #3 Travel`} />}
-              {employeeData.costCenters.length >= 4 && <Tab label={`Cost Ctr #4 Travel`} />}
-              {employeeData.costCenters.length >= 5 && <Tab label={`Cost Ctr #5 Travel`} />}
-              <Tab label="Timesheet" />
-              <Tab label="Receipt Management" />
-              <Tab label="Settings" />
-            </Tabs>
-          </Box>
-      </AppBar>
+      {/* Enhanced Header */}
+        <EnhancedHeader
+        title="MONTHLY EXPENSE REPORT - OXFORD HOUSE, INC."
+        subtitle="Comprehensive expense tracking and reporting system"
+        employeeName={employeeData?.preferredName || employeeData?.name}
+        reportMonth={reportMonth}
+        reportYear={reportYear}
+        loading={loading}
+        isAdminView={isAdminView}
+        onExportPdf={handleExportPdf}
+        onSaveReport={handleSaveReport}
+        onSubmitReport={handleSubmitReport}
+        onSignatureCapture={() => setSignatureDialogOpen(true)}
+        onViewAllReports={fetchAllReports}
+        onCheckCompleteness={handleCheckCompleteness}
+        onRefresh={() => {
+          console.log('🔄 StaffPortal: Refreshing data from backend...');
+          startLoading('Refreshing data from backend...');
+          
+          // Increment the refresh trigger to force useEffect to re-run
+          setRefreshTrigger(prev => prev + 1);
+          
+          // Show success message after a brief delay to allow data to load
+          setTimeout(() => {
+            stopLoading();
+            showSuccess('Data refreshed successfully from backend!');
+          }, 1500);
+        }}
+        onSettings={() => setActiveTab(employeeData ? employeeData.costCenters.length + 7 : 7)}
+        showRealTimeStatus={true}
+      />
+
+      {/* Tips Display */}
+      {showTips && tips.length > 0 && (
+        <div className="tips-container">
+          <div className="tips-scroll-view">
+            {tips.map((tip) => (
+              <TipCard
+                key={tip.id}
+                tip={tip}
+                onDismiss={dismissTip}
+                onMarkSeen={markTipAsSeen}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      <LoadingOverlay 
+        open={loading || uiLoading} 
+        message={uiLoading ? 'Refreshing data...' : 'Loading...'} 
+        variant="backdrop" 
+      />
+
+      {/* Enhanced Tab Navigation */}
+      <EnhancedTabNavigation
+        value={activeTab}
+        onChange={handleTabChange}
+        tabs={createTabConfig(employeeData)}
+        employeeData={employeeData}
+        showStatus={true}
+      />
 
       {/* Approval Cover Sheet Tab */}
       <TabPanel value={activeTab} index={0}>
@@ -2482,12 +2550,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             <Box sx={{ mt: 4 }}>
               <Box sx={{ display: 'flex', gap: 6 }}>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body1"><strong>Name:</strong> {employeeData.name}</Typography>
-                  <Typography variant="body1"><strong>Month:</strong> {monthName}, {reportYear}</Typography>
-                  <Typography variant="body1"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
+                  <Typography variant="body1" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
+                  {employeeData.preferredName && employeeData.preferredName !== employeeData.name && (
+                    <Typography variant="body2" color="textSecondary" component="div"><strong>Preferred Name:</strong> {employeeData.preferredName}</Typography>
+                  )}
+                  <Typography variant="body1" component="div"><strong>Month:</strong> {monthName}, {reportYear}</Typography>
+                  <Typography variant="body1" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body1"><strong>Cost Centers:</strong></Typography>
+                  <Typography variant="body1" component="div"><strong>Cost Centers:</strong></Typography>
                   <Box sx={{ mt: 1 }}>
                     {employeeData.costCenters.map((center, index) => (
                       <Chip key={index} label={`${index + 1}.) ${center}`} variant="outlined" sx={{ mr: 1, mb: 1 }} />
@@ -2502,21 +2573,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Box>
 
             <Box sx={{ mt: 6, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: 'grey.50' }}>
-              <Typography variant="body2" color="error" sx={{ mb: 2 }}>
+              <Typography variant="body2" color="error" sx={{ mb: 2 }} component="div">
                 <strong>* Note:</strong> Signature also required on Summary Sheet & Timesheet
               </Typography>
-              <Typography variant="body2" color="error">
+              <Typography variant="body2" color="error" component="div">
                 <strong>* Note:</strong> in order to be reimbursed for per diem, your daily work activities must 
                 entail your having been away from home for a minimum of eight hours, as documented in your Travel
               </Typography>
             </Box>
 
             <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" gutterBottom><strong>Signatures of Approval:</strong></Typography>
+              <Typography variant="h6" gutterBottom component="div"><strong>Signatures of Approval:</strong></Typography>
               <Box sx={{ display: 'flex', gap: 4 }}>
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
-                    <Typography variant="body1"><strong>Employee Signature</strong></Typography>
+                    <Typography variant="body1" component="div"><strong>Employee Signature</strong></Typography>
                     <Box sx={{ 
                       mt: 2, 
                       mb: 2, 
@@ -2552,7 +2623,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
-                    <Typography variant="body1"><strong>Direct Supervisor</strong></Typography>
+                    <Typography variant="body1" component="div"><strong>Direct Supervisor</strong></Typography>
                     <Box sx={{ mt: 2, mb: 2, minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {supervisorSignature ? (
                         <img 
@@ -2573,7 +2644,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
-                    <Typography variant="body1"><strong>Finance Department</strong></Typography>
+                    <Typography variant="body1" component="div"><strong>Finance Department</strong></Typography>
                     <Box sx={{ mt: 2, mb: 2, borderBottom: '1px solid #333', minHeight: 40 }} />
                     <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
                   </Box>
@@ -2906,7 +2977,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </Typography>
                       )}
                     </Box>
-                    <Typography variant="body1"><strong>Date Signed:</strong> {employeeData.dateCompleted}</Typography>
+                    <Typography variant="body1" component="div"><strong>Date Signed:</strong> {employeeData.dateCompleted}</Typography>
                   </Box>
                 </Box>
               </Box>
@@ -2915,25 +2986,187 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </Card>
       </TabPanel>
 
+      {/* Mileage Entries Tab */}
+      <TabPanel value={activeTab} index={2}>
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+              Mileage Entries
+            </Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+              Enter mileage data for each day. The system will automatically track locations, miles traveled, and calculate reimbursement.
+            </Typography>
+            
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Date</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Start Location</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>End Location</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>Miles</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>Mileage ($)</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Cost Center</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {employeeData.dailyEntries.filter((entry: any) => entry.milesTraveled > 0).map((entry: any, index: number) => (
+                    <TableRow key={index}>
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{entry.date}</TableCell>
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                        {entry.startLocationName || 'N/A'}
+                      </TableCell>
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                        {entry.endLocationName || 'N/A'}
+                      </TableCell>
+                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
+                        {Math.round(entry.milesTraveled)}
+                      </TableCell>
+                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
+                        ${entry.mileageAmount?.toFixed(2) || '0.00'}
+                      </TableCell>
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                        {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {employeeData.dailyEntries.filter((entry: any) => entry.milesTraveled > 0).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
+                        <Typography variant="body2" color="textSecondary">
+                          No mileage entries found. Use the mobile app or Data Entry tab to add mileage.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            
+            <Box sx={{ mt: 3, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+              <Typography variant="body2">
+                <strong>💡 Tip:</strong> Mileage entries are created in the mobile app when you track your trips. 
+                The Data Entry tab can also be used to manually add or edit mileage entries.
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      {/* Daily Descriptions Tab */}
+      <TabPanel value={activeTab} index={3}>
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+              Daily Activity Descriptions
+            </Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+              Enter or edit descriptions of your daily work activities. These are separate from driving descriptions.
+            </Typography>
+            
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '15%' }}><strong>Date</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '70%' }}><strong>Activity Description</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '15%' }}><strong>Cost Center</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {employeeData && employeeData.dailyEntries && employeeData.dailyEntries.map((entry: any, index: number) => {
+                    // Find the corresponding daily description
+                    const dayDescription = dailyDescriptions.find((desc: any) => {
+                      const entryDate = new Date(entry.date);
+                      const descDate = new Date(desc.date);
+                      return entryDate.getUTCDate() === descDate.getUTCDate();
+                    });
+                    
+                    return (
+                      <TableRow key={index}>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{entry.date}</TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          <TextField
+                            value={dayDescription?.description || ''}
+                            onChange={(e) => {
+                              // Update or create daily description
+                              const newDescriptions = [...dailyDescriptions];
+                              const existingIndex = newDescriptions.findIndex((desc: any) => {
+                                const entryDate = new Date(entry.date);
+                                const descDate = new Date(desc.date);
+                                return entryDate.getUTCDate() === descDate.getUTCDate();
+                              });
+                              
+                              if (existingIndex >= 0) {
+                                // Update existing
+                                newDescriptions[existingIndex] = {
+                                  ...newDescriptions[existingIndex],
+                                  description: e.target.value
+                                };
+                              } else {
+                                // Create new
+                                const entryDate = new Date(entry.date);
+                                entryDate.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+                                newDescriptions.push({
+                                  id: `desc-${employeeId}-${entry.date}`,
+                                  employeeId: employeeId,
+                                  date: entryDate.toISOString(),
+                                  description: e.target.value,
+                                  costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+                                  createdAt: new Date().toISOString(),
+                                  updatedAt: new Date().toISOString()
+                                });
+                              }
+                              
+                              setDailyDescriptions(newDescriptions);
+                            }}
+                            fullWidth
+                            multiline
+                            rows={2}
+                            size="small"
+                            placeholder="Describe daily activities (e.g., 'Meetings, phone calls, site visits')"
+                            disabled={isAdminView}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            
+            <Box sx={{ mt: 3, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+              <Typography variant="body2">
+                <strong>💡 Tip:</strong> Daily descriptions are for general work activities. 
+                Driving descriptions are automatically generated from your mileage entries.
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
       {/* Cost Ctr #1 Travel Tab */}
       {employeeData.costCenters.length >= 1 && (
-        <TabPanel value={activeTab} index={2}>
+        <TabPanel value={activeTab} index={4}>
         <Card variant="outlined">
           <CardContent>
             {/* Header matching spreadsheet */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
               <Box>
-                <Typography variant="h6"><strong>Name:</strong> {employeeData.name}</Typography>
-                <Typography variant="h6"><strong>Cost Center:</strong> {employeeData.costCenters[0] || 'EMPLOYEE_COST_CENTER_1'}</Typography>
+                <Typography variant="h6" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
+                <Typography variant="h6" component="div"><strong>Cost Center:</strong> {employeeData.costCenters[0] || 'EMPLOYEE_COST_CENTER_1'}</Typography>
               </Box>
               <Box>
-                <Typography variant="h6"><strong>Month:</strong> {monthName} / {reportYear}</Typography>
-                <Typography variant="h6"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
+                <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {reportYear}</Typography>
+                <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
               </Box>
             </Box>
 
             <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="h6" gutterBottom><strong>Mileage Rate:</strong> $0.445</Typography>
+              <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
               <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
                 * Enter locations, full physical addresses (in parentheses), and brief description of all work-related travel. 
                 Also, list any work done from BA or current location.
@@ -3141,7 +3374,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
             {/* Travel expense categories */}
             <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" gutterBottom><strong>Travel/Transportation</strong></Typography>
+              <Typography variant="h6" gutterBottom component="div"><strong>Travel/Transportation</strong></Typography>
               <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
                 * Attach all receipts with description of purchase, date & amount circled.
               </Typography>
@@ -3194,7 +3427,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       {/* Cost Center Travel Sheets Tabs 2-5 */}
       {employeeData && employeeData.costCenters.length >= 2 && (
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={5}>
           <Card variant="outlined">
             <CardContent>
               <Typography variant="h5" gutterBottom>
@@ -3254,7 +3487,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       )}
 
       {/* Timesheet Tab */}
-      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 2 : 2}>
+      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 4 : 4}>
         <Card variant="outlined">
           <CardContent>
             {/* Header matching spreadsheet */}
@@ -3270,7 +3503,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             {/* Signature section at the top */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
               <Box sx={{ flex: 1, mr: 4 }}>
-                <Typography variant="h6"><strong>Name:</strong> {employeeData?.name}</Typography>
+                <Typography variant="h6" component="div"><strong>Name:</strong> {employeeData?.name}</Typography>
                 <Box sx={{ 
                   mt: 2, 
                   mb: 2, 
@@ -3483,7 +3716,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {['Working Hours', 'G&A', 'HOLIDAY', 'PTO', 'STD/LTD', 'PFL/PFML'].map((category) => (
+                  {['G&A', 'HOLIDAY', 'PTO', 'STD/LTD', 'PFL/PFML'].map((category) => (
                     <TableRow key={category}>
                       <TableCell sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>{category}</TableCell>
                       {Array.from({ length: daysInMonth }, (_, i) => {
@@ -3642,7 +3875,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       </TabPanel>
 
       {/* Receipt Management Tab */}
-      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 3 : 3}>
+      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 5 : 5}>
         <Card variant="outlined">
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -3875,7 +4108,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               )}
             </Box>
 
-            <Typography variant="caption" color="textSecondary">
+            <Typography variant="caption" color="textSecondary" component="div">
               <strong>Instructions:</strong>
               <br />• Use a PNG file with transparent background for best results
               <br />• Signature should be black or dark colored
@@ -3920,12 +4153,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               onChange={(e) => setEditingReceipt({...editingReceipt!, amount: parseFloat(e.target.value) || 0})}
               inputProps={{ step: 0.01 }}
             />
-            <TextField
-              label="Category"
-              value={editingReceipt?.category || ''}
-              onChange={(e) => setEditingReceipt({...editingReceipt!, category: e.target.value})}
-              fullWidth
-            />
+            <FormControl fullWidth>
+              <InputLabel>Category</InputLabel>
+              <Select
+                value={editingReceipt?.category || ''}
+                onChange={(e) => setEditingReceipt({...editingReceipt!, category: e.target.value})}
+              >
+                <MenuItem value="Working Hours">Working Hours</MenuItem>
+                <MenuItem value="G&A">G&A</MenuItem>
+                <MenuItem value="Holiday">Holiday</MenuItem>
+                <MenuItem value="PTO">PTO</MenuItem>
+                <MenuItem value="STD/LTD">STD/LTD</MenuItem>
+                <MenuItem value="PFL/PFML">PFL/PFML</MenuItem>
+                <MenuItem value="Training">Training</MenuItem>
+                <MenuItem value="Travel">Travel</MenuItem>
+                <MenuItem value="Other">Other</MenuItem>
+              </Select>
+            </FormControl>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -4235,8 +4479,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </DialogActions>
       </Dialog>
 
+      {/* Data Entry Tab */}
+      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 6 : 6}>
+        {employeeData ? (
+          <DataEntryManager 
+            employee={{
+              id: employeeData.employeeId,
+              name: employeeData.name,
+              email: '', // Not needed for data entry
+              oxfordHouseId: '',
+              position: '',
+              phoneNumber: '',
+              baseAddress: '',
+              costCenters: employeeData.costCenters,
+              selectedCostCenters: employeeData.costCenters,
+              defaultCostCenter: employeeData.costCenters[0] || '',
+              createdAt: '',
+              updatedAt: ''
+            }}
+            month={reportMonth}
+            year={reportYear}
+          />
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" color="textSecondary">
+              Loading employee data...
+            </Typography>
+          </Box>
+        )}
+      </TabPanel>
+
       {/* Settings Tab */}
-      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 4 : 4}>
+      <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 7 : 7}>
         <UserSettings 
           employeeId={employeeId} 
           onSettingsUpdate={(settings) => {
@@ -4250,4 +4524,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   );
 };
 
-export default StaffPortal;
+// Wrap StaffPortal with UI Enhancement providers
+const StaffPortalWithProviders: React.FC<StaffPortalProps> = (props) => {
+  return (
+    <UIEnhancementProvider>
+      <ToastProvider>
+        <TipsProvider>
+          <StaffPortal {...props} />
+        </TipsProvider>
+      </ToastProvider>
+    </UIEnhancementProvider>
+  );
+};
+
+export default StaffPortalWithProviders;

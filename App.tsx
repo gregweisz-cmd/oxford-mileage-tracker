@@ -11,8 +11,9 @@ import { NotificationProvider } from './src/contexts/NotificationContext';
 import GlobalGpsStopButton from './src/components/GlobalGpsStopButton';
 import { AppInitializer } from './src/services/appInitializer';
 import { DatabaseService } from './src/services/database';
-import { TestDataService } from './src/services/testDataService';
-import { DemoDataService } from './src/services/demoDataService';
+// Removed: Using backend employee data only
+// import { TestDataService } from './src/services/testDataService';
+// import { DemoDataService } from './src/services/demoDataService';
 import { Employee } from './src/types';
 import LoginScreen from './src/screens/LoginScreen';
 import EmployeeProfileScreen from './src/screens/EmployeeProfileScreen';
@@ -51,11 +52,8 @@ export default function App() {
       // Initialize the app
       await AppInitializer.initialize();
       
-      // Initialize test data
-      await TestDataService.initializeTestData();
-      
-      // Create Greg Weisz June 2024 demo data from actual expense report
-      await DemoDataService.createGregJune2024Data();
+      // NO MORE TEST DATA OR DEMO DATA - using backend employee list only
+      // Employees will be synced from backend on login
       
       // Clean up old demo receipts (Comcast, Verizon, etc.)
       await DatabaseService.cleanupOldReceipts();

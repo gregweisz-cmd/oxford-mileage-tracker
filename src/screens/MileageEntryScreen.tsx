@@ -11,16 +11,20 @@ import {
   Modal,
   Keyboard,
   TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  FlatList,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { DistanceService } from '../services/distanceService';
-import { MileageEntry, Employee } from '../types';
+import { MileageEntry, Employee, LocationDetails } from '../types';
+import LocationCaptureModal from '../components/LocationCaptureModal';
 import { formatLocationForInput } from '../utils/locationFormatter';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
+import { OxfordHouseService } from '../services/oxfordHouseService';
 import EnhancedLocationInput from '../components/EnhancedLocationInput';
 import { useTips } from '../contexts/TipsContext';
 import { TipCard } from '../components/TipCard';
@@ -69,6 +73,25 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const [loadingChainingSuggestions, setLoadingChainingSuggestions] = useState(false);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
+  const [hasExistingEntriesToday, setHasExistingEntriesToday] = useState(false);
+  
+  // Location selection modal states
+  const [showLocationOptionsModal, setShowLocationOptionsModal] = useState(false);
+  const [showStartLocationModal, setShowStartLocationModal] = useState(false);
+  const [showEndLocationModal, setShowEndLocationModal] = useState(false);
+  const [showOxfordHouseSearchModal, setShowOxfordHouseSearchModal] = useState(false);
+  const [currentLocationType, setCurrentLocationType] = useState<'start' | 'end'>('start');
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [lastDestination, setLastDestination] = useState<LocationDetails | null>(null);
+  
+  // Oxford House search states
+  const [oxfordHouseSearchQuery, setOxfordHouseSearchQuery] = useState('');
+  const [oxfordHouseResults, setOxfordHouseResults] = useState<any[]>([]);
+  const [oxfordHouseAllHouses, setOxfordHouseAllHouses] = useState<any[]>([]); // Store full list separately
+  const [oxfordHouseLoading, setOxfordHouseLoading] = useState(false);
+  const [oxfordHouseSelectedState, setOxfordHouseSelectedState] = useState<string>('');
+  const [oxfordHouseAvailableStates, setOxfordHouseAvailableStates] = useState<string[]>([]);
+  const [isOxfordHouseStatePickerVisible, setIsOxfordHouseStatePickerVisible] = useState(false);
   
   // TextInput refs for keyboard navigation
   const odometerInputRef = useRef<TextInput>(null);
@@ -153,34 +176,87 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
   const loadEmployee = async () => {
     try {
-      const employees = await DatabaseService.getEmployees();
-      const employee = employees.find(emp => emp.name === 'Greg Weisz') || employees[0]; // Use Greg Weisz or first employee
-      setCurrentEmployee(employee);
-      
-      // Set employee for tips context and load mileage entry tips
-      if (employee) {
+      const currentEmployee = await DatabaseService.getCurrentEmployee();
+      if (currentEmployee) {
+        setCurrentEmployee(currentEmployee);
+        
         // Initialize cost center
-        const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
+        const costCenter = currentEmployee.defaultCostCenter || currentEmployee.selectedCostCenters?.[0] || '';
         setSelectedCostCenter(costCenter);
         
-        setTipsEmployee(employee);
+        setTipsEmployee(currentEmployee);
         if (showTips) {
           await loadTipsForScreen('MileageEntryScreen', 'on_load');
         }
+        
+        // Set base address as default start location if available
+        if (currentEmployee.baseAddress) {
+          setFormData(prev => ({
+            ...prev,
+            startLocation: currentEmployee.baseAddress
+          }));
+        }
+        
+        // Check if GPS has been started today
+        await checkGpsTrackingStatus();
+        
+        // Check for existing entries on the current date
+        await checkExistingEntriesForDate(formData.date);
+        
+        // Load saved addresses and last destination
+        await loadAddressesAndLastDestination(currentEmployee);
       }
+    } catch (error) {
+      console.error('Error loading current employee:', error);
+    }
+  };
+
+  const loadAddressesAndLastDestination = async (employee: Employee) => {
+    try {
+      // Load saved addresses
+      const addresses = await DatabaseService.getSavedAddresses(employee.id);
+      setSavedAddresses(addresses);
       
-      // Set base address as default start location if available
-      if (employee?.baseAddress) {
+      // Get last destination from recent mileage entries
+      const recentEntries = await DatabaseService.getMileageEntries(employee.id, 1); // Get last 1 entry
+      if (recentEntries.length > 0) {
+        const lastEntry = recentEntries[0];
+        if (lastEntry.endLocationDetails) {
+          setLastDestination(lastEntry.endLocationDetails);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading addresses and last destination:', error);
+    }
+  };
+
+  const checkExistingEntriesForDate = async (date: Date) => {
+    if (!currentEmployee) return;
+    
+    try {
+      const dateStr = date.toISOString().split('T')[0];
+      const entries = await DatabaseService.getMileageEntries(currentEmployee.id);
+      
+      // Filter entries for the selected date
+      const entriesForDate = entries.filter(entry => {
+        const entryDate = new Date(entry.date);
+        const entryDateStr = entryDate.toISOString().split('T')[0];
+        return entryDateStr === dateStr;
+      });
+      
+      setHasExistingEntriesToday(entriesForDate.length > 0);
+      
+      // If there are existing entries and we're not editing, set the odometer reading from the first entry
+      if (entriesForDate.length > 0 && !isEditing) {
+        const firstEntry = entriesForDate[0];
         setFormData(prev => ({
           ...prev,
-          startLocation: employee.baseAddress
+          odometerReading: firstEntry.odometerReading?.toString() || ''
         }));
       }
-      
-      // Check if GPS has been started today
-      await checkGpsTrackingStatus();
     } catch (error) {
-      console.error('Error loading employee:', error);
+      console.error('Error checking existing entries for date:', error);
+      setHasExistingEntriesToday(false);
     }
   };
 
@@ -210,6 +286,14 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     }
   };
 
+  // Helper function to filter out placeholder text
+  const filterPlaceholderText = (value: string): string => {
+    if (!value) return '';
+    const placeholderTexts = ['to be updated', 'tbd', 'n/a', 'none', 'null', 'undefined'];
+    const isPlaceholder = placeholderTexts.includes(value.toLowerCase().trim());
+    return isPlaceholder ? '' : value;
+  };
+
   const loadExistingEntry = async (entryId: string) => {
     try {
       const entries = await DatabaseService.getMileageEntries();
@@ -219,11 +303,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         setFormData({
           date: entry.date,
           odometerReading: entry.odometerReading.toString(),
-          startLocation: formatLocationForInput(entry.startLocation, entry.startLocationDetails),
-          endLocation: formatLocationForInput(entry.endLocation, entry.endLocationDetails),
+          startLocation: filterPlaceholderText(formatLocationForInput(entry.startLocation, entry.startLocationDetails)),
+          endLocation: filterPlaceholderText(formatLocationForInput(entry.endLocation, entry.endLocationDetails)),
           purpose: entry.purpose,
           miles: entry.miles.toString(),
-          notes: entry.notes || '',
+          notes: filterPlaceholderText(entry.notes || ''),
           isGpsTracked: entry.isGpsTracked,
         });
       }
@@ -290,6 +374,73 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     );
   };
 
+  // Location selection handlers
+  const handleLocationSelection = (locationType: 'start' | 'end') => {
+    setCurrentLocationType(locationType);
+    setShowLocationOptionsModal(true);
+  };
+
+  const handleLocationOption = (option: 'lastDestination' | 'baseAddress' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation') => {
+    setShowLocationOptionsModal(false);
+    
+    setTimeout(() => {
+      if (option === 'lastDestination' && lastDestination) {
+        // Use last destination
+        if (currentLocationType === 'start') {
+          setFormData(prev => ({ ...prev, startLocation: lastDestination.name }));
+          setStartLocationDetails(lastDestination);
+        } else {
+          setFormData(prev => ({ ...prev, endLocation: lastDestination.name }));
+          setEndLocationDetails(lastDestination);
+        }
+      } else if (option === 'baseAddress' && currentEmployee?.baseAddress) {
+        // Use base address
+        if (currentLocationType === 'start') {
+          setFormData(prev => ({ ...prev, startLocation: currentEmployee.baseAddress }));
+          setStartLocationDetails({
+            name: 'Base Address',
+            address: currentEmployee.baseAddress
+          });
+        } else {
+          setFormData(prev => ({ ...prev, endLocation: currentEmployee.baseAddress }));
+          setEndLocationDetails({
+            name: 'Base Address',
+            address: currentEmployee.baseAddress
+          });
+        }
+      } else if (option === 'favoriteAddresses') {
+        // Navigate to saved addresses screen with context
+        navigation.navigate('SavedAddresses', { 
+          fromMileageEntry: true,
+          locationType: currentLocationType 
+        });
+      } else if (option === 'oxfordHouse') {
+        // Show Oxford House search modal
+        setShowOxfordHouseSearchModal(true);
+      } else if (option === 'newLocation') {
+        // Show manual location entry modal
+        if (currentLocationType === 'start') {
+          setShowStartLocationModal(true);
+        } else {
+          setShowEndLocationModal(true);
+        }
+      }
+    }, 100);
+  };
+
+  const handleLocationConfirm = (locationDetails: LocationDetails) => {
+    if (currentLocationType === 'start') {
+      setFormData(prev => ({ ...prev, startLocation: locationDetails.name }));
+      setStartLocationDetails(locationDetails);
+    } else {
+      setFormData(prev => ({ ...prev, endLocation: locationDetails.name }));
+      setEndLocationDetails(locationDetails);
+    }
+    
+    setShowStartLocationModal(false);
+    setShowEndLocationModal(false);
+  };
+
   const handleDateChange = (event: any, date?: Date) => {
     console.log('📅 Date picker change:', { event, date });
     if (date) {
@@ -300,6 +451,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const handleDatePickerConfirm = () => {
     setFormData(prev => ({ ...prev, date: selectedDate }));
     setShowDatePicker(false);
+    // Check for existing entries on the selected date
+    checkExistingEntriesForDate(selectedDate);
   };
 
   const handleDatePickerCancel = () => {
@@ -486,6 +639,25 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                 text: 'Save Anyway',
                 onPress: async () => {
                   await DatabaseService.createMileageEntry(entryData);
+                  
+                  // Sync to backend API
+                  try {
+                    const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
+                    const response = await fetch(`${backendUrl}/api/mileage-entries`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(entryData),
+                    });
+                    
+                    if (response.ok) {
+                      console.log('✅ Mileage entry synced to backend successfully');
+                    }
+                  } catch (syncError) {
+                    console.warn('⚠️ Could not sync to backend:', syncError);
+                  }
+                  
                   Alert.alert('Success', 'Mileage entry created successfully');
                   navigation.goBack();
                 },
@@ -495,6 +667,27 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         } else {
           // No duplicate, save normally
           await DatabaseService.createMileageEntry(entryData);
+          
+          // Sync to backend API
+          try {
+            const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
+            const response = await fetch(`${backendUrl}/api/mileage-entries`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(entryData),
+            });
+            
+            if (response.ok) {
+              console.log('✅ Mileage entry synced to backend successfully');
+            } else {
+              console.warn('⚠️ Failed to sync mileage entry to backend:', response.statusText);
+            }
+          } catch (syncError) {
+            console.warn('⚠️ Could not sync to backend (offline?):', syncError);
+            // Continue anyway - data is saved locally
+          }
           
           // Run anomaly detection BEFORE showing success alert
           let anomalyMessage = '';
@@ -615,6 +808,107 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     }
   };
 
+  // Oxford House search functions
+  const loadOxfordHouses = async () => {
+    try {
+      setOxfordHouseLoading(true);
+      await OxfordHouseService.initializeOxfordHouses();
+      const houses = await OxfordHouseService.getAllOxfordHouses();
+      
+      // Store the full list of houses
+      setOxfordHouseAllHouses(houses);
+      
+      // Extract unique states from houses
+      const states = Array.from(new Set(houses.map(h => h.state))).sort();
+      setOxfordHouseAvailableStates(states);
+      
+      // Set default state filter based on employee's base address
+      if (currentEmployee?.baseAddress) {
+        const extractedState = OxfordHouseService.extractStateFromAddress(currentEmployee.baseAddress);
+        if (extractedState && states.includes(extractedState)) {
+          setOxfordHouseSelectedState(extractedState);
+          const filteredHouses = houses.filter(h => h.state === extractedState);
+          setOxfordHouseResults(filteredHouses);
+        } else {
+          setOxfordHouseResults(houses);
+        }
+      } else {
+        setOxfordHouseResults(houses);
+      }
+    } catch (error) {
+      console.error('Error loading Oxford Houses:', error);
+    } finally {
+      setOxfordHouseLoading(false);
+    }
+  };
+
+  const performOxfordHouseSearch = (query: string) => {
+    if (!query.trim()) {
+      // If no query, show all houses or filtered by state
+      if (oxfordHouseSelectedState) {
+        const filtered = oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState);
+        setOxfordHouseResults(filtered);
+      } else {
+        setOxfordHouseResults(oxfordHouseAllHouses);
+      }
+      return;
+    }
+
+    const searchLower = query.toLowerCase().trim();
+    // Always search from the full list of houses
+    let housesToSearch = oxfordHouseSelectedState
+      ? oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState)
+      : oxfordHouseAllHouses;
+
+    const filtered = housesToSearch.filter(house =>
+      house.name.toLowerCase().includes(searchLower) ||
+      house.address.toLowerCase().includes(searchLower) ||
+      house.city.toLowerCase().includes(searchLower) ||
+      house.state.toLowerCase().includes(searchLower) ||
+      house.zipCode.includes(searchLower)
+    );
+    setOxfordHouseResults(filtered);
+  };
+
+  const handleOxfordHouseStateFilterChange = (state: string) => {
+    setOxfordHouseSelectedState(state);
+    performOxfordHouseSearch(oxfordHouseSearchQuery);
+  };
+
+  const handleOxfordHouseSelect = (house: any) => {
+    if (currentLocationType === 'start') {
+      setFormData(prev => ({ ...prev, startLocation: house.name }));
+      setStartLocationDetails({
+        name: house.name,
+        address: house.address,
+        city: house.city,
+        state: house.state,
+        zipCode: house.zipCode,
+        latitude: house.latitude,
+        longitude: house.longitude
+      });
+    } else {
+      setFormData(prev => ({ ...prev, endLocation: house.name }));
+      setEndLocationDetails({
+        name: house.name,
+        address: house.address,
+        city: house.city,
+        state: house.state,
+        zipCode: house.zipCode,
+        latitude: house.latitude,
+        longitude: house.longitude
+      });
+    }
+    setShowOxfordHouseSearchModal(false);
+  };
+
+  // Load Oxford Houses when modal opens
+  useEffect(() => {
+    if (showOxfordHouseSearchModal) {
+      loadOxfordHouses();
+    }
+  }, [showOxfordHouseSearchModal]);
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
@@ -718,7 +1012,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         )}
 
         {/* Odometer Reading - only show input on first session of day */}
-        {!hasStartedGpsToday ? (
+        {!hasStartedGpsToday && !hasExistingEntriesToday ? (
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Starting Odometer Reading *</Text>
             <TextInput
@@ -745,33 +1039,48 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             <View style={styles.odometerDisplay}>
               <Text style={styles.odometerValue}>{formData.odometerReading}</Text>
               <Text style={styles.odometerNote}>
-                Set from first GPS session today
+                {hasStartedGpsToday 
+                  ? 'GPS tracking started today - odometer reading captured automatically'
+                  : 'Odometer reading from existing entry for this date'
+                }
               </Text>
             </View>
           </View>
         )}
 
         {/* Start Location */}
-        <EnhancedLocationInput
-          value={formData.startLocation}
-          onChangeText={(value) => handleInputChange('startLocation', value)}
-          onLocationDetailsChange={setStartLocationDetails}
-          placeholder="Enter start location..."
-          label="Start Location"
-          isRequired={true}
-          showLocationDetails={true}
-        />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Start Location *</Text>
+          <TouchableOpacity
+            style={styles.locationButton}
+            onPress={() => handleLocationSelection('start')}
+          >
+            <View style={styles.locationButtonContent}>
+              <MaterialIcons name="location-on" size={20} color="#2196F3" />
+              <Text style={styles.locationButtonText}>
+                {formData.startLocation || 'Select start location...'}
+              </Text>
+              <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
+            </View>
+          </TouchableOpacity>
+        </View>
 
         {/* End Location */}
-        <EnhancedLocationInput
-          value={formData.endLocation}
-          onChangeText={(value) => handleInputChange('endLocation', value)}
-          onLocationDetailsChange={setEndLocationDetails}
-          placeholder="Enter end location..."
-          label="End Location"
-          isRequired={true}
-          showLocationDetails={true}
-        />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>End Location *</Text>
+          <TouchableOpacity
+            style={styles.locationButton}
+            onPress={() => handleLocationSelection('end')}
+          >
+            <View style={styles.locationButtonContent}>
+              <MaterialIcons name="location-on" size={20} color="#2196F3" />
+              <Text style={styles.locationButtonText}>
+                {formData.endLocation || 'Select end location...'}
+              </Text>
+              <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
+            </View>
+          </TouchableOpacity>
+        </View>
 
         {/* Purpose */}
         <View style={styles.inputGroup}>
@@ -844,76 +1153,77 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         {/* Miles */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Miles *</Text>
-          <View style={styles.milesContainer}>
-            <TextInput
-              ref={milesInputRef}
-              style={[styles.input, styles.milesInput]}
-              value={formData.miles}
-              onChangeText={(value) => handleInputChange('miles', value)}
-              placeholder="0.0"
-              keyboardType="numeric"
-              placeholderTextColor="#999"
-              returnKeyType="next"
-              blurOnSubmit={false}
-              onSubmitEditing={() => {
-                notesInputRef.current?.focus();
-              }}
-            />
-            <View style={styles.buttonContainer}>
+          <TextInput
+            ref={milesInputRef}
+            style={styles.input}
+            value={formData.miles}
+            onChangeText={(value) => handleInputChange('miles', value)}
+            placeholder="0.0"
+            keyboardType="numeric"
+            placeholderTextColor="#999"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              notesInputRef.current?.focus();
+            }}
+          />
+          
+          {/* Action Buttons */}
+          <View style={styles.milesButtonContainer}>
+            <TouchableOpacity
+              style={[styles.calculateButton, calculatingDistance && styles.calculateButtonDisabled]}
+              onPress={calculateDistance}
+              disabled={calculatingDistance}
+            >
+              <MaterialIcons 
+                name="calculate" 
+                size={20} 
+                color={calculatingDistance ? "#999" : "#2196F3"} 
+              />
+              <Text style={[styles.calculateButtonText, calculatingDistance && styles.calculateButtonTextDisabled]}>
+                {calculatingDistance ? 'Calculating...' : 'Calculate'}
+              </Text>
+            </TouchableOpacity>
+            
+            {/* Trip Chaining Button */}
+            {formData.startLocation && formData.endLocation && (
               <TouchableOpacity
-                style={[styles.calculateButton, calculatingDistance && styles.calculateButtonDisabled]}
-                onPress={calculateDistance}
-                disabled={calculatingDistance}
+                style={[
+                  styles.tripChainingButton,
+                  loadingChainingSuggestions && styles.tripChainingButtonDisabled
+                ]}
+                onPress={handleShowTripChainingSuggestions}
+                disabled={loadingChainingSuggestions}
               >
                 <MaterialIcons 
-                  name="calculate" 
+                  name="route" 
                   size={20} 
-                  color={calculatingDistance ? "#999" : "#2196F3"} 
+                  color={loadingChainingSuggestions ? "#999" : "#4CAF50"} 
                 />
-                <Text style={[styles.calculateButtonText, calculatingDistance && styles.calculateButtonTextDisabled]}>
-                  {calculatingDistance ? 'Calculating...' : 'Calculate'}
+                <Text style={[
+                  styles.tripChainingButtonText,
+                  loadingChainingSuggestions && styles.tripChainingButtonTextDisabled
+                ]}>
+                  {loadingChainingSuggestions ? 'Analyzing...' : 
+                   tripChainingSuggestions.length > 0 ? 
+                   `Optimize (${tripChainingSuggestions.length})` : 'Optimize'}
                 </Text>
               </TouchableOpacity>
-              
-              {/* Trip Chaining Button */}
-              {formData.startLocation && formData.endLocation && (
-                <TouchableOpacity
-                  style={[
-                    styles.tripChainingButton,
-                    loadingChainingSuggestions && styles.tripChainingButtonDisabled
-                  ]}
-                  onPress={handleShowTripChainingSuggestions}
-                  disabled={loadingChainingSuggestions}
-                >
-                  <MaterialIcons 
-                    name="route" 
-                    size={20} 
-                    color={loadingChainingSuggestions ? "#999" : "#4CAF50"} 
-                  />
-                  <Text style={[
-                    styles.tripChainingButtonText,
-                    loadingChainingSuggestions && styles.tripChainingButtonTextDisabled
-                  ]}>
-                    {loadingChainingSuggestions ? 'Analyzing...' : 
-                     tripChainingSuggestions.length > 0 ? 
-                     `Optimize (${tripChainingSuggestions.length})` : 'Optimize'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              
-              <TouchableOpacity
-                style={styles.testButton}
-                onPress={testDistanceSystem}
-              >
-                <MaterialIcons 
-                  name="bug-report" 
-                  size={16} 
-                  color="#FF9800" 
-                />
-                <Text style={styles.testButtonText}>Test</Text>
-              </TouchableOpacity>
-            </View>
+            )}
+            
+            <TouchableOpacity
+              style={styles.testButton}
+              onPress={testDistanceSystem}
+            >
+              <MaterialIcons 
+                name="bug-report" 
+                size={16} 
+                color="#FF9800" 
+              />
+              <Text style={styles.testButtonText}>Test</Text>
+            </TouchableOpacity>
           </View>
+          
           <Text style={styles.helpText}>
             Enter miles manually or tap "Calculate" to auto-calculate using Google Maps
           </Text>
@@ -974,6 +1284,269 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         </TouchableOpacity>
       </ScrollView>
       
+      {/* Location Options Modal */}
+      <Modal
+        visible={showLocationOptionsModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowLocationOptionsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              Choose {currentLocationType === 'start' ? 'Starting' : 'Ending'} Location
+            </Text>
+            <Text style={styles.modalSubtitle}>
+              Where are you {currentLocationType === 'start' ? 'starting' : 'ending'} your trip?
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.locationOptionButton, !lastDestination && styles.disabledButton]}
+              onPress={() => handleLocationOption('lastDestination')}
+              disabled={!lastDestination}
+            >
+              <MaterialIcons name="location-on" size={24} color="#4CAF50" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Start from Last Destination</Text>
+                <Text style={styles.locationOptionSubtitle}>
+                  {lastDestination ? `${lastDestination.name} (${lastDestination.address})` : 'No previous destination found'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.locationOptionButton, !currentEmployee?.baseAddress && styles.disabledButton]}
+              onPress={() => handleLocationOption('baseAddress')}
+              disabled={!currentEmployee?.baseAddress}
+            >
+              <MaterialIcons name="home" size={24} color="#2196F3" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Start from Base Address</Text>
+                <Text style={styles.locationOptionSubtitle}>
+                  {currentEmployee?.baseAddress || 'No base address set'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleLocationOption('favoriteAddresses')}
+            >
+              <MaterialIcons name="star" size={24} color="#FFC107" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Choose from Favorite Addresses</Text>
+                <Text style={styles.locationOptionSubtitle}>Select from your saved favorite locations</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleLocationOption('oxfordHouse')}
+            >
+              <MaterialIcons name="home" size={24} color="#9C27B0" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Search Oxford Houses</Text>
+                <Text style={styles.locationOptionSubtitle}>Search and select from Oxford House locations</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleLocationOption('newLocation')}
+            >
+              <MaterialIcons name="add-location" size={24} color="#FF9800" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Enter New Location</Text>
+                <Text style={styles.locationOptionSubtitle}>Manually enter location name and address</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalButtonSecondary}
+              onPress={() => setShowLocationOptionsModal(false)}
+            >
+              <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Start Location Capture Modal */}
+      <LocationCaptureModal
+        visible={showStartLocationModal}
+        onClose={() => setShowStartLocationModal(false)}
+        onConfirm={handleLocationConfirm}
+        title="Capture Start Location"
+        locationType="start"
+        currentEmployee={currentEmployee}
+      />
+
+      {/* End Location Capture Modal */}
+      <LocationCaptureModal
+        visible={showEndLocationModal}
+        onClose={() => setShowEndLocationModal(false)}
+        onConfirm={handleLocationConfirm}
+        title="Capture End Location"
+        locationType="end"
+        currentEmployee={currentEmployee}
+      />
+
+      {/* Oxford House Search Modal - Direct Search Interface */}
+      <Modal
+        visible={showOxfordHouseSearchModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowOxfordHouseSearchModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Search Oxford Houses</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowOxfordHouseSearchModal(false)}
+                  style={styles.closeButton}
+                >
+                  <MaterialIcons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.searchContainer}>
+                <TextInput
+                  style={styles.searchInput}
+                  value={oxfordHouseSearchQuery}
+                  onChangeText={(text) => {
+                    setOxfordHouseSearchQuery(text);
+                    performOxfordHouseSearch(text);
+                  }}
+                  placeholder="Type house name, city, or address..."
+                  placeholderTextColor="#999"
+                  autoFocus
+                />
+                <MaterialIcons name="search" size={24} color="#666" style={styles.searchInputIcon} />
+              </View>
+
+              {/* State Filter */}
+              {oxfordHouseAvailableStates.length > 0 && (
+                <View style={styles.stateFilterContainer}>
+                  <Text style={styles.stateFilterLabel}>Filter by State:</Text>
+                  <TouchableOpacity
+                    style={styles.statePickerButton}
+                    onPress={() => setIsOxfordHouseStatePickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.statePickerText}>
+                      {oxfordHouseSelectedState ? oxfordHouseSelectedState : 'All States'}
+                    </Text>
+                    <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Manual Entry Option */}
+              <View style={styles.manualEntryContainer}>
+                <TouchableOpacity
+                  style={styles.manualEntryButton}
+                  onPress={() => {
+                    // Handle manual entry - could open a simple text input modal
+                    Alert.alert('Manual Entry', 'Manual location entry feature coming soon!');
+                  }}
+                >
+                  <MaterialIcons name="edit" size={20} color="#2196F3" />
+                  <Text style={styles.manualEntryText}>Enter location manually</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Results List */}
+              {oxfordHouseLoading ? (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.loadingText}>Loading Oxford Houses...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={oxfordHouseResults}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.houseItem}
+                      onPress={() => handleOxfordHouseSelect(item)}
+                    >
+                      <View style={styles.houseInfo}>
+                        <Text style={styles.houseName}>{item.name}</Text>
+                        <Text style={styles.houseAddress}>{item.address}, {item.city}, {item.state} {item.zipCode}</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={24} color="#666" />
+                    </TouchableOpacity>
+                  )}
+                  style={styles.resultsList}
+                  showsVerticalScrollIndicator={false}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <MaterialIcons name="home" size={48} color="#ccc" />
+                      <Text style={styles.emptyText}>No Oxford Houses found</Text>
+                      <Text style={styles.emptySubtext}>Try a different search term or enter manually</Text>
+                    </View>
+                  }
+                />
+              )}
+
+              {/* State Picker Overlay */}
+              {isOxfordHouseStatePickerVisible && (
+                <View style={styles.statePickerOverlay}>
+                  <View style={styles.statePickerOverlayContent}>
+                    <View style={styles.statePickerOverlayHeader}>
+                      <Text style={styles.statePickerOverlayTitle}>Select State</Text>
+                      <TouchableOpacity 
+                        onPress={() => setIsOxfordHouseStatePickerVisible(false)}
+                        style={styles.statePickerOverlayCloseButton}
+                      >
+                        <MaterialIcons name="close" size={24} color="#666" />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <FlatList
+                      data={['', ...oxfordHouseAvailableStates]}
+                      keyExtractor={(item, index) => index.toString()}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={[
+                            styles.statePickerOverlayItem,
+                            oxfordHouseSelectedState === item && styles.statePickerOverlayItemSelected
+                          ]}
+                          onPress={() => {
+                            handleOxfordHouseStateFilterChange(item);
+                            setIsOxfordHouseStatePickerVisible(false);
+                          }}
+                        >
+                          <Text style={[
+                            styles.statePickerOverlayItemText,
+                            oxfordHouseSelectedState === item && styles.statePickerOverlayItemTextSelected
+                          ]}>
+                            {item || 'All States'}
+                          </Text>
+                          {oxfordHouseSelectedState === item && (
+                            <MaterialIcons name="check" size={20} color="#2196F3" />
+                          )}
+                        </TouchableOpacity>
+                      )}
+                      style={styles.statePickerOverlayList}
+                      ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                          <Text style={styles.emptyText}>Loading states...</Text>
+                        </View>
+                      }
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Trip Chaining Modal */}
       <TripChainingModal
         visible={showTripChainingModal}
@@ -1067,6 +1640,12 @@ const styles = StyleSheet.create({
   },
   milesInput: {
     flex: 1,
+  },
+  milesButtonContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+    flexWrap: 'wrap',
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -1272,7 +1851,8 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '90%',
     maxWidth: 400,
-    minHeight: 400,
+    height: '80%',
+    maxHeight: '80%',
     alignItems: 'center',
   },
   modalHeader: {
@@ -1330,6 +1910,76 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  
+  // Location Button Styles
+  locationButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+  },
+  locationButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  locationButtonText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 8,
+    marginRight: 8,
+  },
+  
+  // Location Options Modal Styles
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  locationOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  locationOptionText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  locationOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  locationOptionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  modalButtonSecondary: {
+    marginTop: 20,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    alignItems: 'center',
+  },
+  modalButtonSecondaryText: {
+    color: '#2196F3',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
   tipsContainer: {
     marginTop: 8,
     maxHeight: 200,
@@ -1389,5 +2039,197 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  
+  // Oxford House Search Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 20,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+  },
+  searchInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  searchInputIcon: {
+    padding: 12,
+  },
+  stateFilterContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  stateFilterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  statePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    height: 50,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  statePickerText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  manualEntryContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  manualEntryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  manualEntryText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#2196F3',
+    fontWeight: '500',
+  },
+  resultsList: {
+    flex: 1,
+    width: '100%',
+    marginTop: 10,
+  },
+  houseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  houseInfo: {
+    flex: 1,
+  },
+  houseName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  houseAddress: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  
+  // State Picker Overlay Styles
+  statePickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  statePickerOverlayContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '90%',
+    maxHeight: '85%',
+    minHeight: '70%',
+    height: '80%',
+  },
+  statePickerOverlayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  statePickerOverlayTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  statePickerOverlayCloseButton: {
+    padding: 4,
+  },
+  statePickerOverlayList: {
+    flex: 1,
+  },
+  statePickerOverlayItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    minHeight: 48,
+  },
+  statePickerOverlayItemSelected: {
+    backgroundColor: '#f0f8ff',
+  },
+  statePickerOverlayItemText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  statePickerOverlayItemTextSelected: {
+    color: '#2196F3',
+    fontWeight: '600',
   },
 });

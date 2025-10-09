@@ -39,9 +39,11 @@ import {
   Edit,
   Add,
   Clear,
-  LockReset
+  LockReset,
+  Search
 } from '@mui/icons-material';
 import { BulkImportService, BulkImportResult, EmployeeImportData } from '../services/bulkImportService';
+import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 
@@ -98,7 +100,23 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [bulkEditData, setBulkEditData] = useState<Partial<Employee>>({});
   const [selectedCostCenters, setSelectedCostCenters] = useState<string[]>([]);
   const [defaultCostCenter, setDefaultCostCenter] = useState<string>('');
+  const [searchText, setSearchText] = useState<string>('');
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter employees based on search text
+  const filteredEmployees = existingEmployees.filter(employee => {
+    if (!searchText) return true;
+    const searchLower = searchText.toLowerCase();
+    return (
+      employee.name?.toLowerCase().includes(searchLower) ||
+      employee.email?.toLowerCase().includes(searchLower) ||
+      employee.position?.toLowerCase().includes(searchLower) ||
+      employee.phoneNumber?.toLowerCase().includes(searchLower)
+    );
+  });
 
   // Helper function to safely parse costCenters
   const parseCostCenters = (costCenters: any): string[] => {
@@ -144,9 +162,27 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
 
     setIsImporting(true);
     try {
-      const result = await BulkImportService.processBulkImport(csvData, onCreateEmployee);
-      setImportResult(result);
-      onImportComplete(result);
+      // Parse CSV data first
+      const importData = BulkImportService.parseCSVData(csvData);
+      
+      // Convert to employee format
+      const employees = importData.map(data => BulkImportService.convertToEmployee(data));
+      
+      // Use bulk create endpoint instead of individual creates
+      const result = await EmployeeApiService.bulkCreateEmployees({ employees });
+      
+      // Convert result to BulkImportResult format
+      const bulkResult = {
+        success: result.success,
+        totalProcessed: result.totalProcessed || employees.length,
+        successful: result.successful || 0,
+        failed: result.failed || 0,
+        errors: result.errors || [],
+        createdEmployees: result.createdEmployees || []
+      };
+      
+      setImportResult(bulkResult);
+      onImportComplete(bulkResult);
     } catch (error: any) {
       setImportResult({
         success: false,
@@ -206,11 +242,16 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setShowBulkEditDialog(true);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (selectedEmployees.length === 0) return;
     if (window.confirm(`Are you sure you want to delete ${selectedEmployees.length} employees?`)) {
-      onBulkDeleteEmployees(selectedEmployees);
-      setSelectedEmployees([]);
+      try {
+        await onBulkDeleteEmployees(selectedEmployees);
+        setSelectedEmployees([]);
+      } catch (error) {
+        console.error('Error in bulk delete:', error);
+        alert('Failed to delete employees. Please try again.');
+      }
     }
   };
 
@@ -227,6 +268,22 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   };
 
   // Individual Employee Management
+  const handleViewEmployee = (employee: Employee) => {
+    setViewingEmployee(employee);
+    setIsEditMode(false);
+    setShowProfileDialog(true);
+  };
+
+  const handleEditFromProfile = () => {
+    if (!viewingEmployee) return;
+    setEditingEmployee(viewingEmployee);
+    const costCenters = parseCostCenters(viewingEmployee.costCenters);
+    setSelectedCostCenters(costCenters);
+    setDefaultCostCenter(viewingEmployee.defaultCostCenter || costCenters[0] || '');
+    setShowProfileDialog(false);
+    setShowEmployeeDialog(true);
+  };
+
   const handleEditEmployee = (employee: Employee) => {
     setEditingEmployee(employee);
     const costCenters = parseCostCenters(employee.costCenters);
@@ -308,11 +365,24 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     
     if (window.confirm(`Reset password for ${employee.name} to "${newPassword}"?`)) {
       try {
-        await onUpdateEmployee(employee.id, { password: newPassword });
-        alert(`Password reset successfully for ${employee.name}`);
+        // Use dedicated password endpoint instead of full employee update
+        const response = await fetch(`http://localhost:3002/api/employees/${employee.id}/password`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ password: newPassword }),
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to reset password');
+        }
+        
+        alert(`Password reset successfully for ${employee.name} to "${newPassword}"`);
       } catch (error) {
         console.error('Error resetting password:', error);
-        alert('Error resetting password. Please try again.');
+        alert(`Error resetting password: ${error instanceof Error ? error.message : 'Please try again.'}`);
       }
     }
   };
@@ -337,7 +407,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6">
-                Current Employees ({existingEmployees.length})
+                Current Employees ({filteredEmployees.length} {searchText && `of ${existingEmployees.length}`})
               </Typography>
               <Button
                 variant="contained"
@@ -348,14 +418,35 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               </Button>
             </Box>
             
+            {/* Search Bar */}
+            <TextField
+              fullWidth
+              placeholder="Search by name, email, position, or phone..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              InputProps={{
+                startAdornment: <Search sx={{ color: 'action.active', mr: 1 }} />,
+                endAdornment: searchText && (
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchText('')}
+                    edge="end"
+                  >
+                    <Clear />
+                  </IconButton>
+                ),
+              }}
+              sx={{ mb: 2 }}
+            />
+            
             <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox">
                       <Checkbox
-                        indeterminate={selectedEmployees.length > 0 && selectedEmployees.length < existingEmployees.length}
-                        checked={selectedEmployees.length === existingEmployees.length && existingEmployees.length > 0}
+                        indeterminate={selectedEmployees.length > 0 && selectedEmployees.length < filteredEmployees.length}
+                        checked={selectedEmployees.length === filteredEmployees.length && filteredEmployees.length > 0}
                         onChange={handleSelectAll}
                       />
                     </TableCell>
@@ -368,7 +459,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {existingEmployees.map((employee) => (
+                  {filteredEmployees.map((employee) => (
                     <TableRow key={employee.id}>
                       <TableCell padding="checkbox">
                         <Checkbox
@@ -376,7 +467,21 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           onChange={() => handleSelectEmployee(employee.id)}
                         />
                       </TableCell>
-                      <TableCell>{employee.name}</TableCell>
+                      <TableCell>
+                        <Box
+                          onClick={() => handleViewEmployee(employee)}
+                          sx={{
+                            cursor: 'pointer',
+                            color: 'primary.main',
+                            fontWeight: 500,
+                            '&:hover': {
+                              textDecoration: 'underline',
+                            },
+                          }}
+                        >
+                          {employee.name}
+                        </Box>
+                      </TableCell>
                       <TableCell>{employee.email}</TableCell>
                       <TableCell>{employee.position}</TableCell>
                       <TableCell>{employee.phoneNumber}</TableCell>
@@ -415,6 +520,21 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </TableCell>
                     </TableRow>
                   ))}
+                  {filteredEmployees.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
+                        <Search sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          No employees found
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {searchText 
+                            ? `No results for "${searchText}". Try a different search term.`
+                            : 'No employees have been added yet. Click "Add Employee" to get started.'}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -857,6 +977,140 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           </Button>
           <Button onClick={handleSaveBulkEdit} variant="contained">
             Apply to {selectedEmployees.length} Employees
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Employee Profile View Dialog */}
+      <Dialog 
+        open={showProfileDialog} 
+        onClose={() => setShowProfileDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Employee Profile</Typography>
+            <Box>
+              <Button 
+                startIcon={<Edit />}
+                onClick={handleEditFromProfile}
+                variant="contained"
+                sx={{ mr: 1 }}
+              >
+                Edit
+              </Button>
+              <IconButton onClick={() => setShowProfileDialog(false)}>
+                <Clear />
+              </IconButton>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {viewingEmployee && (
+            <Box sx={{ pt: 2 }}>
+              {/* Personal Information */}
+              <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+                Personal Information
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Name</Typography>
+                  <Typography variant="body1" fontWeight={500}>{viewingEmployee.name}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Email</Typography>
+                  <Typography variant="body1">{viewingEmployee.email}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Position</Typography>
+                  <Typography variant="body1">{viewingEmployee.position}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Phone</Typography>
+                  <Typography variant="body1">{viewingEmployee.phoneNumber || 'Not provided'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Oxford House ID</Typography>
+                  <Typography variant="body1">{viewingEmployee.oxfordHouseId}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Employee ID</Typography>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                    {viewingEmployee.id}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Address Information */}
+              <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+                Address Information
+              </Typography>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="caption" color="text.secondary">Base Address</Typography>
+                <Typography variant="body1">{viewingEmployee.baseAddress || 'Not provided'}</Typography>
+              </Box>
+
+              {/* Cost Centers */}
+              <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+                Cost Centers
+              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  Assigned Cost Centers
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {parseCostCenters(viewingEmployee.costCenters).map(center => (
+                    <Chip 
+                      key={center} 
+                      label={center} 
+                      color={center === viewingEmployee.defaultCostCenter ? 'primary' : 'default'}
+                      icon={center === viewingEmployee.defaultCostCenter ? <Typography sx={{ ml: 1 }}>⭐</Typography> : undefined}
+                    />
+                  ))}
+                </Box>
+                {viewingEmployee.defaultCostCenter && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    ⭐ Default: {viewingEmployee.defaultCostCenter}
+                  </Typography>
+                )}
+              </Box>
+
+              {/* Account Information */}
+              <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+                Account Information
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Created</Typography>
+                  <Typography variant="body2">
+                    {viewingEmployee.createdAt 
+                      ? new Date(viewingEmployee.createdAt).toLocaleDateString() 
+                      : 'N/A'}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Last Updated</Typography>
+                  <Typography variant="body2">
+                    {viewingEmployee.updatedAt 
+                      ? new Date(viewingEmployee.updatedAt).toLocaleDateString() 
+                      : 'N/A'}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowProfileDialog(false)}>
+            Close
+          </Button>
+          <Button 
+            onClick={handleEditFromProfile}
+            variant="contained"
+            startIcon={<Edit />}
+          >
+            Edit Employee
           </Button>
         </DialogActions>
       </Dialog>

@@ -50,12 +50,11 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
       // Initialize database first
       await DatabaseService.initDatabase();
       
-      // Get current employee (demo user)
-      const employees = await DatabaseService.getEmployees();
-      const employee = employees.find(emp => emp.name === 'Greg Weisz') || employees[0];
+      // Get current employee
+      const employee = await DatabaseService.getCurrentEmployee();
       
       if (!employee) {
-        Alert.alert('Error', 'Employee not found');
+        Alert.alert('Error', 'No employee logged in');
         navigation.goBack();
         return;
       }

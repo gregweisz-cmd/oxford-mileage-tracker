@@ -34,7 +34,6 @@ export default function LocationCaptureModal({
 }: LocationCaptureModalProps) {
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
-  const [endingOdometer, setEndingOdometer] = useState('');
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveToFavorites, setSaveToFavorites] = useState(false);
@@ -96,29 +95,6 @@ export default function LocationCaptureModal({
       return;
     }
 
-    // Validate ending odometer if this is an end location
-    if (locationType === 'end') {
-      if (!endingOdometer.trim()) {
-        Alert.alert('Validation Error', 'Please enter the ending odometer reading');
-        return;
-      }
-      
-      const endingOdometerValue = Number(endingOdometer);
-      if (isNaN(endingOdometerValue) || endingOdometerValue < 0) {
-        Alert.alert('Validation Error', 'Please enter a valid ending odometer reading');
-        return;
-      }
-      
-      // Check if ending odometer is greater than starting odometer
-      if (startingOdometer && endingOdometerValue < startingOdometer) {
-        Alert.alert(
-          'Invalid Odometer Reading', 
-          `Ending odometer (${endingOdometerValue}) cannot be less than starting odometer (${startingOdometer})`
-        );
-        return;
-      }
-    }
-
     const locationDetails: LocationDetails = {
       name: locationName.trim(),
       address: locationAddress.trim(),
@@ -144,14 +120,9 @@ export default function LocationCaptureModal({
       }
     }
 
-    const endingOdometerValue = locationType === 'end' && endingOdometer.trim() 
-      ? Number(endingOdometer) 
-      : undefined;
-
-    onConfirm(locationDetails, endingOdometerValue);
+    onConfirm(locationDetails);
     setLocationName('');
     setLocationAddress('');
-    setEndingOdometer('');
     setCurrentLocation(null);
     setSaveToFavorites(false);
     setCategory('Other');
@@ -160,7 +131,6 @@ export default function LocationCaptureModal({
   const handleCancel = () => {
     setLocationName('');
     setLocationAddress('');
-    setEndingOdometer('');
     setCurrentLocation(null);
     setSaveToFavorites(false);
     setCategory('Other');
@@ -202,28 +172,6 @@ export default function LocationCaptureModal({
             />
           </View>
 
-          {/* Ending Odometer for end locations */}
-          {locationType === 'end' && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Ending Odometer Reading *</Text>
-              <TextInput
-                style={styles.input}
-                value={endingOdometer}
-                onChangeText={setEndingOdometer}
-                placeholder="e.g., 12450"
-                keyboardType="numeric"
-                placeholderTextColor="#999"
-              />
-              {startingOdometer && (
-                <Text style={styles.helpText}>
-                  Starting odometer: {startingOdometer}
-                  {endingOdometer && !isNaN(Number(endingOdometer)) && Number(endingOdometer) > startingOdometer && (
-                    ` • Miles: ${(Number(endingOdometer) - startingOdometer).toFixed(1)}`
-                  )}
-                </Text>
-              )}
-            </View>
-          )}
 
           {loading && (
             <View style={styles.loadingContainer}>

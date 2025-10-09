@@ -60,10 +60,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     loadEmployees();
   }, []);
 
-  const loadEmployees = async () => {
+  const loadEmployees = async (skipCache: boolean = false) => {
     try {
       setLoading(true);
-      const employeeData = await EmployeeApiService.getAllEmployees();
+      const employeeData = await EmployeeApiService.getAllEmployees(skipCache);
+      console.log(`📊 Loaded ${employeeData.length} employees${skipCache ? ' (cache bypassed)' : ''}`);
       setEmployees(employeeData);
     } catch (error) {
       console.error('Error loading employees:', error);
@@ -128,8 +129,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
 
   const handleBulkDeleteEmployees = async (employeeIds: string[]): Promise<void> => {
     try {
+      console.log(`🗑️ Deleting ${employeeIds.length} employees:`, employeeIds);
       const result = await EmployeeApiService.bulkDeleteEmployees({ employeeIds });
-      await loadEmployees(); // Refresh the list
+      console.log(`✅ Delete result:`, result);
+      await loadEmployees(true); // Refresh the list, skip cache
       showSnackbar(`Successfully deleted ${result.deletedCount} employees`, 'success');
     } catch (error) {
       console.error('Error bulk deleting employees:', error);

@@ -181,6 +181,14 @@ export default function EnhancedLocationInput({
     return 'place';
   };
 
+  // Helper function to filter out placeholder text
+  const filterPlaceholderText = (value: string): string => {
+    if (!value) return '';
+    const placeholderTexts = ['to be updated', 'tbd', 'n/a', 'none', 'null', 'undefined'];
+    const isPlaceholder = placeholderTexts.includes(value.toLowerCase().trim());
+    return isPlaceholder ? '' : value;
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>
@@ -193,7 +201,7 @@ export default function EnhancedLocationInput({
         <MaterialIcons name={getLocationIcon()} size={20} color="#666" style={styles.inputIcon} />
         <TextInput
           style={styles.input}
-          value={value}
+          value={filterPlaceholderText(value)}
           onChangeText={handleLocationInputChange}
           placeholder={placeholder}
           placeholderTextColor="#999"

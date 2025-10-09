@@ -57,8 +57,10 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [selectedCostCenters, setSelectedCostCenters] = useState<string[]>([]);
   const [defaultCostCenter, setDefaultCostCenter] = useState<string>('');
   const [importingCostCenters, setImportingCostCenters] = useState(false);
-  const [hasAdminPermissions, setHasAdminPermissions] = useState(false);
-  const [hasTeamDashboardPermissions, setHasTeamDashboardPermissions] = useState(false);
+  const [costCenterSearchText, setCostCenterSearchText] = useState<string>('');
+  // Permission checks removed - mobile app is staff-only, admin functions in web portal
+  // const [hasAdminPermissions, setHasAdminPermissions] = useState(false);
+  // const [hasTeamDashboardPermissions, setHasTeamDashboardPermissions] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedMileageEntries, setSelectedMileageEntries] = useState<string[]>([]);
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
@@ -375,22 +377,18 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       
       setCurrentEmployee(employee);
       
-      // Check user permissions
-      setHasAdminPermissions(PermissionService.hasAdminPermissions(employee));
-      setHasTeamDashboardPermissions(PermissionService.hasTeamDashboardPermissions(employee));
+      // Permission checks removed - mobile app is staff-only, admin functions in web portal
+      // setHasAdminPermissions(PermissionService.hasAdminPermissions(employee));
+      // setHasTeamDashboardPermissions(PermissionService.hasTeamDashboardPermissions(employee));
       
       // Set viewing employee to current employee by default
       setViewingEmployee(employee);
       
       // Tips will be loaded on individual screens instead of home screen
       
-      // Load available employees for selection (only if user has permissions)
-      if (PermissionService.hasTeamDashboardPermissions(employee)) {
-        const allEmployees = await DatabaseService.getEmployees();
-        setAvailableEmployees(allEmployees);
-      } else {
-        setAvailableEmployees([employee]); // Only show themselves
-      }
+      // Mobile app: Always show only the current employee's data
+      // Admin/Supervisor functions are handled in the web portal only
+      setAvailableEmployees([employee]); // Only show themselves
       
       // Load data for the viewing employee
       await loadEmployeeData(employee.id, employee);
@@ -607,9 +605,16 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  const filterPlaceholderText = (value: string): string => {
+    if (!value) return '';
+    const placeholderTexts = ['to be updated', 'tbd', 'n/a', 'none', 'null', 'undefined'];
+    const isPlaceholder = placeholderTexts.includes(value.toLowerCase().trim());
+    return isPlaceholder ? '' : value;
+  };
+
   const handleEditBaseAddress = () => {
     if (currentEmployee) {
-      setBaseAddressInput(currentEmployee.baseAddress || '');
+      setBaseAddressInput(filterPlaceholderText(currentEmployee.baseAddress || ''));
       setShowBaseAddressModal(true);
     }
   };
@@ -1093,19 +1098,8 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                 <Text style={dynamicStyles.actionButtonSecondaryText}>{getNavigationButtonText()}</Text>
           </TouchableOpacity>
           
-          {hasAdminPermissions && (
-            <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewAdmin}>
-              <MaterialIcons name="admin-panel-settings" size={24} color={colors.primary} />
-              <Text style={dynamicStyles.actionButtonSecondaryText}>Employee Management</Text>
-            </TouchableOpacity>
-          )}
-          
-          {hasTeamDashboardPermissions && (
-            <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewManagerDashboard}>
-              <MaterialIcons name="supervisor-account" size={24} color={colors.primary} />
-              <Text style={dynamicStyles.actionButtonSecondaryText}>Team Dashboard</Text>
-            </TouchableOpacity>
-          )}
+          {/* Admin and Supervisor functions removed from mobile app */}
+          {/* All management functions are available in the web portal only */}
           
           <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewSavedAddresses}>
             <MaterialIcons name="location-on" size={24} color={colors.primary} />
@@ -1206,7 +1200,7 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
             
             <TextInput
               style={dynamicStyles.textInput}
-              value={baseAddressInput}
+              value={filterPlaceholderText(baseAddressInput)}
               onChangeText={setBaseAddressInput}
               placeholder="Enter your base address..."
               multiline={true}
@@ -1252,12 +1246,33 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               Select all cost centers you can bill to. You can choose a default for new entries.
             </Text>
             
+            {/* Search Bar */}
+            <View style={styles.costCenterSearchContainer}>
+              <MaterialIcons name="search" size={20} color="#999" />
+              <TextInput
+                style={styles.costCenterSearchInput}
+                placeholder="Search cost centers..."
+                value={costCenterSearchText}
+                onChangeText={setCostCenterSearchText}
+                placeholderTextColor="#999"
+              />
+              {costCenterSearchText.length > 0 && (
+                <TouchableOpacity onPress={() => setCostCenterSearchText('')}>
+                  <MaterialIcons name="close" size={20} color="#999" />
+                </TouchableOpacity>
+              )}
+            </View>
+            
             <ScrollView style={styles.costCentersList} showsVerticalScrollIndicator={false}>
               {/* Selected Cost Centers Section */}
-              {selectedCostCenters.length > 0 && (
+              {selectedCostCenters.filter(cc => 
+                cc.toLowerCase().includes(costCenterSearchText.toLowerCase())
+              ).length > 0 && (
                 <View style={styles.costCentersSection}>
                   <Text style={styles.costCentersSectionTitle}>Selected Cost Centers</Text>
-                  {selectedCostCenters.map((costCenter) => (
+                  {selectedCostCenters
+                    .filter(cc => cc.toLowerCase().includes(costCenterSearchText.toLowerCase()))
+                    .map((costCenter) => (
                     <View key={costCenter} style={[styles.costCenterItem, styles.selectedCostCenterItem]}>
                       <TouchableOpacity
                         style={styles.costCenterCheckbox}
@@ -1300,7 +1315,10 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                   {selectedCostCenters.length > 0 ? 'Available Cost Centers' : 'All Cost Centers'}
                 </Text>
                 {COST_CENTERS
-                  .filter(costCenter => !selectedCostCenters.includes(costCenter))
+                  .filter(costCenter => 
+                    !selectedCostCenters.includes(costCenter) &&
+                    costCenter.toLowerCase().includes(costCenterSearchText.toLowerCase())
+                  )
                   .map((costCenter) => (
                     <View key={costCenter} style={styles.costCenterItem}>
                       <TouchableOpacity
@@ -1989,8 +2007,23 @@ const styles = StyleSheet.create({
   costCentersModalSubtitle: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 20,
+    marginBottom: 16,
     lineHeight: 20,
+  },
+  costCenterSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  costCenterSearchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#333',
   },
   costCentersList: {
     maxHeight: 300,

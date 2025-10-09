@@ -146,21 +146,28 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
     onChangeText: (text: string) => void,
     placeholder: string,
     multiline: boolean = false
-  ) => (
-    <View style={styles.fieldContainer}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        style={[styles.fieldInput, multiline && styles.multilineInput]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#999"
-        editable={editing}
-        multiline={multiline}
-        numberOfLines={multiline ? 3 : 1}
-      />
-    </View>
-  );
+  ) => {
+    // Check if value is a placeholder text (like "To be updated", "TBD", etc.)
+    const placeholderTexts = ['to be updated', 'tbd', 'n/a', 'none', 'null', 'undefined'];
+    const isPlaceholderValue = value && placeholderTexts.includes(value.toLowerCase().trim());
+    const displayValue = isPlaceholderValue ? '' : value;
+    
+    return (
+      <View style={styles.fieldContainer}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <TextInput
+          style={[styles.fieldInput, multiline && styles.multilineInput]}
+          value={displayValue}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#999"
+          editable={editing}
+          multiline={multiline}
+          numberOfLines={multiline ? 3 : 1}
+        />
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>

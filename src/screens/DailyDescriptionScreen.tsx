@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataService';
+import { ApiSyncService } from '../services/apiSyncService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 
@@ -29,6 +30,7 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
   const [selectedDay, setSelectedDay] = useState<UnifiedDayData | null>(null);
   const [descriptionText, setDescriptionText] = useState<string>('');
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -60,6 +62,66 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
       console.error('❌ DailyDescriptionScreen: Error loading data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncFromBackend = async () => {
+    if (!currentEmployee) {
+      Alert.alert('Error', 'No employee found');
+      return;
+    }
+
+    try {
+      setSyncing(true);
+      console.log('🔄 DailyDescriptionScreen: Starting bi-directional sync...');
+      
+      // Step 1: First, get all local daily descriptions and sync them TO the backend
+      console.log('📤 DailyDescriptionScreen: Syncing local data to backend...');
+      const localDescriptions = await DatabaseService.getDailyDescriptions(currentEmployee.id);
+      
+      if (localDescriptions.length > 0) {
+        // Sync local descriptions to backend
+        for (const desc of localDescriptions) {
+          try {
+            await fetch('http://192.168.86.101:3002/api/daily-descriptions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: desc.id,
+                employeeId: desc.employeeId,
+                date: desc.date.toISOString(),
+                description: desc.description,
+                costCenter: desc.costCenter || '',
+                createdAt: desc.createdAt.toISOString(),
+                updatedAt: desc.updatedAt.toISOString()
+              })
+            });
+            console.log(`✅ DailyDescriptionScreen: Synced local description for ${desc.date.toISOString().split('T')[0]}`);
+          } catch (error) {
+            console.error(`❌ DailyDescriptionScreen: Error syncing description for ${desc.date}:`, error);
+          }
+        }
+      }
+      
+      // Step 2: Then, pull any updates FROM the backend
+      console.log('📥 DailyDescriptionScreen: Pulling updates from backend...');
+      const result = await ApiSyncService.syncDailyDescriptionsFromBackend(currentEmployee.id);
+      
+      if (result.success) {
+        console.log('✅ DailyDescriptionScreen: Bi-directional sync successful');
+        Alert.alert('Success', 'Daily descriptions synced successfully! Your changes were saved and any updates from the web portal were loaded.');
+        
+        // Reload data to show the synced descriptions
+        await loadData();
+      } else {
+        console.error('❌ DailyDescriptionScreen: Sync failed:', result.error);
+        Alert.alert('Sync Failed', result.error || 'Failed to sync daily descriptions');
+      }
+    } catch (error) {
+      console.error('❌ DailyDescriptionScreen: Error syncing:', error);
+      Alert.alert('Error', 'Failed to sync daily descriptions. Please check your connection.');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -100,6 +162,32 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
       
       // Reload data to reflect changes
       await loadData();
+      
+      // Auto-sync to backend after saving
+      try {
+        console.log('📤 DailyDescriptionScreen: Auto-syncing to backend...');
+        const savedDescription = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
+        
+        if (savedDescription) {
+          await fetch('http://192.168.86.101:3002/api/daily-descriptions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: savedDescription.id,
+              employeeId: savedDescription.employeeId,
+              date: savedDescription.date.toISOString(),
+              description: savedDescription.description,
+              costCenter: savedDescription.costCenter || '',
+              createdAt: savedDescription.createdAt.toISOString(),
+              updatedAt: savedDescription.updatedAt.toISOString()
+            })
+          });
+          console.log('✅ DailyDescriptionScreen: Auto-synced to backend');
+        }
+      } catch (error) {
+        console.error('⚠️ DailyDescriptionScreen: Error auto-syncing to backend:', error);
+        // Don't show error to user - it's saved locally
+      }
       
       Alert.alert('Success', 'Daily description saved successfully');
       
@@ -167,7 +255,17 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Daily Descriptions</Text>
-        <View style={styles.placeholder} />
+        <TouchableOpacity 
+          style={styles.syncButton} 
+          onPress={handleSyncFromBackend}
+          disabled={syncing}
+        >
+          <MaterialIcons 
+            name={syncing ? "sync" : "sync"} 
+            size={24} 
+            color={syncing ? "#999" : "#2196F3"} 
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -305,6 +403,11 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 24,
+  },
+  syncButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   content: {
     flex: 1,
