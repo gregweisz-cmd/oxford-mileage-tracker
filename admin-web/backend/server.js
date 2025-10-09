@@ -3023,6 +3023,63 @@ app.post('/api/auth/logout', (req, res) => {
   });
 });
 
+// Mobile app login endpoint (same as auth/login but with different response format)
+app.post('/api/employee-login', (req, res) => {
+  const { email, password } = req.body;
+  
+  if (!email || !password) {
+    return res.status(400).json({ 
+      error: 'Email and password are required' 
+    });
+  }
+  
+  // Find employee by email
+  db.get(
+    'SELECT * FROM employees WHERE email = ?',
+    [email],
+    (err, employee) => {
+      if (err) {
+        console.error('Employee login error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!employee) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      // Check password (plain text for now - should hash in production!)
+      if (employee.password !== password) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      // Parse JSON fields
+      let costCenters = [];
+      let selectedCostCenters = [];
+      
+      try {
+        if (employee.costCenters) {
+          costCenters = JSON.parse(employee.costCenters);
+        }
+        if (employee.selectedCostCenters) {
+          selectedCostCenters = JSON.parse(employee.selectedCostCenters);
+        }
+      } catch (parseErr) {
+        console.error('Error parsing cost centers:', parseErr);
+      }
+      
+      // Don't send password back to client
+      const { password: _, ...employeeData } = employee;
+      
+      // Return employee data in format expected by mobile app
+      res.json({
+        ...employeeData,
+        costCenters,
+        selectedCostCenters
+      });
+    }
+  );
+});
+
 app.use((err, req, res, next) => {
   const timestamp = new Date().toISOString();
   console.error(`[${timestamp}] Error:`, err.stack);
