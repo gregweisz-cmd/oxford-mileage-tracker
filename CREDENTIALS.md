@@ -35,7 +35,7 @@
 - **Employee ID:** `kathleen-gibson-001`
 - **Name:** Kathleen Gibson
 - **Preferred Name:** Kathleen
-- **Email:** kathleen@oxfordhouse.org
+- **Email:** kathleen.gibson@oxfordhouse.org
 - **Password:** `Kathleenwelcome1`
 - **Position:** CEO
 - **Cost Centers:** 
@@ -229,7 +229,7 @@ Based on your bulk imports, you have the following employees in the system:
 ### CEO Account
 - **Name:** Kathleen Gibson
 - **ID:** `kathleen-gibson-001`
-- **Email:** kathleen@oxfordhouse.org
+- **Email:** kathleen.gibson@oxfordhouse.org
 - **Password:** `Kathleenwelcome1`
 - **Position:** CEO
 - **Use for:** CEO review and access

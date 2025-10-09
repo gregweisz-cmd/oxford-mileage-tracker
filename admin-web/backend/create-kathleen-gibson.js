@@ -11,7 +11,7 @@ const db = new sqlite3.Database(DB_PATH);
 const kathleenGibson = {
   id: 'kathleen-gibson-001',
   name: 'Kathleen Gibson',
-  email: 'kathleen@oxfordhouse.org',
+  email: 'kathleen.gibson@oxfordhouse.org',
   password: 'Kathleenwelcome1',
   oxfordHouseId: 'oxford-house-001',
   position: 'CEO',
