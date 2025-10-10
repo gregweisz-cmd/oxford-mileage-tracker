@@ -986,37 +986,11 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   defaultCostCenter: e.target.value
                 } as any)}
               >
-                <MenuItem value="Program Services">Program Services</MenuItem>
-                <MenuItem value="Finance">Finance</MenuItem>
-                <MenuItem value="G&A">G&A</MenuItem>
-                <MenuItem value="Fundraising">Fundraising</MenuItem>
-                <MenuItem value="IL-STATE">IL-STATE</MenuItem>
-                <MenuItem value="MN-STATE">MN-STATE</MenuItem>
-                <MenuItem value="WI-STATE">WI-STATE</MenuItem>
-                <MenuItem value="WA.KING">WA.KING</MenuItem>
-                <MenuItem value="OK-SUBG">OK-SUBG</MenuItem>
-                <MenuItem value="SC-STATE">SC-STATE</MenuItem>
-                <MenuItem value="OR-STATE">OR-STATE</MenuItem>
-                <MenuItem value="AZ.MC-SUBG">AZ.MC-SUBG</MenuItem>
-                <MenuItem value="KY-SOR">KY-SOR</MenuItem>
-                <MenuItem value="NC.F-SOR">NC.F-SOR</MenuItem>
-                <MenuItem value="FL-SOR">FL-SOR</MenuItem>
-                <MenuItem value="NC.MECKCO-OSG">NC.MECKCO-OSG</MenuItem>
-                <MenuItem value="TX-SUBG">TX-SUBG</MenuItem>
-                <MenuItem value="WA-SUBG">WA-SUBG</MenuItem>
-                <MenuItem value="NE-SOR">NE-SOR</MenuItem>
-                <MenuItem value="TN-SUBG">TN-SUBG</MenuItem>
-                <MenuItem value="TN-STATE">TN-STATE</MenuItem>
-                <MenuItem value="OH-SOR">OH-SOR</MenuItem>
-                <MenuItem value="OH-SOS">OH-SOS</MenuItem>
-                <MenuItem value="NC.F-SUBG">NC.F-SUBG</MenuItem>
-                <MenuItem value="NJ-SUBG">NJ-SUBG</MenuItem>
-                <MenuItem value="NC.AHP">NC.AHP</MenuItem>
-                <MenuItem value="LA-SOR">LA-SOR</MenuItem>
-                <MenuItem value="NJ-SOR">NJ-SOR</MenuItem>
-                <MenuItem value="CT-STATE">CT-STATE</MenuItem>
-                <MenuItem value="DE-STATE">DE-STATE</MenuItem>
-                <MenuItem value="NJ-STATE">NJ-STATE</MenuItem>
+                {COST_CENTERS.map((costCenter) => (
+                  <MenuItem key={costCenter} value={costCenter}>
+                    {costCenter}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Box>

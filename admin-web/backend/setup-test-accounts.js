@@ -25,9 +25,9 @@ const testAccounts = [
     position: 'Senior Data Analyst/Administrator',
     phoneNumber: '(555) 123-4567',
     baseAddress: '230 Wagner St, Troutman, NC 28166',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    defaultCostCenter: 'PS-Unfunded'
+    costCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'kathleen-gibson-001',
@@ -39,9 +39,9 @@ const testAccounts = [
     position: 'CEO',
     phoneNumber: '(555) 234-5678',
     baseAddress: '9016 Mustard Seed Ln, Garner, NC 27529',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    defaultCostCenter: 'PS-Unfunded'
+    costCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'aj-dunaway-001',
@@ -53,9 +53,9 @@ const testAccounts = [
     position: 'Program Services Director',
     phoneNumber: '(555) 345-6789',
     baseAddress: '456 Oak Ave, Charlotte, NC 28202',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
-    defaultCostCenter: 'PS-Funded'
+    costCenters: JSON.stringify(['Program Services', 'NC.F-SUBG']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'NC.F-SUBG']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'test-supervisor-001',
@@ -67,9 +67,9 @@ const testAccounts = [
     position: 'Supervisor',
     phoneNumber: '(555) 456-7890',
     baseAddress: '789 Pine St, Durham, NC 27701',
-    costCenters: JSON.stringify(['PS-Funded', 'Direct Care', 'Training']),
-    selectedCostCenters: JSON.stringify(['PS-Funded', 'Direct Care', 'Training']),
-    defaultCostCenter: 'PS-Funded'
+    costCenters: JSON.stringify(['Program Services', 'NC.F-SOR']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'NC.F-SOR']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'test-staff-001',
@@ -81,9 +81,9 @@ const testAccounts = [
     position: 'Staff',
     phoneNumber: '(555) 567-8901',
     baseAddress: '321 Elm St, Greensboro, NC 27401',
-    costCenters: JSON.stringify(['Direct Care', 'PS-Funded']),
-    selectedCostCenters: JSON.stringify(['Direct Care', 'PS-Funded']),
-    defaultCostCenter: 'Direct Care'
+    costCenters: JSON.stringify(['Program Services', 'NC.F-SUBG']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'NC.F-SUBG']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'test-staff-002',
@@ -95,9 +95,9 @@ const testAccounts = [
     position: 'Staff',
     phoneNumber: '(555) 678-9012',
     baseAddress: '654 Maple Dr, Winston-Salem, NC 27101',
-    costCenters: JSON.stringify(['PS-Unfunded', 'Training']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'Training']),
-    defaultCostCenter: 'PS-Unfunded'
+    costCenters: JSON.stringify(['Program Services']),
+    selectedCostCenters: JSON.stringify(['Program Services']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'jackson-longan-001',
@@ -109,9 +109,9 @@ const testAccounts = [
     position: 'Director of Communication and Information',
     phoneNumber: '(361) 563-1537',
     baseAddress: '425 Pergola St, Yukon, OK 73099',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    defaultCostCenter: 'PS-Unfunded'
+    costCenters: JSON.stringify(['Program Services', 'OK-SUBG', 'CORPORATE']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'OK-SUBG', 'CORPORATE']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'alex-szary-001',
@@ -123,9 +123,9 @@ const testAccounts = [
     position: 'Senior Manager of Data and Analytics',
     phoneNumber: '(210) 369-8399',
     baseAddress: '7343 Obbligato Ln, San Antonio, TX 78266',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    defaultCostCenter: 'PS-Unfunded'
+    costCenters: JSON.stringify(['Program Services', 'TX-SUBG', 'CORPORATE']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'TX-SUBG', 'CORPORATE']),
+    defaultCostCenter: 'Program Services'
   },
   {
     id: 'kenneth-norman-001',
@@ -151,9 +151,9 @@ const testAccounts = [
     position: 'Staff',
     phoneNumber: '(704) 477-4762',
     baseAddress: '1000 E Woodlawn Rd, Apt 201, Charlotte, NC 28209',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
-    defaultCostCenter: 'PS-Unfunded'
+    costCenters: JSON.stringify(['Program Services', 'NC.F-SUBG']),
+    selectedCostCenters: JSON.stringify(['Program Services', 'NC.F-SUBG']),
+    defaultCostCenter: 'Program Services'
   }
 ];
 

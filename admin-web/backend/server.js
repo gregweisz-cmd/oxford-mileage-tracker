@@ -3188,6 +3188,170 @@ async function seedTestAccounts() {
   await Promise.all(promises);
 }
 
+// Function to seed test accounts
+async function seedTestAccounts() {
+  const testAccounts = [
+    {
+      id: 'greg-weisz-001',
+      name: 'Greg Weisz',
+      preferredName: 'Greg',
+      email: 'greg.weisz@oxfordhouse.org',
+      password: 'ImtheBoss5!',
+      oxfordHouseId: 'oxford-house-001',
+      position: 'Senior Data Analyst/Administrator',
+      phoneNumber: '(555) 123-4567',
+      baseAddress: '230 Wagner St, Troutman, NC 28166',
+      costCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+      selectedCostCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+      defaultCostCenter: 'Program Services'
+    },
+    {
+      id: 'jackson-longan-001',
+      name: 'Jackson Longan',
+      preferredName: 'Jackson',
+      email: 'jackson.longan@oxfordhouse.org',
+      password: 'Jacksonwelcome1',
+      oxfordHouseId: 'oxford-house-002',
+      position: 'Director of Communication and Information/Administrator',
+      phoneNumber: '(555) 345-6789',
+      baseAddress: '123 Main St, Oklahoma City, OK 73101',
+      costCenters: JSON.stringify(['Program Services', 'OK-SUBG', 'CORPORATE']),
+      selectedCostCenters: JSON.stringify(['Program Services', 'OK-SUBG', 'CORPORATE']),
+      defaultCostCenter: 'Program Services'
+    },
+    {
+      id: 'kathleen-gibson-001',
+      name: 'Kathleen Gibson',
+      preferredName: 'Kathleen',
+      email: 'kathleen.gibson@oxfordhouse.org',
+      password: 'Kathleenwelcome1',
+      oxfordHouseId: 'oxford-house-003',
+      position: 'CEO/Administrator',
+      phoneNumber: '(555) 234-5678',
+      baseAddress: '9016 Mustard Seed Ln, Garner, NC 27529',
+      costCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+      selectedCostCenters: JSON.stringify(['Program Services', 'Finance', 'CORPORATE']),
+      defaultCostCenter: 'Program Services'
+    },
+    {
+      id: 'alex-szary-001',
+      name: 'Alex Szary',
+      preferredName: 'Alex',
+      email: 'alex.szary@oxfordhouse.org',
+      password: 'Alexwelcome1',
+      oxfordHouseId: 'oxford-house-004',
+      position: 'Senior Manager of Data and Analytics/Administrator',
+      phoneNumber: '(555) 456-7890',
+      baseAddress: '456 Oak St, Austin, TX 78701',
+      costCenters: JSON.stringify(['Program Services', 'TX-SUBG', 'CORPORATE']),
+      selectedCostCenters: JSON.stringify(['Program Services', 'TX-SUBG', 'CORPORATE']),
+      defaultCostCenter: 'Program Services'
+    }
+  ];
+
+  console.log('👥 Setting up test accounts...');
+
+  for (const account of testAccounts) {
+    try {
+      // Check if account already exists
+      const existingAccount = await new Promise((resolve, reject) => {
+        db.get(
+          'SELECT id FROM employees WHERE id = ? OR email = ?',
+          [account.id, account.email],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          }
+        );
+      });
+
+      const now = new Date().toISOString();
+
+      if (existingAccount) {
+        console.log(`🔄 ${account.name} already exists, updating...`);
+        
+        // Update existing account
+        await new Promise((resolve, reject) => {
+          db.run(
+            `UPDATE employees SET 
+              name = ?,
+              preferredName = ?,
+              email = ?,
+              password = ?,
+              oxfordHouseId = ?,
+              position = ?,
+              phoneNumber = ?,
+              baseAddress = ?,
+              costCenters = ?,
+              selectedCostCenters = ?,
+              defaultCostCenter = ?,
+              updatedAt = ?
+            WHERE id = ?`,
+            [
+              account.name,
+              account.preferredName,
+              account.email,
+              account.password,
+              account.oxfordHouseId,
+              account.position,
+              account.phoneNumber,
+              account.baseAddress,
+              account.costCenters,
+              account.selectedCostCenters,
+              account.defaultCostCenter,
+              now,
+              account.id
+            ],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+      } else {
+        console.log(`➕ Creating new account for ${account.name}...`);
+        
+        // Insert new account
+        await new Promise((resolve, reject) => {
+          db.run(
+            `INSERT INTO employees (
+              id, name, preferredName, email, password, oxfordHouseId, position, 
+              phoneNumber, baseAddress, costCenters, selectedCostCenters, 
+              defaultCostCenter, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              account.id,
+              account.name,
+              account.preferredName,
+              account.email,
+              account.password,
+              account.oxfordHouseId,
+              account.position,
+              account.phoneNumber,
+              account.baseAddress,
+              account.costCenters,
+              account.selectedCostCenters,
+              account.defaultCostCenter,
+              now,
+              now
+            ],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+      }
+      
+      console.log(`✅ ${account.name} processed successfully`);
+    } catch (error) {
+      console.error(`❌ Error processing ${account.name}:`, error);
+    }
+  }
+
+  console.log('🎉 All test accounts processed!');
+}
+
 // Initialize database and start server
 initDatabase().then(async () => {
   // Always ensure test accounts exist (both local and production)
