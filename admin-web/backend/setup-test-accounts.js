@@ -151,9 +151,9 @@ const testAccounts = [
     position: 'Outreach Worker',
     phoneNumber: '(704) 477-4762',
     baseAddress: '1000 E Woodlawn Rd, Apt 201, Charlotte, NC 28209',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
-    defaultCostCenter: 'PS-Unfunded'
+    costCenters: JSON.stringify(['NC.F-SUBG']),
+    selectedCostCenters: JSON.stringify(['NC.F-SUBG']),
+    defaultCostCenter: 'NC.F-SUBG'
   }
 ];
 

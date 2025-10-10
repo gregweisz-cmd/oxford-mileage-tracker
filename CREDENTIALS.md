@@ -335,8 +335,8 @@ Based on your bulk imports, you have the following employees in the system:
 - **Position:** Outreach Worker
 - **Base Address:** 1000 E Woodlawn Rd, Apt 201, Charlotte, NC 28209
 - **Phone:** (704) 477-4762
-- **Default Cost Center:** PS-Unfunded
-- **Access:** PS-Unfunded, PS-Funded, Direct Care
+- **Default Cost Center:** NC.F-SUBG
+- **Access:** NC.F-SUBG cost center only
 
 ## 📅 Last Updated
 Date: October 10, 2025
