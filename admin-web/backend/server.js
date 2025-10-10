@@ -28,9 +28,9 @@ app.use((req, res, next) => {
 // Multer configuration for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Database path - use production path for Render deployment
-const DB_PATH = process.env.NODE_ENV === 'production' 
-  ? path.join(__dirname, 'oxford_tracker.db')
+// Database path - use persistent disk on Render or local for development
+const DB_PATH = process.env.RENDER_SERVICE_ID 
+  ? '/var/data/oxford_tracker.db'  // Render persistent disk
   : path.join(__dirname, '../../oxford_tracker.db');
 
 // Database connection
