@@ -36,7 +36,7 @@ const App: React.FC = () => {
         if (authToken) {
           // Verify token with backend
           try {
-            const response = await fetch('http://localhost:3002/api/auth/verify', {
+            const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/auth/verify`, {
               headers: {
                 'Authorization': `Bearer ${authToken}`
               }
@@ -87,7 +87,7 @@ const App: React.FC = () => {
       const authToken = localStorage.getItem('authToken');
       if (authToken) {
         // Call logout endpoint
-        await fetch('http://localhost:3002/api/auth/logout', {
+        await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${authToken}`
