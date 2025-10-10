@@ -1,5 +1,18 @@
 # System Credentials & Access Information
 
+**Last Updated:** October 10, 2025
+
+## 🎯 Quick Access - Administrator Logins (All 3 Portals)
+
+All administrators can access Admin Portal, Supervisor Portal, and Staff Portal:
+
+1. **Greg Weisz** - `greg.weisz@oxfordhouse.org` / `ImtheBoss5!`
+2. **Jackson Longan** - `jackson.longan@oxfordhouse.org` / `Jacksonwelcome1`
+3. **Kathleen Gibson** - `kathleen.gibson@oxfordhouse.org` / `Kathleenwelcome1`
+4. **Alex Szary** - `alex.szary@oxfordhouse.org` / `Alexwelcome1`
+
+---
+
 ## 🔐 Employee Logins
 
 ### AJ Dunaway (Your Account)
