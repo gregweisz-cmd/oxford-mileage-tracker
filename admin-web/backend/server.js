@@ -1183,57 +1183,6 @@ app.get('/api/current-employees', (req, res) => {
   });
 });
 
-// Get employee credentials for authentication
-app.post('/api/employee-login', (req, res) => {
-  const { email, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-  
-  db.get('SELECT * FROM employees WHERE email = ? AND password = ?', [email, password], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    
-    if (!row) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return;
-    }
-    
-    // Parse cost centers
-    let costCenters = [];
-    let selectedCostCenters = [];
-    
-    if (row.costCenters) {
-      try {
-        costCenters = JSON.parse(row.costCenters);
-      } catch (parseErr) {
-        costCenters = ['Program Services'];
-      }
-    }
-    
-    // Use costCenters as selectedCostCenters if selectedCostCenters doesn't exist
-    selectedCostCenters = [...costCenters];
-    
-    // Return employee data without password
-    res.json({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      oxfordHouseId: row.oxfordHouseId,
-      position: row.position,
-      phoneNumber: row.phoneNumber,
-      baseAddress: row.baseAddress,
-      costCenters,
-      selectedCostCenters,
-      defaultCostCenter: costCenters[0] || 'Program Services',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt
-    });
-  });
-});
 
 // Update employee password
 app.put('/api/employees/:id/password', (req, res) => {
