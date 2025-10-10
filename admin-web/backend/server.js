@@ -3099,6 +3099,38 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Debug endpoint to check database state
+app.get('/api/debug/database', (req, res) => {
+  console.log('🔍 Database debug requested...');
+  
+  db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, tables) => {
+    if (err) {
+      console.error('❌ Error checking tables:', err);
+      return res.status(500).json({ error: 'Database error', details: err.message });
+    }
+    
+    console.log('📊 Available tables:', tables.map(t => t.name));
+    
+    // Check if employees table exists and has data
+    db.get("SELECT COUNT(*) as count FROM employees", (err, result) => {
+      if (err) {
+        console.error('❌ Error checking employees table:', err);
+        return res.status(500).json({ 
+          error: 'Employees table error', 
+          details: err.message,
+          tables: tables.map(t => t.name)
+        });
+      }
+      
+      res.json({
+        tables: tables.map(t => t.name),
+        employeeCount: result.count,
+        databasePath: DB_PATH
+      });
+    });
+  });
+});
+
 // Manual endpoint to create test accounts
 app.post('/api/admin/create-test-accounts', (req, res) => {
   console.log('🔧 Manual test account creation requested...');
