@@ -28,9 +28,9 @@ app.use((req, res, next) => {
 // Multer configuration for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Database path - use persistent path for Render deployment
+// Database path - use production path for Render deployment
 const DB_PATH = process.env.NODE_ENV === 'production' 
-  ? '/tmp/oxford_tracker.db'  // Use /tmp which persists on Render
+  ? path.join(__dirname, 'oxford_tracker.db')
   : path.join(__dirname, '../../oxford_tracker.db');
 
 // Database connection
@@ -3099,83 +3099,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Debug endpoint to check database state
-app.get('/api/debug/database', (req, res) => {
-  console.log('🔍 Database debug requested...');
-  
-  db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, tables) => {
-    if (err) {
-      console.error('❌ Error checking tables:', err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
-    }
-    
-    console.log('📊 Available tables:', tables.map(t => t.name));
-    
-    // Check if employees table exists and has data
-    db.get("SELECT COUNT(*) as count FROM employees", (err, result) => {
-      if (err) {
-        console.error('❌ Error checking employees table:', err);
-        return res.status(500).json({ 
-          error: 'Employees table error', 
-          details: err.message,
-          tables: tables.map(t => t.name)
-        });
-      }
-      
-      // Get all employees
-      db.all("SELECT id, name, email, position FROM employees", (err, employees) => {
-        if (err) {
-          console.error('❌ Error getting employees:', err);
-          return res.status(500).json({ 
-            error: 'Error getting employees', 
-            details: err.message,
-            tables: tables.map(t => t.name),
-            employeeCount: result.count,
-            databasePath: DB_PATH
-          });
-        }
-        
-        res.json({
-          tables: tables.map(t => t.name),
-          employeeCount: result.count,
-          employees: employees,
-          databasePath: DB_PATH
-        });
-      });
-    });
-  });
-});
-
-// Simple endpoint to create Greg Weisz account
-app.post('/api/create-greg', (req, res) => {
-  console.log('🔧 Creating Greg Weisz account...');
-  
-  const sql = `INSERT INTO employees (id, name, email, password, position, createdAt, updatedAt) 
-               VALUES ('greg-001', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'ImtheBoss5!', 'Administrator', datetime('now'), datetime('now'))`;
-  
-  db.run(sql, function(err) {
-    if (err) {
-      console.error('❌ Error:', err);
-      return res.status(500).json({ error: err.message });
-    }
-    
-    console.log('✅ Greg created with ID:', this.lastID);
-    res.json({ success: true, message: 'Greg created', lastID: this.lastID });
-  });
-});
-
 // Initialize database and start server
 initDatabase().then(() => {
-  // Always ensure test accounts exist (both local and production)
-  console.log('🔧 Ensuring test accounts exist...');
-  setTimeout(() => {
-    try {
-      require('./setup-test-accounts.js');
-    } catch (error) {
-      console.error('❌ Error running setup script:', error);
-    }
-  }, 2000); // Wait 2 seconds for database to be fully ready
-  
   server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/ws`);
