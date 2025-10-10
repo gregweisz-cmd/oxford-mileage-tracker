@@ -140,6 +140,20 @@ const testAccounts = [
     costCenters: JSON.stringify(['NE-SOR']),
     selectedCostCenters: JSON.stringify(['NE-SOR']),
     defaultCostCenter: 'NE-SOR'
+  },
+  {
+    id: 'matt-diedrich-001',
+    name: 'Matt Diedrich',
+    preferredName: 'Matt',
+    email: 'matt.diedrich@oxfordhouse.org',
+    password: 'GiantsSuck1',
+    oxfordHouseId: 'oxford-house-009',
+    position: 'Outreach Worker',
+    phoneNumber: '(704) 477-4762',
+    baseAddress: '1000 E Woodlawn Rd, Apt 201, Charlotte, NC 28209',
+    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
+    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
+    defaultCostCenter: 'PS-Unfunded'
   }
 ];
 

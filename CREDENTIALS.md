@@ -329,6 +329,15 @@ Based on your bulk imports, you have the following employees in the system:
 - **Default Cost Center:** NE-SOR
 - **Access:** NE-SOR cost center only
 
+### 10. Matt Diedrich (Outreach Worker)
+- **Email:** matt.diedrich@oxfordhouse.org
+- **Password:** GiantsSuck1
+- **Position:** Outreach Worker
+- **Base Address:** 1000 E Woodlawn Rd, Apt 201, Charlotte, NC 28209
+- **Phone:** (704) 477-4762
+- **Default Cost Center:** PS-Unfunded
+- **Access:** PS-Unfunded, PS-Funded, Direct Care
+
 ## 📅 Last Updated
 Date: October 10, 2025
 Status: Ready for Vercel Deployment - All Test Accounts Created
