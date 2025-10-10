@@ -2,9 +2,6 @@
 // Designed to mirror the uploaded spreadsheet layout for easy transition
 import React, { useState, useEffect } from 'react';
 
-// API URL configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
-
 // Material-UI components for spreadsheet-like interface
 import {
   Container,
@@ -71,6 +68,8 @@ import { ReportApprovalService } from './services/reportApprovalService';
 // User settings component
 import UserSettings from './components/UserSettings';
 
+// API URL configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 // Props interface for the StaffPortal component
 interface StaffPortalProps {
