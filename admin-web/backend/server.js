@@ -28,9 +28,9 @@ app.use((req, res, next) => {
 // Multer configuration for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Database path - use persistent disk on Render or local for development
+// Database path - use in-memory for Render free tier, file for development
 const DB_PATH = process.env.RENDER_SERVICE_ID 
-  ? '/var/data/oxford_tracker.db'  // Render persistent disk
+  ? ':memory:'  // In-memory database for Render (resets on restart)
   : path.join(__dirname, '../../oxford_tracker.db');
 
 // Database connection
@@ -3102,14 +3102,13 @@ app.use((err, req, res, next) => {
 // Initialize database and start server
 initDatabase().then(() => {
   // Always ensure test accounts exist (both local and production)
-  console.log('🔧 Ensuring test accounts exist...');
-  setTimeout(() => {
-    try {
-      require('./setup-test-accounts.js');
-    } catch (error) {
-      console.error('❌ Error running setup script:', error);
-    }
-  }, 2000); // Wait 2 seconds for database to be fully ready
+  console.log('🔧 Creating test accounts...');
+  try {
+    require('./setup-test-accounts.js');
+    console.log('✅ Test accounts created successfully');
+  } catch (error) {
+    console.error('❌ Error creating test accounts:', error);
+  }
   
   server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
