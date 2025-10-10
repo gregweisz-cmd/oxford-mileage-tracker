@@ -104,6 +104,9 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [showQuickCostCenterEdit, setShowQuickCostCenterEdit] = useState(false);
+  const [quickEditEmployee, setQuickEditEmployee] = useState<Employee | null>(null);
+  const [quickEditCostCenters, setQuickEditCostCenters] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter employees based on search text
@@ -387,6 +390,34 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     }
   };
 
+  // Quick Cost Center Edit Functions
+  const handleQuickCostCenterEdit = (employee: Employee) => {
+    const costCenters = parseCostCenters(employee.costCenters);
+    setQuickEditEmployee(employee);
+    setQuickEditCostCenters(costCenters);
+    setShowQuickCostCenterEdit(true);
+  };
+
+  const handleSaveQuickCostCenterEdit = async () => {
+    if (!quickEditEmployee) return;
+    
+    try {
+      await onUpdateEmployee(quickEditEmployee.id, {
+        costCenters: quickEditCostCenters,
+        selectedCostCenters: quickEditCostCenters,
+        defaultCostCenter: quickEditCostCenters.includes(quickEditEmployee.defaultCostCenter || '') 
+          ? quickEditEmployee.defaultCostCenter 
+          : quickEditCostCenters[0]
+      });
+      setShowQuickCostCenterEdit(false);
+      setQuickEditEmployee(null);
+      setQuickEditCostCenters([]);
+    } catch (error) {
+      console.error('Error updating cost centers:', error);
+      alert('Failed to update cost centers. Please try again.');
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
@@ -486,9 +517,28 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       <TableCell>{employee.position}</TableCell>
                       <TableCell>{employee.phoneNumber}</TableCell>
                       <TableCell>
-                        {parseCostCenters(employee.costCenters).map(center => (
-                          <Chip key={center} label={center} size="small" sx={{ mr: 0.5 }} />
-                        ))}
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {parseCostCenters(employee.costCenters).map(center => (
+                            <Chip 
+                              key={center} 
+                              label={center} 
+                              size="small" 
+                              clickable
+                              onClick={() => handleQuickCostCenterEdit(employee)}
+                              sx={{ 
+                                mr: 0.5,
+                                cursor: 'pointer',
+                                '&:hover': {
+                                  backgroundColor: 'primary.light',
+                                  color: 'primary.contrastText'
+                                }
+                              }}
+                            />
+                          ))}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                          Click to edit cost centers
+                        </Typography>
                       </TableCell>
                       <TableCell>
                         <Tooltip title="Edit Employee">
@@ -1111,6 +1161,61 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
             startIcon={<Edit />}
           >
             Edit Employee
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Quick Cost Center Edit Dialog */}
+      <Dialog 
+        open={showQuickCostCenterEdit} 
+        onClose={() => setShowQuickCostCenterEdit(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Edit Cost Centers for {quickEditEmployee?.name}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Select or deselect cost centers for this employee
+            </Typography>
+            
+            <FormControl fullWidth>
+              <InputLabel>Cost Centers</InputLabel>
+              <Select
+                multiple
+                value={quickEditCostCenters}
+                onChange={(e) => setQuickEditCostCenters(e.target.value as string[])}
+                input={<OutlinedInput label="Cost Centers" />}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((value) => (
+                      <Chip key={value} label={value} size="small" />
+                    ))}
+                  </Box>
+                )}
+              >
+                {COST_CENTERS.map((costCenter: string) => (
+                  <MenuItem key={costCenter} value={costCenter}>
+                    <Checkbox checked={quickEditCostCenters.indexOf(costCenter) > -1} />
+                    <ListItemText primary={costCenter} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowQuickCostCenterEdit(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveQuickCostCenterEdit} 
+            variant="contained"
+            disabled={quickEditCostCenters.length === 0}
+          >
+            Save Cost Centers
           </Button>
         </DialogActions>
       </Dialog>
