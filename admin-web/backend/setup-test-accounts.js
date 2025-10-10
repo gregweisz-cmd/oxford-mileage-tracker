@@ -22,7 +22,7 @@ const testAccounts = [
     email: 'greg.weisz@oxfordhouse.org',
     password: 'ImtheBoss5!',
     oxfordHouseId: 'oxford-house-001',
-    position: 'Senior Data Analyst',
+    position: 'Senior Data Analyst/Administrator',
     phoneNumber: '(555) 123-4567',
     baseAddress: '230 Wagner St, Troutman, NC 28166',
     costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
