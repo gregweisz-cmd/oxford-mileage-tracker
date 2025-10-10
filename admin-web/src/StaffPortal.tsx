@@ -335,10 +335,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Fetch real data from backend APIs
           const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse] = await Promise.all([
-            fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`http://localhost:3002/api/receipts?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`http://localhost:3002/api/daily-descriptions?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
+            fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
+            fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
+            fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
+            fetch(`${API_BASE_URL}/api/daily-descriptions?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
