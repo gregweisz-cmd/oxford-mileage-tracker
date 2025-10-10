@@ -26,7 +26,7 @@ export interface BulkOperationResult {
 }
 
 export class EmployeeApiService {
-  private static baseUrl = 'http://localhost:3002/api';
+  private static baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002/api';
 
   static async getAllEmployees(skipCache: boolean = false): Promise<Employee[]> {
     const url = skipCache 
