@@ -3122,10 +3122,25 @@ app.get('/api/debug/database', (req, res) => {
         });
       }
       
-      res.json({
-        tables: tables.map(t => t.name),
-        employeeCount: result.count,
-        databasePath: DB_PATH
+      // Get all employees
+      db.all("SELECT id, name, email, position FROM employees", (err, employees) => {
+        if (err) {
+          console.error('❌ Error getting employees:', err);
+          return res.status(500).json({ 
+            error: 'Error getting employees', 
+            details: err.message,
+            tables: tables.map(t => t.name),
+            employeeCount: result.count,
+            databasePath: DB_PATH
+          });
+        }
+        
+        res.json({
+          tables: tables.map(t => t.name),
+          employeeCount: result.count,
+          employees: employees,
+          databasePath: DB_PATH
+        });
       });
     });
   });
