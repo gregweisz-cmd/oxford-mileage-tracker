@@ -3101,6 +3101,13 @@ app.use((err, req, res, next) => {
 
 // Initialize database and start server
 initDatabase().then(() => {
+  // In production, ensure test accounts exist
+  if (process.env.NODE_ENV === 'production') {
+    console.log('🔧 Production environment detected - ensuring test accounts exist...');
+    // Run the setup script to ensure all test accounts exist
+    require('./setup-test-accounts.js');
+  }
+  
   server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/ws`);
