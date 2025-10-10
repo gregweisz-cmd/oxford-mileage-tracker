@@ -3099,15 +3099,28 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Manual endpoint to create test accounts
+app.post('/api/admin/create-test-accounts', (req, res) => {
+  console.log('🔧 Manual test account creation requested...');
+  
+  // Run the setup script
+  try {
+    require('./setup-test-accounts.js');
+    res.json({
+      success: true,
+      message: 'Test accounts created successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error creating test accounts:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create test accounts'
+    });
+  }
+});
+
 // Initialize database and start server
 initDatabase().then(() => {
-  // In production, ensure test accounts exist
-  if (process.env.NODE_ENV === 'production') {
-    console.log('🔧 Production environment detected - ensuring test accounts exist...');
-    // Run the setup script to ensure all test accounts exist
-    require('./setup-test-accounts.js');
-  }
-  
   server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/ws`);
