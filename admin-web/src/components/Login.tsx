@@ -142,18 +142,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             >
               {loading ? 'Signing In...' : 'Sign In'}
             </Button>
-
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                <strong>Demo Credentials:</strong>
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block">
-                Email: greg@oxfordhouse.org
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block">
-                Password: ImtheBoss5!
-              </Typography>
-            </Box>
           </Box>
         </Paper>
 
