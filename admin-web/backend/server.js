@@ -3146,59 +3146,21 @@ app.get('/api/debug/database', (req, res) => {
   });
 });
 
-// Manual endpoint to create test accounts
-app.post('/api/admin/create-test-accounts', (req, res) => {
-  console.log('🔧 Manual test account creation requested...');
+// Simple endpoint to create Greg Weisz account
+app.post('/api/create-greg', (req, res) => {
+  console.log('🔧 Creating Greg Weisz account...');
   
-  // Insert Greg Weisz directly
-  const gregData = {
-    id: 'greg-weisz-001',
-    name: 'Greg Weisz',
-    preferredName: 'Greg',
-    email: 'greg.weisz@oxfordhouse.org',
-    password: 'ImtheBoss5!',
-    oxfordHouseId: 'oxford-house-001',
-    position: 'Senior Data Analyst/Administrator',
-    phoneNumber: '(555) 123-4567',
-    baseAddress: '230 Wagner St, Troutman, NC 28166',
-    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-    defaultCostCenter: 'PS-Unfunded',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  const insertQuery = `
-    INSERT OR REPLACE INTO employees (
-      id, name, preferredName, email, password, oxfordHouseId, position, 
-      phoneNumber, baseAddress, costCenters, selectedCostCenters, 
-      defaultCostCenter, createdAt, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-
-  db.run(insertQuery, [
-    gregData.id, gregData.name, gregData.preferredName, gregData.email,
-    gregData.password, gregData.oxfordHouseId, gregData.position,
-    gregData.phoneNumber, gregData.baseAddress, gregData.costCenters,
-    gregData.selectedCostCenters, gregData.defaultCostCenter,
-    gregData.createdAt, gregData.updatedAt
-  ], function(err) {
+  const sql = `INSERT INTO employees (id, name, email, password, position, createdAt, updatedAt) 
+               VALUES ('greg-001', 'Greg Weisz', 'greg.weisz@oxfordhouse.org', 'ImtheBoss5!', 'Administrator', datetime('now'), datetime('now'))`;
+  
+  db.run(sql, function(err) {
     if (err) {
-      console.error('❌ Error creating Greg Weisz:', err);
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to create Greg Weisz account',
-        details: err.message
-      });
+      console.error('❌ Error:', err);
+      return res.status(500).json({ error: err.message });
     }
     
-    console.log('✅ Greg Weisz created successfully');
-    res.json({
-      success: true,
-      message: 'Greg Weisz account created successfully',
-      email: gregData.email,
-      password: gregData.password
-    });
+    console.log('✅ Greg created with ID:', this.lastID);
+    res.json({ success: true, message: 'Greg created', lastID: this.lastID });
   });
 });
 
