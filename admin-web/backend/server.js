@@ -3101,6 +3101,16 @@ app.use((err, req, res, next) => {
 
 // Initialize database and start server
 initDatabase().then(() => {
+  // Always ensure test accounts exist (both local and production)
+  console.log('🔧 Ensuring test accounts exist...');
+  setTimeout(() => {
+    try {
+      require('./setup-test-accounts.js');
+    } catch (error) {
+      console.error('❌ Error running setup script:', error);
+    }
+  }, 2000); // Wait 2 seconds for database to be fully ready
+  
   server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/ws`);
