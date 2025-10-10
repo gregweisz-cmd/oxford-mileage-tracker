@@ -28,8 +28,10 @@ app.use((req, res, next) => {
 // Multer configuration for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Database path - this should point to your mobile app's database
-const DB_PATH = path.join(__dirname, '../../oxford_tracker.db');
+// Database path - use production path for Render deployment
+const DB_PATH = process.env.NODE_ENV === 'production' 
+  ? path.join(__dirname, 'oxford_tracker.db')
+  : path.join(__dirname, '../../oxford_tracker.db');
 
 // Database connection
 let db;
