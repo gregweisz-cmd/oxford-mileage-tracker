@@ -3099,12 +3099,73 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Function to seed test accounts
+async function seedTestAccounts() {
+  const testAccounts = [
+    {
+      id: 'greg-weisz-001',
+      name: 'Greg Weisz',
+      preferredName: 'Greg',
+      email: 'greg.weisz@oxfordhouse.org',
+      password: 'ImtheBoss5!',
+      oxfordHouseId: 'oxford-house-001',
+      position: 'Senior Data Analyst/Administrator',
+      phoneNumber: '(555) 123-4567',
+      baseAddress: '230 Wagner St, Troutman, NC 28166',
+      costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
+      selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
+      defaultCostCenter: 'PS-Unfunded'
+    },
+    {
+      id: 'jackson-longan-001',
+      name: 'Jackson Longan',
+      preferredName: 'Jackson',
+      email: 'jackson.longan@oxfordhouse.org',
+      password: 'Jacksonwelcome1',
+      oxfordHouseId: 'oxford-house-002',
+      position: 'Director of Communication and Information',
+      phoneNumber: '(555) 345-6789',
+      baseAddress: '123 Main St, Oklahoma City, OK 73101',
+      costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative']),
+      selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative']),
+      defaultCostCenter: 'Administrative'
+    }
+  ];
+
+  const promises = testAccounts.map(account => {
+    return new Promise((resolve, reject) => {
+      const sql = `INSERT OR REPLACE INTO employees (
+        id, name, preferredName, email, password, oxfordHouseId, position,
+        phoneNumber, baseAddress, costCenters, selectedCostCenters,
+        defaultCostCenter, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
+      
+      db.run(sql, [
+        account.id, account.name, account.preferredName, account.email,
+        account.password, account.oxfordHouseId, account.position,
+        account.phoneNumber, account.baseAddress, account.costCenters,
+        account.selectedCostCenters, account.defaultCostCenter
+      ], (err) => {
+        if (err) {
+          console.error(`❌ Failed to create ${account.name}:`, err);
+          reject(err);
+        } else {
+          console.log(`✅ Created/Updated ${account.name}`);
+          resolve();
+        }
+      });
+    });
+  });
+
+  await Promise.all(promises);
+}
+
 // Initialize database and start server
-initDatabase().then(() => {
+initDatabase().then(async () => {
   // Always ensure test accounts exist (both local and production)
   console.log('🔧 Creating test accounts...');
   try {
-    require('./setup-test-accounts.js');
+    await seedTestAccounts();
     console.log('✅ Test accounts created successfully');
   } catch (error) {
     console.error('❌ Error creating test accounts:', error);
