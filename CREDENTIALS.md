@@ -259,10 +259,11 @@ Based on your bulk imports, you have the following employees in the system:
 
 ## 🧪 Test Accounts for Nationwide Testing
 
-### 1. Greg Weisz (CEO/Administrator)
-- **Email:** greg@oxfordhouse.org
+### 1. Greg Weisz (Senior Data Analyst)
+- **Email:** greg.weisz@oxfordhouse.org
 - **Password:** ImtheBoss5!
-- **Position:** CEO/Administrator
+- **Position:** Senior Data Analyst
+- **Base Address:** 230 Wagner St, Troutman, NC 28166
 - **Default Cost Center:** PS-Unfunded
 - **Access:** Full system access, all cost centers
 
@@ -300,6 +301,33 @@ Based on your bulk imports, you have the following employees in the system:
 - **Position:** Staff
 - **Default Cost Center:** PS-Unfunded
 - **Access:** PS-Unfunded, Training
+
+### 7. Jackson Longan (Director of Communication and Information)
+- **Email:** jackson.longan@oxfordhouse.org
+- **Password:** Jacksonwelcome1
+- **Position:** Director of Communication and Information
+- **Base Address:** 425 Pergola St, Yukon, OK 73099
+- **Phone:** (361) 563-1537
+- **Default Cost Center:** PS-Unfunded
+- **Access:** Full system access, all cost centers
+
+### 8. Alex Szary (Senior Manager of Data and Analytics)
+- **Email:** alex.szary@oxfordhouse.org
+- **Password:** Alexwelcome1
+- **Position:** Senior Manager of Data and Analytics
+- **Base Address:** 7343 Obbligato Ln, San Antonio, TX 78266
+- **Phone:** (210) 369-8399
+- **Default Cost Center:** PS-Unfunded
+- **Access:** Full system access, all cost centers
+
+### 9. Kenneth Norman (Re-entry Coordinator)
+- **Email:** kenneth.norman@oxfordhouse.org
+- **Password:** Kennethwelcome1
+- **Position:** Re-entry Coordinator
+- **Base Address:** 1019 Grey Fawn Dr, Omaha, NE 68154
+- **Phone:** (402) 669-0608
+- **Default Cost Center:** NE-SOR
+- **Access:** NE-SOR cost center only
 
 ## 📅 Last Updated
 Date: October 10, 2025

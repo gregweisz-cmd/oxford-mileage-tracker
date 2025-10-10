@@ -19,12 +19,12 @@ const testAccounts = [
     id: 'greg-weisz-001',
     name: 'Greg Weisz',
     preferredName: 'Greg',
-    email: 'greg@oxfordhouse.org',
+    email: 'greg.weisz@oxfordhouse.org',
     password: 'ImtheBoss5!',
     oxfordHouseId: 'oxford-house-001',
-    position: 'CEO/Administrator',
+    position: 'Senior Data Analyst',
     phoneNumber: '(555) 123-4567',
-    baseAddress: '123 Main St, Raleigh, NC 27601',
+    baseAddress: '230 Wagner St, Troutman, NC 28166',
     costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
     selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
     defaultCostCenter: 'PS-Unfunded'
@@ -98,6 +98,48 @@ const testAccounts = [
     costCenters: JSON.stringify(['PS-Unfunded', 'Training']),
     selectedCostCenters: JSON.stringify(['PS-Unfunded', 'Training']),
     defaultCostCenter: 'PS-Unfunded'
+  },
+  {
+    id: 'jackson-longan-001',
+    name: 'Jackson Longan',
+    preferredName: 'Jackson',
+    email: 'jackson.longan@oxfordhouse.org',
+    password: 'Jacksonwelcome1',
+    oxfordHouseId: 'oxford-house-006',
+    position: 'Director of Communication and Information',
+    phoneNumber: '(361) 563-1537',
+    baseAddress: '425 Pergola St, Yukon, OK 73099',
+    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
+    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
+    defaultCostCenter: 'PS-Unfunded'
+  },
+  {
+    id: 'alex-szary-001',
+    name: 'Alex Szary',
+    preferredName: 'Alex',
+    email: 'alex.szary@oxfordhouse.org',
+    password: 'Alexwelcome1',
+    oxfordHouseId: 'oxford-house-007',
+    position: 'Senior Manager of Data and Analytics',
+    phoneNumber: '(210) 369-8399',
+    baseAddress: '7343 Obbligato Ln, San Antonio, TX 78266',
+    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
+    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
+    defaultCostCenter: 'PS-Unfunded'
+  },
+  {
+    id: 'kenneth-norman-001',
+    name: 'Kenneth Norman',
+    preferredName: 'Kenneth',
+    email: 'kenneth.norman@oxfordhouse.org',
+    password: 'Kennethwelcome1',
+    oxfordHouseId: 'oxford-house-008',
+    position: 'Re-entry Coordinator',
+    phoneNumber: '(402) 669-0608',
+    baseAddress: '1019 Grey Fawn Dr, Omaha, NE 68154',
+    costCenters: JSON.stringify(['NE-SOR']),
+    selectedCostCenters: JSON.stringify(['NE-SOR']),
+    defaultCostCenter: 'NE-SOR'
   }
 ];
 
