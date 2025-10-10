@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   Box,
   Tabs,
@@ -47,6 +47,39 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
   employeeData,
   showStatus = true
 }) => {
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Add mouse wheel scrolling functionality
+  useEffect(() => {
+    const tabsContainer = tabsContainerRef.current;
+    if (!tabsContainer) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Find the actual scrollable element within the tabs
+      const scrollableElement = tabsContainer.querySelector('.MuiTabs-scroller') || 
+                               tabsContainer.querySelector('.MuiTabs-scrollableX') || 
+                               tabsContainer.querySelector('[role="tablist"]') ||
+                               tabsContainer.querySelector('.MuiTabs-root') ||
+                               tabsContainer;
+      
+      if (scrollableElement) {
+        // Prevent default vertical scrolling
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Scroll horizontally based on wheel delta
+        const scrollAmount = e.deltaY;
+        scrollableElement.scrollLeft += scrollAmount;
+      }
+    };
+
+    // Add event listener with capture to catch it early
+    tabsContainer.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+
+    return () => {
+      tabsContainer.removeEventListener('wheel', handleWheel, { capture: true });
+    };
+  }, []);
   const getStatusIcon = (status?: string) => {
     switch (status) {
       case 'complete': return <CheckIcon fontSize="small" />;
@@ -151,14 +184,17 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
   };
 
   return (
-    <Box sx={{ 
-      borderBottom: 1, 
-      borderColor: 'divider',
-      bgcolor: 'background.paper',
-      position: 'sticky',
-      top: 80, // 80px header height
-      zIndex: 1
-    }}>
+    <Box 
+      ref={tabsContainerRef}
+      sx={{ 
+        borderBottom: 1, 
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+        position: 'sticky',
+        top: 80, // 80px header height
+        zIndex: 1
+      }}
+    >
       <Tabs 
         value={value} 
         onChange={onChange}
@@ -178,7 +214,10 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
           '& .MuiTabs-indicator': {
             height: 3,
             borderRadius: '3px 3px 0 0'
-          }
+          },
+          // Ensure smooth scrolling
+          overflowX: 'auto',
+          scrollBehavior: 'smooth'
         }}
       >
         {tabs.map((tab, index) => {

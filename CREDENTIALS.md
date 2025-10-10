@@ -257,7 +257,51 @@ Based on your bulk imports, you have the following employees in the system:
 
 ---
 
+## 🧪 Test Accounts for Nationwide Testing
+
+### 1. Greg Weisz (CEO/Administrator)
+- **Email:** greg@oxfordhouse.org
+- **Password:** ImtheBoss5!
+- **Position:** CEO/Administrator
+- **Default Cost Center:** PS-Unfunded
+- **Access:** Full system access, all cost centers
+
+### 2. Kathleen Gibson (CEO)
+- **Email:** kathleen.gibson@oxfordhouse.org
+- **Password:** Kathleenwelcome1
+- **Position:** CEO
+- **Default Cost Center:** PS-Unfunded
+- **Access:** Full system access, all cost centers
+
+### 3. AJ Dunaway (Program Services Director)
+- **Email:** ajdunaway@oxfordhouse.org
+- **Password:** ajdunaway1!
+- **Position:** Program Services Director
+- **Default Cost Center:** PS-Funded
+- **Access:** Program Services, Direct Care
+
+### 4. Sarah Johnson (Supervisor)
+- **Email:** sarah.johnson@oxfordhouse.org
+- **Password:** TestSupervisor1!
+- **Position:** Supervisor
+- **Default Cost Center:** PS-Funded
+- **Access:** PS-Funded, Direct Care, Training
+
+### 5. Mike Wilson (Staff)
+- **Email:** mike.wilson@oxfordhouse.org
+- **Password:** TestStaff1!
+- **Position:** Staff
+- **Default Cost Center:** Direct Care
+- **Access:** Direct Care, PS-Funded
+
+### 6. Lisa Davis (Staff)
+- **Email:** lisa.davis@oxfordhouse.org
+- **Password:** TestStaff2!
+- **Position:** Staff
+- **Default Cost Center:** PS-Unfunded
+- **Access:** PS-Unfunded, Training
+
 ## 📅 Last Updated
-Date: October 9, 2025
-Status: Development Environment - Demo Data Removed
+Date: October 10, 2025
+Status: Ready for Vercel Deployment - All Test Accounts Created
 
