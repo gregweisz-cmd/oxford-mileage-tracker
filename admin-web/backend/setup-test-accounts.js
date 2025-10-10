@@ -148,12 +148,12 @@ const testAccounts = [
     email: 'matt.diedrich@oxfordhouse.org',
     password: 'GiantsSuck1',
     oxfordHouseId: 'oxford-house-009',
-    position: 'Outreach Worker',
+    position: 'Staff',
     phoneNumber: '(704) 477-4762',
     baseAddress: '1000 E Woodlawn Rd, Apt 201, Charlotte, NC 28209',
-    costCenters: JSON.stringify(['NC.F-SUBG']),
-    selectedCostCenters: JSON.stringify(['NC.F-SUBG']),
-    defaultCostCenter: 'NC.F-SUBG'
+    costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
+    selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Direct Care']),
+    defaultCostCenter: 'PS-Unfunded'
   }
 ];
 
