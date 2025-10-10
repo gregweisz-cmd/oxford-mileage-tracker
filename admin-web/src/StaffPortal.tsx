@@ -2,6 +2,9 @@
 // Designed to mirror the uploaded spreadsheet layout for easy transition
 import React, { useState, useEffect } from 'react';
 
+// API URL configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+
 // Material-UI components for spreadsheet-like interface
 import {
   Container,
@@ -283,11 +286,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       try {
         // Fetch employee details from backend
-        const employeeResponse = await fetch(`http://localhost:3002/api/employees/${backendEmployeeId}`);
+        const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${backendEmployeeId}`);
         if (!employeeResponse.ok) {
           // If employee not found, silently try with fallback ID
           console.log(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
-          const fallbackResponse = await fetch(`http://localhost:3002/api/employees/mggwglbfk9dij3oze8l`);
+          const fallbackResponse = await fetch(`${API_BASE_URL}/api/employees/mggwglbfk9dij3oze8l`);
           if (fallbackResponse.ok) {
             employee = await fallbackResponse.json();
             console.log('✅ Successfully loaded fallback employee data for:', employee.name);
