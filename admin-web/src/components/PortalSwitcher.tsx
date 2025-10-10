@@ -53,7 +53,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
 
   // Determine which portals the user has access to based on their role
   const getAvailablePortals = () => {
-    const userRole = currentUser?.role || 'employee';
+    const position = currentUser?.position?.toLowerCase() || '';
     const availablePortals: Array<{
       id: 'admin' | 'supervisor' | 'staff';
       name: string;
@@ -61,8 +61,8 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
       description: string;
     }> = [];
 
-    // Admin users can access all portals
-    if (userRole === 'admin') {
+    // Admin/CEO users can access all portals
+    if (position.includes('admin') || position.includes('ceo')) {
       availablePortals.push(
         {
           id: 'admin',
@@ -84,8 +84,8 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         }
       );
     }
-    // Supervisor users can access supervisor and staff portals
-    else if (userRole === 'supervisor') {
+    // Supervisor/Director users can access supervisor and staff portals
+    else if (position.includes('supervisor') || position.includes('director')) {
       availablePortals.push(
         {
           id: 'supervisor',
