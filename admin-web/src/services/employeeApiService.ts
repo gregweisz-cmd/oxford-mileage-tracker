@@ -72,7 +72,19 @@ export class EmployeeApiService {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update employee');
+      let errorMessage = 'Failed to update employee';
+      try {
+        const errorData = await response.json();
+        if (errorData.error) {
+          errorMessage = `Failed to update employee: ${errorData.error}`;
+          if (errorData.details) {
+            errorMessage += ` (${errorData.details})`;
+          }
+        }
+      } catch (e) {
+        // If we can't parse the error response, use the default message
+      }
+      throw new Error(errorMessage);
     }
   }
 
