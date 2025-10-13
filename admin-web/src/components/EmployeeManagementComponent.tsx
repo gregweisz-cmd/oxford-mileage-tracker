@@ -403,11 +403,20 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     
     try {
       await onUpdateEmployee(quickEditEmployee.id, {
+        name: quickEditEmployee.name,
+        preferredName: quickEditEmployee.preferredName || '',
+        email: quickEditEmployee.email,
+        oxfordHouseId: quickEditEmployee.oxfordHouseId || '',
+        position: quickEditEmployee.position || '',
+        phoneNumber: quickEditEmployee.phoneNumber || '',
+        baseAddress: quickEditEmployee.baseAddress || '',
+        baseAddress2: quickEditEmployee.baseAddress2 || '',
         costCenters: quickEditCostCenters,
         selectedCostCenters: quickEditCostCenters,
         defaultCostCenter: quickEditCostCenters.includes(quickEditEmployee.defaultCostCenter || '') 
           ? quickEditEmployee.defaultCostCenter 
-          : quickEditCostCenters[0]
+          : quickEditCostCenters[0],
+        signature: quickEditEmployee.signature || null
       });
       setShowQuickCostCenterEdit(false);
       setQuickEditEmployee(null);
