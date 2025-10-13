@@ -3190,6 +3190,77 @@ async function seedTestAccounts() {
   await Promise.all(promises);
 }
 
+// Function to clean up duplicate entries
+async function cleanupDuplicates() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      console.log('🧹 Cleaning up duplicate entries...');
+      
+      // Clean up duplicate mileage entries
+      await new Promise((resolveM, rejectM) => {
+        db.run(`
+          DELETE FROM mileage_entries 
+          WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY employeeId, date, startLocation, endLocation, miles 
+                ORDER BY createdAt DESC
+              ) as rn
+              FROM mileage_entries
+            ) WHERE rn = 1
+          )
+        `, (err) => {
+          if (err) {
+            console.error('❌ Error cleaning up duplicate mileage entries:', err);
+            rejectM(err);
+          } else {
+            db.get('SELECT COUNT(*) as count FROM mileage_entries', (countErr, row) => {
+              if (!countErr) {
+                console.log(`✅ Duplicate mileage entries cleaned up - ${row.count} remaining`);
+              }
+              resolveM();
+            });
+          }
+        });
+      });
+      
+      // Clean up duplicate time tracking entries
+      await new Promise((resolveT, rejectT) => {
+        db.run(`
+          DELETE FROM time_tracking 
+          WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY employeeId, date, category, hours 
+                ORDER BY createdAt DESC
+              ) as rn
+              FROM time_tracking
+            ) WHERE rn = 1
+          )
+        `, (err) => {
+          if (err) {
+            console.error('❌ Error cleaning up duplicate time tracking entries:', err);
+            rejectT(err);
+          } else {
+            db.get('SELECT COUNT(*) as count FROM time_tracking', (countErr, row) => {
+              if (!countErr) {
+                console.log(`✅ Duplicate time tracking entries cleaned up - ${row.count} remaining`);
+              }
+              resolveT();
+            });
+          }
+        });
+      });
+      
+      console.log('✅ Duplicate cleanup completed');
+      resolve();
+    } catch (error) {
+      console.error('❌ Error during cleanup:', error);
+      reject(error);
+    }
+  });
+}
+
 // Initialize database
 async function initDatabase() {
   return new Promise((resolve, reject) => {
