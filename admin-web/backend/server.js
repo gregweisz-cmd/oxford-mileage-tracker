@@ -1041,6 +1041,13 @@ app.put('/api/employees/:id', (req, res) => {
   console.log('📝 Updating employee:', id);
   console.log('📦 Update data received:', { name, preferredName, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter });
 
+  // Check if database connection exists
+  if (!db) {
+    console.error('❌ Database connection not initialized');
+    res.status(500).json({ error: 'Database connection not initialized' });
+    return;
+  }
+
   db.run(
     'UPDATE employees SET name = ?, preferredName = ?, email = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, updatedAt = ? WHERE id = ?',
     [name, preferredName || '', email, oxfordHouseId || '', position, phoneNumber, baseAddress, baseAddress2 || '', 
@@ -1050,10 +1057,14 @@ app.put('/api/employees/:id', (req, res) => {
     function(err) {
       if (err) {
         console.error('❌ Database error updating employee:', err.message);
-        res.status(500).json({ error: err.message });
+        console.error('❌ Full error:', err);
+        res.status(500).json({ error: err.message, details: err.toString() });
         return;
       }
       console.log('✅ Employee updated successfully:', id, '- Rows affected:', this.changes);
+      if (this.changes === 0) {
+        console.warn('⚠️ No rows updated - employee might not exist');
+      }
       res.json({ message: 'Employee updated successfully', changes: this.changes });
     }
   );
