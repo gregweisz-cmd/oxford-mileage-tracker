@@ -416,7 +416,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         defaultCostCenter: quickEditCostCenters.includes(quickEditEmployee.defaultCostCenter || '') 
           ? quickEditEmployee.defaultCostCenter 
           : quickEditCostCenters[0],
-        signature: quickEditEmployee.signature || null
+        signature: quickEditEmployee.signature || undefined
       });
       setShowQuickCostCenterEdit(false);
       setQuickEditEmployee(null);
