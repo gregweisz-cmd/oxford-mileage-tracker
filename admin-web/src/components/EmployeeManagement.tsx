@@ -54,12 +54,17 @@ import {
 interface Employee {
   id: string;
   name: string;
+  preferredName?: string;
   email: string;
   position: string;
   phoneNumber: string;
   baseAddress: string;
   baseAddress2?: string;
   costCenters: string;
+  selectedCostCenters?: string;
+  defaultCostCenter?: string;
+  signature?: string;
+  oxfordHouseId?: string;
   createdAt: string;
   updatedAt: string;
 }
