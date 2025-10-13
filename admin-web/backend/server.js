@@ -3170,6 +3170,117 @@ async function seedTestAccounts() {
   await Promise.all(promises);
 }
 
+// Initialize database
+async function initDatabase() {
+  return new Promise((resolve, reject) => {
+    db = new sqlite3.Database(DB_PATH, (err) => {
+      if (err) {
+        console.error('❌ Failed to connect to database:', err);
+        reject(err);
+        return;
+      }
+      console.log('✅ Connected to SQLite database');
+      
+      // Create tables
+      const createTables = `
+        CREATE TABLE IF NOT EXISTS employees (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          preferredName TEXT DEFAULT '',
+          email TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          oxfordHouseId TEXT,
+          position TEXT,
+          phoneNumber TEXT,
+          baseAddress TEXT,
+          baseAddress2 TEXT DEFAULT '',
+          costCenters TEXT DEFAULT '[]',
+          selectedCostCenters TEXT DEFAULT '[]',
+          defaultCostCenter TEXT DEFAULT '',
+          signature TEXT,
+          createdAt TEXT,
+          updatedAt TEXT
+        );
+        
+        CREATE TABLE IF NOT EXISTS mileage_entries (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          startLocation TEXT,
+          endLocation TEXT,
+          miles REAL,
+          odometerReading REAL,
+          costCenter TEXT,
+          notes TEXT,
+          isGpsTracked INTEGER DEFAULT 0,
+          hoursWorked REAL DEFAULT 0,
+          createdAt TEXT,
+          updatedAt TEXT,
+          FOREIGN KEY (employeeId) REFERENCES employees (id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS receipts (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          amount REAL,
+          category TEXT,
+          description TEXT,
+          createdAt TEXT,
+          updatedAt TEXT,
+          FOREIGN KEY (employeeId) REFERENCES employees (id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS time_tracking (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          category TEXT,
+          hours REAL,
+          createdAt TEXT,
+          updatedAt TEXT,
+          FOREIGN KEY (employeeId) REFERENCES employees (id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS daily_descriptions (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          description TEXT,
+          createdAt TEXT,
+          updatedAt TEXT,
+          FOREIGN KEY (employeeId) REFERENCES employees (id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS oxford_houses (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          address TEXT,
+          city TEXT,
+          state TEXT,
+          zip TEXT,
+          createdAt TEXT,
+          updatedAt TEXT
+        );
+      `;
+      
+      db.exec(createTables, (err) => {
+        if (err) {
+          console.error('❌ Error creating tables:', err);
+          reject(err);
+          return;
+        }
+        console.log('✅ Database tables created/verified');
+        
+        // Clean up duplicates
+        cleanupDuplicates().then(() => {
+          resolve();
+        }).catch(reject);
+      });
+    });
+  });
+}
+
 // Function to seed test accounts
 async function seedTestAccounts() {
   const testAccounts = [
