@@ -50,15 +50,18 @@ export interface TimeTracking {
 export interface Employee {
   id: string;
   name: string;
+  preferredName?: string;
   email: string;
   password: string;
   oxfordHouseId: string;
   position: string;
   phoneNumber: string;
   baseAddress: string;
+  baseAddress2?: string;
   costCenters: string[];
   selectedCostCenters: string[];
   defaultCostCenter: string;
+  signature?: string;
   createdAt: Date;
   updatedAt: Date;
 }
