@@ -14,9 +14,28 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3002;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'https://oxford-mileage-tracker.vercel.app',
+    'https://oxford-mileage-tracker-git-main-gregweisz-cmd.vercel.app'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma']
+}));
 app.use(express.json({ limit: '10mb' })); // Increase JSON payload limit
 app.use(express.static('public'));
+
+// Handle preflight OPTIONS requests
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -40,8 +59,8 @@ let db;
 const connectedClients = new Set();
 
 // WebSocket connection handling
-wss.on('connection', (ws) => {
-  console.log('🔌 WebSocket client connected');
+wss.on('connection', (ws, req) => {
+  console.log('🔌 WebSocket client connected from:', req.headers.origin);
   connectedClients.add(ws);
   
   // Send welcome message
@@ -49,6 +68,18 @@ wss.on('connection', (ws) => {
     type: 'connection_established',
     timestamp: new Date().toISOString()
   }));
+  
+  // Send heartbeat every 30 seconds
+  const heartbeat = setInterval(() => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'heartbeat_response',
+        timestamp: new Date().toISOString()
+      }));
+    } else {
+      clearInterval(heartbeat);
+    }
+  }, 30000);
   
   ws.on('message', (message) => {
     try {
@@ -66,11 +97,13 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     console.log('🔌 WebSocket client disconnected');
     connectedClients.delete(ws);
+    clearInterval(heartbeat);
   });
   
   ws.on('error', (error) => {
     console.error('❌ WebSocket error:', error);
     connectedClients.delete(ws);
+    clearInterval(heartbeat);
   });
 });
 
