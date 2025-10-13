@@ -37,6 +37,15 @@ app.options('*', (req, res) => {
   res.sendStatus(200);
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    database: db ? 'connected' : 'not connected'
+  });
+});
+
 // Request logging middleware
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
@@ -611,7 +620,7 @@ function ensureTablesExist() {
       
       // Clean up duplicate entries (mileage, time tracking, etc.)
       cleanupDuplicates().then(() => {
-        resolve();
+      resolve();
       }).catch((err) => {
         console.error('❌ Error during cleanup, but continuing:', err);
         resolve(); // Still resolve even if cleanup fails
@@ -3457,7 +3466,13 @@ async function seedTestAccounts() {
 }
 
 // Initialize database and start server
+console.log('🚀 Starting server initialization...');
+console.log(`📊 Database path: ${DB_PATH}`);
+console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+
 initDatabase().then(async () => {
+  console.log('✅ Database initialization completed');
+  
   // Always ensure test accounts exist (both local and production)
   console.log('🔧 Creating test accounts...');
   try {
@@ -3467,14 +3482,17 @@ initDatabase().then(async () => {
     console.error('❌ Error creating test accounts:', error);
   }
   
+  console.log('🌐 Starting HTTP server...');
   server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/ws`);
     console.log(`📊 Database path: ${DB_PATH}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log('✅ Server startup completed successfully!');
   });
 }).catch(err => {
   console.error('❌ Failed to initialize database:', err);
+  console.error('❌ Full error details:', err.stack);
   process.exit(1);
 });
 
