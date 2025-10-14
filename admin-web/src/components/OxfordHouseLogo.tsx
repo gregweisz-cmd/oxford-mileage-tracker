@@ -35,56 +35,56 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({ size = 56, className 
           stroke="none"
         />
         
-        {/* Blue H with integrated house */}
+        {/* Blue H with integrated house - matching original design */}
         <g>
           {/* Left vertical bar of H */}
           <rect
-            x="25"
-            y="20"
-            width="8"
-            height="50"
+            x="22"
+            y="15"
+            width="10"
+            height="60"
             fill="#2196F3"
           />
           
           {/* Right vertical bar of H */}
           <rect
-            x="67"
-            y="20"
-            width="8"
-            height="50"
+            x="68"
+            y="15"
+            width="10"
+            height="60"
             fill="#2196F3"
           />
           
           {/* Horizontal bar of H */}
           <rect
-            x="25"
+            x="22"
             y="40"
-            width="50"
-            height="8"
+            width="56"
+            height="10"
             fill="#2196F3"
           />
           
-          {/* House roof (triangle) */}
+          {/* House roof (triangle) - integrated into H */}
           <polygon
-            points="25,48 50,35 75,48"
+            points="22,50 50,30 78,50"
             fill="#2196F3"
           />
           
-          {/* House base (rectangle) */}
+          {/* House base (rectangle) - bottom part of H */}
           <rect
-            x="30"
-            y="48"
-            width="40"
-            height="22"
+            x="27"
+            y="50"
+            width="46"
+            height="25"
             fill="#2196F3"
           />
           
           {/* House door */}
           <rect
             x="45"
-            y="58"
+            y="60"
             width="10"
-            height="12"
+            height="15"
             fill="#1976D2"
           />
         </g>
