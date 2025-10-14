@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box } from '@mui/material';
+import oxfordHouseLogo from '../assets/oxford-house-logo.png';
 
 interface OxfordHouseLogoProps {
   size?: number;
@@ -36,7 +37,7 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
         }}
       >
         <img
-          src="/oxford-house-logo.png"
+          src={oxfordHouseLogo}
           alt="Oxford House Logo"
           style={{
             width: '100%',
@@ -44,6 +45,7 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
             objectFit: 'contain',
           }}
           onError={(e) => {
+            console.error('Failed to load Oxford House logo:', e);
             // Fallback to a simple placeholder if image doesn't load
             const target = e.target as HTMLImageElement;
             target.style.display = 'none';
@@ -62,6 +64,9 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
               ">OH</div>
             `;
+          }}
+          onLoad={() => {
+            console.log('Oxford House logo loaded successfully');
           }}
         />
       </Box>
