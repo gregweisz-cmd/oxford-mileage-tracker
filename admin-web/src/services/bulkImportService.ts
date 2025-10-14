@@ -203,9 +203,9 @@ export class BulkImportService {
    */
   static generateCSVTemplate(): string {
     return `EMPLOYEE_ID,FULL_NAME,WORK_EMAIL,EMPLOYEE_TITLE,PHONE,COST_CENTER,ROLE_LEVEL,SUPERVISOR_EMAIL
-5d60325822954e074a4cf6e1,AJ Dunaway,aj.dunaway@oxfordhouse.org,Regional Manager,17735909830,"IL-STATE, MN-STATE, WI-STATE",supervisor,
-653fc7377ffe2633dcb88761,Aaron Torrance,aaron.torrance@oxfordhouse.org,Outreach Worker,14253875050,WA.KING,staff,aj.dunaway@oxfordhouse.org
-5cfaed33c5929137a5d1f906,Aaron Vick,aaron.vick@oxfordhouse.org,Senior Outreach Coordinator,14054462751,OK-SUBG,staff,aj.dunaway@oxfordhouse.org`;
+5d60325822954e074a4cf6e1,AJ Dunaway,aj.dunaway@oxfordhouse.org,Regional Manager,17735909830,"IL-STATE, MN-STATE, WI-STATE",Supervisor,
+653fc7377ffe2633dcb88761,Aaron Torrance,aaron.torrance@oxfordhouse.org,Outreach Worker,14253875050,WA.KING,Staff,aj.dunaway@oxfordhouse.org
+5cfaed33c5929137a5d1f906,Aaron Vick,aaron.vick@oxfordhouse.org,Senior Outreach Coordinator,14054462751,OK-SUBG,Staff,aj.dunaway@oxfordhouse.org`;
   }
 
   /**

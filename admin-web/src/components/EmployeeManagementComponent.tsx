@@ -858,15 +858,37 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 </Box>
                 
                 <Box sx={{ display: 'flex', gap: 2 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Role</InputLabel>
+                    <Select
+                      value={editingEmployee.position}
+                      onChange={(e) => setEditingEmployee({
+                        ...editingEmployee,
+                        position: e.target.value
+                      })}
+                      label="Role"
+                    >
+                      <MenuItem value="Staff">Staff</MenuItem>
+                      <MenuItem value="Supervisor">Supervisor</MenuItem>
+                      <MenuItem value="Manager">Manager</MenuItem>
+                      <MenuItem value="Director">Director</MenuItem>
+                      <MenuItem value="Admin">Admin</MenuItem>
+                      <MenuItem value="CEO">CEO</MenuItem>
+                    </Select>
+                  </FormControl>
                   <TextField
                     fullWidth
-                    label="Position"
-                    value={editingEmployee.position}
+                    label="Job Title"
+                    value={editingEmployee.preferredName || ''}
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
-                      position: e.target.value
+                      preferredName: e.target.value
                     })}
+                    placeholder="e.g., Outreach Worker, Regional Manager"
                   />
+                </Box>
+                
+                <Box sx={{ display: 'flex', gap: 2 }}>
                   <TextField
                     fullWidth
                     label="Phone"
@@ -903,9 +925,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       <em>No Supervisor</em>
                     </MenuItem>
                     {existingEmployees
-                      .filter(emp => emp.position?.toLowerCase().includes('supervisor') || 
-                                     emp.position?.toLowerCase().includes('manager') ||
-                                     emp.position?.toLowerCase().includes('director'))
+                      .filter(emp => ['Supervisor', 'Manager', 'Director', 'Admin', 'CEO'].includes(emp.position))
                       .map(emp => (
                         <MenuItem key={emp.id} value={emp.id}>
                           {emp.name} ({emp.position})
@@ -1022,16 +1042,25 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               Leave fields empty to keep existing values
             </Typography>
             
-            <TextField
-              fullWidth
-              label="Position"
-              value={(bulkEditData as any).position || ''}
-              onChange={(e) => setBulkEditData({
-                ...bulkEditData,
-                position: e.target.value
-              } as any)}
-              sx={{ mb: 2 }}
-            />
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Role</InputLabel>
+              <Select
+                value={(bulkEditData as any).position || ''}
+                onChange={(e) => setBulkEditData({
+                  ...bulkEditData,
+                  position: e.target.value
+                } as any)}
+                label="Role"
+              >
+                <MenuItem value="">Keep existing role</MenuItem>
+                <MenuItem value="Staff">Staff</MenuItem>
+                <MenuItem value="Supervisor">Supervisor</MenuItem>
+                <MenuItem value="Manager">Manager</MenuItem>
+                <MenuItem value="Director">Director</MenuItem>
+                <MenuItem value="Admin">Admin</MenuItem>
+                <MenuItem value="CEO">CEO</MenuItem>
+              </Select>
+            </FormControl>
             
             <TextField
               fullWidth
@@ -1059,9 +1088,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   <em>No Supervisor</em>
                 </MenuItem>
                 {existingEmployees
-                  .filter(emp => emp.position?.toLowerCase().includes('supervisor') || 
-                                 emp.position?.toLowerCase().includes('manager') ||
-                                 emp.position?.toLowerCase().includes('director'))
+                  .filter(emp => ['Supervisor', 'Manager', 'Director', 'Admin', 'CEO'].includes(emp.position))
                   .map(emp => (
                     <MenuItem key={emp.id} value={emp.id}>
                       {emp.name} ({emp.position})
