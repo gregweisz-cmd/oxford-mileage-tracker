@@ -46,6 +46,26 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Manual database initialization endpoint for debugging
+app.post('/api/init-database', (req, res) => {
+  try {
+    console.log('🔧 Manual database initialization triggered');
+    initDatabase();
+    res.json({ 
+      success: true, 
+      message: 'Database initialized successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error during manual database initialization:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Request logging middleware
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
