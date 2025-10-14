@@ -160,9 +160,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static" sx={{ bgcolor: '#666666' }}>
         <Toolbar>
-          <OxfordHouseLogo size={40} showText={true} />
+          <OxfordHouseLogo size={40} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
-            Admin Portal - Welcome, {adminName}
+            Oxford House Mileage Tracker
           </Typography>
         </Toolbar>
       </AppBar>
