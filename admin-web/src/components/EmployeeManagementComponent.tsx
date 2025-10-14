@@ -191,7 +191,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       const importData = BulkImportService.parseCSVData(csvData);
       
       // Convert to employee format
-      const employees = importData.map(data => BulkImportService.convertToEmployee(data));
+      const employees = importData.map(data => BulkImportService.convertToEmployee(data, existingEmployees));
       
       // Use bulk create endpoint instead of individual creates
       const result = await EmployeeApiService.bulkCreateEmployees({ employees });
@@ -517,6 +517,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     <TableCell>Email</TableCell>
                     <TableCell>Position</TableCell>
                     <TableCell>Phone</TableCell>
+                    <TableCell>Supervisor</TableCell>
                     <TableCell>Cost Centers</TableCell>
                     <TableCell>Actions</TableCell>
                   </TableRow>
@@ -548,6 +549,12 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       <TableCell>{employee.email}</TableCell>
                       <TableCell>{employee.position}</TableCell>
                       <TableCell>{employee.phoneNumber}</TableCell>
+                      <TableCell>
+                        {employee.supervisorId ? 
+                          existingEmployees.find(emp => emp.id === employee.supervisorId)?.name || 'Unknown' :
+                          'No Supervisor'
+                        }
+                      </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                           {parseCostCenters(employee.costCenters).map(center => (
@@ -699,6 +706,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       <TableCell>Email</TableCell>
                       <TableCell>Position</TableCell>
                       <TableCell>Phone</TableCell>
+                      <TableCell>Supervisor</TableCell>
                       <TableCell>Cost Centers</TableCell>
                     </TableRow>
                   </TableHead>
@@ -709,6 +717,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         <TableCell>{employee.WORK_EMAIL}</TableCell>
                         <TableCell>{employee.EMPLOYEE_TITLE}</TableCell>
                         <TableCell>{employee.PHONE}</TableCell>
+                        <TableCell>{employee.SUPERVISOR_EMAIL || 'No Supervisor'}</TableCell>
                         <TableCell>
                           {BulkImportService.parseCostCenters(employee.COST_CENTER).map(center => (
                             <Chip key={center} label={center} size="small" sx={{ mr: 0.5 }} />
@@ -879,6 +888,32 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   })}
                 />
                 
+                {/* Supervisor Assignment */}
+                <FormControl fullWidth>
+                  <InputLabel>Supervisor</InputLabel>
+                  <Select
+                    value={editingEmployee.supervisorId || ''}
+                    onChange={(e) => setEditingEmployee({
+                      ...editingEmployee,
+                      supervisorId: e.target.value || undefined
+                    })}
+                    label="Supervisor"
+                  >
+                    <MenuItem value="">
+                      <em>No Supervisor</em>
+                    </MenuItem>
+                    {existingEmployees
+                      .filter(emp => emp.position?.toLowerCase().includes('supervisor') || 
+                                     emp.position?.toLowerCase().includes('manager') ||
+                                     emp.position?.toLowerCase().includes('director'))
+                      .map(emp => (
+                        <MenuItem key={emp.id} value={emp.id}>
+                          {emp.name} ({emp.position})
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+                
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <TextField
                     fullWidth
@@ -1009,6 +1044,32 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               sx={{ mb: 2 }}
             />
             
+            {/* Supervisor Assignment */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Supervisor</InputLabel>
+              <Select
+                value={(bulkEditData as any).supervisorId || ''}
+                onChange={(e) => setBulkEditData({
+                  ...bulkEditData,
+                  supervisorId: e.target.value || undefined
+                } as any)}
+                label="Supervisor"
+              >
+                <MenuItem value="">
+                  <em>No Supervisor</em>
+                </MenuItem>
+                {existingEmployees
+                  .filter(emp => emp.position?.toLowerCase().includes('supervisor') || 
+                                 emp.position?.toLowerCase().includes('manager') ||
+                                 emp.position?.toLowerCase().includes('director'))
+                  .map(emp => (
+                    <MenuItem key={emp.id} value={emp.id}>
+                      {emp.name} ({emp.position})
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+            
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel>Default Cost Center</InputLabel>
               <Select
@@ -1085,6 +1146,15 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 <Box>
                   <Typography variant="caption" color="text.secondary">Phone</Typography>
                   <Typography variant="body1">{viewingEmployee.phoneNumber || 'Not provided'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Supervisor</Typography>
+                  <Typography variant="body1">
+                    {viewingEmployee.supervisorId ? 
+                      existingEmployees.find(emp => emp.id === viewingEmployee.supervisorId)?.name || 'Unknown' :
+                      'No Supervisor'
+                    }
+                  </Typography>
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Oxford House ID</Typography>

@@ -401,6 +401,7 @@ function ensureTablesExist() {
         selectedCostCenters TEXT DEFAULT '[]',
         defaultCostCenter TEXT DEFAULT '',
         preferredName TEXT DEFAULT '',
+        supervisorId TEXT DEFAULT NULL,
         signature TEXT DEFAULT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
@@ -758,6 +759,7 @@ function createSampleDatabase() {
           phoneNumber TEXT,
           baseAddress TEXT NOT NULL,
           costCenters TEXT DEFAULT '[]',
+          supervisorId TEXT DEFAULT NULL,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);
@@ -1101,7 +1103,7 @@ app.post('/api/employees/bulk-create', (req, res) => {
     const now = new Date().toISOString();
     
     db.run(
-      'INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id,
         employee.name,
@@ -1115,6 +1117,7 @@ app.post('/api/employees/bulk-create', (req, res) => {
         typeof employee.costCenters === 'string' ? employee.costCenters : JSON.stringify(employee.costCenters || []),
         typeof employee.selectedCostCenters === 'string' ? employee.selectedCostCenters : JSON.stringify(employee.selectedCostCenters || employee.costCenters || []),
         employee.defaultCostCenter || (Array.isArray(employee.costCenters) ? employee.costCenters[0] : '') || '',
+        employee.supervisorId || null,
         now,
         now
       ],
@@ -1139,13 +1142,13 @@ app.post('/api/employees/bulk-create', (req, res) => {
 
 // Create new employee
 app.post('/api/employees', (req, res) => {
-  const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters } = req.body;
+  const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, supervisorId } = req.body;
   const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
   const now = new Date().toISOString();
 
   db.run(
-    'INSERT INTO employees (id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2 || '', costCenters || '[]', now, now],
+    'INSERT INTO employees (id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2 || '', costCenters || '[]', supervisorId || null, now, now],
     function(err) {
       if (err) {
         console.error('Database error:', err.message);
@@ -1160,7 +1163,7 @@ app.post('/api/employees', (req, res) => {
 // Update employee
 app.put('/api/employees/:id', (req, res) => {
   const { id } = req.params;
-  const { name, preferredName, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature } = req.body;
+  const { name, preferredName, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId } = req.body;
   const now = new Date().toISOString();
 
   console.log('📝 Updating employee:', id);
@@ -1174,11 +1177,11 @@ app.put('/api/employees/:id', (req, res) => {
   }
 
   db.run(
-    'UPDATE employees SET name = ?, preferredName = ?, email = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, updatedAt = ? WHERE id = ?',
+    'UPDATE employees SET name = ?, preferredName = ?, email = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, updatedAt = ? WHERE id = ?',
     [name, preferredName || '', email, oxfordHouseId || '', position, phoneNumber, baseAddress, baseAddress2 || '', 
      typeof costCenters === 'string' ? costCenters : JSON.stringify(costCenters || []),
      typeof selectedCostCenters === 'string' ? selectedCostCenters : JSON.stringify(selectedCostCenters || []),
-     defaultCostCenter || '', signature || null, now, id],
+     defaultCostCenter || '', signature || null, supervisorId || null, now, id],
     function(err) {
       if (err) {
         console.error('❌ Database error updating employee:', err.message);

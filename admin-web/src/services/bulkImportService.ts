@@ -17,6 +17,7 @@ export interface EmployeeImportData {
   PHONE: string;
   COST_CENTER: string;
   ROLE_LEVEL?: string;
+  SUPERVISOR_EMAIL?: string; // Email of the supervisor this employee reports to
 }
 
 export class BulkImportService {
@@ -40,7 +41,8 @@ export class BulkImportService {
           EMPLOYEE_TITLE: values[3] || '',
           PHONE: values[4] || '',
           COST_CENTER: values[5] || '',
-          ROLE_LEVEL: values[6] || ''
+          ROLE_LEVEL: values[6] || '',
+          SUPERVISOR_EMAIL: values[7] || ''
         });
       }
     }
@@ -87,8 +89,15 @@ export class BulkImportService {
   /**
    * Convert import data to employee format
    */
-  static convertToEmployee(importData: EmployeeImportData): Omit<Employee, 'id' | 'createdAt' | 'updatedAt'> {
+  static convertToEmployee(importData: EmployeeImportData, existingEmployees: Employee[] = []): Omit<Employee, 'id' | 'createdAt' | 'updatedAt'> {
     const costCenters = this.parseCostCenters(importData.COST_CENTER);
+    
+    // Resolve supervisor email to supervisor ID
+    let supervisorId: string | undefined;
+    if (importData.SUPERVISOR_EMAIL) {
+      const supervisor = existingEmployees.find(emp => emp.email === importData.SUPERVISOR_EMAIL);
+      supervisorId = supervisor?.id;
+    }
     
     return {
       name: importData.FULL_NAME,
@@ -100,7 +109,8 @@ export class BulkImportService {
       baseAddress: 'To be updated', // Default address that can be updated later
       costCenters: costCenters,
       selectedCostCenters: costCenters,
-      defaultCostCenter: costCenters[0] || 'Program Services'
+      defaultCostCenter: costCenters[0] || 'Program Services',
+      supervisorId: supervisorId
     } as Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>;
   }
 
@@ -192,10 +202,10 @@ export class BulkImportService {
    * Generate CSV template for employee import
    */
   static generateCSVTemplate(): string {
-    return `EMPLOYEE_ID,FULL_NAME,WORK_EMAIL,EMPLOYEE_TITLE,PHONE,COST_CENTER,ROLE_LEVEL
-5d60325822954e074a4cf6e1,AJ Dunaway,aj.dunaway@oxfordhouse.org,Regional Manager,17735909830,"IL-STATE, MN-STATE, WI-STATE",
-653fc7377ffe2633dcb88761,Aaron Torrance,aaron.torrance@oxfordhouse.org,Outreach Worker,14253875050,WA.KING,
-5cfaed33c5929137a5d1f906,Aaron Vick,aaron.vick@oxfordhouse.org,Senior Outreach Coordinator,14054462751,OK-SUBG,`;
+    return `EMPLOYEE_ID,FULL_NAME,WORK_EMAIL,EMPLOYEE_TITLE,PHONE,COST_CENTER,ROLE_LEVEL,SUPERVISOR_EMAIL
+5d60325822954e074a4cf6e1,AJ Dunaway,aj.dunaway@oxfordhouse.org,Regional Manager,17735909830,"IL-STATE, MN-STATE, WI-STATE",supervisor,
+653fc7377ffe2633dcb88761,Aaron Torrance,aaron.torrance@oxfordhouse.org,Outreach Worker,14253875050,WA.KING,staff,aj.dunaway@oxfordhouse.org
+5cfaed33c5929137a5d1f906,Aaron Vick,aaron.vick@oxfordhouse.org,Senior Outreach Coordinator,14054462751,OK-SUBG,staff,aj.dunaway@oxfordhouse.org`;
   }
 
   /**
