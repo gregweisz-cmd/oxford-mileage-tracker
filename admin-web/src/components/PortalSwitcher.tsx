@@ -21,6 +21,7 @@ import {
   Logout,
   Settings,
 } from '@mui/icons-material';
+import OxfordHouseLogo from './OxfordHouseLogo';
 
 interface PortalSwitcherProps {
   currentUser: any;
@@ -117,8 +118,9 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     return (
       <AppBar position="static" sx={{ bgcolor: '#1976d2' }}>
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Oxford House Staff Tracker
+          <OxfordHouseLogo size={32} />
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
+            Oxford House Mileage Tracker
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Chip
@@ -139,8 +141,9 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   return (
     <AppBar position="static" sx={{ bgcolor: '#1976d2' }}>
       <Toolbar>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          Oxford House Staff Tracker
+        <OxfordHouseLogo size={32} />
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
+          Oxford House Mileage Tracker
         </Typography>
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
