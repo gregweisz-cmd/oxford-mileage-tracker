@@ -320,6 +320,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setSelectedCostCenters(costCenters);
     setDefaultCostCenter(employee.defaultCostCenter || costCenters[0] || '');
     setShowEmployeeDialog(true);
+    setShowEmployeeCostCenterDropdown(true); // Open dropdown by default
   };
 
   const handleAddEmployee = () => {
@@ -341,6 +342,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setSelectedCostCenters(['Program Services']);
     setDefaultCostCenter('Program Services');
     setShowEmployeeDialog(true);
+    setShowEmployeeCostCenterDropdown(true); // Open dropdown by default
   };
 
   const handleSaveEmployee = async () => {
