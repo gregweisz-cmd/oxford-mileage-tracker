@@ -29,10 +29,11 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: 'white',
-          borderRadius: '50%',
-          padding: size * 0.1, // 10% padding
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          // backgroundColor: 'white',
+          // borderRadius: '50%',
+          // padding: size * 0.1, // 10% padding
+          // boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          border: '2px solid red', // Temporary red border to see the area
           // border: '2px solid #ccc', // Temporary border for debugging
         }}
       >
@@ -81,8 +82,10 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
               </svg>
             `;
           }}
-          onLoad={() => {
+          onLoad={(e) => {
             console.log('Oxford House logo loaded successfully from /oxford-house-logo.png');
+            console.log('Image dimensions:', e.target.naturalWidth, 'x', e.target.naturalHeight);
+            console.log('Image element:', e.target);
           }}
         />
       </Box>
