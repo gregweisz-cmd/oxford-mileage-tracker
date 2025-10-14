@@ -35,10 +35,13 @@ export class EmployeeApiService {
       ? `${this.baseUrl}/employees?_t=${Date.now()}` 
       : `${this.baseUrl}/employees`;
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
         'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
+        'Pragma': 'no-cache',
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
     });
     if (!response.ok) {
       throw new Error('Failed to fetch employees');
@@ -53,6 +56,7 @@ export class EmployeeApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(employee),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -69,6 +73,7 @@ export class EmployeeApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(employee),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -91,6 +96,7 @@ export class EmployeeApiService {
   static async deleteEmployee(id: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/employees/${id}`, {
       method: 'DELETE',
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -105,6 +111,7 @@ export class EmployeeApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(request),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -121,6 +128,7 @@ export class EmployeeApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(request),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -137,6 +145,7 @@ export class EmployeeApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(request),
+      credentials: 'include'
     });
 
     if (!response.ok) {

@@ -37,9 +37,12 @@ const App: React.FC = () => {
           // Verify token with backend
           try {
             const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/auth/verify`, {
+              method: 'GET',
               headers: {
-                'Authorization': `Bearer ${authToken}`
-              }
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+              },
+              credentials: 'include'
             });
             
             if (!response.ok) {

@@ -22,10 +22,13 @@ export class CostCenterApiService {
 
   static async getAllCostCenters(): Promise<CostCenter[]> {
     const response = await fetch(`${this.baseUrl}/cost-centers`, {
+      method: 'GET',
       headers: {
         'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
+        'Pragma': 'no-cache',
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
     });
     if (!response.ok) {
       throw new Error('Failed to fetch cost centers');
@@ -34,7 +37,13 @@ export class CostCenterApiService {
   }
 
   static async getCostCenterById(id: string): Promise<CostCenter> {
-    const response = await fetch(`${this.baseUrl}/cost-centers/${id}`);
+    const response = await fetch(`${this.baseUrl}/cost-centers/${id}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch cost center');
     }
@@ -48,6 +57,7 @@ export class CostCenterApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(costCenter),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -64,6 +74,7 @@ export class CostCenterApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(costCenter),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -74,6 +85,7 @@ export class CostCenterApiService {
   static async deleteCostCenter(id: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/cost-centers/${id}`, {
       method: 'DELETE',
+      credentials: 'include'
     });
 
     if (!response.ok) {
