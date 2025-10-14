@@ -452,7 +452,13 @@ function ensureTablesExist() {
         isActive INTEGER DEFAULT 1,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
-      )`);
+      )`, (err) => {
+        if (err) {
+          console.error('❌ Error creating cost_centers table:', err);
+        } else {
+          console.log('✅ Cost centers table created/verified');
+        }
+      });
 
       db.run(`CREATE TABLE IF NOT EXISTS per_diem_rules (
         id TEXT PRIMARY KEY,
@@ -681,13 +687,19 @@ function ensureTablesExist() {
       // Bulk import employees have IDs starting with mgfft...
 
       // Populate cost centers table with initial data
+      console.log('🔧 Populating cost centers table with', COST_CENTERS.length, 'cost centers...');
       COST_CENTERS.forEach((name, index) => {
         const id = `cc-${index + 1}`;
         const code = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) 
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [id, code, name, `${name} cost center`, 1, now, now]);
+                [id, code, name, `${name} cost center`, 1, now, now], (err) => {
+          if (err) {
+            console.error(`❌ Error inserting cost center ${name}:`, err);
+          }
+        });
       });
+      console.log('✅ Cost centers population completed');
 
       // REMOVED: All sample mileage, receipt, and time tracking entries
       // Real data will come from mobile app and web portal
@@ -783,7 +795,13 @@ function createSampleDatabase() {
           isActive INTEGER DEFAULT 1,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
-        )`);
+        )`, (err) => {
+          if (err) {
+            console.error('❌ Error creating cost_centers table:', err);
+          } else {
+            console.log('✅ Cost centers table created/verified');
+          }
+        });
 
         // Per diem rules table
         db.run(`CREATE TABLE IF NOT EXISTS per_diem_rules (
@@ -825,13 +843,19 @@ function createSampleDatabase() {
         // Using bulk-imported employee data only
 
         // Populate cost centers table with initial data
+        console.log('🔧 Populating cost centers table with', COST_CENTERS.length, 'cost centers...');
         COST_CENTERS.forEach((name, index) => {
           const id = `cc-${index + 1}`;
           const code = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
           db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) 
                   VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                  [id, code, name, `${name} cost center`, 1, now, now]);
+                  [id, code, name, `${name} cost center`, 1, now, now], (err) => {
+            if (err) {
+              console.error(`❌ Error inserting cost center ${name}:`, err);
+            }
+          });
         });
+        console.log('✅ Cost centers population completed');
 
         // Insert sample per diem monthly rules
         db.run(`INSERT OR IGNORE INTO per_diem_monthly_rules (id, costCenter, maxAmount, description, createdAt, updatedAt)
