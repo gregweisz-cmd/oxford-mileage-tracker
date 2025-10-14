@@ -834,8 +834,15 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           setDefaultCostCenter('');
           setShowEmployeeCostCenterDropdown(false);
         }}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
+        PaperProps={{
+          sx: { 
+            height: '90vh', 
+            maxHeight: 800,
+            minHeight: 600
+          }
+        }}
       >
         <DialogTitle>
           {editingEmployee?.id ? 'Edit Employee' : 'Add Employee'}
@@ -989,13 +996,14 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         left: 0,
                         right: 0,
                         zIndex: 1300,
-                        maxHeight: 300,
+                        maxHeight: 500,
                         border: 1,
                         borderColor: 'divider',
-                        borderTop: 0
+                        borderTop: 0,
+                        boxShadow: 3
                       }}
                     >
-                      <Box sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
+                      <Box sx={{ height: 500, display: 'flex', flexDirection: 'column' }}>
                         {/* Selected Items - Fixed at Top */}
                         {selectedCostCenters.length > 0 && (
                           <Box sx={{ 
@@ -1004,8 +1012,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             borderColor: 'divider',
                             backgroundColor: 'primary.light',
                             color: 'primary.contrastText',
-                            p: 1,
-                            maxHeight: 150,
+                            p: 2,
+                            maxHeight: 200,
                             overflow: 'auto'
                           }}>
                             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
@@ -1028,7 +1036,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                                     }
                                   }}
                                   sx={{ 
-                                    py: 0.5,
+                                    py: 1,
                                     '&:hover': { backgroundColor: 'primary.main' }
                                   }}
                                 >
@@ -1049,7 +1057,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           minHeight: 0
                         }}>
                           <Typography variant="subtitle2" sx={{ 
-                            p: 1, 
+                            p: 2, 
                             fontWeight: 'bold', 
                             borderBottom: 1, 
                             borderColor: 'divider',
@@ -1073,7 +1081,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                                     setDefaultCostCenter(costCenter);
                                   }
                                 }}
-                                sx={{ py: 0.5 }}
+                                sx={{ py: 1 }}
                               >
                                 <Checkbox checked={false} />
                                 <ListItemText primary={costCenter} />

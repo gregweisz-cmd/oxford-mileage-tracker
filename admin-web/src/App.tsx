@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { CssBaseline, Box, Button } from '@mui/material';
+import { CssBaseline, Box } from '@mui/material';
 
 // Import all portal components
 import StaffPortal from './StaffPortal';
