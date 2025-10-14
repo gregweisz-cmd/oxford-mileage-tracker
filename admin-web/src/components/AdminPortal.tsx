@@ -158,15 +158,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
 
   return (
     <Box sx={{ flexGrow: 1 }}>
-      <AppBar position="static" sx={{ bgcolor: '#666666' }}>
-        <Toolbar>
-          <OxfordHouseLogo size={40} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
-            Oxford House Mileage Tracker
-          </Typography>
-        </Toolbar>
-      </AppBar>
-
       <Container maxWidth="xl" sx={{ mt: 3 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
