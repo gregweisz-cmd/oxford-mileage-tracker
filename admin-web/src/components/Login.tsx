@@ -12,10 +12,10 @@ import {
   IconButton
 } from '@mui/material';
 import {
-  LockOutlined as LockIcon,
   Visibility,
   VisibilityOff
 } from '@mui/icons-material';
+import OxfordHouseLogo from './OxfordHouseLogo';
 
 interface LoginProps {
   onLoginSuccess: (employee: any, token: string) => void;
@@ -72,9 +72,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           alignItems: 'center',
         }}
       >
-        <Avatar sx={{ m: 1, bgcolor: 'primary.main', width: 56, height: 56 }}>
-          <LockIcon />
-        </Avatar>
+        <Box sx={{ m: 1 }}>
+          <OxfordHouseLogo size={56} />
+        </Box>
         
         <Typography component="h1" variant="h4" sx={{ mb: 1 }}>
           Oxford House
