@@ -116,7 +116,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   // If user only has access to one portal, don't show the switcher
   if (availablePortals.length <= 1) {
     return (
-      <AppBar position="static" sx={{ bgcolor: '#1976d2' }}>
+      <AppBar position="static" sx={{ bgcolor: '#666666' }}>
         <Toolbar>
           <OxfordHouseLogo size={32} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
@@ -139,7 +139,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   }
 
   return (
-    <AppBar position="static" sx={{ bgcolor: '#1976d2' }}>
+    <AppBar position="static" sx={{ bgcolor: '#666666' }}>
       <Toolbar>
         <OxfordHouseLogo size={32} />
         <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
