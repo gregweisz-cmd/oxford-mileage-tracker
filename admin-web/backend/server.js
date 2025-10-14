@@ -1093,96 +1093,146 @@ app.delete('/api/employees/:id', (req, res) => {
 
 // ===== COST CENTER MANAGEMENT API ENDPOINTS =====
 
+// Cost centers are managed as a constant array, not in database
+const COST_CENTERS = [
+  'AL / HI / LA',
+  'AL-SOR',
+  'AL-SUBG',
+  'AZ / CO',
+  'AZ.CHCCP-SUBG (N)',
+  'AZ.CHCCP-SUBG (S)',
+  'AZ.MC-SUBG',
+  'CA / CO / SD',
+  'CA.CCC-OSG',
+  'CA.CCC-SUBG',
+  'CA.SLOC-HHSG',
+  'CO.RMHP',
+  'CO.RMHP-SOR',
+  'CO.SBH-SOR',
+  'CORPORATE',
+  'CT / DE / NJ',
+  'DC / MD / VA',
+  'DC-SOR',
+  'DE-STATE',
+  'FL-',
+  'FL-SOR',
+  'Finance',
+  'HI-STATE',
+  'ID / WA',
+  'IL / MN / WI',
+  'IL-SUBG',
+  'IL.BCBS',
+  'IN.TC-OSG',
+  'KY / IN / OH',
+  'KY-OSG',
+  'KY-SOR',
+  'KY-STATE',
+  'KY-SUBG',
+  'LA-SOR',
+  'LA-SUBG',
+  'MO.GRACE',
+  'NC',
+  'NC.AHP',
+  'NC.DOGWOOD',
+  'NC.F-SOR',
+  'NC.F-SUBG',
+  'NC.MECKCO-OSG',
+  'NC.TRILLIUM',
+  'NE-SOR',
+  'NJ-OSG',
+  'NJ-SOR',
+  'NJ-SOR (SUBG X)',
+  'NJ-SUBG',
+  'NM-STATE',
+  'NY-',
+  'NY.CC/GC-OSG',
+  'NY.NC-OSG',
+  'NY.OC-OSG',
+  'NY.RC-OSG',
+  'NY.SC-OSG',
+  'NY.UC-OSG',
+  'OH-OSG (HC)',
+  'OH-SOR/SOS',
+  'OH.BHM-STATE',
+  'OH.FC-SOR/SOS',
+  'OH.MC-STATE',
+  'OK / MO / NE',
+  'OK-DOJ (RE-ENTRY)',
+  'OK-SUBG',
+  'OR-',
+  'OR-OSG',
+  'OR-STATE',
+  'Program Services',
+  'SC / TN',
+  'SC-STATE',
+  'SC.PHCA',
+  'SC.RUBICON',
+  'SD-SOR',
+  'TN-STATE',
+  'TN-SUBG',
+  'TX / NM',
+  'TX-SUBG',
+  'TX.HEB',
+  'VA-SOR',
+  'VA-SUBG',
+  'WA-SUBG',
+  'WA.KING',
+  'WA.SNO',
+  'WI.MIL'
+];
+
 // Get all cost centers
 app.get('/api/cost-centers', (req, res) => {
-  db.all('SELECT * FROM cost_centers ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const costCenters = COST_CENTERS.map((name, index) => ({
+      id: `cc-${index + 1}`,
+      code: name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+      name: name,
+      description: `${name} cost center`,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }));
+    res.json(costCenters);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load cost centers' });
+  }
 });
 
 // Get cost center by ID
 app.get('/api/cost-centers/:id', (req, res) => {
   const { id } = req.params;
-  db.get('SELECT * FROM cost_centers WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    if (!row) {
-      res.status(404).json({ error: 'Cost center not found' });
-      return;
-    }
-    res.json(row);
-  });
+  const index = parseInt(id.replace('cc-', '')) - 1;
+  
+  if (index >= 0 && index < COST_CENTERS.length) {
+    const name = COST_CENTERS[index];
+    res.json({
+      id: id,
+      code: name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+      name: name,
+      description: `${name} cost center`,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  } else {
+    res.status(404).json({ error: 'Cost center not found' });
+  }
 });
 
-// Create new cost center
+// Create new cost center (read-only - cost centers are managed as constants)
 app.post('/api/cost-centers', (req, res) => {
-  const { name, description, isActive, code } = req.body;
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  const now = new Date().toISOString();
-  
-  // Generate code from name if not provided
-  const costCenterCode = code || name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  
-  db.run(
-    'INSERT INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, now],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, createdAt: now, updatedAt: now });
-    }
-  );
+  res.status(403).json({ error: 'Cost centers are managed as system constants and cannot be created via API' });
 });
 
-// Update cost center
+// Update cost center (read-only - cost centers are managed as constants)
 app.put('/api/cost-centers/:id', (req, res) => {
-  const { id } = req.params;
-  const { name, description, isActive, code } = req.body;
-  const now = new Date().toISOString();
-  
-  // Generate code from name if not provided
-  const costCenterCode = code || name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  
-  db.run(
-    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, updatedAt = ? WHERE id = ?',
-    [costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, id],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      if (this.changes === 0) {
-        res.status(404).json({ error: 'Cost center not found' });
-        return;
-      }
-      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, updatedAt: now });
-    }
-  );
+  res.status(403).json({ error: 'Cost centers are managed as system constants and cannot be modified via API' });
 });
 
-// Delete cost center
+// Delete cost center (read-only - cost centers are managed as constants)
 app.delete('/api/cost-centers/:id', (req, res) => {
-  const { id } = req.params;
-  
-  db.run('DELETE FROM cost_centers WHERE id = ?', [id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Cost center not found' });
-      return;
-    }
-    res.json({ message: 'Cost center deleted successfully' });
-  });
+  res.status(403).json({ error: 'Cost centers are managed as system constants and cannot be deleted via API' });
 });
 
 // ===== EMPLOYEE PASSWORD MANAGEMENT API ENDPOINTS =====
@@ -1759,84 +1809,7 @@ app.post('/api/oxford-houses/refresh', async (req, res) => {
   }
 });
 
-// Cost Center Management API Routes
-
-// Get all cost centers
-app.get('/api/cost-centers', (req, res) => {
-  db.all('SELECT * FROM cost_centers ORDER BY code', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
-});
-
-// Get cost center by ID
-app.get('/api/cost-centers/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT * FROM cost_centers WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    if (!row) {
-      res.status(404).json({ error: 'Cost center not found' });
-      return;
-    }
-    res.json(row);
-  });
-});
-
-// Create new cost center
-app.post('/api/cost-centers', (req, res) => {
-  const { code, name, description } = req.body;
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  const now = new Date().toISOString();
-
-  db.run(
-    'INSERT INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, code, name, description || '', 1, now, now],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ id, message: 'Cost center created successfully' });
-    }
-  );
-});
-
-// Update cost center
-app.put('/api/cost-centers/:id', (req, res) => {
-  const { id } = req.params;
-  const { code, name, description, isActive } = req.body;
-  const now = new Date().toISOString();
-
-  db.run(
-    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, updatedAt = ? WHERE id = ?',
-    [code, name, description || '', isActive ? 1 : 0, now, id],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ message: 'Cost center updated successfully' });
-    }
-  );
-});
-
-// Delete cost center
-app.delete('/api/cost-centers/:id', (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM cost_centers WHERE id = ?', [id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json({ message: 'Cost center deleted successfully' });
-  });
-});
+// Cost Center Management API Routes - Removed duplicate endpoints (using constant-based endpoints above)
 
 // Per Diem Rules API Routes
 
