@@ -355,7 +355,16 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
-      // Cost centers are managed as constants, not database tables
+      // Create cost centers table
+      db.run(`CREATE TABLE IF NOT EXISTS cost_centers (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        isActive INTEGER DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS per_diem_rules (
         id TEXT PRIMARY KEY,
@@ -583,7 +592,14 @@ function ensureTablesExist() {
       // Using bulk-imported employee data only
       // Bulk import employees have IDs starting with mgfft...
 
-      // Cost centers are managed as constants, no database inserts needed
+      // Populate cost centers table with initial data
+      COST_CENTERS.forEach((name, index) => {
+        const id = `cc-${index + 1}`;
+        const code = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [id, code, name, `${name} cost center`, 1, now, now]);
+      });
 
       // REMOVED: All sample mileage, receipt, and time tracking entries
       // Real data will come from mobile app and web portal
@@ -670,7 +686,16 @@ function createSampleDatabase() {
           updatedAt TEXT NOT NULL
         )`);
 
-        // Cost centers are managed as constants, not database tables
+        // Create cost centers table
+        db.run(`CREATE TABLE IF NOT EXISTS cost_centers (
+          id TEXT PRIMARY KEY,
+          code TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          isActive INTEGER DEFAULT 1,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        )`);
 
         // Per diem rules table
         db.run(`CREATE TABLE IF NOT EXISTS per_diem_rules (
@@ -711,7 +736,14 @@ function createSampleDatabase() {
         // REMOVED: Test employee emp1 and sample Oxford House
         // Using bulk-imported employee data only
 
-        // Cost centers are managed as constants, no database inserts needed
+        // Populate cost centers table with initial data
+        COST_CENTERS.forEach((name, index) => {
+          const id = `cc-${index + 1}`;
+          const code = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+          db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                  [id, code, name, `${name} cost center`, 1, now, now]);
+        });
 
         // Insert sample per diem monthly rules
         db.run(`INSERT OR IGNORE INTO per_diem_monthly_rules (id, costCenter, maxAmount, description, createdAt, updatedAt)
@@ -1135,56 +1167,99 @@ const COST_CENTERS = [
 
 // Get all cost centers
 app.get('/api/cost-centers', (req, res) => {
-  try {
-    const costCenters = COST_CENTERS.map((name, index) => ({
-      id: `cc-${index + 1}`,
-      code: name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
-      name: name,
-      description: `${name} cost center`,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }));
-    res.json(costCenters);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load cost centers' });
-  }
+  db.all('SELECT * FROM cost_centers ORDER BY name', (err, rows) => {
+    if (err) {
+      console.error('❌ Error fetching cost centers:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
 });
 
 // Get cost center by ID
 app.get('/api/cost-centers/:id', (req, res) => {
   const { id } = req.params;
-  const index = parseInt(id.replace('cc-', '')) - 1;
-  
-  if (index >= 0 && index < COST_CENTERS.length) {
-    const name = COST_CENTERS[index];
-    res.json({
-      id: id,
-      code: name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
-      name: name,
-      description: `${name} cost center`,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-  } else {
-    res.status(404).json({ error: 'Cost center not found' });
-  }
+  db.get('SELECT * FROM cost_centers WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      console.error('❌ Error fetching cost center:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Cost center not found' });
+      return;
+    }
+    res.json(row);
+  });
 });
 
-// Create new cost center (read-only - cost centers are managed as constants)
+// Create new cost center
 app.post('/api/cost-centers', (req, res) => {
-  res.status(403).json({ error: 'Cost centers are managed as system constants and cannot be created via API' });
+  const { name, description, isActive, code } = req.body;
+  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  const now = new Date().toISOString();
+  
+  // Generate code from name if not provided
+  const costCenterCode = code || name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  
+  db.run(
+    'INSERT INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, now],
+    function(err) {
+      if (err) {
+        console.error('❌ Error creating cost center:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, createdAt: now, updatedAt: now });
+    }
+  );
 });
 
-// Update cost center (read-only - cost centers are managed as constants)
+// Update cost center
 app.put('/api/cost-centers/:id', (req, res) => {
-  res.status(403).json({ error: 'Cost centers are managed as system constants and cannot be modified via API' });
+  const { id } = req.params;
+  const { name, description, isActive, code } = req.body;
+  const now = new Date().toISOString();
+  
+  // Generate code from name if not provided
+  const costCenterCode = code || name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  
+  db.run(
+    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, updatedAt = ? WHERE id = ?',
+    [costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Error updating cost center:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Cost center not found' });
+        return;
+      }
+      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, updatedAt: now });
+    }
+  );
 });
 
-// Delete cost center (read-only - cost centers are managed as constants)
+// Delete cost center
 app.delete('/api/cost-centers/:id', (req, res) => {
-  res.status(403).json({ error: 'Cost centers are managed as system constants and cannot be deleted via API' });
+  const { id } = req.params;
+  
+  db.run('DELETE FROM cost_centers WHERE id = ?', [id], function(err) {
+    if (err) {
+      console.error('❌ Error deleting cost center:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (this.changes === 0) {
+      res.status(404).json({ error: 'Cost center not found' });
+      return;
+    }
+    res.json({ message: 'Cost center deleted successfully' });
+  });
 });
 
 // ===== EMPLOYEE PASSWORD MANAGEMENT API ENDPOINTS =====
