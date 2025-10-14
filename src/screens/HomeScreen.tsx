@@ -1157,6 +1157,12 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
                     </Text>
                     <Text style={styles.quickActionsEntryPurpose}>{entry.purpose}</Text>
                     <Text style={styles.quickActionsEntryMiles}>{entry.miles.toFixed(1)} mi</Text>
+                    {entry.isGpsTracked && (
+                      <View style={styles.quickActionsGpsBadge}>
+                        <MaterialIcons name="gps-fixed" size={12} color="#4CAF50" />
+                        <Text style={styles.quickActionsGpsText}>GPS Tracked</Text>
+                      </View>
+                    )}
                   </View>
                   <View style={styles.quickActionsButtonContainer}>
                     <TouchableOpacity
@@ -2130,5 +2136,21 @@ const styles = StyleSheet.create({
   selectedCostCenterText: {
     fontWeight: '600',
     color: '#2e7d32',
+  },
+  quickActionsGpsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  quickActionsGpsText: {
+    fontSize: 10,
+    color: '#4CAF50',
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });
