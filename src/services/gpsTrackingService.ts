@@ -141,16 +141,12 @@ export class GpsTrackingService {
       this.watchId = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 3000, // Update every 3 seconds for more responsive tracking
-          distanceInterval: 5, // Update every 5 meters for more precise tracking
+          timeInterval: 10000, // Update every 10 seconds to reduce performance impact
+          distanceInterval: 10, // Update every 10 meters to reduce calculations
         },
         (newLocation) => {
-          console.log('📍 GPS: Location update received:', {
-            latitude: newLocation.coords.latitude,
-            longitude: newLocation.coords.longitude,
-            accuracy: newLocation.coords.accuracy,
-            timestamp: new Date(newLocation.timestamp).toLocaleTimeString()
-          });
+          // Reduced logging to improve performance
+          console.log('📍 GPS: Location update received');
           this.updateDistance(newLocation);
         }
       );
@@ -233,32 +229,21 @@ export class GpsTrackingService {
         newLocation.coords.longitude
       );
 
-      console.log('📍 GPS: New location received, distance calculated:', distance, 'miles');
-
       // Check if movement is significant (convert meters to miles for comparison)
       const thresholdInMiles = this.movementThreshold / 1609.34; // Convert 10 meters to miles
-      console.log('📍 GPS: Movement threshold:', thresholdInMiles, 'miles, calculated distance:', distance, 'miles');
       
       if (distance > thresholdInMiles) {
         // Significant movement detected
-        console.log('📍 GPS: Significant movement detected, adding', distance, 'miles to total');
         this.stationaryStartTime = null;
         this.totalDistance += distance;
         
         // Update session immediately for more responsive UI
         this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10; // Round to nearest tenth
-        
-        console.log('📍 GPS: Total distance updated to:', this.currentSession.totalMiles, 'miles');
       } else if (distance > 0.001) { // If distance is greater than ~5 feet, add it anyway
         // Small but real movement - add it to prevent getting stuck
-        console.log('📍 GPS: Small movement detected (', distance, 'miles), adding to total anyway');
         this.stationaryStartTime = null;
         this.totalDistance += distance;
         this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
-        console.log('📍 GPS: Total distance updated to:', this.currentSession.totalMiles, 'miles');
-      } else {
-        // Stationary or minimal movement
-        console.log('📍 GPS: Movement too small (', distance, 'miles), not adding to total');
         if (!this.stationaryStartTime) {
           this.stationaryStartTime = new Date();
         }
@@ -266,8 +251,6 @@ export class GpsTrackingService {
         // Still update the session even for small movements to keep UI responsive
         this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
       }
-    } else {
-      console.log('📍 GPS: No last location or current session, skipping distance calculation');
     }
 
     this.lastLocation = newLocation;

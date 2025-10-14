@@ -44,7 +44,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
           setCurrentSession({ ...session });
         }
       }
-    }, 1000); // Update every 1 second to reduce performance impact
+    }, 5000); // Update every 5 seconds to reduce performance impact
 
     return () => clearInterval(interval);
   }, [isTracking]);
