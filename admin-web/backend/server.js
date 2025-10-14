@@ -355,16 +355,7 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
-      // Create cost center management tables
-      db.run(`CREATE TABLE IF NOT EXISTS cost_centers (
-        id TEXT PRIMARY KEY,
-        code TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        description TEXT,
-        isActive INTEGER DEFAULT 1,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
-      )`);
+      // Cost centers are managed as constants, not database tables
 
       db.run(`CREATE TABLE IF NOT EXISTS per_diem_rules (
         id TEXT PRIMARY KEY,
@@ -592,26 +583,7 @@ function ensureTablesExist() {
       // Using bulk-imported employee data only
       // Bulk import employees have IDs starting with mgfft...
 
-      // Insert sample cost centers if they don't exist
-      db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              ['cc1', 'AL-SOR', 'Program Services - Alabama', 'Alabama program services', 1, now, now]);
-      
-      db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              ['cc2', 'CC001', 'Cost Center 001', 'General operations', 1, now, now]);
-      
-      db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              ['cc3', 'CC002', 'Cost Center 002', 'Client services', 1, now, now]);
-
-      db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              ['cc4', 'CC003', 'Cost Center 003', 'House management', 1, now, now]);
-
-      db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              ['cc5', 'CC004', 'Cost Center 004', 'Administrative services', 1, now, now]);
+      // Cost centers are managed as constants, no database inserts needed
 
       // REMOVED: All sample mileage, receipt, and time tracking entries
       // Real data will come from mobile app and web portal
@@ -698,16 +670,7 @@ function createSampleDatabase() {
           updatedAt TEXT NOT NULL
         )`);
 
-        // Cost centers table
-        db.run(`CREATE TABLE IF NOT EXISTS cost_centers (
-          id TEXT PRIMARY KEY,
-          code TEXT UNIQUE NOT NULL,
-          name TEXT NOT NULL,
-          description TEXT,
-          isActive INTEGER DEFAULT 1,
-          createdAt TEXT NOT NULL,
-          updatedAt TEXT NOT NULL
-        )`);
+        // Cost centers are managed as constants, not database tables
 
         // Per diem rules table
         db.run(`CREATE TABLE IF NOT EXISTS per_diem_rules (
@@ -748,18 +711,7 @@ function createSampleDatabase() {
         // REMOVED: Test employee emp1 and sample Oxford House
         // Using bulk-imported employee data only
 
-        // Insert sample cost centers
-        db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                ['cc1', 'AL-SOR', 'Program Services - Alabama', 'Alabama program services', 1, now, now]);
-        
-        db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                ['cc2', 'CC001', 'Cost Center 001', 'General operations', 1, now, now]);
-        
-        db.run(`INSERT OR IGNORE INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                ['cc3', 'CC002', 'Cost Center 002', 'Client services', 1, now, now]);
+        // Cost centers are managed as constants, no database inserts needed
 
         // Insert sample per diem monthly rules
         db.run(`INSERT OR IGNORE INTO per_diem_monthly_rules (id, costCenter, maxAmount, description, createdAt, updatedAt)
