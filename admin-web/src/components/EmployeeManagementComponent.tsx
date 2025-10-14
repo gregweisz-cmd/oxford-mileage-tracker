@@ -418,6 +418,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setQuickEditEmployee(employee);
     setQuickEditCostCenters(costCenters);
     setShowQuickCostCenterEdit(true);
+    setShowCostCenterDropdown(true); // Open dropdown by default
   };
 
   const handleSaveQuickCostCenterEdit = async () => {
@@ -1174,8 +1175,11 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       <Dialog 
         open={showQuickCostCenterEdit} 
         onClose={() => setShowQuickCostCenterEdit(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: { height: '80vh', maxHeight: 600 }
+        }}
       >
         <DialogTitle>
           Edit Cost Centers for {quickEditEmployee?.name}
@@ -1217,15 +1221,18 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     borderTop: 0
                   }}
                 >
-                  <Box sx={{ maxHeight: 300, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                    {/* Selected Items - Always Visible */}
+                  <Box sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
+                    {/* Selected Items - Fixed at Top */}
                     {quickEditCostCenters.length > 0 && (
                       <Box sx={{ 
+                        flexShrink: 0,
                         borderBottom: 1, 
                         borderColor: 'divider',
                         backgroundColor: 'primary.light',
                         color: 'primary.contrastText',
-                        p: 1
+                        p: 1,
+                        maxHeight: 150,
+                        overflow: 'auto'
                       }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
                           Selected ({quickEditCostCenters.length})
@@ -1253,9 +1260,22 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </Box>
                     )}
                     
-                    {/* Unselected Items - Scrollable */}
-                    <Box sx={{ flex: 1, overflow: 'auto' }}>
-                      <Typography variant="subtitle2" sx={{ p: 1, fontWeight: 'bold', borderBottom: 1, borderColor: 'divider' }}>
+                    {/* Unselected Items - Scrollable Below */}
+                    <Box sx={{ 
+                      flex: 1, 
+                      overflow: 'auto',
+                      minHeight: 0
+                    }}>
+                      <Typography variant="subtitle2" sx={{ 
+                        p: 1, 
+                        fontWeight: 'bold', 
+                        borderBottom: 1, 
+                        borderColor: 'divider',
+                        position: 'sticky',
+                        top: 0,
+                        backgroundColor: 'background.paper',
+                        zIndex: 1
+                      }}>
                         Available ({COST_CENTERS.length - quickEditCostCenters.length})
                       </Typography>
                       {COST_CENTERS
