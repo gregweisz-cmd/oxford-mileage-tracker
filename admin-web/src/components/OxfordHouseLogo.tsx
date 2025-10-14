@@ -29,10 +29,11 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: 'white',
-          borderRadius: '50%',
-          padding: size * 0.1, // 10% padding
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          // Temporarily remove white background to debug
+          // backgroundColor: 'white',
+          // borderRadius: '50%',
+          // padding: size * 0.1, // 10% padding
+          // boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
         }}
       >
         <img
