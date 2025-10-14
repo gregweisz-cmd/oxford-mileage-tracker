@@ -33,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { RealtimeStatusIndicator } from './RealtimeStatusIndicator';
 import { useToast } from '../contexts/ToastContext';
+import OxfordHouseLogo from './OxfordHouseLogo';
 
 interface EnhancedHeaderProps {
   title: string;
@@ -162,8 +163,9 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
           transition: 'none !important'
         }
       }}>
-        {/* Left Section - Title and Info */}
+        {/* Left Section - Logo, Title and Info */}
         <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <OxfordHouseLogo size={40} />
           <Box>
             <Typography variant="h6" component="h1" sx={{ fontWeight: 'bold' }}>
               {title}

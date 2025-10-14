@@ -70,6 +70,7 @@ import {
 
 // Import StaffPortal for team member report viewing
 import StaffPortal from '../StaffPortal';
+import OxfordHouseLogo from './OxfordHouseLogo';
 
 interface SupervisorPortalProps {
   supervisorId: string;
@@ -448,14 +449,17 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       {/* Header */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box>
-            <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-              <SupervisorIcon sx={{ mr: 2 }} />
-              Supervisor Portal
-            </Typography>
-            <Typography variant="h6" color="text.secondary">
-              Welcome back, {supervisorName}
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <OxfordHouseLogo size={48} />
+            <Box>
+              <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <SupervisorIcon sx={{ mr: 2 }} />
+                Supervisor Portal
+              </Typography>
+              <Typography variant="h6" color="text.secondary">
+                Welcome back, {supervisorName}
+              </Typography>
+            </Box>
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
             <Button

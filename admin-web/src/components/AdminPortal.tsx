@@ -15,6 +15,7 @@ import { CostCenterManagement } from './CostCenterManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { BulkImportResult } from '../services/bulkImportService';
 import { Employee } from '../types';
+import OxfordHouseLogo from './OxfordHouseLogo';
 
 interface AdminPortalProps {
   adminId: string;
@@ -159,8 +160,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Oxford House Admin Portal - Welcome, {adminName}
+          <OxfordHouseLogo size={40} showText={true} />
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
+            Admin Portal - Welcome, {adminName}
           </Typography>
         </Toolbar>
       </AppBar>
