@@ -1179,20 +1179,27 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   </Box>
                 )}
               >
-                {COST_CENTERS
-                  .sort((a, b) => {
+                {(() => {
+                  // Create a sorted array with selected items first
+                  const sortedCostCenters = [...COST_CENTERS].sort((a, b) => {
                     const aSelected = quickEditCostCenters.includes(a);
                     const bSelected = quickEditCostCenters.includes(b);
+                    
+                    // Selected items come first
                     if (aSelected && !bSelected) return -1;
                     if (!aSelected && bSelected) return 1;
+                    
+                    // Within each group (selected/unselected), sort alphabetically
                     return a.localeCompare(b);
-                  })
-                  .map((costCenter: string) => (
+                  });
+                  
+                  return sortedCostCenters.map((costCenter: string) => (
                     <MenuItem key={costCenter} value={costCenter}>
-                      <Checkbox checked={quickEditCostCenters.indexOf(costCenter) > -1} />
+                      <Checkbox checked={quickEditCostCenters.includes(costCenter)} />
                       <ListItemText primary={costCenter} />
                     </MenuItem>
-                  ))}
+                  ));
+                })()}
               </Select>
             </FormControl>
           </Box>
