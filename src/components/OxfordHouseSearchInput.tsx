@@ -196,27 +196,30 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
 
   const renderHouseItem = ({ item }: { item: any }) => (
     <TouchableOpacity
-      style={styles.houseItem}
+      style={styles.wazeHouseItem}
       onPress={() => handleHouseSelect(item)}
+      activeOpacity={0.7}
     >
-      <MaterialIcons 
-        name={item.isSavedAddress ? "star" : "home"} 
-        size={24} 
-        color={item.isSavedAddress ? "#FFD700" : "#2196F3"} 
-      />
-      <View style={styles.houseInfo}>
-        <Text style={styles.houseName}>{item.name}</Text>
-        <Text style={styles.houseAddress}>
+      <View style={styles.wazeHouseIconContainer}>
+        <MaterialIcons 
+          name={item.isSavedAddress ? "star" : "place"} 
+          size={28} 
+          color={item.isSavedAddress ? "#FFD700" : "#2196F3"} 
+        />
+      </View>
+      <View style={styles.wazeHouseInfo}>
+        <Text style={styles.wazeHouseName}>{item.name}</Text>
+        <Text style={styles.wazeHouseAddress}>
           {item.isSavedAddress ? item.address : OxfordHouseService.formatHouseAddress(item)}
         </Text>
         {item.phoneNumber && !item.isSavedAddress && (
-          <Text style={styles.housePhone}>{item.phoneNumber}</Text>
+          <Text style={styles.wazeHousePhone}>{item.phoneNumber}</Text>
         )}
         {item.isSavedAddress && (
-          <Text style={styles.savedAddressLabel}>⭐ Saved Address</Text>
+          <Text style={styles.wazeSavedLabel}>⭐ Saved Address</Text>
         )}
       </View>
-      <MaterialIcons name="chevron-right" size={24} color="#666" />
+      <MaterialIcons name="chevron-right" size={24} color="#ccc" />
     </TouchableOpacity>
   );
 
@@ -252,23 +255,33 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Search Oxford Houses</Text>
-                <TouchableOpacity onPress={handleCloseSearch} style={styles.closeButton}>
-                  <MaterialIcons name="close" size={24} color="#666" />
+              {/* Waze-style Header */}
+              <View style={styles.wazeHeader}>
+                <TouchableOpacity onPress={handleCloseSearch} style={styles.backButton}>
+                  <MaterialIcons name="arrow-back" size={24} color="#fff" />
                 </TouchableOpacity>
+                <Text style={styles.wazeTitle}>Where to?</Text>
+                <View style={styles.headerSpacer} />
               </View>
 
-              <View style={styles.searchContainer}>
-                <TextInput
-                  style={styles.searchInput}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder={isManualEntry ? "Enter location manually..." : "Type house name, city, or address..."}
-                  placeholderTextColor="#999"
-                  autoFocus
-                />
-                <MaterialIcons name={isManualEntry ? "edit" : "search"} size={24} color="#666" style={styles.searchInputIcon} />
+              {/* Waze-style Search Bar */}
+              <View style={styles.wazeSearchContainer}>
+                <View style={styles.wazeSearchBar}>
+                  <MaterialIcons name="search" size={20} color="#666" style={styles.wazeSearchIcon} />
+                  <TextInput
+                    style={styles.wazeSearchInput}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder={isManualEntry ? "Enter location manually..." : "Search Oxford Houses..."}
+                    placeholderTextColor="#999"
+                    autoFocus
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                      <MaterialIcons name="clear" size={20} color="#666" />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               {!isManualEntry && (
@@ -719,5 +732,103 @@ const styles = StyleSheet.create({
   statePickerOverlayItemTextSelected: {
     color: '#2196F3',
     fontWeight: '600',
+  },
+  // Waze-style styles
+  wazeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2196F3',
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingBottom: 15,
+    paddingHorizontal: 20,
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 10,
+  },
+  wazeTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 40, // Same width as back button to center title
+  },
+  wazeSearchContainer: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  wazeSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  wazeSearchIcon: {
+    marginRight: 10,
+  },
+  wazeSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+  },
+  clearButton: {
+    padding: 5,
+    marginLeft: 10,
+  },
+  // Waze-style house item styles
+  wazeHouseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  wazeHouseIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15,
+  },
+  wazeHouseInfo: {
+    flex: 1,
+  },
+  wazeHouseName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  wazeHouseAddress: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  wazeHousePhone: {
+    fontSize: 12,
+    color: '#999',
+  },
+  wazeSavedLabel: {
+    fontSize: 12,
+    color: '#FFD700',
+    fontWeight: '600',
+    marginTop: 2,
   },
 });
