@@ -111,8 +111,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [quickEditEmployee, setQuickEditEmployee] = useState<Employee | null>(null);
   const [quickEditCostCenters, setQuickEditCostCenters] = useState<string[]>([]);
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
+  const [showEmployeeCostCenterDropdown, setShowEmployeeCostCenterDropdown] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const employeeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
   React.useEffect(() => {
@@ -120,16 +122,19 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowCostCenterDropdown(false);
       }
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target as Node)) {
+        setShowEmployeeCostCenterDropdown(false);
+      }
     };
 
-    if (showCostCenterDropdown) {
+    if (showCostCenterDropdown || showEmployeeCostCenterDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showCostCenterDropdown]);
+  }, [showCostCenterDropdown, showEmployeeCostCenterDropdown]);
 
   // Filter employees based on search text
   const filteredEmployees = existingEmployees.filter(employee => {
@@ -825,6 +830,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           setShowEmployeeDialog(false);
           setSelectedCostCenters([]);
           setDefaultCostCenter('');
+          setShowEmployeeCostCenterDropdown(false);
         }}
         maxWidth="md"
         fullWidth
@@ -956,39 +962,125 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 </Box>
                 
                 {/* Cost Centers Selection */}
-                <FormControl fullWidth sx={{ mt: 2 }}>
+                <FormControl fullWidth sx={{ mt: 2, position: 'relative' }}>
                   <InputLabel>Cost Centers</InputLabel>
-                  <Select
-                    multiple
-                    value={selectedCostCenters}
-                    onChange={(e) => {
-                      const value = e.target.value as string[];
-                      setSelectedCostCenters(value);
-                      // If only one cost center is selected, set it as default
-                      if (value.length === 1) {
-                        setDefaultCostCenter(value[0]);
-                      }
-                      // If default cost center is removed, clear it
-                      if (value.length > 1 && !value.includes(defaultCostCenter)) {
-                        setDefaultCostCenter('');
-                      }
-                    }}
-                    input={<OutlinedInput label="Cost Centers" />}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {(selected as string[]).map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
+                  <OutlinedInput 
+                    label="Cost Centers" 
+                    value=""
+                    readOnly
+                    onClick={() => setShowEmployeeCostCenterDropdown(!showEmployeeCostCenterDropdown)}
+                    endAdornment={
+                      <InputAdornment position="end">
+                        <IconButton onClick={() => setShowEmployeeCostCenterDropdown(!showEmployeeCostCenterDropdown)}>
+                          {showEmployeeCostCenterDropdown ? <ExpandLess /> : <ExpandMore />}
+                        </IconButton>
+                      </InputAdornment>
+                    }
+                    sx={{ cursor: 'pointer' }}
+                  />
+                  {showEmployeeCostCenterDropdown && (
+                    <Paper 
+                      ref={employeeDropdownRef}
+                      sx={{ 
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        zIndex: 1300,
+                        maxHeight: 300,
+                        border: 1,
+                        borderColor: 'divider',
+                        borderTop: 0
+                      }}
+                    >
+                      <Box sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
+                        {/* Selected Items - Fixed at Top */}
+                        {selectedCostCenters.length > 0 && (
+                          <Box sx={{ 
+                            flexShrink: 0,
+                            borderBottom: 1, 
+                            borderColor: 'divider',
+                            backgroundColor: 'primary.light',
+                            color: 'primary.contrastText',
+                            p: 1,
+                            maxHeight: 150,
+                            overflow: 'auto'
+                          }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                              Selected ({selectedCostCenters.length})
+                            </Typography>
+                            {selectedCostCenters
+                              .sort((a, b) => a.localeCompare(b))
+                              .map((costCenter: string) => (
+                                <MenuItem 
+                                  key={costCenter} 
+                                  onClick={() => {
+                                    setSelectedCostCenters(prev => prev.filter(item => item !== costCenter));
+                                    // If only one cost center is selected, set it as default
+                                    if (selectedCostCenters.length === 2) {
+                                      setDefaultCostCenter(selectedCostCenters.find(item => item !== costCenter) || '');
+                                    }
+                                    // If default cost center is removed, clear it
+                                    if (costCenter === defaultCostCenter) {
+                                      setDefaultCostCenter('');
+                                    }
+                                  }}
+                                  sx={{ 
+                                    py: 0.5,
+                                    '&:hover': { backgroundColor: 'primary.main' }
+                                  }}
+                                >
+                                  <Checkbox checked={true} sx={{ color: 'primary.contrastText' }} />
+                                  <ListItemText 
+                                    primary={costCenter} 
+                                    sx={{ color: 'primary.contrastText' }}
+                                  />
+                                </MenuItem>
+                              ))}
+                          </Box>
+                        )}
+                        
+                        {/* Unselected Items - Scrollable Below */}
+                        <Box sx={{ 
+                          flex: 1,
+                          overflow: 'auto',
+                          minHeight: 0
+                        }}>
+                          <Typography variant="subtitle2" sx={{ 
+                            p: 1, 
+                            fontWeight: 'bold', 
+                            borderBottom: 1, 
+                            borderColor: 'divider',
+                            position: 'sticky',
+                            top: 0,
+                            backgroundColor: 'background.paper',
+                            zIndex: 1
+                          }}>
+                            Available ({COST_CENTERS.length - selectedCostCenters.length})
+                          </Typography>
+                          {COST_CENTERS
+                            .filter(costCenter => !selectedCostCenters.includes(costCenter))
+                            .sort((a, b) => a.localeCompare(b))
+                            .map((costCenter: string) => (
+                              <MenuItem 
+                                key={costCenter} 
+                                onClick={() => {
+                                  setSelectedCostCenters(prev => [...prev, costCenter]);
+                                  // If only one cost center is selected, set it as default
+                                  if (selectedCostCenters.length === 0) {
+                                    setDefaultCostCenter(costCenter);
+                                  }
+                                }}
+                                sx={{ py: 0.5 }}
+                              >
+                                <Checkbox checked={false} />
+                                <ListItemText primary={costCenter} />
+                              </MenuItem>
+                            ))}
+                        </Box>
                       </Box>
-                    )}
-                  >
-                    {COST_CENTERS.map((costCenter: string) => (
-                      <MenuItem key={costCenter} value={costCenter}>
-                        <Checkbox checked={selectedCostCenters.indexOf(costCenter) > -1} />
-                        <ListItemText primary={costCenter} />
-                      </MenuItem>
-                    ))}
-                  </Select>
+                    </Paper>
+                  )}
                 </FormControl>
                 
                 {/* Default Cost Center Selection - Only show if multiple cost centers are selected */}
@@ -1017,6 +1109,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
             setShowEmployeeDialog(false);
             setSelectedCostCenters([]);
             setDefaultCostCenter('');
+            setShowEmployeeCostCenterDropdown(false);
           }}>
             Cancel
           </Button>
