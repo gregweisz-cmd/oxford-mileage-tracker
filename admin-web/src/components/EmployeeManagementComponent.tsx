@@ -31,6 +31,7 @@ import {
   Tab,
   OutlinedInput,
   ListItemText,
+  InputAdornment,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -40,7 +41,9 @@ import {
   Add,
   Clear,
   LockReset,
-  Search
+  Search,
+  ExpandMore,
+  ExpandLess
 } from '@mui/icons-material';
 import { BulkImportService, BulkImportResult, EmployeeImportData } from '../services/bulkImportService';
 import { EmployeeApiService } from '../services/employeeApiService';
@@ -107,7 +110,26 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [showQuickCostCenterEdit, setShowQuickCostCenterEdit] = useState(false);
   const [quickEditEmployee, setQuickEditEmployee] = useState<Employee | null>(null);
   const [quickEditCostCenters, setQuickEditCostCenters] = useState<string[]>([]);
+  const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowCostCenterDropdown(false);
+      }
+    };
+
+    if (showCostCenterDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showCostCenterDropdown]);
 
   // Filter employees based on search text
   const filteredEmployees = existingEmployees.filter(employee => {
@@ -1166,41 +1188,95 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
             
             <FormControl fullWidth>
               <InputLabel>Cost Centers</InputLabel>
-              <Select
-                multiple
-                value={quickEditCostCenters}
-                onChange={(e) => setQuickEditCostCenters(e.target.value as string[])}
-                input={<OutlinedInput label="Cost Centers" />}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {(selected as string[]).map((value) => (
-                      <Chip key={value} label={value} size="small" />
-                    ))}
+              <OutlinedInput 
+                label="Cost Centers" 
+                value=""
+                readOnly
+                onClick={() => setShowCostCenterDropdown(!showCostCenterDropdown)}
+                endAdornment={
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowCostCenterDropdown(!showCostCenterDropdown)}>
+                      {showCostCenterDropdown ? <ExpandLess /> : <ExpandMore />}
+                    </IconButton>
+                  </InputAdornment>
+                }
+                sx={{ cursor: 'pointer' }}
+              />
+              {showCostCenterDropdown && (
+                <Paper 
+                  ref={dropdownRef}
+                  sx={{ 
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    zIndex: 1300,
+                    maxHeight: 300,
+                    border: 1,
+                    borderColor: 'divider',
+                    borderTop: 0
+                  }}
+                >
+                  <Box sx={{ maxHeight: 300, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    {/* Selected Items - Always Visible */}
+                    {quickEditCostCenters.length > 0 && (
+                      <Box sx={{ 
+                        borderBottom: 1, 
+                        borderColor: 'divider',
+                        backgroundColor: 'primary.light',
+                        color: 'primary.contrastText',
+                        p: 1
+                      }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                          Selected ({quickEditCostCenters.length})
+                        </Typography>
+                        {quickEditCostCenters
+                          .sort((a, b) => a.localeCompare(b))
+                          .map((costCenter: string) => (
+                            <MenuItem 
+                              key={costCenter} 
+                              onClick={() => {
+                                setQuickEditCostCenters(prev => prev.filter(item => item !== costCenter));
+                              }}
+                              sx={{ 
+                                py: 0.5,
+                                '&:hover': { backgroundColor: 'primary.main' }
+                              }}
+                            >
+                              <Checkbox checked={true} sx={{ color: 'primary.contrastText' }} />
+                              <ListItemText 
+                                primary={costCenter} 
+                                sx={{ color: 'primary.contrastText' }}
+                              />
+                            </MenuItem>
+                          ))}
+                      </Box>
+                    )}
+                    
+                    {/* Unselected Items - Scrollable */}
+                    <Box sx={{ flex: 1, overflow: 'auto' }}>
+                      <Typography variant="subtitle2" sx={{ p: 1, fontWeight: 'bold', borderBottom: 1, borderColor: 'divider' }}>
+                        Available ({COST_CENTERS.length - quickEditCostCenters.length})
+                      </Typography>
+                      {COST_CENTERS
+                        .filter(costCenter => !quickEditCostCenters.includes(costCenter))
+                        .sort((a, b) => a.localeCompare(b))
+                        .map((costCenter: string) => (
+                          <MenuItem 
+                            key={costCenter} 
+                            onClick={() => {
+                              setQuickEditCostCenters(prev => [...prev, costCenter]);
+                            }}
+                            sx={{ py: 0.5 }}
+                          >
+                            <Checkbox checked={false} />
+                            <ListItemText primary={costCenter} />
+                          </MenuItem>
+                        ))}
+                    </Box>
                   </Box>
-                )}
-              >
-                {(() => {
-                  // Create a sorted array with selected items first
-                  const sortedCostCenters = [...COST_CENTERS].sort((a, b) => {
-                    const aSelected = quickEditCostCenters.includes(a);
-                    const bSelected = quickEditCostCenters.includes(b);
-                    
-                    // Selected items come first
-                    if (aSelected && !bSelected) return -1;
-                    if (!aSelected && bSelected) return 1;
-                    
-                    // Within each group (selected/unselected), sort alphabetically
-                    return a.localeCompare(b);
-                  });
-                  
-                  return sortedCostCenters.map((costCenter: string) => (
-                    <MenuItem key={costCenter} value={costCenter}>
-                      <Checkbox checked={quickEditCostCenters.includes(costCenter)} />
-                      <ListItemText primary={costCenter} />
-                    </MenuItem>
-                  ));
-                })()}
-              </Select>
+                </Paper>
+              )}
             </FormControl>
           </Box>
         </DialogContent>
