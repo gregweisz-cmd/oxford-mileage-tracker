@@ -77,6 +77,32 @@ export interface MileageEntry {
   updatedAt: Date;
 }
 
+// Add missing interfaces for services
+export interface TripChain {
+  id: string;
+  employeeId: string;
+  startTime: Date;
+  endTime?: Date;
+  totalMiles: number;
+  entries: MileageEntry[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IntegrationMapping {
+  id: string;
+  systemType: string;
+  systemName: string;
+  authType: string;
+  isActive: boolean;
+  authConfig: any;
+  fieldMappings: any;
+  syncSettings: any;
+  lastSyncAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface GpsTrackingSession {
   id: string;
   employeeId: string;

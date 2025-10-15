@@ -37,7 +37,8 @@ import {
   Refresh as RefreshIcon,
   FilterList as FilterIcon
 } from '@mui/icons-material';
-import { DataSyncService, Employee, MileageEntry, Receipt, TimeTracking } from '../services/dataSyncService';
+import { DataSyncService } from '../services/dataSyncService';
+import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 import { MileageEntryForm, ReceiptForm, TimeTrackingForm, MileageEntryFormData, ReceiptFormData, TimeTrackingFormData } from './DataEntryForms';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
@@ -143,7 +144,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         
         // Update local state
         setMileageEntries(prev => prev.map(entry => 
-          entry.id === editingMileage.id ? { ...entry, ...formData, odometerReading: formData.startingOdometer } : entry
+          entry.id === editingMileage.id ? { ...entry, ...formData, date: new Date(formData.date), odometerReading: formData.startingOdometer } : entry
         ));
       } else {
         // Create new entry
@@ -160,8 +161,10 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         const completeEntry = {
           ...formData,
           id: newEntry.id,
+          date: new Date(formData.date),
           odometerReading: formData.startingOdometer,
-          createdAt: new Date().toISOString()
+          createdAt: new Date(),
+          updatedAt: new Date()
         };
         setMileageEntries(prev => [...prev, completeEntry]);
       }
@@ -191,7 +194,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         
         // Update local state
         setReceipts(prev => prev.map(receipt => 
-          receipt.id === editingReceipt.id ? { ...receipt, ...formData } : receipt
+          receipt.id === editingReceipt.id ? { ...receipt, ...formData, date: new Date(formData.date) } : receipt
         ));
       } else {
         // Create new receipt
@@ -204,7 +207,13 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         if (!response.ok) throw new Error('Failed to create receipt');
         
         const newReceipt = await response.json();
-        setReceipts(prev => [...prev, newReceipt]);
+        const completeReceipt = {
+          ...newReceipt,
+          date: new Date(newReceipt.date),
+          createdAt: new Date(newReceipt.createdAt),
+          updatedAt: new Date(newReceipt.updatedAt)
+        };
+        setReceipts(prev => [...prev, completeReceipt]);
       }
       
       setEditingReceipt(null);
@@ -232,7 +241,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         
         // Update local state
         setTimeTracking(prev => prev.map(entry => 
-          entry.id === editingTimeTracking.id ? { ...entry, ...formData } : entry
+          entry.id === editingTimeTracking.id ? { ...entry, ...formData, date: new Date(formData.date) } : entry
         ));
       } else {
         // Create new entry
@@ -245,7 +254,13 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         if (!response.ok) throw new Error('Failed to create time tracking');
         
         const newEntry = await response.json();
-        setTimeTracking(prev => [...prev, newEntry]);
+        const completeEntry = {
+          ...newEntry,
+          date: new Date(newEntry.date),
+          createdAt: new Date(newEntry.createdAt),
+          updatedAt: new Date(newEntry.updatedAt)
+        };
+        setTimeTracking(prev => [...prev, completeEntry]);
       }
       
       setEditingTimeTracking(null);
@@ -367,7 +382,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
   const convertMileageToFormData = (entry: MileageEntry): MileageEntryFormData => ({
     id: entry.id,
     employeeId: entry.employeeId,
-    date: entry.date,
+    date: entry.date instanceof Date ? entry.date.toISOString().split('T')[0] : entry.date,
     startLocation: entry.startLocation,
     endLocation: entry.endLocation,
     purpose: entry.purpose,
@@ -383,10 +398,10 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
   const convertReceiptToFormData = (receipt: Receipt): ReceiptFormData => ({
     id: receipt.id,
     employeeId: receipt.employeeId,
-    date: receipt.date,
+    date: receipt.date instanceof Date ? receipt.date.toISOString().split('T')[0] : receipt.date,
     amount: receipt.amount,
     vendor: receipt.vendor,
-    description: receipt.description,
+    description: receipt.description || '',
     category: receipt.category,
     imageUri: receipt.imageUri || '',
     costCenter: receipt.costCenter || ''
@@ -396,9 +411,9 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
   const convertTimeTrackingToFormData = (entry: TimeTracking): TimeTrackingFormData => ({
     id: entry.id,
     employeeId: entry.employeeId,
-    date: entry.date,
+    date: entry.date instanceof Date ? entry.date.toISOString().split('T')[0] : entry.date,
     hours: entry.hours,
-    type: entry.type,
+    type: entry.category, // Map category to type for form data
     description: entry.description || '',
     costCenter: entry.costCenter || ''
   });
@@ -543,7 +558,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
                       secondary={
                         <React.Fragment>
                           <Typography variant="body2" color="textSecondary" component="div">
-                            {formatDate(entry.date)} • {entry.miles} miles • {entry.hoursWorked || 0} hours
+                            {formatDate(entry.date instanceof Date ? entry.date.toISOString() : entry.date)} • {entry.miles} miles • {entry.hoursWorked || 0} hours
                           </Typography>
                           <Typography variant="body2" component="div">
                             {entry.purpose}
@@ -609,7 +624,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
                       secondary={
                         <React.Fragment>
                           <Typography variant="body2" color="textSecondary" component="div">
-                            {formatDate(receipt.date)} • ${receipt.amount.toFixed(2)}
+                            {formatDate(receipt.date instanceof Date ? receipt.date.toISOString() : receipt.date)} • ${receipt.amount.toFixed(2)}
                           </Typography>
                           <Typography variant="body2" component="div">
                             {receipt.description}
@@ -666,7 +681,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
                       primary={
                         <Box display="flex" alignItems="center" gap={1}>
                           <Typography variant="subtitle1" component="span">
-                            {entry.type}
+                            {entry.category}
                           </Typography>
                           <Chip label={entry.costCenter || 'No Cost Center'} size="small" />
                         </Box>
@@ -674,7 +689,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
                       secondary={
                         <React.Fragment>
                           <Typography variant="body2" color="textSecondary" component="div">
-                            {formatDate(entry.date)} • {entry.hours} hours
+                            {formatDate(entry.date instanceof Date ? entry.date.toISOString() : entry.date)} • {entry.hours} hours
                           </Typography>
                           {entry.description && (
                             <Typography variant="body2" component="div">

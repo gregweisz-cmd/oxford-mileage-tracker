@@ -106,7 +106,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [searchText, setSearchText] = useState<string>('');
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
-  const [isEditMode, setIsEditMode] = useState(false);
+  // const [isEditMode, setIsEditMode] = useState(false); // Currently unused
   const [showQuickCostCenterEdit, setShowQuickCostCenterEdit] = useState(false);
   const [quickEditEmployee, setQuickEditEmployee] = useState<Employee | null>(null);
   const [quickEditCostCenters, setQuickEditCostCenters] = useState<string[]>([]);
@@ -300,7 +300,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   // Individual Employee Management
   const handleViewEmployee = (employee: Employee) => {
     setViewingEmployee(employee);
-    setIsEditMode(false);
+    // setIsEditMode(false); // Edit mode state currently unused
     setShowProfileDialog(true);
   };
 

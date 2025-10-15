@@ -73,7 +73,7 @@ const SupervisorEmployeeReport: React.FC = () => {
     try {
       // Import DataSyncService dynamically to avoid circular dependencies
       const { DataSyncService } = await import('./services/dataSyncService');
-      const employeesData = await DataSyncService.getEmployees() as Employee[];
+      const employeesData = await DataSyncService.getEmployees();
       
       // Parse costCenters from JSON string if needed
       const parsedEmployees = employeesData.map((emp: any) => {

@@ -52,7 +52,8 @@ import {
   FileUpload,
   Refresh
 } from '@mui/icons-material';
-import { DataSyncService, Employee, MileageEntry, Receipt as ReceiptType, TimeTracking } from '../services/dataSyncService';
+import { DataSyncService } from '../services/dataSyncService';
+import { Employee, MileageEntry, Receipt as ReceiptType, TimeTracking } from '../types';
 import { SimpleReportService } from '../services/simpleReportService';
 import { AdvancedTemplateService } from '../services/advancedTemplateService';
 

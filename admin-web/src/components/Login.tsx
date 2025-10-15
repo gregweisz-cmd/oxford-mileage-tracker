@@ -7,7 +7,7 @@ import {
   Typography,
   Alert,
   Container,
-  Avatar,
+  // Avatar, // Currently unused
   InputAdornment,
   IconButton
 } from '@mui/material';

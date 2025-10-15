@@ -4489,6 +4489,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               id: employeeData.employeeId,
               name: employeeData.name,
               email: '', // Not needed for data entry
+              password: '', // Not needed for data entry
               oxfordHouseId: '',
               position: '',
               phoneNumber: '',
@@ -4496,8 +4497,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               costCenters: employeeData.costCenters,
               selectedCostCenters: employeeData.costCenters,
               defaultCostCenter: employeeData.costCenters[0] || '',
-              createdAt: '',
-              updatedAt: ''
+              createdAt: new Date(),
+              updatedAt: new Date()
             }}
             month={reportMonth}
             year={reportYear}

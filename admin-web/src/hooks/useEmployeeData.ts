@@ -10,7 +10,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataSyncService, Employee, MileageEntry, Receipt, TimeTracking } from '../services/dataSyncService';
+import { DataSyncService } from '../services/dataSyncService';
+import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 
 export interface EmployeeExpenseData {
   employeeId: string;
@@ -241,7 +242,7 @@ export function useEmployeeData(
         }),
         amount: receipt.amount,
         vendor: receipt.vendor,
-        description: receipt.description,
+        description: receipt.description || '',
         category: receipt.category,
         imageUri: receipt.imageUri
       }));

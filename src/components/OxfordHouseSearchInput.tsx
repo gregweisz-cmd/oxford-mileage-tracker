@@ -202,24 +202,35 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     >
       <View style={styles.wazeHouseIconContainer}>
         <MaterialIcons 
-          name={item.isSavedAddress ? "star" : "place"} 
-          size={28} 
+          name={item.isSavedAddress ? "star" : "home"} 
+          size={24} 
           color={item.isSavedAddress ? "#FFD700" : "#2196F3"} 
         />
       </View>
       <View style={styles.wazeHouseInfo}>
-        <Text style={styles.wazeHouseName}>{item.name}</Text>
-        <Text style={styles.wazeHouseAddress}>
-          {item.isSavedAddress ? item.address : OxfordHouseService.formatHouseAddress(item)}
-        </Text>
+        <View style={styles.houseNameRow}>
+          <Text style={styles.wazeHouseName} numberOfLines={1}>{item.name}</Text>
+          {item.isSavedAddress && (
+            <View style={styles.savedBadge}>
+              <MaterialIcons name="star" size={14} color="#FFD700" />
+              <Text style={styles.savedBadgeText}>Saved</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.addressRow}>
+          <MaterialIcons name="location-on" size={14} color="#999" />
+          <Text style={styles.wazeHouseAddress} numberOfLines={2}>
+            {item.isSavedAddress ? item.address : OxfordHouseService.formatHouseAddress(item)}
+          </Text>
+        </View>
         {item.phoneNumber && !item.isSavedAddress && (
-          <Text style={styles.wazeHousePhone}>{item.phoneNumber}</Text>
-        )}
-        {item.isSavedAddress && (
-          <Text style={styles.wazeSavedLabel}>⭐ Saved Address</Text>
+          <View style={styles.phoneRow}>
+            <MaterialIcons name="phone" size={14} color="#999" />
+            <Text style={styles.wazeHousePhone}>{item.phoneNumber}</Text>
+          </View>
         )}
       </View>
-      <MaterialIcons name="chevron-right" size={24} color="#ccc" />
+      <MaterialIcons name="chevron-right" size={24} color="#2196F3" />
     </TouchableOpacity>
   );
 
@@ -267,36 +278,62 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
               {/* Waze-style Search Bar */}
               <View style={styles.wazeSearchContainer}>
                 <View style={styles.wazeSearchBar}>
-                  <MaterialIcons name="search" size={20} color="#666" style={styles.wazeSearchIcon} />
+                  <MaterialIcons name="search" size={22} color="#2196F3" style={styles.wazeSearchIcon} />
                   <TextInput
                     style={styles.wazeSearchInput}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    placeholder={isManualEntry ? "Enter location manually..." : "Search Oxford Houses..."}
+                    placeholder={isManualEntry ? "Enter location manually..." : "Search by name, city, or state..."}
                     placeholderTextColor="#999"
                     autoFocus
                   />
                   {searchQuery.length > 0 && (
                     <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                      <MaterialIcons name="clear" size={20} color="#666" />
+                      <MaterialIcons name="close" size={22} color="#999" />
                     </TouchableOpacity>
                   )}
                 </View>
+                
+                {/* Search Stats */}
+                {!isManualEntry && searchResults.length > 0 && (
+                  <View style={styles.searchStats}>
+                    <Text style={styles.searchStatsText}>
+                      {searchResults.length} {searchResults.length === 1 ? 'house' : 'houses'} found
+                      {selectedState && ` in ${selectedState}`}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {!isManualEntry && (
                 <View style={styles.stateFilterContainer}>
-                  <Text style={styles.stateFilterLabel}>Filter by State:</Text>
+                  <View style={styles.filterHeader}>
+                    <MaterialIcons name="filter-list" size={18} color="#666" />
+                    <Text style={styles.stateFilterLabel}>Filter by State</Text>
+                  </View>
                   <TouchableOpacity
                     style={styles.statePickerButton}
                     onPress={() => setIsStatePickerVisible(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.statePickerText}>
-                      {selectedState ? selectedState : 'All States'}
-                    </Text>
-                    <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+                    <View style={styles.statePickerContent}>
+                      <MaterialIcons name="location-on" size={20} color="#2196F3" />
+                      <Text style={styles.statePickerText}>
+                        {selectedState ? selectedState : 'All States'}
+                      </Text>
+                    </View>
+                    <MaterialIcons name="arrow-drop-down" size={24} color="#2196F3" />
                   </TouchableOpacity>
+                  
+                  {selectedState && (
+                    <TouchableOpacity 
+                      style={styles.clearFilterButton}
+                      onPress={() => handleStateFilterChange('')}
+                    >
+                      <MaterialIcons name="close" size={16} color="#666" />
+                      <Text style={styles.clearFilterText}>Clear filter</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 
@@ -400,7 +437,9 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
                 </View>
               ) : loading ? (
                 <View style={styles.loadingContainer}>
+                  <MaterialIcons name="home-work" size={56} color="#2196F3" />
                   <Text style={styles.loadingText}>Loading Oxford Houses...</Text>
+                  <Text style={styles.loadingSubtext}>Please wait</Text>
                 </View>
               ) : (
                 <FlatList
@@ -409,11 +448,34 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
                   renderItem={renderHouseItem}
                   style={styles.resultsList}
                   showsVerticalScrollIndicator={false}
+                  contentContainerStyle={searchResults.length === 0 ? styles.emptyListContent : undefined}
+                  ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+                  ListHeaderComponent={
+                    searchResults.length > 0 && searchResults.some(r => r.isSavedAddress) ? (
+                      <View style={styles.sectionHeader}>
+                        <MaterialIcons name="history" size={18} color="#666" />
+                        <Text style={styles.sectionHeaderText}>Recent & Saved</Text>
+                      </View>
+                    ) : null
+                  }
                   ListEmptyComponent={
                     <View style={styles.emptyContainer}>
-                      <MaterialIcons name="home" size={48} color="#ccc" />
+                      <View style={styles.emptyIconContainer}>
+                        <MaterialIcons name="search-off" size={64} color="#ccc" />
+                      </View>
                       <Text style={styles.emptyText}>No Oxford Houses found</Text>
-                      <Text style={styles.emptySubtext}>Try a different search term or enter manually</Text>
+                      <Text style={styles.emptySubtext}>
+                        {searchQuery ? 'Try a different search term' : 'Start typing to search'}
+                      </Text>
+                      {allowManualEntry && (
+                        <TouchableOpacity
+                          style={styles.emptyActionButton}
+                          onPress={handleManualEntry}
+                        >
+                          <MaterialIcons name="edit" size={20} color="#2196F3" />
+                          <Text style={styles.emptyActionText}>Enter location manually</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   }
                 />
@@ -464,10 +526,15 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '80%',
-    minHeight: '60%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    minHeight: '65%',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -507,6 +574,26 @@ const styles = StyleSheet.create({
   resultsList: {
     flex: 1,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    gap: 8,
+  },
+  sectionHeaderText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  itemSeparator: {
+    height: 0,
+  },
   houseItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -537,45 +624,87 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
+    gap: 12,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 18,
+    color: '#333',
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  loadingSubtext: {
+    fontSize: 14,
+    color: '#999',
+  },
+  emptyListContent: {
+    flexGrow: 1,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
+    gap: 8,
+  },
+  emptyIconContainer: {
+    marginBottom: 8,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 16,
-    marginBottom: 8,
+    fontSize: 18,
+    color: '#333',
+    fontWeight: '600',
+    marginTop: 8,
   },
   emptySubtext: {
     fontSize: 14,
     color: '#999',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  emptyActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8ff',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    gap: 8,
+    marginTop: 8,
+  },
+  emptyActionText: {
+    fontSize: 15,
+    color: '#2196F3',
+    fontWeight: '600',
   },
   manualEntryContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
   manualEntryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#f0f8ff',
-    borderRadius: 8,
-    borderWidth: 1,
+    justifyContent: 'center',
+    padding: 14,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: '#2196F3',
+    elevation: 1,
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    gap: 8,
   },
   manualEntryText: {
-    marginLeft: 8,
     fontSize: 16,
     color: '#2196F3',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   manualEntryContent: {
     flex: 1,
@@ -643,35 +772,63 @@ const styles = StyleSheet.create({
   },
   stateFilterContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 6,
   },
   stateFilterLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  clearFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  clearFilterText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
   },
   statePickerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#2196F3',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    height: 50,
-    elevation: 2,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 2,
+  },
+  statePickerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
   },
   statePickerText: {
     fontSize: 16,
     color: '#333',
-    flex: 1,
+    fontWeight: '500',
   },
   // State Picker Overlay Styles
   statePickerOverlay: {
@@ -739,19 +896,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#2196F3',
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
-    paddingBottom: 15,
+    paddingBottom: 18,
     paddingHorizontal: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   backButton: {
     padding: 8,
     marginRight: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   wazeTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#fff',
     flex: 1,
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   headerSpacer: {
     width: 40, // Same width as back button to center title
@@ -759,30 +924,43 @@ const styles = StyleSheet.create({
   wazeSearchContainer: {
     backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingTop: 15,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+  },
+  searchStats: {
+    marginTop: 8,
+    paddingHorizontal: 5,
+  },
+  searchStatsText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
   },
   wazeSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    borderRadius: 28,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
   },
   wazeSearchIcon: {
-    marginRight: 10,
+    marginRight: 12,
   },
   wazeSearchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     color: '#333',
+    fontWeight: '400',
   },
   clearButton: {
     padding: 5,
@@ -793,36 +971,77 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     backgroundColor: '#fff',
+    minHeight: 80,
   },
   wazeHouseIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f8f9fa',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E3F2FD',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 15,
+    marginRight: 16,
+    elevation: 1,
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   wazeHouseInfo: {
     flex: 1,
+    gap: 4,
+  },
+  houseNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   wazeHouseName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 2,
+    color: '#1a1a1a',
+    flex: 1,
+  },
+  savedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF9E6',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+    marginLeft: 8,
+  },
+  savedBadgeText: {
+    fontSize: 11,
+    color: '#FFD700',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
   },
   wazeHouseAddress: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 2,
+    lineHeight: 20,
+    flex: 1,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
   },
   wazeHousePhone: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#999',
   },
   wazeSavedLabel: {

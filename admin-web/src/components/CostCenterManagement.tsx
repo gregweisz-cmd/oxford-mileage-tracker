@@ -46,7 +46,7 @@ interface CostCenterManagementProps {
 
 export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCostCentersChange }) => {
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
-  const [loading, setLoading] = useState(true);
+  // const [loading, setLoading] = useState(true); // Currently unused
   const [searchTerm, setSearchTerm] = useState('');
   const [showDialog, setShowDialog] = useState(false);
   const [editingCostCenter, setEditingCostCenter] = useState<CostCenter | null>(null);
@@ -64,13 +64,9 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadCostCenters();
-  }, []);
-
   const loadCostCenters = async () => {
     try {
-      setLoading(true);
+      // setLoading(true); // Loading state currently unused
       const data = await CostCenterApiService.getAllCostCenters();
       setCostCenters(data);
       
@@ -83,9 +79,13 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       console.error('Error loading cost centers:', error);
       setError('Failed to load cost centers');
     } finally {
-      setLoading(false);
+      // setLoading(false); // Loading state currently unused
     }
   };
+
+  useEffect(() => {
+    loadCostCenters();
+  }, [loadCostCenters]);
 
   const handleAddCostCenter = () => {
     setEditingCostCenter(null);

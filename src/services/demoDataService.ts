@@ -32,6 +32,7 @@ export class DemoDataService {
         {
           employeeId: greg.id,
           oxfordHouseId: greg.oxfordHouseId,
+          costCenter: 'Administrative',
           date: new Date(2024, 5, 6), // June 6, 2024
           startLocation: 'BA (230 Wagner St, Troutman, NC 28166)',
           endLocation: 'OH Central (1804 Primrose Pl Durham, NC)',
@@ -45,6 +46,7 @@ export class DemoDataService {
         {
           employeeId: greg.id,
           oxfordHouseId: greg.oxfordHouseId,
+          costCenter: 'Administrative',
           date: new Date(2024, 5, 12), // June 12, 2024
           startLocation: 'BA (230 Wagner St, Troutman, NC 28166)',
           endLocation: 'Co-worker house (673 Sand Hill Rd Asheville, NC)',
@@ -58,6 +60,7 @@ export class DemoDataService {
         {
           employeeId: greg.id,
           oxfordHouseId: greg.oxfordHouseId,
+          costCenter: 'Administrative',
           date: new Date(2024, 5, 13), // June 13, 2024
           startLocation: 'BA (230 Wagner St, Troutman, NC 28166)',
           endLocation: 'Co-worker house (204 Hogan St Morganton, NC)',
@@ -71,6 +74,7 @@ export class DemoDataService {
         {
           employeeId: greg.id,
           oxfordHouseId: greg.oxfordHouseId,
+          costCenter: 'Administrative',
           date: new Date(2024, 5, 14), // June 14, 2024
           startLocation: 'BA (230 Wagner St, Troutman, NC 28166)',
           endLocation: 'Donation pickup (14912 Dunbeth Dr Huntersville, NC)',
@@ -84,6 +88,7 @@ export class DemoDataService {
         {
           employeeId: greg.id,
           oxfordHouseId: greg.oxfordHouseId,
+          costCenter: 'Administrative',
           date: new Date(2024, 5, 25), // June 25, 2024
           startLocation: 'BA (230 Wagner St, Troutman, NC 28166)',
           endLocation: 'Donation pickup (161 Autumn Frost Ave Troutman, NC)',

@@ -1,4 +1,4 @@
-import { Employee, MileageEntry, Receipt, TimeTracking } from './dataSyncService';
+import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 
 export interface RealtimeUpdate {
   type: 'employee' | 'mileage' | 'receipt' | 'time_tracking';

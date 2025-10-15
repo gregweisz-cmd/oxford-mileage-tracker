@@ -113,11 +113,13 @@ export class ImportService {
           await DatabaseService.createEmployee({
             name: employeeData['Name'],
             email: employeeData['Email'],
+            password: '', // Default password
             oxfordHouseId: employeeData['Oxford House ID'],
             position: employeeData['Position'],
             phoneNumber: employeeData['Phone Number'] || '',
             baseAddress: employeeData['Base Address'] || '',
-            costCenter: employeeData['Cost Center']
+            costCenters: [employeeData['Cost Center']],
+            selectedCostCenters: [employeeData['Cost Center']]
           });
           
           importedCount++;
@@ -224,7 +226,9 @@ export class ImportService {
           await DatabaseService.createMileageEntry({
             employeeId: employee.id,
             oxfordHouseId: employee.oxfordHouseId,
+            costCenter: employee.selectedCostCenters[0] || 'Administrative',
             date: new Date(mileageData['Date']),
+            odometerReading: 0, // Default odometer reading
             startLocation: mileageData['Start Location'],
             endLocation: mileageData['End Location'],
             purpose: mileageData['Purpose'],
@@ -236,7 +240,7 @@ export class ImportService {
           
           importedCount++;
         } catch (error) {
-          errors.push(`Mileage entry ${i + 1}: ${error}`);
+          errors.push(`Mileage entry ${importedCount + 1}: ${error}`);
         }
       }
       

@@ -64,11 +64,13 @@ export const SyncTester: React.FC = () => {
       const testEmployee = {
         name: `Test Employee ${Date.now()}`,
         email: `test${Date.now()}@example.com`,
+        password: 'test123',
         oxfordHouseId: 'test-house',
         position: 'Test Position',
         phoneNumber: '555-0123',
         baseAddress: '123 Test St, Test City, TC 12345',
-        costCenters: ['TEST-CC']
+        costCenters: ['TEST-CC'],
+        selectedCostCenters: ['TEST-CC']
       };
 
       const employee = await DatabaseService.createEmployee(testEmployee);
@@ -104,6 +106,7 @@ export const SyncTester: React.FC = () => {
       const testEntry = {
         employeeId: employees[0].id,
         oxfordHouseId: employees[0].oxfordHouseId,
+        costCenter: 'Administrative',
         date: new Date(),
         odometerReading: 50000,
         startLocation: 'Test Start Location',

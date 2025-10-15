@@ -8,7 +8,7 @@ import {
   Menu,
   MenuItem,
   Chip,
-  Avatar,
+  // Avatar, // Currently unused
   Divider,
   ListItemIcon,
   ListItemText,
@@ -19,7 +19,7 @@ import {
   Person,
   ArrowDropDown,
   Logout,
-  Settings,
+  // Settings, // Currently unused
 } from '@mui/icons-material';
 import OxfordHouseLogo from './OxfordHouseLogo';
 

@@ -7,7 +7,7 @@ import StaffPortal from './StaffPortal';
 import SupervisorPortal from './components/SupervisorPortal';
 import { AdminPortal } from './components/AdminPortal';
 import Login from './components/Login';
-import LoginForm from './components/LoginForm';
+// import LoginForm from './components/LoginForm'; // Currently unused
 import PortalSwitcher from './components/PortalSwitcher';
 // import AuthService from './services/authService'; // Currently unused
 

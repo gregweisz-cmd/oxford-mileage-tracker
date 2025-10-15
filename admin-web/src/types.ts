@@ -11,6 +11,7 @@ export interface MileageEntry {
   notes?: string;
   hoursWorked?: number;
   isGpsTracked: boolean;
+  costCenter?: string; // Cost center for this specific entry
   startLocationName?: string;
   startLocationAddress?: string;
   startLocationLat?: number;
@@ -32,6 +33,7 @@ export interface Receipt {
   description?: string;
   category: string;
   imageUri?: string;
+  costCenter?: string; // Cost center for this specific receipt
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,6 +45,7 @@ export interface TimeTracking {
   category: string;
   hours: number;
   description?: string;
+  costCenter?: string; // Cost center for this specific time tracking entry
   createdAt: Date;
   updatedAt: Date;
 }

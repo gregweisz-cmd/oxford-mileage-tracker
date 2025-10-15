@@ -10,64 +10,10 @@
  * - Type safety
  */
 
-// Types
-export interface Employee {
-  id: string;
-  name: string;
-  email: string;
-  oxfordHouseId: string;
-  position: string;
-  phoneNumber: string;
-  baseAddress: string;
-  baseAddress2?: string;
-  costCenters: string[];
-  selectedCostCenters?: string[];
-  defaultCostCenter?: string;
-  role?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
+// Import types from main types file
+import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 
-export interface MileageEntry {
-  id: string;
-  employeeId: string;
-  date: string;
-  startLocation: string;
-  endLocation: string;
-  miles: number;
-  purpose: string;
-  notes?: string;
-  odometerReading?: number;
-  costCenter?: string;
-  hoursWorked?: number;
-  isGpsTracked?: boolean;
-  createdAt?: string;
-}
-
-export interface Receipt {
-  id: string;
-  employeeId: string;
-  date: string;
-  vendor: string;
-  amount: number;
-  category: string;
-  description: string;
-  imageUri?: string;
-  costCenter?: string;
-  createdAt?: string;
-}
-
-export interface TimeTracking {
-  id: string;
-  employeeId: string;
-  date: string;
-  hours: number;
-  type: string;
-  description?: string;
-  costCenter?: string;
-  category?: string; // Added for backward compatibility
-  createdAt?: string;
-}
+// Types are now imported from ../types
 
 export interface ExpenseReport {
   id: string;

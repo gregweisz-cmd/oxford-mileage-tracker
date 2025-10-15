@@ -74,7 +74,7 @@ export class DataSyncService {
         position: emp.position,
         phoneNumber: emp.phoneNumber || '',
         baseAddress: emp.baseAddress,
-        costCenter: emp.costCenter || '',
+        costCenters: emp.costCenters || [],
         createdAt: emp.createdAt.toISOString()
       })),
       mileageEntries: mobileData.mileageEntries.map(entry => ({
@@ -142,17 +142,21 @@ export class DataSyncService {
           id: empData.id,
           name: empData.name,
           email: empData.email,
+          password: '', // Default password
           oxfordHouseId: 'default-house', // Default house ID
           position: empData.position,
           phoneNumber: empData.phoneNumber,
           baseAddress: empData.baseAddress,
-          costCenter: empData.costCenter,
+          costCenters: empData.costCenters || [],
+          selectedCostCenters: empData.costCenters || [],
           createdAt: new Date(empData.createdAt),
           updatedAt: new Date()
         };
         
         // Check if employee exists, if not create
-        const existingEmployee = await DatabaseService.getEmployee(employee.id);
+        const existingEmployee = await DatabaseService.getEmployees().then(employees => 
+          employees.find(emp => emp.id === employee.id)
+        );
         if (!existingEmployee) {
           await DatabaseService.createEmployee(employee);
         } else {
@@ -160,7 +164,7 @@ export class DataSyncService {
             position: employee.position,
             phoneNumber: employee.phoneNumber,
             baseAddress: employee.baseAddress,
-            costCenter: employee.costCenter
+            costCenters: employee.costCenters
           });
         }
       }
@@ -171,6 +175,7 @@ export class DataSyncService {
           id: entryData.id,
           employeeId: entryData.employeeId,
           oxfordHouseId: 'default-house',
+          costCenter: entryData.costCenter || 'default-cost-center',
           date: new Date(entryData.date),
           odometerReading: entryData.odometerReading || 0,
           startLocation: entryData.startLocation,

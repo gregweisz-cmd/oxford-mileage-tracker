@@ -62,10 +62,13 @@ export default function ManagerDashboardScreen({ navigation }: ManagerDashboardS
         manager = await DatabaseService.createEmployee({
           name: 'Jackson Longan',
           email: 'jackson.longan@oxfordhouse.org',
+          password: 'demo123',
           oxfordHouseId: 'OK-MANAGER',
           position: 'Regional Manager',
           phoneNumber: '+15551234567',
-          baseAddress: '425 Pergola St., Yukon, OK 73099'
+          baseAddress: '425 Pergola St., Yukon, OK 73099',
+          costCenters: ['Administrative'],
+          selectedCostCenters: ['Administrative']
         });
       }
       

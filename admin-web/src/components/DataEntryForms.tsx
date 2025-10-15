@@ -12,11 +12,11 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Chip,
-  Alert,
+  // Chip, // Currently unused
+  // Alert, // Currently unused
   CircularProgress,
   IconButton,
-  Divider,
+  // Divider, // Currently unused
   Paper,
   FormControlLabel,
   Switch,
@@ -25,9 +25,9 @@ import {
 import {
   Close as CloseIcon,
   Save as SaveIcon,
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
+  // Add as AddIcon, // Currently unused
+  // Edit as EditIcon, // Currently unused
+  // Delete as DeleteIcon, // Currently unused
   CalendarToday as CalendarIcon,
   LocationOn as LocationIcon,
   DirectionsCar as CarIcon,
@@ -35,7 +35,8 @@ import {
   Schedule as ScheduleIcon,
   AttachMoney as MoneyIcon
 } from '@mui/icons-material';
-import { DataSyncService, Employee, MileageEntry, Receipt, TimeTracking } from '../services/dataSyncService';
+// import { DataSyncService } from '../services/dataSyncService'; // Currently unused
+import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import AddressSelector from './AddressSelector';
 
@@ -140,7 +141,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       });
       setErrors({});
     }
-  }, [open, mode]); // Only depends on open and mode, not employee
+  }, [open, mode, employee?.defaultCostCenter, employee?.id, employee?.selectedCostCenters, initialData]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
