@@ -318,6 +318,34 @@ async function cleanupDuplicates() {
     try {
       console.log('🧹 Cleaning up duplicate entries...');
       
+      // Clean up duplicate employees (keep the most recently updated one)
+      await new Promise((resolveE, rejectE) => {
+        db.run(`
+          DELETE FROM employees 
+          WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY email 
+                ORDER BY updatedAt DESC
+              ) as rn
+              FROM employees
+            ) WHERE rn = 1
+          )
+        `, (err) => {
+          if (err) {
+            console.error('❌ Error cleaning up duplicate employees:', err);
+            rejectE(err);
+          } else {
+            db.get('SELECT COUNT(*) as count FROM employees', (countErr, row) => {
+              if (!countErr) {
+                console.log(`✅ Duplicate employees cleaned up - ${row.count} remaining`);
+              }
+              resolveE();
+            });
+          }
+        });
+      });
+      
       // Clean up duplicate mileage entries
       await new Promise((resolveM, rejectM) => {
         db.run(`
@@ -3244,11 +3272,39 @@ async function seedTestAccounts() {
   await Promise.all(promises);
 }
 
-// Function to clean up duplicate entries
-async function cleanupDuplicates() {
+// Function to clean up duplicate entries (Second occurrence - should match first)
+async function cleanupDuplicates2() {
   return new Promise(async (resolve, reject) => {
     try {
-      console.log('🧹 Cleaning up duplicate entries...');
+      console.log('🧹 Cleaning up duplicate entries (secondary cleanup)...');
+      
+      // Clean up duplicate employees (keep the most recently updated one)
+      await new Promise((resolveE, rejectE) => {
+        db.run(`
+          DELETE FROM employees 
+          WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY email 
+                ORDER BY updatedAt DESC
+              ) as rn
+              FROM employees
+            ) WHERE rn = 1
+          )
+        `, (err) => {
+          if (err) {
+            console.error('❌ Error cleaning up duplicate employees:', err);
+            rejectE(err);
+          } else {
+            db.get('SELECT COUNT(*) as count FROM employees', (countErr, row) => {
+              if (!countErr) {
+                console.log(`✅ Duplicate employees cleaned up - ${row.count} remaining`);
+              }
+              resolveE();
+            });
+          }
+        });
+      });
       
       // Clean up duplicate mileage entries
       await new Promise((resolveM, rejectM) => {
