@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -649,6 +649,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         style={styles.content} 
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={true}
+        scrollEventThrottle={16}
+        nestedScrollEnabled={false}
       >
         {/* Tracking Status */}
         <View style={styles.statusContainer}>
@@ -671,7 +674,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         />
 
         {/* Current Stats */}
-        {isTracking && (
+        {useMemo(() => isTracking && (
           <View style={styles.statsContainer}>
             <View style={styles.statCard}>
               <MaterialIcons name="timer" size={24} color="#2196F3" />
@@ -679,7 +682,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               <Text style={styles.statLabel}>Duration</Text>
             </View>
           </View>
-        )}
+        ), [isTracking, trackingTime])}
 
         {/* Tracking Form */}
         {/* Tips Display */}
@@ -689,6 +692,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               style={styles.tipsScrollView} 
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled={true}
+              removeClippedSubviews={true}
+              scrollEventThrottle={16}
             >
               {tips.map((tip) => (
                 <TipCard

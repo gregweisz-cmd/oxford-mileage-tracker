@@ -33,7 +33,7 @@ export interface TipCardProps {
   onMarkSeen?: (tipId: string) => void;
 }
 
-export const TipCard: React.FC<TipCardProps> = ({
+export const TipCard: React.FC<TipCardProps> = React.memo(({
   tip,
   onDismiss,
   onAction,
@@ -156,7 +156,7 @@ export const TipCard: React.FC<TipCardProps> = ({
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

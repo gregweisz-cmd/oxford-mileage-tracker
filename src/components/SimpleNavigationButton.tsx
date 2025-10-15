@@ -15,7 +15,7 @@ interface SimpleNavigationButtonProps {
   currentDistance: number;
 }
 
-export default function SimpleNavigationButton({ isTracking, currentDistance }: SimpleNavigationButtonProps) {
+const SimpleNavigationButton = React.memo(function SimpleNavigationButton({ isTracking, currentDistance }: SimpleNavigationButtonProps) {
   // Dynamic button text based on platform
   const getButtonText = () => {
     return Platform.OS === 'ios' ? 'Open Apple Maps' : 'Open Google Maps';
@@ -171,7 +171,9 @@ export default function SimpleNavigationButton({ isTracking, currentDistance }: 
       )}
     </View>
   );
-}
+});
+
+export default SimpleNavigationButton;
 
 const styles = StyleSheet.create({
   container: {

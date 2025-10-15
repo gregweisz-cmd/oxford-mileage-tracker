@@ -137,16 +137,15 @@ export class GpsTrackingService {
       this.totalDistance = 0;
       this.stationaryStartTime = null;
 
-      // Start location tracking with more frequent updates
+      // Start location tracking with optimized update frequency
       this.watchId = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 10000, // Update every 10 seconds to reduce performance impact
-          distanceInterval: 10, // Update every 10 meters to reduce calculations
+          accuracy: Location.Accuracy.Balanced, // Use Balanced instead of High for better performance
+          timeInterval: 15000, // Update every 15 seconds to minimize UI blocking
+          distanceInterval: 15, // Update every 15 meters to reduce calculations
         },
         (newLocation) => {
-          // Reduced logging to improve performance
-          console.log('📍 GPS: Location update received');
+          // Minimal logging to improve performance
           this.updateDistance(newLocation);
         }
       );
@@ -230,26 +229,26 @@ export class GpsTrackingService {
       );
 
       // Check if movement is significant (convert meters to miles for comparison)
-      const thresholdInMiles = this.movementThreshold / 1609.34; // Convert 10 meters to miles
+      const thresholdInMiles = this.movementThreshold / 1609.34; // Convert 5 meters to miles
       
       if (distance > thresholdInMiles) {
         // Significant movement detected
         this.stationaryStartTime = null;
         this.totalDistance += distance;
-        
-        // Update session immediately for more responsive UI
         this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10; // Round to nearest tenth
-      } else if (distance > 0.001) { // If distance is greater than ~5 feet, add it anyway
-        // Small but real movement - add it to prevent getting stuck
-        this.stationaryStartTime = null;
-        this.totalDistance += distance;
-        this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
+      } else if (distance > 0.001) { // If distance is greater than ~5 feet
+        // Small but real movement - track stationary time
         if (!this.stationaryStartTime) {
           this.stationaryStartTime = new Date();
         }
-        
-        // Still update the session even for small movements to keep UI responsive
+        // Still add small movements to prevent getting stuck
+        this.totalDistance += distance;
         this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
+      } else {
+        // No significant movement - track stationary time
+        if (!this.stationaryStartTime) {
+          this.stationaryStartTime = new Date();
+        }
       }
     }
 

@@ -976,7 +976,13 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       )}
 
       <View style={styles.contentContainer}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={true}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Tips Display */}
         
         {/* Quick Stats */}
@@ -1269,7 +1275,13 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
               )}
             </View>
             
-            <ScrollView style={styles.costCentersList} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+              style={styles.costCentersList} 
+              showsVerticalScrollIndicator={false}
+              removeClippedSubviews={true}
+              scrollEventThrottle={16}
+              nestedScrollEnabled={true}
+            >
               {/* Selected Cost Centers Section */}
               {selectedCostCenters.filter(cc => 
                 cc.toLowerCase().includes(costCenterSearchText.toLowerCase())

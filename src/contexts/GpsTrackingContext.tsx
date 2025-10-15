@@ -36,15 +36,30 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     const interval = setInterval(() => {
       if (isTracking) {
         const newDistance = GpsTrackingService.getCurrentDistance();
-        setCurrentDistance(newDistance);
         
-        // Also update the current session if it exists
+        // Only update if distance has changed significantly (more than 0.01 miles)
+        setCurrentDistance(prevDistance => {
+          if (Math.abs(newDistance - prevDistance) > 0.01) {
+            return newDistance;
+          }
+          return prevDistance;
+        });
+        
+        // Update session less frequently to reduce re-renders
         const session = GpsTrackingService.getCurrentSession();
         if (session) {
-          setCurrentSession({ ...session });
+          setCurrentSession(prevSession => {
+            // Only update if there are meaningful changes
+            if (!prevSession || 
+                Math.abs(session.totalMiles - prevSession.totalMiles) > 0.01 ||
+                session.endLocation !== prevSession.endLocation) {
+              return { ...session };
+            }
+            return prevSession;
+          });
         }
       }
-    }, 5000); // Update every 5 seconds to reduce performance impact
+    }, 15000); // Update every 15 seconds to minimize performance impact on scrolling
 
     return () => clearInterval(interval);
   }, [isTracking]);

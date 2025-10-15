@@ -927,6 +927,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         style={styles.content} 
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={true}
+        scrollEventThrottle={16}
+        keyboardDismissMode="on-drag"
       >
         {/* Tips Display */}
         {showTips && tips.length > 0 && (
@@ -935,6 +938,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
               style={styles.tipsScrollView} 
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled={true}
+              removeClippedSubviews={true}
+              scrollEventThrottle={16}
             >
               {tips.map((tip) => (
                 <TipCard
