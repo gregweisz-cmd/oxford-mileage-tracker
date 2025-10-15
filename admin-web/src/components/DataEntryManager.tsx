@@ -5,24 +5,24 @@ import {
   CardContent,
   Typography,
   Button,
-  Grid,
+  // Grid, // Currently unused
   Chip,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  // Dialog, // Currently unused
+  // DialogTitle, // Currently unused
+  // DialogContent, // Currently unused
+  // DialogActions, // Currently unused
   List,
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
   Divider,
   Alert,
-  CircularProgress,
+  // CircularProgress, // Currently unused
   Tabs,
   Tab,
   Paper,
-  Tooltip,
+  // Tooltip, // Currently unused
   Menu,
   MenuItem
 } from '@mui/material';
@@ -35,7 +35,7 @@ import {
   Receipt as ReceiptIcon,
   Schedule as ScheduleIcon,
   Refresh as RefreshIcon,
-  FilterList as FilterIcon
+  // FilterList as FilterIcon // Currently unused
 } from '@mui/icons-material';
 import { DataSyncService } from '../services/dataSyncService';
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
@@ -96,7 +96,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
     type: 'mileage' | 'receipt' | 'timeTracking';
   } | null>(null);
 
-  const { refreshData, notifyDataChange } = useRealtimeSync();
+  const { notifyDataChange } = useRealtimeSync();
 
   // Load data
   const loadData = useCallback(async () => {

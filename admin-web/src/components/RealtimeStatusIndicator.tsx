@@ -11,7 +11,7 @@ import {
 import {
   Wifi as ConnectedIcon,
   WifiOff as DisconnectedIcon,
-  Sync as SyncIcon,
+  // Sync as SyncIcon, // Currently unused
   Error as ErrorIcon,
   CheckCircle as SuccessIcon,
   Refresh as RefreshIcon

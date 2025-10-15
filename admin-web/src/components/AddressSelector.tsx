@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -92,16 +92,9 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const [filteredOxfordHouses, setFilteredOxfordHouses] = useState<OxfordHouse[]>([]);
   const [selectedState, setSelectedState] = useState<string>('');
   const [availableStates, setAvailableStates] = useState<string[]>([]);
-  const [employeeBaseAddress, setEmployeeBaseAddress] = useState<string>('');
+  // const [employeeBaseAddress, setEmployeeBaseAddress] = useState<string>(''); // Currently unused
 
-  // Load employee data
-  useEffect(() => {
-    if (open && employeeId) {
-      loadEmployeeData();
-    }
-  }, [open, employeeId]);
-
-  const loadEmployeeData = async () => {
+  const loadEmployeeData = useCallback(async () => {
     try {
       // Load employee's base addresses
       const employeeResponse = await fetch(`http://localhost:3002/api/employees/${employeeId}`);
@@ -113,7 +106,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         if (employee.baseAddress) {
           addresses.push(employee.baseAddress);
           baseAddress = employee.baseAddress;
-          setEmployeeBaseAddress(employee.baseAddress);
+          // setEmployeeBaseAddress(employee.baseAddress); // Currently unused
         }
         if (employee.baseAddress2) addresses.push(employee.baseAddress2);
         setBaseAddresses(addresses);
@@ -130,7 +123,14 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
     } catch (error) {
       console.error('Error loading employee data:', error);
     }
-  };
+  }, [employeeId]);
+
+  // Load employee data
+  useEffect(() => {
+    if (open && employeeId) {
+      loadEmployeeData();
+    }
+  }, [open, employeeId, loadEmployeeData]);
 
   const loadSavedAddresses = async () => {
     try {
@@ -205,6 +205,13 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       console.error('Error loading employee addresses:', error);
     }
   };
+
+  // Load employee data
+  useEffect(() => {
+    if (open && employeeId) {
+      loadEmployeeData();
+    }
+  }, [open, employeeId, loadEmployeeData]);
 
   const loadOxfordHouses = async (baseAddress: string = '') => {
     try {

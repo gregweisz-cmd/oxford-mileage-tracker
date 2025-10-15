@@ -220,7 +220,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [completenessLoading, setCompletenessLoading] = useState(false);
 
   // Report submission and approval state
-  const [reportStatus, setReportStatus] = useState<'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision'>('draft');
+  const [, setReportStatus] = useState<'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision'>('draft');
   // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
   // Real-time sync

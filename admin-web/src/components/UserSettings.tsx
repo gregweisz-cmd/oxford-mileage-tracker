@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -25,7 +25,7 @@ import {
 import {
   Save as SaveIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon,
+  // Delete as DeleteIcon, // Currently unused
   Add as AddIcon,
   PhotoCamera as PhotoCameraIcon,
   Security as SecurityIcon,
@@ -204,11 +204,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info' | '', text: string }>({ type: '', text: '' });
 
-  useEffect(() => {
-    loadUserProfile();
-  }, [employeeId]);
-
-  const loadUserProfile = async () => {
+  const loadUserProfile = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -279,7 +275,11 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
     } finally {
       setLoading(false);
     }
-  };
+  }, [employeeId]);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   const showMessage = (type: 'success' | 'error' | 'info', text: string) => {
     setMessage({ type, text });

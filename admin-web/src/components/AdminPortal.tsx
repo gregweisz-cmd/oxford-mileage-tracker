@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
-  AppBar,
-  Toolbar,
   Typography,
   Tabs,
   Tab,
@@ -15,7 +13,7 @@ import { CostCenterManagement } from './CostCenterManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { BulkImportResult } from '../services/bulkImportService';
 import { Employee } from '../types';
-import OxfordHouseLogo from './OxfordHouseLogo';
+// import OxfordHouseLogo from './OxfordHouseLogo'; // Logo is in PortalSwitcher
 
 interface AdminPortalProps {
   adminId: string;
@@ -57,11 +55,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     severity: 'info'
   });
 
-  useEffect(() => {
-    loadEmployees();
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setSnackbar({ open: true, message, severity });
   }, []);
 
-  const loadEmployees = async (skipCache: boolean = false) => {
+  const loadEmployees = useCallback(async (skipCache: boolean = false) => {
     try {
       setLoading(true);
       const employeeData = await EmployeeApiService.getAllEmployees(skipCache);
@@ -73,11 +71,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
 
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
-    setSnackbar({ open: true, message, severity });
-  };
+  useEffect(() => {
+    loadEmployees();
+  }, [loadEmployees]);
 
   const handleCreateEmployee = async (employee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>): Promise<Employee> => {
     try {

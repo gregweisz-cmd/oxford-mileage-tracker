@@ -5,7 +5,7 @@
  * Handles showing, dismissing, and tracking user tip interactions.
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { WebTip, WebTipsService } from '../services/webTipsService';
 
 interface TipsContextType {

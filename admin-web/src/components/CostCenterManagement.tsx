@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -64,7 +64,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const loadCostCenters = async () => {
+  const loadCostCenters = useCallback(async () => {
     try {
       // setLoading(true); // Loading state currently unused
       const data = await CostCenterApiService.getAllCostCenters();
@@ -81,7 +81,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
     } finally {
       // setLoading(false); // Loading state currently unused
     }
-  };
+  }, [onCostCentersChange]);
 
   useEffect(() => {
     loadCostCenters();

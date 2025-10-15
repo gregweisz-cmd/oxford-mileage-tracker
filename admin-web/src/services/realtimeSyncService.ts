@@ -1,4 +1,4 @@
-import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
+// import { Employee, MileageEntry, Receipt, TimeTracking } from '../types'; // Types available but currently unused
 
 export interface RealtimeUpdate {
   type: 'employee' | 'mileage' | 'receipt' | 'time_tracking';

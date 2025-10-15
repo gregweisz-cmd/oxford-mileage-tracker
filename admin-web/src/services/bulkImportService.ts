@@ -26,7 +26,7 @@ export class BulkImportService {
    */
   static parseCSVData(csvText: string): EmployeeImportData[] {
     const lines = csvText.split('\n').filter(line => line.trim());
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    // const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, '')); // Currently unused
     
     const employees: EmployeeImportData[] = [];
     
@@ -66,7 +66,7 @@ export class BulkImportService {
     
     // Handle different formats like "IL / MN / WI" or "NC.F-SOR" or "Program Services"
     const centers = costCenterStr
-      .split(/[\/,]/)
+      .split(/[/,]/)
       .map(center => center.trim())
       .filter(center => center.length > 0)
       .map(center => {

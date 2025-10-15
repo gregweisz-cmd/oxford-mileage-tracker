@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -11,7 +11,7 @@ import {
   Select,
   MenuItem,
   Chip,
-  Divider,
+  // Divider, // Currently unused
   Alert,
   Dialog,
   DialogTitle,
@@ -26,8 +26,8 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Switch,
-  FormControlLabel,
+  // Switch, // Currently unused
+  // FormControlLabel, // Currently unused
   Tabs,
   Tab,
   Badge,
@@ -37,16 +37,16 @@ import {
   ListItemAvatar,
   ListItemSecondaryAction,
   Tooltip,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
+  // Stepper, // Currently unused
+  // Step, // Currently unused
+  // StepLabel, // Currently unused
+  // StepContent, // Currently unused
 } from '@mui/material';
 import {
-  Save as SaveIcon,
+  // Save as SaveIcon, // Currently unused
   Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
+  // Delete as DeleteIcon, // Currently unused
+  // Add as AddIcon, // Currently unused
   Visibility as VisibilityIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
@@ -54,17 +54,17 @@ import {
   Assignment as AssignmentIcon,
   People as PeopleIcon,
   Assessment as AssessmentIcon,
-  FilterList as FilterListIcon,
+  // FilterList as FilterListIcon, // Currently unused
   Refresh as RefreshIcon,
   Download as DownloadIcon,
-  Send as SendIcon,
+  // Send as SendIcon, // Currently unused
   VerifiedUser as SupervisorIcon,
   PersonAdd as PersonAddIcon,
-  Warning as WarningIcon,
+  // Warning as WarningIcon, // Currently unused
   Check as CheckIcon,
   Close as CloseIcon,
   Search as SearchIcon,
-  AccountCircle as AccountCircleIcon,
+  // AccountCircle as AccountCircleIcon, // Currently unused
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 
@@ -157,19 +157,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState(false);
 
-  useEffect(() => {
-    loadSupervisorData();
-  }, [supervisorId]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadTeamReports();
-    }, 30000); // Auto-refresh every 30 seconds
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadSupervisorData = async () => {
+  const loadSupervisorData = useCallback(async () => {
     setLoading(true);
     try {
       await Promise.all([
@@ -182,7 +170,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadSupervisorData();
+  }, [supervisorId, loadSupervisorData]);
+
 
   const loadTeamMembers = async () => {
     try {
@@ -232,7 +225,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     }
   };
 
-  const loadTeamReports = async () => {
+  const loadTeamReports = useCallback(async () => {
     try {
       // Load reports from localStorage or API
       const storedReports = localStorage.getItem(`supervisor_reports_${supervisorId}`);
@@ -286,7 +279,15 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     } catch (error) {
       console.error('Error loading team reports:', error);
     }
-  };
+  }, [supervisorId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadTeamReports();
+    }, 30000); // Auto-refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [loadTeamReports]);
 
   const calculateDashboardStats = async () => {
     const activeMembers = teamMembers.filter(m => m.isActive);
