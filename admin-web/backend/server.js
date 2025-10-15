@@ -610,6 +610,13 @@ function ensureTablesExist() {
               else console.log('✅ Added preferredName column to employees table');
             });
           }
+          
+          if (!columnNames.includes('supervisorId')) {
+            db.run(`ALTER TABLE employees ADD COLUMN supervisorId TEXT DEFAULT NULL`, (err) => {
+              if (err) console.log('Note: supervisorId column may already exist');
+              else console.log('✅ Added supervisorId column to employees table');
+            });
+          }
         }
       });
 

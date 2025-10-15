@@ -556,14 +556,14 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
                         </Box>
                       }
                       secondary={
-                        <React.Fragment>
-                          <Typography variant="body2" color="textSecondary" component="div">
+                        <Box component="div">
+                          <Box component="span" display="block" color="text.secondary" fontSize="0.875rem">
                             {formatDate(entry.date instanceof Date ? entry.date.toISOString() : entry.date)} • {entry.miles} miles • {entry.hoursWorked || 0} hours
-                          </Typography>
-                          <Typography variant="body2" component="div">
+                          </Box>
+                          <Box component="span" display="block" fontSize="0.875rem">
                             {entry.purpose}
-                          </Typography>
-                        </React.Fragment>
+                          </Box>
+                        </Box>
                       }
                       secondaryTypographyProps={{ component: 'div' }}
                     />
@@ -622,14 +622,14 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
                         </Box>
                       }
                       secondary={
-                        <React.Fragment>
-                          <Typography variant="body2" color="textSecondary" component="div">
+                        <Box component="div">
+                          <Box component="span" display="block" color="text.secondary" fontSize="0.875rem">
                             {formatDate(receipt.date instanceof Date ? receipt.date.toISOString() : receipt.date)} • ${receipt.amount.toFixed(2)}
-                          </Typography>
-                          <Typography variant="body2" component="div">
+                          </Box>
+                          <Box component="span" display="block" fontSize="0.875rem">
                             {receipt.description}
-                          </Typography>
-                        </React.Fragment>
+                          </Box>
+                        </Box>
                       }
                       secondaryTypographyProps={{ component: 'div' }}
                     />
@@ -687,16 +687,16 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
                         </Box>
                       }
                       secondary={
-                        <React.Fragment>
-                          <Typography variant="body2" color="textSecondary" component="div">
+                        <Box component="div">
+                          <Box component="span" display="block" color="text.secondary" fontSize="0.875rem">
                             {formatDate(entry.date instanceof Date ? entry.date.toISOString() : entry.date)} • {entry.hours} hours
-                          </Typography>
+                          </Box>
                           {entry.description && (
-                            <Typography variant="body2" component="div">
+                            <Box component="span" display="block" fontSize="0.875rem">
                               {entry.description}
-                            </Typography>
+                            </Box>
                           )}
-                        </React.Fragment>
+                        </Box>
                       }
                       secondaryTypographyProps={{ component: 'div' }}
                     />
