@@ -40,8 +40,10 @@ export class DailyMileageService {
         const dateKey = entry.date.toISOString().split('T')[0]; // YYYY-MM-DD
         
         if (!summariesMap.has(dateKey)) {
+          // Use the entry's date directly (already properly parsed)
+          // Don't re-parse the dateKey to avoid timezone issues
           summariesMap.set(dateKey, {
-            date: new Date(dateKey),
+            date: entry.date, // Use the already-parsed date from the entry
             startingOdometer: 0, // Will be populated later
             endingOdometer: 0,   // Will be populated later
             totalMiles: 0,

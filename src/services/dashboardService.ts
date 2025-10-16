@@ -18,6 +18,7 @@ export class DashboardService {
       totalMiles: number;
       totalHours: number;
       totalReceipts: number;
+      totalPerDiemReceipts: number;
       mileageEntries: MileageEntry[];
       receipts: Receipt[];
     };
@@ -55,6 +56,7 @@ export class DashboardService {
           totalMiles: monthlySummary.totalMiles,
           totalHours: monthlySummary.totalHours,
           totalReceipts: monthlySummary.totalReceipts,
+          totalPerDiemReceipts: monthlySummary.totalPerDiemReceipts || 0,
           mileageEntries: monthlyMileageEntries,
           receipts: monthlyReceipts
         }
@@ -69,6 +71,7 @@ export class DashboardService {
           totalMiles: 0,
           totalHours: 0,
           totalReceipts: 0,
+          totalPerDiemReceipts: 0,
           mileageEntries: [],
           receipts: []
         }

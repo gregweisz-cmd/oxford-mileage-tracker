@@ -285,7 +285,7 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
           {multiSelectMode ? `Select Receipts (${selectedReceiptIds.size})` : 'Receipts'}
         </Text>
         <View style={styles.headerRight}>
-          {multiSelectMode ? (
+          {multiSelectMode && (
             <>
               <TouchableOpacity onPress={clearSelection} style={styles.headerButton}>
                 <MaterialIcons name="clear" size={24} color="#fff" />
@@ -294,10 +294,6 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
                 <MaterialIcons name="delete" size={24} color="#fff" />
               </TouchableOpacity>
             </>
-          ) : (
-            <TouchableOpacity onPress={() => navigation.navigate('AddReceipt')}>
-              <MaterialIcons name="add" size={24} color="#fff" />
-            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -318,22 +314,22 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
           </View>
         </View>
 
-        {/* PDF Generation Buttons */}
-        <View style={styles.pdfButtonsContainer}>
+        {/* Action Buttons */}
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity
+            style={styles.addReceiptButton}
+            onPress={() => navigation.navigate('AddReceipt')}
+          >
+            <MaterialIcons name="add-circle" size={24} color="#fff" />
+            <Text style={styles.addReceiptButtonText}>Add Receipt</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity
             style={styles.generateButton}
             onPress={generateMonthlyReceiptsPdf}
           >
             <MaterialIcons name="picture-as-pdf" size={24} color="#fff" />
             <Text style={styles.generateButtonText}>Generate Monthly PDF</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.testButton}
-            onPress={testPdfGeneration}
-          >
-            <MaterialIcons name="bug-report" size={20} color="#fff" />
-            <Text style={styles.testButtonText}>Test PDF</Text>
           </TouchableOpacity>
         </View>
 
@@ -641,10 +637,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  pdfButtonsContainer: {
+  actionButtonsContainer: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 20,
+  },
+  addReceiptButton: {
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addReceiptButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   generateButton: {
     backgroundColor: '#f44336',
@@ -665,26 +681,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
-  },
-  testButton: {
-    backgroundColor: '#FF9800',
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  testButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
   },
   categoryContainer: {
     backgroundColor: '#fff',

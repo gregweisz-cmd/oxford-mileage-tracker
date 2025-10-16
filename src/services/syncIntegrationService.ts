@@ -14,10 +14,10 @@ export interface SyncQueueItem {
 export class SyncIntegrationService {
   private static syncQueue: SyncQueueItem[] = [];
   private static isProcessingQueue = false;
-  private static autoSyncEnabled = false; // Disabled by default to prevent startup errors
+  private static autoSyncEnabled = true; // Enable auto-sync for real-time backend updates
   private static syncInterval: NodeJS.Timeout | null = null;
   private static readonly MAX_RETRY_ATTEMPTS = 3;
-  private static readonly SYNC_INTERVAL_MS = 30000; // 30 seconds
+  private static readonly SYNC_INTERVAL_MS = 5000; // 5 seconds for faster sync
 
   /**
    * Initialize the sync integration service
@@ -26,12 +26,21 @@ export class SyncIntegrationService {
     try {
       console.log('🔄 SyncIntegration: Initializing sync integration service...');
       
+      // Register callback with DatabaseService
+      const { setSyncCallback } = await import('./database');
+      setSyncCallback((operation, entityType, data) => {
+        this.queueSyncOperation(operation as any, entityType as any, data);
+      });
+      console.log('✅ SyncIntegration: Callback registered with DatabaseService');
+      
       // Initialize API sync service
       await ApiSyncService.initialize();
       
-      // Auto-sync is disabled by default to prevent startup errors
-      // Users can enable it manually from the Data Sync screen
-      console.log('🔄 SyncIntegration: Auto-sync disabled by default. Enable from Data Sync screen.');
+      // Start auto-sync immediately
+      if (this.autoSyncEnabled) {
+        this.startAutoSync();
+        console.log('✅ SyncIntegration: Auto-sync enabled and started (syncs every 5 seconds)');
+      }
       
       console.log('✅ SyncIntegration: Sync integration service initialized');
     } catch (error) {

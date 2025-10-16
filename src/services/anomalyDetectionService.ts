@@ -467,14 +467,14 @@ export class AnomalyDetectionService {
     newEntry: MileageEntry
   ): Promise<AnomalyDetectionResult> {
     try {
-      // Get recent entries (last 7 days)
+      // Get recent entries (last 7 days), excluding the new entry itself
       const recentEntries = await DatabaseService.getMileageEntries(employeeId);
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       
       const recent = recentEntries.filter(entry => {
         const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
-        return entryDate >= sevenDaysAgo;
+        return entryDate >= sevenDaysAgo && entry.id !== newEntry.id; // Exclude the new entry
       });
       
       // Check for potential duplicates with smarter logic
@@ -527,8 +527,9 @@ export class AnomalyDetectionService {
         return sameDate && sameRoute && similarMiles && samePurpose;
       });
       
-      // Flag if we find 1 suspicious trip (could be accidental duplicate)
-      if (suspiciousTrips.length === 1) {
+      // Flag if we find 1+ suspicious trips (could be accidental duplicate)
+      // Only warn if there's actually a different trip, not just the one we created
+      if (suspiciousTrips.length >= 1) {
         return {
           isAnomaly: true,
           confidence: 0.6,

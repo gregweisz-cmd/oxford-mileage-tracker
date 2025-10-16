@@ -233,7 +233,12 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Auto-set amount to $35 when Per Diem is selected
+    if (field === 'category' && value === 'Per Diem') {
+      setFormData(prev => ({ ...prev, [field]: value, amount: '35' }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
     
     // Handle vendor search with debouncing
     if (field === 'vendor' && value.length >= 2 && currentEmployee) {

@@ -38,7 +38,7 @@ interface HomeScreenProps {
   };
 }
 
-export default function HomeScreen({ navigation, route }: HomeScreenProps) {
+function HomeScreen({ navigation, route }: HomeScreenProps) {
   const { colors } = useTheme();
   const [recentEntries, setRecentEntries] = useState<MileageEntry[]>([]);
   const [recentReceipts, setRecentReceipts] = useState<Receipt[]>([]);
@@ -66,6 +66,8 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
   const [availableEmployees, setAvailableEmployees] = useState<Employee[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // Generate dynamic styles based on theme
   const dynamicStyles = StyleSheet.create({
@@ -251,6 +253,39 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  const handleManualSync = async () => {
+    if (isSyncing) {
+      Alert.alert('Sync in Progress', 'A sync operation is already running. Please wait...');
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      console.log('🔄 HomeScreen: Manual sync triggered');
+      
+      // Force immediate sync of pending changes
+      const { SyncIntegrationService } = await import('../services/syncIntegrationService');
+      const success = await SyncIntegrationService.forceSync();
+      
+      if (success) {
+        setLastSyncTime(new Date());
+        Alert.alert('Sync Complete', 'All data has been synced to the backend successfully!');
+        console.log('✅ HomeScreen: Manual sync completed successfully');
+        
+        // Reload data to show any updates from backend
+        await loadData();
+      } else {
+        Alert.alert('Sync Failed', 'Failed to sync data to backend. Please check your connection and try again.');
+        console.error('❌ HomeScreen: Manual sync failed');
+      }
+    } catch (error) {
+      console.error('❌ HomeScreen: Error during manual sync:', error);
+      Alert.alert('Sync Error', 'An error occurred during sync: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -285,23 +320,22 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       setTotalHoursThisMonth(dashboardData.monthlyStats.totalHours);
       setTotalReceiptsThisMonth(dashboardData.monthlyStats.totalReceipts);
 
-      // Calculate per diem for current month
-      const now = new Date();
-      const perDiemCalculation = await PerDiemService.calculateMonthlyPerDiem(
-        employeeId,
-        now.getMonth() + 1,
-        now.getFullYear(),
-        dashboardData.monthlyStats.mileageEntries,
-        employee
-      );
+      // Use Per Diem receipts total (from receipts with category "Per Diem")
+      const perDiemFromReceipts = dashboardData.monthlyStats.totalPerDiemReceipts || 0;
+      setPerDiemThisMonth(perDiemFromReceipts);
       
-      setPerDiemThisMonth(perDiemCalculation.totalPerDiem);
+      // Show warning if approaching or exceeding $350 monthly max
+      if (perDiemFromReceipts >= 350) {
+        console.warn('⚠️ Per Diem limit reached: $350 monthly maximum');
+      } else if (perDiemFromReceipts >= 300) {
+        console.warn(`⚠️ Approaching Per Diem limit: $${perDiemFromReceipts.toFixed(2)} / $350`);
+      }
 
       // Calculate total expenses
       const expenseBreakdown = PerDiemService.getExpenseBreakdown(
         dashboardData.monthlyStats.totalMiles,
         dashboardData.monthlyStats.totalReceipts,
-        perDiemCalculation.totalPerDiem
+        perDiemFromReceipts
       );
       
       setTotalExpensesThisMonth(expenseBreakdown.totalExpenses);
@@ -389,6 +423,22 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
       // Mobile app: Always show only the current employee's data
       // Admin/Supervisor functions are handled in the web portal only
       setAvailableEmployees([employee]); // Only show themselves
+      
+      // Sync data from backend on app startup
+      if (!HomeScreen.isSyncing) {
+        HomeScreen.isSyncing = true;
+        try {
+          const { ApiSyncService } = await import('../services/apiSyncService');
+          const syncResult = await ApiSyncService.syncFromBackend(employee.id);
+          if (syncResult.success) {
+            setLastSyncTime(new Date());
+          }
+        } catch (syncError) {
+          console.error('❌ Error during backend sync:', syncError);
+        } finally {
+          HomeScreen.isSyncing = false;
+        }
+      }
       
       // Load data for the viewing employee
       await loadEmployeeData(employee.id, employee);
@@ -831,6 +881,8 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const formatDate = (date: Date) => {
+    // Dates are now properly parsed at storage time
+    // Just display them normally
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -1002,10 +1054,33 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
 
         {/* Secondary Stats */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Reports')}>
-            <MaterialIcons name="restaurant" size={24} color="#9C27B0" />
-            <Text style={dynamicStyles.statValue}>${perDiemThisMonth.toFixed(2)}</Text>
-            <Text style={dynamicStyles.statLabel}>Per Diem</Text>
+          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Receipts')}>
+            <MaterialIcons 
+              name="restaurant" 
+              size={24} 
+              color={perDiemThisMonth >= 350 ? "#f44336" : perDiemThisMonth >= 300 ? "#FF9800" : "#9C27B0"} 
+            />
+            <Text style={[
+              dynamicStyles.statValue,
+              perDiemThisMonth >= 350 && { color: '#f44336' },
+              perDiemThisMonth >= 300 && perDiemThisMonth < 350 && { color: '#FF9800' }
+            ]}>
+              ${perDiemThisMonth.toFixed(2)}
+            </Text>
+            <Text style={dynamicStyles.statLabel}>
+              Per Diem Receipts
+              {perDiemThisMonth >= 350 && ' ⚠️'}
+            </Text>
+            {perDiemThisMonth >= 300 && (
+              <Text style={{
+                fontSize: 10,
+                color: perDiemThisMonth >= 350 ? '#f44336' : '#FF9800',
+                marginTop: 4,
+                fontWeight: '600'
+              }}>
+                {perDiemThisMonth >= 350 ? 'LIMIT REACHED' : `$${(350 - perDiemThisMonth).toFixed(0)} left`}
+              </Text>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Receipts')}>
@@ -1052,8 +1127,29 @@ export default function HomeScreen({ navigation, route }: HomeScreenProps) {
         </View>
 
 
+        {/* Sync Status Indicator */}
+        {lastSyncTime && (
+          <View style={styles.syncStatusContainer}>
+            <MaterialIcons name="cloud-done" size={16} color="#4CAF50" />
+            <Text style={styles.syncStatusText}>
+              Last synced: {lastSyncTime.toLocaleTimeString()}
+            </Text>
+          </View>
+        )}
+
         {/* Quick Actions */}
         <View style={styles.actionsContainer}>
+          <TouchableOpacity 
+            style={[dynamicStyles.actionButton, isSyncing && { opacity: 0.6 }]} 
+            onPress={handleManualSync}
+            disabled={isSyncing}
+          >
+            <MaterialIcons name={isSyncing ? "sync" : "cloud-upload"} size={24} color="#2196F3" />
+            <Text style={dynamicStyles.actionButtonText}>
+              {isSyncing ? 'Syncing...' : 'Sync to Backend'}
+            </Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity style={dynamicStyles.actionButton} onPress={handleGpsTracking}>
             <MaterialIcons name="gps-fixed" size={24} color="#4CAF50" />
             <Text style={dynamicStyles.actionButtonText}>Start GPS Tracking</Text>
@@ -2165,4 +2261,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 4,
   },
+  syncStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8,
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
+  syncStatusText: {
+    fontSize: 12,
+    color: '#2e7d32',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
 });
+
+// Static property to prevent concurrent syncs
+(HomeScreen as any).isSyncing = false;
+
+export default HomeScreen;

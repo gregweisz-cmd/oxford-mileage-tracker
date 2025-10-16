@@ -19,6 +19,9 @@ export class AppInitializer {
         console.log('🚀 AppInitializer: Initializing Oxford Houses...');
         await OxfordHouseService.initializeOxfordHouses();
         
+        console.log('🚀 AppInitializer: Initializing sync integration (backend sync)...');
+        await SyncIntegrationService.initialize();
+        
         console.log('🚀 AppInitializer: Initializing real-time sync...');
         await RealtimeSyncService.initialize();
         

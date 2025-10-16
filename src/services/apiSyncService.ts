@@ -43,6 +43,25 @@ export class ApiSyncService {
   private static pendingChanges: number = 0;
 
   /**
+   * Parse date safely - treats YYYY-MM-DD as local date
+   */
+  private static parseDateSafe(dateStr: string | Date): Date {
+    if (dateStr instanceof Date) {
+      return dateStr;
+    }
+    
+    // Check if it's YYYY-MM-DD format (date-only, no time)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      // Create date at noon local time to avoid timezone issues
+      return new Date(year, month - 1, day, 12, 0, 0);
+    }
+    
+    // For datetime strings, parse normally
+    return new Date(dateStr);
+  }
+
+  /**
    * Initialize the API sync service
    */
   static async initialize(): Promise<void> {
@@ -519,26 +538,37 @@ export class ApiSyncService {
    * Fetch employees from backend
    */
   private static async fetchEmployees(): Promise<Employee[]> {
-    const response = await fetch(`${this.config.baseUrl}/employees`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch employees: ${response.statusText}`);
+    try {
+      const url = `${this.config.baseUrl}/employees`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ ApiSync: Failed to fetch employees: HTTP ${response.status}`);
+        throw new Error(`Failed to fetch employees: ${response.statusText}`);
+      }
+      
+      const responseText = await response.text();
+      const data = JSON.parse(responseText);
+      
+      return data.map((emp: any) => ({
+        id: emp.id,
+        name: emp.name,
+        email: emp.email,
+        password: emp.password || '',
+        oxfordHouseId: emp.oxfordHouseId,
+        position: emp.position,
+        phoneNumber: emp.phoneNumber,
+        baseAddress: emp.baseAddress,
+        baseAddress2: emp.baseAddress2 || '',
+        costCenters: Array.isArray(emp.costCenters) ? emp.costCenters : (emp.costCenters ? JSON.parse(emp.costCenters) : []),
+        createdAt: new Date(emp.createdAt),
+        updatedAt: new Date(emp.updatedAt)
+      }));
+    } catch (error) {
+      console.error('❌ ApiSync: Error in fetchEmployees:', error);
+      throw error;
     }
-    
-    const data = await response.json();
-    return data.map((emp: any) => ({
-      id: emp.id,
-      name: emp.name,
-      email: emp.email,
-      password: emp.password || '',
-      oxfordHouseId: emp.oxfordHouseId,
-      position: emp.position,
-      phoneNumber: emp.phoneNumber,
-      baseAddress: emp.baseAddress,
-      baseAddress2: emp.baseAddress2 || '',
-      costCenters: emp.costCenters ? JSON.parse(emp.costCenters) : [],
-      createdAt: new Date(emp.createdAt),
-      updatedAt: new Date(emp.updatedAt)
-    }));
   }
 
   /**
@@ -565,8 +595,8 @@ export class ApiSyncService {
         phoneNumber: emp.phoneNumber,
         baseAddress: emp.baseAddress,
         baseAddress2: emp.baseAddress2 || '',
-        costCenters: emp.costCenters ? JSON.parse(emp.costCenters) : [],
-        selectedCostCenters: emp.selectedCostCenters ? JSON.parse(emp.selectedCostCenters) : [],
+        costCenters: Array.isArray(emp.costCenters) ? emp.costCenters : (emp.costCenters ? JSON.parse(emp.costCenters) : []),
+        selectedCostCenters: Array.isArray(emp.selectedCostCenters) ? emp.selectedCostCenters : (emp.selectedCostCenters ? JSON.parse(emp.selectedCostCenters) : []),
         defaultCostCenter: emp.defaultCostCenter || '',
         createdAt: new Date(emp.createdAt),
         updatedAt: new Date(emp.updatedAt)
@@ -581,32 +611,40 @@ export class ApiSyncService {
    * Fetch mileage entries from backend
    */
   private static async fetchMileageEntries(employeeId?: string): Promise<MileageEntry[]> {
-    const url = employeeId 
-      ? `${this.config.baseUrl}/mileage-entries?employeeId=${employeeId}`
-      : `${this.config.baseUrl}/mileage-entries`;
+    try {
+      const url = employeeId 
+        ? `${this.config.baseUrl}/mileage-entries?employeeId=${employeeId}`
+        : `${this.config.baseUrl}/mileage-entries`;
       
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch mileage entries: ${response.statusText}`);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch mileage entries: ${response.statusText}`);
+      }
+      
+      const responseText = await response.text();
+      const data = JSON.parse(responseText);
+      
+      return data.map((entry: any) => ({
+        id: entry.id,
+        employeeId: entry.employeeId,
+        oxfordHouseId: entry.oxfordHouseId,
+        date: this.parseDateSafe(entry.date),
+        odometerReading: entry.odometerReading,
+        startLocation: entry.startLocation,
+        endLocation: entry.endLocation,
+        purpose: entry.purpose,
+        miles: entry.miles,
+        notes: entry.notes,
+        hoursWorked: entry.hoursWorked || 0,
+        isGpsTracked: Boolean(entry.isGpsTracked),
+        costCenter: entry.costCenter || '',
+        createdAt: new Date(entry.createdAt),
+        updatedAt: new Date(entry.updatedAt)
+      }));
+    } catch (error) {
+      console.error('❌ ApiSync: Error in fetchMileageEntries:', error);
+      throw error; // Re-throw so caller knows it failed
     }
-    
-    const data = await response.json();
-    return data.map((entry: any) => ({
-      id: entry.id,
-      employeeId: entry.employeeId,
-      oxfordHouseId: entry.oxfordHouseId,
-      date: new Date(entry.date),
-      odometerReading: entry.odometerReading,
-      startLocation: entry.startLocation,
-      endLocation: entry.endLocation,
-      purpose: entry.purpose,
-      miles: entry.miles,
-      notes: entry.notes,
-      hoursWorked: entry.hoursWorked || 0,
-      isGpsTracked: Boolean(entry.isGpsTracked),
-      createdAt: new Date(entry.createdAt),
-      updatedAt: new Date(entry.updatedAt)
-    }));
   }
 
   /**
@@ -735,35 +773,52 @@ export class ApiSyncService {
     try {
       console.log(`📥 ApiSync: Syncing ${mileageEntries.length} mileage entries to local database...`);
       
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
+      
       for (const entry of mileageEntries) {
         try {
-          // Check if entry already exists in local database
-          const existingEntry = await DatabaseService.getMileageEntry(entry.id);
+          // Check if entry with this backend ID already exists
+          const existing = await database.getFirstAsync(
+            'SELECT id FROM mileage_entries WHERE id = ?',
+            [entry.id]
+          );
           
-          if (existingEntry) {
-            // Update existing entry - we'll skip this to avoid overwriting local changes
-            // In a full implementation, you'd compare timestamps to determine which is newer
-            console.log(`ℹ️ ApiSync: Mileage entry ${entry.id} already exists locally, skipping`);
-          } else {
-            // Create new entry
-            await DatabaseService.createMileageEntry({
-              employeeId: entry.employeeId,
-              oxfordHouseId: entry.oxfordHouseId,
-              costCenter: entry.costCenter || '',
-              date: entry.date,
-              startLocation: entry.startLocation,
-              endLocation: entry.endLocation,
-              purpose: entry.purpose,
-              miles: entry.miles,
-              odometerReading: entry.odometerReading,
-              notes: entry.notes,
-              hoursWorked: entry.hoursWorked || 0,
-              isGpsTracked: entry.isGpsTracked || false
-            });
-            console.log(`✅ ApiSync: Created mileage entry for ${entry.date}`);
+          if (existing) {
+            continue; // Skip existing entries
           }
+          
+          // Convert date to YYYY-MM-DD format only (timezone-safe)
+          const entryDate = entry.date;
+          const dateOnly = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}-${String(entryDate.getDate()).padStart(2, '0')}`;
+          
+          // Insert with the SAME ID from backend to avoid duplicates
+          await database.runAsync(
+            `INSERT INTO mileage_entries (
+              id, employeeId, oxfordHouseId, costCenter, date, odometerReading,
+              startLocation, endLocation, purpose, miles, notes, hoursWorked,
+              isGpsTracked, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              entry.id, // Preserve backend ID
+              entry.employeeId,
+              entry.oxfordHouseId,
+              entry.costCenter || '',
+              dateOnly, // Store as YYYY-MM-DD only
+              entry.odometerReading,
+              entry.startLocation,
+              entry.endLocation,
+              entry.purpose,
+              entry.miles,
+              entry.notes || '',
+              entry.hoursWorked || 0,
+              entry.isGpsTracked ? 1 : 0,
+              entry.createdAt instanceof Date ? entry.createdAt.toISOString() : (entry.createdAt || new Date().toISOString()),
+              new Date().toISOString()
+            ]
+          );
         } catch (error) {
-          console.error(`❌ ApiSync: Error syncing mileage entry ${entry.id}:`, error);
+          console.error(`❌ ApiSync: Error syncing entry ${entry.id}:`, error);
         }
       }
       

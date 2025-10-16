@@ -37,6 +37,26 @@ const getDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
 export class DatabaseService {
   private static isInitialized = false;
 
+  /**
+   * Parse a date string safely, treating YYYY-MM-DD as a local date
+   * This prevents timezone conversion issues
+   */
+  private static parseDateSafe(dateStr: string | Date): Date {
+    if (dateStr instanceof Date) {
+      return dateStr;
+    }
+    
+    // Check if it's YYYY-MM-DD format (date-only, no time)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      // Create date at noon local time to avoid DST and timezone issues
+      return new Date(year, month - 1, day, 12, 0, 0);
+    }
+    
+    // For datetime strings, parse normally
+    return new Date(dateStr);
+  }
+
   private static async syncToApi(operation: string, data: any) {
     try {
       // Increment pending changes counter
@@ -59,19 +79,27 @@ export class DatabaseService {
         const allEmployees = await this.getEmployees();
         console.log('🔧 Database: Found employees:', allEmployees.length);
         
-        // Ensure there's always a current employee set
+        // If no employees, create test data first
+        if (allEmployees.length === 0) {
+          console.log('🔧 Database: No employees found, creating test employees...');
+          const { TestDataService } = await import('./testDataService');
+          await TestDataService.initializeTestData();
+          console.log('✅ Database: Test employees created successfully');
+        }
+        
+        // NOW ensure there's always a current employee set (after employees exist)
+        console.log('🔧 Database: Checking current employee session...');
         const currentEmployee = await this.getCurrentEmployee();
         if (!currentEmployee) {
-          // COMMENTED OUT FOR TESTING - Don't auto-login
-          // console.log('🔧 Database: No current employee session found, setting up default...');
-          // const employeesAfterImport = await this.getEmployees();
-          // console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
-          // if (employeesAfterImport.length > 0) {
-          //   const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
-          //   console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
-          //   await this.setCurrentEmployee(defaultEmployee.id);
-          //   console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
-          // }
+          console.log('🔧 Database: No current employee session found, setting up Greg Weisz...');
+          const employeesAfterImport = await this.getEmployees();
+          console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
+          if (employeesAfterImport.length > 0) {
+            const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
+            console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
+            await this.setCurrentEmployee(defaultEmployee.id);
+            console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
+          }
         } else {
           console.log('✅ Database: Current employee session exists:', currentEmployee.name);
         }
@@ -346,17 +374,47 @@ export class DatabaseService {
           console.log('✅ Database: Test employees created successfully');
         }
         
-        // Clear any existing current employee session for testing
-        await this.clearCurrentEmployee();
-        
-        // Check if user wants to stay logged in
-        console.log('🔧 Database: Checking current employee session...');
-        const currentEmployee = await this.getCurrentEmployee();
-        if (!currentEmployee) {
-          console.log('🔧 Database: No current employee session found');
-        } else {
-          console.log('✅ Database: Current employee session exists:', currentEmployee.name);
+        // Clean up entries and force fresh sync with correct dates
+        try {
+          console.log('🧹 Database: Cleaning up all synced entries to force fresh sync...');
+          const database = await getDatabase();
+          
+          // Delete ALL entries that came from backend sync
+          // We'll re-sync them with corrected dates
+          const deleted = await database.runAsync(`
+            DELETE FROM mileage_entries 
+            WHERE id IN ('mile1', 'mile2', 'mgbdj7os4i1lgifdc18', 'mgfw5v5xis9ly7jzysk', 
+                        'mgfw5v5vdhize91kh8', 'mgfw5v5tfhky841fj35', 'mgfw5v5qg7o2c0nym0p', 
+                        'mgfw5v5n2xyewh5c2pr')
+            OR id LIKE 'mgteze%'
+          `);
+          if (deleted.changes > 0) {
+            console.log(`✅ Database: Removed ${deleted.changes} entries to force fresh sync with correct dates`);
+          }
+          
+          // Count remaining entries
+          const remaining = await database.getFirstAsync('SELECT COUNT(*) as count FROM mileage_entries') as any;
+          console.log(`📊 Database: ${remaining.count} mileage entries remaining after cleanup`);
+        } catch (error) {
+          console.error('⚠️ Database: Error cleaning entries:', error);
         }
+      
+      // Check if user wants to stay logged in
+      console.log('🔧 Database: Checking current employee session...');
+      const currentEmployee = await this.getCurrentEmployee();
+      if (!currentEmployee) {
+        console.log('🔧 Database: No current employee session found, auto-logging in as Greg Weisz...');
+        const employees = await this.getEmployees();
+        const gregWeisz = employees.find(emp => emp.name === 'Greg Weisz');
+        if (gregWeisz) {
+          await this.setCurrentEmployee(gregWeisz.id);
+          console.log('✅ Database: Auto-logged in as Greg Weisz');
+        } else {
+          console.log('⚠️ Database: Greg Weisz not found, no auto-login');
+        }
+      } else {
+        console.log('✅ Database: Current employee session exists:', currentEmployee.name);
+      }
       } catch (error) {
         console.error('❌ Database: Error setting up employees and employee session:', error);
       }
@@ -564,16 +622,10 @@ export class DatabaseService {
     const now = new Date().toISOString();
     const database = await getDatabase();
     
-    console.log('💾 Creating mileage entry:', {
-      id,
-      employeeId: entry.employeeId,
-      date: entry.date.toISOString(),
-      startLocation: entry.startLocation,
-      endLocation: entry.endLocation,
-      purpose: entry.purpose,
-      miles: entry.miles,
-      odometerReading: entry.odometerReading
-    });
+    // Convert date to YYYY-MM-DD format only (no time/timezone)
+    // This ensures the date stays the same regardless of device timezone
+    const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
+    const dateOnly = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}-${String(entryDate.getDate()).padStart(2, '0')}`;
     
     // Insert with location details
     await database.runAsync(
@@ -589,7 +641,7 @@ export class DatabaseService {
         entry.employeeId, 
         entry.oxfordHouseId, 
         entry.costCenter || '',
-        entry.date.toISOString(), 
+        dateOnly, // Store as YYYY-MM-DD only (no time component)
         entry.odometerReading,
         entry.startLocation, 
         entry.endLocation,
@@ -610,8 +662,6 @@ export class DatabaseService {
         now
       ]
     );
-
-    console.log('✅ Mileage entry created successfully with ID:', id);
 
     const newEntry = {
       id,
@@ -649,7 +699,7 @@ export class DatabaseService {
     
     return result.map((row: any) => ({
       ...row,
-      date: new Date(row.date),
+      date: this.parseDateSafe(row.date),
       isGpsTracked: Boolean(row.isGpsTracked),
       startLocationDetails: row.startLocationName ? {
         name: row.startLocationName,
@@ -694,7 +744,7 @@ export class DatabaseService {
     
     return result.map((row: any) => ({
       ...row,
-      date: new Date(row.date),
+      date: this.parseDateSafe(row.date),
       costCenter: row.costCenter || '',
       isGpsTracked: Boolean(row.isGpsTracked),
       startLocationDetails: row.startLocationName ? {

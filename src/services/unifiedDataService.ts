@@ -98,10 +98,12 @@ export class UnifiedDataService {
       }
     });
     
-    // Calculate totals
+    // Calculate totals (exclude Per Diem receipts from regular receipts total)
     const totalHours = Object.values(hoursBreakdown).reduce((sum, hours) => sum + hours, 0);
     const totalMiles = dayMileage.reduce((sum, entry) => sum + entry.miles, 0);
-    const totalReceipts = dayReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
+    const totalReceipts = dayReceipts
+      .filter(receipt => receipt.category !== 'Per Diem')
+      .reduce((sum, receipt) => sum + receipt.amount, 0);
     
     return {
       date,
@@ -229,7 +231,10 @@ export class UnifiedDataService {
       
       const totalHours = Object.values(hoursBreakdown).reduce((sum, hours) => sum + hours, 0);
       const totalMiles = dayData.mileage.reduce((sum, entry) => sum + entry.miles, 0);
-      const totalReceipts = dayData.receipts.reduce((sum, receipt) => sum + receipt.amount, 0);
+      // Exclude Per Diem receipts from regular receipts total
+      const totalReceipts = dayData.receipts
+        .filter(receipt => receipt.category !== 'Per Diem')
+        .reduce((sum, receipt) => sum + receipt.amount, 0);
       
       days.push({
         date,
@@ -338,6 +343,7 @@ export class UnifiedDataService {
     totalHours: number;
     totalMiles: number;
     totalReceipts: number;
+    totalPerDiemReceipts: number;
     daysWithData: number;
   }> {
     const monthData = await this.getMonthData(employeeId, month, year);
@@ -345,14 +351,24 @@ export class UnifiedDataService {
     const totalHours = monthData.reduce((sum, day) => sum + day.totalHours, 0);
     const totalMiles = monthData.reduce((sum, day) => sum + day.totalMiles, 0);
     const totalReceipts = monthData.reduce((sum, day) => sum + day.totalReceipts, 0);
+    
+    // Calculate total Per Diem receipts separately
+    const totalPerDiemReceipts = monthData.reduce((sum, day) => {
+      const perDiemAmount = day.receipts
+        .filter(receipt => receipt.category === 'Per Diem')
+        .reduce((daySum, receipt) => daySum + receipt.amount, 0);
+      return sum + perDiemAmount;
+    }, 0);
+    
     const daysWithData = monthData.filter(day => 
-      day.totalHours > 0 || day.totalMiles > 0 || day.totalReceipts > 0
+      day.totalHours > 0 || day.totalMiles > 0 || day.totalReceipts > 0 || day.receipts.some(r => r.category === 'Per Diem')
     ).length;
     
     return {
       totalHours,
       totalMiles,
       totalReceipts,
+      totalPerDiemReceipts,
       daysWithData
     };
   }
