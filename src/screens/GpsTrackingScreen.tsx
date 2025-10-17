@@ -685,6 +685,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         removeClippedSubviews={true}
         scrollEventThrottle={16}
         nestedScrollEnabled={false}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={8}
+        windowSize={5}
       >
         {/* Tracking Status */}
         <View style={styles.statusContainer}>
@@ -727,8 +731,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         ), [isTracking, trackingTime, currentSpeed, showGpsDuration, showGpsSpeed])}
 
         {/* Tracking Form */}
-        {/* Tips Display */}
-        {showTips && tips.length > 0 && (
+        {/* Tips Display - Memoized to prevent re-renders */}
+        {useMemo(() => showTips && tips.length > 0 && (
           <View style={styles.tipsContainer}>
             <ScrollView 
               style={styles.tipsScrollView} 
@@ -747,7 +751,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               ))}
             </ScrollView>
           </View>
-        )}
+        ), [showTips, tips, dismissTip, markTipAsSeen])}
 
         {!isTracking && (
           <View style={styles.formContainer}>
