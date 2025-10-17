@@ -3264,13 +3264,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           />
                         ) : (
                           <Box 
-                            onClick={() => !isAdminView && handleCellEdit(index, 'description', entry.description)}
+                            onClick={() => handleCellEdit(index, 'description', entry.description)}
                             sx={{ 
-                              cursor: isAdminView ? 'default' : 'pointer', 
-                              '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' } 
+                              cursor: 'pointer', 
+                              '&:hover': { bgcolor: 'grey.100' },
+                              minHeight: '24px' // Ensure clickable area even when empty
                             }}
                           >
-                            {entry.description}
+                            {entry.description || <span style={{ color: '#999', fontStyle: 'italic' }}>Click to add description</span>}
                           </Box>
                         )}
                       </TableCell>
@@ -3291,10 +3292,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           />
                         ) : (
                           <Box 
-                            onClick={() => !isAdminView && handleCellEdit(index, 'hoursWorked', entry.hoursWorked)}
+                            onClick={() => handleCellEdit(index, 'hoursWorked', entry.hoursWorked)}
                             sx={{ 
-                              cursor: isAdminView ? 'default' : 'pointer', 
-                              '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' } 
+                              cursor: 'pointer', 
+                              '&:hover': { bgcolor: 'grey.100' } 
                             }}
                           >
                             {entry.hoursWorked}
@@ -3318,10 +3319,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           />
                         ) : (
                           <Box 
-                            onClick={() => !isAdminView && handleCellEdit(index, 'odometerStart', entry.odometerStart)}
+                            onClick={() => handleCellEdit(index, 'odometerStart', entry.odometerStart)}
                             sx={{ 
-                              cursor: isAdminView ? 'default' : 'pointer', 
-                              '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' } 
+                              cursor: 'pointer', 
+                              '&:hover': { bgcolor: 'grey.100' } 
                             }}
                           >
                             {entry.odometerStart || 0}
@@ -3345,10 +3346,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           />
                         ) : (
                           <Box 
-                            onClick={() => !isAdminView && handleCellEdit(index, 'odometerEnd', entry.odometerEnd)}
+                            onClick={() => handleCellEdit(index, 'odometerEnd', entry.odometerEnd)}
                             sx={{ 
-                              cursor: isAdminView ? 'default' : 'pointer', 
-                              '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' } 
+                              cursor: 'pointer', 
+                              '&:hover': { bgcolor: 'grey.100' } 
                             }}
                           >
                             {entry.odometerEnd || 0}
@@ -3397,10 +3398,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           />
                         ) : (
                           <Box 
-                            onClick={() => !isAdminView && handleCellEdit(index, 'perDiem', entry.perDiem)}
+                            onClick={() => handleCellEdit(index, 'perDiem', entry.perDiem)}
                             sx={{ 
-                              cursor: isAdminView ? 'default' : 'pointer', 
-                              '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' } 
+                              cursor: 'pointer', 
+                              '&:hover': { bgcolor: 'grey.100' } 
                             }}
                           >
                             ${entry.perDiem.toFixed(2)}
