@@ -434,7 +434,9 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
                   onPress={() => viewReceiptDetails(receipt)}
                 >
                   <View style={styles.receiptHeader}>
-                    <Text style={styles.receiptVendor}>{receipt.vendor}</Text>
+                    <Text style={styles.receiptVendor} numberOfLines={1} ellipsizeMode="tail">
+                      {receipt.vendor}
+                    </Text>
                     <Text style={styles.receiptAmount}>${receipt.amount.toFixed(2)}</Text>
                   </View>
                   
@@ -783,11 +785,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+    flex: 1, // Allow vendor to take available space
+    marginRight: 8, // Space between vendor and amount
   },
   receiptAmount: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#4CAF50',
+    flexShrink: 0, // Prevent amount from shrinking
+    minWidth: 70, // Ensure amount has enough space
   },
   receiptDescription: {
     fontSize: 14,
