@@ -1134,6 +1134,23 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
         >
+        {/* Sync Status Indicator (for debugging) */}
+        {__DEV__ && (
+          <View style={styles.syncStatusBar}>
+            <MaterialIcons 
+              name={isSyncing ? "sync" : "cloud-done"} 
+              size={16} 
+              color={isSyncing ? "#2196F3" : "#4CAF50"} 
+            />
+            <Text style={styles.syncStatusText}>
+              {isSyncing ? "Syncing..." : lastSyncTime ? `Last sync: ${lastSyncTime.toLocaleTimeString()}` : "Not synced yet"}
+            </Text>
+            <Text style={styles.syncStatusUrl}>
+              {__DEV__ ? "192.168.86.101:3002" : "Production"}
+            </Text>
+          </View>
+        )}
+        
         {/* Tips Display */}
         
         {/* Quick Stats */}
@@ -2323,6 +2340,29 @@ const styles = StyleSheet.create({
   selectedCostCenterText: {
     fontWeight: '600',
     color: '#2e7d32',
+  },
+  syncStatusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  syncStatusText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 8,
+    flex: 1,
+  },
+  syncStatusUrl: {
+    fontSize: 10,
+    color: '#999',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   quickActionsGpsBadge: {
     flexDirection: 'row',
