@@ -11,6 +11,7 @@ import { ThemeProvider } from './src/contexts/ThemeContext';
 import { TipsProvider } from './src/contexts/TipsContext';
 import { NotificationProvider } from './src/contexts/NotificationContext';
 import GlobalGpsStopButton from './src/components/GlobalGpsStopButton';
+import GlobalGpsReturnButton from './src/components/GlobalGpsReturnButton';
 import { AppInitializer } from './src/services/appInitializer';
 import { DatabaseService } from './src/services/database';
 // Removed: Using backend employee data only
@@ -173,6 +174,7 @@ export default function App() {
             />
             <Stack.Screen name="Preferences" component={PreferencesScreen} />
           </Stack.Navigator>
+          <GlobalGpsReturnButton currentRouteName={currentRouteName} />
           {Platform.OS === 'ios' && <GlobalGpsStopButton currentRouteName={currentRouteName} />}
         </NavigationContainer>
           </GpsTrackingProvider>
