@@ -372,12 +372,27 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     initializeTiles().then(setDashboardTiles);
   }, []);
 
-  // Refresh data when screen comes into focus
+  // Refresh data when screen comes into focus (but DON'T sync again)
   useFocusEffect(
     React.useCallback(() => {
-      loadData();
+      // Only refresh local data, don't sync from backend
+      refreshLocalDataOnly();
     }, [])
   );
+
+  // Refresh only local data without syncing from backend
+  const refreshLocalDataOnly = async () => {
+    try {
+      const employee = await DatabaseService.getCurrentEmployee();
+      if (employee) {
+        setCurrentEmployee(employee);
+        setViewingEmployee(employee);
+        await loadEmployeeData(employee.id, employee);
+      }
+    } catch (error) {
+      console.error('Error refreshing local data:', error);
+    }
+  };
 
   const loadEmployeeData = async (employeeId: string, employeeParam?: Employee) => {
     try {
