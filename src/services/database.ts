@@ -1281,14 +1281,13 @@ export class DatabaseService {
     const result = await database.runAsync('DELETE FROM receipts WHERE id = ?', [id]);
     console.log('✅ Database: Receipt deleted, rows affected:', result.changes);
     
-    // Also remove from sync queue if it exists
-    // This prevents it from being re-synced to backend
+    // Remove from sync queue to prevent it from being uploaded to backend
     try {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
-      // Clear any pending sync operations for this receipt
-      console.log('🔄 Database: Clearing sync queue for deleted receipt');
+      SyncIntegrationService.removeFromQueue('receipt', id);
+      console.log('✅ Database: Removed receipt from sync queue');
     } catch (error) {
-      // Sync service might not be available, that's ok
+      console.error('⚠️ Database: Could not remove from sync queue:', error);
     }
   }
 

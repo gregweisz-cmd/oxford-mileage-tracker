@@ -91,6 +91,21 @@ export class SyncIntegrationService {
   }
 
   /**
+   * Remove items from sync queue by entity ID
+   */
+  static removeFromQueue(entityType: string, entityId: string): void {
+    const beforeLength = this.syncQueue.length;
+    this.syncQueue = this.syncQueue.filter(
+      item => !(item.entityType === entityType && item.data.id === entityId)
+    );
+    const afterLength = this.syncQueue.length;
+    
+    if (beforeLength > afterLength) {
+      console.log(`🗑️ SyncIntegration: Removed ${beforeLength - afterLength} ${entityType} items from queue for ID: ${entityId}`);
+    }
+  }
+
+  /**
    * Queue a sync operation
    */
   static queueSyncOperation(
