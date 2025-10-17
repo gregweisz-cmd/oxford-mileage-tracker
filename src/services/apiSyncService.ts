@@ -921,8 +921,9 @@ export class ApiSyncService {
             continue;
           }
           
-          // Create new receipt
+          // Create new receipt with backend ID preserved
           await DatabaseService.createReceipt({
+            id: receipt.id, // Preserve backend ID to prevent duplicates
             employeeId: receipt.employeeId,
             date: receipt.date,
             amount: receipt.amount,

@@ -931,8 +931,8 @@ export class DatabaseService {
   }
 
   // Receipt operations
-  static async createReceipt(receipt: Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>): Promise<Receipt> {
-    const id = this.generateId();
+  static async createReceipt(receipt: Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Receipt> {
+    const id = receipt.id || this.generateId(); // Use provided ID or generate new one
     const now = new Date().toISOString();
     const database = await getDatabase();
     
