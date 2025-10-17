@@ -70,7 +70,12 @@ node check-greg-data.js
 - ❌ Time Tracking: 0
 - ❌ Daily Descriptions: 0
 
-**This confirms data is NOT syncing from mobile app to backend!**
+**This confirms data is NOT syncing from mobile app to LOCAL backend!**
+
+**UPDATE**: Mobile app logs show successful sync, but data not in local backend. This suggests:
+- Mobile app is syncing to **production** (Render.com) instead of localhost
+- Check if `__DEV__` flag is properly set
+- Verify backend terminal logs for `POST /api/mileage-entries` requests
 
 ### Step 5: Check Console Logs
 **Mobile App Logs** (when adding entry):
