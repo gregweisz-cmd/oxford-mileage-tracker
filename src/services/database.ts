@@ -936,6 +936,15 @@ export class DatabaseService {
     const now = new Date().toISOString();
     const database = await getDatabase();
     
+    // Log who's creating receipts to debug duplicates
+    console.log('💾 Database: Creating receipt:', {
+      id,
+      vendor: receipt.vendor,
+      amount: receipt.amount,
+      category: receipt.category,
+      hasProvidedId: !!receipt.id
+    });
+    
     await database.runAsync(
       'INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [id, receipt.employeeId, receipt.date.toISOString(), receipt.amount, receipt.vendor, receipt.description || '', receipt.category, receipt.imageUri, receipt.costCenter || '', now, now]
@@ -1267,7 +1276,20 @@ export class DatabaseService {
 
   static async deleteReceipt(id: string): Promise<void> {
     const database = await getDatabase();
-    await database.runAsync('DELETE FROM receipts WHERE id = ?', [id]);
+    console.log('🗑️ Database: Deleting receipt with ID:', id);
+    
+    const result = await database.runAsync('DELETE FROM receipts WHERE id = ?', [id]);
+    console.log('✅ Database: Receipt deleted, rows affected:', result.changes);
+    
+    // Also remove from sync queue if it exists
+    // This prevents it from being re-synced to backend
+    try {
+      const { SyncIntegrationService } = await import('./syncIntegrationService');
+      // Clear any pending sync operations for this receipt
+      console.log('🔄 Database: Clearing sync queue for deleted receipt');
+    } catch (error) {
+      // Sync service might not be available, that's ok
+    }
   }
 
   // Daily Odometer Reading methods

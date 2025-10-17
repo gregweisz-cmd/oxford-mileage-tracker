@@ -236,8 +236,7 @@ export class ApiSyncService {
         mileageEntries: mileageEntries.length,
         receipts: receipts.length,
         timeTracking: timeTracking.length,
-        dailyDescriptions: dailyDescriptions.length,
-        perDiemRules: perDiemRules.length
+        dailyDescriptions: dailyDescriptions.length
       });
       
       return {
