@@ -882,26 +882,48 @@ export class ApiSyncService {
       
       for (const receipt of receipts) {
         try {
-          // Check if receipt already exists in local database
-          const existingReceipt = await DatabaseService.getReceipt(receipt.id);
+          // Check if receipt already exists by ID
+          const existingReceiptById = await DatabaseService.getReceipt(receipt.id);
           
-          if (existingReceipt) {
-            // Update existing receipt - skip to avoid overwriting local changes
+          if (existingReceiptById) {
             console.log(`ℹ️ ApiSync: Receipt ${receipt.id} already exists locally, skipping`);
-          } else {
-            // Create new receipt
-            await DatabaseService.createReceipt({
-              employeeId: receipt.employeeId,
-              date: receipt.date,
-              amount: receipt.amount,
-              vendor: receipt.vendor,
-              description: receipt.description,
-              category: receipt.category,
-              imageUri: receipt.imageUri,
-              costCenter: receipt.costCenter || ''
-            });
-            console.log(`✅ ApiSync: Created receipt for ${receipt.date}`);
+            continue;
           }
+          
+          // Also check for duplicates by date, amount, category, and vendor
+          // to prevent identical receipts with different IDs
+          const { getDatabaseConnection } = await import('../utils/databaseConnection');
+          const database = await getDatabaseConnection();
+          
+          const dateStr = `${receipt.date.getFullYear()}-${String(receipt.date.getMonth() + 1).padStart(2, '0')}-${String(receipt.date.getDate()).padStart(2, '0')}`;
+          
+          const duplicateCheck = await database.getFirstAsync(
+            `SELECT id FROM receipts 
+             WHERE employeeId = ? 
+             AND date = ? 
+             AND amount = ? 
+             AND category = ? 
+             AND vendor = ?`,
+            [receipt.employeeId, dateStr, receipt.amount, receipt.category, receipt.vendor]
+          );
+          
+          if (duplicateCheck) {
+            console.log(`ℹ️ ApiSync: Duplicate receipt detected (same date/amount/category/vendor), skipping`);
+            continue;
+          }
+          
+          // Create new receipt
+          await DatabaseService.createReceipt({
+            employeeId: receipt.employeeId,
+            date: receipt.date,
+            amount: receipt.amount,
+            vendor: receipt.vendor,
+            description: receipt.description,
+            category: receipt.category,
+            imageUri: receipt.imageUri,
+            costCenter: receipt.costCenter || ''
+          });
+          console.log(`✅ ApiSync: Created receipt for ${receipt.date}`);
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, error);
         }
