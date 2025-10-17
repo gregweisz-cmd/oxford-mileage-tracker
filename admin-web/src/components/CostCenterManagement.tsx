@@ -40,6 +40,7 @@ import {
 } from '@mui/icons-material';
 import { CostCenterApiService, CostCenter } from '../services/costCenterApiService';
 import { PerDiemRulesManagement } from './PerDiemRulesManagement';
+import { PerDiemRulesService } from '../services/perDiemRulesService';
 
 interface CostCenterManagementProps {
   onCostCentersChange?: (costCenters: string[]) => void;
@@ -64,6 +65,11 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
   const [isImporting, setIsImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  
+  // Per Diem Rules state
+  const [showPerDiemDialog, setShowPerDiemDialog] = useState(false);
+  const [editingPerDiemCostCenter, setEditingPerDiemCostCenter] = useState<CostCenter | null>(null);
+  const [perDiemRules, setPerDiemRules] = useState<any>(null);
 
   const loadCostCenters = useCallback(async () => {
     try {
@@ -148,6 +154,56 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
     setShowDialog(false);
     setFormData({ code: '', name: '', description: '', isActive: true });
     setError(null);
+  };
+
+  const handleEditPerDiemRules = async (costCenter: CostCenter) => {
+    try {
+      // Fetch existing Per Diem rules for this cost center
+      const existingRules = await PerDiemRulesService.getRulesByCostCenter(costCenter.name);
+      
+      if (existingRules) {
+        setPerDiemRules(existingRules);
+      } else {
+        // Set default rules for this cost center
+        setPerDiemRules({
+          costCenter: costCenter.name,
+          maxAmount: 35,
+          minHours: 8,
+          minMiles: 100,
+          minDistanceFromBase: 50,
+          description: 'Standard Per Diem rules',
+          useActualAmount: false
+        });
+      }
+      
+      setEditingPerDiemCostCenter(costCenter);
+      setShowPerDiemDialog(true);
+    } catch (error) {
+      console.error('Error loading Per Diem rules:', error);
+      setError('Failed to load Per Diem rules');
+    }
+  };
+
+  const handleSavePerDiemRules = async () => {
+    if (!editingPerDiemCostCenter || !perDiemRules) return;
+
+    try {
+      // Save or update Per Diem rules
+      await PerDiemRulesService.saveRules(perDiemRules);
+      setShowPerDiemDialog(false);
+      setEditingPerDiemCostCenter(null);
+      setPerDiemRules(null);
+      alert('Per Diem rules saved successfully!');
+    } catch (error) {
+      console.error('Error saving Per Diem rules:', error);
+      setError('Failed to save Per Diem rules');
+    }
+  };
+
+  const handleCancelPerDiemRules = () => {
+    setShowPerDiemDialog(false);
+    setEditingPerDiemCostCenter(null);
+    setPerDiemRules(null);
   };
 
   // Multi-select handlers
@@ -318,7 +374,6 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab label="Cost Centers" />
-          <Tab label="Per Diem Rules" />
           <Tab label="Bulk Import" />
           <Tab label="Bulk Delete" />
         </Tabs>
@@ -370,6 +425,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
                   <TableCell>Code</TableCell>
                   <TableCell>Name</TableCell>
                   <TableCell>Description</TableCell>
+                  <TableCell>Per Diem Rules</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Created</TableCell>
                   <TableCell>Actions</TableCell>
@@ -398,6 +454,16 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
                       <Typography variant="body2" color="text.secondary">
                         {costCenter.description || 'No description'}
                       </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleEditPerDiemRules(costCenter)}
+                        startIcon={<Edit />}
+                      >
+                        Edit Rules
+                      </Button>
                     </TableCell>
                     <TableCell>
                       <Chip
@@ -532,13 +598,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       </Card>
       )}
 
-      {/* Tab 1: Per Diem Rules Management */}
+      {/* Tab 1: Bulk Import */}
       {activeTab === 1 && (
-        <PerDiemRulesManagement costCenters={costCenters} />
-      )}
-
-      {/* Tab 2: Bulk Import */}
-      {activeTab === 2 && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -629,8 +690,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       </Card>
       )}
 
-      {/* Tab 3: Bulk Delete */}
-      {activeTab === 3 && (
+      {/* Tab 2: Bulk Delete */}
+      {activeTab === 2 && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -719,6 +780,113 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
             disabled={!formData.name.trim()}
           >
             {editingCostCenter ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Per Diem Rules Dialog */}
+      <Dialog open={showPerDiemDialog} onClose={handleCancelPerDiemRules} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Per Diem Rules - {editingPerDiemCostCenter?.name}
+        </DialogTitle>
+        <DialogContent>
+          {perDiemRules && (
+            <Box sx={{ pt: 2 }}>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Configure Per Diem eligibility rules for <strong>{editingPerDiemCostCenter?.name}</strong>
+              </Alert>
+
+              <TextField
+                fullWidth
+                label="Max Per Diem Amount"
+                type="number"
+                value={perDiemRules.maxAmount || 35}
+                onChange={(e) => setPerDiemRules({ ...perDiemRules, maxAmount: parseFloat(e.target.value) })}
+                margin="normal"
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">$</InputAdornment>
+                }}
+                helperText="Maximum Per Diem amount per day"
+              />
+
+              <TextField
+                fullWidth
+                label="Minimum Hours Worked"
+                type="number"
+                value={perDiemRules.minHours || 8}
+                onChange={(e) => setPerDiemRules({ ...perDiemRules, minHours: parseFloat(e.target.value) })}
+                margin="normal"
+                helperText="Minimum hours worked to qualify for Per Diem"
+              />
+
+              <TextField
+                fullWidth
+                label="Minimum Miles Driven"
+                type="number"
+                value={perDiemRules.minMiles || 100}
+                onChange={(e) => setPerDiemRules({ ...perDiemRules, minMiles: parseFloat(e.target.value) })}
+                margin="normal"
+                helperText="Minimum miles driven to qualify for Per Diem"
+              />
+
+              <TextField
+                fullWidth
+                label="Minimum Distance from Base"
+                type="number"
+                value={perDiemRules.minDistanceFromBase || 50}
+                onChange={(e) => setPerDiemRules({ ...perDiemRules, minDistanceFromBase: parseFloat(e.target.value) })}
+                margin="normal"
+                InputProps={{
+                  endAdornment: <InputAdornment position="end">miles</InputAdornment>
+                }}
+                helperText="Minimum distance from base address to qualify"
+              />
+
+              <TextField
+                fullWidth
+                label="Description"
+                value={perDiemRules.description || ''}
+                onChange={(e) => setPerDiemRules({ ...perDiemRules, description: e.target.value })}
+                margin="normal"
+                multiline
+                rows={2}
+                helperText="Optional description for these rules"
+              />
+
+              <Box sx={{ mt: 2, mb: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Per Diem Type:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Chip
+                    label="Fixed Amount ($35)"
+                    color={!perDiemRules.useActualAmount ? 'primary' : 'default'}
+                    onClick={() => setPerDiemRules({ ...perDiemRules, useActualAmount: false })}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                  <Chip
+                    label="Actual Amount (up to max)"
+                    color={perDiemRules.useActualAmount ? 'primary' : 'default'}
+                    onClick={() => setPerDiemRules({ ...perDiemRules, useActualAmount: true })}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  {!perDiemRules.useActualAmount 
+                    ? 'Employees receive fixed $' + (perDiemRules.maxAmount || 35) + ' when eligible'
+                    : 'Employees enter actual expenses up to $' + (perDiemRules.maxAmount || 35)
+                  }
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelPerDiemRules} startIcon={<Cancel />}>
+            Cancel
+          </Button>
+          <Button onClick={handleSavePerDiemRules} variant="contained" startIcon={<Save />}>
+            Save Rules
           </Button>
         </DialogActions>
       </Dialog>
