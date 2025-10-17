@@ -7,6 +7,9 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -142,10 +145,19 @@ export default function LocationCaptureModal({
       animationType="slide"
       onRequestClose={handleCancel}
     >
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalOverlay}
+      >
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>{title}</Text>
           
+          <ScrollView
+            style={styles.modalScrollView}
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Location Name *</Text>
             <TextInput
@@ -226,6 +238,7 @@ export default function LocationCaptureModal({
               </View>
             )}
           </View>
+          </ScrollView>
           
           <View style={styles.modalButtons}>
             <TouchableOpacity
@@ -243,7 +256,7 @@ export default function LocationCaptureModal({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -261,6 +274,13 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '90%',
     maxWidth: 400,
+    maxHeight: '85%', // Allow modal to scroll on smaller screens
+  },
+  modalScrollView: {
+    maxHeight: 400, // Limit scroll area height
+  },
+  modalScrollContent: {
+    paddingBottom: 10,
   },
   modalTitle: {
     fontSize: 18,

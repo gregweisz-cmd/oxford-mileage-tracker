@@ -30,6 +30,7 @@ import { useTips } from '../contexts/TipsContext';
 import { TipCard } from '../components/TipCard';
 import { useTheme } from '../contexts/ThemeContext';
 import { COST_CENTERS } from '../constants/costCenters';
+import { PreferencesService } from '../services/preferencesService';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -41,6 +42,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const { isTracking, currentSession, currentDistance, setCurrentDistance, startTracking, stopTracking, shouldShowEndLocationModal, setShouldShowEndLocationModal } = useGpsTracking();
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+  const [showGpsDuration, setShowGpsDuration] = useState(false);
+  const [showGpsSpeed, setShowGpsSpeed] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
   const [trackingForm, setTrackingForm] = useState({
     odometerReading: '',
     purpose: '',
@@ -68,6 +72,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
   useEffect(() => {
     loadEmployee();
+    loadPreferences();
     
     // Reset all states when component mounts to prevent stuck modals
     return () => {
@@ -78,6 +83,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setShowPurposeSuggestions(false);
     };
   }, []);
+
+  // Load user preferences
+  const loadPreferences = async () => {
+    try {
+      const prefs = await PreferencesService.getPreferences();
+      setShowGpsDuration(prefs.showGpsDuration);
+      setShowGpsSpeed(prefs.showGpsSpeed);
+    } catch (error) {
+      console.error('Error loading preferences:', error);
+    }
+  };
 
   // Reset modal states when screen comes into focus
   useFocusEffect(
@@ -145,14 +161,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     };
   }, [isTracking, currentSession?.id]); // Only restart when tracking status or session ID changes
 
-  // Poll for distance updates while tracking
+  // Poll for distance and speed updates while tracking
   useEffect(() => {
     let distanceInterval: NodeJS.Timeout;
     
     if (isTracking) {
-      distanceInterval = setInterval(() => {
+      distanceInterval = setInterval(async () => {
         const distance = GpsTrackingService.getCurrentDistance();
         setCurrentDistance(distance);
+        
+        // Get current speed from GPS service
+        if (showGpsSpeed) {
+          try {
+            const speed = await GpsTrackingService.getCurrentSpeed();
+            setCurrentSpeed(speed);
+          } catch (error) {
+            console.error('Error getting speed:', error);
+          }
+        }
       }, 3000) as any; // Update every 3 seconds to avoid performance issues
     }
 
@@ -161,7 +187,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         clearInterval(distanceInterval);
       }
     };
-  }, [isTracking]);
+  }, [isTracking, showGpsSpeed]);
 
   // Handle selected address from SavedAddressesScreen
   useEffect(() => {
@@ -536,6 +562,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
+    console.log('📍 End location confirmed:', locationDetails);
     setEndLocationDetails(locationDetails);
     setShowEndLocationModal(false);
 
@@ -550,8 +577,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           employeeId: currentEmployee.id,
           employeeName: currentEmployee.name,
           date: completedSession.startTime,
-          startLocation: startLocationDetails?.name || completedSession.startLocation || 'Unknown',
-          endLocation: endLocationDetails?.name || completedSession.endLocation || 'Unknown',
+          startLocation: startLocationDetails?.name || startLocationDetails?.address || completedSession.startLocation || 'Unknown',
+          startAddress: startLocationDetails?.address,
+          endLocation: locationDetails.name || locationDetails.address || completedSession.endLocation || 'Unknown',
+          endAddress: locationDetails.address,
           purpose: completedSession.purpose,
           miles: actualMiles,
           odometerReading: completedSession.odometerReading,
@@ -563,10 +592,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           oxfordHouseId: currentEmployee.oxfordHouseId,
           date: completedSession.startTime,
           odometerReading: completedSession.odometerReading,
-          startLocation: startLocationDetails?.name || completedSession.startLocation || 'Unknown',
-          endLocation: endLocationDetails?.name || completedSession.endLocation || 'Unknown',
+          startLocation: startLocationDetails?.name || startLocationDetails?.address || completedSession.startLocation || 'Unknown',
+          endLocation: locationDetails.name || locationDetails.address || completedSession.endLocation || 'Unknown',
           startLocationDetails: startLocationDetails || undefined,
-          endLocationDetails: endLocationDetails || undefined,
+          endLocationDetails: locationDetails, // Use the parameter directly instead of state
           purpose: completedSession.purpose,
           miles: actualMiles, // Use calculated miles from odometer if available
           notes: completedSession.notes,
@@ -577,14 +606,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         console.log('✅ GPS Trip saved successfully!');
 
         // Update last destination for next trip
-        if (endLocationDetails) {
-          console.log('🔍 GPS: Updating last destination:', endLocationDetails.name);
-          setLastDestination(endLocationDetails);
-        }
+        console.log('🔍 GPS: Updating last destination:', locationDetails.name);
+        setLastDestination(locationDetails);
 
         Alert.alert(
           'Tracking Complete',
-          `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', endLocationDetails || undefined)}`,
+          `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`,
           [
             {
               text: 'OK',
@@ -680,15 +707,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         />
 
         {/* Current Stats */}
-        {useMemo(() => isTracking && (
+        {useMemo(() => isTracking && (showGpsDuration || showGpsSpeed) && (
           <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <MaterialIcons name="timer" size={24} color="#2196F3" />
-              <Text style={styles.statValue}>{formatTime(trackingTime)}</Text>
-              <Text style={styles.statLabel}>Duration</Text>
-            </View>
+            {showGpsDuration && (
+              <View style={styles.statCard}>
+                <MaterialIcons name="timer" size={24} color="#2196F3" />
+                <Text style={styles.statValue}>{formatTime(trackingTime)}</Text>
+                <Text style={styles.statLabel}>Duration</Text>
+              </View>
+            )}
+            {showGpsSpeed && (
+              <View style={styles.statCard}>
+                <MaterialIcons name="speed" size={24} color="#FF9800" />
+                <Text style={styles.statValue}>{currentSpeed.toFixed(1)} mph</Text>
+                <Text style={styles.statLabel}>Speed</Text>
+              </View>
+            )}
           </View>
-        ), [isTracking, trackingTime])}
+        ), [isTracking, trackingTime, currentSpeed, showGpsDuration, showGpsSpeed])}
 
         {/* Tracking Form */}
         {/* Tips Display */}

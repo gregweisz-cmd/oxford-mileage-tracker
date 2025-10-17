@@ -299,4 +299,21 @@ export class GpsTrackingService {
   private static generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
+
+  static async getCurrentSpeed(): Promise<number> {
+    try {
+      if (!this.lastLocation || !this.lastLocation.coords.speed) {
+        return 0;
+      }
+      
+      // Speed is in m/s, convert to mph
+      const speedMPS = this.lastLocation.coords.speed;
+      const speedMPH = speedMPS * 2.23694; // Convert m/s to mph
+      
+      return Math.max(0, speedMPH); // Ensure non-negative
+    } catch (error) {
+      console.error('Error getting current speed:', error);
+      return 0;
+    }
+  }
 }
