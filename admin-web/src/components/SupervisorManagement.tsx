@@ -34,6 +34,7 @@ import {
   Person as PersonIcon,
   SupervisorAccount as SupervisorIcon,
   Groups as SeniorStaffIcon,
+  CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 import { Tabs, Tab } from '@mui/material';
 import { Employee } from '../types';
@@ -75,6 +76,10 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Employee>>({});
+  const [bulkImportDialogOpen, setBulkImportDialogOpen] = useState(false);
+  const [bulkImportEmails, setBulkImportEmails] = useState<string>('');
+  const [bulkImportType, setBulkImportType] = useState<'supervisor' | 'senior-staff'>('supervisor');
+  const [bulkImportResult, setBulkImportResult] = useState<{success: number; failed: number; errors: string[]} | null>(null);
 
   // Save excluded list to localStorage whenever it changes
   useEffect(() => {
@@ -317,6 +322,60 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     }
   };
 
+  const handleBulkImport = async () => {
+    try {
+      const emails = bulkImportEmails
+        .split('\n')
+        .map(e => e.trim())
+        .filter(e => e.length > 0);
+
+      if (emails.length === 0) {
+        alert('Please enter at least one email address');
+        return;
+      }
+
+      const results = {
+        success: 0,
+        failed: 0,
+        errors: [] as string[]
+      };
+
+      for (const email of emails) {
+        try {
+          const employee = employees.find(e => e.email.toLowerCase() === email.toLowerCase());
+          
+          if (!employee) {
+            results.failed++;
+            results.errors.push(`${email}: Employee not found`);
+            continue;
+          }
+
+          // Update position to add designation
+          const positionSuffix = bulkImportType === 'supervisor' ? ' - Supervisor' : ' - Senior Staff';
+          const newPosition = employee.position.includes(positionSuffix) 
+            ? employee.position 
+            : employee.position + positionSuffix;
+
+          await onUpdateEmployee(employee.id, {
+            ...employee,
+            position: newPosition
+          });
+
+          results.success++;
+        } catch (error) {
+          results.failed++;
+          results.errors.push(`${email}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      setBulkImportResult(results);
+      await onRefresh();
+    } catch (error) {
+      console.error('Error during bulk import:', error);
+      alert('Failed to bulk import: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
   const unassignedStaff = getUnassignedStaff();
   const potentialSupervisors = getPotentialSupervisors();
   
@@ -331,16 +390,29 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         <Typography variant="h4" gutterBottom>
           Supervisor & Senior Staff Management
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setPromoteType(activeTab === 0 ? 'supervisor' : 'senior-staff');
-            setPromoteSupervisorDialogOpen(true);
-          }}
-        >
-          Add {activeTab === 0 ? 'Supervisor' : 'Senior Staff'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<UploadIcon />}
+            onClick={() => {
+              setBulkImportType(activeTab === 0 ? 'supervisor' : 'senior-staff');
+              setBulkImportDialogOpen(true);
+              setBulkImportResult(null);
+            }}
+          >
+            Bulk Import
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setPromoteType(activeTab === 0 ? 'supervisor' : 'senior-staff');
+              setPromoteSupervisorDialogOpen(true);
+            }}
+          >
+            Add {activeTab === 0 ? 'Supervisor' : 'Senior Staff'}
+          </Button>
+        </Box>
       </Box>
 
       {/* Tabs for Supervisors vs Senior Staff */}
@@ -718,6 +790,87 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             startIcon={<EditIcon />}
           >
             Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bulk Import Dialog */}
+      <Dialog
+        open={bulkImportDialogOpen}
+        onClose={() => {
+          setBulkImportDialogOpen(false);
+          setBulkImportEmails('');
+          setBulkImportResult(null);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Bulk Import {bulkImportType === 'supervisor' ? 'Supervisors' : 'Senior Staff'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Enter email addresses (one per line) of employees to promote to {bulkImportType === 'supervisor' ? 'Supervisor' : 'Senior Staff'}.
+              The system will add "- {bulkImportType === 'supervisor' ? 'Supervisor' : 'Senior Staff'}" to their position title.
+            </Alert>
+
+            <TextField
+              label="Email Addresses"
+              multiline
+              rows={10}
+              fullWidth
+              value={bulkImportEmails}
+              onChange={(e) => setBulkImportEmails(e.target.value)}
+              placeholder="employee1@oxfordhouse.org&#10;employee2@oxfordhouse.org&#10;employee3@oxfordhouse.org"
+              helperText="Enter one email address per line"
+            />
+
+            {bulkImportResult && (
+              <Alert 
+                severity={bulkImportResult.failed === 0 ? 'success' : 'warning'} 
+                sx={{ mt: 2 }}
+              >
+                <Typography variant="body1">
+                  <strong>Import Results:</strong>
+                </Typography>
+                <Typography variant="body2">
+                  ✅ Successfully imported: {bulkImportResult.success}
+                </Typography>
+                {bulkImportResult.failed > 0 && (
+                  <>
+                    <Typography variant="body2">
+                      ❌ Failed: {bulkImportResult.failed}
+                    </Typography>
+                    {bulkImportResult.errors.length > 0 && (
+                      <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+                        {bulkImportResult.errors.map((error, index) => (
+                          <li key={index}>
+                            <Typography variant="caption">{error}</Typography>
+                          </li>
+                        ))}
+                      </Box>
+                    )}
+                  </>
+                )}
+              </Alert>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setBulkImportDialogOpen(false);
+            setBulkImportEmails('');
+            setBulkImportResult(null);
+          }}>
+            Close
+          </Button>
+          <Button 
+            onClick={handleBulkImport} 
+            variant="contained"
+            startIcon={<UploadIcon />}
+          >
+            Import {bulkImportType === 'supervisor' ? 'Supervisors' : 'Senior Staff'}
           </Button>
         </DialogActions>
       </Dialog>
