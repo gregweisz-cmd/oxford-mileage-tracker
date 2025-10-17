@@ -640,23 +640,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                 onPress: async () => {
                   await DatabaseService.createMileageEntry(entryData);
                   
-                  // Sync to backend API
-                  try {
-                    const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
-                    const response = await fetch(`${backendUrl}/api/mileage-entries`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify(entryData),
-                    });
-                    
-                    if (response.ok) {
-                      console.log('✅ Mileage entry synced to backend successfully');
-                    }
-                  } catch (syncError) {
-                    console.warn('⚠️ Could not sync to backend:', syncError);
-                  }
+                  // Note: Auto-sync service will handle syncing to backend automatically
+                  console.log('✅ Mileage entry saved locally (duplicate override), auto-sync will handle backend');
                   
                   Alert.alert('Success', 'Mileage entry created successfully');
                   navigation.goBack();
@@ -668,26 +653,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           // No duplicate, save normally
           await DatabaseService.createMileageEntry(entryData);
           
-          // Sync to backend API
-          try {
-            const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
-            const response = await fetch(`${backendUrl}/api/mileage-entries`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(entryData),
-            });
-            
-            if (response.ok) {
-              console.log('✅ Mileage entry synced to backend successfully');
-            } else {
-              console.warn('⚠️ Failed to sync mileage entry to backend:', response.statusText);
-            }
-          } catch (syncError) {
-            console.warn('⚠️ Could not sync to backend (offline?):', syncError);
-            // Continue anyway - data is saved locally
-          }
+          // Note: Auto-sync service will handle syncing to backend automatically
+          console.log('✅ Mileage entry saved locally, auto-sync will handle backend');
           
           // Run anomaly detection BEFORE showing success alert
           let anomalyMessage = '';
