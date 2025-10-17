@@ -181,4 +181,86 @@ export class PerDiemRulesService {
     this.lastFetchTime = null;
     console.log('🗑️ PerDiemRules: Cache cleared');
   }
+
+  /**
+   * Get Per Diem rules by cost center name
+   */
+  static async getRulesByCostCenter(costCenter: string): Promise<PerDiemRule | null> {
+    return this.getPerDiemRule(costCenter);
+  }
+
+  /**
+   * Save or update Per Diem rules
+   */
+  static async saveRules(rules: Partial<PerDiemRule> & { costCenter: string }): Promise<PerDiemRule> {
+    try {
+      console.log('💾 PerDiemRules: Saving rules:', rules);
+      
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      
+      // Check if rules already exist for this cost center
+      const existingRules = await this.getRulesByCostCenter(rules.costCenter);
+      
+      const endpoint = existingRules 
+        ? `${apiUrl}/api/per-diem-rules/${existingRules.id}`
+        : `${apiUrl}/api/per-diem-rules`;
+      
+      const method = existingRules ? 'PUT' : 'POST';
+      
+      const response = await fetch(endpoint, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(rules)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save Per Diem rules: ${response.status} ${response.statusText}`);
+      }
+
+      const savedRules = await response.json();
+      console.log('✅ PerDiemRules: Rules saved successfully:', savedRules);
+      
+      // Clear cache to force refresh
+      this.clearCache();
+      
+      return savedRules;
+    } catch (error) {
+      console.error('❌ PerDiemRules: Error saving rules:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all Per Diem rules
+   */
+  static async getAllRules(): Promise<PerDiemRule[]> {
+    if (this.isCacheValid()) {
+      return this.rulesCache;
+    }
+    return this.fetchPerDiemRules();
+  }
+
+  /**
+   * Delete Per Diem rules
+   */
+  static async deleteRules(id: string): Promise<void> {
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const response = await fetch(`${apiUrl}/api/per-diem-rules/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete Per Diem rules: ${response.status}`);
+      }
+
+      console.log('✅ PerDiemRules: Rules deleted successfully');
+      this.clearCache();
+    } catch (error) {
+      console.error('❌ PerDiemRules: Error deleting rules:', error);
+      throw error;
+    }
+  }
 }
