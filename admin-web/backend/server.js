@@ -79,7 +79,7 @@ const upload = multer({ dest: 'uploads/' });
 // Database path - use in-memory for Render free tier, file for development
 const DB_PATH = process.env.RENDER_SERVICE_ID 
   ? ':memory:'  // In-memory database for Render (resets on restart)
-  : path.join(__dirname, '../../oxford_tracker.db');
+  : path.join(__dirname, 'expense_tracker.db'); // Backend's own database
 
 // Database connection
 let db;
