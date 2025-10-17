@@ -8,7 +8,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export interface UserPreferences {
   // GPS Tracking Preferences
   showGpsDuration: boolean;
-  showGpsSpeed: boolean;
   gpsUpdateInterval: number; // seconds
   
   // Display Preferences
@@ -32,7 +31,6 @@ export interface UserPreferences {
 const DEFAULT_PREFERENCES: UserPreferences = {
   // GPS defaults
   showGpsDuration: false, // Hidden by default per user feedback
-  showGpsSpeed: false,
   gpsUpdateInterval: 3,
   
   // Display defaults

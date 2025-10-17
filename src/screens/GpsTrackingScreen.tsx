@@ -43,8 +43,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [showGpsDuration, setShowGpsDuration] = useState(false);
-  const [showGpsSpeed, setShowGpsSpeed] = useState(false);
-  const [currentSpeed, setCurrentSpeed] = useState(0);
   const [trackingForm, setTrackingForm] = useState({
     odometerReading: '',
     purpose: '',
@@ -89,7 +87,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     try {
       const prefs = await PreferencesService.getPreferences();
       setShowGpsDuration(prefs.showGpsDuration);
-      setShowGpsSpeed(prefs.showGpsSpeed);
     } catch (error) {
       console.error('Error loading preferences:', error);
     }
@@ -161,24 +158,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     };
   }, [isTracking, currentSession?.id]); // Only restart when tracking status or session ID changes
 
-  // Poll for distance and speed updates while tracking
+  // Poll for distance updates while tracking
   useEffect(() => {
     let distanceInterval: NodeJS.Timeout;
     
     if (isTracking) {
-      distanceInterval = setInterval(async () => {
+      distanceInterval = setInterval(() => {
         const distance = GpsTrackingService.getCurrentDistance();
         setCurrentDistance(distance);
-        
-        // Get current speed from GPS service
-        if (showGpsSpeed) {
-          try {
-            const speed = await GpsTrackingService.getCurrentSpeed();
-            setCurrentSpeed(speed);
-          } catch (error) {
-            console.error('Error getting speed:', error);
-          }
-        }
       }, 3000) as any; // Update every 3 seconds to avoid performance issues
     }
 
@@ -187,7 +174,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         clearInterval(distanceInterval);
       }
     };
-  }, [isTracking, showGpsSpeed]);
+  }, [isTracking]);
 
   // Handle selected address from SavedAddressesScreen
   useEffect(() => {
@@ -711,24 +698,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         />
 
         {/* Current Stats */}
-        {useMemo(() => isTracking && (showGpsDuration || showGpsSpeed) && (
+        {useMemo(() => isTracking && showGpsDuration && (
           <View style={styles.statsContainer}>
-            {showGpsDuration && (
-              <View style={styles.statCard}>
-                <MaterialIcons name="timer" size={24} color="#2196F3" />
-                <Text style={styles.statValue}>{formatTime(trackingTime)}</Text>
-                <Text style={styles.statLabel}>Duration</Text>
-              </View>
-            )}
-            {showGpsSpeed && (
-              <View style={styles.statCard}>
-                <MaterialIcons name="speed" size={24} color="#FF9800" />
-                <Text style={styles.statValue}>{currentSpeed.toFixed(1)} mph</Text>
-                <Text style={styles.statLabel}>Speed</Text>
-              </View>
-            )}
+            <View style={styles.statCard}>
+              <MaterialIcons name="timer" size={24} color="#2196F3" />
+              <Text style={styles.statValue}>{formatTime(trackingTime)}</Text>
+              <Text style={styles.statLabel}>Duration</Text>
+            </View>
           </View>
-        ), [isTracking, trackingTime, currentSpeed, showGpsDuration, showGpsSpeed])}
+        ), [isTracking, trackingTime, showGpsDuration])}
 
         {/* Tracking Form */}
         {/* Tips Display - Memoized to prevent re-renders */}

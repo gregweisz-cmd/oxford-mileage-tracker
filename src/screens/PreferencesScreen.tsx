@@ -164,20 +164,6 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
 
         <View style={dynamicStyles.preferenceItem}>
           <View style={dynamicStyles.preferenceLeft}>
-            <Text style={dynamicStyles.preferenceTitle}>Show Current Speed</Text>
-            <Text style={dynamicStyles.preferenceDescription}>
-              Display your current speed while tracking
-            </Text>
-          </View>
-          <Switch
-            value={preferences.showGpsSpeed}
-            onValueChange={(value) => updatePreference('showGpsSpeed', value)}
-            disabled={saving}
-          />
-        </View>
-
-        <View style={dynamicStyles.preferenceItem}>
-          <View style={dynamicStyles.preferenceLeft}>
             <Text style={dynamicStyles.preferenceTitle}>Stationary Alerts</Text>
             <Text style={dynamicStyles.preferenceDescription}>
               Get notified if you've been stationary for 5+ minutes
