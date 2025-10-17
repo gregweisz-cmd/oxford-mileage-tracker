@@ -880,35 +880,44 @@ export class ApiSyncService {
     try {
       console.log(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
       
+      // Get database connection once outside the loop
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
+      
+      // Get all existing receipts to check against (more efficient than querying each time)
+      const allExistingReceipts = await database.getAllAsync(
+        'SELECT id, employeeId, date, amount, category, vendor FROM receipts'
+      ) as any[];
+      
       for (const receipt of receipts) {
         try {
           // Check if receipt already exists by ID
-          const existingReceiptById = await DatabaseService.getReceipt(receipt.id);
+          const existsById = allExistingReceipts.some(existing => existing.id === receipt.id);
           
-          if (existingReceiptById) {
-            console.log(`ℹ️ ApiSync: Receipt ${receipt.id} already exists locally, skipping`);
+          if (existsById) {
+            console.log(`ℹ️ ApiSync: Receipt ${receipt.id} already exists by ID, skipping`);
             continue;
           }
           
-          // Also check for duplicates by date, amount, category, and vendor
-          // to prevent identical receipts with different IDs
-          const { getDatabaseConnection } = await import('../utils/databaseConnection');
-          const database = await getDatabaseConnection();
+          // Check for duplicates by date, amount, category, and vendor
+          const receiptDate = new Date(receipt.date);
+          const dateStr = `${receiptDate.getFullYear()}-${String(receiptDate.getMonth() + 1).padStart(2, '0')}-${String(receiptDate.getDate()).padStart(2, '0')}`;
           
-          const dateStr = `${receipt.date.getFullYear()}-${String(receipt.date.getMonth() + 1).padStart(2, '0')}-${String(receipt.date.getDate()).padStart(2, '0')}`;
-          
-          const duplicateCheck = await database.getFirstAsync(
-            `SELECT id FROM receipts 
-             WHERE employeeId = ? 
-             AND date = ? 
-             AND amount = ? 
-             AND category = ? 
-             AND vendor = ?`,
-            [receipt.employeeId, dateStr, receipt.amount, receipt.category, receipt.vendor]
+          const existsByData = allExistingReceipts.some(existing => 
+            existing.employeeId === receipt.employeeId &&
+            existing.date === dateStr &&
+            Math.abs(existing.amount - receipt.amount) < 0.01 && // Handle floating point comparison
+            existing.category === receipt.category &&
+            existing.vendor === receipt.vendor
           );
           
-          if (duplicateCheck) {
-            console.log(`ℹ️ ApiSync: Duplicate receipt detected (same date/amount/category/vendor), skipping`);
+          if (existsByData) {
+            console.log(`ℹ️ ApiSync: Duplicate receipt detected (same date/amount/category/vendor), skipping:`, {
+              date: dateStr,
+              amount: receipt.amount,
+              category: receipt.category,
+              vendor: receipt.vendor
+            });
             continue;
           }
           
@@ -923,7 +932,18 @@ export class ApiSyncService {
             imageUri: receipt.imageUri,
             costCenter: receipt.costCenter || ''
           });
-          console.log(`✅ ApiSync: Created receipt for ${receipt.date}`);
+          
+          // Add to our tracking list to avoid duplicates within the same sync batch
+          allExistingReceipts.push({
+            id: receipt.id,
+            employeeId: receipt.employeeId,
+            date: dateStr,
+            amount: receipt.amount,
+            category: receipt.category,
+            vendor: receipt.vendor
+          });
+          
+          console.log(`✅ ApiSync: Created receipt for ${dateStr}: ${receipt.vendor} - $${receipt.amount}`);
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, error);
         }
