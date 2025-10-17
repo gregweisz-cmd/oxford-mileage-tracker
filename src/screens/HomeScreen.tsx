@@ -1366,12 +1366,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                     </TouchableOpacity>
                   </View>
                 </View>
-                {entry.isGpsTracked && (
-                  <View style={styles.gpsBadge}>
-                    <MaterialIcons name="gps-fixed" size={12} color="#4CAF50" />
-                    <Text style={styles.gpsText}>GPS Tracked</Text>
-                  </View>
-                )}
               </View>
             ))
           )}
