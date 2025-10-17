@@ -53,13 +53,24 @@ Web Portal (localhost:3000)
    - "Last sync: [time]" when last successful
    - "Not synced yet" if never synced
 
+**Note**: The "Last sync" timestamp shown is from **manual syncs** only. Auto-sync runs every 5 seconds in the background but doesn't update this timestamp. Your data is still syncing automatically!
+
 ### Step 4: Verify Data in Backend Database
-Run this script to check if data reached the backend:
+Run this script to check if Greg Weisz has data in the backend:
 
 ```bash
 cd c:\Users\GooseWeisz\oxford-mileage-tracker\admin-web\backend
-node -e "const sqlite3 = require('sqlite3').verbose(); const db = new sqlite3.Database('expense_tracker.db'); db.all('SELECT id, employeeId, date, miles, startLocation, endLocation FROM mileage_entries ORDER BY date DESC LIMIT 10', (err, rows) => { if (err) console.error(err); else console.table(rows); db.close(); });"
+node check-greg-data.js
 ```
+
+**Current Status** (as of last check):
+- ✅ Greg Weisz exists in backend: `greg-weisz-001`
+- ❌ Mileage Entries: 0
+- ❌ Receipts: 0
+- ❌ Time Tracking: 0
+- ❌ Daily Descriptions: 0
+
+**This confirms data is NOT syncing from mobile app to backend!**
 
 ### Step 5: Check Console Logs
 **Mobile App Logs** (when adding entry):
