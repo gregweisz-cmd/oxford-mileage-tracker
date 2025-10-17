@@ -209,9 +209,8 @@ export class ApiSyncService {
       const dailyDescriptions = await this.fetchDailyDescriptions(employeeId);
       syncData.dailyDescriptions = dailyDescriptions;
       
-      // Fetch Per Diem rules
-      const perDiemRules = await this.fetchPerDiemRules();
-      syncData.perDiemRules = perDiemRules;
+      // Note: Per Diem rules are fetched on-demand in AddReceiptScreen
+      // to avoid unnecessary API calls during general sync
       
       // Sync all data to local database
       if (mileageEntries.length > 0) {
@@ -226,9 +225,8 @@ export class ApiSyncService {
       if (dailyDescriptions.length > 0) {
         await this.syncDailyDescriptionsToLocal(dailyDescriptions);
       }
-      if (perDiemRules.length > 0) {
-        await this.syncPerDiemRulesToLocal(perDiemRules);
-      }
+      
+      // Per Diem rules sync removed - now loaded on-demand in AddReceiptScreen
       
       this.lastSyncTime = new Date();
       await this.saveLastSyncTime(this.lastSyncTime);
