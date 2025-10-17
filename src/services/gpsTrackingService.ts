@@ -201,7 +201,6 @@ export class GpsTrackingService {
 
   static getCurrentDistance(): number {
     const distance = Math.round(this.totalDistance * 10) / 10; // Round to nearest tenth
-    console.log('📍 GPS: getCurrentDistance called, returning:', distance, 'miles');
     return distance;
   }
 

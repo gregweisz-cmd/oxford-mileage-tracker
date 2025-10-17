@@ -16,11 +16,10 @@ import { DatabaseService } from '../services/database';
 interface LocationCaptureModalProps {
   visible: boolean;
   onClose: () => void;
-  onConfirm: (locationDetails: LocationDetails, endingOdometer?: number) => void;
+  onConfirm: (locationDetails: LocationDetails) => void;
   title: string;
   locationType: 'start' | 'end';
   currentEmployee?: Employee | null;
-  startingOdometer?: number; // Starting odometer to calculate miles
 }
 
 export default function LocationCaptureModal({
@@ -29,8 +28,7 @@ export default function LocationCaptureModal({
   onConfirm,
   title,
   locationType,
-  currentEmployee,
-  startingOdometer
+  currentEmployee
 }: LocationCaptureModalProps) {
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');

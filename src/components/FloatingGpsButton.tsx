@@ -15,7 +15,7 @@ export default function FloatingGpsButton() {
     currentDistance, 
     showMapOverlay, 
     setShowMapOverlay, 
-    stopTracking 
+    requestStopTracking 
   } = useGpsTracking();
 
   if (!isTracking) return null;
@@ -31,21 +31,17 @@ export default function FloatingGpsButton() {
   const handleStopTracking = () => {
     Alert.alert(
       'Stop GPS Tracking',
-      `Are you sure you want to stop tracking?\n\nDistance tracked: ${formatDistance(currentDistance)}`,
+      `Are you sure you want to stop tracking?\n\nDistance tracked: ${formatDistance(currentDistance)}\n\nYou'll be asked to confirm your destination.`,
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Stop',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await stopTracking();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to stop GPS tracking');
-            }
+          text: 'Continue',
+          style: 'default',
+          onPress: () => {
+            requestStopTracking();
           },
         },
       ]

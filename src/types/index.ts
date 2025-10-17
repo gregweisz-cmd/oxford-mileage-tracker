@@ -198,7 +198,7 @@ export type RootStackParamList = {
   Home: undefined;
   MileageEntry: { entryId?: string };
   Reports: undefined;
-  GpsTracking: undefined;
+  GpsTracking: { showEndModal?: boolean };
   Receipts: undefined;
   AddReceipt: undefined;
   HoursWorked: undefined;
@@ -210,4 +210,5 @@ export type RootStackParamList = {
   DataSync: undefined;
   EmployeeProfile: undefined;
   Settings: { currentEmployeeId?: string };
+  Preferences: undefined;
 };

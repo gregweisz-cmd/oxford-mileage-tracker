@@ -38,7 +38,7 @@ interface GpsTrackingScreenProps {
 
 export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
   const { colors } = useTheme();
-  const { isTracking, currentSession, currentDistance, setCurrentDistance, startTracking, stopTracking } = useGpsTracking();
+  const { isTracking, currentSession, currentDistance, setCurrentDistance, startTracking, stopTracking, shouldShowEndLocationModal, setShouldShowEndLocationModal } = useGpsTracking();
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [trackingForm, setTrackingForm] = useState({
@@ -82,19 +82,36 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // Reset modal states when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      // Reset all modal states when screen is focused
-      setShowLocationOptionsModal(false);
-      setShowStartLocationModal(false);
-      setShowEndLocationModal(false);
-      setShowOxfordHouseSearchModal(false);
-      setShowPurposeSuggestions(false);
+      // Check if we should show end modal (from route params)
+      if (route?.params?.showEndModal && isTracking) {
+        setShowEndLocationModal(true);
+        // Clear the param so it doesn't show again on next focus
+        navigation.setParams({ showEndModal: false });
+      } else {
+        // Reset all modal states when screen is focused (except if showEndModal param is set)
+        setShowLocationOptionsModal(false);
+        setShowStartLocationModal(false);
+        if (!route?.params?.showEndModal) {
+          setShowEndLocationModal(false);
+        }
+        setShowOxfordHouseSearchModal(false);
+        setShowPurposeSuggestions(false);
+      }
       
       // Refresh GPS tracking status in case it's a new day
       if (currentEmployee) {
         checkGpsTrackingStatus(currentEmployee.id);
       }
-    }, [currentEmployee])
+    }, [currentEmployee, route?.params?.showEndModal, isTracking, navigation])
   );
+
+  // Watch for stop tracking request from global button
+  useEffect(() => {
+    if (shouldShowEndLocationModal && isTracking) {
+      setShowEndLocationModal(true);
+      setShouldShowEndLocationModal(false); // Reset the flag
+    }
+  }, [shouldShowEndLocationModal, isTracking, setShouldShowEndLocationModal]);
 
   // Separate effect for timer that only restarts when session ID changes
   useEffect(() => {
@@ -133,12 +150,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     let distanceInterval: NodeJS.Timeout;
     
     if (isTracking) {
-      console.log('📍 GPS Screen: Starting distance polling...');
       distanceInterval = setInterval(() => {
         const distance = GpsTrackingService.getCurrentDistance();
-        console.log('📍 GPS Screen: Polling distance:', distance);
         setCurrentDistance(distance);
-      }, 1000) as any; // Update every second for responsive UI
+      }, 3000) as any; // Update every 3 seconds to avoid performance issues
     }
 
     return () => {
@@ -520,19 +535,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     startGpsTracking();
   };
 
-  const handleEndLocationConfirm = async (locationDetails: LocationDetails, endingOdometer?: number) => {
+  const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
     setEndLocationDetails(locationDetails);
     setShowEndLocationModal(false);
 
     try {
       const completedSession = await stopTracking();
       
-      // Calculate actual miles from odometer if provided, otherwise use GPS miles
-      let actualMiles = completedSession?.totalMiles || 0;
-      if (endingOdometer && trackingForm.odometerReading) {
-        actualMiles = endingOdometer - Number(trackingForm.odometerReading);
-        console.log(`🚗 GPS: Calculated miles from odometer: ${actualMiles} (${endingOdometer} - ${trackingForm.odometerReading})`);
-      }
+      // Use GPS-tracked miles
+      const actualMiles = completedSession?.totalMiles || 0;
       
       if (completedSession && currentEmployee) {
         console.log('🚗 GPS Trip completed, saving to database:', {
@@ -573,7 +584,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
         Alert.alert(
           'Tracking Complete',
-          `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles${endingOdometer ? ' (from odometer)' : ' (GPS tracked)'}\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', endLocationDetails || undefined)}`,
+          `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', endLocationDetails || undefined)}`,
           [
             {
               text: 'OK',
@@ -638,11 +649,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         title="GPS Tracking"
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
-        rightButton={isTracking ? {
-          icon: 'stop',
-          onPress: handleStopTracking,
-          color: '#f44336'
-        } : undefined}
       />
 
       <ScrollView 
@@ -1045,7 +1051,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         title="Capture End Location"
         locationType="end"
         currentEmployee={currentEmployee}
-        startingOdometer={trackingForm.odometerReading ? Number(trackingForm.odometerReading) : undefined}
       />
 
       {/* Oxford House Search Modal */}

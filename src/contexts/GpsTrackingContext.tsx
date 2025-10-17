@@ -11,9 +11,12 @@ interface GpsTrackingContextType {
   setShowMapOverlay: (show: boolean) => void;
   startTracking: (employeeId: string, purpose: string, odometerReading: number, notes?: string) => Promise<void>;
   stopTracking: () => Promise<GpsTrackingSession | null>;
+  requestStopTracking: () => void; // Request to show end location modal
   refreshTrackingStatus: () => void;
   isStationaryTooLong: () => boolean;
   getStationaryDuration: () => number;
+  shouldShowEndLocationModal: boolean;
+  setShouldShowEndLocationModal: (show: boolean) => void;
 }
 
 const GpsTrackingContext = createContext<GpsTrackingContextType | undefined>(undefined);
@@ -27,6 +30,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const [currentSession, setCurrentSession] = useState<GpsTrackingSession | null>(null);
   const [currentDistance, setCurrentDistance] = useState(0);
   const [showMapOverlay, setShowMapOverlay] = useState(false);
+  const [shouldShowEndLocationModal, setShouldShowEndLocationModal] = useState(false);
 
   useEffect(() => {
     // Check initial tracking status
@@ -114,6 +118,11 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     return GpsTrackingService.getStationaryDuration();
   };
 
+  const requestStopTracking = () => {
+    // Signal to show the end location modal
+    setShouldShowEndLocationModal(true);
+  };
+
   const value: GpsTrackingContextType = {
     isTracking,
     currentSession,
@@ -123,9 +132,12 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     setShowMapOverlay,
     startTracking,
     stopTracking,
+    requestStopTracking,
     refreshTrackingStatus,
     isStationaryTooLong,
     getStationaryDuration,
+    shouldShowEndLocationModal,
+    setShouldShowEndLocationModal,
   };
 
   return (

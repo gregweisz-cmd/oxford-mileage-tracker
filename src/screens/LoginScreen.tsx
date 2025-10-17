@@ -85,32 +85,42 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
           const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
           
           if (existingEmployee) {
-            // Delete old employee record and create new one with backend ID
-            await DatabaseService.deleteEmployee(existingEmployee.id);
-            
-            // Create new employee with backend data
+            // Update existing employee with backend data, preserving local selections if backend values are empty
             try {
-              await DatabaseService.createEmployee({
-                id: employeeData.id,
+              await DatabaseService.updateEmployee(existingEmployee.id, {
                 name: employeeData.name,
                 email: employeeData.email,
                 password: password, // Update password with new value
-                oxfordHouseId: employeeData.oxfordHouseId || '',
-                position: employeeData.position || '',
-                phoneNumber: employeeData.phoneNumber || '',
-                baseAddress: employeeData.baseAddress || '',
-                costCenters: employeeData.costCenters || [],
-                selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
-                defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
+                oxfordHouseId: employeeData.oxfordHouseId || existingEmployee.oxfordHouseId || '',
+                position: employeeData.position || existingEmployee.position || '',
+                phoneNumber: employeeData.phoneNumber || existingEmployee.phoneNumber || '',
+                baseAddress: employeeData.baseAddress || existingEmployee.baseAddress || '',
+                costCenters: employeeData.costCenters || existingEmployee.costCenters || [],
+                // Preserve existing selections if backend doesn't have them
+                selectedCostCenters: (employeeData.selectedCostCenters && employeeData.selectedCostCenters.length > 0) 
+                  ? employeeData.selectedCostCenters 
+                  : (existingEmployee.selectedCostCenters || employeeData.costCenters || []),
+                defaultCostCenter: employeeData.defaultCostCenter 
+                  || existingEmployee.defaultCostCenter 
+                  || employeeData.costCenters?.[0] 
+                  || ''
               });
               
-              // Set current employee with the backend employee ID
-              await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
-              onLogin(employeeData);
+              // Reload the employee to get the merged data
+              const updatedEmployee = await DatabaseService.getEmployeeById(existingEmployee.id);
+              if (!updatedEmployee) {
+                Alert.alert('Error', 'Failed to load updated employee data');
+                return;
+              }
+              
+              // Set current employee with the existing employee ID
+              await DatabaseService.setCurrentEmployee(existingEmployee.id, stayLoggedIn);
+              console.log('✅ LoginScreen: Employee updated and logged in:', updatedEmployee.name);
+              onLogin(updatedEmployee);
               return;
-            } catch (createError) {
-              console.error('Failed to create employee:', createError);
-              Alert.alert('Error', 'Failed to create employee record');
+            } catch (updateError) {
+              console.error('Failed to update employee:', updateError);
+              Alert.alert('Error', 'Failed to update employee record');
               return;
             }
           } else {
@@ -209,7 +219,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         {/* Header */}
         <View style={styles.header}>
           <MaterialIcons name="work" size={80} color="#fff" />
-          <Text style={styles.title}>Oxford Mileage Tracker</Text>
+          <Text style={styles.title}>Oxford House Expense Tracker</Text>
           <Text style={styles.subtitle}>Employee Login</Text>
         </View>
 

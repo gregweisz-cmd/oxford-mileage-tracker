@@ -71,6 +71,7 @@ import {
 // Import StaffPortal for team member report viewing
 import StaffPortal from '../StaffPortal';
 import OxfordHouseLogo from './OxfordHouseLogo';
+import SupervisorDashboard from './SupervisorDashboard';
 
 interface SupervisorPortalProps {
   supervisorId: string;
@@ -540,6 +541,11 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
             <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
               <Tab 
+                icon={<CheckCircleIcon />} 
+                label="Approvals" 
+                iconPosition="start"
+              />
+              <Tab 
                 icon={<AssignmentIcon />} 
                 label={`Reports (${filteredReports.length})`} 
                 iconPosition="start"
@@ -557,8 +563,15 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
             </Tabs>
           </Box>
 
-          {/* Reports Tab */}
+          {/* Approvals Tab */}
           {activeTab === 0 && (
+            <Box sx={{ p: 3 }}>
+              <SupervisorDashboard currentEmployee={{ id: supervisorId, name: supervisorName }} />
+            </Box>
+          )}
+
+          {/* Reports Tab */}
+          {activeTab === 1 && (
             <Box sx={{ p: 3 }}>
               {/* Filters */}
               <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -751,7 +764,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           )}
 
           {/* Team Tab */}
-          {activeTab === 1 && (
+          {activeTab === 2 && (
             <Box sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">Team Members</Typography>
@@ -819,7 +832,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           )}
 
           {/* Analytics Tab */}
-          {activeTab === 2 && (
+          {activeTab === 3 && (
             <Box sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom>
                 Team Performance Analytics

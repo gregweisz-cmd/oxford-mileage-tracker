@@ -21,6 +21,7 @@ interface UnifiedHeaderProps {
     icon: string;
     onPress: () => void;
     color?: string;
+    text?: string;
   };
   backgroundColor?: string;
 }
@@ -72,16 +73,21 @@ export default function UnifiedHeader({
           {rightButton ? (
             <TouchableOpacity
               style={[
-                styles.rightButton,
-                rightButton.icon === 'stop' && styles.stopButton
+                rightButton.text ? styles.rightButtonWithText : styles.rightButton,
+                rightButton.icon === 'stop' && styles.stopButton,
               ]}
               onPress={rightButton.onPress}
             >
               <MaterialIcons 
                 name={rightButton.icon as any} 
-                size={28} 
-                color={rightButton.color || '#fff'} 
+                size={rightButton.text ? 20 : 28} 
+                color="#fff"
               />
+              {rightButton.text && (
+                <Text style={styles.rightButtonText}>
+                  {rightButton.text}
+                </Text>
+              )}
             </TouchableOpacity>
           ) : (
             <View style={styles.placeholder} />
@@ -153,13 +159,26 @@ const styles = StyleSheet.create({
   },
   stopButton: {
     backgroundColor: '#f44336',
-    padding: 10,
     borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rightButtonWithText: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  rightButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   placeholder: {
     width: 40,

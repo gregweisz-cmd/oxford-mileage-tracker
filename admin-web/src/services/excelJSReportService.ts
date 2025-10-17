@@ -24,7 +24,7 @@ export class ExcelJSReportService {
     const workbook = new ExcelJS.Workbook();
     
     // Set workbook properties
-    workbook.creator = 'Oxford Mileage Tracker';
+    workbook.creator = 'Oxford House Expense Tracker';
     workbook.lastModifiedBy = 'Admin Portal';
     workbook.created = new Date();
     workbook.modified = new Date();

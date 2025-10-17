@@ -113,7 +113,7 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
               lineHeight: 1,
             }}
           >
-            Mileage Tracker
+            Expense Tracker
           </Box>
         </Box>
       )}

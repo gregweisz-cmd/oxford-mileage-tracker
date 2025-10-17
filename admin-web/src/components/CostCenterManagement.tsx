@@ -39,6 +39,7 @@ import {
   Clear
 } from '@mui/icons-material';
 import { CostCenterApiService, CostCenter } from '../services/costCenterApiService';
+import { PerDiemRulesManagement } from './PerDiemRulesManagement';
 
 interface CostCenterManagementProps {
   onCostCentersChange?: (costCenters: string[]) => void;
@@ -317,6 +318,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab label="Cost Centers" />
+          <Tab label="Per Diem Rules" />
           <Tab label="Bulk Import" />
           <Tab label="Bulk Delete" />
         </Tabs>
@@ -530,8 +532,105 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       </Card>
       )}
 
-      {/* Tab 2: Bulk Delete */}
+      {/* Tab 1: Per Diem Rules Management */}
+      {activeTab === 1 && (
+        <PerDiemRulesManagement costCenters={costCenters} />
+      )}
+
+      {/* Tab 2: Bulk Import */}
       {activeTab === 2 && (
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Bulk Import Cost Centers
+          </Typography>
+
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Upload a CSV file to import multiple cost centers at once. Use the template below for the correct format.
+          </Alert>
+
+          <Box sx={{ mb: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<Download />}
+              onClick={handleDownloadTemplate}
+              sx={{ mr: 2 }}
+            >
+              Download Template
+            </Button>
+            
+            <Button
+              variant="outlined"
+              startIcon={<CloudUpload />}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Upload CSV
+            </Button>
+            
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={handleFileUpload}
+            />
+          </Box>
+
+          {csvData && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Preview ({csvData.split('\n').length - 1} rows):
+              </Typography>
+              <TextField
+                fullWidth
+                multiline
+                rows={6}
+                value={csvData}
+                onChange={(e) => setCsvData(e.target.value)}
+                variant="outlined"
+                sx={{ mb: 2 }}
+              />
+              
+              <Button
+                variant="contained"
+                startIcon={<CloudUpload />}
+                onClick={handleImportCsv}
+                disabled={isImporting}
+                sx={{ mb: 2 }}
+              >
+                {isImporting ? 'Importing...' : 'Import Cost Centers'}
+              </Button>
+              
+              {isImporting && <LinearProgress sx={{ mb: 2 }} />}
+              
+              <Button
+                variant="outlined"
+                startIcon={<Clear />}
+                onClick={() => {
+                  setCsvData('');
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                sx={{ ml: 2 }}
+              >
+                Clear
+              </Button>
+            </Box>
+          )}
+
+          <Alert severity="info" sx={{ mt: 3 }}>
+            <Typography variant="subtitle2" gutterBottom>CSV Format:</Typography>
+            <Typography variant="body2">
+              CODE,NAME,DESCRIPTION,IS_ACTIVE
+              <br />
+              Example: AL-SOR,Alabama - State Opioid Response,Alabama SOR Program,true
+            </Typography>
+          </Alert>
+        </CardContent>
+      </Card>
+      )}
+
+      {/* Tab 3: Bulk Delete */}
+      {activeTab === 3 && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>

@@ -24,6 +24,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { PerDiemRulesService } from '../services/perDiemRulesService';
 import EesRulesService from '../services/eesRulesService';
+import { CostCenterAutoSelectionService } from '../services/costCenterAutoSelectionService';
 import { VendorSuggestion, NearbyVendor } from '../services/vendorIntelligenceService';
 import { Employee, Receipt } from '../types';
 import { useTips } from '../contexts/TipsContext';
@@ -88,6 +89,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const [perDiemEligibility, setPerDiemEligibility] = useState<PerDiemEligibility | null>(null);
   const [autoPerDiemEnabled, setAutoPerDiemEnabled] = useState(true);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
+  const [currentPerDiemRule, setCurrentPerDiemRule] = useState<any>(null);
 
   useEffect(() => {
     loadEmployee();
@@ -98,7 +100,6 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   // Refresh employee data when screen comes into focus (to get updated cost centers)
   useFocusEffect(
     React.useCallback(() => {
-      console.log('📄 AddReceiptScreen: Screen focused, refreshing employee data...');
       loadEmployee();
     }, [])
   );
@@ -141,6 +142,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     const checkPerDiemEligibility = async () => {
       if (!currentEmployee || formData.category !== 'Per Diem') {
         setPerDiemEligibility(null);
+        setCurrentPerDiemRule(null);
         return;
       }
       
@@ -151,9 +153,17 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         );
         setPerDiemEligibility(eligibility);
         
-        // Auto-set amount if eligible
-        if (eligibility.isEligible && autoPerDiemEnabled) {
-          setFormData(prev => ({ ...prev, amount: '35' }));
+        // Get the Per Diem rule for this employee's cost center
+        const costCenter = currentEmployee.defaultCostCenter || currentEmployee.costCenters?.[0] || 'Program Services';
+        const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
+        setCurrentPerDiemRule(rule);
+        
+        // Auto-set amount if eligible AND toggle is enabled AND NOT using actual amount
+        if (eligibility.isEligible && autoPerDiemEnabled && rule && !rule.useActualAmount) {
+          setFormData(prev => ({ ...prev, amount: rule.maxAmount.toString() }));
+          console.log(`💰 AddReceipt: Auto-filled amount ${rule.maxAmount} based on eligibility check`);
+        } else if (eligibility.isEligible && rule?.useActualAmount) {
+          console.log(`💰 AddReceipt: Not auto-filling because rule uses actual amount`);
         }
       } catch (error) {
         console.error('Error checking per diem eligibility:', error);
@@ -173,9 +183,16 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       
       // Initialize cost center
       if (employee) {
-        const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
-        console.log('📄 AddReceiptScreen: Setting selected cost center to:', costCenter);
-        setSelectedCostCenter(costCenter);
+        // Use smart cost center auto-selection
+        const suggestedCostCenter = await CostCenterAutoSelectionService.suggestCostCenter(
+          employee,
+          {
+            category: formData.category || undefined,
+            screen: 'receipt'
+          }
+        );
+        console.log('📄 AddReceiptScreen: Auto-selected cost center:', suggestedCostCenter);
+        setSelectedCostCenter(suggestedCostCenter);
         
         // Set employee for tips context and load receipt tips
         setTipsEmployee(employee);
@@ -232,10 +249,37 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    // Auto-set amount to $35 when Per Diem is selected
+  const handleInputChange = async (field: string, value: string) => {
+    // Auto-set amount based on Per Diem rules when Per Diem is selected
     if (field === 'category' && value === 'Per Diem') {
-      setFormData(prev => ({ ...prev, [field]: value, amount: '35' }));
+      let defaultAmount = ''; // No default if using actual amount
+      
+      try {
+        // Get the employee's cost center to determine Per Diem rule
+        if (currentEmployee) {
+          const costCenter = currentEmployee.defaultCostCenter || currentEmployee.costCenters?.[0] || 'Program Services';
+          
+          // Get Per Diem rule for this cost center
+          const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
+          if (rule) {
+            // Only auto-fill if NOT using actual amount
+            if (!rule.useActualAmount) {
+              defaultAmount = rule.maxAmount.toString();
+              console.log(`💰 AddReceipt: Auto-filling fixed amount for ${costCenter}: $${defaultAmount}`);
+            } else {
+              console.log(`💰 AddReceipt: Using actual amount for ${costCenter}, max: $${rule.maxAmount} - user must enter amount`);
+            }
+          } else {
+            // Default rule: auto-fill $35
+            defaultAmount = '35';
+            console.log(`💰 AddReceipt: No specific rule found for ${costCenter}, using default $35`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ AddReceipt: Error getting Per Diem rule:', error);
+      }
+      
+      setFormData(prev => ({ ...prev, [field]: value, amount: defaultAmount }));
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -414,34 +458,48 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     if (!currentEmployee) return false;
 
     const amount = Number(formData.amount);
-    const costCenter = currentEmployee.costCenters?.[0] || 'CC001';
+    const date = new Date(formData.date);
+    const costCenter = currentEmployee.defaultCostCenter || currentEmployee.costCenters?.[0] || 'Program Services';
 
     try {
-      const validation = await PerDiemRulesService.validatePerDiem(
-        currentEmployee.id,
-        costCenter,
-        amount,
-        formData.date
-      );
+      // Get the Per Diem rule for validation
+      const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
+      
+      if (rule) {
+        // Check if amount exceeds max
+        if (amount > rule.maxAmount) {
+          Alert.alert(
+            'Per Diem Exceeds Maximum',
+            `The amount $${amount.toFixed(2)} exceeds the maximum allowed Per Diem of $${rule.maxAmount.toFixed(2)} for ${costCenter}.\n\n${rule.useActualAmount ? 'Please enter your actual expenses up to the maximum amount.' : 'Please use the fixed Per Diem amount.'}`,
+            [{ text: 'OK' }]
+          );
+          return false;
+        }
 
-      return new Promise((resolve) => {
-        Alert.alert(
-          'Per Diem Rules',
-          validation.message,
-          [
-            {
-              text: 'Cancel',
-              onPress: () => resolve(false),
-              style: 'cancel'
-            },
-            {
-              text: validation.isValid ? 'Continue' : 'Continue Anyway',
-              onPress: () => resolve(true)
-            }
-          ],
-          { cancelable: false }
-        );
-      });
+        // If using actual amount, show info about the rule
+        if (rule.useActualAmount && amount > 0) {
+          return new Promise((resolve) => {
+            Alert.alert(
+              'Per Diem - Actual Amount',
+              `You are entering actual expenses of $${amount.toFixed(2)} for ${costCenter}.\n\nMaximum allowed: $${rule.maxAmount.toFixed(2)}\n\nIs this correct?`,
+              [
+                {
+                  text: 'Cancel',
+                  onPress: () => resolve(false),
+                  style: 'cancel'
+                },
+                {
+                  text: 'Confirm',
+                  onPress: () => resolve(true)
+                }
+              ],
+              { cancelable: false }
+            );
+          });
+        }
+      }
+
+      return true;
     } catch (error) {
       console.error('Error validating per diem:', error);
       Alert.alert('Error', 'Failed to validate per diem rules');
@@ -617,6 +675,15 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       };
 
       await DatabaseService.createReceipt(receiptData);
+      
+      // Save the selected cost center for future auto-selection
+      if (selectedCostCenter) {
+        await CostCenterAutoSelectionService.saveLastUsedCostCenter(
+          currentEmployee.id,
+          'receipt',
+          selectedCostCenter
+        );
+      }
       
       // Run anomaly detection BEFORE showing success alert
       let anomalyMessage = '';
@@ -957,7 +1024,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                   styles.categoryButton,
                   formData.category === category && styles.categoryButtonSelected,
                 ]}
-                onPress={() => handleInputChange('category', category)}
+                onPress={async () => await handleInputChange('category', category)}
               >
                 <Text
                   style={[
@@ -1067,22 +1134,41 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 </View>
               )}
               
-              <View style={styles.perDiemToggle}>
-                <Text style={styles.perDiemToggleText}>Auto-set amount to $35</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleButton,
-                    autoPerDiemEnabled && styles.toggleButtonActive
-                  ]}
-                  onPress={handlePerDiemToggle}
-                >
+              {/* Only show toggle if NOT using actual amount */}
+              {currentPerDiemRule && !currentPerDiemRule.useActualAmount && (
+                <View style={styles.perDiemToggle}>
+                  <Text style={styles.perDiemToggleText}>
+                    Auto-set amount to ${currentPerDiemRule.maxAmount}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.toggleButton,
+                      autoPerDiemEnabled && styles.toggleButtonActive
+                    ]}
+                    onPress={handlePerDiemToggle}
+                  >
+                    <MaterialIcons 
+                      name={autoPerDiemEnabled ? "toggle-on" : "toggle-off"} 
+                      size={24} 
+                      color={autoPerDiemEnabled ? "#4CAF50" : "#999"} 
+                    />
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {/* Show message if using actual amount */}
+              {currentPerDiemRule && currentPerDiemRule.useActualAmount && (
+                <View style={styles.perDiemToggle}>
+                  <Text style={[styles.perDiemToggleText, { color: '#2196F3' }]}>
+                    Enter your actual expenses (max ${currentPerDiemRule.maxAmount})
+                  </Text>
                   <MaterialIcons 
-                    name={autoPerDiemEnabled ? "toggle-on" : "toggle-off"} 
+                    name="info" 
                     size={24} 
-                    color={autoPerDiemEnabled ? "#4CAF50" : "#999"} 
+                    color="#2196F3" 
                   />
-                </TouchableOpacity>
-              </View>
+                </View>
+              )}
             </View>
           </View>
         )}

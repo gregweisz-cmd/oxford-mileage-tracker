@@ -112,7 +112,7 @@ export class TipsService {
       // Getting Started Tips
       {
         id: 'welcome_tip',
-        title: 'Welcome to Oxford House Staff Tracker! 🏠',
+        title: 'Welcome to Oxford House Expense Tracker! 🏠',
         message: 'This app helps you track mileage, receipts, and hours for expense reporting. Start by setting up your profile in Settings.',
         category: 'getting_started',
         priority: 'high',

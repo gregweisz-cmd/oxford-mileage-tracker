@@ -81,7 +81,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         </Typography>
         
         <Typography component="h2" variant="h6" color="text.secondary" sx={{ mb: 3 }}>
-          Mileage Tracker
+          Expense Tracker
         </Typography>
 
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>

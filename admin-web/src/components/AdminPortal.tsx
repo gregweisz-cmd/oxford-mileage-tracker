@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { EmployeeManagementComponent } from './EmployeeManagementComponent';
 import { CostCenterManagement } from './CostCenterManagement';
+import { SupervisorManagement } from './SupervisorManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { BulkImportResult } from '../services/bulkImportService';
 import { Employee } from '../types';
@@ -93,7 +94,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
   const handleUpdateEmployee = async (id: string, employee: Partial<Employee>): Promise<void> => {
     try {
       await EmployeeApiService.updateEmployee(id, employee);
-      await loadEmployees(); // Refresh the list
+      await loadEmployees(true); // Refresh the list, skip cache
       showSnackbar('Employee updated successfully', 'success');
     } catch (error) {
       console.error('Error updating employee:', error);
@@ -160,6 +161,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
             <Tab label="Employee Management" />
+            <Tab label="Supervisor Management" />
             <Tab label="Cost Center Management" />
             <Tab label="Reports & Analytics" />
             <Tab label="System Settings" />
@@ -179,10 +181,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         </TabPanel>
 
         <TabPanel value={activeTab} index={1}>
-          <CostCenterManagement />
+          <SupervisorManagement
+            employees={employees}
+            onUpdateEmployee={handleUpdateEmployee}
+            onBulkUpdateEmployees={handleBulkUpdateEmployees}
+            onRefresh={() => loadEmployees(true)}
+          />
         </TabPanel>
 
         <TabPanel value={activeTab} index={2}>
+          <CostCenterManagement />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={3}>
           <Typography variant="h4" gutterBottom>
             Reports & Analytics
           </Typography>
@@ -192,7 +203,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
           </Typography>
         </TabPanel>
 
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={4}>
           <Typography variant="h4" gutterBottom>
             System Settings
           </Typography>

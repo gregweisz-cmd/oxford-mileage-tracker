@@ -14,6 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { SlackService } from '../services/slackService';
 import { DailyMileageService, DailyMileageSummary } from '../services/dailyMileageService';
+import { MonthlyReportService, MonthlyReport as MonthlyReportStatus } from '../services/monthlyReportService';
 import { MonthlyReport, MileageEntry, Employee } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
 
@@ -37,6 +38,8 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
     channel: '',
     botToken: '',
   });
+  const [currentMonthReportStatus, setCurrentMonthReportStatus] = useState<MonthlyReportStatus | null>(null);
+  const [submittingReport, setSubmittingReport] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -59,6 +62,14 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         const summaries = await DailyMileageService.getDailyMileageSummaries(employee.id, startOfMonth, endOfMonth);
         setDailySummaries(summaries);
+        
+        // Load current month's report status from backend
+        const reportStatus = await MonthlyReportService.getMonthlyReport(
+          employee.id,
+          now.getFullYear(),
+          now.getMonth() + 1
+        );
+        setCurrentMonthReportStatus(reportStatus);
       }
     } catch (error) {
       console.error('Error loading reports:', error);
@@ -164,6 +175,96 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
 
     setShowSlackConfig(false);
     Alert.alert('Success', 'Slack configuration saved');
+  };
+
+  const submitReportForApproval = async () => {
+    if (!currentEmployee) return;
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // Check if report already submitted
+    if (currentMonthReportStatus && currentMonthReportStatus.status !== 'draft' && currentMonthReportStatus.status !== 'needs_revision') {
+      Alert.alert(
+        'Already Submitted',
+        `This report has already been ${currentMonthReportStatus.status}.${currentMonthReportStatus.comments ? `\n\nSupervisor comments: ${currentMonthReportStatus.comments}` : ''}`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Calculate totals for the current month
+    const entries = await DatabaseService.getMileageEntries(currentEmployee.id, currentMonth, currentYear);
+    const receipts = await DatabaseService.getReceipts(currentEmployee.id, currentMonth, currentYear);
+    
+    const totalMiles = entries.reduce((sum, entry) => sum + entry.miles, 0);
+    const totalExpenses = receipts.reduce((sum, receipt) => sum + receipt.amount, 0);
+
+    if (totalMiles === 0 && totalExpenses === 0) {
+      Alert.alert('No Data', 'You have no mileage entries or receipts for this month to submit.');
+      return;
+    }
+
+    Alert.alert(
+      'Submit Report for Approval',
+      `You are about to submit your ${now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} report:\n\n` +
+      `• ${totalMiles.toFixed(1)} miles\n` +
+      `• $${totalExpenses.toFixed(2)} in expenses\n\n` +
+      `Once submitted, you won't be able to edit entries for this month until your supervisor reviews it.\n\n` +
+      `Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Submit',
+          style: 'default',
+          onPress: async () => {
+            try {
+              setSubmittingReport(true);
+
+              // Create or update the monthly report
+              const reportResult = await MonthlyReportService.saveMonthlyReport({
+                id: currentMonthReportStatus?.id,
+                employeeId: currentEmployee.id,
+                month: currentMonth,
+                year: currentYear,
+                totalMiles,
+                totalExpenses,
+                status: 'draft', // First save as draft
+              });
+
+              if (!reportResult.success || !reportResult.reportId) {
+                throw new Error(reportResult.error || 'Failed to save report');
+              }
+
+              // Submit for approval
+              const submitResult = await MonthlyReportService.submitForApproval(
+                reportResult.reportId,
+                currentEmployee.id
+              );
+
+              if (!submitResult.success) {
+                throw new Error(submitResult.error || 'Failed to submit report');
+              }
+
+              Alert.alert(
+                'Report Submitted! ✅',
+                'Your monthly report has been submitted to your supervisor for approval. You\'ll be notified when it\'s reviewed.',
+                [{ text: 'OK' }]
+              );
+
+              // Refresh to get new status
+              loadData();
+            } catch (error: any) {
+              console.error('Error submitting report:', error);
+              Alert.alert('Submission Failed', error.message || 'Failed to submit report for approval. Please try again.');
+            } finally {
+              setSubmittingReport(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const viewReportEntries = async (report: MonthlyReport) => {
@@ -389,6 +490,66 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Current Month Report Status */}
+        {currentMonthReportStatus && (
+          <View style={styles.currentMonthCard}>
+            <View style={styles.currentMonthHeader}>
+              <Text style={styles.currentMonthTitle}>
+                {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} Report
+              </Text>
+              <View style={[
+                styles.statusBadge,
+                { backgroundColor: MonthlyReportService.getStatusBadge(currentMonthReportStatus.status).color }
+              ]}>
+                <MaterialIcons 
+                  name={MonthlyReportService.getStatusBadge(currentMonthReportStatus.status).icon as any}
+                  size={14}
+                  color="#fff"
+                />
+                <Text style={styles.statusText}>
+                  {MonthlyReportService.getStatusBadge(currentMonthReportStatus.status).label.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+
+            {currentMonthReportStatus.comments && (
+              <View style={styles.commentsBox}>
+                <MaterialIcons name="comment" size={16} color="#666" />
+                <Text style={styles.commentsText}>{currentMonthReportStatus.comments}</Text>
+              </View>
+            )}
+
+            {currentMonthReportStatus.status === 'rejected' && currentMonthReportStatus.rejectionReason && (
+              <View style={[styles.commentsBox, { backgroundColor: '#ffebee' }]}>
+                <MaterialIcons name="error" size={16} color="#f44336" />
+                <Text style={[styles.commentsText, { color: '#f44336' }]}>
+                  {currentMonthReportStatus.rejectionReason}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Submit Report Button - Show if no report or needs revision */}
+        {(!currentMonthReportStatus || 
+          currentMonthReportStatus.status === 'draft' || 
+          currentMonthReportStatus.status === 'needs_revision') && (
+          <TouchableOpacity
+            style={[styles.submitButton, submittingReport && styles.submitButtonDisabled]}
+            onPress={submitReportForApproval}
+            disabled={submittingReport}
+          >
+            <MaterialIcons 
+              name={submittingReport ? "hourglass-empty" : "send"}
+              size={24}
+              color="#fff"
+            />
+            <Text style={styles.submitButtonText}>
+              {submittingReport ? 'Submitting...' : 'Submit for Approval'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Generate Report Button */}
         <TouchableOpacity
           style={styles.generateButton}
@@ -1100,6 +1261,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#2196F3',
     fontWeight: '600',
+  },
+  // Approval Workflow Styles
+  currentMonthCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  currentMonthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  currentMonthTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    flex: 1,
+  },
+  commentsBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  commentsText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 20,
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9E9E9E',
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
 

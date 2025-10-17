@@ -1,4 +1,5 @@
 import { MileageEntry, Employee } from '../types';
+import { PerDiemRulesService, PerDiemRule } from './perDiemRulesService';
 
 export interface PerDiemCalculation {
   totalPerDiem: number;
@@ -14,6 +15,8 @@ export interface PerDiemDay {
   distanceFromBase: number;
   isEligible: boolean;
   reason: string;
+  amount: number;
+  rule?: PerDiemRule;
 }
 
 export class PerDiemService {
@@ -48,12 +51,12 @@ export class PerDiemService {
 
     for (const [dateStr, dayEntries] of entriesByDate) {
       const date = new Date(dateStr);
-      const dayCalculation = this.calculateDayPerDiem(date, dayEntries, employee);
+      const dayCalculation = await this.calculateDayPerDiem(date, dayEntries, employee);
       
       breakdown.push(dayCalculation);
       
       if (dayCalculation.isEligible) {
-        totalPerDiem += this.PER_DIEM_RATE;
+        totalPerDiem += dayCalculation.amount;
         eligibleDays++;
       }
     }
@@ -72,30 +75,54 @@ export class PerDiemService {
   /**
    * Calculate per diem for a single day
    */
-  private static calculateDayPerDiem(
+  private static async calculateDayPerDiem(
     date: Date,
     dayEntries: MileageEntry[],
     employee: Employee
-  ): PerDiemDay {
+  ): Promise<PerDiemDay> {
     const totalHours = dayEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
     const totalMiles = dayEntries.reduce((sum, entry) => sum + entry.miles, 0);
     
     // Calculate distance from base address (simplified - would need geocoding in real implementation)
     const distanceFromBase = this.calculateDistanceFromBase(dayEntries, employee.baseAddress);
     
-    let isEligible = false;
-    let reason = '';
+    // Get the employee's cost center (use default if none specified)
+    const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
+    
+    // Get Per Diem calculation using rules
+    const perDiemResult = await PerDiemRulesService.calculatePerDiem(
+      costCenter,
+      totalHours,
+      totalMiles,
+      distanceFromBase,
+      0 // actualExpenses - would need to be calculated from receipts for this day
+    );
 
-    if (totalHours < this.MIN_HOURS_FOR_PER_DIEM) {
-      reason = `Less than ${this.MIN_HOURS_FOR_PER_DIEM} hours worked (${totalHours.toFixed(1)}h)`;
-    } else if (totalMiles >= this.MIN_MILES_FOR_PER_DIEM) {
-      isEligible = true;
-      reason = `${totalMiles.toFixed(1)} miles driven (≥${this.MIN_MILES_FOR_PER_DIEM} miles)`;
-    } else if (distanceFromBase >= this.MIN_DISTANCE_FROM_BASE) {
-      isEligible = true;
-      reason = `${distanceFromBase.toFixed(1)} miles from base (≥${this.MIN_DISTANCE_FROM_BASE} miles)`;
+    let reason = '';
+    if (!perDiemResult.meetsRequirements) {
+      const rule = perDiemResult.rule;
+      if (rule) {
+        const unmetRequirements = [];
+        if (totalHours < rule.minHours) {
+          unmetRequirements.push(`${totalHours.toFixed(1)}h < ${rule.minHours}h required`);
+        }
+        if (totalMiles < rule.minMiles) {
+          unmetRequirements.push(`${totalMiles.toFixed(1)}mi < ${rule.minMiles}mi required`);
+        }
+        if (distanceFromBase < rule.minDistanceFromBase) {
+          unmetRequirements.push(`${distanceFromBase.toFixed(1)}mi from base < ${rule.minDistanceFromBase}mi required`);
+        }
+        reason = `Requirements not met: ${unmetRequirements.join(', ')}`;
+      } else {
+        reason = 'No Per Diem rule found for cost center';
+      }
     } else {
-      reason = `Less than ${this.MIN_MILES_FOR_PER_DIEM} miles driven (${totalMiles.toFixed(1)}mi) and less than ${this.MIN_DISTANCE_FROM_BASE} miles from base (${distanceFromBase.toFixed(1)}mi)`;
+      const rule = perDiemResult.rule;
+      if (rule) {
+        reason = `${rule.useActualAmount ? 'Actual expenses' : 'Fixed amount'} (${rule.maxAmount.toFixed(2)}) - Requirements met`;
+      } else {
+        reason = `Default rate (${this.PER_DIEM_RATE}) - Requirements met`;
+      }
     }
 
     return {
@@ -103,8 +130,10 @@ export class PerDiemService {
       hoursWorked: totalHours,
       milesDriven: totalMiles,
       distanceFromBase,
-      isEligible,
-      reason
+      isEligible: perDiemResult.meetsRequirements,
+      reason,
+      amount: perDiemResult.amount,
+      rule: perDiemResult.rule || undefined
     };
   }
 

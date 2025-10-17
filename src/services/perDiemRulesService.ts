@@ -1,142 +1,343 @@
 import { DatabaseService } from './database';
 
+// API Configuration - use local backend for testing, cloud backend for production
+const API_BASE_URL = __DEV__ 
+  ? 'http://192.168.86.101:3002/api' 
+  : 'https://oxford-mileage-backend.onrender.com/api';
+
 export interface PerDiemRule {
+  id: string;
   costCenter: string;
   maxAmount: number;
   minHours: number;
   minMiles: number;
   minDistanceFromBase: number;
   description: string;
+  useActualAmount: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export class PerDiemRulesService {
-  private static rules: PerDiemRule[] = [
-    {
-      costCenter: 'CC001', // Default cost center
-      maxAmount: 35,
-      minHours: 8,
-      minMiles: 100,
-      minDistanceFromBase: 50,
-      description: 'Standard per diem rules'
-    },
-    {
-      costCenter: 'CC002', // Example: Management cost center
-      maxAmount: 40,
-      minHours: 8,
-      minMiles: 75,
-      minDistanceFromBase: 40,
-      description: 'Management per diem rules'
-    },
-    {
-      costCenter: 'CC003', // Example: Field operations
-      maxAmount: 45,
-      minHours: 6,
-      minMiles: 50,
-      minDistanceFromBase: 25,
-      description: 'Field operations per diem rules'
+  private static rulesCache: PerDiemRule[] = [];
+  private static lastFetchTime: Date | null = null;
+  private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  /**
+   * Fetch Per Diem rules from backend
+   */
+  static async fetchPerDiemRules(): Promise<PerDiemRule[]> {
+    try {
+      console.log('📋 PerDiemRules: Fetching rules from backend...');
+      
+      const response = await fetch(`${API_BASE_URL}/per-diem-rules`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch per diem rules: ${response.status} ${response.statusText}`);
+      }
+
+      const rules = await response.json();
+      
+      // Cache the rules
+      this.rulesCache = rules;
+      this.lastFetchTime = new Date();
+      
+      // Store rules locally for offline access
+      await this.storeRulesLocally(rules);
+      
+      return rules;
+    } catch (error) {
+      console.error('❌ PerDiemRules: Error fetching rules from backend:', error);
+      
+      // Try to load from local storage as fallback
+      return await this.getLocalRules();
     }
-  ];
-
-  static getRuleForCostCenter(costCenter: string): PerDiemRule {
-    return this.rules.find(rule => rule.costCenter === costCenter) || this.rules[0];
   }
 
-  static getAllRules(): PerDiemRule[] {
-    return [...this.rules];
+  /**
+   * Get Per Diem rule for a specific cost center
+   */
+  static async getPerDiemRule(costCenter: string): Promise<PerDiemRule | null> {
+    try {
+      // Check cache first
+      if (this.isCacheValid()) {
+        const rule = this.rulesCache.find(r => r.costCenter === costCenter);
+        if (rule) {
+          return rule;
+        }
+      }
+
+      // Fetch from backend if cache is invalid
+      await this.fetchPerDiemRules();
+      const rule = this.rulesCache.find(r => r.costCenter === costCenter);
+      
+      return rule || null;
+    } catch (error) {
+      console.error('❌ PerDiemRules: Error getting rule for cost center:', error);
+      return null;
+    }
   }
 
-  static updateRule(costCenter: string, updatedRule: Partial<PerDiemRule>): void {
-    const index = this.rules.findIndex(rule => rule.costCenter === costCenter);
-    if (index !== -1) {
-      this.rules[index] = { ...this.rules[index], ...updatedRule };
-    } else {
-      // Add new rule
-      this.rules.push({
+  /**
+   * Calculate Per Diem amount based on rules and activity
+   */
+  static async calculatePerDiem(
+    costCenter: string,
+    hoursWorked: number = 0,
+    milesTraveled: number = 0,
+    distanceFromBase: number = 0,
+    actualExpenses: number = 0
+  ): Promise<{ amount: number; rule: PerDiemRule | null; meetsRequirements: boolean }> {
+    try {
+      const rule = await this.getPerDiemRule(costCenter);
+      
+      // Default rule if none found
+      const defaultRule: PerDiemRule = {
+        id: 'default',
         costCenter,
         maxAmount: 35,
-        minHours: 8,
-        minMiles: 100,
-        minDistanceFromBase: 50,
-        description: 'Custom per diem rules',
-        ...updatedRule
-      });
+        minHours: 0,
+        minMiles: 0,
+        minDistanceFromBase: 0,
+        description: 'Default Per Diem rule',
+        useActualAmount: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      const activeRule = rule || defaultRule;
+      
+      // Check if requirements are met
+      const meetsRequirements = 
+        hoursWorked >= activeRule.minHours &&
+        milesTraveled >= activeRule.minMiles &&
+        distanceFromBase >= activeRule.minDistanceFromBase;
+
+      let amount = 0;
+      
+      if (meetsRequirements) {
+        if (activeRule.useActualAmount) {
+          // Use actual expenses up to the maximum
+          amount = Math.min(actualExpenses, activeRule.maxAmount);
+        } else {
+          // Use fixed maximum amount
+          amount = activeRule.maxAmount;
+        }
+      }
+
+      return {
+        amount,
+        rule: activeRule,
+        meetsRequirements
+      };
+    } catch (error) {
+      console.error('❌ PerDiemRules: Error calculating Per Diem:', error);
+      return {
+        amount: 0,
+        rule: null,
+        meetsRequirements: false
+      };
     }
   }
 
-  static deleteRule(costCenter: string): boolean {
-    const index = this.rules.findIndex(rule => rule.costCenter === costCenter);
-    if (index !== -1) {
-      this.rules.splice(index, 1);
-      return true;
+  /**
+   * Store rules locally for offline access
+   */
+  private static async storeRulesLocally(rules: PerDiemRule[]): Promise<void> {
+    try {
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
+
+      // Clear existing rules
+      await database.runAsync('DELETE FROM per_diem_rules');
+
+      // Insert new rules
+      for (const rule of rules) {
+        await database.runAsync(
+          `INSERT INTO per_diem_rules (
+            id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
+            description, useActualAmount, createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            rule.id,
+            rule.costCenter,
+            rule.maxAmount,
+            rule.minHours,
+            rule.minMiles,
+            rule.minDistanceFromBase,
+            rule.description,
+            rule.useActualAmount ? 1 : 0,
+            rule.createdAt,
+            rule.updatedAt
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('❌ PerDiemRules: Error storing rules locally:', error);
     }
-    return false;
   }
 
+  /**
+   * Get rules from local storage
+   */
+  private static async getLocalRules(): Promise<PerDiemRule[]> {
+    try {
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
+
+      const rules = await database.getAllAsync(
+        'SELECT * FROM per_diem_rules ORDER BY costCenter'
+      );
+      return rules.map((rule: any) => ({
+        id: rule.id,
+        costCenter: rule.costCenter,
+        maxAmount: rule.maxAmount,
+        minHours: rule.minHours,
+        minMiles: rule.minMiles,
+        minDistanceFromBase: rule.minDistanceFromBase,
+        description: rule.description,
+        useActualAmount: Boolean(rule.useActualAmount),
+        createdAt: rule.createdAt,
+        updatedAt: rule.updatedAt
+      }));
+    } catch (error) {
+      console.error('❌ PerDiemRules: Error loading local rules:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if cache is still valid
+   */
+  private static isCacheValid(): boolean {
+    if (!this.lastFetchTime || this.rulesCache.length === 0) {
+      return false;
+    }
+    
+    const now = new Date();
+    const timeDiff = now.getTime() - this.lastFetchTime.getTime();
+    return timeDiff < this.CACHE_DURATION;
+  }
+
+  /**
+   * Validate Per Diem eligibility and amount for a specific date and employee
+   */
   static async validatePerDiem(
     employeeId: string,
-    costCenter: string,
-    amount: number,
-    date: Date
+    date: Date,
+    hoursWorked: number = 0,
+    milesDriven: number = 0,
+    distanceFromBase: number = 0,
+    actualExpenses: number = 0
   ): Promise<{
-    isValid: boolean;
-    rule: PerDiemRule;
-    validationResults: {
-      meetsAmountLimit: boolean;
-      meetsHourRequirement: boolean;
-      meetsDistanceRequirement: boolean;
-      totalMiles: number;
-      totalHours: number;
+    isEligible: boolean;
+    suggestedAmount: number;
+    reason: string;
+    confidence: number;
+    criteria: {
+      hoursWorked: boolean;
+      milesDriven: boolean;
+      distanceFromBase: boolean;
     };
-    message: string;
+    details: {
+      baseAddress: string;
+      hoursWorked: number;
+      milesDriven: number;
+      distanceFromBase: number;
+    };
   }> {
-    const rule = this.getRuleForCostCenter(costCenter);
+    try {
+      // Get employee info to determine cost center
+      const { DatabaseService } = await import('./database');
+      const employee = await DatabaseService.getEmployeeById(employeeId);
+      
+      if (!employee) {
+        return {
+          isEligible: false,
+          suggestedAmount: 0,
+          reason: 'Employee not found',
+          confidence: 0,
+          criteria: { hoursWorked: false, milesDriven: false, distanceFromBase: false },
+          details: { baseAddress: '', hoursWorked, milesDriven, distanceFromBase }
+        };
+      }
 
-    // Get daily mileage entries for the same date
-    const dailyMileageEntries = await DatabaseService.getMileageEntries(
-      employeeId,
-      date.getMonth() + 1,
-      date.getFullYear()
-    );
+      // Get employee's cost center
+      const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
+      
+      // Calculate Per Diem using rules
+      const perDiemResult = await this.calculatePerDiem(
+        costCenter,
+        hoursWorked,
+        milesDriven,
+        distanceFromBase,
+        actualExpenses
+      );
 
-    const dayMileage = dailyMileageEntries.filter(entry => 
-      new Date(entry.date).getDate() === date.getDate()
-    );
+      const criteria = {
+        hoursWorked: hoursWorked >= (perDiemResult.rule?.minHours || 0),
+        milesDriven: milesDriven >= (perDiemResult.rule?.minMiles || 0),
+        distanceFromBase: distanceFromBase >= (perDiemResult.rule?.minDistanceFromBase || 0)
+      };
 
-    const totalMiles = dayMileage.reduce((sum, entry) => sum + entry.miles, 0);
-    const totalHours = dayMileage.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
+      const meetsAnyRequirement = criteria.hoursWorked || criteria.milesDriven || criteria.distanceFromBase;
+      
+      let reason = '';
+      if (perDiemResult.meetsRequirements) {
+        reason = `Eligible: ${perDiemResult.rule?.useActualAmount ? 'Actual expenses' : 'Fixed amount'} (${perDiemResult.rule?.maxAmount || 35})`;
+      } else if (meetsAnyRequirement) {
+        reason = `Partially eligible: Some requirements met`;
+      } else {
+        const rule = perDiemResult.rule;
+        if (rule) {
+          const requirements = [];
+          if (rule.minHours > 0) requirements.push(`${rule.minHours}+ hours`);
+          if (rule.minMiles > 0) requirements.push(`${rule.minMiles}+ miles`);
+          if (rule.minDistanceFromBase > 0) requirements.push(`${rule.minDistanceFromBase}+ miles from base`);
+          reason = `Not eligible: Need ${requirements.join(' OR ')}`;
+        } else {
+          reason = `Not eligible: No specific rule found for ${costCenter}`;
+        }
+      }
 
-    // Calculate distance from base address (simplified)
-    const isMoreThanDistanceFromBase = totalMiles > rule.minDistanceFromBase;
-    const hasWorkedRequiredHours = totalHours >= rule.minHours;
-    const meetsAmountLimit = amount <= rule.maxAmount;
-    const meetsDistanceRequirement = totalMiles > rule.minMiles || isMoreThanDistanceFromBase;
+      const result = {
+        isEligible: perDiemResult.meetsRequirements,
+        suggestedAmount: perDiemResult.amount,
+        reason,
+        confidence: perDiemResult.meetsRequirements ? 0.9 : (meetsAnyRequirement ? 0.5 : 0.1),
+        criteria,
+        details: {
+          baseAddress: employee.baseAddress || '',
+          hoursWorked,
+          milesDriven,
+          distanceFromBase
+        }
+      };
 
-    const isValid = meetsAmountLimit && hasWorkedRequiredHours && meetsDistanceRequirement;
+      return result;
+    } catch (error) {
+      console.error('❌ PerDiemAI: Error validating Per Diem:', error);
+      return {
+        isEligible: false,
+        suggestedAmount: 0,
+        reason: 'Error calculating eligibility',
+        confidence: 0,
+        criteria: { hoursWorked: false, milesDriven: false, distanceFromBase: false },
+        details: { baseAddress: '', hoursWorked, milesDriven, distanceFromBase }
+      };
+    }
+  }
 
-    const message = `
-Per Diem Rules for ${costCenter} (${rule.description}):
-
-• Maximum per day: $${rule.maxAmount}
-• Must work ${rule.minHours}+ hours: ${hasWorkedRequiredHours ? '✅' : '❌'} (${totalHours.toFixed(1)} hours)
-• Must drive ${rule.minMiles}+ miles OR be ${rule.minDistanceFromBase}+ miles from base: ${meetsDistanceRequirement ? '✅' : '❌'} (${totalMiles.toFixed(1)} miles)
-
-Current entry: $${amount.toFixed(2)}
-${meetsAmountLimit ? '✅ Within limit' : '❌ Exceeds maximum'}
-${hasWorkedRequiredHours ? '✅ Meets hour requirement' : '❌ Does not meet hour requirement'}
-${meetsDistanceRequirement ? '✅ Meets distance requirement' : '❌ Does not meet distance requirement'}
-`;
-
-    return {
-      isValid,
-      rule,
-      validationResults: {
-        meetsAmountLimit,
-        meetsHourRequirement: hasWorkedRequiredHours,
-        meetsDistanceRequirement,
-        totalMiles,
-        totalHours
-      },
-      message
-    };
+  /**
+   * Clear cache (useful for testing or forcing refresh)
+   */
+  static clearCache(): void {
+    this.rulesCache = [];
+    this.lastFetchTime = null;
   }
 }

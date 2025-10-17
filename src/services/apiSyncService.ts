@@ -209,6 +209,10 @@ export class ApiSyncService {
       const dailyDescriptions = await this.fetchDailyDescriptions(employeeId);
       syncData.dailyDescriptions = dailyDescriptions;
       
+      // Fetch Per Diem rules
+      const perDiemRules = await this.fetchPerDiemRules();
+      syncData.perDiemRules = perDiemRules;
+      
       // Sync all data to local database
       if (mileageEntries.length > 0) {
         await this.syncMileageEntriesToLocal(mileageEntries);
@@ -222,6 +226,9 @@ export class ApiSyncService {
       if (dailyDescriptions.length > 0) {
         await this.syncDailyDescriptionsToLocal(dailyDescriptions);
       }
+      if (perDiemRules.length > 0) {
+        await this.syncPerDiemRulesToLocal(perDiemRules);
+      }
       
       this.lastSyncTime = new Date();
       await this.saveLastSyncTime(this.lastSyncTime);
@@ -231,7 +238,8 @@ export class ApiSyncService {
         mileageEntries: mileageEntries.length,
         receipts: receipts.length,
         timeTracking: timeTracking.length,
-        dailyDescriptions: dailyDescriptions.length
+        dailyDescriptions: dailyDescriptions.length,
+        perDiemRules: perDiemRules.length
       });
       
       return {
@@ -333,7 +341,6 @@ export class ApiSyncService {
    */
   private static async syncMileageEntries(entries: MileageEntry[]): Promise<SyncResult> {
     try {
-      console.log(`📤 ApiSync: Syncing ${entries.length} mileage entries...`);
       const results = [];
       
       for (const entry of entries) {
@@ -354,16 +361,10 @@ export class ApiSyncService {
             isGpsTracked: entry.isGpsTracked || false
           };
           
-          console.log(`📤 ApiSync: Syncing mileage entry ${entry.id}:`, mileageData);
-          
-          // Validate JSON serialization
-          const jsonPayload = JSON.stringify(mileageData);
-          console.log(`📤 ApiSync: JSON payload for mileage entry ${entry.id}:`, jsonPayload);
-          
           const response = await fetch(`${this.config.baseUrl}/mileage-entries`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: jsonPayload
+            body: JSON.stringify(mileageData)
           });
           
           if (!response.ok) {
@@ -372,7 +373,6 @@ export class ApiSyncService {
             throw new Error(`Failed to sync mileage entry: ${response.statusText}`);
           }
           
-          console.log(`✅ ApiSync: Successfully synced mileage entry ${entry.id}`);
           results.push({ success: true, id: entry.id });
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing mileage entry ${entry.id}:`, error);
@@ -381,7 +381,6 @@ export class ApiSyncService {
       }
       
       const allSuccessful = results.every(result => result.success);
-      console.log(`📤 ApiSync: Mileage entries sync completed. Success: ${allSuccessful}, Total: ${results.length}`);
       
       return {
         success: allSuccessful,
@@ -403,7 +402,6 @@ export class ApiSyncService {
    */
   private static async syncReceipts(receipts: Receipt[]): Promise<SyncResult> {
     try {
-      console.log(`📤 ApiSync: Syncing ${receipts.length} receipts...`);
       const results = [];
       
       for (const receipt of receipts) {
@@ -420,40 +418,21 @@ export class ApiSyncService {
         };
         
         try {
-          console.log(`📤 ApiSync: Syncing receipt ${receipt.id}:`, receiptData);
-          
-          // Validate JSON serialization
-          const jsonPayload = JSON.stringify(receiptData);
-          console.log(`📤 ApiSync: JSON payload for receipt ${receipt.id}:`, jsonPayload);
-          
           const response = await fetch(`${this.config.baseUrl}/receipts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: jsonPayload
+            body: JSON.stringify(receiptData)
           });
           
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`❌ ApiSync: Receipt sync failed for ${receipt.id}:`, {
-              status: response.status,
-              statusText: response.statusText,
-              errorText: errorText,
-              url: response.url,
-              headers: Object.fromEntries(response.headers.entries())
-            });
-            throw new Error(`Failed to sync receipt: ${response.status} ${response.statusText} - ${errorText}`);
+            console.error(`❌ ApiSync: Receipt sync failed ${receipt.id}:`, response.status, errorText);
+            throw new Error(`Failed to sync receipt: ${response.status} ${response.statusText}`);
           }
           
-          const responseData = await response.json();
-          console.log(`✅ ApiSync: Successfully synced receipt ${receipt.id}:`, responseData);
           results.push({ success: true, id: receipt.id });
         } catch (error) {
-          console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, {
-            error: error,
-            errorMessage: error instanceof Error ? error.message : 'Unknown error',
-            errorStack: error instanceof Error ? error.stack : undefined,
-            receiptData: receiptData
-          });
+          console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, error instanceof Error ? error.message : 'Unknown error');
           results.push({ success: false, id: receipt.id, error: error instanceof Error ? error.message : 'Unknown error' });
         }
       }
@@ -724,6 +703,72 @@ export class ApiSyncService {
       createdAt: new Date(desc.createdAt),
       updatedAt: new Date(desc.updatedAt)
     }));
+  }
+
+  /**
+   * Fetch Per Diem rules from backend
+   */
+  private static async fetchPerDiemRules(): Promise<any[]> {
+    const response = await fetch(`${this.config.baseUrl}/per-diem-rules`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch per diem rules: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`📋 ApiSync: Fetched ${data.length} Per Diem rules from backend`);
+    return data.map((rule: any) => ({
+      id: rule.id,
+      costCenter: rule.costCenter,
+      maxAmount: rule.maxAmount,
+      minHours: rule.minHours,
+      minMiles: rule.minMiles,
+      minDistanceFromBase: rule.minDistanceFromBase,
+      description: rule.description,
+      useActualAmount: Boolean(rule.useActualAmount),
+      createdAt: rule.createdAt,
+      updatedAt: rule.updatedAt
+    }));
+  }
+
+  /**
+   * Sync Per Diem rules from backend to local database
+   */
+  private static async syncPerDiemRulesToLocal(perDiemRules: any[]): Promise<void> {
+    try {
+      console.log(`📥 ApiSync: Syncing ${perDiemRules.length} Per Diem rules to local database...`);
+      
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
+
+      // Clear existing rules
+      await database.runAsync('DELETE FROM per_diem_rules');
+
+      // Insert new rules
+      for (const rule of perDiemRules) {
+        await database.runAsync(
+          `INSERT INTO per_diem_rules (
+            id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
+            description, useActualAmount, createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            rule.id,
+            rule.costCenter,
+            rule.maxAmount,
+            rule.minHours,
+            rule.minMiles,
+            rule.minDistanceFromBase,
+            rule.description,
+            rule.useActualAmount ? 1 : 0,
+            rule.createdAt,
+            rule.updatedAt
+          ]
+        );
+      }
+
+      console.log(`✅ ApiSync: Stored ${perDiemRules.length} Per Diem rules locally`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing Per Diem rules to local database:', error);
+    }
   }
 
   /**

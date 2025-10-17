@@ -279,6 +279,15 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const renderEssentialSettings = () => (
     <View style={styles.sectionContent}>
       {renderSettingRow(
+        'App Preferences',
+        'Customize GPS, display, notifications, and features',
+        '',
+        () => {
+          navigation.navigate('Preferences');
+        }
+      )}
+      
+      {renderSettingRow(
         'Theme',
         'Choose your preferred theme',
         theme,
@@ -302,59 +311,10 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
       )}
       
       {renderSwitch(
-        'Show Tips',
-        'Display helpful tips and hints',
-        deviceSettings?.showTips ?? true,
-        (value) => updateDeviceSettings({ showTips: value })
-      )}
-      
-      {renderSwitch(
         'Auto Complete',
         'Suggestions as you type',
         inputPreferences?.autoCompleteEnabled ?? true,
         (value) => updateInputPreferences({ autoCompleteEnabled: value })
-      )}
-      
-      {renderSwitch(
-        'Show Tips',
-        'Display helpful tips throughout the app',
-        showTips,
-        (value) => {
-          setShowTips(value);
-          if (currentEmployee?.id) {
-            DeviceIntelligenceService.updateDeviceSettings(currentEmployee.id, { showTips: value });
-          }
-        }
-      )}
-      
-      {showTips && (
-        <TouchableOpacity
-          style={styles.resetTipsButton}
-          onPress={async () => {
-            Alert.alert(
-              'Reset All Tips',
-              'This will reset all tips so you can see them again. Continue?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Reset',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      await resetAllTips();
-                      Alert.alert('Success', 'All tips have been reset');
-                    } catch (error) {
-                      Alert.alert('Error', 'Failed to reset tips');
-                    }
-                  }
-                }
-              ]
-            );
-          }}
-        >
-          <MaterialIcons name="refresh" size={20} color="#f44336" />
-          <Text style={[styles.resetTipsText, { color: '#f44336' }]}>Reset All Tips</Text>
-        </TouchableOpacity>
       )}
     </View>
   );

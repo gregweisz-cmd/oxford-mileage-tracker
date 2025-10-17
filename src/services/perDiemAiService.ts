@@ -269,87 +269,27 @@ export class PerDiemAiService {
 
   /**
    * Auto-add per diem entry for eligible days
+   * DISABLED: This functionality caused unintended automatic receipt generation
    */
   static async autoAddPerDiemForDate(
     employeeId: string,
     date: Date
   ): Promise<boolean> {
-    try {
-      const eligibility = await this.checkPerDiemEligibility(employeeId, date);
-      
-      if (!eligibility.isEligible) {
-        console.log('💵 PerDiemAI: Not eligible for per diem on', date.toDateString());
-        return false;
-      }
-
-      // Check if per diem already exists for this date
-      const receipts = await DatabaseService.getReceipts(employeeId);
-      const existingPerDiem = receipts.find(receipt => 
-        receipt.date.toDateString() === date.toDateString() &&
-        receipt.category === 'Per Diem'
-      );
-
-      if (existingPerDiem) {
-        console.log('💵 PerDiemAI: Per diem already exists for', date.toDateString());
-        return false;
-      }
-
-      // Create per diem receipt entry
-      const perDiemReceipt = {
-        id: `perdiem-${Date.now()}`,
-        employeeId,
-        date,
-        amount: this.PER_DIEM_AMOUNT,
-        vendor: 'Per Diem - Auto Added',
-        description: `Per diem for ${date.toDateString()} - ${eligibility.reason}`,
-        category: 'Per Diem',
-        imageUri: '', // No image for auto-added per diem
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-
-      // Save the per diem receipt
-      await DatabaseService.createReceipt(perDiemReceipt);
-      
-      console.log('💵 PerDiemAI: Auto-added per diem for', date.toDateString());
-      return true;
-
-    } catch (error) {
-      console.error('❌ PerDiemAI: Error auto-adding per diem:', error);
-      return false;
-    }
+    // Disabled to prevent automatic Per Diem receipt generation
+    return false;
   }
 
   /**
    * Check and auto-add per diem for multiple dates
+   * DISABLED: This functionality caused unintended automatic receipt generation
    */
   static async autoAddPerDiemForDateRange(
     employeeId: string,
     startDate: Date,
     endDate: Date
   ): Promise<{ added: number; total: number }> {
-    try {
-      let added = 0;
-      let total = 0;
-
-      const currentDate = new Date(startDate);
-      
-      while (currentDate <= endDate) {
-        total++;
-        const wasAdded = await this.autoAddPerDiemForDate(employeeId, new Date(currentDate));
-        if (wasAdded) {
-          added++;
-        }
-        currentDate.setDate(currentDate.getDate() + 1);
-      }
-
-      console.log('💵 PerDiemAI: Auto-added per diem for', added, 'out of', total, 'days');
-      return { added, total };
-
-    } catch (error) {
-      console.error('❌ PerDiemAI: Error auto-adding per diem for date range:', error);
-      return { added: 0, total: 0 };
-    }
+    // Disabled to prevent automatic Per Diem receipt generation
+    return { added: 0, total: 0 };
   }
 
   /**

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "OH Staff Tracker",
+    "name": "Oxford House Expense Tracker",
     "slug": "oh-staff-tracker",
     "version": "1.0.0",
     "owner": "goosew27",
@@ -17,9 +17,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "OH Staff Tracker needs location access to automatically track mileage for Oxford House employees.",
-        "NSCameraUsageDescription": "OH Staff Tracker needs camera access to take photos of receipts for expense tracking.",
-        "NSPhotoLibraryUsageDescription": "OH Staff Tracker needs photo library access to select receipt images for expense tracking."
+        "NSLocationWhenInUseUsageDescription": "Oxford House Expense Tracker needs location access to automatically track mileage for Oxford House employees.",
+        "NSCameraUsageDescription": "Oxford House Expense Tracker needs camera access to take photos of receipts for expense tracking.",
+        "NSPhotoLibraryUsageDescription": "Oxford House Expense Tracker needs photo library access to select receipt images for expense tracking."
       }
     },
     "android": {
@@ -44,7 +44,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Oxford House Tracker to use your location to help track mileage."
+          "locationAlwaysAndWhenInUsePermission": "Allow Oxford House Expense Tracker to use your location to help track mileage."
         }
       ]
     ],

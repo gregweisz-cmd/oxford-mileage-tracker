@@ -19,7 +19,7 @@ interface LocationPoint {
 }
 
 export default function MapOverlay() {
-  const { showMapOverlay, setShowMapOverlay, isTracking, currentDistance, stopTracking } = useGpsTracking();
+  const { showMapOverlay, setShowMapOverlay, isTracking, currentDistance, requestStopTracking } = useGpsTracking();
   const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(null);
   const [trackingPath, setTrackingPath] = useState<LocationPoint[]>([]);
 
@@ -72,13 +72,10 @@ export default function MapOverlay() {
     }
   };
 
-  const handleStopTracking = async () => {
-    try {
-      await stopTracking();
-      setTrackingPath([]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to stop GPS tracking');
-    }
+  const handleStopTracking = () => {
+    // Use the new unified flow that shows end location modal
+    requestStopTracking();
+    setTrackingPath([]);
   };
 
   const handleClose = () => {

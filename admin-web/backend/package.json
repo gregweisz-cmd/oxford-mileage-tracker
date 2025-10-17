@@ -1,7 +1,7 @@
 {
   "name": "oxford-mileage-backend",
   "version": "1.0.0",
-  "description": "Oxford House Mileage Tracker Backend API",
+  "description": "Oxford House Expense Tracker Backend API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

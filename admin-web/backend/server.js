@@ -492,6 +492,86 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
+      // Create monthly reports table for approval workflow
+      db.run(`CREATE TABLE IF NOT EXISTS monthly_reports (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        month INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        totalMiles REAL NOT NULL,
+        totalExpenses REAL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        submittedAt TEXT,
+        submittedBy TEXT,
+        reviewedAt TEXT,
+        reviewedBy TEXT,
+        approvedAt TEXT,
+        approvedBy TEXT,
+        rejectedAt TEXT,
+        rejectedBy TEXT,
+        rejectionReason TEXT,
+        comments TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+
+      // Create weekly reports table for weekly approval workflow
+      db.run(`CREATE TABLE IF NOT EXISTS weekly_reports (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        weekNumber INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        startDate TEXT NOT NULL,
+        endDate TEXT NOT NULL,
+        totalMiles REAL NOT NULL,
+        totalExpenses REAL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        submittedAt TEXT,
+        submittedBy TEXT,
+        reviewedAt TEXT,
+        reviewedBy TEXT,
+        approvedAt TEXT,
+        approvedBy TEXT,
+        rejectedAt TEXT,
+        rejectedBy TEXT,
+        rejectionReason TEXT,
+        comments TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+
+      // Create biweekly reports table for month-based approval workflow (1-15, 16-end)
+      db.run(`CREATE TABLE IF NOT EXISTS biweekly_reports (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        month INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        periodNumber INTEGER NOT NULL,
+        startDate TEXT NOT NULL,
+        endDate TEXT NOT NULL,
+        totalMiles REAL NOT NULL,
+        totalExpenses REAL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        submittedAt TEXT,
+        submittedBy TEXT,
+        reviewedAt TEXT,
+        reviewedBy TEXT,
+        approvedAt TEXT,
+        approvedBy TEXT,
+        rejectedAt TEXT,
+        rejectedBy TEXT,
+        rejectionReason TEXT,
+        comments TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`, (err) => {
+        if (err) {
+          console.error('❌ Error creating biweekly_reports table:', err);
+        } else {
+          console.log('✅ Biweekly reports table created/verified');
+        }
+      });
+
       // Create cost centers table
       db.run(`CREATE TABLE IF NOT EXISTS cost_centers (
         id TEXT PRIMARY KEY,
@@ -517,6 +597,7 @@ function ensureTablesExist() {
         minMiles REAL NOT NULL,
         minDistanceFromBase REAL NOT NULL,
         description TEXT NOT NULL,
+        useActualAmount INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
@@ -645,6 +726,13 @@ function ensureTablesExist() {
               else console.log('✅ Added supervisorId column to employees table');
             });
           }
+          
+          if (!columnNames.includes('approvalFrequency')) {
+            db.run(`ALTER TABLE employees ADD COLUMN approvalFrequency TEXT DEFAULT 'monthly'`, (err) => {
+              if (err) console.log('Note: approvalFrequency column may already exist');
+              else console.log('✅ Added approvalFrequency column to employees table');
+            });
+          }
         }
       });
 
@@ -730,6 +818,20 @@ function ensureTablesExist() {
           if (!columnNames.includes('costCenter')) {
             db.run(`ALTER TABLE time_tracking ADD COLUMN costCenter TEXT DEFAULT ''`, (err) => {
               if (err) console.log('Note: costCenter column may already exist');
+            });
+          }
+        }
+      });
+
+      // Add missing columns to per_diem_rules table
+      db.all(`PRAGMA table_info(per_diem_rules)`, (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(col => col.name);
+          
+          if (!columnNames.includes('useActualAmount')) {
+            db.run(`ALTER TABLE per_diem_rules ADD COLUMN useActualAmount INTEGER DEFAULT 0`, (err) => {
+              if (err) console.log('Note: useActualAmount column may already exist');
+              else console.log('✅ Added useActualAmount column to per_diem_rules table');
             });
           }
         }
@@ -1564,6 +1666,16 @@ app.post('/api/receipts', (req, res) => {
   const receiptId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
 
+  console.log('📝 Creating/updating receipt:', {
+    receiptId,
+    employeeId,
+    category,
+    vendor,
+    amount,
+    amountType: typeof amount,
+    date
+  });
+
   db.run(
     'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
     [receiptId, employeeId, date, amount, vendor || '', description || '', category || '', imageUri || '', receiptId, now, now],
@@ -1573,6 +1685,7 @@ app.post('/api/receipts', (req, res) => {
         res.status(500).json({ error: err.message });
         return;
       }
+      console.log(`✅ Receipt ${receiptId} saved with amount: ${amount}`);
       res.json({ id: receiptId, message: 'Receipt created successfully' });
     }
   );
@@ -1795,6 +1908,96 @@ app.delete('/api/daily-descriptions/:id', (req, res) => {
   });
 });
 
+// Per Diem Rules API Routes
+
+// Get all per diem rules
+app.get('/api/per-diem-rules', (req, res) => {
+  db.all('SELECT * FROM per_diem_rules ORDER BY costCenter', (err, rows) => {
+    if (err) {
+      console.error('Error fetching per diem rules:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// Get per diem rule by cost center
+app.get('/api/per-diem-rules/:costCenter', (req, res) => {
+  const { costCenter } = req.params;
+  db.get('SELECT * FROM per_diem_rules WHERE costCenter = ?', [costCenter], (err, row) => {
+    if (err) {
+      console.error('Error fetching per diem rule:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(row || null);
+  });
+});
+
+// Create or update per diem rule
+app.post('/api/per-diem-rules', (req, res) => {
+  const { id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, useActualAmount } = req.body;
+  const ruleId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
+  const now = new Date().toISOString();
+
+  console.log('📝 Creating/updating per diem rule:', {
+    ruleId,
+    costCenter,
+    maxAmount,
+    minHours,
+    minMiles,
+    minDistanceFromBase,
+    useActualAmount
+  });
+
+  db.run(
+    'INSERT OR REPLACE INTO per_diem_rules (id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, useActualAmount, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM per_diem_rules WHERE id = ?), ?), ?)',
+    [ruleId, costCenter, maxAmount, minHours || 0, minMiles || 0, minDistanceFromBase || 0, description || '', useActualAmount || 0, ruleId, now, now],
+    function(err) {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      console.log(`✅ Per diem rule ${ruleId} saved for ${costCenter}`);
+      res.json({ id: ruleId, message: 'Per diem rule saved successfully' });
+    }
+  );
+});
+
+// Update per diem rule
+app.put('/api/per-diem-rules/:id', (req, res) => {
+  const { id } = req.params;
+  const { costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, useActualAmount } = req.body;
+  const now = new Date().toISOString();
+
+  db.run(
+    'UPDATE per_diem_rules SET costCenter = ?, maxAmount = ?, minHours = ?, minMiles = ?, minDistanceFromBase = ?, description = ?, useActualAmount = ?, updatedAt = ? WHERE id = ?',
+    [costCenter, maxAmount, minHours || 0, minMiles || 0, minDistanceFromBase || 0, description || '', useActualAmount || 0, now, id],
+    function(err) {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: 'Per diem rule updated successfully' });
+    }
+  );
+});
+
+// Delete per diem rule
+app.delete('/api/per-diem-rules/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM per_diem_rules WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Per diem rule deleted successfully' });
+  });
+});
+
 // Saved Addresses API Routes
 
 // Get saved addresses
@@ -1921,72 +2124,6 @@ app.post('/api/oxford-houses/refresh', async (req, res) => {
 // Cost Center Management API Routes - Removed duplicate endpoints (using constant-based endpoints above)
 
 // Per Diem Rules API Routes
-
-// Get all per diem rules
-app.get('/api/per-diem-rules', (req, res) => {
-  db.all('SELECT * FROM per_diem_rules ORDER BY costCenter', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
-});
-
-// Create/Update per diem rule
-app.post('/api/per-diem-rules', (req, res) => {
-  const { costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description } = req.body;
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  const now = new Date().toISOString();
-
-  // Check if rule already exists for this cost center
-  db.get('SELECT id FROM per_diem_rules WHERE costCenter = ?', [costCenter], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-
-    if (row) {
-      // Update existing rule
-      db.run(
-        'UPDATE per_diem_rules SET maxAmount = ?, minHours = ?, minMiles = ?, minDistanceFromBase = ?, description = ?, updatedAt = ? WHERE costCenter = ?',
-        [maxAmount, minHours, minMiles, minDistanceFromBase, description, now, costCenter],
-        function(err) {
-          if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-          }
-          res.json({ message: 'Per diem rule updated successfully' });
-        }
-      );
-    } else {
-      // Create new rule
-      db.run(
-        'INSERT INTO per_diem_rules (id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, now, now],
-        function(err) {
-          if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-          }
-          res.json({ id, message: 'Per diem rule created successfully' });
-        }
-      );
-    }
-  });
-});
-
-// Delete per diem rule
-app.delete('/api/per-diem-rules/:costCenter', (req, res) => {
-  const { costCenter } = req.params;
-  db.run('DELETE FROM per_diem_rules WHERE costCenter = ?', [costCenter], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json({ message: 'Per diem rule deleted successfully' });
-  });
-});
 
 // EES Rules API Routes
 
@@ -2652,6 +2789,992 @@ app.get('/api/stats', (req, res) => {
         res.json(stats);
       }
     });
+  });
+});
+
+// ===== MONTHLY REPORTS API ENDPOINTS =====
+
+// Get all monthly reports
+app.get('/api/monthly-reports', (req, res) => {
+  const { employeeId, status } = req.query;
+  
+  let query = 'SELECT * FROM monthly_reports';
+  const params = [];
+  
+  if (employeeId || status) {
+    query += ' WHERE';
+    const conditions = [];
+    if (employeeId) {
+      conditions.push(' employeeId = ?');
+      params.push(employeeId);
+    }
+    if (status) {
+      conditions.push(' status = ?');
+      params.push(status);
+    }
+    query += conditions.join(' AND');
+  }
+  
+  query += ' ORDER BY year DESC, month DESC';
+  
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      console.error('❌ Error fetching monthly reports:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// Get monthly report by ID
+app.get('/api/monthly-reports/:id', (req, res) => {
+  const { id } = req.params;
+  
+  db.get('SELECT * FROM monthly_reports WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      console.error('❌ Error fetching monthly report:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Monthly report not found' });
+      return;
+    }
+    res.json(row);
+  });
+});
+
+// Get monthly report for employee/month/year
+app.get('/api/monthly-reports/employee/:employeeId/:year/:month', (req, res) => {
+  const { employeeId, year, month } = req.params;
+  
+  db.get(
+    'SELECT * FROM monthly_reports WHERE employeeId = ? AND year = ? AND month = ?',
+    [employeeId, parseInt(year), parseInt(month)],
+    (err, row) => {
+      if (err) {
+        console.error('❌ Error fetching monthly report:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(row || null);
+    }
+  );
+});
+
+// Create or update monthly report
+app.post('/api/monthly-reports', (req, res) => {
+  const { id, employeeId, month, year, totalMiles, totalExpenses, status } = req.body;
+  const reportId = id || `report-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
+  const now = new Date().toISOString();
+
+  console.log('📝 Creating/updating monthly report:', {
+    reportId,
+    employeeId,
+    month,
+    year,
+    totalMiles,
+    totalExpenses,
+    status: status || 'draft'
+  });
+
+  db.run(
+    `INSERT OR REPLACE INTO monthly_reports (
+      id, employeeId, month, year, totalMiles, totalExpenses, status,
+      createdAt, updatedAt
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?,
+      COALESCE((SELECT createdAt FROM monthly_reports WHERE id = ?), ?),
+      ?
+    )`,
+    [
+      reportId, employeeId, month, year,
+      totalMiles || 0,
+      totalExpenses || 0,
+      status || 'draft',
+      reportId, now, now
+    ],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      console.log(`✅ Monthly report ${reportId} saved`);
+      res.json({ id: reportId, message: 'Monthly report saved successfully' });
+    }
+  );
+});
+
+// Submit monthly report for approval
+app.post('/api/monthly-reports/:id/submit', (req, res) => {
+  const { id } = req.params;
+  const { submittedBy } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`📤 Submitting monthly report ${id} for approval by ${submittedBy}`);
+
+  db.run(
+    `UPDATE monthly_reports SET 
+      status = 'submitted',
+      submittedAt = ?,
+      submittedBy = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, submittedBy, now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Monthly report not found' });
+        return;
+      }
+      console.log(`✅ Monthly report ${id} submitted for approval`);
+      
+      // Broadcast update to all connected clients
+      broadcastDataChange('monthly_reports', 'update', { id, status: 'submitted' });
+      
+      res.json({ message: 'Monthly report submitted for approval successfully' });
+    }
+  );
+});
+
+// Approve monthly report
+app.post('/api/monthly-reports/:id/approve', (req, res) => {
+  const { id } = req.params;
+  const { approvedBy, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`✅ Approving monthly report ${id} by ${approvedBy}`);
+
+  db.run(
+    `UPDATE monthly_reports SET 
+      status = 'approved',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      approvedAt = ?,
+      approvedBy = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, approvedBy, now, approvedBy, comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Monthly report not found' });
+        return;
+      }
+      console.log(`✅ Monthly report ${id} approved`);
+      
+      // Broadcast update to all connected clients
+      broadcastDataChange('monthly_reports', 'update', { id, status: 'approved' });
+      
+      res.json({ message: 'Monthly report approved successfully' });
+    }
+  );
+});
+
+// Reject monthly report
+app.post('/api/monthly-reports/:id/reject', (req, res) => {
+  const { id } = req.params;
+  const { rejectedBy, rejectionReason, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`❌ Rejecting monthly report ${id} by ${rejectedBy}`);
+
+  db.run(
+    `UPDATE monthly_reports SET 
+      status = 'rejected',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      rejectedAt = ?,
+      rejectedBy = ?,
+      rejectionReason = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, rejectedBy, now, rejectedBy, rejectionReason || '', comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Monthly report not found' });
+        return;
+      }
+      console.log(`❌ Monthly report ${id} rejected`);
+      
+      // Broadcast update to all connected clients
+      broadcastDataChange('monthly_reports', 'update', { id, status: 'rejected' });
+      
+      res.json({ message: 'Monthly report rejected successfully' });
+    }
+  );
+});
+
+// Request revision on monthly report
+app.post('/api/monthly-reports/:id/request-revision', (req, res) => {
+  const { id } = req.params;
+  const { reviewedBy, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`🔄 Requesting revision on monthly report ${id} by ${reviewedBy}`);
+
+  db.run(
+    `UPDATE monthly_reports SET 
+      status = 'needs_revision',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, reviewedBy, comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Monthly report not found' });
+        return;
+      }
+      console.log(`🔄 Monthly report ${id} needs revision`);
+      
+      // Broadcast update to all connected clients
+      broadcastDataChange('monthly_reports', 'update', { id, status: 'needs_revision' });
+      
+      res.json({ message: 'Revision requested successfully' });
+    }
+  );
+});
+
+// Get pending reports for supervisor
+app.get('/api/monthly-reports/supervisor/:supervisorId/pending', (req, res) => {
+  const { supervisorId } = req.params;
+  
+  // Get all employees supervised by this supervisor
+  db.all(
+    'SELECT id FROM employees WHERE supervisorId = ?',
+    [supervisorId],
+    (err, employees) => {
+      if (err) {
+        console.error('❌ Error fetching supervised employees:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      if (employees.length === 0) {
+        res.json([]);
+        return;
+      }
+      
+      const employeeIds = employees.map(e => e.id);
+      const placeholders = employeeIds.map(() => '?').join(',');
+      
+      db.all(
+        `SELECT mr.*, e.name as employeeName, e.email as employeeEmail
+         FROM monthly_reports mr
+         JOIN employees e ON mr.employeeId = e.id
+         WHERE mr.employeeId IN (${placeholders}) AND mr.status = 'submitted'
+         ORDER BY mr.submittedAt ASC`,
+        employeeIds,
+        (err, reports) => {
+          if (err) {
+            console.error('❌ Error fetching pending reports:', err);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          res.json(reports);
+        }
+      );
+    }
+  );
+});
+
+// Delete monthly report
+app.delete('/api/monthly-reports/:id', (req, res) => {
+  const { id } = req.params;
+  
+  db.run('DELETE FROM monthly_reports WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (this.changes === 0) {
+      res.status(404).json({ error: 'Monthly report not found' });
+      return;
+    }
+    
+    // Broadcast update to all connected clients
+    broadcastDataChange('monthly_reports', 'delete', { id });
+    
+    res.json({ message: 'Monthly report deleted successfully' });
+  });
+});
+
+// ===== WEEKLY REPORTS API ENDPOINTS =====
+
+// Get all weekly reports
+app.get('/api/weekly-reports', (req, res) => {
+  const { employeeId, status } = req.query;
+  
+  let query = 'SELECT * FROM weekly_reports';
+  const params = [];
+  
+  if (employeeId || status) {
+    query += ' WHERE';
+    const conditions = [];
+    if (employeeId) {
+      conditions.push(' employeeId = ?');
+      params.push(employeeId);
+    }
+    if (status) {
+      conditions.push(' status = ?');
+      params.push(status);
+    }
+    query += conditions.join(' AND');
+  }
+  
+  query += ' ORDER BY year DESC, weekNumber DESC';
+  
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      console.error('❌ Error fetching weekly reports:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// Get weekly report by ID
+app.get('/api/weekly-reports/:id', (req, res) => {
+  const { id } = req.params;
+  
+  db.get('SELECT * FROM weekly_reports WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      console.error('❌ Error fetching weekly report:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Weekly report not found' });
+      return;
+    }
+    res.json(row);
+  });
+});
+
+// Get weekly report for employee/week/year
+app.get('/api/weekly-reports/employee/:employeeId/:year/:week', (req, res) => {
+  const { employeeId, year, week } = req.params;
+  
+  db.get(
+    'SELECT * FROM weekly_reports WHERE employeeId = ? AND year = ? AND weekNumber = ?',
+    [employeeId, parseInt(year), parseInt(week)],
+    (err, row) => {
+      if (err) {
+        console.error('❌ Error fetching weekly report:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(row || null);
+    }
+  );
+});
+
+// Create or update weekly report
+app.post('/api/weekly-reports', (req, res) => {
+  const { id, employeeId, weekNumber, year, startDate, endDate, totalMiles, totalExpenses, status } = req.body;
+  const reportId = id || `weekreport-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
+  const now = new Date().toISOString();
+
+  console.log('📝 Creating/updating weekly report:', {
+    reportId,
+    employeeId,
+    weekNumber,
+    year,
+    startDate,
+    endDate,
+    totalMiles,
+    totalExpenses,
+    status: status || 'draft'
+  });
+
+  db.run(
+    `INSERT OR REPLACE INTO weekly_reports (
+      id, employeeId, weekNumber, year, startDate, endDate, totalMiles, totalExpenses, status,
+      createdAt, updatedAt
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      COALESCE((SELECT createdAt FROM weekly_reports WHERE id = ?), ?),
+      ?
+    )`,
+    [
+      reportId, employeeId, weekNumber, year, startDate, endDate,
+      totalMiles || 0,
+      totalExpenses || 0,
+      status || 'draft',
+      reportId, now, now
+    ],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      console.log(`✅ Weekly report ${reportId} saved`);
+      res.json({ id: reportId, message: 'Weekly report saved successfully' });
+    }
+  );
+});
+
+// Submit weekly report for approval
+app.post('/api/weekly-reports/:id/submit', (req, res) => {
+  const { id } = req.params;
+  const { submittedBy } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`📤 Submitting weekly report ${id} for approval by ${submittedBy}`);
+
+  db.run(
+    `UPDATE weekly_reports SET 
+      status = 'submitted',
+      submittedAt = ?,
+      submittedBy = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, submittedBy, now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Weekly report not found' });
+        return;
+      }
+      console.log(`✅ Weekly report ${id} submitted for approval`);
+      
+      broadcastDataChange('weekly_reports', 'update', { id, status: 'submitted' });
+      
+      res.json({ message: 'Weekly report submitted for approval successfully' });
+    }
+  );
+});
+
+// Approve weekly report
+app.post('/api/weekly-reports/:id/approve', (req, res) => {
+  const { id } = req.params;
+  const { approvedBy, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`✅ Approving weekly report ${id} by ${approvedBy}`);
+
+  db.run(
+    `UPDATE weekly_reports SET 
+      status = 'approved',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      approvedAt = ?,
+      approvedBy = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, approvedBy, now, approvedBy, comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Weekly report not found' });
+        return;
+      }
+      console.log(`✅ Weekly report ${id} approved`);
+      
+      broadcastDataChange('weekly_reports', 'update', { id, status: 'approved' });
+      
+      res.json({ message: 'Weekly report approved successfully' });
+    }
+  );
+});
+
+// Reject weekly report
+app.post('/api/weekly-reports/:id/reject', (req, res) => {
+  const { id } = req.params;
+  const { rejectedBy, rejectionReason, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`❌ Rejecting weekly report ${id} by ${rejectedBy}`);
+
+  db.run(
+    `UPDATE weekly_reports SET 
+      status = 'rejected',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      rejectedAt = ?,
+      rejectedBy = ?,
+      rejectionReason = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, rejectedBy, now, rejectedBy, rejectionReason || '', comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Weekly report not found' });
+        return;
+      }
+      console.log(`❌ Weekly report ${id} rejected`);
+      
+      broadcastDataChange('weekly_reports', 'update', { id, status: 'rejected' });
+      
+      res.json({ message: 'Weekly report rejected successfully' });
+    }
+  );
+});
+
+// Request revision on weekly report
+app.post('/api/weekly-reports/:id/request-revision', (req, res) => {
+  const { id } = req.params;
+  const { reviewedBy, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`🔄 Requesting revision on weekly report ${id} by ${reviewedBy}`);
+
+  db.run(
+    `UPDATE weekly_reports SET 
+      status = 'needs_revision',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, reviewedBy, comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Weekly report not found' });
+        return;
+      }
+      console.log(`🔄 Weekly report ${id} needs revision`);
+      
+      broadcastDataChange('weekly_reports', 'update', { id, status: 'needs_revision' });
+      
+      res.json({ message: 'Revision requested successfully' });
+    }
+  );
+});
+
+// Get pending weekly reports for supervisor
+app.get('/api/weekly-reports/supervisor/:supervisorId/pending', (req, res) => {
+  const { supervisorId } = req.params;
+  
+  db.all(
+    'SELECT id FROM employees WHERE supervisorId = ?',
+    [supervisorId],
+    (err, employees) => {
+      if (err) {
+        console.error('❌ Error fetching supervised employees:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      if (employees.length === 0) {
+        res.json([]);
+        return;
+      }
+      
+      const employeeIds = employees.map(e => e.id);
+      const placeholders = employeeIds.map(() => '?').join(',');
+      
+      db.all(
+        `SELECT wr.*, e.name as employeeName, e.email as employeeEmail
+         FROM weekly_reports wr
+         JOIN employees e ON wr.employeeId = e.id
+         WHERE wr.employeeId IN (${placeholders}) AND wr.status = 'submitted'
+         ORDER BY wr.year DESC, wr.weekNumber DESC`,
+        employeeIds,
+        (err, reports) => {
+          if (err) {
+            console.error('❌ Error fetching pending weekly reports:', err);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          res.json(reports);
+        }
+      );
+    }
+  );
+});
+
+// Delete weekly report
+app.delete('/api/weekly-reports/:id', (req, res) => {
+  const { id } = req.params;
+  
+  db.run('DELETE FROM weekly_reports WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (this.changes === 0) {
+      res.status(404).json({ error: 'Weekly report not found' });
+      return;
+    }
+    
+    broadcastDataChange('weekly_reports', 'delete', { id });
+    
+    res.json({ message: 'Weekly report deleted successfully' });
+  });
+});
+
+// ===== BIWEEKLY REPORTS API ENDPOINTS (Month-based: 1-15, 16-end) =====
+
+// Get all biweekly reports
+app.get('/api/biweekly-reports', (req, res) => {
+  const { employeeId, status } = req.query;
+
+  let query = 'SELECT * FROM biweekly_reports';
+  const params = [];
+
+  if (employeeId || status) {
+    query += ' WHERE';
+    const conditions = [];
+    if (employeeId) {
+      conditions.push(' employeeId = ?');
+      params.push(employeeId);
+    }
+    if (status) {
+      conditions.push(' status = ?');
+      params.push(status);
+    }
+    query += conditions.join(' AND');
+  }
+
+  query += ' ORDER BY year DESC, month DESC, periodNumber DESC';
+
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      console.error('❌ Error fetching biweekly reports:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// Get biweekly report by ID
+app.get('/api/biweekly-reports/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM biweekly_reports WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      console.error('❌ Error fetching biweekly report:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Biweekly report not found' });
+      return;
+    }
+    res.json(row);
+  });
+});
+
+// Get biweekly report for employee/month/year/period
+app.get('/api/biweekly-reports/employee/:employeeId/:year/:month/:period', (req, res) => {
+  const { employeeId, year, month, period } = req.params;
+
+  db.get(
+    'SELECT * FROM biweekly_reports WHERE employeeId = ? AND year = ? AND month = ? AND periodNumber = ?',
+    [employeeId, parseInt(year), parseInt(month), parseInt(period)],
+    (err, row) => {
+      if (err) {
+        console.error('❌ Error fetching biweekly report:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(row || null);
+    }
+  );
+});
+
+// Create or update biweekly report
+app.post('/api/biweekly-reports', (req, res) => {
+  const { id, employeeId, month, year, periodNumber, startDate, endDate, totalMiles, totalExpenses, status } = req.body;
+  const reportId = id || `biweek-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
+  const now = new Date().toISOString();
+
+  console.log('📝 Creating/updating biweekly report:', {
+    reportId,
+    employeeId,
+    month,
+    year,
+    periodNumber,
+    startDate,
+    endDate,
+    totalMiles,
+    totalExpenses,
+    status: status || 'draft'
+  });
+
+  db.run(
+    `INSERT OR REPLACE INTO biweekly_reports (
+      id, employeeId, month, year, periodNumber, startDate, endDate, totalMiles, totalExpenses, status,
+      createdAt, updatedAt
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      COALESCE((SELECT createdAt FROM biweekly_reports WHERE id = ?), ?),
+      ?
+    )`,
+    [
+      reportId, employeeId, month, year, periodNumber, startDate, endDate,
+      totalMiles || 0,
+      totalExpenses || 0,
+      status || 'draft',
+      reportId, now, now
+    ],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      console.log(`✅ Biweekly report ${reportId} saved`);
+      res.json({ id: reportId, message: 'Biweekly report saved successfully' });
+    }
+  );
+});
+
+// Submit biweekly report for approval
+app.post('/api/biweekly-reports/:id/submit', (req, res) => {
+  const { id } = req.params;
+  const { submittedBy } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`📤 Submitting biweekly report ${id} for approval by ${submittedBy}`);
+
+  db.run(
+    `UPDATE biweekly_reports SET 
+      status = 'submitted',
+      submittedAt = ?,
+      submittedBy = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, submittedBy, now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Biweekly report not found' });
+        return;
+      }
+      console.log(`✅ Biweekly report ${id} submitted for approval`);
+
+      broadcastDataChange('biweekly_reports', 'update', { id, status: 'submitted' });
+
+      res.json({ message: 'Biweekly report submitted for approval successfully' });
+    }
+  );
+});
+
+// Approve biweekly report
+app.post('/api/biweekly-reports/:id/approve', (req, res) => {
+  const { id } = req.params;
+  const { approvedBy, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`✅ Approving biweekly report ${id} by ${approvedBy}`);
+
+  db.run(
+    `UPDATE biweekly_reports SET 
+      status = 'approved',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      approvedAt = ?,
+      approvedBy = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, approvedBy, now, approvedBy, comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Biweekly report not found' });
+        return;
+      }
+      console.log(`✅ Biweekly report ${id} approved`);
+
+      broadcastDataChange('biweekly_reports', 'update', { id, status: 'approved' });
+
+      res.json({ message: 'Biweekly report approved successfully' });
+    }
+  );
+});
+
+// Reject biweekly report
+app.post('/api/biweekly-reports/:id/reject', (req, res) => {
+  const { id } = req.params;
+  const { rejectedBy, rejectionReason, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`❌ Rejecting biweekly report ${id} by ${rejectedBy}`);
+
+  db.run(
+    `UPDATE biweekly_reports SET 
+      status = 'rejected',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      rejectedAt = ?,
+      rejectedBy = ?,
+      rejectionReason = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, rejectedBy, now, rejectedBy, rejectionReason || '', comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Biweekly report not found' });
+        return;
+      }
+      console.log(`❌ Biweekly report ${id} rejected`);
+
+      broadcastDataChange('biweekly_reports', 'update', { id, status: 'rejected' });
+
+      res.json({ message: 'Biweekly report rejected successfully' });
+    }
+  );
+});
+
+// Request revision on biweekly report
+app.post('/api/biweekly-reports/:id/request-revision', (req, res) => {
+  const { id } = req.params;
+  const { reviewedBy, comments } = req.body;
+  const now = new Date().toISOString();
+
+  console.log(`🔄 Requesting revision on biweekly report ${id} by ${reviewedBy}`);
+
+  db.run(
+    `UPDATE biweekly_reports SET 
+      status = 'needs_revision',
+      reviewedAt = ?,
+      reviewedBy = ?,
+      comments = ?,
+      updatedAt = ?
+    WHERE id = ?`,
+    [now, reviewedBy, comments || '', now, id],
+    function(err) {
+      if (err) {
+        console.error('❌ Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Biweekly report not found' });
+        return;
+      }
+      console.log(`🔄 Biweekly report ${id} needs revision`);
+
+      broadcastDataChange('biweekly_reports', 'update', { id, status: 'needs_revision' });
+
+      res.json({ message: 'Revision requested successfully' });
+    }
+  );
+});
+
+// Get pending biweekly reports for supervisor
+app.get('/api/biweekly-reports/supervisor/:supervisorId/pending', (req, res) => {
+  const { supervisorId } = req.params;
+
+  db.all(
+    'SELECT id FROM employees WHERE supervisorId = ?',
+    [supervisorId],
+    (err, employees) => {
+      if (err) {
+        console.error('❌ Error fetching supervised employees:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      if (employees.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const employeeIds = employees.map(e => e.id);
+      const placeholders = employeeIds.map(() => '?').join(',');
+
+      db.all(
+        `SELECT br.*, e.name as employeeName, e.email as employeeEmail
+         FROM biweekly_reports br
+         JOIN employees e ON br.employeeId = e.id
+         WHERE br.employeeId IN (${placeholders}) AND br.status = 'submitted'
+         ORDER BY br.year DESC, br.month DESC, br.periodNumber DESC`,
+        employeeIds,
+        (err, reports) => {
+          if (err) {
+            console.error('❌ Error fetching pending biweekly reports:', err);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          res.json(reports);
+        }
+      );
+    }
+  );
+});
+
+// Delete biweekly report
+app.delete('/api/biweekly-reports/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM biweekly_reports WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (this.changes === 0) {
+      res.status(404).json({ error: 'Biweekly report not found' });
+      return;
+    }
+
+    broadcastDataChange('biweekly_reports', 'delete', { id });
+
+    res.json({ message: 'Biweekly report deleted successfully' });
   });
 });
 

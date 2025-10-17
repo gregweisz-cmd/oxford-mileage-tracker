@@ -1,4 +1,4 @@
-// Cost Centers for Oxford House Staff Tracker
+// Cost Centers for Oxford House Expense Tracker
 // Now dynamically loaded from API with fallback to hardcoded list
 
 import { costCenterApiService } from '../services/costCenterApiService';

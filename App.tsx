@@ -3,7 +3,9 @@ import 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, View, Text } from 'react-native';
+import { Platform, View, Text, ActivityIndicator } from 'react-native';
+import { useFonts } from 'expo-font';
+import { MaterialIcons } from '@expo/vector-icons';
 import { GpsTrackingProvider } from './src/contexts/GpsTrackingContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { TipsProvider } from './src/contexts/TipsContext';
@@ -32,6 +34,7 @@ import ManagerDashboardScreen from './src/screens/ManagerDashboardScreen';
 import SavedAddressesScreen from './src/screens/SavedAddressesScreen';
 import DataSyncScreen from './src/screens/DataSyncScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import PreferencesScreen from './src/screens/PreferencesScreen';
 import { RootStackParamList } from './src/types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -40,6 +43,12 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentRouteName, setCurrentRouteName] = useState<string>('');
+  
+  // Load fonts using the useFonts hook
+  const [fontsLoaded] = useFonts({
+    ...MaterialIcons.font,
+  });
 
   useEffect(() => {
     initializeApp();
@@ -91,18 +100,14 @@ export default function App() {
     setCurrentEmployee(updatedEmployee);
   };
 
-  if (isLoading) {
+  if (isLoading || !fontsLoaded) {
     return (
-      <ThemeProvider>
-        <TipsProvider>
-          <GpsTrackingProvider>
-            <StatusBar style="auto" />
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
-              <Text>Loading...</Text>
-            </View>
-          </GpsTrackingProvider>
-        </TipsProvider>
-      </ThemeProvider>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+        <ActivityIndicator size="large" color="#2196F3" />
+        <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
+          {!fontsLoaded ? 'Loading fonts...' : 'Loading...'}
+        </Text>
+      </View>
     );
   }
 
@@ -127,7 +132,15 @@ export default function App() {
       <TipsProvider>
         <NotificationProvider currentEmployeeId={currentEmployee?.id}>
           <GpsTrackingProvider>
-          <NavigationContainer>
+          <NavigationContainer
+            onStateChange={(state) => {
+              // Track current route name
+              const route = state?.routes[state.index];
+              if (route) {
+                setCurrentRouteName(route.name);
+              }
+            }}
+          >
           <StatusBar style="auto" />
           <Stack.Navigator
             initialRouteName="Home"
@@ -158,8 +171,9 @@ export default function App() {
                 currentEmployeeId: currentEmployee?.id
               } as any}
             />
+            <Stack.Screen name="Preferences" component={PreferencesScreen} />
           </Stack.Navigator>
-          {Platform.OS === 'ios' && <GlobalGpsStopButton />}
+          {Platform.OS === 'ios' && <GlobalGpsStopButton currentRouteName={currentRouteName} />}
         </NavigationContainer>
           </GpsTrackingProvider>
         </NotificationProvider>

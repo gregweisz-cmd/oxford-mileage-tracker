@@ -120,7 +120,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         <Toolbar>
           <OxfordHouseLogo size={32} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
-            Oxford House Mileage Tracker
+            Oxford House Expense Tracker
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Chip

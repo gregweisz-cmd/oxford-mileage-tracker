@@ -206,7 +206,70 @@ export class DatabaseService {
           totalMiles REAL NOT NULL,
           status TEXT NOT NULL,
           submittedAt TEXT,
+          submittedBy TEXT,
+          reviewedAt TEXT,
+          reviewedBy TEXT,
           approvedAt TEXT,
+          approvedBy TEXT,
+          rejectedAt TEXT,
+          rejectedBy TEXT,
+          rejectionReason TEXT,
+          comments TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+      `);
+
+      // Create weekly_reports table
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS weekly_reports (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          weekNumber INTEGER NOT NULL,
+          year INTEGER NOT NULL,
+          startDate TEXT NOT NULL,
+          endDate TEXT NOT NULL,
+          totalMiles REAL NOT NULL,
+          totalExpenses REAL DEFAULT 0,
+          status TEXT NOT NULL,
+          submittedAt TEXT,
+          submittedBy TEXT,
+          reviewedAt TEXT,
+          reviewedBy TEXT,
+          approvedAt TEXT,
+          approvedBy TEXT,
+          rejectedAt TEXT,
+          rejectedBy TEXT,
+          rejectionReason TEXT,
+          comments TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+      `);
+
+      // Create biweekly_reports table (month-based: 1-15, 16-end)
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS biweekly_reports (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          month INTEGER NOT NULL,
+          year INTEGER NOT NULL,
+          periodNumber INTEGER NOT NULL,
+          startDate TEXT NOT NULL,
+          endDate TEXT NOT NULL,
+          totalMiles REAL NOT NULL,
+          totalExpenses REAL DEFAULT 0,
+          status TEXT NOT NULL,
+          submittedAt TEXT,
+          submittedBy TEXT,
+          reviewedAt TEXT,
+          reviewedBy TEXT,
+          approvedAt TEXT,
+          approvedBy TEXT,
+          rejectedAt TEXT,
+          rejectedBy TEXT,
+          rejectionReason TEXT,
+          comments TEXT,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );
@@ -306,6 +369,22 @@ export class DatabaseService {
         );
       `);
 
+      // Create per_diem_rules table for Per Diem rule management
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS per_diem_rules (
+          id TEXT PRIMARY KEY,
+          costCenter TEXT NOT NULL,
+          maxAmount REAL NOT NULL,
+          minHours REAL NOT NULL,
+          minMiles REAL NOT NULL,
+          minDistanceFromBase REAL NOT NULL,
+          description TEXT NOT NULL,
+          useActualAmount INTEGER DEFAULT 0,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+      `);
+
       // Create current_employee table
       await database.execAsync(`
         CREATE TABLE IF NOT EXISTS current_employee (
@@ -323,6 +402,28 @@ export class DatabaseService {
         `);
       } catch (error) {
         // Column might already exist, ignore error
+      }
+
+      // Add approval workflow columns to monthly_reports table (migration)
+      const approvalColumns = [
+        'submittedBy TEXT',
+        'reviewedAt TEXT',
+        'reviewedBy TEXT',
+        'approvedBy TEXT',
+        'rejectedAt TEXT',
+        'rejectedBy TEXT',
+        'rejectionReason TEXT',
+        'comments TEXT'
+      ];
+
+      for (const column of approvalColumns) {
+        try {
+          await database.execAsync(`
+            ALTER TABLE monthly_reports ADD COLUMN ${column};
+          `);
+        } catch (error) {
+          // Column might already exist, ignore error
+        }
       }
 
       // Create performance indexes
@@ -568,10 +669,6 @@ export class DatabaseService {
     const now = new Date().toISOString();
     const database = await getDatabase();
     
-    console.log('💾 Database: Updating employee');
-    console.log('💾 Database: Employee ID:', id);
-    console.log('💾 Database: Updates:', updates);
-    
     // Filter out fields we don't want to update
     const fields = Object.keys(updates).filter(key => 
       key !== 'id' && 
@@ -579,10 +676,7 @@ export class DatabaseService {
       key !== 'updatedAt'
     );
     
-    console.log('💾 Database: Fields to update:', fields);
-    
     if (fields.length === 0) {
-      console.log('💾 Database: No fields to update');
       return; // Nothing to update
     }
     
@@ -596,15 +690,21 @@ export class DatabaseService {
       return value;
     });
     
-    console.log('💾 Database: SQL Query:', `UPDATE employees SET ${setClause}, updatedAt = ? WHERE id = ?`);
-    console.log('💾 Database: Values:', [...values, now, id]);
-    
     await database.runAsync(
       `UPDATE employees SET ${setClause}, updatedAt = ? WHERE id = ?`,
       [...values, now, id] as any[]
     );
     
-    console.log('✅ Database: Employee updated successfully');
+    // Sync updated employee to backend
+    try {
+      const updatedEmployee = await this.getEmployeeById(id);
+      if (updatedEmployee) {
+        await this.syncToApi('updateEmployee', updatedEmployee);
+      }
+    } catch (error) {
+      console.error('❌ Database: Error syncing employee update:', error);
+      // Don't throw - employee is still updated locally
+    }
   }
 
   static async deleteEmployee(id: string): Promise<void> {
@@ -681,12 +781,8 @@ export class DatabaseService {
       console.error('❌ Database: Error analyzing mileage entry:', error);
     }
 
-    // Update end odometer reading for the day
-    try {
-      await this.updateEndOdometerReading(entry.employeeId, entry.date);
-    } catch (error) {
-      console.error('❌ Database: Error updating end odometer reading:', error);
-    }
+    // End odometer is calculated at end of day, not after each entry
+    // No need to update here
 
     return newEntry;
   }
@@ -1645,30 +1741,8 @@ export class DatabaseService {
   }
 
   // Update end odometer reading for a specific day
-  private static async updateEndOdometerReading(employeeId: string, date: Date): Promise<void> {
-    const database = await getDatabase();
-    const dateStr = date.toISOString().split('T')[0];
-    
-    // Get the daily odometer reading for this day
-    const dailyReading = await database.getFirstAsync(
-      'SELECT * FROM daily_odometer_readings WHERE employeeId = ? AND date(date) = date(?)',
-      [employeeId, dateStr]
-    ) as any;
-    
-    if (dailyReading) {
-      // Calculate new end reading
-      const totalMiles = await this.getTotalMilesForDay(employeeId, date);
-      const endOdometerReading = dailyReading.odometerReading + totalMiles;
-      
-      // Update the end reading
-      await database.runAsync(
-        'UPDATE daily_odometer_readings SET endOdometerReading = ?, updatedAt = ? WHERE id = ?',
-        [endOdometerReading, new Date().toISOString(), dailyReading.id]
-      );
-      
-      console.log(`📊 Updated end odometer reading for ${dateStr}: ${dailyReading.odometerReading} + ${totalMiles} = ${endOdometerReading}`);
-    }
-  }
+  // Removed: updateEndOdometerReading - endOdometerReading column no longer exists
+  // End odometer is now calculated at the end of the day, not after each entry
 
   private static generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -1679,13 +1753,6 @@ export class DatabaseService {
     const id = this.generateId();
     const now = new Date().toISOString();
     const database = await getDatabase();
-    
-    console.log('💾 Database: Creating time tracking entry');
-    console.log('💾 Database: Employee ID:', tracking.employeeId);
-    console.log('💾 Database: Date:', tracking.date.toISOString());
-    console.log('💾 Database: Date month:', tracking.date.getMonth() + 1, 'year:', tracking.date.getFullYear());
-    console.log('💾 Database: Category:', tracking.category);
-    console.log('💾 Database: Hours:', tracking.hours);
     
     await database.runAsync(
       'INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -1702,8 +1769,6 @@ export class DatabaseService {
       ]
     );
 
-    console.log('✅ Database: Time tracking entry created successfully with ID:', id);
-
     const newTracking = {
       id,
       employeeId: tracking.employeeId,
@@ -1719,7 +1784,7 @@ export class DatabaseService {
     try {
       await this.syncToApi('addTimeTracking', newTracking);
     } catch (error) {
-      console.error('❌ Database: Error syncing time tracking to API:', error);
+      console.error('❌ Database: Error syncing time tracking:', error);
       // Don't throw - time tracking is still saved locally
     }
 

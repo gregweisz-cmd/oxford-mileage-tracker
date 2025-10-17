@@ -8,9 +8,15 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
+import { useNavigation } from '@react-navigation/native';
 
-export default function GlobalGpsStopButton() {
-  const { isTracking, currentDistance, stopTracking, isStationaryTooLong, getStationaryDuration } = useGpsTracking();
+interface GlobalGpsStopButtonProps {
+  currentRouteName?: string;
+}
+
+export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopButtonProps) {
+  const { isTracking, currentDistance, requestStopTracking, isStationaryTooLong, getStationaryDuration } = useGpsTracking();
+  const navigation = useNavigation<any>();
 
   useEffect(() => {
     if (isTracking) {
@@ -30,12 +36,8 @@ export default function GlobalGpsStopButton() {
               {
                 text: 'Stop Tracking',
                 style: 'destructive',
-                onPress: async () => {
-                  try {
-                    await stopTracking();
-                  } catch (error) {
-                    Alert.alert('Error', 'Failed to stop GPS tracking');
-                  }
+                onPress: () => {
+                  requestStopTracking();
                 },
               },
             ]
@@ -45,8 +47,9 @@ export default function GlobalGpsStopButton() {
 
       return () => clearInterval(checkStationary);
     }
-  }, [isTracking, isStationaryTooLong, getStationaryDuration, stopTracking]);
+  }, [isTracking, isStationaryTooLong, getStationaryDuration, requestStopTracking]);
 
+  // Don't show if not tracking
   if (!isTracking) {
     return null;
   }
@@ -62,20 +65,22 @@ export default function GlobalGpsStopButton() {
   const handleStopTracking = () => {
     Alert.alert(
       'Stop GPS Tracking',
-      `Are you sure you want to stop tracking?\n\nDistance tracked: ${formatDistance(currentDistance)}`,
+      `Are you sure you want to stop tracking?\n\nDistance tracked: ${formatDistance(currentDistance)}\n\nYou'll be asked to confirm your destination.`,
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Stop',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await stopTracking();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to stop GPS tracking');
+          text: 'Continue',
+          style: 'default',
+          onPress: () => {
+            // Navigate to GPS Tracking screen with flag to show end modal
+            if (currentRouteName !== 'GpsTracking') {
+              navigation.navigate('GpsTracking', { showEndModal: true });
+            } else {
+              // Already on GPS screen, show modal immediately
+              requestStopTracking();
             }
           },
         },

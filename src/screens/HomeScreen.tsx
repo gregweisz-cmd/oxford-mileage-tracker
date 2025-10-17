@@ -17,12 +17,16 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { DashboardService } from '../services/dashboardService';
 import { PerDiemService } from '../services/perDiemService';
+import { PerDiemDashboardService } from '../services/perDiemDashboardService';
+import { PreferencesService } from '../services/preferencesService';
 import { DemoDataService } from '../services/demoDataService';
 import { PermissionService } from '../services/permissionService';
 import { MileageEntry, Employee, Receipt } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
 import UnifiedHeader from '../components/UnifiedHeader';
 import CostCenterSelector from '../components/CostCenterSelector';
+import PerDiemWidget from '../components/PerDiemWidget';
+import DashboardTile, { TileConfig } from '../components/DashboardTile';
 import LogoutService from '../services/logoutService';
 import { useTheme } from '../contexts/ThemeContext';
 import { BaseAddressDetectionService } from '../services/baseAddressDetectionService';
@@ -68,6 +72,9 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [availableEmployees, setAvailableEmployees] = useState<Employee[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [perDiemStats, setPerDiemStats] = useState<any>(null);
+  const [isEditingTiles, setIsEditingTiles] = useState(false);
+  const [dashboardTiles, setDashboardTiles] = useState<TileConfig[]>([]);
 
   // Generate dynamic styles based on theme
   const dynamicStyles = StyleSheet.create({
@@ -286,8 +293,83 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  // Initialize dashboard tiles
+  const initializeTiles = async (): Promise<TileConfig[]> => {
+    const allTiles: Record<string, TileConfig> = {
+      'gps-tracking': {
+        id: 'gps-tracking',
+        icon: 'gps-fixed',
+        label: 'Start GPS Tracking',
+        color: '#4CAF50',
+        onPress: handleGpsTracking,
+        isPrimary: true,
+      },
+      'add-receipt': {
+        id: 'add-receipt',
+        icon: 'camera-alt',
+        label: 'Add Receipt',
+        color: colors.primary,
+        onPress: handleAddReceipt,
+      },
+      'manual-entry': {
+        id: 'manual-entry',
+        icon: 'add',
+        label: 'Manual Entry',
+        color: colors.primary,
+        onPress: handleAddEntry,
+      },
+      'view-receipts': {
+        id: 'view-receipts',
+        icon: 'receipt',
+        label: 'View Receipts',
+        color: colors.primary,
+        onPress: handleViewReceipts,
+      },
+      'hours-worked': {
+        id: 'hours-worked',
+        icon: 'access-time',
+        label: 'Hours Worked',
+        color: colors.primary,
+        onPress: handleViewHoursWorked,
+      },
+      'daily-description': {
+        id: 'daily-description',
+        icon: 'description',
+        label: 'Daily Description',
+        color: colors.primary,
+        onPress: () => navigation.navigate('DailyDescription'),
+      },
+      'cost-center-reports': {
+        id: 'cost-center-reports',
+        icon: 'assessment',
+        label: 'Cost Center Reports',
+        color: colors.primary,
+        onPress: () => navigation.navigate('CostCenterReporting'),
+      },
+      'view-reports': {
+        id: 'view-reports',
+        icon: 'assessment',
+        label: 'View Reports',
+        color: colors.primary,
+        onPress: handleViewReports,
+      },
+    };
+
+    // Get saved order from preferences
+    const prefs = await PreferencesService.getPreferences();
+    const savedOrder = prefs.dashboardTileOrder;
+
+    // Build tiles array in saved order
+    const orderedTiles = savedOrder
+      .map(id => allTiles[id])
+      .filter(tile => tile !== undefined);
+
+    return orderedTiles;
+  };
+
   useEffect(() => {
     loadData();
+    initializeTiles().then(setDashboardTiles);
   }, []);
 
   // Refresh data when screen comes into focus
@@ -324,12 +406,14 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       const perDiemFromReceipts = dashboardData.monthlyStats.totalPerDiemReceipts || 0;
       setPerDiemThisMonth(perDiemFromReceipts);
       
-      // Show warning if approaching or exceeding $350 monthly max
-      if (perDiemFromReceipts >= 350) {
-        console.warn('⚠️ Per Diem limit reached: $350 monthly maximum');
-      } else if (perDiemFromReceipts >= 300) {
-        console.warn(`⚠️ Approaching Per Diem limit: $${perDiemFromReceipts.toFixed(2)} / $350`);
-      }
+      // Load enhanced Per Diem statistics
+      const now = new Date();
+      const stats = await PerDiemDashboardService.getPerDiemStats(
+        employee,
+        now.getMonth() + 1,
+        now.getFullYear()
+      );
+      setPerDiemStats(stats);
 
       // Calculate total expenses
       const expenseBreakdown = PerDiemService.getExpenseBreakdown(
@@ -1052,50 +1136,44 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           </TouchableOpacity>
         </View>
 
+        {/* Enhanced Per Diem Widget */}
+        {perDiemStats && (
+          <PerDiemWidget
+            currentTotal={perDiemStats.currentMonthTotal}
+            monthlyLimit={perDiemStats.monthlyLimit}
+            daysEligible={perDiemStats.daysEligible}
+            daysClaimed={perDiemStats.daysClaimed}
+            isEligibleToday={perDiemStats.isEligibleToday}
+            onPress={() => navigation.navigate('Receipts')}
+            colors={{
+              card: colors.card,
+              text: colors.text,
+              textSecondary: colors.textSecondary
+            }}
+          />
+        )}
+
         {/* Secondary Stats */}
         <View style={styles.statsContainer}>
           <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Receipts')}>
-            <MaterialIcons 
-              name="restaurant" 
-              size={24} 
-              color={perDiemThisMonth >= 350 ? "#f44336" : perDiemThisMonth >= 300 ? "#FF9800" : "#9C27B0"} 
-            />
-            <Text style={[
-              dynamicStyles.statValue,
-              perDiemThisMonth >= 350 && { color: '#f44336' },
-              perDiemThisMonth >= 300 && perDiemThisMonth < 350 && { color: '#FF9800' }
-            ]}>
-              ${perDiemThisMonth.toFixed(2)}
-            </Text>
-            <Text style={dynamicStyles.statLabel}>
-              Per Diem Receipts
-              {perDiemThisMonth >= 350 && ' ⚠️'}
-            </Text>
-            {perDiemThisMonth >= 300 && (
-              <Text style={{
-                fontSize: 10,
-                color: perDiemThisMonth >= 350 ? '#f44336' : '#FF9800',
-                marginTop: 4,
-                fontWeight: '600'
-              }}>
-                {perDiemThisMonth >= 350 ? 'LIMIT REACHED' : `$${(350 - perDiemThisMonth).toFixed(0)} left`}
-              </Text>
-            )}
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Receipts')}>
             <MaterialIcons name="receipt" size={24} color="#E91E63" />
             <Text style={dynamicStyles.statValue}>${totalReceiptsThisMonth.toFixed(2)}</Text>
-            <Text style={dynamicStyles.statLabel}>Receipts</Text>
+            <Text style={dynamicStyles.statLabel}>Other Receipts</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Tertiary Stats */}
-        <View style={styles.statsContainer}>
+          
           <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('HoursWorked')}>
             <MaterialIcons name="access-time" size={24} color="#FF5722" />
             <Text style={dynamicStyles.statValue}>{totalHoursThisMonth.toFixed(1)}h</Text>
             <Text style={dynamicStyles.statLabel}>Hours Worked</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Total Expenses Card */}
+        <View style={styles.statsContainer}>
+          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Reports')}>
+            <MaterialIcons name="attach-money" size={24} color="#4CAF50" />
+            <Text style={dynamicStyles.statValue}>${totalExpensesThisMonth.toFixed(2)}</Text>
+            <Text style={dynamicStyles.statLabel}>Total Expenses</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Reports')}>
@@ -1138,80 +1216,72 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         )}
 
         {/* Quick Actions */}
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity 
-            style={[dynamicStyles.actionButton, isSyncing && { opacity: 0.6 }]} 
-            onPress={handleManualSync}
-            disabled={isSyncing}
+        <View style={styles.actionsHeader}>
+          <Text style={styles.actionsTitle}>Quick Actions</Text>
+          <TouchableOpacity
+            style={styles.rearrangeButton}
+            onPress={() => setIsEditingTiles(!isEditingTiles)}
           >
-            <MaterialIcons name={isSyncing ? "sync" : "cloud-upload"} size={24} color="#2196F3" />
-            <Text style={dynamicStyles.actionButtonText}>
-              {isSyncing ? 'Syncing...' : 'Sync to Backend'}
+            <MaterialIcons 
+              name={isEditingTiles ? 'check' : 'edit'} 
+              size={20} 
+              color={isEditingTiles ? '#4CAF50' : colors.primary} 
+            />
+            <Text style={[styles.rearrangeButtonText, isEditingTiles && { color: '#4CAF50' }]}>
+              {isEditingTiles ? 'Done' : 'Rearrange'}
             </Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButton} onPress={handleGpsTracking}>
-            <MaterialIcons name="gps-fixed" size={24} color="#4CAF50" />
-            <Text style={dynamicStyles.actionButtonText}>Start GPS Tracking</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleAddReceipt}>
-            <MaterialIcons name="camera-alt" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Add Receipt</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleAddEntry}>
-            <MaterialIcons name="add" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Manual Entry</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewReceipts}>
-            <MaterialIcons name="receipt" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>View Receipts</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewHoursWorked}>
-            <MaterialIcons name="access-time" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Hours Worked</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={() => navigation.navigate('DailyDescription')}>
-            <MaterialIcons name="description" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Daily Description</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={() => navigation.navigate('CostCenterReporting')}>
-            <MaterialIcons name="assessment" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Cost Center Reports</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewReports}>
-            <MaterialIcons name="assessment" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>View Reports</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleEditBaseAddress}>
-            <MaterialIcons name="location-on" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Edit Base Address</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleOpenNavigation}>
-            <MaterialIcons name="navigation" size={24} color={colors.primary} />
-                <Text style={dynamicStyles.actionButtonSecondaryText}>{getNavigationButtonText()}</Text>
-          </TouchableOpacity>
-          
-          {/* Admin and Supervisor functions removed from mobile app */}
-          {/* All management functions are available in the web portal only */}
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={handleViewSavedAddresses}>
-            <MaterialIcons name="location-on" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Saved Addresses</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.actionButtonSecondary} onPress={() => navigation.navigate('DataSync')}>
-            <MaterialIcons name="sync" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.actionButtonSecondaryText}>Data Sync</Text>
-          </TouchableOpacity>
+        </View>
+
+        {isEditingTiles && (
+          <View style={styles.editHint}>
+            <MaterialIcons name="info" size={16} color="#2196F3" />
+            <Text style={styles.editHintText}>
+              Use ↑ ↓ arrows to rearrange tiles
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.actionsContainer}>
+          {dashboardTiles.map((tile, index) => (
+            <View key={tile.id}>
+              <DashboardTile tile={tile} isDragging={false} />
+              {isEditingTiles && index < dashboardTiles.length - 1 && (
+                <View style={styles.reorderButtons}>
+                  {index > 0 && (
+                    <TouchableOpacity
+                      style={styles.reorderButton}
+                      onPress={async () => {
+                        const newTiles = [...dashboardTiles];
+                        [newTiles[index], newTiles[index - 1]] = [newTiles[index - 1], newTiles[index]];
+                        setDashboardTiles(newTiles);
+                        await PreferencesService.updatePreferences({
+                          dashboardTileOrder: newTiles.map(t => t.id)
+                        });
+                      }}
+                    >
+                      <MaterialIcons name="arrow-upward" size={16} color="#2196F3" />
+                    </TouchableOpacity>
+                  )}
+                  {index < dashboardTiles.length - 1 && (
+                    <TouchableOpacity
+                      style={styles.reorderButton}
+                      onPress={async () => {
+                        const newTiles = [...dashboardTiles];
+                        [newTiles[index], newTiles[index + 1]] = [newTiles[index + 1], newTiles[index]];
+                        setDashboardTiles(newTiles);
+                        await PreferencesService.updatePreferences({
+                          dashboardTileOrder: newTiles.map(t => t.id)
+                        });
+                      }}
+                    >
+                      <MaterialIcons name="arrow-downward" size={16} color="#2196F3" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+          ))}
         </View>
 
         {/* Quick Access to Recent Entries */}
@@ -2277,6 +2347,63 @@ const styles = StyleSheet.create({
     color: '#2e7d32',
     marginLeft: 6,
     fontWeight: '500',
+  },
+  // Draggable Tiles Styles
+  actionsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  actionsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  rearrangeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  rearrangeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2196F3',
+    marginLeft: 4,
+  },
+  editHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e3f2fd',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  editHintText: {
+    fontSize: 13,
+    color: '#1976d2',
+    marginLeft: 8,
+    flex: 1,
+  },
+  reorderButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: -6,
+    marginBottom: 6,
+  },
+  reorderButton: {
+    backgroundColor: '#e3f2fd',
+    padding: 8,
+    borderRadius: 20,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

@@ -1,4 +1,4 @@
-// Cost Centers for Oxford House Staff Tracker
+// Cost Centers for Oxford House Expense Tracker
 // Updated from Google Sheet data - Listed in alphabetical order
 
 export const COST_CENTERS = [

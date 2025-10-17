@@ -49,6 +49,9 @@ import { useWebTips, TipsProvider } from './contexts/TipsContext';
 // Real-time sync imports
 import { useRealtimeSync, useRealtimeStatus } from './hooks/useRealtimeSync';
 
+// Per Diem Rules imports
+import { PerDiemRulesService } from './services/perDiemRulesService';
+
 // Data entry imports
 import { DataEntryManager } from './components/DataEntryManager';
 
@@ -370,7 +373,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Data filtered for current month
           
           // Generate daily entries based on real data
-          const dailyEntries = Array.from({ length: daysInMonth }, (_, i) => {
+          const dailyEntries = await Promise.all(Array.from({ length: daysInMonth }, async (_, i) => {
             const day = i + 1;
             const date = new Date(reportYear, reportMonth - 1, day);
             const dateStr = date.toLocaleDateString('en-US', { 
@@ -447,6 +450,46 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               return trackingDate.getUTCDate() === day;
             });
             
+            // Find Per Diem receipts for this day (use UTC to avoid timezone issues)
+            const dayPerDiemReceipts = currentMonthReceipts.filter((receipt: any) => {
+              const receiptDate = new Date(receipt.date);
+              return receiptDate.getUTCDate() === day && receipt.category === 'Per Diem';
+            });
+            
+            // Calculate Per Diem amount from receipts
+            const perDiemFromReceipts = dayPerDiemReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
+            
+            // Calculate Per Diem based on rules if no receipts exist
+            let calculatedPerDiem = perDiemFromReceipts;
+            if (perDiemFromReceipts === 0 && totalDayMiles > 0 && dayTimeTracking?.hours > 0) {
+              // Get employee's cost center
+              const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
+              
+              // Calculate Per Diem using rules
+              try {
+                const perDiemResult = await PerDiemRulesService.calculatePerDiem(
+                  costCenter,
+                  dayTimeTracking.hours || 0,
+                  totalDayMiles,
+                  0, // distanceFromBase - would need geocoding
+                  perDiemFromReceipts
+                );
+                
+                if (perDiemResult.meetsRequirements) {
+                  calculatedPerDiem = perDiemResult.amount;
+                  console.log(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
+                    costCenter,
+                    hours: dayTimeTracking.hours,
+                    miles: totalDayMiles,
+                    amount: calculatedPerDiem,
+                    rule: perDiemResult.rule
+                  });
+                }
+              } catch (error) {
+                console.error('❌ StaffPortal: Error calculating Per Diem:', error);
+              }
+            }
+            
             return {
               day,
               date: dateStr,
@@ -462,15 +505,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               parkingTolls: 0,
               groundTransportation: 0,
               hotelsAirbnb: 0,
-              perDiem: 0
+              perDiem: calculatedPerDiem
             };
-          });
+          }));
           
           // Calculate totals from real data
           const totalMiles = currentMonthMileage.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0);
           const totalMileageAmount = totalMiles * 0.445;
           const totalReceipts = currentMonthReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
           const totalHours = currentMonthTimeTracking.reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
+          
+          // Calculate total Per Diem from receipts (separate from other receipts)
+          const totalPerDiemFromReceipts = currentMonthReceipts
+            .filter((receipt: any) => receipt.category === 'Per Diem')
+            .reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
+          
+          // Calculate total Per Diem from daily entries (manual entries + receipt-based)
+          const totalPerDiemFromEntries = dailyEntries.reduce((sum: number, entry: any) => sum + (entry.perDiem || 0), 0);
           
           // Create employee expense data with real data
           const expenseData: EmployeeExpenseData = {
@@ -499,8 +550,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             parkingTolls: 0,
             groundTransportation: 0,
             hotelsAirbnb: 0,
-            perDiem: 0,
-            phoneInternetFax: totalReceipts, // Use receipts total for now
+            perDiem: totalPerDiemFromReceipts, // Use Per Diem receipts total
+            phoneInternetFax: totalReceipts - totalPerDiemFromReceipts, // Exclude Per Diem from other receipts
             shippingPostage: 0,
             printingCopying: 0,
             officeSupplies: 0,

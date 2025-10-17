@@ -15,7 +15,7 @@ export class SyncIntegrationService {
   private static syncQueue: SyncQueueItem[] = [];
   private static isProcessingQueue = false;
   private static autoSyncEnabled = true; // Enable auto-sync for real-time backend updates
-  private static syncInterval: NodeJS.Timeout | null = null;
+  private static syncInterval: ReturnType<typeof setInterval> | null = null;
   private static readonly MAX_RETRY_ATTEMPTS = 3;
   private static readonly SYNC_INTERVAL_MS = 5000; // 5 seconds for faster sync
 
@@ -113,13 +113,25 @@ export class SyncIntegrationService {
       retryCount: 0
     };
     
+    // Check if this exact operation is already queued (prevent duplicates)
+    // Only check for duplicates within the last 10 seconds to allow legitimate updates
+    const recentDuplicates = this.syncQueue.filter(item => 
+      item.entityType === entityType && 
+      item.operation === operation &&
+      item.data.id === data.id &&
+      (new Date().getTime() - item.timestamp.getTime()) < 10000 // Within last 10 seconds
+    );
+    
+    if (recentDuplicates.length > 0) {
+      console.log(`⚠️ SyncIntegration: Duplicate ${operation} for ${entityType} ${data.id} already queued recently, skipping`);
+      return;
+    }
+    
     this.syncQueue.push(queueItem);
     console.log(`🔄 SyncIntegration: Queued ${operation} operation for ${entityType}:`, data.id);
     
-    // Process queue immediately if auto-sync is enabled
-    if (this.autoSyncEnabled) {
-      this.processSyncQueue();
-    }
+    // Don't process immediately - let the interval handle it to avoid duplicates
+    // The interval will process the queue every 5 seconds
   }
 
   /**
@@ -368,6 +380,20 @@ export class SyncIntegrationService {
   static clearSyncQueue(): void {
     this.syncQueue = [];
     console.log('🔄 SyncIntegration: Sync queue cleared');
+  }
+
+  /**
+   * Refresh Per Diem rules from backend
+   */
+  static async refreshPerDiemRules(): Promise<void> {
+    try {
+      console.log('🔄 SyncIntegration: Manually refreshing Per Diem rules...');
+      await ApiSyncService.syncFromBackend();
+      console.log('✅ SyncIntegration: Per Diem rules refreshed successfully');
+    } catch (error) {
+      console.error('❌ SyncIntegration: Error refreshing Per Diem rules:', error);
+      throw error;
+    }
   }
 
   /**

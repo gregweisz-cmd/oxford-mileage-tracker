@@ -1,6 +1,6 @@
-# OH Staff Tracker
+# Oxford House Expense Tracker
 
-A cross-platform mobile and web application for Oxford House employees to track mileage, manage receipts, and export data to Slack.
+A cross-platform mobile and web application for Oxford House employees to track mileage, receipts, hours worked, and manage expense reporting.
 
 ## Features
 
