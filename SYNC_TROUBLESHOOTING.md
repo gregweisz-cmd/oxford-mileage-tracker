@@ -1,5 +1,13 @@
 # Mobile App to Web Portal Sync Troubleshooting
 
+## ✅ SYNC BUG FIXED - October 18, 2025
+
+**The sync is now working!** The critical bug was fixed - entity type case mismatch causing data to be sent as "mileageentrys" instead of "mileageEntries". See `SYNC_BUG_FIXED.md` for full details.
+
+---
+
+## Historical Troubleshooting Guide (For Reference)
+
 ## Issues Fixed Today
 
 ### 1. ✅ Duplicate GPS Tracked Badge

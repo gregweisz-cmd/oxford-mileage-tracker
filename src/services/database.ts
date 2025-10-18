@@ -59,14 +59,11 @@ export class DatabaseService {
 
   private static async syncToApi(operation: string, data: any) {
     try {
-      console.log(`🔄 Database: syncToApi called - operation: ${operation}, entity ID: ${data.id}`);
-      console.log(`🔄 Database: syncCallback exists: ${!!syncCallback}`);
-      
       // Increment pending changes counter
       ApiSyncService.incrementPendingChanges();
       
       // Queue the sync operation for batch processing
-      // Map operation names to correct entity types
+      // Map operation names to correct entity types (must preserve camelCase for SyncIntegrationService)
       let entityType: string;
       if (operation === 'addMileageEntry') {
         entityType = 'mileageEntry';
@@ -79,9 +76,8 @@ export class DatabaseService {
       } else {
         entityType = operation.replace('add', '').replace('update', '').toLowerCase();
       }
-      console.log(`🔄 Database: Queueing ${entityType} for sync...`);
+      
       queueSyncOperation('create', entityType as any, data);
-      console.log(`✅ Database: Queued ${entityType} successfully`);
       
     } catch (error) {
       console.error(`❌ Database: Error queuing ${operation} for sync:`, error);
