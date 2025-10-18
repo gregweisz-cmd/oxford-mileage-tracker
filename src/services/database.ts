@@ -59,13 +59,17 @@ export class DatabaseService {
 
   private static async syncToApi(operation: string, data: any) {
     try {
+      console.log(`🔄 Database: syncToApi called - operation: ${operation}, entity ID: ${data.id}`);
+      console.log(`🔄 Database: syncCallback exists: ${!!syncCallback}`);
+      
       // Increment pending changes counter
       ApiSyncService.incrementPendingChanges();
       
       // Queue the sync operation for batch processing
       const entityType = operation.replace('add', '').toLowerCase();
+      console.log(`🔄 Database: Queueing ${entityType} for sync...`);
       queueSyncOperation('create', entityType as any, data);
-      
+      console.log(`✅ Database: Queued ${entityType} successfully`);
       
     } catch (error) {
       console.error(`❌ Database: Error queuing ${operation} for sync:`, error);
