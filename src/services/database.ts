@@ -875,18 +875,91 @@ export class DatabaseService {
   static async updateMileageEntry(id: string, updates: Partial<MileageEntry>): Promise<void> {
     const now = new Date().toISOString();
     const database = await getDatabase();
-    const fields = Object.keys(updates).filter(key => key !== 'id' && key !== 'createdAt');
-    const setClause = fields.map(field => `${field} = ?`).join(', ');
-    const values = fields.map(field => {
+    
+    // Filter out object fields that need special handling
+    const simpleFields = Object.keys(updates).filter(key => 
+      key !== 'id' && 
+      key !== 'createdAt' && 
+      key !== 'startLocationDetails' && 
+      key !== 'endLocationDetails'
+    );
+    
+    const setClause = simpleFields.map(field => `${field} = ?`).join(', ');
+    const values = simpleFields.map(field => {
       const value = updates[field as keyof MileageEntry];
-      if (value instanceof Date) return value.toISOString();
+      if (value instanceof Date) {
+        // Store dates as YYYY-MM-DD only
+        const dateObj = value instanceof Date ? value : new Date(value);
+        return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+      }
+      if (typeof value === 'boolean') return value ? 1 : 0;
       return value;
     });
     
+    // Handle location details separately if they exist
+    if (updates.startLocationDetails) {
+      simpleFields.push('startLocationName', 'startLocationAddress', 'startLocationLat', 'startLocationLng');
+      values.push(
+        updates.startLocationDetails.name || null,
+        updates.startLocationDetails.address || null,
+        updates.startLocationDetails.latitude || null,
+        updates.startLocationDetails.longitude || null
+      );
+    }
+    
+    if (updates.endLocationDetails) {
+      simpleFields.push('endLocationName', 'endLocationAddress', 'endLocationLat', 'endLocationLng');
+      values.push(
+        updates.endLocationDetails.name || null,
+        updates.endLocationDetails.address || null,
+        updates.endLocationDetails.latitude || null,
+        updates.endLocationDetails.longitude || null
+      );
+    }
+    
+    const finalSetClause = simpleFields.map(field => `${field} = ?`).join(', ');
+    
     await database.runAsync(
-      `UPDATE mileage_entries SET ${setClause}, updatedAt = ? WHERE id = ?`,
+      `UPDATE mileage_entries SET ${finalSetClause}, updatedAt = ? WHERE id = ?`,
       [...values, now, id] as any[]
     );
+    
+    // Trigger sync
+    const updatedEntry = await this.getMileageEntryById(id);
+    if (updatedEntry) {
+      await this.syncToApi('updateMileageEntry', updatedEntry);
+    }
+  }
+
+  static async getMileageEntryById(id: string): Promise<MileageEntry | null> {
+    const database = await getDatabase();
+    const result = await database.getFirstAsync(
+      'SELECT * FROM mileage_entries WHERE id = ?',
+      [id]
+    ) as any;
+    
+    if (!result) return null;
+    
+    return {
+      ...result,
+      date: this.parseDateSafe(result.date),
+      costCenter: result.costCenter || '',
+      isGpsTracked: Boolean(result.isGpsTracked),
+      startLocationDetails: result.startLocationName ? {
+        name: result.startLocationName,
+        address: result.startLocationAddress || '',
+        latitude: result.startLocationLat,
+        longitude: result.startLocationLng
+      } : undefined,
+      endLocationDetails: result.endLocationName ? {
+        name: result.endLocationName,
+        address: result.endLocationAddress || '',
+        latitude: result.endLocationLat,
+        longitude: result.endLocationLng
+      } : undefined,
+      createdAt: new Date(result.createdAt),
+      updatedAt: new Date(result.updatedAt)
+    };
   }
 
   static async deleteMileageEntry(id: string): Promise<void> {

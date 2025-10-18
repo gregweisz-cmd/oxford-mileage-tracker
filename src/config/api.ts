@@ -14,7 +14,7 @@ const LOCAL_API_URL = 'http://192.168.86.101:3002/api';
 
 // TEMPORARY: Force production for mobile testing from anywhere
 // This allows testing while driving without localhost connectivity
-const USE_PRODUCTION_FOR_TESTING = true;
+const USE_PRODUCTION_FOR_TESTING = false;
 
 // Determine which API URL to use
 export const API_BASE_URL = USE_PRODUCTION_FOR_TESTING
