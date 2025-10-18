@@ -66,7 +66,19 @@ export class DatabaseService {
       ApiSyncService.incrementPendingChanges();
       
       // Queue the sync operation for batch processing
-      const entityType = operation.replace('add', '').toLowerCase();
+      // Map operation names to correct entity types
+      let entityType: string;
+      if (operation === 'addMileageEntry') {
+        entityType = 'mileageEntry';
+      } else if (operation === 'updateEmployee') {
+        entityType = 'employee';
+      } else if (operation === 'addReceipt') {
+        entityType = 'receipt';
+      } else if (operation === 'addTimeTracking') {
+        entityType = 'timeTracking';
+      } else {
+        entityType = operation.replace('add', '').replace('update', '').toLowerCase();
+      }
       console.log(`🔄 Database: Queueing ${entityType} for sync...`);
       queueSyncOperation('create', entityType as any, data);
       console.log(`✅ Database: Queued ${entityType} successfully`);
