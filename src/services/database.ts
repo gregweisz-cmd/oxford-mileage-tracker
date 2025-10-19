@@ -974,6 +974,21 @@ export class DatabaseService {
     } catch (error) {
       console.error('⚠️ Database: Could not remove from sync queue:', error);
     }
+    
+    // Delete from backend as well
+    try {
+      const { API_BASE_URL } = await import('../config/api');
+      const response = await fetch(`${API_BASE_URL}/mileage-entries/${id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        console.log('✅ Database: Deleted mileage entry from backend');
+      } else {
+        console.warn('⚠️ Database: Failed to delete from backend:', response.status);
+      }
+    } catch (error) {
+      console.error('⚠️ Database: Could not delete from backend:', error);
+    }
   }
 
   static async getAllMileageEntries(): Promise<MileageEntry[]> {
