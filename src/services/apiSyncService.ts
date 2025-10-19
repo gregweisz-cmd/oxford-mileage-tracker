@@ -343,11 +343,24 @@ export class ApiSyncService {
       for (const entry of entries) {
         try {
           // Validate and prepare mileage entry data
+          // Preserve date as local date without timezone conversion
+          let dateToSend: string;
+          if (entry.date instanceof Date) {
+            // Extract YYYY-MM-DD in local timezone
+            const year = entry.date.getFullYear();
+            const month = String(entry.date.getMonth() + 1).padStart(2, '0');
+            const day = String(entry.date.getDate()).padStart(2, '0');
+            dateToSend = `${year}-${month}-${day}T12:00:00.000Z`; // Noon UTC prevents date shifts
+          } else {
+            // Already a string, likely YYYY-MM-DD format
+            dateToSend = entry.date.includes('T') ? entry.date : `${entry.date}T12:00:00.000Z`;
+          }
+          
           const mileageData = {
             id: entry.id, // Include ID to prevent duplicates on backend
             employeeId: entry.employeeId,
             oxfordHouseId: entry.oxfordHouseId,
-            date: entry.date instanceof Date ? entry.date.toISOString() : new Date(entry.date).toISOString(),
+            date: dateToSend,
             odometerReading: entry.odometerReading,
             startLocation: entry.startLocation || '',
             endLocation: entry.endLocation || '',
