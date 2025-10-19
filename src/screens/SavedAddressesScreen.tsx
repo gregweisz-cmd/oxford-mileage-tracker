@@ -37,6 +37,10 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
     category: 'Other',
   });
 
+  // Check if coming from MileageEntryScreen for address selection
+  const fromMileageEntry = route?.params?.fromMileageEntry;
+  const locationType = route?.params?.locationType; // 'start' or 'end'
+
   const categories = ['Office', 'Client', 'Home', 'Other'];
 
   useEffect(() => {
@@ -161,6 +165,14 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
     );
   };
 
+  const handleSelectForManualEntry = (address: SavedAddress) => {
+    // Navigate back to MileageEntryScreen with the selected address
+    navigation.navigate('MileageEntry', {
+      selectedAddress: address,
+      locationType: locationType, // 'start' or 'end'
+    });
+  };
+
   const handleSelectForGpsTracking = async (address: SavedAddress) => {
     if (!currentEmployee) {
       Alert.alert('Error', 'Employee information not available');
@@ -260,17 +272,29 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           )}
         </View>
         <View style={styles.addressActions}>
-          <TouchableOpacity
-            style={[styles.selectButton, isTracking && styles.disabledButton]}
-            onPress={() => handleSelectForGpsTracking(item)}
-            disabled={isTracking}
-          >
-            <MaterialIcons 
-              name="gps-fixed" 
-              size={20} 
-              color={isTracking ? "#ccc" : "#4CAF50"} 
-            />
-          </TouchableOpacity>
+          {fromMileageEntry ? (
+            // If coming from manual entry, show "Select" button
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() => handleSelectForManualEntry(item)}
+            >
+              <MaterialIcons name="check-circle" size={20} color="#4CAF50" />
+              <Text style={styles.selectButtonText}>Select</Text>
+            </TouchableOpacity>
+          ) : (
+            // Otherwise show GPS tracking button
+            <TouchableOpacity
+              style={[styles.selectButton, isTracking && styles.disabledButton]}
+              onPress={() => handleSelectForGpsTracking(item)}
+              disabled={isTracking}
+            >
+              <MaterialIcons 
+                name="gps-fixed" 
+                size={20} 
+                color={isTracking ? "#ccc" : "#4CAF50"} 
+              />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.editButton}
             onPress={() => handleEditAddress(item)}
@@ -480,10 +504,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   selectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 8,
+    paddingHorizontal: 12,
     borderRadius: 8,
     backgroundColor: '#e8f5e8',
     marginRight: 8,
+  },
+  selectButtonText: {
+    marginLeft: 4,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4CAF50',
   },
   disabledButton: {
     backgroundColor: '#f5f5f5',

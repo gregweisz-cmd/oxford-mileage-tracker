@@ -111,6 +111,33 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           setIsEditing(true);
           await loadExistingEntry(route.params.entryId);
         }
+        
+        // Check if a saved address was selected
+        if (route.params?.selectedAddress) {
+          const address = route.params.selectedAddress;
+          const locType = route.params.locationType;
+          
+          if (locType === 'start') {
+            setFormData(prev => ({ ...prev, startLocation: address.name }));
+            setStartLocationDetails({
+              name: address.name,
+              address: address.address,
+              latitude: address.latitude,
+              longitude: address.longitude
+            });
+          } else if (locType === 'end') {
+            setFormData(prev => ({ ...prev, endLocation: address.name }));
+            setEndLocationDetails({
+              name: address.name,
+              address: address.address,
+              latitude: address.latitude,
+              longitude: address.longitude
+            });
+          }
+          
+          // Clear the route params to prevent re-applying on next render
+          navigation.setParams({ selectedAddress: undefined, locationType: undefined });
+        }
       } catch (error) {
         console.error('Error initializing MileageEntryScreen:', error);
       }
