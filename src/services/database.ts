@@ -965,6 +965,15 @@ export class DatabaseService {
   static async deleteMileageEntry(id: string): Promise<void> {
     const database = await getDatabase();
     await database.runAsync('DELETE FROM mileage_entries WHERE id = ?', [id]);
+    
+    // Remove from sync queue to prevent trying to sync a deleted entry
+    try {
+      const { SyncIntegrationService } = await import('./syncIntegrationService');
+      SyncIntegrationService.removeFromQueue('mileageEntry', id);
+      console.log('✅ Database: Removed mileage entry from sync queue');
+    } catch (error) {
+      console.error('⚠️ Database: Could not remove from sync queue:', error);
+    }
   }
 
   static async getAllMileageEntries(): Promise<MileageEntry[]> {
