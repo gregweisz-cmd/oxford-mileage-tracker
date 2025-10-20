@@ -103,10 +103,13 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       if (!response.ok) throw new Error('Failed to load reports');
       
       const data = await response.json();
+      console.log('📊 Loaded reports:', data.length, 'reports');
+      console.log('📊 First report structure:', data[0]);
       
       // Calculate totals from reportData
       const reportsWithTotals = data.map((report: any) => {
         const reportData = report.reportData || {};
+        console.log(`📊 Report ${report.id} data:`, reportData);
         return {
           ...report,
           totalMiles: reportData.totalMiles || 0,
@@ -200,11 +203,17 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   const handleExportToExcel = async (report: ExpenseReport) => {
     try {
+      console.log('📊 Exporting report:', report.id, report.employeeName);
       const response = await fetch(`${API_BASE_URL}/api/export/expense-report/${report.id}`, {
         method: 'GET',
       });
 
-      if (!response.ok) throw new Error('Export failed');
+      if (!response.ok) {
+        console.error('❌ Export failed with status:', response.status);
+        const errorText = await response.text();
+        console.error('❌ Export error response:', errorText);
+        throw new Error(`Export failed: ${response.status} ${errorText}`);
+      }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -217,11 +226,13 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error exporting to Excel:', error);
-      alert('Failed to export report');
+      alert(`Failed to export report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const handlePrintPreview = (report: ExpenseReport) => {
+    console.log('🔍 Print Preview - Report Data:', report);
+    console.log('🔍 Print Preview - Report Data Structure:', report.reportData);
     setSelectedReport(report);
     setPrintPreviewOpen(true);
   };
