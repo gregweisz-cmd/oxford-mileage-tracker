@@ -4608,8 +4608,8 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       // Table dimensions for Timesheet - adjusted for portrait page
       const tsCellHeight = 15;
-      const tsColWidths = [40, 80, 50, 120]; // Much narrower columns to fit page
-      const tsHeaders = ['Date', 'Cost Center', 'Hours Worked', 'Description'];
+      const tsColWidths = [50, 100, 60]; // Much narrower columns to fit page
+      const tsHeaders = ['Date', 'Cost Center', 'Hours Worked'];
       const tsTableStartX = margin;
       
       // Helper function for Timesheet table cells
@@ -4668,8 +4668,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         const rowData = [
           dateStr,
           (reportData.costCenters && reportData.costCenters[0]) || 'N/A',
-          (entry.hoursWorked || 0).toString(),
-          entry.description || ''
+          (entry.hoursWorked || 0).toString()
         ];
         
         rowData.forEach((data, i) => {

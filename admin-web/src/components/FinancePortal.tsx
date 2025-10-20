@@ -1439,7 +1439,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                     <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Date</TableCell>
                     <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Cost Center</TableCell>
                     <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Hours Worked</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Description</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1449,14 +1448,13 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                     const dateStr = `${(selectedReport?.month || 10).toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${(selectedReport?.year || 2025).toString().slice(-2)}`;
                     const entry = selectedReport?.reportData?.dailyEntries?.find((e: any) => e.date === dateStr);
                     
-                    return (
-                      <TableRow key={day}>
-                        <TableCell sx={{ border: '1px solid #000', bgcolor: '#C8DCFF', textAlign: 'center' }}>{dateStr}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.reportData?.costCenters?.[0] || 'N/A'}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>{entry?.hoursWorked || 0}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }}>{entry?.description || ''}</TableCell>
-                      </TableRow>
-                    );
+                      return (
+                        <TableRow key={day}>
+                          <TableCell sx={{ border: '1px solid #000', bgcolor: '#C8DCFF', textAlign: 'center' }}>{dateStr}</TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.reportData?.costCenters?.[0] || 'N/A'}</TableCell>
+                          <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>{entry?.hoursWorked || 0}</TableCell>
+                        </TableRow>
+                      );
                   })}
                 </TableBody>
               </Table>
