@@ -796,6 +796,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const reportData = {
         ...updatedData,
         receipts: receipts,
+        dailyDescriptions: dailyDescriptions,
         employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState
       };
@@ -895,6 +896,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const reportData = {
         ...updatedData,
         receipts: receipts,
+        dailyDescriptions: dailyDescriptions,
         employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState
       };
@@ -2178,6 +2180,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       await response.json();
       showSuccess('Report saved and synced successfully! Changes will appear in the mobile app.');
+      
+      // Wait a moment to ensure database commits, then refresh
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Refresh the data to update all tabs
       setRefreshTrigger(prev => prev + 1);
