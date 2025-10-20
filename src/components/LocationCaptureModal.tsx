@@ -182,6 +182,19 @@ export default function LocationCaptureModal({
             />
           </View>
 
+          {/* Return to BA Quick Action - Only show for end locations */}
+          {locationType === 'end' && currentEmployee?.baseAddress && (
+            <TouchableOpacity
+              style={styles.quickActionButton}
+              onPress={() => {
+                setLocationName('BA');
+                setLocationAddress(currentEmployee.baseAddress || '');
+              }}
+            >
+              <MaterialIcons name="home" size={24} color="#2196F3" />
+              <Text style={styles.quickActionText}>Return to Base Address</Text>
+            </TouchableOpacity>
+          )}
 
           {loading && (
             <View style={styles.loadingContainer}>
@@ -310,6 +323,23 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  quickActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  quickActionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2196F3',
+    marginLeft: 8,
   },
   loadingContainer: {
     alignItems: 'center',
