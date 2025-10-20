@@ -4303,8 +4303,16 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       // Helper function to draw table cell with color and border
       const drawCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+        // Set fill color and draw filled rectangle
         setColor(color);
-        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+        doc.rect(x, y, width, height, 'F'); // Fill only
+        
+        // Draw border separately to ensure it's visible
+        doc.setDrawColor(0, 0, 0); // Black border
+        doc.setLineWidth(0.5);
+        doc.rect(x, y, width, height, 'S'); // Stroke border
+        
+        // Set text color and font
         doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
         doc.setFont('helvetica', 'bold');
         
@@ -4317,9 +4325,9 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         doc.setTextColor(0, 0, 0); // Reset to black
       };
       
-      // Table dimensions
+      // Table dimensions - adjusted for portrait page
       const cellHeight = 20;
-      const colWidths = [120, 80, 80, 80, 80, 80, 100]; // Cost Center columns + subtotals
+      const colWidths = [100, 60, 60, 60, 60, 60, 80]; // Cost Center columns + subtotals (narrower)
       const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
       const tableStartX = margin;
       
@@ -4499,16 +4507,24 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         
         yPos += 40;
         
-        // Table dimensions for Cost Center sheet
+        // Table dimensions for Cost Center sheet - adjusted for portrait page
         const ccCellHeight = 15;
-        const ccColWidths = [60, 140, 60, 80, 60, 60, 80];
+        const ccColWidths = [50, 120, 50, 60, 50, 50, 60]; // Narrower columns to fit page
         const ccHeaders = ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)'];
         const ccTableStartX = margin;
         
         // Helper function for Cost Center table cells
         const drawCCCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+          // Set fill color and draw filled rectangle
           setColor(color);
-          doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+          doc.rect(x, y, width, height, 'F'); // Fill only
+          
+          // Draw border separately to ensure it's visible
+          doc.setDrawColor(0, 0, 0); // Black border
+          doc.setLineWidth(0.5);
+          doc.rect(x, y, width, height, 'S'); // Stroke border
+          
+          // Set text color and font
           doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
           doc.setFont('helvetica', 'bold');
           
@@ -4522,10 +4538,10 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         };
         
         // Header row
-        let xPos = ccTableStartX;
+        let ccXPos = ccTableStartX;
         ccHeaders.forEach((header, i) => {
-          drawCCCell(xPos, yPos, ccColWidths[i], ccCellHeight, header, 'darkBlue', 'white', 'center');
-          xPos += ccColWidths[i];
+          drawCCCell(ccXPos, yPos, ccColWidths[i], ccCellHeight, header, 'darkBlue', 'white', 'center');
+          ccXPos += ccColWidths[i];
         });
         yPos += ccCellHeight;
         
@@ -4552,7 +4568,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
           const entry = entriesMap[dateStr] || {};
           
-          xPos = ccTableStartX;
+          ccXPos = ccTableStartX;
           const rowData = [
             dateStr,
             entry.description || '',
@@ -4566,8 +4582,8 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           rowData.forEach((data, i) => {
             const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
             const textAlign = i === 0 ? 'center' : (i >= 2 ? 'right' : 'left'); // Numbers right-aligned, text left-aligned
-            drawCCCell(xPos, yPos, ccColWidths[i], ccCellHeight, data, cellColor, 'black', textAlign);
-            xPos += ccColWidths[i];
+            drawCCCell(ccXPos, yPos, ccColWidths[i], ccCellHeight, data, cellColor, 'black', textAlign);
+            ccXPos += ccColWidths[i];
           });
           
           yPos += ccCellHeight;
@@ -4596,16 +4612,24 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       yPos += 40;
       
-      // Table dimensions for Timesheet
+      // Table dimensions for Timesheet - adjusted for portrait page
       const tsCellHeight = 15;
-      const tsColWidths = [60, 120, 80, 200];
+      const tsColWidths = [50, 100, 60, 150]; // Narrower columns to fit page
       const tsHeaders = ['Date', 'Cost Center', 'Hours Worked', 'Description'];
       const tsTableStartX = margin;
       
       // Helper function for Timesheet table cells
       const drawTSCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+        // Set fill color and draw filled rectangle
         setColor(color);
-        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+        doc.rect(x, y, width, height, 'F'); // Fill only
+        
+        // Draw border separately to ensure it's visible
+        doc.setDrawColor(0, 0, 0); // Black border
+        doc.setLineWidth(0.5);
+        doc.rect(x, y, width, height, 'S'); // Stroke border
+        
+        // Set text color and font
         doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
         doc.setFont('helvetica', 'bold');
         
@@ -4619,10 +4643,10 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       };
       
       // Header row
-      let xPos = tsTableStartX;
+      let tsXPos = tsTableStartX;
       tsHeaders.forEach((header, i) => {
-        drawTSCell(xPos, yPos, tsColWidths[i], tsCellHeight, header, 'darkBlue', 'white', 'center');
-        xPos += tsColWidths[i];
+        drawTSCell(tsXPos, yPos, tsColWidths[i], tsCellHeight, header, 'darkBlue', 'white', 'center');
+        tsXPos += tsColWidths[i];
       });
       yPos += tsCellHeight;
       
@@ -4649,7 +4673,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
         const entry = entriesMap[dateStr] || {};
         
-        xPos = tsTableStartX;
+        tsXPos = tsTableStartX;
         const rowData = [
           dateStr,
           (reportData.costCenters && reportData.costCenters[0]) || 'N/A',
@@ -4660,8 +4684,8 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         rowData.forEach((data, i) => {
           const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
           const textAlign = i === 2 ? 'right' : 'left'; // Hours right-aligned, others left-aligned
-          drawTSCell(xPos, yPos, tsColWidths[i], tsCellHeight, data, cellColor, 'black', textAlign);
-          xPos += tsColWidths[i];
+          drawTSCell(tsXPos, yPos, tsColWidths[i], tsCellHeight, data, cellColor, 'black', textAlign);
+          tsXPos += tsColWidths[i];
         });
         
         yPos += tsCellHeight;
