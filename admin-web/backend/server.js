@@ -4272,7 +4272,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       doc.rect(margin + 250, yPos, 200, 50);
       safeText('Supervisor Signature', margin + 255, yPos - 5);
       
-      // Page 2: Summary Sheet
+      // Page 2: Summary Sheet (with colors and grid like screenshot)
       doc.addPage();
       yPos = margin + 20;
       doc.setFontSize(14);
@@ -4282,48 +4282,209 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       yPos += 40;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      safeText(`Employee: ${reportData.name || 'N/A'}`, margin, yPos);
+      safeText(`Name: ${reportData.name || 'N/A'}`, margin, yPos);
       yPos += 20;
-      safeText(`Period: ${reportData.month} ${reportData.year}`, margin, yPos);
+      safeText(`Date Completed: ${new Date().toLocaleDateString()}`, margin, yPos);
+      yPos += 20;
+      safeText(`Month: ${reportData.month}, ${reportData.year}`, margin, yPos);
       
       yPos += 40;
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      safeText('Expense Summary', margin, yPos);
-      yPos += 25;
       
-      doc.setFontSize(9);
-      const expenseCategories = [
-        ['Mileage Reimbursement', reportData.totalMileageAmount || 0],
-        ['Phone/Internet/Fax', reportData.phoneInternetFax || 0],
-        ['Air/Rail/Bus', reportData.airRailBus || 0],
-        ['Vehicle Rental/Fuel', reportData.vehicleRentalFuel || 0],
-        ['Parking/Tolls', reportData.parkingTolls || 0],
-        ['Ground Transportation', reportData.groundTransportation || 0],
-        ['Hotels/Airbnb', reportData.hotelsAirbnb || 0],
-        ['Per Diem', reportData.perDiem || 0],
-        ['Other Expenses', reportData.other || 0]
+      // Helper function to set colors
+      const setColor = (color) => {
+        switch(color) {
+          case 'lightGreen': doc.setFillColor(200, 255, 200); break;
+          case 'lightBlue': doc.setFillColor(200, 220, 255); break;
+          case 'lightOrange': doc.setFillColor(255, 220, 180); break;
+          case 'darkBlue': doc.setFillColor(50, 50, 150); break;
+          default: doc.setFillColor(255, 255, 255);
+        }
+      };
+      
+      // Helper function to draw table cell with color and border
+      const drawCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+        setColor(color);
+        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+        doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+        doc.setFont('helvetica', 'bold');
+        
+        if (align === 'right') {
+          safeText(text, x + width - 5, y + height/2 + 3);
+        } else {
+          safeText(text, x + 5, y + height/2 + 3);
+        }
+        
+        doc.setTextColor(0, 0, 0); // Reset to black
+      };
+      
+      // Table dimensions
+      const cellHeight = 20;
+      const colWidths = [120, 80, 80, 80, 80, 80, 100]; // Cost Center columns + subtotals
+      const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
+      const tableStartX = margin;
+      
+      // Header row
+      const headers = ['Cost Center #1', 'Cost Center #2', 'Cost Center #3', 'Cost Center #4', 'Cost Center #5', 'SUBTOTALS (by category)'];
+      let xPos = tableStartX;
+      headers.forEach((header, i) => {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, header, 'darkBlue', 'white', 'center');
+        xPos += colWidths[i];
+      });
+      yPos += cellHeight;
+      
+      // Travel expenses section (light green)
+      const travelExpenses = [
+        ['MILEAGE', reportData.totalMileageAmount || 0, 0, 0, 0, 0, reportData.totalMileageAmount || 0],
+        ['AIR / RAIL / BUS', reportData.airRailBus || 0, 0, 0, 0, 0, reportData.airRailBus || 0],
+        ['VEHICLE RENTAL / FUEL', reportData.vehicleRentalFuel || 0, 0, 0, 0, 0, reportData.vehicleRentalFuel || 0],
+        ['PARKING / TOLLS', reportData.parkingTolls || 0, 0, 0, 0, 0, reportData.parkingTolls || 0],
+        ['GROUND', reportData.groundTransportation || 0, 0, 0, 0, 0, reportData.groundTransportation || 0],
+        ['LODGING', reportData.hotelsAirbnb || 0, 0, 0, 0, 0, reportData.hotelsAirbnb || 0],
+        ['PER DIEM', reportData.perDiem || 0, 0, 0, 0, 0, reportData.perDiem || 0]
       ];
       
-      expenseCategories.forEach(([category, amount]) => {
-        doc.setFont('helvetica', 'bold');
-        safeText(category, margin, yPos);
-        doc.setFont('helvetica', 'normal');
-        safeText(`$${amount.toFixed(2)}`, margin + 250, yPos);
-        yPos += 18;
+      travelExpenses.forEach(([category, ...amounts]) => {
+        xPos = tableStartX;
+        drawCell(xPos, yPos, colWidths[0], cellHeight, category, 'lightGreen', 'black', 'left');
+        xPos += colWidths[0];
+        
+        amounts.forEach((amount, i) => {
+          drawCell(xPos, yPos, colWidths[i + 1], cellHeight, `$${amount.toFixed(2)}`, 'lightGreen', 'black', 'right');
+          xPos += colWidths[i + 1];
+        });
+        yPos += cellHeight;
       });
       
-      yPos += 10;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      safeText('Total Expenses:', margin, yPos);
+      // Other expenses section
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'OTHER EXPENSES', 'lightBlue', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // OXFORD HOUSE E.E.S. row
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'OXFORD HOUSE E.E.S.', 'lightOrange', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Two blank rows under OTHER EXPENSES
+      for (let blank = 0; blank < 2; blank++) {
+        drawCell(tableStartX, yPos, colWidths[0], cellHeight, '', 'lightOrange', 'black', 'left');
+        xPos = tableStartX + colWidths[0];
+        for (let i = 1; i < colWidths.length; i++) {
+          drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+          xPos += colWidths[i];
+        }
+        yPos += cellHeight;
+      }
+      
+      // Communications section
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'COMMUNICATIONS', 'lightBlue', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Phone / Internet / Fax
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Phone / Internet / Fax', 'lightOrange', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Postage / Shipping
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Postage / Shipping', 'lightOrange', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Printing / Copying
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Printing / Copying', 'lightOrange', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Supplies section
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'SUPPLIES', 'lightBlue', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Outreach Supplies
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Outreach Supplies', 'lightOrange', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Blank row under SUPPLIES
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, '', 'lightOrange', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Subtotals by cost center (light green)
       const totalExpenses = (reportData.totalMileageAmount || 0) + (reportData.phoneInternetFax || 0) + 
                            (reportData.airRailBus || 0) + (reportData.vehicleRentalFuel || 0) + 
                            (reportData.parkingTolls || 0) + (reportData.groundTransportation || 0) + 
                            (reportData.hotelsAirbnb || 0) + (reportData.perDiem || 0) + (reportData.other || 0);
-      safeText(`$${totalExpenses.toFixed(2)}`, margin + 250, yPos);
       
-      // Page 3+: Cost Center Travel Sheets
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'SUBTOTALS (by cost center)', 'lightGreen', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      drawCell(xPos, yPos, colWidths[1], cellHeight, `$${(reportData.totalMileageAmount || 0).toFixed(2)}`, 'lightGreen', 'black', 'right');
+      xPos += colWidths[1];
+      for (let i = 2; i < colWidths.length - 1; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightGreen', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightGreen', 'black', 'right');
+      yPos += cellHeight;
+      
+      // Less Cash Advance
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Less Cash Advance', 'lightGreen', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
+      for (let i = 1; i < colWidths.length; i++) {
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightGreen', 'black', 'right');
+        xPos += colWidths[i];
+      }
+      yPos += cellHeight;
+      
+      // Grand Total Requested (light blue)
+      yPos += 20;
+      const grandTotalX = tableStartX + colWidths.slice(0, -1).reduce((sum, width) => sum + width, 0);
+      drawCell(grandTotalX, yPos, colWidths[colWidths.length - 1], cellHeight, 'GRAND TOTAL REQUESTED', 'lightBlue', 'black', 'left');
+      drawCell(grandTotalX + colWidths[colWidths.length - 1], yPos, colWidths[colWidths.length - 1], cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightBlue', 'black', 'right');
+      
+      yPos += 40;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      safeText(`Payable to: ${reportData.name || 'N/A'}`, margin, yPos);
+      
+      // Page 3+: Cost Center Travel Sheets (with all days of month and grid)
       (reportData.costCenters || []).forEach((costCenter, index) => {
         doc.addPage();
         yPos = margin + 20;
@@ -4337,52 +4498,80 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
         
         yPos += 40;
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
         
-        // Table header
-        const headerY = yPos;
-        const colWidths = [60, 140, 100, 80, 60, 80];
-        const headers = ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Miles', 'Amount'];
-        let xPos = margin;
+        // Table dimensions for Cost Center sheet
+        const ccCellHeight = 15;
+        const ccColWidths = [60, 140, 60, 80, 60, 60, 80];
+        const ccHeaders = ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)'];
+        const ccTableStartX = margin;
         
-        doc.setFont('helvetica', 'bold');
-        headers.forEach((header, i) => {
-          doc.rect(xPos, headerY, colWidths[i], 15);
-          safeText(header, xPos + 3, headerY + 11);
-          xPos += colWidths[i];
+        // Helper function for Cost Center table cells
+        const drawCCCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+          setColor(color);
+          doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+          doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+          doc.setFont('helvetica', 'bold');
+          
+          if (align === 'right') {
+            safeText(text, x + width - 3, y + height/2 + 3);
+          } else {
+            safeText(text, x + 3, y + height/2 + 3);
+          }
+          
+          doc.setTextColor(0, 0, 0); // Reset to black
+        };
+        
+        // Header row
+        let xPos = ccTableStartX;
+        ccHeaders.forEach((header, i) => {
+          drawCCCell(xPos, yPos, ccColWidths[i], ccCellHeight, header, 'darkBlue', 'white', 'center');
+          xPos += ccColWidths[i];
+        });
+        yPos += ccCellHeight;
+        
+        // Generate all days of the month
+        const month = parseInt(reportData.month);
+        const year = parseInt(reportData.year);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        
+        // Create a map of existing entries for quick lookup
+        const entriesMap = {};
+        (reportData.dailyEntries || []).forEach(entry => {
+          if (entry.date) {
+            entriesMap[entry.date] = entry;
+          }
         });
         
-        yPos = headerY + 15;
-        doc.setFont('helvetica', 'normal');
-        
-        // Table rows
-        const entries = (reportData.dailyEntries || []).filter(e => e.milesTraveled > 0 || e.hoursWorked > 0);
-        entries.forEach((entry) => {
+        // Generate rows for all days of the month
+        for (let day = 1; day <= daysInMonth; day++) {
           if (yPos > pageHeight - 100) {
             doc.addPage();
             yPos = margin;
           }
           
-          xPos = margin;
+          const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
+          const entry = entriesMap[dateStr] || {};
+          
+          xPos = ccTableStartX;
           const rowData = [
-            entry.date || '',
+            dateStr,
             entry.description || '',
             (entry.hoursWorked || 0).toString(),
             (entry.odometerStart || 0).toString(),
+            (entry.odometerEnd || 0).toString(),
             (entry.milesTraveled || 0).toFixed(1),
             `$${(entry.mileageAmount || 0).toFixed(2)}`
           ];
           
           rowData.forEach((data, i) => {
-            doc.rect(xPos, yPos, colWidths[i], 15);
-            const text = data.length > 25 ? data.substring(0, 22) + '...' : data;
-            safeText(text, xPos + 3, yPos + 11);
-            xPos += colWidths[i];
+            const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
+            const textAlign = i === 0 ? 'center' : (i >= 2 ? 'right' : 'left'); // Numbers right-aligned, text left-aligned
+            drawCCCell(xPos, yPos, ccColWidths[i], ccCellHeight, data, cellColor, 'black', textAlign);
+            xPos += ccColWidths[i];
           });
           
-          yPos += 15;
-        });
+          yPos += ccCellHeight;
+        }
         
         yPos += 25;
         doc.setFontSize(10);
@@ -4394,7 +4583,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         safeText(`Total Amount: $${(reportData.totalMileageAmount || 0).toFixed(2)}`, margin, yPos);
       });
       
-      // Page Last: Timesheet
+      // Page Last: Timesheet (with all days of month and grid)
       doc.addPage();
       yPos = margin + 20;
       doc.setFontSize(14);
@@ -4406,6 +4595,79 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
       
       yPos += 40;
+      
+      // Table dimensions for Timesheet
+      const tsCellHeight = 15;
+      const tsColWidths = [60, 120, 80, 200];
+      const tsHeaders = ['Date', 'Cost Center', 'Hours Worked', 'Description'];
+      const tsTableStartX = margin;
+      
+      // Helper function for Timesheet table cells
+      const drawTSCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+        setColor(color);
+        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+        doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+        doc.setFont('helvetica', 'bold');
+        
+        if (align === 'right') {
+          safeText(text, x + width - 3, y + height/2 + 3);
+        } else {
+          safeText(text, x + 3, y + height/2 + 3);
+        }
+        
+        doc.setTextColor(0, 0, 0); // Reset to black
+      };
+      
+      // Header row
+      let xPos = tsTableStartX;
+      tsHeaders.forEach((header, i) => {
+        drawTSCell(xPos, yPos, tsColWidths[i], tsCellHeight, header, 'darkBlue', 'white', 'center');
+        xPos += tsColWidths[i];
+      });
+      yPos += tsCellHeight;
+      
+      // Generate all days of the month for timesheet
+      const month = parseInt(reportData.month);
+      const year = parseInt(reportData.year);
+      const daysInMonth = new Date(year, month, 0).getDate();
+      
+      // Create a map of existing entries for quick lookup
+      const entriesMap = {};
+      (reportData.dailyEntries || []).forEach(entry => {
+        if (entry.date) {
+          entriesMap[entry.date] = entry;
+        }
+      });
+      
+      // Generate rows for all days of the month
+      for (let day = 1; day <= daysInMonth; day++) {
+        if (yPos > pageHeight - 100) {
+          doc.addPage();
+          yPos = margin;
+        }
+        
+        const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
+        const entry = entriesMap[dateStr] || {};
+        
+        xPos = tsTableStartX;
+        const rowData = [
+          dateStr,
+          (reportData.costCenters && reportData.costCenters[0]) || 'N/A',
+          (entry.hoursWorked || 0).toString(),
+          entry.description || ''
+        ];
+        
+        rowData.forEach((data, i) => {
+          const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
+          const textAlign = i === 2 ? 'right' : 'left'; // Hours right-aligned, others left-aligned
+          drawTSCell(xPos, yPos, tsColWidths[i], tsCellHeight, data, cellColor, 'black', textAlign);
+          xPos += tsColWidths[i];
+        });
+        
+        yPos += tsCellHeight;
+      }
+      
+      yPos += 30;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       safeText('TIME TRACKING SUMMARY:', margin, yPos);
