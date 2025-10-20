@@ -28,7 +28,6 @@ import {
   Tab,
   CircularProgress,
   Alert,
-  Grid,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -279,73 +278,66 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       {/* Filters */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={filterStatus}
-                  label="Status"
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                >
-                  <MenuItem value="all">All Statuses</MenuItem>
-                  <MenuItem value="draft">Draft</MenuItem>
-                  <MenuItem value="submitted">Submitted</MenuItem>
-                  <MenuItem value="approved">Approved</MenuItem>
-                  <MenuItem value="needs_revision">Needs Revision</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Month</InputLabel>
-                <Select
-                  value={filterMonth}
-                  label="Month"
-                  onChange={(e) => setFilterMonth(Number(e.target.value))}
-                >
-                  {monthNames.map((month, idx) => (
-                    <MenuItem key={idx} value={idx + 1}>{month}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Year"
-                type="number"
-                value={filterYear}
-                onChange={(e) => setFilterYear(Number(e.target.value))}
-              />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Employee</InputLabel>
-                <Select
-                  value={filterEmployee}
-                  label="Employee"
-                  onChange={(e) => setFilterEmployee(e.target.value)}
-                >
-                  <MenuItem value="all">All Employees</MenuItem>
-                  {uniqueEmployees.map(emp => (
-                    <MenuItem key={emp.id} value={emp.id}>{emp.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={1}>
-              <Button
-                variant="outlined"
-                startIcon={<RefreshIcon />}
-                onClick={loadReports}
-                fullWidth
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={filterStatus}
+                label="Status"
+                onChange={(e) => setFilterStatus(e.target.value)}
               >
-                Refresh
-              </Button>
-            </Grid>
-          </Grid>
+                <MenuItem value="all">All Statuses</MenuItem>
+                <MenuItem value="draft">Draft</MenuItem>
+                <MenuItem value="submitted">Submitted</MenuItem>
+                <MenuItem value="approved">Approved</MenuItem>
+                <MenuItem value="needs_revision">Needs Revision</MenuItem>
+              </Select>
+            </FormControl>
+            
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Month</InputLabel>
+              <Select
+                value={filterMonth}
+                label="Month"
+                onChange={(e) => setFilterMonth(Number(e.target.value))}
+              >
+                {monthNames.map((month, idx) => (
+                  <MenuItem key={idx} value={idx + 1}>{month}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            <TextField
+              size="small"
+              label="Year"
+              type="number"
+              value={filterYear}
+              onChange={(e) => setFilterYear(Number(e.target.value))}
+              sx={{ width: 100 }}
+            />
+            
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Employee</InputLabel>
+              <Select
+                value={filterEmployee}
+                label="Employee"
+                onChange={(e) => setFilterEmployee(e.target.value)}
+              >
+                <MenuItem value="all">All Employees</MenuItem>
+                {uniqueEmployees.map(emp => (
+                  <MenuItem key={emp.id} value={emp.id}>{emp.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={loadReports}
+            >
+              Refresh
+            </Button>
+          </Box>
         </CardContent>
       </Card>
 
@@ -593,8 +585,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           {selectedReport && (
             <Box>
               <Typography variant="h6" gutterBottom>Report Summary</Typography>
-              <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={6}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
+                <Box>
                   <Typography><strong>Status:</strong></Typography>
                   <Chip
                     label={selectedReport.status.replace('_', ' ').toUpperCase()}
@@ -602,28 +594,28 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                     size="small"
                     sx={{ mt: 1 }}
                   />
-                </Grid>
-                <Grid item xs={6}>
+                </Box>
+                <Box>
                   <Typography><strong>Submitted:</strong></Typography>
                   <Typography>
                     {selectedReport.submittedAt ? new Date(selectedReport.submittedAt).toLocaleDateString() : 'Not submitted'}
                   </Typography>
-                </Grid>
-                <Grid item xs={6}>
+                </Box>
+                <Box>
                   <Typography><strong>Total Miles:</strong></Typography>
                   <Typography>{selectedReport.totalMiles.toFixed(1)} miles</Typography>
-                </Grid>
-                <Grid item xs={6}>
+                </Box>
+                <Box>
                   <Typography><strong>Mileage Amount:</strong></Typography>
                   <Typography>${selectedReport.totalMileageAmount.toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={6}>
+                </Box>
+                <Box>
                   <Typography><strong>Total Expenses:</strong></Typography>
                   <Typography variant="h6" color="primary">
                     ${selectedReport.totalExpenses.toFixed(2)}
                   </Typography>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
 
               {selectedReport.reportData?.dailyEntries && (
                 <Box>
@@ -715,49 +707,45 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           <Card sx={{ mb: 3, bgcolor: 'grey.50' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>🎨 Print Style Customization</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={4}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Font Size</InputLabel>
-                    <Select
-                      value={printStyles.fontSize}
-                      label="Font Size"
-                      onChange={(e) => setPrintStyles({ ...printStyles, fontSize: e.target.value })}
-                    >
-                      <MenuItem value="10px">Small (10px)</MenuItem>
-                      <MenuItem value="12px">Normal (12px)</MenuItem>
-                      <MenuItem value="14px">Large (14px)</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Spacing</InputLabel>
-                    <Select
-                      value={printStyles.spacing}
-                      label="Spacing"
-                      onChange={(e) => setPrintStyles({ ...printStyles, spacing: e.target.value })}
-                    >
-                      <MenuItem value="compact">Compact</MenuItem>
-                      <MenuItem value="normal">Normal</MenuItem>
-                      <MenuItem value="relaxed">Relaxed</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Orientation</InputLabel>
-                    <Select
-                      value={printStyles.pageOrientation}
-                      label="Orientation"
-                      onChange={(e) => setPrintStyles({ ...printStyles, pageOrientation: e.target.value })}
-                    >
-                      <MenuItem value="portrait">Portrait</MenuItem>
-                      <MenuItem value="landscape">Landscape</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Font Size</InputLabel>
+                  <Select
+                    value={printStyles.fontSize}
+                    label="Font Size"
+                    onChange={(e) => setPrintStyles({ ...printStyles, fontSize: e.target.value })}
+                  >
+                    <MenuItem value="10px">Small (10px)</MenuItem>
+                    <MenuItem value="12px">Normal (12px)</MenuItem>
+                    <MenuItem value="14px">Large (14px)</MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Spacing</InputLabel>
+                  <Select
+                    value={printStyles.spacing}
+                    label="Spacing"
+                    onChange={(e) => setPrintStyles({ ...printStyles, spacing: e.target.value })}
+                  >
+                    <MenuItem value="compact">Compact</MenuItem>
+                    <MenuItem value="normal">Normal</MenuItem>
+                    <MenuItem value="relaxed">Relaxed</MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Orientation</InputLabel>
+                  <Select
+                    value={printStyles.pageOrientation}
+                    label="Orientation"
+                    onChange={(e) => setPrintStyles({ ...printStyles, pageOrientation: e.target.value })}
+                  >
+                    <MenuItem value="portrait">Portrait</MenuItem>
+                    <MenuItem value="landscape">Landscape</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
             </CardContent>
           </Card>
 
