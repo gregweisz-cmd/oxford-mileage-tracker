@@ -3274,7 +3274,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             sx={{ 
                               cursor: 'pointer', 
                               '&:hover': { bgcolor: 'grey.100' },
-                              minHeight: '24px' // Ensure clickable area even when empty
+                              minHeight: '24px', // Ensure clickable area even when empty
+                              whiteSpace: 'pre-wrap' // Preserve newlines and whitespace
                             }}
                           >
                             {entry.description || <span style={{ color: '#999', fontStyle: 'italic' }}>Click to add description</span>}
