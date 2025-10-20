@@ -6,6 +6,7 @@ import { CssBaseline, Box } from '@mui/material';
 import StaffPortal from './StaffPortal';
 import SupervisorPortal from './components/SupervisorPortal';
 import { AdminPortal } from './components/AdminPortal';
+import FinancePortal from './components/FinancePortal';
 import Login from './components/Login';
 // import LoginForm from './components/LoginForm'; // Currently unused
 import PortalSwitcher from './components/PortalSwitcher';
@@ -25,7 +26,7 @@ const theme = createTheme({
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentPortal, setCurrentPortal] = useState<'admin' | 'supervisor' | 'staff'>('staff');
+  const [currentPortal, setCurrentPortal] = useState<'admin' | 'supervisor' | 'staff' | 'finance'>('staff');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -62,6 +63,8 @@ const App: React.FC = () => {
             const position = employee?.position?.toLowerCase() || '';
             if (position.includes('admin') || position.includes('ceo')) {
               setCurrentPortal('admin');
+            } else if (position.includes('finance') || position.includes('accounting')) {
+              setCurrentPortal('finance');
             } else if (position.includes('supervisor') || position.includes('director')) {
               setCurrentPortal('supervisor');
             } else {
@@ -107,7 +110,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePortalChange = (portal: 'admin' | 'supervisor' | 'staff') => {
+  const handlePortalChange = (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => {
     setCurrentPortal(portal);
   };
 
@@ -121,6 +124,8 @@ const App: React.FC = () => {
     const position = employee?.position?.toLowerCase() || '';
     if (position.includes('admin') || position.includes('ceo')) {
       setCurrentPortal('admin');
+    } else if (position.includes('finance') || position.includes('accounting')) {
+      setCurrentPortal('finance');
     } else if (position.includes('supervisor') || position.includes('director')) {
       setCurrentPortal('supervisor');
     } else {
@@ -154,6 +159,8 @@ const App: React.FC = () => {
     switch (currentPortal) {
       case 'admin':
         return <AdminPortal adminId={currentUser.id} adminName={currentUser.name} />;
+      case 'finance':
+        return <FinancePortal financeUserId={currentUser.id} financeUserName={currentUser.name} />;
       case 'supervisor':
         return <SupervisorPortal supervisorId={currentUser.id} supervisorName={currentUser.name} />;
       case 'staff':

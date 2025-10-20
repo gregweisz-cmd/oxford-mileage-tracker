@@ -19,14 +19,15 @@ import {
   Person,
   ArrowDropDown,
   Logout,
+  AccountBalance,
   // Settings, // Currently unused
 } from '@mui/icons-material';
 import OxfordHouseLogo from './OxfordHouseLogo';
 
 interface PortalSwitcherProps {
   currentUser: any;
-  currentPortal: 'admin' | 'supervisor' | 'staff';
-  onPortalChange: (portal: 'admin' | 'supervisor' | 'staff') => void;
+  currentPortal: 'admin' | 'supervisor' | 'staff' | 'finance';
+  onPortalChange: (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => void;
   onLogout: () => void;
 }
 
@@ -47,7 +48,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     setAnchorEl(null);
   };
 
-  const handlePortalSelect = (portal: 'admin' | 'supervisor' | 'staff') => {
+  const handlePortalSelect = (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => {
     onPortalChange(portal);
     handleClose();
   };
@@ -56,7 +57,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   const getAvailablePortals = () => {
     const position = currentUser?.position?.toLowerCase() || '';
     const availablePortals: Array<{
-      id: 'admin' | 'supervisor' | 'staff';
+      id: 'admin' | 'supervisor' | 'staff' | 'finance';
       name: string;
       icon: React.ReactNode;
       description: string;
@@ -72,10 +73,33 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           description: 'Manage employees, cost centers, and system settings'
         },
         {
+          id: 'finance',
+          name: 'Finance Portal',
+          icon: <AccountBalance />,
+          description: 'Review, export, and print expense reports'
+        },
+        {
           id: 'supervisor',
           name: 'Supervisor Portal',
           icon: <SupervisorAccount />,
           description: 'Review team reports and approve expenses'
+        },
+        {
+          id: 'staff',
+          name: 'Staff Portal',
+          icon: <Person />,
+          description: 'Manage your own expense reports and mileage'
+        }
+      );
+    }
+    // Finance users can access finance and staff portals
+    else if (position.includes('finance') || position.includes('accounting')) {
+      availablePortals.push(
+        {
+          id: 'finance',
+          name: 'Finance Portal',
+          icon: <AccountBalance />,
+          description: 'Review, export, and print expense reports'
         },
         {
           id: 'staff',

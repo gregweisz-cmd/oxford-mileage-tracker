@@ -4087,6 +4087,81 @@ app.get('/api/export/excel', (req, res) => {
   });
 });
 
+// Export individual expense report to Excel
+app.get('/api/export/expense-report/:id', (req, res) => {
+  const { id } = req.params;
+  
+  console.log(`📊 Exporting expense report: ${id}`);
+  
+  db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, report) => {
+    if (err) {
+      console.error('❌ Database error:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    if (!report) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+    
+    try {
+      const reportData = JSON.parse(report.reportData);
+      
+      // Create workbook
+      const workbook = XLSX.utils.book_new();
+      
+      // Sheet 1: Summary
+      const summaryData = [
+        ['Oxford House Expense Report'],
+        ['Employee', reportData.name || 'N/A'],
+        ['Period', `${reportData.month} ${reportData.year}`],
+        [''],
+        ['Summary'],
+        ['Total Miles', reportData.totalMiles || 0],
+        ['Mileage Amount', reportData.totalMileageAmount || 0],
+        ['Total Hours', reportData.totalHours || 0],
+        ['Total Expenses', reportData.totalReceipts || 0],
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+      
+      // Sheet 2: Daily Entries
+      if (reportData.dailyEntries && reportData.dailyEntries.length > 0) {
+        const dailyEntriesForExport = reportData.dailyEntries
+          .filter((entry) => entry.milesTraveled > 0 || entry.hoursWorked > 0)
+          .map((entry) => ({
+            Date: entry.date,
+            Description: entry.description,
+            'Hours Worked': entry.hoursWorked || 0,
+            'Odometer Start': entry.odometerStart || 0,
+            'Odometer End': entry.odometerEnd || 0,
+            'Miles Traveled': entry.milesTraveled || 0,
+            'Mileage Amount': entry.mileageAmount || 0,
+            'Per Diem': entry.perDiem || 0,
+          }));
+        
+        const dailySheet = XLSX.utils.json_to_sheet(dailyEntriesForExport);
+        XLSX.utils.book_append_sheet(workbook, dailySheet, 'Daily Entries');
+      }
+      
+      // Generate Excel file
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+      
+      const filename = `ExpenseReport_${reportData.name || 'Unknown'}_${reportData.month || 'Unknown'}-${reportData.year || 'Unknown'}.xlsx`;
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(excelBuffer);
+      
+      console.log(`✅ Exported expense report: ${filename}`);
+    } catch (parseError) {
+      console.error('❌ Error parsing report data:', parseError);
+      res.status(500).json({ error: 'Failed to parse report data' });
+    }
+  });
+});
+
 // Health check endpoint for mobile app
 app.get('/api/health', (req, res) => {
   res.json({ 
