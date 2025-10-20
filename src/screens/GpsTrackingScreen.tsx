@@ -669,13 +669,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         style={styles.content} 
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={true}
         scrollEventThrottle={16}
-        nestedScrollEnabled={false}
-        maxToRenderPerBatch={10}
-        updateCellsBatchingPeriod={50}
-        initialNumToRender={8}
-        windowSize={5}
+        contentContainerStyle={{ flexGrow: 1 }}
       >
         {/* Tracking Status */}
         <View style={styles.statusContainer}>
