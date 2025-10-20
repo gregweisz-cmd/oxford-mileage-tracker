@@ -240,13 +240,16 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const handlePrint = () => {
     if (!selectedReport) return;
     
-    // Create a comprehensive print document
+    // Create a comprehensive multi-page print document
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     
     const reportData = selectedReport.reportData;
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                        'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    // Generate all pages
+    const pages = generateAllPages(selectedReport, reportData, monthNames);
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -271,6 +274,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
             .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
             .section { margin: 30px 0; }
             .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+            .approval-box { border: 2px solid #000; padding: 20px; margin: 20px 0; }
+            .signature-line { border-bottom: 1px solid #000; height: 30px; margin: 10px 0; }
+            .cost-center-header { background-color: #e0e0e0; font-weight: bold; padding: 10px; }
           }
           body { font-family: Arial, sans-serif; font-size: ${printStyles.fontSize}; }
           .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
@@ -282,121 +288,13 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
           .section { margin: 30px 0; }
           .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+          .approval-box { border: 2px solid #000; padding: 20px; margin: 20px 0; }
+          .signature-line { border-bottom: 1px solid #000; height: 30px; margin: 10px 0; }
+          .cost-center-header { background-color: #e0e0e0; font-weight: bold; padding: 10px; }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>OXFORD HOUSE, INC.</h1>
-          <h2>MONTHLY EXPENSE REPORT</h2>
-          <h3>${selectedReport.employeeName} - ${monthNames[selectedReport.month - 1]} ${selectedReport.year}</h3>
-        </div>
-        
-        <div class="section">
-          <div class="section-title">Report Summary</div>
-          <table class="summary-table">
-            <tr><th>Status</th><td>${selectedReport.status.replace('_', ' ').toUpperCase()}</td></tr>
-            <tr><th>Submitted Date</th><td>${selectedReport.submittedAt ? new Date(selectedReport.submittedAt).toLocaleDateString() : 'Not submitted'}</td></tr>
-            <tr><th>Total Miles</th><td>${selectedReport.totalMiles.toFixed(1)}</td></tr>
-            <tr><th>Mileage Reimbursement</th><td>$${selectedReport.totalMileageAmount.toFixed(2)}</td></tr>
-            <tr><th>Total Expenses</th><td><strong>$${selectedReport.totalExpenses.toFixed(2)}</strong></td></tr>
-          </table>
-        </div>
-        
-        ${reportData?.dailyEntries ? `
-        <div class="section">
-          <div class="section-title">Daily Activity Breakdown</div>
-          <table class="daily-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Description of Activity</th>
-                <th>Miles Traveled</th>
-                <th>Hours Worked</th>
-                <th>Mileage Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportData.dailyEntries
-                .filter((entry: any) => entry.milesTraveled > 0 || entry.hoursWorked > 0)
-                .map((entry: any) => `
-                  <tr>
-                    <td>${entry.date}</td>
-                    <td style="white-space: pre-wrap;">${entry.description || ''}</td>
-                    <td>${entry.milesTraveled > 0 ? entry.milesTraveled.toFixed(1) : '-'}</td>
-                    <td>${entry.hoursWorked > 0 ? entry.hoursWorked : '-'}</td>
-                    <td>$${entry.mileageAmount ? entry.mileageAmount.toFixed(2) : '0.00'}</td>
-                  </tr>
-                `).join('')}
-            </tbody>
-          </table>
-        </div>
-        ` : ''}
-        
-        ${reportData?.receipts && reportData.receipts.length > 0 ? `
-        <div class="section page-break">
-          <div class="section-title">Receipt Summary</div>
-          <table class="daily-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Vendor</th>
-                <th>Description</th>
-                <th>Category</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportData.receipts.map((receipt: any) => `
-                <tr>
-                  <td>${new Date(receipt.date).toLocaleDateString()}</td>
-                  <td>${receipt.vendor || ''}</td>
-                  <td>${receipt.description || ''}</td>
-                  <td>${receipt.category || ''}</td>
-                  <td>$${receipt.amount ? receipt.amount.toFixed(2) : '0.00'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-        ` : ''}
-        
-        <div class="section page-break">
-          <div class="section-title">Expense Categories Breakdown</div>
-          <table class="summary-table">
-            <tr><th>Mileage Reimbursement</th><td>$${selectedReport.totalMileageAmount.toFixed(2)}</td></tr>
-            <tr><th>Phone/Internet/Fax</th><td>$${reportData?.phoneInternetFax || 0}</td></tr>
-            <tr><th>Air/Rail/Bus</th><td>$${reportData?.airRailBus || 0}</td></tr>
-            <tr><th>Vehicle Rental/Fuel</th><td>$${reportData?.vehicleRentalFuel || 0}</td></tr>
-            <tr><th>Parking/Tolls</th><td>$${reportData?.parkingTolls || 0}</td></tr>
-            <tr><th>Ground Transportation</th><td>$${reportData?.groundTransportation || 0}</td></tr>
-            <tr><th>Hotels/Airbnb</th><td>$${reportData?.hotelsAirbnb || 0}</td></tr>
-            <tr><th>Per Diem</th><td>$${reportData?.perDiem || 0}</td></tr>
-            <tr><th>Other Expenses</th><td>$${reportData?.other || 0}</td></tr>
-            <tr style="border-top: 2px solid #000;"><th><strong>Total Expenses</strong></th><td><strong>$${selectedReport.totalExpenses.toFixed(2)}</strong></td></tr>
-          </table>
-        </div>
-        
-        <div class="section page-break">
-          <div class="section-title">Approval Section</div>
-          <table class="summary-table">
-            <tr>
-              <th>Employee Signature</th>
-              <td style="height: 50px;">${reportData?.employeeSignature ? '✓ Signed' : '_________________'}</td>
-            </tr>
-            <tr>
-              <th>Supervisor Signature</th>
-              <td style="height: 50px;">${reportData?.supervisorSignature ? '✓ Signed' : '_________________'}</td>
-            </tr>
-            <tr>
-              <th>Finance Approval</th>
-              <td style="height: 50px;">_________________</td>
-            </tr>
-          </table>
-        </div>
-        
-        <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #666;">
-          Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
-        </div>
+        ${pages.join('')}
       </body>
       </html>
     `);
@@ -409,6 +307,224 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       printWindow.print();
       printWindow.close();
     }, 500);
+  };
+
+  const generateAllPages = (report: any, reportData: any, monthNames: string[]) => {
+    const pages = [];
+    
+    // Page 1: Approval Cover Sheet
+    pages.push(generateApprovalPage(report, reportData, monthNames));
+    
+    // Page 2: Summary Sheet
+    pages.push(generateSummaryPage(report, reportData, monthNames));
+    
+    // Pages 3+: Cost Center Sheets
+    if (reportData?.costCenters && reportData.costCenters.length > 0) {
+      reportData.costCenters.forEach((costCenter: string, index: number) => {
+        pages.push(generateCostCenterPage(report, reportData, monthNames, costCenter, index));
+      });
+    }
+    
+    // Last Page: Timesheet
+    pages.push(generateTimesheetPage(report, reportData, monthNames));
+    
+    return pages;
+  };
+
+  const generateApprovalPage = (report: any, reportData: any, monthNames: string[]) => {
+    return `
+      <div class="page-break">
+        <div class="header">
+          <h1>MONTHLY EXPENSE REPORT APPROVAL COVER SHEET</h1>
+        </div>
+        
+        <div style="margin: 30px 0;">
+          <h2>OXFORD HOUSE, INC.</h2>
+          <p>1010 Wayne Ave. Suite # 300<br>Silver Spring, MD 20910</p>
+        </div>
+        
+        <div class="section">
+          <table class="summary-table">
+            <tr><th>Name:</th><td>${report.employeeName}</td></tr>
+            <tr><th>Month:</th><td>${monthNames[report.month - 1]}, ${report.year}</td></tr>
+            <tr><th>Date Completed:</th><td>${report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : 'Not submitted'}</td></tr>
+            <tr><th>Total Miles:</th><td>${report.totalMiles.toFixed(1)}</td></tr>
+            <tr><th>Total Expenses:</th><td><strong>$${report.totalExpenses.toFixed(2)}</strong></td></tr>
+          </table>
+        </div>
+        
+        <div class="approval-box">
+          <h3>Signatures of Approval:</h3>
+          <div class="signature-line">
+            <strong>Direct Supervisor:</strong> ${reportData?.supervisorSignature ? '✓ Signed' : '_________________'}
+            <span style="float: right;">Date: _________________</span>
+          </div>
+          <div class="signature-line">
+            <strong>Finance Department:</strong> _________________
+            <span style="float: right;">Date: _________________</span>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  const generateSummaryPage = (report: any, reportData: any, monthNames: string[]) => {
+    return `
+      <div class="page-break">
+        <div class="header">
+          <h1>MONTHLY EXPENSE REPORT SUMMARY SHEET</h1>
+        </div>
+        
+        <div class="section">
+          <table class="summary-table">
+            <tr><th>Name:</th><td>${report.employeeName}</td></tr>
+            <tr><th>Month:</th><td>${monthNames[report.month - 1]}, ${report.year}</td></tr>
+            <tr><th>Date Completed:</th><td>${report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : 'Not submitted'}</td></tr>
+          </table>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Expense Summary</div>
+          <table class="summary-table">
+            <tr><th>Mileage Reimbursement</th><td>$${report.totalMileageAmount.toFixed(2)}</td></tr>
+            <tr><th>Phone/Internet/Fax</th><td>$${reportData?.phoneInternetFax || 0}</td></tr>
+            <tr><th>Air/Rail/Bus</th><td>$${reportData?.airRailBus || 0}</td></tr>
+            <tr><th>Vehicle Rental/Fuel</th><td>$${reportData?.vehicleRentalFuel || 0}</td></tr>
+            <tr><th>Parking/Tolls</th><td>$${reportData?.parkingTolls || 0}</td></tr>
+            <tr><th>Ground Transportation</th><td>$${reportData?.groundTransportation || 0}</td></tr>
+            <tr><th>Hotels/Airbnb</th><td>$${reportData?.hotelsAirbnb || 0}</td></tr>
+            <tr><th>Per Diem</th><td>$${reportData?.perDiem || 0}</td></tr>
+            <tr><th>Other Expenses</th><td>$${reportData?.other || 0}</td></tr>
+            <tr style="border-top: 2px solid #000;"><th><strong>Total Expenses</strong></th><td><strong>$${report.totalExpenses.toFixed(2)}</strong></td></tr>
+          </table>
+        </div>
+        
+        <div class="section">
+          <p><strong>Payable to:</strong> ${report.employeeName}</p>
+          <p><strong>Base Address:</strong> ${reportData?.baseAddress || 'N/A'}</p>
+        </div>
+      </div>
+    `;
+  };
+
+  const generateCostCenterPage = (report: any, reportData: any, monthNames: string[], costCenter: string, index: number) => {
+    const daysInMonth = new Date(report.year, report.month - 1, 0).getDate();
+    
+    return `
+      <div class="page-break">
+        <div class="header">
+          <h1>COST CENTER TRAVEL SHEET - ${costCenter}</h1>
+          <h3>${report.employeeName} - ${monthNames[report.month - 1]} ${report.year}</h3>
+        </div>
+        
+        <div class="section">
+          <table class="daily-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description/Activity</th>
+                <th>Hours</th>
+                <th>Odometer Start</th>
+                <th>Odometer End</th>
+                <th>Miles</th>
+                <th>Mileage ($)</th>
+                <th>Per Diem</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Array.from({ length: daysInMonth }, (_, i) => {
+                const day = i + 1;
+                const dateStr = `${report.month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${report.year.toString().slice(-2)}`;
+                const entry = reportData?.dailyEntries?.find((e: any) => e.date === dateStr);
+                
+                return `
+                  <tr>
+                    <td>${dateStr}</td>
+                    <td style="white-space: pre-wrap;">${entry?.description || ''}</td>
+                    <td>${entry?.hoursWorked || 0}</td>
+                    <td>${entry?.odometerStart || 0}</td>
+                    <td>${entry?.odometerEnd || 0}</td>
+                    <td>${entry?.milesTraveled || 0}</td>
+                    <td>$${entry?.mileageAmount?.toFixed(2) || '0.00'}</td>
+                    <td>$${entry?.perDiem?.toFixed(2) || '0.00'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Subtotals</div>
+          <table class="summary-table">
+            <tr><th>Total Hours:</th><td>${reportData?.totalHours || 0}</td></tr>
+            <tr><th>Total Miles:</th><td>${report.totalMiles.toFixed(1)}</td></tr>
+            <tr><th>Total Mileage Amount:</th><td>$${report.totalMileageAmount.toFixed(2)}</td></tr>
+            <tr><th>Total Per Diem:</th><td>$${reportData?.perDiem || 0}</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+  };
+
+  const generateTimesheetPage = (report: any, reportData: any, monthNames: string[]) => {
+    const daysInMonth = new Date(report.year, report.month - 1, 0).getDate();
+    
+    return `
+      <div class="page-break">
+        <div class="header">
+          <h1>MONTHLY TIMESHEET</h1>
+          <h3>${report.employeeName} - ${monthNames[report.month - 1]} ${report.year}</h3>
+        </div>
+        
+        <div class="section">
+          <table class="daily-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Cost Center</th>
+                <th>Hours Worked</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Array.from({ length: daysInMonth }, (_, i) => {
+                const day = i + 1;
+                const dateStr = `${report.month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${report.year.toString().slice(-2)}`;
+                const entry = reportData?.dailyEntries?.find((e: any) => e.date === dateStr);
+                
+                return `
+                  <tr>
+                    <td>${dateStr}</td>
+                    <td>${reportData?.costCenters?.[0] || 'N/A'}</td>
+                    <td>${entry?.hoursWorked || 0}</td>
+                    <td style="white-space: pre-wrap;">${entry?.description || ''}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Cost Center Hours Summary</div>
+          <table class="summary-table">
+            ${reportData?.costCenters?.map((cc: string) => `
+              <tr><th>${cc}:</th><td>${reportData?.totalHours || 0} hours</td></tr>
+            `).join('') || '<tr><th>No cost centers assigned</th><td>0 hours</td></tr>'}
+            <tr style="border-top: 2px solid #000;"><th><strong>Total Hours:</strong></th><td><strong>${reportData?.totalHours || 0}</strong></td></tr>
+          </table>
+        </div>
+        
+        <div class="approval-box">
+          <h3>Employee Signature:</h3>
+          <div class="signature-line">
+            ${reportData?.employeeSignature ? '✓ Signed' : '_________________'}
+            <span style="float: right;">Date: _________________</span>
+          </div>
+        </div>
+      </div>
+    `;
   };
 
   const getStatusColor = (status: string) => {
