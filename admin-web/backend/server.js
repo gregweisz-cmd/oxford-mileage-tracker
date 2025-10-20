@@ -4303,14 +4303,11 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       // Helper function to draw table cell with color and border
       const drawCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
-        // Set fill color and draw filled rectangle
+        // Set fill color
         setColor(color);
-        doc.rect(x, y, width, height, 'F'); // Fill only
         
-        // Draw border separately to ensure it's visible
-        doc.setDrawColor(0, 0, 0); // Black border
-        doc.setLineWidth(0.5);
-        doc.rect(x, y, width, height, 'S'); // Stroke border
+        // Draw filled rectangle with border
+        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
         
         // Set text color and font
         doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
@@ -4327,7 +4324,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       // Table dimensions - adjusted for portrait page
       const cellHeight = 20;
-      const colWidths = [100, 60, 60, 60, 60, 60, 80]; // Cost Center columns + subtotals (narrower)
+      const colWidths = [80, 50, 50, 50, 50, 50, 70]; // Much narrower columns to fit page
       const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
       const tableStartX = margin;
       
@@ -4509,20 +4506,17 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         
         // Table dimensions for Cost Center sheet - adjusted for portrait page
         const ccCellHeight = 15;
-        const ccColWidths = [50, 120, 50, 60, 50, 50, 60]; // Narrower columns to fit page
+        const ccColWidths = [40, 100, 40, 50, 40, 40, 50]; // Much narrower columns to fit page
         const ccHeaders = ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)'];
         const ccTableStartX = margin;
         
         // Helper function for Cost Center table cells
         const drawCCCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
-          // Set fill color and draw filled rectangle
+          // Set fill color
           setColor(color);
-          doc.rect(x, y, width, height, 'F'); // Fill only
           
-          // Draw border separately to ensure it's visible
-          doc.setDrawColor(0, 0, 0); // Black border
-          doc.setLineWidth(0.5);
-          doc.rect(x, y, width, height, 'S'); // Stroke border
+          // Draw filled rectangle with border
+          doc.rect(x, y, width, height, 'FD'); // Fill and draw border
           
           // Set text color and font
           doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
@@ -4614,20 +4608,17 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       // Table dimensions for Timesheet - adjusted for portrait page
       const tsCellHeight = 15;
-      const tsColWidths = [50, 100, 60, 150]; // Narrower columns to fit page
+      const tsColWidths = [40, 80, 50, 120]; // Much narrower columns to fit page
       const tsHeaders = ['Date', 'Cost Center', 'Hours Worked', 'Description'];
       const tsTableStartX = margin;
       
       // Helper function for Timesheet table cells
       const drawTSCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
-        // Set fill color and draw filled rectangle
+        // Set fill color
         setColor(color);
-        doc.rect(x, y, width, height, 'F'); // Fill only
         
-        // Draw border separately to ensure it's visible
-        doc.setDrawColor(0, 0, 0); // Black border
-        doc.setLineWidth(0.5);
-        doc.rect(x, y, width, height, 'S'); // Stroke border
+        // Draw filled rectangle with border
+        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
         
         // Set text color and font
         doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
