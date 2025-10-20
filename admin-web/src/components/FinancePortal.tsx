@@ -85,7 +85,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     borderColor: '#cccccc',
     spacing: 'normal',
     showLogo: true,
-    pageOrientation: 'portrait',
+    pageOrientation: 'portrait', // Always portrait to match Staff Portal
   });
 
   useEffect(() => {
@@ -259,7 +259,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         <style>
           @media print {
             @page {
-              size: ${printStyles.pageOrientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
+              size: portrait;
               margin: 0.5in;
             }
             body { font-family: Arial, sans-serif; font-size: ${printStyles.fontSize}; }
@@ -1055,7 +1055,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
               '@media print': {
                 boxShadow: 'none',
                 padding: 0,
-                size: printStyles.pageOrientation === 'landscape' ? 'landscape' : 'portrait',
+                size: 'portrait', // Always portrait to match Staff Portal
               },
             }}
           >
