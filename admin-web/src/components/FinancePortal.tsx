@@ -227,7 +227,177 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   };
 
   const handlePrint = () => {
-    window.print();
+    if (!selectedReport) return;
+    
+    // Create a comprehensive print document
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const reportData = selectedReport.reportData;
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Expense Report - ${selectedReport.employeeName} - ${monthNames[selectedReport.month - 1]} ${selectedReport.year}</title>
+        <style>
+          @media print {
+            @page {
+              size: ${printStyles.pageOrientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
+              margin: 0.5in;
+            }
+            body { font-family: Arial, sans-serif; font-size: ${printStyles.fontSize}; }
+            .no-print { display: none !important; }
+            .page-break { page-break-before: always; }
+            .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            .summary-table th, .summary-table td { border: 1px solid #000; padding: 8px; text-align: left; }
+            .summary-table th { background-color: #f0f0f0; font-weight: bold; }
+            .daily-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            .daily-table th, .daily-table td { border: 1px solid #000; padding: 6px; text-align: left; font-size: ${printStyles.fontSize === '14px' ? '12px' : printStyles.fontSize === '10px' ? '8px' : '10px'}; }
+            .daily-table th { background-color: #f0f0f0; font-weight: bold; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
+            .section { margin: 30px 0; }
+            .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+          }
+          body { font-family: Arial, sans-serif; font-size: ${printStyles.fontSize}; }
+          .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          .summary-table th, .summary-table td { border: 1px solid #000; padding: 8px; text-align: left; }
+          .summary-table th { background-color: #f0f0f0; font-weight: bold; }
+          .daily-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          .daily-table th, .daily-table td { border: 1px solid #000; padding: 6px; text-align: left; font-size: ${printStyles.fontSize === '14px' ? '12px' : printStyles.fontSize === '10px' ? '8px' : '10px'}; }
+          .daily-table th { background-color: #f0f0f0; font-weight: bold; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
+          .section { margin: 30px 0; }
+          .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>OXFORD HOUSE, INC.</h1>
+          <h2>MONTHLY EXPENSE REPORT</h2>
+          <h3>${selectedReport.employeeName} - ${monthNames[selectedReport.month - 1]} ${selectedReport.year}</h3>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Report Summary</div>
+          <table class="summary-table">
+            <tr><th>Status</th><td>${selectedReport.status.replace('_', ' ').toUpperCase()}</td></tr>
+            <tr><th>Submitted Date</th><td>${selectedReport.submittedAt ? new Date(selectedReport.submittedAt).toLocaleDateString() : 'Not submitted'}</td></tr>
+            <tr><th>Total Miles</th><td>${selectedReport.totalMiles.toFixed(1)}</td></tr>
+            <tr><th>Mileage Reimbursement</th><td>$${selectedReport.totalMileageAmount.toFixed(2)}</td></tr>
+            <tr><th>Total Expenses</th><td><strong>$${selectedReport.totalExpenses.toFixed(2)}</strong></td></tr>
+          </table>
+        </div>
+        
+        ${reportData?.dailyEntries ? `
+        <div class="section">
+          <div class="section-title">Daily Activity Breakdown</div>
+          <table class="daily-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description of Activity</th>
+                <th>Miles Traveled</th>
+                <th>Hours Worked</th>
+                <th>Mileage Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportData.dailyEntries
+                .filter((entry: any) => entry.milesTraveled > 0 || entry.hoursWorked > 0)
+                .map((entry: any) => `
+                  <tr>
+                    <td>${entry.date}</td>
+                    <td style="white-space: pre-wrap;">${entry.description || ''}</td>
+                    <td>${entry.milesTraveled > 0 ? entry.milesTraveled.toFixed(1) : '-'}</td>
+                    <td>${entry.hoursWorked > 0 ? entry.hoursWorked : '-'}</td>
+                    <td>$${entry.mileageAmount ? entry.mileageAmount.toFixed(2) : '0.00'}</td>
+                  </tr>
+                `).join('')}
+            </tbody>
+          </table>
+        </div>
+        ` : ''}
+        
+        ${reportData?.receipts && reportData.receipts.length > 0 ? `
+        <div class="section page-break">
+          <div class="section-title">Receipt Summary</div>
+          <table class="daily-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Vendor</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportData.receipts.map((receipt: any) => `
+                <tr>
+                  <td>${new Date(receipt.date).toLocaleDateString()}</td>
+                  <td>${receipt.vendor || ''}</td>
+                  <td>${receipt.description || ''}</td>
+                  <td>${receipt.category || ''}</td>
+                  <td>$${receipt.amount ? receipt.amount.toFixed(2) : '0.00'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        ` : ''}
+        
+        <div class="section page-break">
+          <div class="section-title">Expense Categories Breakdown</div>
+          <table class="summary-table">
+            <tr><th>Mileage Reimbursement</th><td>$${selectedReport.totalMileageAmount.toFixed(2)}</td></tr>
+            <tr><th>Phone/Internet/Fax</th><td>$${reportData?.phoneInternetFax || 0}</td></tr>
+            <tr><th>Air/Rail/Bus</th><td>$${reportData?.airRailBus || 0}</td></tr>
+            <tr><th>Vehicle Rental/Fuel</th><td>$${reportData?.vehicleRentalFuel || 0}</td></tr>
+            <tr><th>Parking/Tolls</th><td>$${reportData?.parkingTolls || 0}</td></tr>
+            <tr><th>Ground Transportation</th><td>$${reportData?.groundTransportation || 0}</td></tr>
+            <tr><th>Hotels/Airbnb</th><td>$${reportData?.hotelsAirbnb || 0}</td></tr>
+            <tr><th>Per Diem</th><td>$${reportData?.perDiem || 0}</td></tr>
+            <tr><th>Other Expenses</th><td>$${reportData?.other || 0}</td></tr>
+            <tr style="border-top: 2px solid #000;"><th><strong>Total Expenses</strong></th><td><strong>$${selectedReport.totalExpenses.toFixed(2)}</strong></td></tr>
+          </table>
+        </div>
+        
+        <div class="section page-break">
+          <div class="section-title">Approval Section</div>
+          <table class="summary-table">
+            <tr>
+              <th>Employee Signature</th>
+              <td style="height: 50px;">${reportData?.employeeSignature ? '✓ Signed' : '_________________'}</td>
+            </tr>
+            <tr>
+              <th>Supervisor Signature</th>
+              <td style="height: 50px;">${reportData?.supervisorSignature ? '✓ Signed' : '_________________'}</td>
+            </tr>
+            <tr>
+              <th>Finance Approval</th>
+              <td style="height: 50px;">_________________</td>
+            </tr>
+          </table>
+        </div>
+        
+        <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #666;">
+          Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
+        </div>
+      </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.focus();
+    
+    // Wait for content to load, then print
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
   };
 
   const getStatusColor = (status: string) => {
@@ -763,34 +933,46 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
             }}
           >
             {/* Report Header */}
-            <Box sx={{ textAlign: 'center', mb: 4, borderBottom: `2px solid ${printStyles.headerColor}`, pb: 2 }}>
-              {printStyles.showLogo && (
-                <Typography variant="h5" sx={{ color: printStyles.headerColor, fontWeight: 'bold' }}>
-                  Oxford House
-                </Typography>
-              )}
-              <Typography variant="h6">Expense Report</Typography>
-              <Typography variant="body2" color="textSecondary">
+            <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #000', pb: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
+                OXFORD HOUSE, INC.
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
+                MONTHLY EXPENSE REPORT
+              </Typography>
+              <Typography variant="h6" color="textSecondary">
                 {selectedReport?.employeeName} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
               </Typography>
             </Box>
 
-            {/* Summary Section */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>Summary</Typography>
-              <Table size="small" sx={{ border: `1px solid ${printStyles.borderColor}` }}>
+            {/* Report Summary */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                Report Summary
+              </Typography>
+              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
                 <TableBody>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Total Miles</TableCell>
-                    <TableCell>{selectedReport?.totalMiles.toFixed(1)}</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Status</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.status.replace('_', ' ').toUpperCase()}</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold' }}>Mileage Reimbursement</TableCell>
-                    <TableCell>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Submitted Date</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>
+                      {selectedReport?.submittedAt ? new Date(selectedReport.submittedAt).toLocaleDateString() : 'Not submitted'}
+                    </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold' }}>Total Expenses</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Miles</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.totalMiles.toFixed(1)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Mileage Reimbursement</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Expenses</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em', border: '1px solid #000' }}>
                       ${selectedReport?.totalExpenses.toFixed(2)}
                     </TableCell>
                   </TableRow>
@@ -798,17 +980,20 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
               </Table>
             </Box>
 
-            {/* Daily Entries */}
+            {/* Daily Activity Breakdown */}
             {selectedReport?.reportData?.dailyEntries && (
-              <Box>
-                <Typography variant="h6" gutterBottom>Daily Activity</Typography>
-                <Table size="small" sx={{ border: `1px solid ${printStyles.borderColor}` }}>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                  Daily Activity Breakdown
+                </Typography>
+                <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
                   <TableHead>
                     <TableRow sx={{ bgcolor: 'grey.100' }}>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Description</TableCell>
-                      <TableCell align="right">Miles</TableCell>
-                      <TableCell align="right">Hours</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Date</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Description of Activity</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Miles Traveled</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Hours Worked</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Mileage Amount</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -816,16 +1001,145 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                       .filter((entry: any) => entry.milesTraveled > 0 || entry.hoursWorked > 0)
                       .map((entry: any, idx: number) => (
                         <TableRow key={idx}>
-                          <TableCell>{entry.date}</TableCell>
-                          <TableCell sx={{ whiteSpace: 'pre-wrap' }}>{entry.description}</TableCell>
-                          <TableCell align="right">{entry.milesTraveled > 0 ? entry.milesTraveled.toFixed(1) : '-'}</TableCell>
-                          <TableCell align="right">{entry.hoursWorked > 0 ? entry.hoursWorked : '-'}</TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }}>{entry.date}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'pre-wrap', border: '1px solid #000' }}>{entry.description || ''}</TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }} align="right">
+                            {entry.milesTraveled > 0 ? entry.milesTraveled.toFixed(1) : '-'}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }} align="right">
+                            {entry.hoursWorked > 0 ? entry.hoursWorked : '-'}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }} align="right">
+                            ${entry.mileageAmount ? entry.mileageAmount.toFixed(2) : '0.00'}
+                          </TableCell>
                         </TableRow>
                       ))}
                   </TableBody>
                 </Table>
               </Box>
             )}
+
+            {/* Receipt Summary */}
+            {selectedReport?.reportData?.receipts && selectedReport.reportData.receipts.length > 0 && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                  Receipt Summary
+                </Typography>
+                <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.100' }}>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Date</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Vendor</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Description</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Category</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {selectedReport.reportData.receipts.map((receipt: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell sx={{ border: '1px solid #000' }}>
+                          {new Date(receipt.date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.vendor || ''}</TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.description || ''}</TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.category || ''}</TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }} align="right">
+                          ${receipt.amount ? receipt.amount.toFixed(2) : '0.00'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+
+            {/* Expense Categories Breakdown */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                Expense Categories Breakdown
+              </Typography>
+              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
+                <TableBody>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Mileage Reimbursement</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Phone/Internet/Fax</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.phoneInternetFax || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Air/Rail/Bus</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.airRailBus || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Vehicle Rental/Fuel</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.vehicleRentalFuel || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Parking/Tolls</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.parkingTolls || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Ground Transportation</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.groundTransportation || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Hotels/Airbnb</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.hotelsAirbnb || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Per Diem</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.perDiem || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Other Expenses</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.other || 0}</TableCell>
+                  </TableRow>
+                  <TableRow sx={{ borderTop: '2px solid #000' }}>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>
+                      <strong>Total Expenses</strong>
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em', border: '1px solid #000' }}>
+                      <strong>${selectedReport?.totalExpenses.toFixed(2)}</strong>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </Box>
+
+            {/* Approval Section */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                Approval Section
+              </Typography>
+              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
+                <TableBody>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100', width: '30%' }}>Employee Signature</TableCell>
+                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>
+                      {selectedReport?.reportData?.employeeSignature ? '✓ Signed' : '_________________'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Supervisor Signature</TableCell>
+                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>
+                      {selectedReport?.reportData?.supervisorSignature ? '✓ Signed' : '_________________'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Finance Approval</TableCell>
+                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>_________________</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </Box>
+
+            {/* Footer */}
+            <Box sx={{ textAlign: 'center', mt: 4, fontSize: '10px', color: 'text.secondary' }}>
+              Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
+            </Box>
           </Paper>
         </DialogContent>
         <DialogActions sx={{ '@media print': { display: 'none' } }}>
