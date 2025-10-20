@@ -28,7 +28,7 @@ import {
   Tab,
   CircularProgress,
   Alert,
-  Grid,
+  Grid2 as Grid,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -770,11 +770,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
               '@media print': {
                 boxShadow: 'none',
                 padding: 0,
+                size: printStyles.pageOrientation === 'landscape' ? 'landscape' : 'portrait',
               },
-            }}
-            style={{
-              pageBreakAfter: 'always',
-              orientation: printStyles.pageOrientation === 'landscape' ? 'landscape' : 'portrait',
             }}
           >
             {/* Report Header */}
