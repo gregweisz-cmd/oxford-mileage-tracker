@@ -66,6 +66,14 @@ The app is now fully functional and ready for real-world testing!
 **Problem**: "no such column: startLocationDetails"  
 **Fix**: Map location details objects to separate columns  
 
+### 7. Favorite Address Selection
+**Problem**: Couldn't select address for manual entry without starting GPS  
+**Fix**: Added separate "Select" button for manual entries  
+
+### 8. GPS Tracking Screen Scroll Lock
+**Problem**: Screen locked up after starting GPS tracking  
+**Fix**: Simplified ScrollView configuration for proper scrollability  
+
 ---
 
 ## All Known Issues Fixed! ✅
@@ -189,7 +197,8 @@ All critical bugs are fixed. The sync is working. Dates are correct. Everything 
 
 ### Mobile App (Expo):
 ✅ **Published to Expo main branch**  
-- **Update ID**: `b06bd8c0-a313-4fb5-a85d-77876a28b51d`
+- **Update ID**: `af4ae384-4459-4aff-828b-021de8741cd0`
+- **Latest Fix**: GPS tracking screen scrollability (Oct 20, 2025)
 - **Platform**: iOS & Android
 - **Message**: "All critical fixes: sync bug, dates, delete, favorite addresses"
 - **Commit**: `3aa87dc`
