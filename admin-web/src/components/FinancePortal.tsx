@@ -249,78 +249,54 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   };
 
   const handlePrint = () => {
-    if (!selectedReport) return;
-    
-    // Create a comprehensive multi-page print document
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    
-    const reportData = selectedReport.reportData;
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                       'July', 'August', 'September', 'October', 'November', 'December'];
-    
-    // Generate all pages
-    const pages = generateAllPages(selectedReport, reportData, monthNames);
-    
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Expense Report - ${selectedReport.employeeName} - ${monthNames[selectedReport.month - 1]} ${selectedReport.year}</title>
-        <style>
-          @media print {
-            @page {
-              size: portrait;
-              margin: 0.5in;
-            }
-            body { font-family: Arial, sans-serif; font-size: ${printStyles.fontSize}; }
-            .no-print { display: none !important; }
-            .page-break { page-break-before: always; }
-            .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .summary-table th, .summary-table td { border: 1px solid #000; padding: 8px; text-align: left; }
-            .summary-table th { background-color: #f0f0f0; font-weight: bold; }
-            .daily-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .daily-table th, .daily-table td { border: 1px solid #000; padding: 6px; text-align: left; font-size: ${printStyles.fontSize === '14px' ? '12px' : printStyles.fontSize === '10px' ? '8px' : '10px'}; }
-            .daily-table th { background-color: #f0f0f0; font-weight: bold; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-            .section { margin: 30px 0; }
-            .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-            .approval-box { border: 2px solid #000; padding: 20px; margin: 20px 0; }
-            .signature-line { border-bottom: 1px solid #000; height: 30px; margin: 10px 0; }
-            .cost-center-header { background-color: #e0e0e0; font-weight: bold; padding: 10px; }
-          }
-          body { font-family: Arial, sans-serif; font-size: ${printStyles.fontSize}; }
-          .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          .summary-table th, .summary-table td { border: 1px solid #000; padding: 8px; text-align: left; }
-          .summary-table th { background-color: #f0f0f0; font-weight: bold; }
-          .daily-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          .daily-table th, .daily-table td { border: 1px solid #000; padding: 6px; text-align: left; font-size: ${printStyles.fontSize === '14px' ? '12px' : printStyles.fontSize === '10px' ? '8px' : '10px'}; }
-          .daily-table th { background-color: #f0f0f0; font-weight: bold; }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-          .section { margin: 30px 0; }
-          .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-          .approval-box { border: 2px solid #000; padding: 20px; margin: 20px 0; }
-          .signature-line { border-bottom: 1px solid #000; height: 30px; margin: 10px 0; }
-          .cost-center-header { background-color: #e0e0e0; font-weight: bold; padding: 10px; }
-        </style>
-      </head>
-      <body>
-        ${pages.join('')}
-      </body>
-      </html>
-    `);
-    
-    printWindow.document.close();
-    printWindow.focus();
-    
-    // Wait for content to load, then print
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 500);
+    const printContent = document.getElementById('printable-report');
+    if (printContent) {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Print Report</title>
+              <style>
+                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+                @media print {
+                  body { margin: 0; padding: 0; }
+                  @page { size: ${printStyles.pageOrientation}; margin: 0.5in; }
+                }
+                .print-content { font-size: ${printStyles.fontSize}; }
+                .compact { line-height: 1.2; }
+                .normal { line-height: 1.5; }
+                .relaxed { line-height: 1.8; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                .header { text-align: center; margin-bottom: 20px; }
+                .summary-table { margin-bottom: 20px; }
+                .activity-table { margin-bottom: 20px; }
+                .receipt-table { margin-bottom: 20px; }
+                .expense-table { margin-bottom: 20px; }
+                .approval-section { margin-top: 30px; border: 2px solid #000; padding: 15px; }
+                .signature-box { display: flex; justify-content: space-between; margin-top: 20px; }
+                .signature-field { width: 45%; }
+                .signature-line { border-bottom: 1px solid #000; height: 40px; margin-top: 5px; }
+              </style>
+            </head>
+            <body>
+              <div class="print-content ${printStyles.spacing}">
+                ${printContent.innerHTML}
+              </div>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+      }
+    }
   };
 
-  const generateAllPages = (report: any, reportData: any, monthNames: string[]) => {
+  const loadReports = async () => {
     const pages = [];
     
     // Page 1: Approval Cover Sheet
