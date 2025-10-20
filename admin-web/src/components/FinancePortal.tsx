@@ -28,7 +28,7 @@ import {
   Tab,
   CircularProgress,
   Alert,
-  Grid2 as Grid,
+  Grid,
 } from '@mui/material';
 import {
   Print as PrintIcon,
