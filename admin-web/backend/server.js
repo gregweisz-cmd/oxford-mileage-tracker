@@ -7,6 +7,7 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 const http = require('http');
 const WebSocket = require('ws');
+const { jsPDF } = require('jspdf');
 
 const app = express();
 const server = http.createServer(app);
@@ -4158,6 +4159,303 @@ app.get('/api/export/expense-report/:id', (req, res) => {
     } catch (parseError) {
       console.error('❌ Error parsing report data:', parseError);
       res.status(500).json({ error: 'Failed to parse report data' });
+    }
+  });
+});
+
+// Export individual expense report to PDF (matching Staff Portal format)
+app.get('/api/export/expense-report-pdf/:id', (req, res) => {
+  const { id } = req.params;
+  
+  console.log(`📊 Exporting expense report to PDF: ${id}`);
+  
+  db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, report) => {
+    if (err) {
+      console.error('❌ Database error:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    if (!report) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+    
+    try {
+      const reportData = JSON.parse(report.reportData);
+      
+      // Create PDF in portrait mode
+      const doc = new jsPDF('portrait', 'pt', 'a4');
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 40;
+      
+      // Helper function for safe text
+      const safeText = (text, x, y, options) => {
+        const safeTextValue = text !== null && text !== undefined ? String(text) : '';
+        doc.text(safeTextValue, x, y, options);
+      };
+      
+      // Page 1: Approval Cover Sheet
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      safeText('MONTHLY EXPENSE REPORT APPROVAL COVER SHEET', pageWidth / 2, 60, { align: 'center' });
+      
+      doc.setFontSize(14);
+      safeText('OXFORD HOUSE, INC.', pageWidth / 2, 85, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      safeText('1010 Wayne Ave. Suite # 300', pageWidth / 2, 105, { align: 'center' });
+      safeText('Silver Spring, MD 20910', pageWidth / 2, 120, { align: 'center' });
+      
+      let yPos = 160;
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      safeText('Name:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      safeText(reportData.name || 'N/A', margin + 50, yPos);
+      
+      yPos += 20;
+      doc.setFont('helvetica', 'bold');
+      safeText('Month:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      safeText(`${reportData.month}, ${reportData.year}`, margin + 50, yPos);
+      
+      yPos += 20;
+      doc.setFont('helvetica', 'bold');
+      safeText('Date Completed:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      safeText(new Date().toLocaleDateString(), margin + 110, yPos);
+      
+      yPos += 40;
+      doc.setFont('helvetica', 'bold');
+      safeText('Cost Centers:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      const costCenters = reportData.costCenters || [];
+      yPos += 20;
+      costCenters.forEach((center, index) => {
+        safeText(`${index + 1}.) ${center}`, margin + 10, yPos);
+        yPos += 18;
+      });
+      
+      yPos += 20;
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      safeText('SUMMARY TOTALS', margin, yPos);
+      yPos += 25;
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const summaryItems = [
+        ['Total Miles:', `${(reportData.totalMiles || 0).toFixed(1)}`],
+        ['Total Mileage Amount:', `$${(reportData.totalMileageAmount || 0).toFixed(2)}`],
+        ['Total Hours:', `${(reportData.totalHours || 0).toFixed(1)}`],
+        ['Total Expenses:', `$${((reportData.totalMileageAmount || 0) + (reportData.perDiem || 0) + (reportData.phoneInternetFax || 0)).toFixed(2)}`]
+      ];
+      
+      summaryItems.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold');
+        safeText(label, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        safeText(value, margin + 150, yPos);
+        yPos += 20;
+      });
+      
+      yPos += 40;
+      doc.setFont('helvetica', 'bold');
+      safeText('SIGNATURES:', margin, yPos);
+      yPos += 25;
+      doc.setFont('helvetica', 'normal');
+      doc.rect(margin, yPos, 200, 50);
+      safeText('Employee Signature', margin + 5, yPos - 5);
+      doc.rect(margin + 250, yPos, 200, 50);
+      safeText('Supervisor Signature', margin + 255, yPos - 5);
+      
+      // Page 2: Summary Sheet
+      doc.addPage();
+      yPos = margin + 20;
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      safeText('MONTHLY EXPENSE REPORT SUMMARY SHEET', pageWidth / 2, yPos, { align: 'center' });
+      
+      yPos += 40;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      safeText(`Employee: ${reportData.name || 'N/A'}`, margin, yPos);
+      yPos += 20;
+      safeText(`Period: ${reportData.month} ${reportData.year}`, margin, yPos);
+      
+      yPos += 40;
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      safeText('Expense Summary', margin, yPos);
+      yPos += 25;
+      
+      doc.setFontSize(9);
+      const expenseCategories = [
+        ['Mileage Reimbursement', reportData.totalMileageAmount || 0],
+        ['Phone/Internet/Fax', reportData.phoneInternetFax || 0],
+        ['Air/Rail/Bus', reportData.airRailBus || 0],
+        ['Vehicle Rental/Fuel', reportData.vehicleRentalFuel || 0],
+        ['Parking/Tolls', reportData.parkingTolls || 0],
+        ['Ground Transportation', reportData.groundTransportation || 0],
+        ['Hotels/Airbnb', reportData.hotelsAirbnb || 0],
+        ['Per Diem', reportData.perDiem || 0],
+        ['Other Expenses', reportData.other || 0]
+      ];
+      
+      expenseCategories.forEach(([category, amount]) => {
+        doc.setFont('helvetica', 'bold');
+        safeText(category, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        safeText(`$${amount.toFixed(2)}`, margin + 250, yPos);
+        yPos += 18;
+      });
+      
+      yPos += 10;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      safeText('Total Expenses:', margin, yPos);
+      const totalExpenses = (reportData.totalMileageAmount || 0) + (reportData.phoneInternetFax || 0) + 
+                           (reportData.airRailBus || 0) + (reportData.vehicleRentalFuel || 0) + 
+                           (reportData.parkingTolls || 0) + (reportData.groundTransportation || 0) + 
+                           (reportData.hotelsAirbnb || 0) + (reportData.perDiem || 0) + (reportData.other || 0);
+      safeText(`$${totalExpenses.toFixed(2)}`, margin + 250, yPos);
+      
+      // Page 3+: Cost Center Travel Sheets
+      (reportData.costCenters || []).forEach((costCenter, index) => {
+        doc.addPage();
+        yPos = margin + 20;
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        safeText(`COST CENTER TRAVEL SHEET - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
+        
+        yPos += 30;
+        doc.setFontSize(11);
+        safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
+        
+        yPos += 40;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        
+        // Table header
+        const headerY = yPos;
+        const colWidths = [60, 140, 100, 80, 60, 80];
+        const headers = ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Miles', 'Amount'];
+        let xPos = margin;
+        
+        doc.setFont('helvetica', 'bold');
+        headers.forEach((header, i) => {
+          doc.rect(xPos, headerY, colWidths[i], 15);
+          safeText(header, xPos + 3, headerY + 11);
+          xPos += colWidths[i];
+        });
+        
+        yPos = headerY + 15;
+        doc.setFont('helvetica', 'normal');
+        
+        // Table rows
+        const entries = (reportData.dailyEntries || []).filter(e => e.milesTraveled > 0 || e.hoursWorked > 0);
+        entries.forEach((entry) => {
+          if (yPos > pageHeight - 100) {
+            doc.addPage();
+            yPos = margin;
+          }
+          
+          xPos = margin;
+          const rowData = [
+            entry.date || '',
+            entry.description || '',
+            (entry.hoursWorked || 0).toString(),
+            (entry.odometerStart || 0).toString(),
+            (entry.milesTraveled || 0).toFixed(1),
+            `$${(entry.mileageAmount || 0).toFixed(2)}`
+          ];
+          
+          rowData.forEach((data, i) => {
+            doc.rect(xPos, yPos, colWidths[i], 15);
+            const text = data.length > 25 ? data.substring(0, 22) + '...' : data;
+            safeText(text, xPos + 3, yPos + 11);
+            xPos += colWidths[i];
+          });
+          
+          yPos += 15;
+        });
+        
+        yPos += 25;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        safeText(`Total Miles: ${(reportData.totalMiles || 0).toFixed(1)}`, margin, yPos);
+        yPos += 18;
+        safeText(`Total Hours: ${(reportData.totalHours || 0).toFixed(1)}`, margin, yPos);
+        yPos += 18;
+        safeText(`Total Amount: $${(reportData.totalMileageAmount || 0).toFixed(2)}`, margin, yPos);
+      });
+      
+      // Page Last: Timesheet
+      doc.addPage();
+      yPos = margin + 20;
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      safeText('MONTHLY TIMESHEET', pageWidth / 2, yPos, { align: 'center' });
+      
+      yPos += 30;
+      doc.setFontSize(11);
+      safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
+      
+      yPos += 40;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      safeText('TIME TRACKING SUMMARY:', margin, yPos);
+      yPos += 25;
+      
+      doc.setFont('helvetica', 'normal');
+      const timeCategories = [
+        ['G&A Hours', reportData.gaHours || 0],
+        ['Holiday Hours', reportData.holidayHours || 0],
+        ['PTO Hours', reportData.ptoHours || 0],
+        ['STD/LTD Hours', reportData.stdLtdHours || 0],
+        ['PFL/PFML Hours', reportData.pflPfmlHours || 0]
+      ];
+      
+      timeCategories.forEach(([category, hours]) => {
+        safeText(`${category}:`, margin + 10, yPos);
+        safeText(`${hours} hours`, margin + 150, yPos);
+        yPos += 20;
+      });
+      
+      yPos += 30;
+      doc.setFont('helvetica', 'bold');
+      safeText('Total Hours:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      safeText(`${reportData.totalHours || 0} hours`, margin + 150, yPos);
+      
+      // Generate filename matching Staff Portal format
+      const nameParts = (reportData.name || 'UNKNOWN').split(' ');
+      const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
+      const firstName = nameParts[0] || 'UNKNOWN';
+      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthIndex = parseInt(report.month) - 1;
+      const monthAbbr = monthNames[monthIndex] || 'UNK';
+      const yearShort = report.year.toString().slice(-2);
+      const filename = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
+      
+      // Get PDF as buffer
+      const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+      
+      // Set response headers
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      
+      // Send buffer
+      res.send(pdfBuffer);
+      
+      console.log(`✅ Exported expense report to PDF: ${filename}`);
+    } catch (error) {
+      console.error('❌ Error exporting report to PDF:', error);
+      res.status(500).json({ error: 'Failed to generate PDF' });
     }
   });
 });

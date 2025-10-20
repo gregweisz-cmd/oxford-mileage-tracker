@@ -203,8 +203,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   const handleExportToExcel = async (report: ExpenseReport) => {
     try {
-      console.log('📊 Exporting report:', report.id, report.employeeName);
-      const response = await fetch(`${API_BASE_URL}/api/export/expense-report/${report.id}`, {
+      console.log('📊 Exporting report to PDF:', report.id, report.employeeName);
+      const response = await fetch(`${API_BASE_URL}/api/export/expense-report-pdf/${report.id}`, {
         method: 'GET',
       });
 
@@ -219,13 +219,24 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ExpenseReport_${report.employeeName}_${report.month}-${report.year}.xlsx`;
+      
+      // Generate filename matching Staff Portal format: LASTNAME,FIRSTNAME EXPENSES MMM-YY.pdf
+      const nameParts = report.employeeName.split(' ');
+      const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
+      const firstName = nameParts[0] || 'UNKNOWN';
+      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthAbbr = monthNames[report.month - 1] || 'UNK';
+      const yearShort = report.year.toString().slice(-2);
+      
+      link.download = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+      
+      console.log('✅ PDF export completed successfully');
     } catch (error) {
-      console.error('Error exporting to Excel:', error);
+      console.error('Error exporting to PDF:', error);
       alert(`Failed to export report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
