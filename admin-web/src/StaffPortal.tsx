@@ -421,7 +421,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 tripSegments.push(segment);
               });
               
-              drivingSummary = 'Driving: ' + tripSegments.join(' ');
+              // Format: "Start to End (Address) for Purpose"
+              drivingSummary = tripSegments.join(' ');
             }
             
             // Concatenate daily description + driving summary
