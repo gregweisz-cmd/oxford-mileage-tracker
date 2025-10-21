@@ -203,7 +203,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   const handleExportToExcel = async (report: ExpenseReport) => {
     try {
-      console.log('📊 Exporting report to PDF:', report.id, report.employeeName);
+      console.log('📊 Exporting report:', report.id, report.employeeName);
       const response = await fetch(`${API_BASE_URL}/api/export/expense-report-pdf/${report.id}`, {
         method: 'GET',
       });
@@ -224,8 +224,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       const nameParts = report.employeeName.split(' ');
       const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
       const firstName = nameParts[0] || 'UNKNOWN';
-      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const monthAbbr = monthNames[report.month - 1] || 'UNK';
+      const monthNamesShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthAbbr = monthNamesShort[report.month - 1] || 'UNK';
       const yearShort = report.year.toString().slice(-2);
       
       link.download = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
@@ -1070,408 +1070,213 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
               },
             }}
           >
-            {/* Page 1: Approval Cover Sheet */}
-            <Box sx={{ mb: 6, pageBreakAfter: 'always' }}>
-              <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #000', pb: 2 }}>
-                <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  MONTHLY EXPENSE REPORT APPROVAL COVER SHEET
-                </Typography>
-              </Box>
-              
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  OXFORD HOUSE, INC.
-                </Typography>
-                <Typography variant="body1">
-                  1010 Wayne Ave. Suite # 300<br />
-                  Silver Spring, MD 20910
-                </Typography>
-              </Box>
+            {/* Report Header */}
+            <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #000', pb: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
+                OXFORD HOUSE, INC.
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
+                MONTHLY EXPENSE REPORT
+              </Typography>
+              <Typography variant="h6" color="textSecondary">
+                {selectedReport?.employeeName} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
+              </Typography>
+            </Box>
 
-              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse', mb: 3 }}>
+            {/* Report Summary */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                Report Summary
+              </Typography>
+              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
                 <TableBody>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100', width: '30%' }}>Name:</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.employeeName}</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Status</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.status.replace('_', ' ').toUpperCase()}</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Month:</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>
-                      {selectedReport && monthNames[selectedReport.month - 1]}, {selectedReport?.year}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Date Completed:</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Submitted Date</TableCell>
                     <TableCell sx={{ border: '1px solid #000' }}>
                       {selectedReport?.submittedAt ? new Date(selectedReport.submittedAt).toLocaleDateString() : 'Not submitted'}
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Miles:</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Miles</TableCell>
                     <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.totalMiles.toFixed(1)}</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Expenses:</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Mileage Reimbursement</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Expenses</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em', border: '1px solid #000' }}>
                       ${selectedReport?.totalExpenses.toFixed(2)}
                     </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
-
-              <Box sx={{ border: '2px solid #000', p: 3, mt: 4 }}>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>SIGNATURES:</Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Box sx={{ width: '45%' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>Employee Signature</Typography>
-                    <Box sx={{ borderBottom: '1px solid #000', height: 40, mb: 2 }}></Box>
-                  </Box>
-                  <Box sx={{ width: '45%' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>Supervisor Signature</Typography>
-                    <Box sx={{ borderBottom: '1px solid #000', height: 40 }}></Box>
-                  </Box>
-                </Box>
-              </Box>
             </Box>
 
-            {/* Page 2: Summary Sheet */}
-            <Box sx={{ mb: 6, pageBreakAfter: 'always' }}>
-              <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #000', pb: 2 }}>
-                <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  MONTHLY EXPENSE REPORT SUMMARY SHEET
+            {/* Daily Activity Breakdown */}
+            {selectedReport?.reportData?.dailyEntries && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                  Daily Activity Breakdown
                 </Typography>
-              </Box>
-
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="body1"><strong>Name:</strong> {selectedReport?.employeeName}</Typography>
-                <Typography variant="body1"><strong>Date Completed:</strong> {new Date().toLocaleDateString()}</Typography>
-                <Typography variant="body1"><strong>Month:</strong> {selectedReport && monthNames[selectedReport.month - 1]}, {selectedReport?.year}</Typography>
-              </Box>
-
-              {/* Summary Table with Colors */}
-              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse', mb: 3 }}>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#323296', color: 'white' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Cost Center #1</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Cost Center #2</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Cost Center #3</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Cost Center #4</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Cost Center #5</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>SUBTOTALS (by category)</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {/* Travel Expenses - Light Green */}
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>MILEAGE</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>AIR / RAIL / BUS</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>VEHICLE RENTAL / FUEL</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>PARKING / TOLLS</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>GROUND</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>LODGING</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>PER DIEM</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Other Expenses - Light Blue */}
-                  <TableRow sx={{ bgcolor: '#C8DCFF' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>OTHER EXPENSES</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* OXFORD HOUSE E.E.S. - Light Orange */}
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>OXFORD HOUSE E.E.S.</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Blank rows */}
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ border: '1px solid #000' }}></TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ border: '1px solid #000' }}></TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Communications - Light Blue */}
-                  <TableRow sx={{ bgcolor: '#C8DCFF' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>COMMUNICATIONS</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Phone / Internet / Fax - Light Orange */}
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>Phone / Internet / Fax</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Postage / Shipping - Light Orange */}
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>Postage / Shipping</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Printing / Copying - Light Orange */}
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>Printing / Copying</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Supplies - Light Blue */}
-                  <TableRow sx={{ bgcolor: '#C8DCFF' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>SUPPLIES</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Outreach Supplies - Light Orange */}
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>Outreach Supplies</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Blank row under SUPPLIES */}
-                  <TableRow sx={{ bgcolor: '#FFDCB4' }}>
-                    <TableCell sx={{ border: '1px solid #000' }}></TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                  
-                  {/* Subtotals by cost center - Light Green */}
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>SUBTOTALS (by cost center)</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>${selectedReport?.totalExpenses.toFixed(2)}</TableCell>
-                  </TableRow>
-                  
-                  {/* Less Cash Advance - Light Green */}
-                  <TableRow sx={{ bgcolor: '#C8FFC8' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>Less Cash Advance</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>$0.00</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-
-              {/* Grand Total Requested - Light Blue */}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-                <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse', width: 'auto' }}>
-                  <TableBody>
-                    <TableRow sx={{ bgcolor: '#C8DCFF' }}>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000' }}>GRAND TOTAL REQUESTED</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'right' }}>
-                        ${selectedReport?.totalExpenses.toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </Box>
-
-              <Box sx={{ mt: 3 }}>
-                <Typography variant="body1"><strong>Payable to:</strong> {selectedReport?.employeeName}</Typography>
-              </Box>
-            </Box>
-
-            {/* Page 3+: Cost Center Travel Sheets */}
-            {selectedReport?.reportData?.costCenters?.map((costCenter: string, index: number) => (
-              <Box key={index} sx={{ mb: 6, pageBreakAfter: 'always' }}>
-                <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #000', pb: 2 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-                    COST CENTER TRAVEL SHEET - {costCenter}
-                  </Typography>
-                  <Typography variant="h6">
-                    {selectedReport?.employeeName} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
-                  </Typography>
-                </Box>
-
                 <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
                   <TableHead>
-                    <TableRow sx={{ bgcolor: '#323296', color: 'white' }}>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Date</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Description/Activity</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Hours</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Odometer Start</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Odometer End</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Miles</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Mileage ($)</TableCell>
+                    <TableRow sx={{ bgcolor: 'grey.100' }}>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Date</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Description of Activity</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Miles Traveled</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Hours Worked</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Mileage Amount</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {/* Generate all days of the month */}
-                    {Array.from({ length: new Date(selectedReport?.year || 2025, selectedReport?.month || 10, 0).getDate() }, (_, i) => {
-                      const day = i + 1;
-                      const dateStr = `${(selectedReport?.month || 10).toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${(selectedReport?.year || 2025).toString().slice(-2)}`;
-                      const entry = selectedReport?.reportData?.dailyEntries?.find((e: any) => e.date === dateStr);
-                      
-                      return (
-                        <TableRow key={day}>
-                          <TableCell sx={{ border: '1px solid #000', bgcolor: '#C8DCFF', textAlign: 'center' }}>{dateStr}</TableCell>
-                          <TableCell sx={{ border: '1px solid #000' }}>{entry?.description || ''}</TableCell>
-                          <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>{entry?.hoursWorked || 0}</TableCell>
-                          <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>{entry?.odometerStart || 0}</TableCell>
-                          <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>{entry?.odometerEnd || 0}</TableCell>
-                          <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>{entry?.milesTraveled || 0}</TableCell>
-                          <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>${entry?.mileageAmount?.toFixed(2) || '0.00'}</TableCell>
+                    {selectedReport.reportData.dailyEntries
+                      .filter((entry: any) => entry.milesTraveled > 0 || entry.hoursWorked > 0)
+                      .map((entry: any, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell sx={{ border: '1px solid #000' }}>{entry.date}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'pre-wrap', border: '1px solid #000' }}>{entry.description || ''}</TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }} align="right">
+                            {entry.milesTraveled > 0 ? entry.milesTraveled.toFixed(1) : '-'}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }} align="right">
+                            {entry.hoursWorked > 0 ? entry.hoursWorked : '-'}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #000' }} align="right">
+                            ${entry.mileageAmount ? entry.mileageAmount.toFixed(2) : '0.00'}
+                          </TableCell>
                         </TableRow>
-                      );
-                    })}
+                      ))}
                   </TableBody>
                 </Table>
-
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="body1"><strong>Total Miles:</strong> {selectedReport?.totalMiles.toFixed(1)}</Typography>
-                  <Typography variant="body1"><strong>Total Hours:</strong> {selectedReport?.reportData?.totalHours || 0}</Typography>
-                  <Typography variant="body1"><strong>Total Amount:</strong> ${selectedReport?.totalMileageAmount.toFixed(2)}</Typography>
-                </Box>
               </Box>
-            ))}
+            )}
 
-            {/* Last Page: Timesheet */}
-            <Box sx={{ mb: 6 }}>
-              <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #000', pb: 2 }}>
-                <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  MONTHLY TIMESHEET
+            {/* Receipt Summary */}
+            {selectedReport?.reportData?.receipts && selectedReport.reportData.receipts.length > 0 && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                  Receipt Summary
                 </Typography>
-                <Typography variant="h6">
-                  {selectedReport?.employeeName} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
-                </Typography>
-              </Box>
-
-              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse', mb: 3 }}>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#323296', color: 'white' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Date</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Cost Center</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Hours Worked</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', textAlign: 'center' }}>Description</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {/* Generate all days of the month */}
-                  {Array.from({ length: new Date(selectedReport?.year || 2025, selectedReport?.month || 10, 0).getDate() }, (_, i) => {
-                    const day = i + 1;
-                    const dateStr = `${(selectedReport?.month || 10).toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${(selectedReport?.year || 2025).toString().slice(-2)}`;
-                    const entry = selectedReport?.reportData?.dailyEntries?.find((e: any) => e.date === dateStr);
-                    
-                    return (
-                      <TableRow key={day}>
-                        <TableCell sx={{ border: '1px solid #000', bgcolor: '#C8DCFF', textAlign: 'center' }}>{dateStr}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.reportData?.costCenters?.[0] || 'N/A'}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000', textAlign: 'right' }}>{entry?.hoursWorked || 0}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }}>{entry?.description || ''}</TableCell>
+                <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.100' }}>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Date</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Vendor</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Description</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Category</TableCell>
+                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {selectedReport.reportData.receipts.map((receipt: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell sx={{ border: '1px solid #000' }}>
+                          {new Date(receipt.date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.vendor || ''}</TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.description || ''}</TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.category || ''}</TableCell>
+                        <TableCell sx={{ border: '1px solid #000' }} align="right">
+                          ${receipt.amount ? receipt.amount.toFixed(2) : '0.00'}
+                        </TableCell>
                       </TableRow>
-                    );
-                  })}
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+
+            {/* Expense Categories Breakdown */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                Expense Categories Breakdown
+              </Typography>
+              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
+                <TableBody>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Mileage Reimbursement</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Phone/Internet/Fax</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.phoneInternetFax || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Air/Rail/Bus</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.airRailBus || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Vehicle Rental/Fuel</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.vehicleRentalFuel || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Parking/Tolls</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.parkingTolls || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Ground Transportation</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.groundTransportation || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Hotels/Airbnb</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.hotelsAirbnb || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Per Diem</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.perDiem || 0}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Other Expenses</TableCell>
+                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.other || 0}</TableCell>
+                  </TableRow>
+                  <TableRow sx={{ borderTop: '2px solid #000' }}>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>
+                      <strong>Total Expenses</strong>
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em', border: '1px solid #000' }}>
+                      <strong>${selectedReport?.totalExpenses.toFixed(2)}</strong>
+                    </TableCell>
+                  </TableRow>
                 </TableBody>
               </Table>
+            </Box>
 
-              <Box sx={{ mt: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>TIME TRACKING SUMMARY:</Typography>
-                <Typography variant="body1">G&A Hours: {selectedReport?.reportData?.gaHours || 0} hours</Typography>
-                <Typography variant="body1">Holiday Hours: {selectedReport?.reportData?.holidayHours || 0} hours</Typography>
-                <Typography variant="body1">PTO Hours: {selectedReport?.reportData?.ptoHours || 0} hours</Typography>
-                <Typography variant="body1">STD/LTD Hours: {selectedReport?.reportData?.stdLtdHours || 0} hours</Typography>
-                <Typography variant="body1">PFL/PFML Hours: {selectedReport?.reportData?.pflPfmlHours || 0} hours</Typography>
-                <Typography variant="body1" sx={{ mt: 2, fontWeight: 'bold' }}>
-                  Total Hours: {selectedReport?.reportData?.totalHours || 0} hours
-                </Typography>
-              </Box>
+            {/* Approval Section */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
+                Approval Section
+              </Typography>
+              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
+                <TableBody>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100', width: '30%' }}>Employee Signature</TableCell>
+                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>
+                      {selectedReport?.reportData?.employeeSignature ? '✓ Signed' : '_________________'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Supervisor Signature</TableCell>
+                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>
+                      {selectedReport?.reportData?.supervisorSignature ? '✓ Signed' : '_________________'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Finance Approval</TableCell>
+                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>_________________</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </Box>
+
+            {/* Footer */}
+            <Box sx={{ textAlign: 'center', mt: 4, fontSize: '10px', color: 'text.secondary' }}>
+              Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
             </Box>
           </Paper>
         </DialogContent>

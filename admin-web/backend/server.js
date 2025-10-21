@@ -4088,11 +4088,11 @@ app.get('/api/export/excel', (req, res) => {
   });
 });
 
-// Export individual expense report to Excel
+// Export individual expense report to Excel (matching PDF format)
 app.get('/api/export/expense-report/:id', (req, res) => {
   const { id } = req.params;
   
-  console.log(`📊 Exporting expense report: ${id}`);
+  console.log(`📊 Exporting expense report to Excel: ${id}`);
   
   db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, report) => {
     if (err) {
@@ -4112,50 +4112,149 @@ app.get('/api/export/expense-report/:id', (req, res) => {
       // Create workbook
       const workbook = XLSX.utils.book_new();
       
-      // Sheet 1: Summary
-      const summaryData = [
-        ['Oxford House Expense Report'],
-        ['Employee', reportData.name || 'N/A'],
-        ['Period', `${reportData.month} ${reportData.year}`],
+      // Sheet 1: Approval Cover Sheet
+      const approvalData = [
+        ['MONTHLY EXPENSE REPORT APPROVAL COVER SHEET'],
         [''],
-        ['Summary'],
-        ['Total Miles', reportData.totalMiles || 0],
-        ['Mileage Amount', reportData.totalMileageAmount || 0],
-        ['Total Hours', reportData.totalHours || 0],
-        ['Total Expenses', reportData.totalReceipts || 0],
+        ['OXFORD HOUSE, INC.'],
+        ['1010 Wayne Ave. Suite # 300'],
+        ['Silver Spring, MD 20910'],
+        [''],
+        ['Personal Information'],
+        ['Name:', reportData.name || 'N/A'],
+        ['Month:', `${reportData.month}, ${reportData.year}`],
+        ['Date Completed:', new Date().toLocaleDateString()],
+        [''],
+        ['Cost Centers:'],
+        ['#', 'Cost Center'],
+        ...(reportData.costCenters || []).map((center, index) => [`${index + 1}.`, center]),
+        [''],
+        ['SUMMARY TOTALS'],
+        ['Total Miles:', `${(reportData.totalMiles || 0).toFixed(1)}`],
+        ['Total Mileage Amount:', `$${(reportData.totalMileageAmount || 0).toFixed(2)}`],
+        ['Total Hours:', `${(reportData.totalHours || 0).toFixed(1)}`],
+        ['Total Expenses:', `$${((reportData.totalMileageAmount || 0) + (reportData.perDiem || 0) + (reportData.phoneInternetFax || 0)).toFixed(2)}`],
+        [''],
+        ['SIGNATURES:'],
+        ['Employee Signature', 'Supervisor Signature'],
+        ['', ''],
+        ['', ''],
+        ['', '']
+      ];
+      const approvalSheet = XLSX.utils.aoa_to_sheet(approvalData);
+      XLSX.utils.book_append_sheet(workbook, approvalSheet, 'Approval Cover Sheet');
+      
+      // Sheet 2: Summary Sheet
+      const summaryData = [
+        ['', 'Cost Center #1', 'Cost Center #2', 'Cost Center #3', 'Cost Center #4', 'Cost Center #5', 'SUBTOTALS (by category)'],
+        ['MILEAGE', `$${(reportData.totalMileageAmount || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.totalMileageAmount || 0).toFixed(2)}`],
+        ['AIR / RAIL / BUS', `$${(reportData.airRailBus || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.airRailBus || 0).toFixed(2)}`],
+        ['VEHICLE RENTAL / FUEL', `$${(reportData.vehicleRentalFuel || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.vehicleRentalFuel || 0).toFixed(2)}`],
+        ['PARKING / TOLLS', `$${(reportData.parkingTolls || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.parkingTolls || 0).toFixed(2)}`],
+        ['GROUND', `$${(reportData.groundTransportation || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.groundTransportation || 0).toFixed(2)}`],
+        ['LODGING', `$${(reportData.hotelsAirbnb || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.hotelsAirbnb || 0).toFixed(2)}`],
+        ['PER DIEM', `$${(reportData.perDiem || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.perDiem || 0).toFixed(2)}`],
+        ['OTHER EXPENSES', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['OXFORD HOUSE E.E.S.', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['COMMUNICATIONS', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['Phone / Internet / Fax', `$${(reportData.phoneInternetFax || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${(reportData.phoneInternetFax || 0).toFixed(2)}`],
+        ['Postage / Shipping', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['Printing / Copying', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['SUPPLIES', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['Outreach Supplies', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        ['SUBTOTALS (by cost center)', `$${(reportData.totalMileageAmount || 0).toFixed(2)}`, '$0.00', '$0.00', '$0.00', '$0.00', `$${((reportData.totalMileageAmount || 0) + (reportData.phoneInternetFax || 0) + (reportData.airRailBus || 0) + (reportData.vehicleRentalFuel || 0) + (reportData.parkingTolls || 0) + (reportData.groundTransportation || 0) + (reportData.hotelsAirbnb || 0) + (reportData.perDiem || 0) + (reportData.other || 0)).toFixed(2)}`],
+        ['Less Cash Advance', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'],
+        [''],
+        ['GRAND TOTAL', `$${((reportData.totalMileageAmount || 0) + (reportData.phoneInternetFax || 0) + (reportData.airRailBus || 0) + (reportData.vehicleRentalFuel || 0) + (reportData.parkingTolls || 0) + (reportData.groundTransportation || 0) + (reportData.hotelsAirbnb || 0) + (reportData.perDiem || 0) + (reportData.other || 0)).toFixed(2)}`],
+        [''],
+        ['Payable to:', reportData.name || 'N/A']
       ];
       const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary Sheet');
       
-      // Sheet 2: Daily Entries
-      if (reportData.dailyEntries && reportData.dailyEntries.length > 0) {
-        const dailyEntriesForExport = reportData.dailyEntries
-          .filter((entry) => entry.milesTraveled > 0 || entry.hoursWorked > 0)
-          .map((entry) => ({
-            Date: entry.date,
-            Description: entry.description,
-            'Hours Worked': entry.hoursWorked || 0,
-            'Odometer Start': entry.odometerStart || 0,
-            'Odometer End': entry.odometerEnd || 0,
-            'Miles Traveled': entry.milesTraveled || 0,
-            'Mileage Amount': entry.mileageAmount || 0,
-            'Per Diem': entry.perDiem || 0,
-          }));
+      // Sheet 3: Cost Center Travel Sheets
+      const costCenters = reportData.costCenters || ['Program Services'];
+      costCenters.forEach((costCenter, index) => {
+        const month = new Date().getMonth() + 1;
+        const year = new Date().getFullYear();
+        const daysInMonth = new Date(year, month, 0).getDate();
         
-        const dailySheet = XLSX.utils.json_to_sheet(dailyEntriesForExport);
-        XLSX.utils.book_append_sheet(workbook, dailySheet, 'Daily Entries');
+        const ccData = [
+          [`Cost Center Travel Sheet - ${costCenter}`],
+          [''],
+          ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)']
+        ];
+        
+        // Generate rows for all days of the month
+        for (let day = 1; day <= daysInMonth; day++) {
+          const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
+          const entry = reportData.dailyEntries?.find(e => e.date === dateStr) || {};
+          
+          ccData.push([
+            dateStr,
+            entry.description || '',
+            (entry.hoursWorked || 0).toString(),
+            (entry.odometerStart || 0).toString(),
+            (entry.odometerEnd || 0).toString(),
+            (entry.milesTraveled || 0).toFixed(1),
+            `$${(entry.mileageAmount || 0).toFixed(2)}`
+          ]);
+        }
+        
+        const ccSheet = XLSX.utils.aoa_to_sheet(ccData);
+        XLSX.utils.book_append_sheet(workbook, ccSheet, `Cost Center ${index + 1}`);
+      });
+      
+      // Sheet 4: Timesheet
+      const month = new Date().getMonth() + 1;
+      const year = new Date().getFullYear();
+      const daysInMonth = new Date(year, month, 0).getDate();
+      
+      const timesheetData = [
+        ['MONTHLY TIMESHEET'],
+        [''],
+        [`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`],
+        [''],
+        ['Date', 'Cost Center', 'Hours Worked']
+      ];
+      
+      // Generate rows for all days of the month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
+        const entry = reportData.dailyEntries?.find(e => e.date === dateStr) || {};
+        
+        timesheetData.push([
+          dateStr,
+          (reportData.costCenters && reportData.costCenters[0]) || 'N/A',
+          (entry.hoursWorked || 0).toString()
+        ]);
       }
+      
+      timesheetData.push(['']);
+      timesheetData.push(['TIME TRACKING SUMMARY:']);
+      timesheetData.push(['Category', 'Hours']);
+      timesheetData.push(['G&A Hours', reportData.gaHours || 0]);
+      timesheetData.push(['Holiday Hours', reportData.holidayHours || 0]);
+      timesheetData.push(['PTO Hours', reportData.ptoHours || 0]);
+      timesheetData.push(['STD/LTD Hours', reportData.stdLtdHours || 0]);
+      timesheetData.push(['PFL/PFML Hours', reportData.pflPfmlHours || 0]);
+      timesheetData.push(['Total Hours:', reportData.totalHours || 0]);
+      
+      const timesheetSheet = XLSX.utils.aoa_to_sheet(timesheetData);
+      XLSX.utils.book_append_sheet(workbook, timesheetSheet, 'Timesheet');
       
       // Generate Excel file
       const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
       
-      const filename = `ExpenseReport_${reportData.name || 'Unknown'}_${reportData.month || 'Unknown'}-${reportData.year || 'Unknown'}.xlsx`;
+      const filename = `${reportData.name?.toUpperCase().replace(/\s+/g, ',') || 'UNKNOWN'} EXPENSES ${reportData.month?.substring(0, 3).toUpperCase() || 'UNK'}-${reportData.year?.toString().slice(-2) || 'XX'}.xlsx`;
       
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(excelBuffer);
       
-      console.log(`✅ Exported expense report: ${filename}`);
+      console.log(`✅ Exported expense report to Excel: ${filename}`);
     } catch (parseError) {
       console.error('❌ Error parsing report data:', parseError);
       res.status(500).json({ error: 'Failed to parse report data' });
@@ -4196,6 +4295,17 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         doc.text(safeTextValue, x, y, options);
       };
       
+      // Helper function to set colors
+      const setColor = (color) => {
+        switch(color) {
+          case 'lightGreen': doc.setFillColor(200, 255, 200); break;
+          case 'lightBlue': doc.setFillColor(200, 220, 255); break;
+          case 'lightOrange': doc.setFillColor(255, 220, 180); break;
+          case 'darkBlue': doc.setFillColor(50, 50, 150); break;
+          default: doc.setFillColor(255, 255, 255);
+        }
+      };
+      
       // Page 1: Approval Cover Sheet
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
@@ -4210,40 +4320,79 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       safeText('Silver Spring, MD 20910', pageWidth / 2, 120, { align: 'center' });
       
       let yPos = 160;
+      
+      // Personal Information Table
+      const personalInfoTableWidth = 300;
+      const personalInfoTableStartX = (pageWidth - personalInfoTableWidth) / 2; // Center the table
+      const personalInfoRowHeight = 20;
+      const personalInfoLabelColWidth = 120; // Width for label column
+      const personalInfoValueColWidth = 180; // Width for value column
+      
       doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      safeText('Name:', margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      safeText(reportData.name || 'N/A', margin + 50, yPos);
+      const personalInfoItems = [
+        ['Name:', reportData.name || 'N/A'],
+        ['Month:', `${reportData.month}, ${reportData.year}`],
+        ['Date Completed:', new Date().toLocaleDateString()]
+      ];
       
-      yPos += 20;
-      doc.setFont('helvetica', 'bold');
-      safeText('Month:', margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      safeText(`${reportData.month}, ${reportData.year}`, margin + 50, yPos);
-      
-      yPos += 20;
-      doc.setFont('helvetica', 'bold');
-      safeText('Date Completed:', margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      safeText(new Date().toLocaleDateString(), margin + 110, yPos);
-      
-      yPos += 40;
-      doc.setFont('helvetica', 'bold');
-      safeText('Cost Centers:', margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      const costCenters = reportData.costCenters || [];
-      yPos += 20;
-      costCenters.forEach((center, index) => {
-        safeText(`${index + 1}.) ${center}`, margin + 10, yPos);
-        yPos += 18;
+      personalInfoItems.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold');
+        setColor('white');
+        doc.rect(personalInfoTableStartX, yPos, personalInfoLabelColWidth, personalInfoRowHeight, 'FD');
+        doc.setTextColor(0, 0, 0);
+        safeText(label, personalInfoTableStartX + 10, yPos + personalInfoRowHeight/2 + 3);
+        
+        doc.setFont('helvetica', 'normal');
+        setColor('white');
+        doc.rect(personalInfoTableStartX + personalInfoLabelColWidth, yPos, personalInfoValueColWidth, personalInfoRowHeight, 'FD');
+        doc.setTextColor(0, 0, 0);
+        safeText(value, personalInfoTableStartX + personalInfoLabelColWidth + 10, yPos + personalInfoRowHeight/2 + 3);
+        yPos += personalInfoRowHeight;
       });
       
-      yPos += 20;
+      yPos += 30;
+      
+      // Cost Centers Table
+      const costCentersTableWidth = 300;
+      const costCentersTableStartX = (pageWidth - costCentersTableWidth) / 2; // Center the table
+      const costCentersRowHeight = 20;
+      const costCentersNumberColWidth = 40; // Width for number column
+      const costCentersNameColWidth = 260; // Width for name column
+      
+      doc.setFont('helvetica', 'bold');
+      setColor('darkBlue');
+      doc.rect(costCentersTableStartX, yPos, costCentersNumberColWidth, costCentersRowHeight, 'FD');
+      doc.rect(costCentersTableStartX + costCentersNumberColWidth, yPos, costCentersNameColWidth, costCentersRowHeight, 'FD');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      safeText('#', costCentersTableStartX + 10, yPos + costCentersRowHeight/2 + 3);
+      safeText('Cost Center', costCentersTableStartX + costCentersNumberColWidth + 10, yPos + costCentersRowHeight/2 + 3);
+      yPos += costCentersRowHeight;
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      const costCenters = reportData.costCenters || [];
+      costCenters.forEach((center, index) => {
+        setColor('white');
+        doc.rect(costCentersTableStartX, yPos, costCentersNumberColWidth, costCentersRowHeight, 'FD');
+        doc.rect(costCentersTableStartX + costCentersNumberColWidth, yPos, costCentersNameColWidth, costCentersRowHeight, 'FD');
+        safeText(`${index + 1}.`, costCentersTableStartX + 10, yPos + costCentersRowHeight/2 + 3);
+        safeText(center, costCentersTableStartX + costCentersNumberColWidth + 10, yPos + costCentersRowHeight/2 + 3);
+        yPos += costCentersRowHeight;
+      });
+      
+      yPos += 30;
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      safeText('SUMMARY TOTALS', margin, yPos);
+      safeText('SUMMARY TOTALS', pageWidth / 2, yPos, { align: 'center' });
       yPos += 25;
+      
+      // Calculate dimensions for Summary Totals table
+      const summaryTableWidth = 200;
+      const summaryTableStartX = (pageWidth - summaryTableWidth) / 2; // Center the summary table
+      const summaryRowHeight = 20;
+      const summaryLabelColWidth = 120; // Width for label column
+      const summaryValueColWidth = 80; // Width for value column
       
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
@@ -4256,21 +4405,47 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       summaryItems.forEach(([label, value]) => {
         doc.setFont('helvetica', 'bold');
-        safeText(label, margin, yPos);
+        setColor('white');
+        doc.rect(summaryTableStartX, yPos, summaryLabelColWidth, summaryRowHeight, 'FD');
+        doc.setTextColor(0, 0, 0);
+        safeText(label, summaryTableStartX + 10, yPos + summaryRowHeight/2 + 3);
+        
         doc.setFont('helvetica', 'normal');
-        safeText(value, margin + 150, yPos);
-        yPos += 20;
+        setColor('white');
+        doc.rect(summaryTableStartX + summaryLabelColWidth, yPos, summaryValueColWidth, summaryRowHeight, 'FD');
+        doc.setTextColor(0, 0, 0);
+        safeText(value, summaryTableStartX + summaryLabelColWidth + 10, yPos + summaryRowHeight/2 + 3);
+        yPos += summaryRowHeight;
       });
       
       yPos += 40;
       doc.setFont('helvetica', 'bold');
-      safeText('SIGNATURES:', margin, yPos);
+      safeText('SIGNATURES:', pageWidth / 2, yPos, { align: 'center' });
       yPos += 25;
+      
+      // Calculate dimensions for Signatures table
+      const signaturesTableWidth = 400;
+      const signaturesTableStartX = (pageWidth - signaturesTableWidth) / 2; // Center the signatures table
+      const signaturesRowHeight = 50;
+      const signaturesColWidth = 200; // Width for each signature column
+      
+      // Draw header row
+      doc.setFont('helvetica', 'bold');
+      setColor('darkBlue');
+      doc.rect(signaturesTableStartX, yPos, signaturesColWidth, 20, 'FD');
+      doc.rect(signaturesTableStartX + signaturesColWidth, yPos, signaturesColWidth, 20, 'FD');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      safeText('Employee Signature', signaturesTableStartX + 10, yPos + 10);
+      safeText('Supervisor Signature', signaturesTableStartX + signaturesColWidth + 10, yPos + 10);
+      yPos += 20;
+      
+      // Draw signature boxes
       doc.setFont('helvetica', 'normal');
-      doc.rect(margin, yPos, 200, 50);
-      safeText('Employee Signature', margin + 5, yPos - 5);
-      doc.rect(margin + 250, yPos, 200, 50);
-      safeText('Supervisor Signature', margin + 255, yPos - 5);
+      setColor('white');
+      doc.rect(signaturesTableStartX, yPos, signaturesColWidth, signaturesRowHeight, 'FD');
+      doc.rect(signaturesTableStartX + signaturesColWidth, yPos, signaturesColWidth, signaturesRowHeight, 'FD');
+      doc.setTextColor(0, 0, 0);
       
       // Page 2: Summary Sheet (with colors and grid like screenshot)
       doc.addPage();
@@ -4290,19 +4465,8 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       yPos += 40;
       
-      // Helper function to set colors
-      const setColor = (color) => {
-        switch(color) {
-          case 'lightGreen': doc.setFillColor(200, 255, 200); break;
-          case 'lightBlue': doc.setFillColor(200, 220, 255); break;
-          case 'lightOrange': doc.setFillColor(255, 220, 180); break;
-          case 'darkBlue': doc.setFillColor(50, 50, 150); break;
-          default: doc.setFillColor(255, 255, 255);
-        }
-      };
-      
-      // Helper function to draw table cell with color and border
-      const drawCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+      // Helper function to draw table cell with color and border and text wrapping
+      const drawCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left', wrapText = false) => {
         // Set fill color
         setColor(color);
         
@@ -4311,31 +4475,88 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         
         // Set text color and font
         doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+        doc.setFontSize(7); // Reduced from default 8 to 7 (~12.5% reduction)
         doc.setFont('helvetica', 'bold');
         
-        if (align === 'right') {
-          safeText(text, x + width - 5, y + height/2 + 3);
+        if (wrapText && text && text.length > 15) {
+          // Split text into multiple lines for wrapping
+          const words = text.split(' ');
+          const lines = [];
+          let currentLine = '';
+          
+          for (const word of words) {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            if (testLine.length <= 20) { // Adjust character limit based on cell width
+              currentLine = testLine;
+            } else {
+              if (currentLine) lines.push(currentLine);
+              currentLine = word;
+            }
+          }
+          if (currentLine) lines.push(currentLine);
+          
+          // Draw multiple lines
+          lines.forEach((line, index) => {
+            const lineY = y + 8 + (index * 8); // Adjust line spacing
+            if (align === 'right') {
+              safeText(line, x + width - 5, lineY);
+            } else {
+              safeText(line, x + 5, lineY);
+            }
+          });
         } else {
-          safeText(text, x + 5, y + height/2 + 3);
+          // Single line text
+          if (align === 'right') {
+            safeText(text, x + width - 5, y + height/2 + 3);
+          } else {
+            safeText(text, x + 5, y + height/2 + 3);
+          }
         }
         
         doc.setTextColor(0, 0, 0); // Reset to black
+        return height; // Return height used
       };
       
-      // Table dimensions - adjusted for portrait page
-      const cellHeight = 20;
-      const colWidths = [80, 50, 50, 50, 50, 50, 70]; // Much narrower columns to fit page
+      // Table dimensions - adjusted for portrait page with proper widths (downsized by ~20% total)
+      const cellHeight = 16; // ~20% reduction from original 20
+      const colWidths = [96, 64, 64, 64, 64, 64, 80]; // ~20% reduction from original widths
       const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
       const tableStartX = margin;
       
-      // Header row
-      const headers = ['Cost Center #1', 'Cost Center #2', 'Cost Center #3', 'Cost Center #4', 'Cost Center #5', 'SUBTOTALS (by category)'];
+      // Header row - start with blank cell in A1 position
+      const headers = ['', 'Cost Center #1', 'Cost Center #2', 'Cost Center #3', 'Cost Center #4', 'Cost Center #5', 'SUBTOTALS (by category)'];
       let xPos = tableStartX;
+      
+      // Check if any header needs wrapping and calculate dynamic height
+      let maxHeaderHeight = cellHeight;
+      headers.forEach(header => {
+        if (header.length > 15) {
+          const words = header.split(' ');
+          let lines = [];
+          let currentLine = '';
+          
+          for (const word of words) {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            if (testLine.length <= 20) {
+              currentLine = testLine;
+            } else {
+              if (currentLine) lines.push(currentLine);
+              currentLine = word;
+            }
+          }
+          if (currentLine) lines.push(currentLine);
+          
+          const headerHeight = cellHeight + (lines.length - 1) * 8 + 4; // 8px line spacing + 4px buffer
+          maxHeaderHeight = Math.max(maxHeaderHeight, headerHeight);
+        }
+      });
+      
       headers.forEach((header, i) => {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, header, 'darkBlue', 'white', 'center');
+        const needsWrapping = header.length > 15;
+        drawCell(xPos, yPos, colWidths[i], maxHeaderHeight, header, 'darkBlue', 'white', 'center', needsWrapping);
         xPos += colWidths[i];
       });
-      yPos += cellHeight;
+      yPos += maxHeaderHeight;
       
       // Travel expenses section (light green)
       const travelExpenses = [
@@ -4349,22 +4570,45 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       ];
       
       travelExpenses.forEach(([category, ...amounts]) => {
+        // Check if category needs wrapping and calculate required height
+        const categoryNeedsWrapping = category.length > 15;
+        let maxRowHeight = cellHeight;
+        
+        if (categoryNeedsWrapping) {
+          const words = category.split(' ');
+          let lines = [];
+          let currentLine = '';
+          
+          for (const word of words) {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            if (testLine.length <= 20) {
+              currentLine = testLine;
+            } else {
+              if (currentLine) lines.push(currentLine);
+              currentLine = word;
+            }
+          }
+          if (currentLine) lines.push(currentLine);
+          
+          maxRowHeight = cellHeight + (lines.length - 1) * 8 + 4; // 8px line spacing + 4px buffer
+        }
+        
         xPos = tableStartX;
-        drawCell(xPos, yPos, colWidths[0], cellHeight, category, 'lightGreen', 'black', 'left');
+        drawCell(xPos, yPos, colWidths[0], maxRowHeight, category, 'lightGreen', 'black', 'left', categoryNeedsWrapping);
         xPos += colWidths[0];
         
         amounts.forEach((amount, i) => {
-          drawCell(xPos, yPos, colWidths[i + 1], cellHeight, `$${amount.toFixed(2)}`, 'lightGreen', 'black', 'right');
+          drawCell(xPos, yPos, colWidths[i + 1], maxRowHeight, `$${amount.toFixed(2)}`, 'lightGreen', 'black', 'left');
           xPos += colWidths[i + 1];
         });
-        yPos += cellHeight;
+        yPos += maxRowHeight;
       });
       
       // Other expenses section
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'OTHER EXPENSES', 'lightBlue', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4373,7 +4617,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'OXFORD HOUSE E.E.S.', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4383,7 +4627,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         drawCell(tableStartX, yPos, colWidths[0], cellHeight, '', 'lightOrange', 'black', 'left');
         xPos = tableStartX + colWidths[0];
         for (let i = 1; i < colWidths.length; i++) {
-          drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+          drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
           xPos += colWidths[i];
         }
         yPos += cellHeight;
@@ -4393,7 +4637,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'COMMUNICATIONS', 'lightBlue', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4402,7 +4646,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Phone / Internet / Fax', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4411,7 +4655,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Postage / Shipping', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4420,7 +4664,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Printing / Copying', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4429,7 +4673,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'SUPPLIES', 'lightBlue', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightBlue', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4438,7 +4682,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Outreach Supplies', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4447,7 +4691,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, '', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
@@ -4458,39 +4702,78 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
                            (reportData.parkingTolls || 0) + (reportData.groundTransportation || 0) + 
                            (reportData.hotelsAirbnb || 0) + (reportData.perDiem || 0) + (reportData.other || 0);
       
-      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'SUBTOTALS (by cost center)', 'lightGreen', 'black', 'left');
+      // Subtotals by cost center (light green) - with dynamic height for text wrapping
+      const subtotalsText = 'SUBTOTALS (by cost center)';
+      const subtotalsNeedsWrapping = subtotalsText.length > 15;
+      let subtotalsRowHeight = cellHeight;
+      
+      if (subtotalsNeedsWrapping) {
+        const words = subtotalsText.split(' ');
+        let lines = [];
+        let currentLine = '';
+        
+        for (const word of words) {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          if (testLine.length <= 20) {
+            currentLine = testLine;
+          } else {
+            if (currentLine) lines.push(currentLine);
+            currentLine = word;
+          }
+        }
+        if (currentLine) lines.push(currentLine);
+        
+        subtotalsRowHeight = cellHeight + (lines.length - 1) * 8 + 4; // 8px line spacing + 4px buffer
+      }
+      
+      drawCell(tableStartX, yPos, colWidths[0], subtotalsRowHeight, subtotalsText, 'lightGreen', 'black', 'left', subtotalsNeedsWrapping);
       xPos = tableStartX + colWidths[0];
-      drawCell(xPos, yPos, colWidths[1], cellHeight, `$${(reportData.totalMileageAmount || 0).toFixed(2)}`, 'lightGreen', 'black', 'right');
+      drawCell(xPos, yPos, colWidths[1], subtotalsRowHeight, `$${(reportData.totalMileageAmount || 0).toFixed(2)}`, 'lightGreen', 'black', 'left');
       xPos += colWidths[1];
       for (let i = 2; i < colWidths.length - 1; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightGreen', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], subtotalsRowHeight, '$0.00', 'lightGreen', 'black', 'left');
         xPos += colWidths[i];
       }
-      drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightGreen', 'black', 'right');
-      yPos += cellHeight;
+      drawCell(xPos, yPos, colWidths[colWidths.length - 1], subtotalsRowHeight, `$${totalExpenses.toFixed(2)}`, 'lightGreen', 'black', 'left');
+      yPos += subtotalsRowHeight;
       
       // Less Cash Advance
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Less Cash Advance', 'lightGreen', 'black', 'left');
       xPos = tableStartX + colWidths[0];
       for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightGreen', 'black', 'right');
+        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightGreen', 'black', 'left');
         xPos += colWidths[i];
       }
       yPos += cellHeight;
       
-      // Grand Total Requested (light blue)
+      // Grand Total (light blue) - moved one cell to the left, same size as other cells
       yPos += 20;
-      const grandTotalX = tableStartX + colWidths.slice(0, -1).reduce((sum, width) => sum + width, 0);
-      drawCell(grandTotalX, yPos, colWidths[colWidths.length - 1], cellHeight, 'GRAND TOTAL REQUESTED', 'lightBlue', 'black', 'left');
-      drawCell(grandTotalX + colWidths[colWidths.length - 1], yPos, colWidths[colWidths.length - 1], cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightBlue', 'black', 'right');
+      const grandTotalX = tableStartX + colWidths.slice(0, -2).reduce((sum, width) => sum + width, 0); // Move one cell left
+      drawCell(grandTotalX, yPos, colWidths[colWidths.length - 1], cellHeight, 'GRAND TOTAL', 'lightBlue', 'black', 'left');
+      drawCell(grandTotalX + colWidths[colWidths.length - 1], yPos, colWidths[colWidths.length - 1], cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightBlue', 'black', 'left'); // Changed to left align
       
       yPos += 40;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
+      
+      // Check if we need a new page before the cost center sheets
+      if (yPos > pageHeight - 100) {
+        doc.addPage();
+        yPos = margin + 20;
+      }
+      
       safeText(`Payable to: ${reportData.name || 'N/A'}`, margin, yPos);
       
+      
       // Page 3+: Cost Center Travel Sheets (with all days of month and grid)
-      (reportData.costCenters || []).forEach((costCenter, index) => {
+      
+      // Ensure we have at least one cost center sheet
+      const costCentersToProcess = reportData.costCenters && reportData.costCenters.length > 0 
+        ? reportData.costCenters 
+        : ['Program Services']; // Default cost center if none provided
+      
+      
+      costCentersToProcess.forEach((costCenter, index) => {
         doc.addPage();
         yPos = margin + 20;
         
@@ -4504,48 +4787,123 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         
         yPos += 40;
         
-        // Table dimensions for Cost Center sheet - adjusted for portrait page
-        const ccCellHeight = 15;
-        const ccColWidths = [40, 100, 40, 50, 40, 40, 50]; // Much narrower columns to fit page
+        // Table dimensions for Cost Center sheet - increased widths for better text fitting
+        const ccCellHeight = 12; // Base height
+        const ccColWidths = [50, 140, 50, 60, 50, 50, 60]; // Increased Description column width significantly
         const ccHeaders = ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)'];
-        const ccTableStartX = margin;
         
-        // Helper function for Cost Center table cells
-        const drawCCCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
+        // Calculate total table width and center it on the page
+        const totalTableWidth = ccColWidths.reduce((sum, width) => sum + width, 0);
+        const ccTableStartX = (pageWidth - totalTableWidth) / 2;
+        
+        // Helper function for Cost Center table cells with text wrapping
+        const drawCCCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left', wrapText = false) => {
           // Set fill color
           setColor(color);
           
-          // Draw filled rectangle with border
-          doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+          // Calculate actual height needed based on text wrapping
+          let actualHeight = height;
+          let lines = [];
+          
+          if (wrapText && text && text.length > 20) {
+            // Split text into multiple lines for wrapping
+            const words = text.split(' ');
+            let currentLine = '';
+            
+            for (const word of words) {
+              const testLine = currentLine ? `${currentLine} ${word}` : word;
+              if (testLine.length <= 25) { // Adjust character limit based on cell width
+                currentLine = testLine;
+              } else {
+                if (currentLine) lines.push(currentLine);
+                currentLine = word;
+              }
+            }
+            if (currentLine) lines.push(currentLine);
+            
+            // Calculate height needed: base height + (number of lines - 1) * line spacing + buffer
+            actualHeight = ccCellHeight + (lines.length - 1) * 6 + 4; // 6px line spacing + 4px buffer
+          }
+          
+          // Draw filled rectangle with border using actual height
+          doc.rect(x, y, width, actualHeight, 'FD'); // Fill and draw border
           
           // Set text color and font
           doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+          doc.setFontSize(6); // Reduced from default 8 to 6 (~25% reduction)
           doc.setFont('helvetica', 'bold');
           
-          if (align === 'right') {
-            safeText(text, x + width - 3, y + height/2 + 3);
+          if (wrapText && text && text.length > 20 && lines.length > 0) {
+            // Draw multiple lines
+            lines.forEach((line, index) => {
+              const lineY = y + 6 + (index * 6); // Adjust line spacing
+              if (align === 'right') {
+                safeText(line, x + width - 3, lineY);
+              } else {
+                safeText(line, x + 3, lineY);
+              }
+            });
           } else {
-            safeText(text, x + 3, y + height/2 + 3);
+            // Single line text
+            if (align === 'right') {
+              safeText(text, x + width - 3, y + actualHeight/2 + 3);
+            } else {
+              safeText(text, x + 3, y + actualHeight/2 + 3);
+            }
           }
           
           doc.setTextColor(0, 0, 0); // Reset to black
+          return actualHeight; // Return actual height used
         };
         
-        // Header row
+        // Header row - calculate dynamic height based on longest header
+        let maxHeaderHeight = ccCellHeight;
+        ccHeaders.forEach(header => {
+          if (header.length > 20) {
+            const words = header.split(' ');
+            let lines = [];
+            let currentLine = '';
+            
+            for (const word of words) {
+              const testLine = currentLine ? `${currentLine} ${word}` : word;
+              if (testLine.length <= 25) {
+                currentLine = testLine;
+              } else {
+                if (currentLine) lines.push(currentLine);
+                currentLine = word;
+              }
+            }
+            if (currentLine) lines.push(currentLine);
+            
+            const headerHeight = ccCellHeight + (lines.length - 1) * 6 + 4; // 6px line spacing + 4px buffer
+            maxHeaderHeight = Math.max(maxHeaderHeight, headerHeight);
+          }
+        });
+        
         let ccXPos = ccTableStartX;
         ccHeaders.forEach((header, i) => {
-          drawCCCell(ccXPos, yPos, ccColWidths[i], ccCellHeight, header, 'darkBlue', 'white', 'center');
+          const needsWrapping = header.length > 20;
+          drawCCCell(ccXPos, yPos, ccColWidths[i], maxHeaderHeight, header, 'darkBlue', 'white', 'center', needsWrapping);
           ccXPos += ccColWidths[i];
         });
-        yPos += ccCellHeight;
+        yPos += maxHeaderHeight;
         
         // Generate all days of the month
-        const month = parseInt(reportData.month);
+        // Convert month name to number if necessary
+        let month = reportData.month;
+        if (typeof month === 'string' && isNaN(parseInt(month))) {
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                             'July', 'August', 'September', 'October', 'November', 'December'];
+          month = monthNames.indexOf(month) + 1;
+        } else {
+          month = parseInt(month);
+        }
         const year = parseInt(reportData.year);
         const daysInMonth = new Date(year, month, 0).getDate();
         
         // Create a map of existing entries for quick lookup
         const entriesMap = {};
+        
         (reportData.dailyEntries || []).forEach(entry => {
           if (entry.date) {
             entriesMap[entry.date] = entry;
@@ -4573,14 +4931,41 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
             `$${(entry.mileageAmount || 0).toFixed(2)}`
           ];
           
+          // Check if description needs wrapping and calculate required height
+          const descriptionNeedsWrapping = (entry.description || '').length > 20;
+          let maxRowHeight = ccCellHeight; // Start with base height
+          
+          // Calculate the height needed for the description cell if it needs wrapping
+          if (descriptionNeedsWrapping) {
+            const descriptionText = entry.description || '';
+            const words = descriptionText.split(' ');
+            let lines = [];
+            let currentLine = '';
+            
+            for (const word of words) {
+              const testLine = currentLine ? `${currentLine} ${word}` : word;
+              if (testLine.length <= 25) {
+                currentLine = testLine;
+              } else {
+                if (currentLine) lines.push(currentLine);
+                currentLine = word;
+              }
+            }
+            if (currentLine) lines.push(currentLine);
+            
+            // Calculate height needed: base height + (number of lines - 1) * line spacing + buffer
+            maxRowHeight = ccCellHeight + (lines.length - 1) * 6 + 4; // 6px line spacing + 4px buffer
+          }
+          
           rowData.forEach((data, i) => {
             const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
-            const textAlign = i === 0 ? 'center' : (i >= 2 ? 'right' : 'left'); // Numbers right-aligned, text left-aligned
-            drawCCCell(ccXPos, yPos, ccColWidths[i], ccCellHeight, data, cellColor, 'black', textAlign);
+            const textAlign = 'left'; // All data left-aligned
+            const shouldWrap = i === 1 && descriptionNeedsWrapping; // Wrap description column if needed
+            drawCCCell(ccXPos, yPos, ccColWidths[i], maxRowHeight, data, cellColor, 'black', textAlign, shouldWrap);
             ccXPos += ccColWidths[i];
           });
           
-          yPos += ccCellHeight;
+          yPos += maxRowHeight;
         }
         
         yPos += 25;
@@ -4606,11 +4991,14 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       yPos += 40;
       
-      // Table dimensions for Timesheet - adjusted for portrait page
-      const tsCellHeight = 15;
-      const tsColWidths = [40, 80, 50, 120]; // Much narrower columns to fit page
-      const tsHeaders = ['Date', 'Cost Center', 'Hours Worked', 'Description'];
-      const tsTableStartX = margin;
+      // Table dimensions for Timesheet - adjusted for portrait page with proper widths (downsized by ~20% total)
+      const tsCellHeight = 12; // ~20% reduction from original 15
+      const tsColWidths = [48, 96, 64]; // ~20% reduction from original widths
+      const tsHeaders = ['Date', 'Cost Center', 'Hours Worked'];
+      
+      // Calculate total table width and center it on the page
+      const totalTsTableWidth = tsColWidths.reduce((sum, width) => sum + width, 0);
+      const tsTableStartX = (pageWidth - totalTsTableWidth) / 2;
       
       // Helper function for Timesheet table cells
       const drawTSCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
@@ -4622,10 +5010,13 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         
         // Set text color and font
         doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+        doc.setFontSize(6); // Reduced from default 8 to 6 (~25% reduction)
         doc.setFont('helvetica', 'bold');
         
         if (align === 'right') {
           safeText(text, x + width - 3, y + height/2 + 3);
+        } else if (align === 'center') {
+          safeText(text, x + width/2, y + height/2 + 3, { align: 'center' });
         } else {
           safeText(text, x + 3, y + height/2 + 3);
         }
@@ -4642,7 +5033,15 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       yPos += tsCellHeight;
       
       // Generate all days of the month for timesheet
-      const month = parseInt(reportData.month);
+      // Convert month name to number if necessary
+      let month = reportData.month;
+      if (typeof month === 'string' && isNaN(parseInt(month))) {
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+        month = monthNames.indexOf(month) + 1;
+      } else {
+        month = parseInt(month);
+      }
       const year = parseInt(reportData.year);
       const daysInMonth = new Date(year, month, 0).getDate();
       
@@ -4668,13 +5067,12 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         const rowData = [
           dateStr,
           (reportData.costCenters && reportData.costCenters[0]) || 'N/A',
-          (entry.hoursWorked || 0).toString(),
-          entry.description || ''
+          (entry.hoursWorked || 0).toString()
         ];
         
         rowData.forEach((data, i) => {
           const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
-          const textAlign = i === 2 ? 'right' : 'left'; // Hours right-aligned, others left-aligned
+          const textAlign = i === 2 ? 'center' : 'left'; // Hours centered, others left-aligned
           drawTSCell(tsXPos, yPos, tsColWidths[i], tsCellHeight, data, cellColor, 'black', textAlign);
           tsXPos += tsColWidths[i];
         });
@@ -4688,6 +5086,14 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       safeText('TIME TRACKING SUMMARY:', margin, yPos);
       yPos += 25;
       
+      // Calculate dimensions for Time Tracking Summary table
+      const timeTrackingTableWidth = 200;
+      const timeTrackingTableStartX = (pageWidth - timeTrackingTableWidth) / 2; // Center the summary table
+      const timeTrackingRowHeight = 20;
+      const timeTrackingCategoryColWidth = 120; // Width for Category column
+      const timeTrackingHoursColWidth = 80; // Width for Hours column
+      const timeTrackingStartY = yPos;
+      
       doc.setFont('helvetica', 'normal');
       const timeCategories = [
         ['G&A Hours', reportData.gaHours || 0],
@@ -4697,17 +5103,41 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         ['PFL/PFML Hours', reportData.pflPfmlHours || 0]
       ];
       
+      // Draw header row with separate cells
+      doc.setFont('helvetica', 'bold');
+      setColor('darkBlue');
+      doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
+      doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      safeText('Category', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
+      safeText('Hours', timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
+      yPos += timeTrackingRowHeight;
+      
+      // Draw data rows with separate cells
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(7);
+      
       timeCategories.forEach(([category, hours]) => {
-        safeText(`${category}:`, margin + 10, yPos);
-        safeText(`${hours} hours`, margin + 150, yPos);
-        yPos += 20;
+        setColor('white');
+        doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
+        doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
+        safeText(`${category}:`, timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
+        safeText(`${hours} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
+        yPos += timeTrackingRowHeight;
       });
       
-      yPos += 30;
+      // Draw total row with separate cells
       doc.setFont('helvetica', 'bold');
-      safeText('Total Hours:', margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      safeText(`${reportData.totalHours || 0} hours`, margin + 150, yPos);
+      setColor('lightBlue');
+      doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
+      doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(8);
+      safeText('Total Hours:', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
+      safeText(`${reportData.totalHours || 0} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
+      yPos += timeTrackingRowHeight;
       
       // Generate filename matching Staff Portal format
       const nameParts = (reportData.name || 'UNKNOWN').split(' ');
@@ -4735,6 +5165,30 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       res.status(500).json({ error: 'Failed to generate PDF' });
     }
   });
+});
+
+// Convert HTML to PDF endpoint (for Finance Portal Export)
+app.post('/api/export/html-to-pdf', (req, res) => {
+  try {
+    const { html } = req.body;
+    
+    if (!html) {
+      return res.status(400).json({ error: 'HTML content is required' });
+    }
+    
+    console.log('📄 Converting HTML to PDF for Finance Portal Export');
+    
+    // For now, we'll use a simple approach - return the HTML as a downloadable file
+    // In a production environment, you'd want to use a proper HTML-to-PDF library like Puppeteer
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Disposition', 'attachment; filename="expense-report.html"');
+    res.send(html);
+    
+    console.log('✅ HTML export completed');
+  } catch (error) {
+    console.error('❌ Error converting HTML to PDF:', error);
+    res.status(500).json({ error: 'Failed to convert HTML to PDF' });
+  }
 });
 
 // Health check endpoint for mobile app
