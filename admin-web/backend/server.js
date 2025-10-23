@@ -58,7 +58,8 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    database: db ? 'connected' : 'not connected'
+    database: db ? 'connected' : 'not connected',
+    cors: 'updated for CEO demo'
   });
 });
 
