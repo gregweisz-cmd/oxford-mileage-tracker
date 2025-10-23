@@ -20,7 +20,8 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:3001', 
     'https://oxford-mileage-tracker.vercel.app',
-    'https://oxford-mileage-tracker-git-main-gregweisz-cmd.vercel.app'
+    'https://oxford-mileage-tracker-git-main-gregweisz-cmd.vercel.app',
+    'https://oxford-mileage-tracker-git-main-goose-weiszs-projects.vercel.app'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -31,7 +32,21 @@ app.use(express.static('public'));
 
 // Handle preflight OPTIONS requests
 app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'https://oxford-mileage-tracker.vercel.app',
+    'https://oxford-mileage-tracker-git-main-gregweisz-cmd.vercel.app',
+    'https://oxford-mileage-tracker-git-main-goose-weiszs-projects.vercel.app'
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
   res.header('Access-Control-Allow-Credentials', 'true');
