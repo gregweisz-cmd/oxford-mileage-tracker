@@ -1762,13 +1762,17 @@ app.get('/api/time-tracking', (req, res) => {
 
 // Create new time tracking entry
 app.post('/api/time-tracking', (req, res) => {
-  const { id, employeeId, date, category, hours, description } = req.body;
-  const trackingId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
+  const { id, employeeId, date, category, hours, description, costCenter } = req.body;
+  
+  // ALWAYS create a deterministic ID based on the unique combination to ensure proper replacement
+  // Ignore any ID sent from frontend to prevent duplicates
+  const uniqueKey = `${employeeId}-${date}-${category || ''}-${costCenter || ''}`;
+  const trackingId = Buffer.from(uniqueKey).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
   const now = new Date().toISOString();
 
   db.run(
-    'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
-    [trackingId, employeeId, date, category || '', hours, description || '', trackingId, now, now],
+    'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
+    [trackingId, employeeId, date, category || '', hours, description || '', costCenter || '', trackingId, now, now],
     function(err) {
       if (err) {
         console.error('Database error:', err.message);
@@ -1783,12 +1787,12 @@ app.post('/api/time-tracking', (req, res) => {
 // Update time tracking entry
 app.put('/api/time-tracking/:id', (req, res) => {
   const { id } = req.params;
-  const { employeeId, date, category, hours, description } = req.body;
+  const { employeeId, date, category, hours, description, costCenter } = req.body;
   const now = new Date().toISOString();
 
   db.run(
-    'UPDATE time_tracking SET employeeId = ?, date = ?, category = ?, hours = ?, description = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, date, category || '', hours, description || '', now, id],
+    'UPDATE time_tracking SET employeeId = ?, date = ?, category = ?, hours = ?, description = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
+    [employeeId, date, category || '', hours, description || '', costCenter || '', now, id],
     function(err) {
       if (err) {
         console.error('Database error:', err.message);
@@ -2488,60 +2492,10 @@ app.post('/api/expense-reports/sync-to-source', async (req, res) => {
         
         // No complex parsing needed - mileage entries are handled by the mobile app
         
-        // Sync time tracking data
+        // Skip time tracking sync entirely - individual timesheet entries are now handled directly by the frontend
+        // This prevents the sync-to-source from interfering with individual category and cost center entries
         if (entry.hoursWorked > 0) {
-          await new Promise((resolve, reject) => {
-            db.all(
-              'SELECT * FROM time_tracking WHERE employeeId = ? AND date(date) = date(?)',
-              [employeeId, dateStr],
-              async (err, rows) => {
-                if (err) {
-                  reject(err);
-                  return;
-                }
-                
-                // If we found existing entries, update the first one
-                if (rows && rows.length > 0) {
-                  const row = rows[0];
-                  await new Promise((resolveUpdate, rejectUpdate) => {
-                    db.run(
-                      `UPDATE time_tracking 
-                       SET hours = ?, description = ?, updatedAt = datetime('now')
-                       WHERE id = ?`,
-                      [entry.hoursWorked, entry.description || row.description, row.id],
-                      (updateErr) => {
-                        if (updateErr) rejectUpdate(updateErr);
-                        else {
-                          console.log(`✅ Updated time tracking entry ${row.id} for date ${dateStr}`);
-                          resolveUpdate();
-                        }
-                      }
-                    );
-                  });
-                } else if (entry.hoursWorked > 0) {
-                  // Create new time tracking entry if one doesn't exist
-                  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-                  const now = new Date().toISOString();
-                  
-                  await new Promise((resolveInsert, rejectInsert) => {
-                    db.run(
-                      `INSERT INTO time_tracking (id, employeeId, date, category, hours, description, createdAt, updatedAt)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                      [id, employeeId, dateStr, 'Regular Hours', entry.hoursWorked, entry.description || '', now, now],
-                      (insertErr) => {
-                        if (insertErr) rejectInsert(insertErr);
-                        else {
-                          console.log(`✅ Created new time tracking entry for date ${dateStr}`);
-                          resolveInsert();
-                        }
-                      }
-                    );
-                  });
-                }
-                resolve();
-              }
-            );
-          });
+          console.log(`⏭️ Skipping time tracking sync for date ${dateStr} - individual entries handled by frontend`);
         }
       }
     }
@@ -4397,7 +4351,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       const summaryItems = [
-        ['Total Miles:', `${(reportData.totalMiles || 0).toFixed(1)}`],
+        ['Total Miles:', `${Math.round(reportData.totalMiles || 0)}`],
         ['Total Mileage Amount:', `$${(reportData.totalMileageAmount || 0).toFixed(2)}`],
         ['Total Hours:', `${(reportData.totalHours || 0).toFixed(1)}`],
         ['Total Expenses:', `$${((reportData.totalMileageAmount || 0) + (reportData.perDiem || 0) + (reportData.phoneInternetFax || 0)).toFixed(2)}`]
@@ -4470,15 +4424,13 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         // Set fill color
         setColor(color);
         
-        // Draw filled rectangle with border
-        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
-        
-        // Set text color and font
-        doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
-        doc.setFontSize(7); // Reduced from default 8 to 7 (~12.5% reduction)
-        doc.setFont('helvetica', 'bold');
+        let actualHeight = height; // Default to original height
         
         if (wrapText && text && text.length > 15) {
+          // Calculate maximum characters that can fit in the cell width
+          // Using font size 7, adjusted to be about 10px wider
+          const maxCharsPerLine = Math.floor((width - 10) / 4.0); // 10px padding, ~4.0px per character at size 7
+          
           // Split text into multiple lines for wrapping
           const words = text.split(' ');
           const lines = [];
@@ -4486,7 +4438,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           
           for (const word of words) {
             const testLine = currentLine ? `${currentLine} ${word}` : word;
-            if (testLine.length <= 20) { // Adjust character limit based on cell width
+            if (testLine.length <= maxCharsPerLine) {
               currentLine = testLine;
             } else {
               if (currentLine) lines.push(currentLine);
@@ -4495,9 +4447,16 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           }
           if (currentLine) lines.push(currentLine);
           
-          // Draw multiple lines
+          // Calculate exact height needed: text content + one line height of padding
+          const textHeight = 8 + (lines.length * 8) + 8; // 8px top padding + 8px per line + 8px bottom padding (one line height)
+          actualHeight = textHeight; // Use exact calculated height, not Math.max
+          
+          // Draw filled rectangle with exact height
+          doc.rect(x, y, width, actualHeight, 'FD'); // Fill and draw border
+          
+          // Draw multiple lines with original spacing
           lines.forEach((line, index) => {
-            const lineY = y + 8 + (index * 8); // Adjust line spacing
+            const lineY = y + 8 + (index * 8); // 8px top padding + 8px per line
             if (align === 'right') {
               safeText(line, x + width - 5, lineY);
             } else {
@@ -4505,7 +4464,9 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
             }
           });
         } else {
-          // Single line text
+          // Single line text - draw rectangle with original height
+          doc.rect(x, y, width, height, 'FD'); // Fill and draw border
+          
           if (align === 'right') {
             safeText(text, x + width - 5, y + height/2 + 3);
           } else {
@@ -4513,8 +4474,13 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           }
         }
         
+        // Set text color and font
+        doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+        doc.setFontSize(7); // Reduced from default 8 to 7 (~12.5% reduction)
+        doc.setFont('helvetica', 'bold');
+        
         doc.setTextColor(0, 0, 0); // Reset to black
-        return height; // Return height used
+        return actualHeight; // Return actual height used
       };
       
       // Table dimensions - adjusted for portrait page with proper widths (downsized by ~20% total)
@@ -4575,13 +4541,16 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         let maxRowHeight = cellHeight;
         
         if (categoryNeedsWrapping) {
+          // Use the same calculation as drawCell for consistency
+          const maxCharsPerLine = Math.floor((colWidths[0] - 10) / 4.0); // 10px padding, ~4.0px per character at size 7
+          
           const words = category.split(' ');
           let lines = [];
           let currentLine = '';
           
           for (const word of words) {
             const testLine = currentLine ? `${currentLine} ${word}` : word;
-            if (testLine.length <= 20) {
+            if (testLine.length <= maxCharsPerLine) {
               currentLine = testLine;
             } else {
               if (currentLine) lines.push(currentLine);
@@ -4590,14 +4559,17 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           }
           if (currentLine) lines.push(currentLine);
           
-          maxRowHeight = cellHeight + (lines.length - 1) * 8 + 4; // 8px line spacing + 4px buffer
+          // Calculate height needed: text content + one line height of padding
+          maxRowHeight = 8 + (lines.length * 8) + 8; // 8px top padding + 8px per line + 8px bottom padding
         }
         
         xPos = tableStartX;
+        // All cells in the row should be the same height as the tallest cell
         drawCell(xPos, yPos, colWidths[0], maxRowHeight, category, 'lightGreen', 'black', 'left', categoryNeedsWrapping);
         xPos += colWidths[0];
         
         amounts.forEach((amount, i) => {
+          // All cells in the row should be the same height as the tallest cell
           drawCell(xPos, yPos, colWidths[i + 1], maxRowHeight, `$${amount.toFixed(2)}`, 'lightGreen', 'black', 'left');
           xPos += colWidths[i + 1];
         });
@@ -4806,26 +4778,41 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           let lines = [];
           
           if (wrapText && text && text.length > 20) {
-            // Split text into multiple lines for wrapping
-            const words = text.split(' ');
-            let currentLine = '';
+            // Calculate maximum characters that can fit in the cell width
+            // Using font size 6, adjusted to be about 10px wider
+            const maxCharsPerLine = Math.floor((width - 6) / 3.5); // 6px padding, ~3.5px per character at size 6
             
-            for (const word of words) {
-              const testLine = currentLine ? `${currentLine} ${word}` : word;
-              if (testLine.length <= 25) { // Adjust character limit based on cell width
-                currentLine = testLine;
-              } else {
+            // First split on explicit newlines, then apply word wrapping to each segment
+            const segments = text.split('\n');
+            lines = [];
+            
+            segments.forEach(segment => {
+              if (segment.trim()) { // Only process non-empty segments
+                const words = segment.trim().split(' ');
+                let currentLine = '';
+                
+                for (const word of words) {
+                  const testLine = currentLine ? `${currentLine} ${word}` : word;
+                  if (testLine.length <= maxCharsPerLine) {
+                    currentLine = testLine;
+                  } else {
+                    if (currentLine) lines.push(currentLine);
+                    currentLine = word;
+                  }
+                }
                 if (currentLine) lines.push(currentLine);
-                currentLine = word;
+              } else {
+                // Empty segment (from \n\n) - add empty line
+                lines.push('');
               }
-            }
-            if (currentLine) lines.push(currentLine);
+            });
             
-            // Calculate height needed: base height + (number of lines - 1) * line spacing + buffer
-            actualHeight = ccCellHeight + (lines.length - 1) * 6 + 4; // 6px line spacing + 4px buffer
+            // Calculate exact height needed: text content + one line height of padding
+            const textHeight = 6 + (lines.length * 6) + 6; // 6px top padding + 6px per line + 6px bottom padding (one line height)
+            actualHeight = textHeight; // Use exact calculated height, not Math.max
           }
           
-          // Draw filled rectangle with border using actual height
+          // Draw filled rectangle with border using exact height
           doc.rect(x, y, width, actualHeight, 'FD'); // Fill and draw border
           
           // Set text color and font
@@ -4834,9 +4821,9 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           doc.setFont('helvetica', 'bold');
           
           if (wrapText && text && text.length > 20 && lines.length > 0) {
-            // Draw multiple lines
+            // Draw multiple lines with original spacing
             lines.forEach((line, index) => {
-              const lineY = y + 6 + (index * 6); // Adjust line spacing
+              const lineY = y + 6 + (index * 6); // Original line spacing
               if (align === 'right') {
                 safeText(line, x + width - 3, lineY);
               } else {
@@ -4858,15 +4845,18 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         
         // Header row - calculate dynamic height based on longest header
         let maxHeaderHeight = ccCellHeight;
-        ccHeaders.forEach(header => {
+        ccHeaders.forEach((header, i) => {
           if (header.length > 20) {
+            // Use the same calculation as drawCCCell for consistency
+            const maxCharsPerLine = Math.floor((ccColWidths[i] - 6) / 3.5); // 6px padding, ~3.5px per character at size 6
+            
             const words = header.split(' ');
             let lines = [];
             let currentLine = '';
             
             for (const word of words) {
               const testLine = currentLine ? `${currentLine} ${word}` : word;
-              if (testLine.length <= 25) {
+              if (testLine.length <= maxCharsPerLine) {
                 currentLine = testLine;
               } else {
                 if (currentLine) lines.push(currentLine);
@@ -4927,7 +4917,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
             (entry.hoursWorked || 0).toString(),
             (entry.odometerStart || 0).toString(),
             (entry.odometerEnd || 0).toString(),
-            (entry.milesTraveled || 0).toFixed(1),
+            Math.round(entry.milesTraveled || 0).toString(),
             `$${(entry.mileageAmount || 0).toFixed(2)}`
           ];
           
@@ -4937,30 +4927,45 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           
           // Calculate the height needed for the description cell if it needs wrapping
           if (descriptionNeedsWrapping) {
+            // Use the same calculation as drawCCCell for consistency
+            const maxCharsPerLine = Math.floor((ccColWidths[1] - 6) / 3.5); // 6px padding, ~3.5px per character at size 6
+            
             const descriptionText = entry.description || '';
-            const words = descriptionText.split(' ');
+            // First split on explicit newlines, then apply word wrapping to each segment
+            const segments = descriptionText.split('\n');
             let lines = [];
-            let currentLine = '';
             
-            for (const word of words) {
-              const testLine = currentLine ? `${currentLine} ${word}` : word;
-              if (testLine.length <= 25) {
-                currentLine = testLine;
-              } else {
+            segments.forEach(segment => {
+              if (segment.trim()) { // Only process non-empty segments
+                const words = segment.trim().split(' ');
+                let currentLine = '';
+                
+                for (const word of words) {
+                  const testLine = currentLine ? `${currentLine} ${word}` : word;
+                  if (testLine.length <= maxCharsPerLine) {
+                    currentLine = testLine;
+                  } else {
+                    if (currentLine) lines.push(currentLine);
+                    currentLine = word;
+                  }
+                }
                 if (currentLine) lines.push(currentLine);
-                currentLine = word;
+              } else {
+                // Empty segment (from \n\n) - add empty line
+                lines.push('');
               }
-            }
-            if (currentLine) lines.push(currentLine);
+            });
             
-            // Calculate height needed: base height + (number of lines - 1) * line spacing + buffer
-            maxRowHeight = ccCellHeight + (lines.length - 1) * 6 + 4; // 6px line spacing + 4px buffer
+            // Calculate height needed: text content + one line height of padding
+            maxRowHeight = 6 + (lines.length * 6) + 6; // 6px top padding + 6px per line + 6px bottom padding
           }
           
           rowData.forEach((data, i) => {
             const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
             const textAlign = 'left'; // All data left-aligned
             const shouldWrap = i === 1 && descriptionNeedsWrapping; // Wrap description column if needed
+            
+            // All cells in the row should be the same height as the tallest cell
             drawCCCell(ccXPos, yPos, ccColWidths[i], maxRowHeight, data, cellColor, 'black', textAlign, shouldWrap);
             ccXPos += ccColWidths[i];
           });
@@ -4971,7 +4976,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         yPos += 25;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        safeText(`Total Miles: ${(reportData.totalMiles || 0).toFixed(1)}`, margin, yPos);
+        safeText(`Total Miles: ${Math.round(reportData.totalMiles || 0)}`, margin, yPos);
         yPos += 18;
         safeText(`Total Hours: ${(reportData.totalHours || 0).toFixed(1)}`, margin, yPos);
         yPos += 18;
@@ -5095,71 +5100,99 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       const timeTrackingStartY = yPos;
       
       doc.setFont('helvetica', 'normal');
-      const timeCategories = [
-        ['G&A Hours', reportData.gaHours || 0],
-        ['Holiday Hours', reportData.holidayHours || 0],
-        ['PTO Hours', reportData.ptoHours || 0],
-        ['STD/LTD Hours', reportData.stdLtdHours || 0],
-        ['PFL/PFML Hours', reportData.pflPfmlHours || 0]
-      ];
       
-      // Draw header row with separate cells
-      doc.setFont('helvetica', 'bold');
-      setColor('darkBlue');
-      doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
-      doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(8);
-      safeText('Category', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
-      safeText('Hours', timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
-      yPos += timeTrackingRowHeight;
+      // Get time tracking data grouped by cost center
+      const timeTrackingQuery = `
+        SELECT costCenter, SUM(hours) as totalHours
+        FROM time_tracking 
+        WHERE employeeId = ? 
+        AND strftime("%m", date) = ? 
+        AND strftime("%Y", date) = ?
+        AND costCenter IS NOT NULL 
+        AND costCenter != ''
+        GROUP BY costCenter
+        ORDER BY costCenter
+      `;
       
-      // Draw data rows with separate cells
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(7);
+      const monthStr = reportData.month.toString().padStart(2, '0');
+      const yearStr = reportData.year.toString();
       
-      timeCategories.forEach(([category, hours]) => {
-        setColor('white');
+      db.all(timeTrackingQuery, [reportData.employeeId, monthStr, yearStr], (err, timeTrackingRows) => {
+        if (err) {
+          console.error('❌ Error fetching time tracking data:', err);
+          // Fallback to empty data
+          timeTrackingRows = [];
+        }
+        
+        // Create time categories from cost centers
+        const timeCategories = timeTrackingRows.map(row => [
+          `${row.costCenter} Hours`,
+          row.totalHours || 0
+        ]);
+        
+        // If no time tracking data, show a default message
+        if (timeCategories.length === 0) {
+          timeCategories.push(['No time tracking data', 0]);
+        }
+        
+        // Draw header row with separate cells
+        doc.setFont('helvetica', 'bold');
+        setColor('darkBlue');
         doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
         doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
-        safeText(`${category}:`, timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
-        safeText(`${hours} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        safeText('Category', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
+        safeText('Hours', timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
         yPos += timeTrackingRowHeight;
-      });
-      
-      // Draw total row with separate cells
-      doc.setFont('helvetica', 'bold');
-      setColor('lightBlue');
-      doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
-      doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(8);
-      safeText('Total Hours:', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
-      safeText(`${reportData.totalHours || 0} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
-      yPos += timeTrackingRowHeight;
-      
-      // Generate filename matching Staff Portal format
-      const nameParts = (reportData.name || 'UNKNOWN').split(' ');
-      const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
-      const firstName = nameParts[0] || 'UNKNOWN';
-      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const monthIndex = parseInt(report.month) - 1;
-      const monthAbbr = monthNames[monthIndex] || 'UNK';
-      const yearShort = report.year.toString().slice(-2);
-      const filename = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
-      
-      // Get PDF as buffer
-      const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
-      
-      // Set response headers
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      
-      // Send buffer
-      res.send(pdfBuffer);
-      
-      console.log(`✅ Exported expense report to PDF: ${filename}`);
+        
+        // Draw data rows with separate cells
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(7);
+        
+        timeCategories.forEach(([category, hours]) => {
+          setColor('white');
+          doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
+          doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
+          safeText(`${category}:`, timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
+          safeText(`${hours} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
+          yPos += timeTrackingRowHeight;
+        });
+        
+        // Draw total row with separate cells
+        doc.setFont('helvetica', 'bold');
+        setColor('lightBlue');
+        doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
+        doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(8);
+        safeText('Total Hours:', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
+        safeText(`${reportData.totalHours || 0} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
+        yPos += timeTrackingRowHeight;
+        
+        // Generate filename matching Staff Portal format
+        const nameParts = (reportData.name || 'UNKNOWN').split(' ');
+        const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
+        const firstName = nameParts[0] || 'UNKNOWN';
+        const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const monthIndex = parseInt(report.month) - 1;
+        const monthAbbr = monthNames[monthIndex] || 'UNK';
+        const yearShort = report.year.toString().slice(-2);
+        const filename = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
+        
+        // Get PDF as buffer
+        const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+        
+        // Set response headers
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        // Send buffer
+        res.send(pdfBuffer);
+        
+        console.log(`✅ Exported expense report to PDF: ${filename}`);
+      }); // Close database callback
     } catch (error) {
       console.error('❌ Error exporting report to PDF:', error);
       res.status(500).json({ error: 'Failed to generate PDF' });

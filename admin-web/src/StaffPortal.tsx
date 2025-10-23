@@ -1,6 +1,6 @@
 // Staff Portal - Expense Report Management Interface
 // Designed to mirror the uploaded spreadsheet layout for easy transition
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 // Material-UI components for spreadsheet-like interface
 import {
@@ -256,6 +256,163 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Calculate days in the current month
   const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
+
+  // State to prevent multiple simultaneous calls to refreshTimesheetData
+  const [isRefreshingTimesheet, setIsRefreshingTimesheet] = useState(false);
+
+  // Function to refresh timesheet data after saving - NEW APPROACH: Daily Hours Distribution
+  const refreshTimesheetData = useCallback(async (dataToUse?: any) => {
+    console.log('🔄 refreshTimesheetData called');
+    const data = dataToUse || employeeData;
+    if (!data) {
+      console.log('❌ No employeeData, skipping refresh');
+      return;
+    }
+    
+    // Prevent multiple simultaneous calls
+    if (isRefreshingTimesheet) {
+      console.log('⏳ refreshTimesheetData already running, skipping');
+      return;
+    }
+    setIsRefreshingTimesheet(true);
+    
+    try {
+      // Fetch updated time tracking data
+      const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`);
+      const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
+      
+      // Filter for current month
+      const currentMonthTimeTracking = timeTracking.filter((tracking: any) => {
+        const trackingDate = new Date(tracking.date);
+        const trackingMonth = trackingDate.getUTCMonth() + 1;
+        const trackingYear = trackingDate.getUTCFullYear();
+        return trackingMonth === reportMonth && trackingYear === reportYear;
+      });
+      
+      // NEW APPROACH: Group by day and create daily hour distributions
+      const dailyHourDistributions: { [day: number]: any } = {};
+      
+      // Initialize all days with empty distributions
+      for (let day = 1; day <= daysInMonth; day++) {
+        dailyHourDistributions[day] = {
+          costCenterHours: {},
+          categoryHours: {},
+          totalHours: 0,
+          workingHours: 0
+        };
+      }
+      
+      // Process all time tracking entries and group by day
+      console.log('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
+      currentMonthTimeTracking.forEach((tracking: any) => {
+        const trackingDate = new Date(tracking.date);
+        const day = trackingDate.getUTCDate();
+        
+        console.log(`🔍 Processing entry: Day ${day}, CostCenter: "${tracking.costCenter}", Category: "${tracking.category}", Hours: ${tracking.hours}`);
+        
+        if (day >= 1 && day <= daysInMonth) {
+          const dayData = dailyHourDistributions[day];
+          const categoryTypes = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'];
+          
+          if (tracking.costCenter && tracking.costCenter !== '') {
+            // Cost center entry - use assignment since deterministic IDs should prevent duplicates
+            const costCenterIndex = data.costCenters.findIndex((cc: string) => cc === tracking.costCenter);
+            console.log(`🔍 Cost center entry: "${tracking.costCenter}" -> index ${costCenterIndex}`);
+            if (costCenterIndex >= 0) {
+              dayData.costCenterHours[costCenterIndex] = (tracking.hours || 0);
+              console.log(`✅ Updated cost center ${costCenterIndex} for day ${day}: ${tracking.hours} hours`);
+            }
+          } else if (categoryTypes.includes(tracking.category)) {
+            // Category entry - use assignment since deterministic IDs should prevent duplicates
+            dayData.categoryHours[tracking.category] = (tracking.hours || 0);
+            console.log(`✅ Updated category "${tracking.category}" for day ${day}: ${tracking.hours} hours`);
+          } else if (tracking.category === 'Working Hours' || tracking.category === 'Regular Hours') {
+            // Working hours entry - treat as cost center 0, use assignment since deterministic IDs should prevent duplicates
+            dayData.costCenterHours[0] = (tracking.hours || 0);
+            console.log(`✅ Updated working hours (cost center 0) for day ${day}: ${tracking.hours} hours`);
+          } else {
+            // Unknown entry type - log for debugging
+            console.log(`⚠️ Unknown entry type: CostCenter="${tracking.costCenter}", Category="${tracking.category}"`);
+          }
+        }
+      });
+      
+      // Calculate totals AFTER processing all entries to avoid accumulation
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dayData = dailyHourDistributions[day];
+        dayData.totalHours = 0;
+        dayData.workingHours = 0;
+        
+        // Sum up all cost center hours
+        Object.values(dayData.costCenterHours).forEach((hours) => {
+          dayData.totalHours += hours as number;
+          dayData.workingHours += hours as number; // All cost center hours count as working hours
+        });
+        
+        // Sum up all category hours
+        Object.values(dayData.categoryHours).forEach((hours) => {
+          dayData.totalHours += hours as number;
+          // Category hours don't count as working hours
+        });
+      }
+      
+      // Update daily entries with the new distribution approach
+      const updatedDailyEntries = data.dailyEntries.map((entry: any) => {
+        const dayData = dailyHourDistributions[entry.day] || {
+          costCenterHours: {},
+          categoryHours: {},
+          totalHours: 0,
+          workingHours: 0
+        };
+        
+        
+        // Build updated entry with distributed hours
+        const updatedEntry = {
+          ...entry,
+          hoursWorked: dayData.totalHours,
+          workingHours: dayData.workingHours
+        };
+        
+        // Add cost center specific hours
+        data.costCenters.forEach((costCenter: string, index: number) => {
+          const propertyName = `costCenter${index}Hours`;
+          (updatedEntry as any)[propertyName] = dayData.costCenterHours[index] || 0;
+        });
+        
+        // Add category hours
+        (updatedEntry as any).categoryHours = dayData.categoryHours;
+        
+        // Debug logging for this entry
+        if (dayData.totalHours > 0) {
+          console.log(`🔍 Day ${entry.day} distribution:`, {
+            costCenterHours: dayData.costCenterHours,
+            categoryHours: dayData.categoryHours,
+            totalHours: dayData.totalHours,
+            workingHours: dayData.workingHours
+          });
+        }
+        
+        return updatedEntry;
+      });
+      
+      // Calculate total hours for the month
+      const totalHours = Object.values(dailyHourDistributions).reduce((sum: number, dayData: any) => sum + dayData.totalHours, 0);
+      
+      // Update employee data
+      setEmployeeData(prev => prev ? {
+        ...prev,
+        dailyEntries: updatedDailyEntries,
+        totalHours: totalHours
+      } : null);
+      
+      console.log('✅ Timesheet data refreshed with new distribution approach');
+    } catch (error) {
+      console.error('❌ Error refreshing timesheet data:', error);
+    } finally {
+      setIsRefreshingTimesheet(false);
+    }
+    console.log('🔄 refreshTimesheetData completed');
+  }, [employeeId, reportMonth, reportYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
   // console.log('🔍 StaffPortal Debug:', {
@@ -579,6 +736,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             imageUri: receipt.imageUri
           })));
           setDailyDescriptions(dailyDescriptions);
+          
+          // Refresh timesheet data to load actual hours from database
+          await refreshTimesheetData(expenseData);
       } catch (error) {
         console.error('Error loading employee data:', error);
         // Create dynamic fallback data instead of using hardcoded mock data
@@ -658,6 +818,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         
         setEmployeeData(fallbackData);
         setReceipts([]); // Start with empty receipts
+        
+        // Refresh timesheet data to load actual hours from database
+        await refreshTimesheetData(fallbackData);
       } finally {
         setLoading(false);
       }
@@ -830,46 +993,53 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // Save timesheet cell edit
+  // Save timesheet cell edit - NEW APPROACH: Daily Hours Distribution with Validation
   const handleTimesheetCellSave = async () => {
     if (!editingTimesheetCell || !employeeData) return;
     
-    const { day, type } = editingTimesheetCell;
+    const { costCenter, day, type } = editingTimesheetCell;
     const value = parseFloat(editingTimesheetValue) || 0;
     
-    // Update the daily entry for the specific day
-    const updatedEntries = employeeData.dailyEntries.map(entry => {
-      if (entry.day === day) {
-        if (type === 'costCenter' || type === 'billable') {
-          // When entering hours in cost center rows, update both hoursWorked and workingHours
-          // since we default all hours to "Working Hours" category
-          return { ...entry, hoursWorked: value, workingHours: value };
-        } else if (type === 'workingHours') {
-          return { ...entry, workingHours: value };
-        }
-        return entry;
-      }
-      return entry;
-    });
-
-    // Recalculate totals
-    const totalHours = updatedEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
+    // Validate daily hours limit
+    if (value > 24) {
+      alert('Cannot enter more than 24 hours in a single day');
+      return;
+    }
     
-    const updatedData = {
-      ...employeeData,
-      dailyEntries: updatedEntries,
-      totalHours: totalHours
-    };
+    console.log('🔍 NEW APPROACH: Saving timesheet cell');
+    console.log(`  Day: ${day}, Type: ${type}, Cost Center Index: ${costCenter}, Value: ${value}`);
     
-    setEmployeeData(updatedData);
-    setEditingTimesheetCell(null);
-    setEditingTimesheetValue('');
+    // Determine the actual cost center name and category based on the cell type
+    let actualCostCenter = '';
+    let category = '';
     
-    // Save to time tracking API with "Working Hours" as default category
+    if (type === 'costCenter' || type === 'billable') {
+      // For cost center rows, use the specific cost center based on the costCenter index
+      actualCostCenter = employeeData.costCenters[costCenter] || 'Program Services';
+      category = 'Working Hours';
+    } else if (type === 'workingHours') {
+      // For working hours row, use the first cost center
+      actualCostCenter = employeeData.costCenters[0] || 'Program Services';
+      category = 'Working Hours';
+    } else {
+      // For other category rows (G&A, Holiday, PTO, etc.)
+      const categoryMap: { [key: string]: string } = {
+        'ga': 'G&A',
+        'holiday': 'Holiday',
+        'pto': 'PTO',
+        'stdLtd': 'STD/LTD',
+        'pflPfml': 'PFL/PFML'
+      };
+      category = categoryMap[type] || 'Working Hours';
+      actualCostCenter = ''; // Category entries don't have cost centers
+    }
+    
+    console.log(`  Final actualCostCenter: "${actualCostCenter}"`);
+    console.log(`  Final category: "${category}"`);
+    
+    // Save to time tracking API with correct cost center and category
     try {
       const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      
-      // Default to "Working Hours" category for all timesheet entries
-      const category = 'Working Hours';
       
       // Save to time tracking table
       await fetch('http://localhost:3002/api/time-tracking', {
@@ -882,12 +1052,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           date: dateStr,
           hours: value,
           category: category,
-          description: `Hours worked on ${dateStr}`,
-          costCenter: employeeData.costCenters[0] || 'Program Services'
+          description: `${category} hours worked on ${dateStr}`,
+          costCenter: actualCostCenter
         }),
       });
-
-      console.log(`✅ Saved ${value} hours as "${category}" for day ${day}`);
+  
+      console.log(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}`);
     } catch (error) {
       console.error('Error saving to time tracking API:', error);
     }
@@ -895,21 +1065,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Auto-save changes to backend and sync to source tables
     try {
       const reportData = {
-        ...updatedData,
+        ...employeeData,
         receipts: receipts,
         dailyDescriptions: dailyDescriptions,
         employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState
       };
-
-      // Sync to source tables
+  
       await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          employeeId: updatedData.employeeId,
+          employeeId: employeeData.employeeId,
           month: reportMonth,
           year: reportYear,
           reportData: reportData
@@ -919,8 +1088,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       console.log('✅ Timesheet changes auto-saved and synced to source tables');
     } catch (error) {
       console.error('Error auto-saving timesheet changes:', error);
-      // Don't show alert for auto-save failures to avoid interrupting user workflow
     }
+    
+    // Clear editing state
+    setEditingTimesheetCell(null);
+    setEditingTimesheetValue('');
+    
+    // Refresh timesheet data to show updated values with new distribution approach
+    await refreshTimesheetData(employeeData);
   };
 
   // Cancel timesheet cell edit
@@ -931,20 +1106,100 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Handle category cell editing
   const handleCategoryCellEdit = (category: string, day: number, currentValue: any) => {
+    console.log(`🔍 Debug category cell edit: ${category} for day ${day}, current value: ${currentValue}`);
     setEditingCategoryCell({ category, day });
     setEditingCategoryValue(currentValue.toString());
   };
 
-  // Save category cell edit
-  const handleCategoryCellSave = () => {
-    if (!editingCategoryCell) return;
+  // Save category cell edit - NEW APPROACH: Daily Hours Distribution with Validation
+  const handleCategoryCellSave = async () => {
+    if (!editingCategoryCell || !employeeData) return;
     
-    // For now, we'll just update the state without affecting other calculations
-    // In a real app, this would update a separate category hours data structure
-    // Updated hours for day
+    // Store the values and clear editing state immediately to prevent duplicate saves
+    const { category, day } = editingCategoryCell;
+    const value = parseFloat(editingCategoryValue) || 0;
     
+    // Clear editing state immediately
     setEditingCategoryCell(null);
     setEditingCategoryValue('');
+    
+    // Validate daily hours limit
+    if (value > 24) {
+      alert('Cannot enter more than 24 hours in a single day');
+      return;
+    }
+    
+    // Map category names to the correct format
+    const categoryMap: { [key: string]: string } = {
+      'G&A': 'G&A',
+      'Holiday': 'Holiday',
+      'PTO': 'PTO',
+      'STD/LTD': 'STD/LTD',
+      'PFL/PFML': 'PFL/PFML'
+    };
+    
+    const mappedCategory = categoryMap[category] || category;
+    const actualCostCenter = ''; // Category rows don't belong to specific cost centers
+    
+    console.log('🔍 NEW APPROACH: Saving category cell');
+    console.log(`  Day: ${day}, Category: ${category}, Mapped: ${mappedCategory}, Value: ${value}`);
+    console.log(`  Cost Center: "${actualCostCenter}" (empty for categories)`);
+    
+    // Save to time tracking API with correct category
+    try {
+      const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      
+      // Save to time tracking table
+      await fetch('http://localhost:3002/api/time-tracking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employeeId: employeeData.employeeId,
+          date: dateStr,
+          hours: value,
+          category: mappedCategory,
+          description: `${mappedCategory} hours worked on ${dateStr}`,
+          costCenter: actualCostCenter
+        }),
+      });
+
+      console.log(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}`);
+    } catch (error) {
+      console.error('Error saving category hours to time tracking API:', error);
+    }
+    
+    // Auto-save changes to backend and sync to source tables
+    try {
+      const reportData = {
+        ...employeeData,
+        receipts: receipts,
+        dailyDescriptions: dailyDescriptions,
+        employeeSignature: signatureImage,
+        supervisorSignature: supervisorSignatureState
+      };
+
+      await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employeeId: employeeData.employeeId,
+          month: reportMonth,
+          year: reportYear,
+          reportData: reportData
+        }),
+      });
+      
+      console.log('✅ Category hours synced to source tables');
+    } catch (error) {
+      console.error('Error syncing category hours:', error);
+    }
+    
+    // Refresh timesheet data to show updated values
+    await refreshTimesheetData(employeeData);
   };
 
   // Cancel category cell edit
@@ -3641,7 +3896,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       {Array.from({ length: daysInMonth }, (_, i) => {
                         const day = i + 1;
                         const entry = employeeData?.dailyEntries.find(e => e.day === day);
-                        const currentValue = index === 0 ? (entry?.hoursWorked || 0) : 0;
+                        
+                        // Get hours for this specific cost center from time tracking data
+                        // All cost centers should use the same logic - get specific cost center hours
+                        const propertyName = `costCenter${index}Hours`;
+                        const currentValue = (entry as any)?.[propertyName] || 0;
+                        
                         const isEditing = editingTimesheetCell?.costCenter === index && 
                                         editingTimesheetCell?.day === day && 
                                         editingTimesheetCell?.type === 'costCenter';
@@ -3702,7 +3962,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         );
                       })}
                       <TableCell align="center" sx={{ fontWeight: 'bold', color: 'primary.main', border: '1px solid #ccc', p: 1 }}>
-                        {index === 0 ? employeeData?.totalHours : 0} {center}
+                        {employeeData?.dailyEntries.reduce((sum, entry) => {
+                          const propertyName = `costCenter${index}Hours`;
+                          return sum + ((entry as any)?.[propertyName] || 0);
+                        }, 0)} {center}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -3713,7 +3976,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     {Array.from({ length: daysInMonth }, (_, i) => {
                       const day = i + 1;
                       const entry = employeeData?.dailyEntries.find(e => e.day === day);
-                      const currentValue = entry?.hoursWorked || 0;
+                      // BILLABLE HOURS should show the sum of all cost center hours for this day
+                      const costCenterHours = employeeData?.costCenters.reduce((sum, _, costCenterIndex) => {
+                        const propertyName = `costCenter${costCenterIndex}Hours`;
+                        return sum + ((entry as any)?.[propertyName] || 0);
+                      }, 0) || 0;
+                      const currentValue = costCenterHours;
                       const isEditing = editingTimesheetCell?.costCenter === -1 && 
                                       editingTimesheetCell?.day === day && 
                                       editingTimesheetCell?.type === 'billable';
@@ -3751,7 +4019,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       );
                     })}
                     <TableCell align="center" sx={{ fontWeight: 'bold', color: 'primary.main', border: '1px solid #ccc', p: 1 }}>
-                      {employeeData?.totalHours} BILLABLE HOURS
+                      {employeeData?.dailyEntries.reduce((sum, entry) => {
+                        const costCenterHours = employeeData?.costCenters.reduce((costSum, _, costCenterIndex) => {
+                          const propertyName = `costCenter${costCenterIndex}Hours`;
+                          return costSum + ((entry as any)?.[propertyName] || 0);
+                        }, 0) || 0;
+                        return sum + costCenterHours;
+                      }, 0)} BILLABLE HOURS
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -3777,12 +4051,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {['G&A', 'HOLIDAY', 'PTO', 'STD/LTD', 'PFL/PFML'].map((category) => (
+                  {['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'].map((category) => (
                     <TableRow key={category}>
                       <TableCell sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>{category}</TableCell>
                       {Array.from({ length: daysInMonth }, (_, i) => {
                         const day = i + 1;
-                        const currentValue = 0; // Default value for now
+                        const entry = employeeData?.dailyEntries.find(e => e.day === day);
+                        const currentValue = (entry as any)?.categoryHours?.[category] || 0;
                         const isEditing = editingCategoryCell?.category === category && 
                                         editingCategoryCell?.day === day;
                         
@@ -3842,75 +4117,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         );
                       })}
                       <TableCell align="center" sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>
-                        0 {category}
+                        {employeeData?.dailyEntries.reduce((sum, entry) => sum + ((entry as any)?.categoryHours?.[category] || 0), 0)} {category}
                       </TableCell>
                     </TableRow>
                   ))}
                   
-                  {/* Working Hours Row */}
-                  <TableRow sx={{ bgcolor: 'lightblue' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>WORKING HOURS</TableCell>
-                    {Array.from({ length: daysInMonth }, (_, i) => {
-                      const day = i + 1;
-                      const entry = employeeData?.dailyEntries.find(e => e.day === day);
-                      return (
-                        <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
-                          {editingTimesheetCell?.day === day && editingTimesheetCell?.type === 'workingHours' ? (
-                            <TextField
-                              value={editingTimesheetValue}
-                              onChange={(e) => setEditingTimesheetValue(e.target.value)}
-                              onBlur={handleTimesheetCellSave}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleTimesheetCellSave();
-                                if (e.key === 'Escape') handleTimesheetCellCancel();
-                              }}
-                              autoFocus
-                              size="small"
-                              type="number"
-                              inputProps={{ 
-                                min: 0, 
-                                max: 24, 
-                                step: 0.5,
-                                style: { 
-                                  MozAppearance: 'textfield',
-                                  WebkitAppearance: 'none',
-                                  appearance: 'none'
-                                }
-                              }}
-                              sx={{ 
-                                width: 50,
-                                '& input[type=number]': {
-                                  MozAppearance: 'textfield',
-                                },
-                                '& input[type=number]::-webkit-outer-spin-button': {
-                                  WebkitAppearance: 'none',
-                                  margin: 0,
-                                },
-                                '& input[type=number]::-webkit-inner-spin-button': {
-                                  WebkitAppearance: 'none',
-                                  margin: 0,
-                                },
-                              }}
-                            />
-                          ) : (
-                            <Box 
-                              onClick={() => !isAdminView && handleTimesheetCellEdit(-1, day, 'workingHours', entry?.workingHours || 0)}
-                              sx={{ 
-                                cursor: isAdminView ? 'default' : 'pointer', 
-                                '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' }, 
-                                fontSize: '0.75rem' 
-                              }}
-                            >
-                              {entry?.workingHours || 0}
-                            </Box>
-                          )}
-                        </TableCell>
-                      );
-                    })}
-                    <TableCell align="center" sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>
-                      {employeeData?.dailyEntries.reduce((sum, entry) => sum + (entry.workingHours || 0), 0)} TOTAL
-                    </TableCell>
-                  </TableRow>
                   
                   {/* Daily Totals Row */}
                   <TableRow sx={{ bgcolor: 'grey.200' }}>
@@ -3918,14 +4129,39 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     {Array.from({ length: daysInMonth }, (_, i) => {
                       const day = i + 1;
                       const entry = employeeData?.dailyEntries.find(e => e.day === day);
+                      
+                      // Calculate total hours for this day by summing all cost center and category hours
+                      const costCenterHours = employeeData?.costCenters.reduce((sum, _, costCenterIndex) => {
+                        const propertyName = `costCenter${costCenterIndex}Hours`;
+                        return sum + ((entry as any)?.[propertyName] || 0);
+                      }, 0) || 0;
+                      
+                      const categoryHours = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'].reduce((sum, category) => {
+                        return sum + ((entry as any)?.categoryHours?.[category] || 0);
+                      }, 0);
+                      
+                      const totalHoursForDay = costCenterHours + categoryHours;
+                      
                       return (
                         <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
-                          {entry?.hoursWorked || 0}
+                          {totalHoursForDay}
                         </TableCell>
                       );
                     })}
                     <TableCell align="center" sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>
-                      {employeeData?.totalHours} GRAND TOTAL
+                      {employeeData?.dailyEntries.reduce((sum, entry) => {
+                        // Calculate total hours for this day by summing all cost center and category hours
+                        const costCenterHours = employeeData?.costCenters.reduce((costSum, _, costCenterIndex) => {
+                          const propertyName = `costCenter${costCenterIndex}Hours`;
+                          return costSum + ((entry as any)?.[propertyName] || 0);
+                        }, 0) || 0;
+                        
+                        const categoryHours = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'].reduce((catSum, category) => {
+                          return catSum + ((entry as any)?.categoryHours?.[category] || 0);
+                        }, 0);
+                        
+                        return sum + costCenterHours + categoryHours;
+                      }, 0)} GRAND TOTAL
                     </TableCell>
                   </TableRow>
                 </TableBody>
