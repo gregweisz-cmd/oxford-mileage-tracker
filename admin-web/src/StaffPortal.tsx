@@ -582,18 +582,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               dayMileageEntries.forEach((entry: any, index: number) => {
                 // For the first trip, include the starting location
                 if (index === 0) {
-                  const startName = entry.startLocationName || entry.startLocation || 'Unknown';
-                  const startAddress = entry.startLocationAddress || '';
-                  tripSegments.push(`${startName}${startAddress ? ` (${startAddress})` : ''}`);
+                  const startLocation = entry.startLocation || '';
+                  // Check if it's already formatted (contains parentheses) or if it's just a name
+                  if (startLocation.includes('(') && startLocation.includes(')')) {
+                    tripSegments.push(startLocation);
+                  } else {
+                    // Use the location as-is (might be a name or address)
+                    tripSegments.push(startLocation);
+                  }
                 }
                 
                 // Add the trip segment: "to [EndLocation] ([Address]) for [Purpose]"
-                const endName = entry.endLocationName || entry.endLocation || 'Unknown';
-                const endAddress = entry.endLocationAddress || '';
+                const endLocation = entry.endLocation || '';
                 const purpose = entry.purpose || 'Travel';
                 
-                const segment = `to ${endName}${endAddress ? ` (${endAddress})` : ''} for ${purpose}`;
-                tripSegments.push(segment);
+                // Check if endLocation is already formatted
+                if (endLocation.includes('(') && endLocation.includes(')')) {
+                  tripSegments.push(`to ${endLocation} for ${purpose}`);
+                } else {
+                  tripSegments.push(`to ${endLocation} for ${purpose}`);
+                }
               });
               
               // Format: "Start to End (Address) for Purpose"

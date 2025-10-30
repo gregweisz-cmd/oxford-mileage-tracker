@@ -421,17 +421,17 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           setEndLocationDetails(lastDestination);
         }
       } else if (option === 'baseAddress' && currentEmployee?.baseAddress) {
-        // Use base address
+        // Use base address - format as "BA" for display
         if (currentLocationType === 'start') {
-          setFormData(prev => ({ ...prev, startLocation: currentEmployee.baseAddress }));
+          setFormData(prev => ({ ...prev, startLocation: 'BA' }));
           setStartLocationDetails({
-            name: 'Base Address',
+            name: 'BA',
             address: currentEmployee.baseAddress
           });
         } else {
-          setFormData(prev => ({ ...prev, endLocation: currentEmployee.baseAddress }));
+          setFormData(prev => ({ ...prev, endLocation: 'BA' }));
           setEndLocationDetails({
-            name: 'Base Address',
+            name: 'BA',
             address: currentEmployee.baseAddress
           });
         }
@@ -870,8 +870,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   const handleOxfordHouseSelect = (house: any) => {
+    // Format as "Name (Address, City, State Zip)"
+    const formattedLocation = `${house.name} (${house.address}, ${house.city}, ${house.state} ${house.zipCode})`;
+    
     if (currentLocationType === 'start') {
-      setFormData(prev => ({ ...prev, startLocation: house.name }));
+      setFormData(prev => ({ ...prev, startLocation: formattedLocation }));
       setStartLocationDetails({
         name: house.name,
         address: house.address,
@@ -882,7 +885,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         longitude: house.longitude
       });
     } else {
-      setFormData(prev => ({ ...prev, endLocation: house.name }));
+      setFormData(prev => ({ ...prev, endLocation: formattedLocation }));
       setEndLocationDetails({
         name: house.name,
         address: house.address,
