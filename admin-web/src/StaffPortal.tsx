@@ -1046,7 +1046,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
 
       // Sync to source tables (mileage_entries, time_tracking, receipts, employees)
-      await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+      await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1122,7 +1122,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
       // Save to time tracking table
-      await fetch('http://localhost:3002/api/time-tracking', {
+      await fetch(`${API_BASE_URL}/api/time-tracking`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1152,7 +1152,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         supervisorSignature: supervisorSignatureState
       };
   
-      await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+      await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1230,7 +1230,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
       // Save to time tracking table
-      await fetch('http://localhost:3002/api/time-tracking', {
+      await fetch(`${API_BASE_URL}/api/time-tracking`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1260,7 +1260,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         supervisorSignature: supervisorSignatureState
       };
 
-      await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+      await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1309,7 +1309,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               supervisorSignature: supervisorSignatureState
             };
 
-            await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+            await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1348,7 +1348,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           supervisorSignature: supervisorSignatureState
         };
 
-        await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2497,7 +2497,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
 
       // Use the sync endpoint to save AND sync to source tables
-      const response = await fetch('http://localhost:3002/api/expense-reports/sync-to-source', {
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2541,7 +2541,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       setLoading(true);
       
-      const response = await fetch(`http://localhost:3002/api/expense-reports/${employeeId}/${reportMonth}/${reportYear}`);
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}/${reportMonth}/${reportYear}`);
       
       if (response.status === 404) {
         // No saved report found, using current data
