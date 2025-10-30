@@ -1121,25 +1121,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
+      const requestBody = {
+        employeeId: employeeData.employeeId,
+        date: dateStr,
+        hours: value,
+        category: category,
+        description: `${category} hours worked on ${dateStr}`,
+        costCenter: actualCostCenter
+      };
+      
+      console.log(`📤 Saving to time tracking API:`, requestBody);
+      
       // Save to time tracking table
-      await fetch(`${API_BASE_URL}/api/time-tracking`, {
+      const response = await fetch(`${API_BASE_URL}/api/time-tracking`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          employeeId: employeeData.employeeId,
-          date: dateStr,
-          hours: value,
-          category: category,
-          description: `${category} hours worked on ${dateStr}`,
-          costCenter: actualCostCenter
-        }),
+        body: JSON.stringify(requestBody),
       });
-  
-      console.log(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to save: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
     } catch (error) {
-      console.error('Error saving to time tracking API:', error);
+      console.error('❌ Error saving to time tracking API:', error);
+      alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     
     // Auto-save changes to backend and sync to source tables
@@ -1229,25 +1241,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
+      const requestBody = {
+        employeeId: employeeData.employeeId,
+        date: dateStr,
+        hours: value,
+        category: mappedCategory,
+        description: `${mappedCategory} hours worked on ${dateStr}`,
+        costCenter: actualCostCenter
+      };
+      
+      console.log(`📤 Saving to time tracking API:`, requestBody);
+      
       // Save to time tracking table
-      await fetch(`${API_BASE_URL}/api/time-tracking`, {
+      const response = await fetch(`${API_BASE_URL}/api/time-tracking`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          employeeId: employeeData.employeeId,
-          date: dateStr,
-          hours: value,
-          category: mappedCategory,
-          description: `${mappedCategory} hours worked on ${dateStr}`,
-          costCenter: actualCostCenter
-        }),
+        body: JSON.stringify(requestBody),
       });
-
-      console.log(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to save: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
     } catch (error) {
-      console.error('Error saving category hours to time tracking API:', error);
+      console.error('❌ Error saving category hours to time tracking API:', error);
+      alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     
     // Auto-save changes to backend and sync to source tables

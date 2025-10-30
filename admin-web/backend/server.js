@@ -1937,6 +1937,8 @@ app.get('/api/time-tracking', (req, res) => {
 
 // Create new time tracking entry
 app.post('/api/time-tracking', (req, res) => {
+  console.log('📥 POST /api/time-tracking - Request body:', req.body);
+  
   const { id, employeeId, date, category, hours, description, costCenter } = req.body;
   
   // ALWAYS create a deterministic ID based on the unique combination to ensure proper replacement
@@ -1944,16 +1946,27 @@ app.post('/api/time-tracking', (req, res) => {
   const uniqueKey = `${employeeId}-${date}-${category || ''}-${costCenter || ''}`;
   const trackingId = Buffer.from(uniqueKey).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
   const now = new Date().toISOString();
+  
+  console.log(`📝 Creating time tracking entry:`, {
+    trackingId,
+    employeeId,
+    date,
+    category,
+    hours,
+    costCenter,
+    uniqueKey
+  });
 
   db.run(
     'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
     [trackingId, employeeId, date, category || '', hours, description || '', costCenter || '', trackingId, now, now],
     function(err) {
       if (err) {
-        console.error('Database error:', err.message);
+        console.error('❌ Database error:', err.message);
         res.status(500).json({ error: err.message });
         return;
       }
+      console.log(`✅ Time tracking entry saved: ${trackingId} with ${hours} hours`);
       res.json({ id: trackingId, message: 'Time tracking entry created successfully' });
     }
   );
