@@ -1,13 +1,9 @@
 import { Platform } from 'react-native';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
-
 // API Configuration
-// Use local backend for testing, cloud backend for production
-// For mobile devices, use the computer's local IP address instead of localhost
-const API_BASE_URL = __DEV__ 
-  ? 'http://192.168.86.101:3002/api' 
-  : 'https://oxford-mileage-backend.onrender.com/api';
+// Use central config so mobile uses the same base URL (local IP) as the app
+import { API_BASE_URL } from '../config/api';
 
 export interface ApiSyncConfig {
   baseUrl: string;
@@ -353,7 +349,8 @@ export class ApiSyncService {
             dateToSend = `${year}-${month}-${day}T12:00:00.000Z`; // Noon UTC prevents date shifts
           } else {
             // Already a string, likely YYYY-MM-DD format
-            dateToSend = entry.date.includes('T') ? entry.date : `${entry.date}T12:00:00.000Z`;
+            const dateStr = entry.date as string;
+            dateToSend = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00.000Z`;
           }
           
           const mileageData = {
@@ -408,6 +405,78 @@ export class ApiSyncService {
   }
 
   /**
+   * Upload receipt image to backend
+   */
+  private static async uploadReceiptImage(imageUri: string): Promise<{ success: boolean; uri?: string; error?: string }> {
+    try {
+      console.log(`📤 ApiSync: Uploading image from ${imageUri}`);
+      console.log(`📤 ApiSync: Upload URL will be: ${this.config.baseUrl}/receipts/upload-image`);
+      
+      // Create FormData for file upload
+      const formData = new FormData();
+      
+      // Add the image file to FormData
+      const fileName = `receipt_${Date.now()}.jpg`;
+      formData.append('image', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: fileName,
+      } as any);
+      
+      console.log(`📤 ApiSync: FormData created, preparing request with timeout...`);
+      
+      // Add a timeout so we don't hang forever
+      const controller = new AbortController();
+      const timeoutMs = 20000; // 20s
+      const timeoutId = setTimeout(() => {
+        console.warn(`⏱️ ApiSync: Upload timed out after ${timeoutMs}ms`);
+        controller.abort();
+      }, timeoutMs);
+      
+      try {
+        // Upload to backend
+        const response = await fetch(`${this.config.baseUrl}/receipts/upload-image`, {
+          method: 'POST',
+          // Do not set Content-Type manually; let fetch add the multipart boundary
+          body: formData,
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        console.log(`📤 ApiSync: Response received, status:`, response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ ApiSync: Image upload failed:`, response.status, errorText);
+          return { success: false, error: `Upload failed: ${response.status} ${response.statusText}` };
+        }
+        
+        const result = await response.json();
+        console.log(`✅ ApiSync: Image upload successful:`, result);
+        
+        // Backend may return imageUri, imagePath, or filename. Normalize to /uploads/<filename> when possible
+        const filename = result?.imageUri || result?.imagePath || result?.filename || '';
+        const normalizedUri = filename
+          ? (filename.startsWith('/uploads/') ? filename : `/uploads/${filename}`)
+          : undefined;
+        
+        return { success: true, uri: normalizedUri };
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        console.error(`❌ ApiSync: Upload request error:`, fetchError);
+        return { success: false, error: fetchError instanceof Error ? fetchError.message : 'Unknown fetch error' };
+      }
+      
+    } catch (error) {
+      console.error(`❌ ApiSync: Error uploading image:`, error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown upload error' 
+      };
+    }
+  }
+
+  /**
    * Sync receipts to backend
    */
   private static async syncReceipts(receipts: Receipt[]): Promise<SyncResult> {
@@ -415,19 +484,41 @@ export class ApiSyncService {
       const results = [];
       
       for (const receipt of receipts) {
-        // Validate and prepare receipt data
-        const receiptData = {
-          id: receipt.id, // Include ID to prevent duplicates on backend
-          employeeId: receipt.employeeId,
-          date: receipt.date instanceof Date ? receipt.date.toISOString() : new Date(receipt.date).toISOString(),
-          amount: receipt.amount,
-          vendor: receipt.vendor || '',
-          description: receipt.description || '',
-          category: receipt.category || '',
-          imageUri: receipt.imageUri || ''
-        };
-        
         try {
+          let backendImageUri = receipt.imageUri || '';
+          
+          // Upload image to backend if we have a local image URI
+          if (receipt.imageUri && receipt.imageUri.startsWith('file://')) {
+            console.log(`📤 ApiSync: Uploading image for receipt ${receipt.id}...`);
+            
+            try {
+              console.log(`📤 ApiSync: Calling uploadReceiptImage for receipt ${receipt.id}...`);
+              const uploadResult = await this.uploadReceiptImage(receipt.imageUri);
+              console.log(`📤 ApiSync: uploadReceiptImage returned:`, uploadResult);
+              if (uploadResult.success && uploadResult.uri) {
+                backendImageUri = uploadResult.uri;
+                console.log(`✅ ApiSync: Image uploaded successfully: ${backendImageUri}`);
+              } else {
+                console.warn(`⚠️ ApiSync: Image upload failed for receipt ${receipt.id}, using original URI. Result:`, uploadResult);
+              }
+            } catch (uploadError) {
+              console.error(`❌ ApiSync: Error uploading image for receipt ${receipt.id}:`, uploadError);
+              // Continue with original imageUri if upload fails
+            }
+          }
+          
+          // Validate and prepare receipt data
+          const receiptData = {
+            id: receipt.id, // Include ID to prevent duplicates on backend
+            employeeId: receipt.employeeId,
+            date: receipt.date instanceof Date ? receipt.date.toISOString() : new Date(receipt.date).toISOString(),
+            amount: receipt.amount,
+            vendor: receipt.vendor || '',
+            description: receipt.description || '',
+            category: receipt.category || '',
+            imageUri: backendImageUri
+          };
+          
           const response = await fetch(`${this.config.baseUrl}/receipts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -438,6 +529,20 @@ export class ApiSyncService {
             const errorText = await response.text();
             console.error(`❌ ApiSync: Receipt sync failed ${receipt.id}:`, response.status, errorText);
             throw new Error(`Failed to sync receipt: ${response.status} ${response.statusText}`);
+          }
+          
+          // Update local database with backend image URI if image was uploaded
+          if (backendImageUri && backendImageUri !== receipt.imageUri && backendImageUri.startsWith('/uploads/')) {
+            try {
+              const { DatabaseService } = await import('./database');
+              await DatabaseService.updateReceipt(receipt.id, {
+                ...receipt,
+                imageUri: backendImageUri
+              });
+              console.log(`✅ ApiSync: Updated local receipt ${receipt.id} with backend image URI`);
+            } catch (updateError) {
+              console.error(`⚠️ ApiSync: Failed to update local receipt with backend image URI:`, updateError);
+            }
           }
           
           results.push({ success: true, id: receipt.id });
@@ -480,7 +585,8 @@ export class ApiSyncService {
             date: entry.date instanceof Date ? entry.date.toISOString() : new Date(entry.date).toISOString(),
             category: entry.category || '',
             hours: entry.hours,
-            description: entry.description || ''
+            description: entry.description || '',
+            costCenter: entry.costCenter || ''
           };
           
           console.log(`📤 ApiSync: Syncing time tracking ${entry.id}:`, timeTrackingData);

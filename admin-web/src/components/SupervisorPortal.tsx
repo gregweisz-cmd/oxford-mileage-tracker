@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -176,6 +176,9 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   useEffect(() => {
     loadSupervisorData();
   }, [supervisorId, loadSupervisorData]);
+
+  // Memoize the employee object to prevent SupervisorDashboard from re-rendering unnecessarily
+  const currentEmployee = useMemo(() => ({ id: supervisorId, name: supervisorName }), [supervisorId, supervisorName]);
 
 
   const loadTeamMembers = async () => {
@@ -566,7 +569,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           {/* Approvals Tab */}
           {activeTab === 0 && (
             <Box sx={{ p: 3 }}>
-              <SupervisorDashboard currentEmployee={{ id: supervisorId, name: supervisorName }} />
+              <SupervisorDashboard currentEmployee={currentEmployee} />
             </Box>
           )}
 

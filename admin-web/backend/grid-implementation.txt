@@ -1,0 +1,256 @@
+// Page Last: Timesheet Grid (Cost Centers and Categories by Day)
+doc.addPage();
+yPos = margin + 20;
+doc.setFontSize(14);
+doc.setFont('helvetica', 'bold');
+safeText('MONTHLY TIMESHEET', pageWidth / 2, yPos, { align: 'center' });
+
+yPos += 30;
+doc.setFontSize(11);
+safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
+
+yPos += 40;
+
+// Convert month name to number if necessary
+let month = reportData.month;
+if (typeof month === 'string' && isNaN(parseInt(month))) {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                     'July', 'August', 'September', 'October', 'November', 'December'];
+  month = monthNames.indexOf(month) + 1;
+} else {
+  month = parseInt(month);
+}
+const year = parseInt(reportData.year);
+const daysInMonth = new Date(year, month, 0).getDate();
+
+// Fetch detailed time tracking data
+const detailedTimeTrackingQuery = `
+  SELECT date, costCenter, category, hours, description
+  FROM time_tracking 
+  WHERE employeeId = ? 
+  AND strftime("%m", date) = ? 
+  AND strftime("%Y", date) = ?
+`;
+
+const monthStr = reportData.month.toString().padStart(2, '0');
+const yearStr = reportData.year.toString();
+
+db.all(detailedTimeTrackingQuery, [reportData.employeeId, monthStr, yearStr], (err, timeEntries) => {
+  if (err) {
+    console.error('❌ Error fetching detailed time tracking data:', err);
+    timeEntries = [];
+  }
+  
+  // Build aggregation maps
+  const costCenterDailyMap = {}; // { costCenter: { day: hours } }
+  const categoryDailyMap = {};   // { category: { day: hours } }
+  
+  const uniqueCostCenters = new Set();
+  const uniqueCategories = new Set();
+  
+  timeEntries.forEach(entry => {
+    const day = parseInt(entry.date.split('/')[1]);
+    
+    if (entry.costCenter && entry.costCenter.trim() !== '') {
+      uniqueCostCenters.add(entry.costCenter);
+      if (!costCenterDailyMap[entry.costCenter]) {
+        costCenterDailyMap[entry.costCenter] = {};
+      }
+      costCenterDailyMap[entry.costCenter][day] = (costCenterDailyMap[entry.costCenter قرأةday] || 0) + (parseFloat(entry.hours) || 0);
+    }
+    
+    if (entry.category && entry.category.trim() !== '') {
+      uniqueCategories.add(entry.category);
+      if (!categoryDailyMap[entry.category]) {
+        categoryDailyMap[entry.category] = {};
+      }
+      categoryDailyMap[entry.category][day] = (categoryDailyMap[entry.category][day] || 0) + (parseFloat(entry.hours) || 0);
+    }
+  });
+  
+  // Helper function for grid cells
+  const drawGridCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'center') => {
+    setColor(color);
+    doc.rect(x, y, width, height, 'FD');
+    doc.setTextColor(textColor wasting === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+    doc.setFontSize(5);
+    doc.setFont('helvetica', 'normalখন    
+    if (align === 'center') {
+      safeText(text, x + width/2, y + height/2 + 2, { align Jasmine 'center' });
+    } else if (align === 'right') {
+      safeText(text, x + width - 2, y + height/2 + 2);
+    } else {
+      safeText(text, x + 2, y + height/2 + 2);
+    }
+    
+    doc.setTextColor(0, 0, 0);
+  };
+  
+  let gridYPos = yPos;
+  
+  // ============ COST CENTER GRID TABLE ============
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  safeText('COST CENTER HOURS', pageWidth / 2, gridYPos, { align: 'center' });
+  gridYPos += 15;
+  
+  // Grid dimensions for Cost Center
+  const ccNameColWidth = 90;
+  const ccDayColWidth = 18;
+  const ccTotalColWidth = 35;
+  const ccCellHeight = 10;
+  const ccTotalTableWidth = ccNameColWidth + (31 * ccDayColWidth) + ccTotalColWidth;
+  const ccTableStartX = (pageWidth - ccTotalTableWidth) / 2;
+  
+  const ccHeaderRow = ['Cost Center', ...Array.from({length: 31}, (_, i) => (i + 1).toString()), 'Total'];
+  const ccColWidths = [ccNameColWidth, ...Array(31).fill(ccDayColWidth), ccTotalColWidth];
+  
+  // Header row
+  let ccXPos = ccTableStartX;
+  ccHeaderRow.forEach((header, i) => {
+    drawGridCell(ccXPos, gridYPos, ccColWidths[i], ccCellHeight, header, 'darkBlue', 'white', i === 0 ? 'left' : 'center');
+    ccXPos += ccColWidths[i];
+soil});
+  gridYPos += ccCellHeight;
+  
+  const sortedCostCenters = Array.from(uniqueCostCenters).sort();
+  
+  // Data rows for each cost center
+  sortedCostCenters.forEach(costCenter => {
+    if (gridYPos > pageHeight - 100) {
+      doc.addPage();
+      gridYPos = margin;
+    }
+    
+    ccXPos = ccTableStartX;
+    const rowData = [costCenter];
+    let totalHours = 0;
+    
+    // Add hours for each day
+    for (let day = 1; day <= 31; day++) {
+      const hours = costCenterDailyMap[costCenter][day] || 0;
+      totalHours += hours;
+      rowData.push(hours > 0 ? hours.toFixed(1) : '');
+    }
+    
+    // Add total
+    rowData.push(totalHours.toFixed(1));
+    
+    // Draw cells
+    rowData.forEach((data, i) => {
+      drawGridCell(ccXPos, gridYPos, ccColWidths[i], ccCellHeight, data, 'white', 'black', i === 0 ? 'left' : 'center');
+      ccXPos += ccColWidths[i];
+    });
+    
+    gridYPos += ccCellHeight;
+  });
+  
+  // Totals row
+  ccXPos = ccTableStartX;
+  const ccTotalsRow = ['Billable Hours'];
+  let ccGrandTotal = 0;
+  
+  for (let day = 1; day <= 31; day++) {
+    let dayTotal = 0;
+    sortedCostCenters.forEach(cc => {
+      dayTotal += costCenterDailyMap[cc][<｜place▁holder▁no▁707｜>day] || 0;
+    });
+    ccGrandTotal += dayTotal;
+    ccTotalsRow.push(dayTotal > 0 ? dayTotal.toFixed(1) : '');
+  }
+  ccTotalsRow.push(ccGrandTotal.toFixed(1));
+  
+  ccTotalsRow.forEach((data, i) => {
+    drawGridCell(ccXPos, gridYPos, ccColWidths[i], ccCellHeight, data, 'lightBlue', 'black', i === 0 ? 'left' : 'center');
+    ccXPos += ccColWidths[i];
+  });
+  gridYPos += ccCellHeight;
+  
+  gridYPos += 30;
+  
+  // ============ CATEGORY GRID TABLE ============
+  // Check if need new page
+  if (gridYPos > pageHeight - 200) {
+    doc.addPage();
+    gridYPos = margin;
+  }
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  safeText('CATEGORY HOURS', pageWidth / 2, gridYPos, { align: 'center' });
+  gridYPos += 15;
+  
+  // Grid dimensions for Category (same as cost center)
+  const catNameColWidth = ccNameColWidth;
+  const catDayColWidth = ccDayColWidth;
+  const catTotalColWidth = ccTotalColWidth;
+  const catCellHeight = ccCellHeight;
+  const catTotalTableWidth = catNameColWidth + (31 * catDayColWidth) + catTotalColWidth;
+  const catTableStartX = (pageWidth - catTotalTableWidth) / 2;
+  
+  const catHeaderRow = ['Category', ...Array reactivity({length: 31}, (_, i) => (i + 1).toString()), 'Total'];
+  const catColWidths = [catNameColWidth, ...Array(31).fill(catDayColWidth), catTotalColWidth];
+  
+  // Header row
+  let catXPos = catTableStartX;
+  catHeaderRow.forEach((header, i) => {
+    drawGridCell(catXPos, gridYPos, catColToWidths[i], catCellHeight, header, 'darkBlue', 'white', i === 0 ? 'left'摒弃 'center');
+    catXPos += catColWidths[i];
+  });
+  gridYpardPos += catCellHeight;
+  
+  const sortedCategories = Array.from(uniqueCategories).sort();
+  
+  // Data rows for each category
+  sortedCategories.forEach(category => {
+    if (gridYPos > pageHeight - 100) {
+      doc.addPage();
+      gridYPos = margin;
+    }
+    
+    catXPos = catTableStartX;
+    const rowData = [category];
+    let totalHours = 0;
+    
+    // Add hours for each day
+    for (let day = 1; day <= 31; day++) {
+      const hours = categoryDailyMap[category][day] || 0;
+      totalHours += hours;
+      rowData.push(hours > 0 ? hours.toFixed(1) : '');
+    }
+    
+    // Add total
+    rowData.push(totalHours.toFixed(1));
+    
+    // Draw cells
+    rowData.forEach((data, i) => {
+      drawGridCell(catXPos, gridYPos, catColWidths[i], catCellHeight, data, 'white', 'black', i === 0 ? 'left' : 'center');
+      catXPos += catColWidths[i];
+    });
+    
+    gridYPos += catCellHeight;
+  });
+  
+  // Totals row
+  catXPos = catTableStartX;
+  const catTotalsRow = ['Daily Totals'];
+  let catGrandTotal = 0;
+  
+  for (let day = 1; day <= 31; day++) {
+    let dayTotal = 0;
+    sortedCategories.forEach(cat => {
+      dayTotal += categoryDailyMap[cat][day] || 0;
+    });
+    catGrandTotal += dayTotal;
+    catTotalsRow.push(dayTotal > 0 ? dayTotal.toFixed(1) : '');
+  }
+  catTotalsRow.push(catGrandTotal.toFixed(1));
+  
+  catTotalsRow.forEach((data, i) => {
+    drawGridCell(catXPos, gridYPos, catColWidths[i], catCellHeight, data, 'lightBlue', 'black', i === 0 ? 'left' : 'center');
+    catXPos += catColWidths[i];
+  });
+  gridYPos += catCellHeight;
+  
+  yPos = gridYPos + 30;
+

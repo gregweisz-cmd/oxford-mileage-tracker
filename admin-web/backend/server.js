@@ -8,30 +8,73 @@ const XLSX = require('xlsx');
 const http = require('http');
 const WebSocket = require('ws');
 const { jsPDF } = require('jspdf');
+const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3002;
 
-// Middleware
+// Get network IP addresses for mobile device access
+function getNetworkIPs() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal (loopback) and non-IPv4 addresses
+      if (iface.family === 'IPv4' && !iface.internal) {
+        ips.push(iface.address);
+      }
+    }
+  }
+  return ips;
+}
+
+// Middleware - CORS configuration (allow all origins for mobile apps)
 app.use(cors({
-  origin: [
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3001', 
     'https://oxford-mileage-tracker.vercel.app',
     'https://oxford-mileage-tracker-git-main-gregweisz-cmd.vercel.app',
     'https://oxford-mileage-tracker-git-main-goose-weiszs-projects.vercel.app'
-  ],
+    ];
+    
+    // Allow mobile app origins (React Native, Expo, etc.)
+    if (origin.includes('localhost') || origin.includes('192.168.') || origin.includes('10.0.') || origin.includes('172.')) {
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Allow all origins in development for mobile app testing
+      if (process.env.NODE_ENV !== 'production') {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'X-Requested-With']
 }));
 app.use(express.json({ limit: '10mb' })); // Increase JSON payload limit
 app.use(express.static('public'));
 
 // Handle preflight OPTIONS requests
 app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  
+  // Allow all origins in development, or specific ones in production
+  if (!origin || process.env.NODE_ENV !== 'production') {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  } else {
   const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3001', 
@@ -40,15 +83,15 @@ app.options('*', (req, res) => {
     'https://oxford-mileage-tracker-git-main-goose-weiszs-projects.vercel.app'
   ];
   
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin) || origin.includes('192.168.') || origin.includes('10.0.') || origin.includes('172.')) {
     res.header('Access-Control-Allow-Origin', origin);
   } else {
     res.header('Access-Control-Allow-Origin', '*');
+    }
   }
   
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, X-Requested-With');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.sendStatus(200);
 });
@@ -90,8 +133,18 @@ app.use((req, res, next) => {
   next();
 });
 
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('📁 Created uploads directory');
+}
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(uploadsDir));
+
 // Multer configuration for file uploads
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: uploadsDir });
 
 // Database path - use in-memory for Render free tier, file for development
 const DB_PATH = process.env.RENDER_SERVICE_ID 
@@ -1728,6 +1781,112 @@ app.put('/api/receipts/:id', (req, res) => {
   );
 });
 
+// Upload receipt image - accepts both multipart/form-data and JSON with base64
+app.post('/api/receipts/upload-image', (req, res, next) => {
+  console.log(`📤 Receipt image upload request received at ${new Date().toISOString()}`);
+  console.log(`   Method: ${req.method}`);
+  console.log(`   URL: ${req.url}`);
+  console.log(`   Content-Type: ${req.headers['content-type'] || 'not set'}`);
+  console.log(`   Body keys: ${Object.keys(req.body || {})}`);
+  console.log(`   Query: ${JSON.stringify(req.query)}`);
+  
+  // Check if this is JSON (base64) or multipart
+  if (req.headers['content-type'] && req.headers['content-type'].includes('application/json')) {
+    // Handle base64 image in JSON body
+    next();
+  } else {
+    // Handle multipart/form-data file upload
+    upload.single('image')(req, res, (err) => {
+      if (err) {
+        console.error(`❌ Multer error:`, err);
+        return res.status(400).json({ error: 'File upload error: ' + err.message });
+      }
+      next();
+    });
+  }
+}, (req, res) => {
+  console.log(`📤 Receipt image upload processing started`);
+  console.log(`   Content-Type: ${req.headers['content-type'] || 'not set'}`);
+  console.log(`   Body keys after parsing: ${Object.keys(req.body || {})}`);
+  console.log(`   File: ${req.file ? 'present' : 'missing'}`);
+  console.log(`   Files: ${req.files ? JSON.stringify(Object.keys(req.files)) : 'none'}`);
+  
+  // Handle base64 image in JSON body
+  if (req.body && (req.body.image || req.body.imageData || req.body.base64)) {
+    try {
+      const base64Data = req.body.image || req.body.imageData || req.body.base64;
+      const receiptId = req.body.receiptId || 'unknown';
+      
+      // Remove data URL prefix if present (data:image/jpeg;base64,...)
+      const base64String = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+      
+      // Save base64 image to file
+      const imageBuffer = Buffer.from(base64String, 'base64');
+      const fileExtension = req.body.extension || '.jpg';
+      const uniqueFilename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExtension}`;
+      const imagePath = path.join(uploadsDir, uniqueFilename);
+      
+      fs.writeFileSync(imagePath, imageBuffer);
+      
+      console.log(`📷 Receipt image uploaded from base64: ${uniqueFilename} (${imageBuffer.length} bytes) for receipt ${receiptId}`);
+      
+      res.json({ 
+        imageUri: uniqueFilename,
+        imagePath: uniqueFilename,
+        filename: uniqueFilename,
+        size: imageBuffer.length,
+        message: 'Image uploaded successfully' 
+      });
+      return;
+    } catch (error) {
+      console.error('❌ Error saving base64 image:', error);
+      res.status(500).json({ error: 'Failed to save image: ' + error.message });
+      return;
+    }
+  }
+  
+  // Handle multipart file upload
+  if (!req.file && !req.files) {
+    console.error('❌ No file provided in request');
+    console.error(`   Request body:`, req.body);
+    res.status(400).json({ error: 'No image file provided. Send either multipart/form-data with "image" field or JSON with "image", "imageData", or "base64" field.' });
+    return;
+  }
+
+  try {
+    // Get the uploaded file info (handle both single and multiple files)
+    const uploadedFile = req.file || (req.files && req.files.image) || (req.files && Object.values(req.files)[0]);
+    
+    if (!uploadedFile) {
+      console.error('❌ Could not extract file from request');
+      res.status(400).json({ error: 'Could not extract file from request' });
+      return;
+    }
+    
+    const originalName = uploadedFile.originalname || uploadedFile.name || 'receipt.jpg';
+    const fileExtension = path.extname(originalName) || '.jpg';
+    
+    // Create a unique filename if not already set
+    const uniqueFilename = uploadedFile.filename || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExtension}`;
+    
+    // The file is already saved by multer in the uploads/ directory
+    const imagePath = uniqueFilename; // Relative path to uploads directory
+    
+    console.log(`📷 Receipt image uploaded: ${imagePath} (${uploadedFile.size} bytes)`);
+    
+    res.json({ 
+      imageUri: imagePath,
+      imagePath: imagePath,
+      filename: uniqueFilename,
+      size: uploadedFile.size,
+      message: 'Image uploaded successfully' 
+    });
+  } catch (error) {
+    console.error('❌ Error uploading receipt image:', error);
+    res.status(500).json({ error: 'Failed to upload image: ' + error.message });
+  }
+});
+
 // Delete receipt
 app.delete('/api/receipts/:id', (req, res) => {
   const { id } = req.params;
@@ -2832,6 +2991,120 @@ app.get('/api/monthly-reports/employee/:employeeId/:year/:month', (req, res) => 
       res.json(row || null);
     }
   );
+});
+
+// Get detailed monthly report (includes all entries)
+app.get('/api/monthly-reports/:id/detailed', (req, res) => {
+  const { id } = req.params;
+  
+  // Get the report first
+  db.get('SELECT * FROM monthly_reports WHERE id = ?', [id], (err, report) => {
+    if (err) {
+      console.error('❌ Error fetching monthly report:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    if (!report) {
+      res.status(404).json({ error: 'Monthly report not found' });
+      return;
+    }
+    
+    // Fetch all related data for this month/year/employee
+    const promises = [
+      // Employee info
+      new Promise((resolve, reject) => {
+        db.get('SELECT * FROM employees WHERE id = ?', [report.employeeId], (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
+      }),
+      // Mileage entries
+      new Promise((resolve, reject) => {
+        const query = `
+          SELECT *, 
+            COALESCE(miles, 0) as miles,
+            COALESCE(miles * 0.655, 0) as mileageAmount
+          FROM mileage_entries 
+          WHERE employeeId = ? 
+          AND strftime('%m', date) = ?
+          AND strftime('%Y', date) = ?
+          ORDER BY date`;
+        db.all(query, [report.employeeId, String(report.month).padStart(2, '0'), report.year.toString()], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      }),
+      // Time tracking entries
+      new Promise((resolve, reject) => {
+        const query = `
+          SELECT * FROM time_tracking 
+          WHERE employeeId = ? 
+          AND strftime('%m', date) = ?
+          AND strftime('%Y', date) = ?
+          ORDER BY date`;
+        db.all(query, [report.employeeId, String(report.month).padStart(2, '0'), report.year.toString()], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      }),
+      // Receipts
+      new Promise((resolve, reject) => {
+        const query = `
+          SELECT * FROM receipts 
+          WHERE employeeId = ? 
+          AND strftime('%m', date) = ?
+          AND strftime('%Y', date) = ?
+          ORDER BY date`;
+        db.all(query, [report.employeeId, String(report.month).padStart(2, '0'), report.year.toString()], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      }),
+      // Daily descriptions
+      new Promise((resolve, reject) => {
+        const query = `
+          SELECT * FROM daily_descriptions 
+          WHERE employeeId = ? 
+          AND strftime('%m', date) = ?
+          AND strftime('%Y', date) = ?
+          ORDER BY date`;
+        db.all(query, [report.employeeId, String(report.month).padStart(2, '0'), report.year.toString()], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      })
+    ];
+    
+    Promise.all(promises).then(([employee, mileageEntries, timeTracking, receipts, dailyDescriptions]) => {
+      // Add employee info to report object for frontend compatibility
+      if (employee) {
+        report.employeeName = employee.name || '';
+        report.employeeEmail = employee.email || '';
+      }
+      
+      // Build summary
+      const summary = {
+        mileageCount: mileageEntries.length,
+        timeCount: timeTracking.length,
+        receiptCount: receipts.length
+      };
+      
+      // Return comprehensive report data
+      res.json({
+        report,
+        employee,
+        summary,
+        mileageEntries: mileageEntries || [],
+        timeTracking: timeTracking || [],
+        receipts: receipts || [],
+        dailyDescriptions: dailyDescriptions || []
+      });
+    }).catch(err => {
+      console.error('❌ Error fetching detailed report data:', err);
+      res.status(500).json({ error: err.message });
+    });
+  });
 });
 
 // Create or update monthly report
@@ -4418,8 +4691,22 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       doc.setTextColor(0, 0, 0);
       
       // Page 2: Summary Sheet (with colors and grid like screenshot)
+      console.log(`📄 Before summary page: yPos=${yPos}, pageHeight=${pageHeight}`);
+      // Calculate estimated space needed for summary section (title, 3 lines of info, table)
+      const estimatedSummaryHeight = 40 + 60 + 300; // title + info + table estimate
+      const remainingSpace = pageHeight - yPos - margin;
+      
+      // Only add page if we don't have enough space
+      if (remainingSpace < estimatedSummaryHeight) {
+        console.log(`📄 Adding page for summary (remaining space ${remainingSpace.toFixed(0)} < ${estimatedSummaryHeight})`);
       doc.addPage();
       yPos = margin + 20;
+      } else {
+        // Continue on same page, just add some spacing
+        yPos += 20;
+        console.log(`📄 Summary continuing on same page (remaining space ${remainingSpace.toFixed(0)}px, added spacing, yPos=${yPos})`);
+      }
+      console.log(`📄 After summary page setup: yPos=${yPos}`);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       safeText('MONTHLY EXPENSE REPORT SUMMARY SHEET', pageWidth / 2, yPos, { align: 'center' });
@@ -4437,8 +4724,28 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       
       // Helper function to draw table cell with color and border and text wrapping
       const drawCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left', wrapText = false) => {
+        // Defensive guards to prevent jsPDF.rect invalid args
+        if (!Number.isFinite(width) || width <= 0) {
+          console.warn('⚠️ drawCell: invalid width, substituting 10', { width, text });
+          width = 10;
+        }
+        if (!Number.isFinite(height) || height <= 0) {
+          console.warn('⚠️ drawCell: invalid height, substituting 10', { height, text });
+          height = 10;
+        }
+        if (!Number.isFinite(x)) x = tableStartX || 40;
+        if (!Number.isFinite(y)) y = 40;
         // Set fill color
         setColor(color);
+        
+        // Set text color and font BEFORE drawing text
+        if (textColor === 'white') {
+          doc.setTextColor(255, 255, 255); // White text
+        } else {
+          doc.setTextColor(0, 0, 0); // Black text
+        }
+        doc.setFontSize(7); // Reduced from default 8 to 7 (~12.5% reduction)
+        doc.setFont('helvetica', 'bold');
         
         let actualHeight = height; // Default to original height
         
@@ -4475,6 +4782,8 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
             const lineY = y + 8 + (index * 8); // 8px top padding + 8px per line
             if (align === 'right') {
               safeText(line, x + width - 5, lineY);
+            } else if (align === 'center') {
+              safeText(line, x + width/2, lineY, { align: 'center' });
             } else {
               safeText(line, x + 5, lineY);
             }
@@ -4485,28 +4794,31 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           
           if (align === 'right') {
             safeText(text, x + width - 5, y + height/2 + 3);
+          } else if (align === 'center') {
+            safeText(text, x + width/2, y + height/2 + 3, { align: 'center' });
           } else {
             safeText(text, x + 5, y + height/2 + 3);
           }
         }
         
-        // Set text color and font
-        doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
-        doc.setFontSize(7); // Reduced from default 8 to 7 (~12.5% reduction)
-        doc.setFont('helvetica', 'bold');
-        
-        doc.setTextColor(0, 0, 0); // Reset to black
+        // Reset to black text color after drawing
+        doc.setTextColor(0, 0, 0);
         return actualHeight; // Return actual height used
       };
       
       // Table dimensions - adjusted for portrait page with proper widths (downsized by ~20% total)
       const cellHeight = 16; // ~20% reduction from original 20
-      const colWidths = [96, 64, 64, 64, 64, 64, 80]; // ~20% reduction from original widths
+      // Base widths: [label, centers x N, subtotal]
+      let colWidths = [96, 64, 64, 64, 64, 64, 80];
+      const employeeCenters = (reportData.costCenters || []).slice(0, 5);
+      const numCenters = employeeCenters.length;
+      // Build dynamic widths to match number of assigned centers
+      colWidths = [colWidths[0], ...Array(numCenters).fill(64), colWidths[colWidths.length - 1]];
       const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
-      const tableStartX = margin;
+      const tableStartX = (pageWidth - tableWidth) / 2; // Center the summary table
       
-      // Header row - start with blank cell in A1 position
-      const headers = ['', 'Cost Center #1', 'Cost Center #2', 'Cost Center #3', 'Cost Center #4', 'Cost Center #5', 'SUBTOTALS (by category)'];
+      // Header row - dynamic: show only this employee's assigned cost centers
+      const headers = [''].concat(employeeCenters).concat(['SUBTOTALS (by category)']);
       let xPos = tableStartX;
       
       // Check if any header needs wrapping and calculate dynamic height
@@ -4534,11 +4846,40 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       });
       
       headers.forEach((header, i) => {
+        const colWidth = colWidths[i] ?? 10;
         const needsWrapping = header.length > 15;
-        drawCell(xPos, yPos, colWidths[i], maxHeaderHeight, header, 'darkBlue', 'white', 'center', needsWrapping);
-        xPos += colWidths[i];
+        drawCell(xPos, yPos, colWidth, maxHeaderHeight, header, 'darkBlue', 'white', 'center', needsWrapping);
+        xPos += colWidth;
       });
       yPos += maxHeaderHeight;
+      
+      // Helper function to calculate amounts for a category from receipts
+      const calculateCategoryAmounts = (categoryLabel, receiptCategoryMatches) => {
+        const normalizeCategory = (c) => (c || '').toString().trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*\/\s*/g, ' / ');
+        const matchingReceipts = (reportData.receipts || []).filter(r => {
+          const cat = normalizeCategory(r.category);
+          return receiptCategoryMatches.some(match => cat === normalizeCategory(match));
+        });
+        const total = matchingReceipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+        
+        // Distribute across visible cost center columns
+        const centerTotals = Array(numCenters).fill(0);
+        const normalizeName = (s) => (s || '').toString().trim().toLowerCase()
+          .replace(/&/g, 'and').replace(/\./g, '').replace(/\s+/g, ' ');
+        const centersList = (reportData.costCenters || []).slice(0, numCenters);
+        const centersNorm = centersList.map(c => normalizeName(c));
+        matchingReceipts.forEach(r => {
+          const rc = r.costCenter || r.costCenterName || r.center || r.cc || '';
+          let idx = centersNorm.indexOf(normalizeName(rc));
+          // Fallbacks: if no match, default to first assigned center
+          if (idx < 0) idx = 0;
+          if (idx >= 0 && idx < centerTotals.length) {
+            centerTotals[idx] += (parseFloat(r.amount) || 0);
+          }
+        });
+        
+        return [centerTotals, total];
+      };
       
       // Travel expenses section (light green)
       const travelExpenses = [
@@ -4552,6 +4893,12 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       ];
       
       travelExpenses.forEach(([category, ...amounts]) => {
+        // Check for page break before drawing row
+        if (yPos > pageHeight - 50) {
+          doc.addPage();
+          yPos = margin;
+        }
+        
         // Check if category needs wrapping and calculate required height
         const categoryNeedsWrapping = category.length > 15;
         let maxRowHeight = cellHeight;
@@ -4584,11 +4931,15 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         drawCell(xPos, yPos, colWidths[0], maxRowHeight, category, 'lightGreen', 'black', 'left', categoryNeedsWrapping);
         xPos += colWidths[0];
         
-        amounts.forEach((amount, i) => {
-          // All cells in the row should be the same height as the tallest cell
+        // Draw only assigned cost centers, then the subtotal column
+        for (let i = 0; i < numCenters; i++) {
+          const amount = amounts[i] || 0;
           drawCell(xPos, yPos, colWidths[i + 1], maxRowHeight, `$${amount.toFixed(2)}`, 'lightGreen', 'black', 'left');
           xPos += colWidths[i + 1];
-        });
+        }
+        // Subtotal is the last value in amounts
+        const subtotal = amounts[amounts.length - 1] || 0;
+        drawCell(xPos, yPos, colWidths[colWidths.length - 1], maxRowHeight, `$${subtotal.toFixed(2)}`, 'lightGreen', 'black', 'left');
         yPos += maxRowHeight;
       });
       
@@ -4630,31 +4981,53 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       }
       yPos += cellHeight;
       
-      // Phone / Internet / Fax
-      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Phone / Internet / Fax', 'lightOrange', 'black', 'left');
-      xPos = tableStartX + colWidths[0];
-      for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
-        xPos += colWidths[i];
-      }
+          // Phone / Internet / Fax
+          const [phoneInternetFaxCenters, phoneInternetFaxTotal] = calculateCategoryAmounts(
+            'Phone / Internet / Fax',
+            ['Phone/Internet/Fax', 'Phone / Internet / Fax']
+          );
+          console.log(`📦 Phone/Internet/Fax distribution`, { centers: phoneInternetFaxCenters, total: phoneInternetFaxTotal });
+
+          drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Phone / Internet / Fax', 'lightOrange', 'black', 'left');
+          xPos = tableStartX + colWidths[0];
+          // Cost center columns (#1..numCenters)
+          for (let i = 1; i <= numCenters; i++) {
+            const val = phoneInternetFaxCenters[i - 1] || 0;
+            drawCell(xPos, yPos, colWidths[i], cellHeight, `$${val.toFixed(2)}`, 'lightOrange', 'black', 'left');
+            xPos += colWidths[i];
+          }
+          // Subtotals (by category) column
+          drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, `$${phoneInternetFaxTotal.toFixed(2)}`, 'lightOrange', 'black', 'left');
       yPos += cellHeight;
       
       // Postage / Shipping
+      const [postageShippingCenters, postageShippingTotal] = calculateCategoryAmounts(
+        'Postage / Shipping',
+        ['Postage/Shipping', 'Postage / Shipping', 'Postage', 'Shipping']
+      );
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Postage / Shipping', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
-      for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
+      for (let i = 1; i <= numCenters; i++) {
+        const val = postageShippingCenters[i - 1] || 0;
+        drawCell(xPos, yPos, colWidths[i], cellHeight, `$${val.toFixed(2)}`, 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
+      drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, `$${postageShippingTotal.toFixed(2)}`, 'lightOrange', 'black', 'left');
       yPos += cellHeight;
       
       // Printing / Copying
+      const [printingCopyingCenters, printingCopyingTotal] = calculateCategoryAmounts(
+        'Printing / Copying',
+        ['Printing/Copying', 'Printing / Copying', 'Printing', 'Copying']
+      );
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Printing / Copying', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
-      for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
+      for (let i = 1; i <= numCenters; i++) {
+        const val = printingCopyingCenters[i - 1] || 0;
+        drawCell(xPos, yPos, colWidths[i], cellHeight, `$${val.toFixed(2)}`, 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
+      drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, `$${printingCopyingTotal.toFixed(2)}`, 'lightOrange', 'black', 'left');
       yPos += cellHeight;
       
       // Supplies section
@@ -4667,12 +5040,18 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       yPos += cellHeight;
       
       // Outreach Supplies
+      const [outreachSuppliesCenters, outreachSuppliesTotal] = calculateCategoryAmounts(
+        'Outreach Supplies',
+        ['Outreach Supplies', 'Office Supplies', 'Supplies']
+      );
       drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Outreach Supplies', 'lightOrange', 'black', 'left');
       xPos = tableStartX + colWidths[0];
-      for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightOrange', 'black', 'left');
+      for (let i = 1; i <= numCenters; i++) {
+        const val = outreachSuppliesCenters[i - 1] || 0;
+        drawCell(xPos, yPos, colWidths[i], cellHeight, `$${val.toFixed(2)}`, 'lightOrange', 'black', 'left');
         xPos += colWidths[i];
       }
+      drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, `$${outreachSuppliesTotal.toFixed(2)}`, 'lightOrange', 'black', 'left');
       yPos += cellHeight;
       
       // Blank row under SUPPLIES
@@ -4685,10 +5064,11 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       yPos += cellHeight;
       
       // Subtotals by cost center (light green)
-      const totalExpenses = (reportData.totalMileageAmount || 0) + (reportData.phoneInternetFax || 0) + 
+      const totalExpenses = (reportData.totalMileageAmount || 0) + 
                            (reportData.airRailBus || 0) + (reportData.vehicleRentalFuel || 0) + 
                            (reportData.parkingTolls || 0) + (reportData.groundTransportation || 0) + 
-                           (reportData.hotelsAirbnb || 0) + (reportData.perDiem || 0) + (reportData.other || 0);
+                           (reportData.hotelsAirbnb || 0) + (reportData.perDiem || 0) + (reportData.other || 0) +
+                           phoneInternetFaxTotal + postageShippingTotal + printingCopyingTotal + outreachSuppliesTotal;
       
       // Subtotals by cost center (light green) - with dynamic height for text wrapping
       const subtotalsText = 'SUBTOTALS (by cost center)';
@@ -4714,43 +5094,88 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         subtotalsRowHeight = cellHeight + (lines.length - 1) * 8 + 4; // 8px line spacing + 4px buffer
       }
       
+      // Calculate subtotals for each cost center column by summing all category amounts
+      const costCenterSubtotals = [];
+      for (let i = 0; i < numCenters; i++) {
+        let columnTotal = 0;
+        // Add mileage for this column (all mileage currently goes to first column)
+        if (i === 0) {
+          columnTotal += (reportData.totalMileageAmount || 0);
+        }
+        // Add receipt-based category amounts
+        columnTotal += phoneInternetFaxCenters[i] || 0;
+        columnTotal += postageShippingCenters[i] || 0;
+        columnTotal += printingCopyingCenters[i] || 0;
+        columnTotal += outreachSuppliesCenters[i] || 0;
+        costCenterSubtotals.push(columnTotal);
+      }
+      
       drawCell(tableStartX, yPos, colWidths[0], subtotalsRowHeight, subtotalsText, 'lightGreen', 'black', 'left', subtotalsNeedsWrapping);
       xPos = tableStartX + colWidths[0];
-      drawCell(xPos, yPos, colWidths[1], subtotalsRowHeight, `$${(reportData.totalMileageAmount || 0).toFixed(2)}`, 'lightGreen', 'black', 'left');
-      xPos += colWidths[1];
-      for (let i = 2; i < colWidths.length - 1; i++) {
-        drawCell(xPos, yPos, colWidths[i], subtotalsRowHeight, '$0.00', 'lightGreen', 'black', 'left');
-        xPos += colWidths[i];
+      // Draw subtotals for each cost center column
+      for (let i = 0; i < numCenters; i++) {
+        drawCell(xPos, yPos, colWidths[i + 1], subtotalsRowHeight, `$${costCenterSubtotals[i].toFixed(2)}`, 'lightGreen', 'black', 'left');
+        xPos += colWidths[i + 1];
       }
+      // Draw grand total in subtotals column
       drawCell(xPos, yPos, colWidths[colWidths.length - 1], subtotalsRowHeight, `$${totalExpenses.toFixed(2)}`, 'lightGreen', 'black', 'left');
       yPos += subtotalsRowHeight;
       
-      // Less Cash Advance
-      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Less Cash Advance', 'lightGreen', 'black', 'left');
+      // Less Cash Advance (label in second-to-last column, value in subtotals column)
+      // Leave first column blank
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, '', 'lightGreen', 'black', 'left');
       xPos = tableStartX + colWidths[0];
-      for (let i = 1; i < colWidths.length; i++) {
-        drawCell(xPos, yPos, colWidths[i], cellHeight, '$0.00', 'lightGreen', 'black', 'left');
-        xPos += colWidths[i];
+      // Leave cost center columns blank until second-to-last
+      for (let i = 0; i < numCenters - 1; i++) {
+        drawCell(xPos, yPos, colWidths[i + 1], cellHeight, '', 'lightGreen', 'black', 'left');
+        xPos += colWidths[i + 1];
       }
+      // Put "Less Cash Advance" label in the second-to-last column (last cost center)
+      drawCell(xPos, yPos, colWidths[numCenters], cellHeight, 'Less Cash Advance', 'lightGreen', 'black', 'left');
+      xPos += colWidths[numCenters];
+      // Show Less Cash Advance value in subtotals column (currently 0)
+      drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, '$0.00', 'lightGreen', 'black', 'left');
       yPos += cellHeight;
       
-      // Grand Total (light blue) - moved one cell to the left, same size as other cells
+      // Grand Total (dark blue for label with white text, light blue for value) - aligned with columns
       yPos += 20;
-      const grandTotalX = tableStartX + colWidths.slice(0, -2).reduce((sum, width) => sum + width, 0); // Move one cell left
-      drawCell(grandTotalX, yPos, colWidths[colWidths.length - 1], cellHeight, 'GRAND TOTAL', 'lightBlue', 'black', 'left');
-      drawCell(grandTotalX + colWidths[colWidths.length - 1], yPos, colWidths[colWidths.length - 1], cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightBlue', 'black', 'left'); // Changed to left align
+      // GRAND TOTAL label spans all employee cost center columns; value is in the SUBTOTALS column
+      const numCentersForGT = numCenters; // reuse computed count
+      const sumWidths = (arr, start, end) => arr.slice(start, end).reduce((s, w) => s + w, 0);
+      // Columns layout: [0]=Label, [1..numCenters]=Centers, [last]=Subtotal
+      const centersStartX = tableStartX + colWidths[0];
+      const centersTotalWidth = sumWidths(colWidths, 1, 1 + numCentersForGT);
+      const grandTotalValueX = centersStartX + centersTotalWidth; // start of subtotal column
+      const subtotalColWidth = colWidths[colWidths.length - 1];
+
+      drawCell(centersStartX, yPos, centersTotalWidth, cellHeight, 'GRAND TOTAL', 'darkBlue', 'white', 'center');
+      drawCell(grandTotalValueX, yPos, subtotalColWidth, cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightBlue', 'black', 'left');
       
       yPos += 40;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       
-      // Check if we need a new page before the cost center sheets
-      if (yPos > pageHeight - 100) {
+      // Start "Payable to" and cost center sheets on a fresh page
+      // Calculate estimated space needed for first cost center (title + table header + at least a few rows)
+      const estimatedCostCenterHeight = 100 + 30 + 200; // title + header + rows estimate
+      const remainingSpaceForCC = pageHeight - yPos - margin;
+      
+      console.log(`📄 Before cost center section: yPos=${yPos}, pageHeight=${pageHeight}, remaining=${remainingSpaceForCC.toFixed(0)}`);
+      // Only add page if we don't have enough space for the cost center content
+      if (remainingSpaceForCC < estimatedCostCenterHeight) {
+        console.log(`📄 Adding page for cost center section (remaining space ${remainingSpaceForCC.toFixed(0)} < ${estimatedCostCenterHeight})`);
         doc.addPage();
         yPos = margin + 20;
+      } else {
+        // Continue on same page, just add some spacing
+        yPos += 20;
+        console.log(`📄 Cost center section continuing on same page (remaining space ${remainingSpaceForCC.toFixed(0)}px, added spacing, yPos=${yPos})`);
       }
+      console.log(`📄 After cost center page check: yPos=${yPos}`);
       
       safeText(`Payable to: ${reportData.name || 'N/A'}`, margin, yPos);
+      yPos += 30;
+      console.log(`📄 After "Payable to": yPos=${yPos}`);
       
       
       // Page 3+: Cost Center Travel Sheets (with all days of month and grid)
@@ -4760,20 +5185,559 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         ? reportData.costCenters 
         : ['Program Services']; // Default cost center if none provided
       
+      // Track completion of all cost center sheets
+      let costCenterSheetsCompleted = 0;
+      const totalCostCenterSheets = costCentersToProcess.length;
       
-      costCentersToProcess.forEach((costCenter, index) => {
-        doc.addPage();
-        yPos = margin + 20;
+      // Function to generate timesheet and finalize PDF (called after all cost center sheets are done)
+      const generateTimesheetAndFinalizePDF = () => {
+        // Page Last: Timesheet (with grid layout showing cost centers and categories)
+        console.log(`📄 Starting timesheet section: yPos=${yPos}, pageHeight=${pageHeight}`);
+        // Calculate estimated space needed for timesheet (title + table with multiple rows)
+        const estimatedTimesheetHeight = 100 + 400; // title + table estimate
+        const remainingSpaceForTS = pageHeight - yPos - margin;
         
+        // Only add page if we don't have enough space
+        if (remainingSpaceForTS < estimatedTimesheetHeight) {
+          console.log(`📄 Adding page for timesheet (remaining space ${remainingSpaceForTS.toFixed(0)} < ${estimatedTimesheetHeight})`);
+          doc.addPage();
+          yPos = margin + 20;
+        } else {
+          // Continue on same page, just add some spacing
+          yPos += 20;
+          console.log(`📄 Timesheet continuing on same page (remaining space ${remainingSpaceForTS.toFixed(0)}px, added spacing, yPos=${yPos})`);
+        }
+        console.log(`📄 After timesheet page check: yPos=${yPos}`);
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        safeText(`COST CENTER TRAVEL SHEET - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
+        safeText('MONTHLY TIMESHEET', pageWidth / 2, yPos, { align: 'center' });
         
         yPos += 30;
         doc.setFontSize(11);
         safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
         
         yPos += 40;
+        
+        // Grid Timesheet dimensions - matching Oxford House FY 25/26 format
+        // Grid: 80px (name) + 14px × 30 (days) + 70px (total) = 570px total width
+        const gridCellHeight = 12;
+        const gridNameColWidth = 80;
+        const gridDayColWidth = 14;
+        const gridTotalColWidth = 70;
+        const gridDaysToShow = 30; // Show days 1-30 (we'll cap longer months at 30)
+        
+        const gridTotalWidth = gridNameColWidth + (gridDayColWidth * gridDaysToShow) + gridTotalColWidth;
+        const gridStartX = (pageWidth - gridTotalWidth) / 2; // Center the grid
+        
+        // Generate month and year info
+        let month = reportData.month;
+        if (typeof month === 'string' && isNaN(parseInt(month))) {
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                             'July', 'August', 'September', 'October', 'November', 'December'];
+          month = monthNames.indexOf(month) + 1;
+        } else {
+          month = parseInt(month);
+        }
+        const year = parseInt(reportData.year);
+        const monthStr = month.toString().padStart(2, '0');
+        const yearStr = year.toString();
+        
+        // Helper function for grid cells
+        const drawGridCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'center', fontSize = 6) => {
+          setColor(color);
+          doc.setDrawColor(0, 0, 0);
+          doc.rect(x, y, width, height, 'FD');
+          
+          if (textColor === 'white') {
+            doc.setTextColor(255, 255, 255);
+          } else if (textColor === 'red') {
+            doc.setTextColor(255, 0, 0);
+          } else {
+            doc.setTextColor(0, 0, 0);
+          }
+          
+          doc.setFontSize(fontSize);
+          doc.setFont('helvetica', 'bold');
+          
+          if (align === 'right') {
+            safeText(text || '', x + width - 2, y + height/2 + 3);
+          } else if (align === 'center') {
+            safeText(text || '', x + width/2, y + height/2 + 3, { align: 'center' });
+          } else {
+            safeText(text || '', x + 2, y + height/2 + 3);
+          }
+          
+          doc.setTextColor(0, 0, 0);
+        };
+        
+        // Fetch detailed time tracking data by day and cost center
+        const detailedTimeQuery = `
+          SELECT date, costCenter, hours, category
+          FROM time_tracking 
+          WHERE employeeId = ? 
+          AND strftime("%m", date) = ? 
+          AND strftime("%Y", date) = ?
+          ORDER BY date, costCenter
+        `;
+        
+        db.all(detailedTimeQuery, [reportData.employeeId, monthStr, yearStr], (err, timeEntries) => {
+          if (err) {
+            console.error('❌ Error fetching detailed time tracking data:', err);
+            timeEntries = [];
+          }
+          
+          // Build data structure: costCenterDailyMap[costCenter][day] = hours
+          // And categoryDailyMap[category][day] = hours
+          const costCenterDailyMap = {};
+          const categoryDailyMap = {
+            'G&A': {},
+            'HOLIDAY': {},
+            'PTO': {},
+            'STD/LTD': {},
+            'PFL/PFML': {}
+          };
+          
+          timeEntries.forEach(entry => {
+            // Parse date to get day number
+            let day;
+            if (entry.date.includes('-')) {
+              day = parseInt(entry.date.split('-')[2]);
+            } else if (entry.date.includes('/')) {
+              day = parseInt(entry.date.split('/')[1]);
+            }
+            
+            if (day && day <= gridDaysToShow) {
+              const hours = parseFloat(entry.hours) || 0;
+              
+              // Map by cost center
+              if (entry.costCenter) {
+                if (!costCenterDailyMap[entry.costCenter]) {
+                  costCenterDailyMap[entry.costCenter] = {};
+                }
+                costCenterDailyMap[entry.costCenter][day] = (costCenterDailyMap[entry.costCenter][day] || 0) + hours;
+              }
+              
+              // Map by category (if provided)
+              if (entry.category && categoryDailyMap[entry.category]) {
+                categoryDailyMap[entry.category][day] = (categoryDailyMap[entry.category][day] || 0) + hours;
+              }
+            }
+          });
+          
+          // Use all assigned cost centers from the report, even if they have no hours
+          const assignedCenters = (reportData.costCenters || []);
+          const discoveredCenters = Object.keys(costCenterDailyMap);
+          const costCenters = Array.from(new Set([ ...assignedCenters, ...discoveredCenters ])).filter(Boolean);
+          
+          // Draw header row: Name column + Days 1-30 + Total column
+          let gridX = gridStartX;
+          
+          // Name column header (blank or label)
+          drawGridCell(gridX, yPos, gridNameColWidth, gridCellHeight, '', 'darkBlue', 'white', 'center');
+          gridX += gridNameColWidth;
+          
+          // Day number columns (1-30)
+          for (let day = 1; day <= gridDaysToShow; day++) {
+            drawGridCell(gridX, yPos, gridDayColWidth, gridCellHeight, day.toString(), 'darkBlue', 'white', 'center', 5);
+            gridX += gridDayColWidth;
+          }
+          
+          // Total column header
+          drawGridCell(gridX, yPos, gridTotalColWidth, gridCellHeight, 'COST CENTER TOTAL', 'darkBlue', 'white', 'center');
+          yPos += gridCellHeight;
+          
+          // Draw cost center rows
+          costCenters.forEach(costCenter => {
+            if (yPos > pageHeight - gridCellHeight * 10) {
+              doc.addPage();
+              yPos = margin + 20;
+              // Redraw header row on new page
+              let gridX = gridStartX;
+              drawGridCell(gridX, yPos, gridNameColWidth, gridCellHeight, '', 'darkBlue', 'white', 'center');
+              gridX += gridNameColWidth;
+              for (let day = 1; day <= gridDaysToShow; day++) {
+                drawGridCell(gridX, yPos, gridDayColWidth, gridCellHeight, day.toString(), 'darkBlue', 'white', 'center', 5);
+                gridX += gridDayColWidth;
+              }
+              drawGridCell(gridX, yPos, gridTotalColWidth, gridCellHeight, 'COST CENTER TOTAL', 'darkBlue', 'white', 'center');
+              yPos += gridCellHeight;
+            }
+            
+            gridX = gridStartX;
+            let rowTotal = 0;
+            
+            // Cost center name
+            drawGridCell(gridX, yPos, gridNameColWidth, gridCellHeight, costCenter, 'white', 'black', 'left');
+            gridX += gridNameColWidth;
+            
+            // Daily hours for this cost center
+            for (let day = 1; day <= gridDaysToShow; day++) {
+              const hours = (costCenterDailyMap[costCenter]?.[day]) || 0;
+              rowTotal += hours;
+              drawGridCell(gridX, yPos, gridDayColWidth, gridCellHeight, hours > 0 ? hours.toString() : '', 'white', 'black', 'center');
+              gridX += gridDayColWidth;
+            }
+            
+            // Cost center total
+            drawGridCell(gridX, yPos, gridTotalColWidth, gridCellHeight, rowTotal > 0 ? rowTotal.toString() : '', 'white', 'black', 'center');
+            yPos += gridCellHeight;
+          });
+          
+          // BILLABLE HOURS totals row (sum of all cost center rows)
+          if (yPos > pageHeight - gridCellHeight * 10) {
+            doc.addPage();
+            yPos = margin + 20;
+          }
+          
+          gridX = gridStartX;
+          let billableTotals = new Array(gridDaysToShow).fill(0);
+          let billableGrandTotal = 0;
+          
+          costCenters.forEach(costCenter => {
+            for (let day = 1; day <= gridDaysToShow; day++) {
+              const hours = (costCenterDailyMap[costCenter]?.[day]) || 0;
+              billableTotals[day - 1] += hours;
+            }
+          });
+          billableGrandTotal = billableTotals.reduce((sum, val) => sum + val, 0);
+          
+          drawGridCell(gridX, yPos, gridNameColWidth, gridCellHeight, 'BILLABLE HOURS', 'lightGray', 'black', 'left');
+          gridX += gridNameColWidth;
+          
+          for (let day = 1; day <= gridDaysToShow; day++) {
+            const total = billableTotals[day - 1];
+            drawGridCell(gridX, yPos, gridDayColWidth, gridCellHeight, total > 0 ? total.toString() : '', 'lightGray', 'black', 'center');
+            gridX += gridDayColWidth;
+          }
+          
+          drawGridCell(gridX, yPos, gridTotalColWidth, gridCellHeight, billableGrandTotal > 0 ? billableGrandTotal.toString() : '', 'lightGray', 'black', 'center');
+          yPos += gridCellHeight;
+          
+          // Add spacing before categories
+          yPos += 5;
+          
+          // Draw category rows (G&A, HOLIDAY, PTO, STD/LTD, PFL/PFML)
+          const categories = ['G&A', 'HOLIDAY', 'PTO', 'STD/LTD', 'PFL/PFML'];
+          
+          categories.forEach(category => {
+            if (yPos > pageHeight - gridCellHeight * 10) {
+              doc.addPage();
+              yPos = margin + 20;
+            }
+            
+            gridX = gridStartX;
+            let categoryTotals = new Array(gridDaysToShow).fill(0);
+            let categoryGrandTotal = 0;
+            
+            // Calculate totals for this category
+            for (let day = 1; day <= gridDaysToShow; day++) {
+              categoryTotals[day - 1] = categoryDailyMap[category][day] || 0;
+              categoryGrandTotal += categoryTotals[day - 1];
+            }
+            
+            drawGridCell(gridX, yPos, gridNameColWidth, gridCellHeight, category, 'white', 'black', 'left');
+            gridX += gridNameColWidth;
+            
+            for (let day = 1; day <= gridDaysToShow; day++) {
+              const hours = categoryTotals[day - 1];
+              drawGridCell(gridX, yPos, gridDayColWidth, gridCellHeight, hours > 0 ? hours.toString() : '', 'white', 'black', 'center');
+              gridX += gridDayColWidth;
+            }
+            
+            drawGridCell(gridX, yPos, gridTotalColWidth, gridCellHeight, categoryGrandTotal > 0 ? categoryGrandTotal.toString() : '', 'white', 'black', 'center');
+            yPos += gridCellHeight;
+          });
+          
+          // DAILY TOTALS row (sum of all rows above)
+          if (yPos > pageHeight - gridCellHeight * 5) {
+            doc.addPage();
+            yPos = margin + 20;
+          }
+          
+          gridX = gridStartX;
+          let dailyTotals = new Array(gridDaysToShow).fill(0);
+          let dailyGrandTotal = 0;
+          
+          // Sum all cost centers
+          costCenters.forEach(costCenter => {
+            for (let day = 1; day <= gridDaysToShow; day++) {
+              dailyTotals[day - 1] += ((costCenterDailyMap[costCenter]?.[day]) || 0);
+            }
+          });
+          
+          // Sum all categories
+          categories.forEach(category => {
+            for (let day = 1; day <= gridDaysToShow; day++) {
+              dailyTotals[day - 1] += (categoryDailyMap[category][day] || 0);
+            }
+          });
+          
+          dailyGrandTotal = dailyTotals.reduce((sum, val) => sum + val, 0);
+          
+          drawGridCell(gridX, yPos, gridNameColWidth, gridCellHeight, 'DAILY TOTALS', 'lightGray', 'black', 'left');
+          gridX += gridNameColWidth;
+          
+          for (let day = 1; day <= gridDaysToShow; day++) {
+            const total = dailyTotals[day - 1];
+            drawGridCell(gridX, yPos, gridDayColWidth, gridCellHeight, total > 0 ? total.toString() : '', 'lightGray', 'black', 'center');
+            gridX += gridDayColWidth;
+          }
+          
+          drawGridCell(gridX, yPos, gridTotalColWidth, gridCellHeight, dailyGrandTotal > 0 ? dailyGrandTotal.toString() : '', 'lightGray', 'black', 'center');
+          yPos += gridCellHeight;
+          
+          // GRAND TOTAL row
+          if (yPos > pageHeight - gridCellHeight * 5) {
+            doc.addPage();
+            yPos = margin + 20;
+          }
+          
+          drawGridCell(gridStartX, yPos, gridNameColWidth + (gridDayColWidth * gridDaysToShow), gridCellHeight, 'GRAND TOTAL', 'lightBlue', 'black', 'left');
+          drawGridCell(gridStartX + gridNameColWidth + (gridDayColWidth * gridDaysToShow), yPos, gridTotalColWidth, gridCellHeight, dailyGrandTotal > 0 ? dailyGrandTotal.toString() : '', 'lightBlue', 'black', 'center');
+          yPos += gridCellHeight;
+          
+          console.log(`📄 Time tracking summary completed: yPos=${yPos}`);
+        
+          // Add Receipts section if there are any
+          if (reportData.receipts && reportData.receipts.length > 0) {
+            console.log(`📄 Before receipts section: yPos=${yPos}, pageHeight=${pageHeight}`);
+            // Always start receipts on a new page
+            console.log(`📄 Adding new page for receipts section`);
+        doc.addPage();
+        yPos = margin + 20;
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+          safeText('RECEIPTS', pageWidth / 2, yPos, { align: 'center' });
+        
+        yPos += 30;
+        doc.setFontSize(11);
+        safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
+        
+        yPos += 40;
+          
+          // Receipts table
+          const receiptColWidths = [70, 100, 80, 100, 150];
+          const receiptHeaders = ['Date', 'Vendor', 'Amount', 'Category', 'Description'];
+          const receiptTableWidth = receiptColWidths.reduce((sum, w) => sum + w, 0);
+          const receiptTableStartX = (pageWidth - receiptTableWidth) / 2;
+          
+          // Header
+          let xPos = receiptTableStartX;
+          receiptHeaders.forEach((header, i) => {
+            setColor('darkBlue');
+            doc.rect(xPos, yPos, receiptColWidths[i], 15, 'FD');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(7);
+            safeText(header, xPos + receiptColWidths[i]/2, yPos + 10, { align: 'center' });
+            xPos += receiptColWidths[i];
+          });
+          yPos += 15;
+          
+          // Helper function for receipt cells with text wrapping
+          const drawReceiptCell = (x, y, width, height, text) => {
+            setColor('white');
+            doc.rect(x, y, width, height, 'FD');
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            
+            const maxCharsPerLine = Math.floor((width - 6) / 3.5);
+            const words = text.split(' ');
+            let lines = [];
+            let currentLine = '';
+            
+            for (const word of words) {
+              const testLine = currentLine ? `${currentLine} ${word}` : word;
+              if (testLine.length <= maxCharsPerLine) {
+                currentLine = testLine;
+              } else {
+                if (currentLine) lines.push(currentLine);
+                currentLine = word;
+              }
+            }
+            if (currentLine) lines.push(currentLine);
+            
+            lines.forEach((line, index) => {
+              safeText(line, x + 3, y + 6 + (index * 6));
+            });
+            
+            return 6 + (lines.length * 6) + 6;
+          };
+          
+          // Data rows
+          console.log(`📄 Starting receipts section: yPos=${yPos}, receipts count=${reportData.receipts?.length || 0}`);
+          const imagesToAdd = [];
+          reportData.receipts.forEach((receipt, idx) => {
+            // Check if we need a new page for the receipt row
+            if (yPos > pageHeight - 150) {
+              console.log(`📄 Adding page in receipts loop (receipt ${idx + 1}, yPos ${yPos} > ${pageHeight - 150})`);
+              doc.addPage();
+              yPos = margin;
+            }
+            
+            const rowData = [
+              receipt.date || '',
+              receipt.vendor || '',
+              receipt.amount ? `$${parseFloat(receipt.amount).toFixed(2)}` : '',
+              receipt.category || '',
+              receipt.description || ''
+            ];
+            
+            let maxRowHeight = 15;
+            rowData.forEach((data, i) => {
+              const cellHeight = drawReceiptCell(receiptTableStartX + receiptColWidths.slice(0, i).reduce((sum, w) => sum + w, 0), yPos, receiptColWidths[i], 15, data);
+              maxRowHeight = Math.max(maxRowHeight, cellHeight);
+            });
+            
+            // Redraw all cells with uniform height
+            xPos = receiptTableStartX;
+            rowData.forEach((data, i) => {
+              const actualHeight = drawReceiptCell(xPos, yPos, receiptColWidths[i], maxRowHeight, data);
+              xPos += receiptColWidths[i];
+            });
+            
+            yPos += maxRowHeight;
+
+            // Collect receipt images to render after the table
+            if (receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri) {
+              try {
+                const imagePath = receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri;
+                const fs = require('fs');
+                const path = require('path');
+                
+                if (typeof imagePath === 'string' && imagePath.startsWith('data:image/')) {
+                  const base64Data = imagePath.split(',')[1];
+                  imagesToAdd.push({ type: 'base64', data: base64Data });
+                } else {
+                  let cleanPath = imagePath;
+                  if (typeof imagePath === 'string' && imagePath.startsWith('file://')) {
+                    cleanPath = imagePath.replace(/^file:\/\//, '');
+                  }
+                  let fullImagePath = null;
+                  if (typeof cleanPath === 'string' && cleanPath.startsWith('/uploads/')) {
+                    fullImagePath = path.join(__dirname, 'uploads', path.basename(cleanPath));
+                  } else if (path.isAbsolute(cleanPath)) {
+                    fullImagePath = cleanPath;
+                  } else {
+                    const uploadsPath = path.join(__dirname, 'uploads', cleanPath);
+                    const uploadsSubPath = path.join(__dirname, 'uploads', 'test-receipts', cleanPath);
+                    const hashPath = path.join(__dirname, 'uploads', path.basename(cleanPath));
+                    const receiptsPath = path.join(__dirname, 'receipts', cleanPath);
+                    if (fs.existsSync(uploadsPath)) fullImagePath = uploadsPath;
+                    else if (fs.existsSync(uploadsSubPath)) fullImagePath = uploadsSubPath;
+                    else if (fs.existsSync(hashPath)) fullImagePath = hashPath;
+                    else if (fs.existsSync(receiptsPath)) fullImagePath = receiptsPath;
+                    else {
+                      const filename = path.basename(cleanPath);
+                      const filenamePath = path.join(__dirname, 'uploads', filename);
+                      if (fs.existsSync(filenamePath)) fullImagePath = filenamePath;
+                    }
+                  }
+                  if (fullImagePath && fs.existsSync(fullImagePath)) {
+                    imagesToAdd.push({ type: 'file', path: fullImagePath });
+                  } else {
+                    const triedPaths = [
+                      path.isAbsolute(cleanPath) ? cleanPath : path.join(__dirname, 'uploads', cleanPath),
+                      path.join(__dirname, 'uploads', 'test-receipts', cleanPath),
+                      path.join(__dirname, 'uploads', path.basename(cleanPath)),
+                      path.join(__dirname, 'receipts', cleanPath)
+                    ];
+                    console.log(`⚠️ Receipt image not found for receipt ${idx + 1} (deferring):`);
+                    console.log(`   Original path: ${imagePath}`);
+                    console.log(`   Cleaned path: ${cleanPath}`);
+                    console.log(`   Tried paths: ${triedPaths.join(', ')}`);
+                  }
+                }
+              } catch (imageError) {
+                console.error(`❌ Error preparing receipt image for receipt ${idx + 1}:`, imageError);
+              }
+            }
+          });
+          // After table, render all images
+          if (imagesToAdd.length > 0) {
+            doc.addPage();
+            yPos = margin + 20;
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            safeText('RECEIPT IMAGES', pageWidth / 2, yPos, { align: 'center' });
+            yPos += 30;
+            const maxImageWidth = 200;
+            const maxImageHeight = 150;
+            const startX = margin;
+            let xCursor = startX;
+            let imagesPerRow = Math.floor((pageWidth - margin * 2) / (maxImageWidth + 20)) || 1;
+            let col = 0;
+            imagesToAdd.forEach((img, i) => {
+              if (yPos > pageHeight - maxImageHeight - 40) {
+                doc.addPage();
+                yPos = margin + 20;
+                col = 0;
+                xCursor = startX;
+              }
+              try {
+                if (img.type === 'base64') {
+                  doc.addImage(img.data, 'JPEG', xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
+                } else {
+                  doc.addImage(img.path, 'JPEG', xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
+                }
+              } catch (e) {
+                console.error('❌ Error drawing receipt image:', e);
+              }
+              col++;
+              if (col >= imagesPerRow) {
+                col = 0;
+                xCursor = startX;
+                yPos += maxImageHeight + 20;
+              } else {
+                xCursor += maxImageWidth + 20;
+              }
+            });
+          }
+          console.log(`📄 Receipts section completed: yPos=${yPos}`);
+        }
+        
+        // Generate filename matching Staff Portal format
+        const nameParts = (reportData.name || 'UNKNOWN').split(' ');
+        const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
+        const firstName = nameParts[0] || 'UNKNOWN';
+        const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const monthIndex = parseInt(report.month) - 1;
+        const monthAbbr = monthNames[monthIndex] || 'UNK';
+        const yearShort = report.year.toString().slice(-2);
+        const filename = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
+        
+        // Get PDF as buffer
+        const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+        
+        // Set response headers
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        // Send buffer
+        res.send(pdfBuffer);
+        
+        console.log(`✅ Exported expense report to PDF: ${filename}`);
+      }); // Close costCenterQuery callback for time tracking summary
+      }; // Close generateTimesheetAndFinalizePDF function
+      
+      const processCostCenterSheet = (costCenter, index, onComplete) => {
+        // Always start each cost center sheet on a new page
+        // But only if we're not already at the top of a page
+        // For first cost center, check if we need a page (if yPos is already low, we don't)
+        console.log(`📄 Processing cost center ${index} (${costCenter}): yPos=${yPos}`);
+        if (index === 0) {
+          // First cost center - we're already on a fresh page (added above before "Payable to")
+          console.log(`📄 First cost center on existing fresh page (yPos ${yPos})`);
+          if (yPos < margin + 60) {
+            yPos = margin + 60; // Leave space for title
+          }
+        } else {
+          // Subsequent cost centers - always start on new page
+          console.log(`📄 Adding new page for cost center ${index}`);
+          doc.addPage();
+          yPos = margin + 20;
+        }
         
         // Table dimensions for Cost Center sheet - increased widths for better text fitting
         const ccCellHeight = 12; // Base height
@@ -4828,11 +5792,19 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
             actualHeight = textHeight; // Use exact calculated height, not Math.max
           }
           
+          // Set draw color for borders BEFORE drawing rectangle
+          doc.setDrawColor(0, 0, 0); // Black border
+          
           // Draw filled rectangle with border using exact height
+          // 'FD' means Fill and Draw border - ensures cell is visible even if empty
           doc.rect(x, y, width, actualHeight, 'FD'); // Fill and draw border
           
-          // Set text color and font
-          doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+          // Set text color and font (ensure black text for visibility)
+          if (textColor !== 'white') {
+            doc.setTextColor(0, 0, 0); // Black text
+          } else {
+            doc.setTextColor(255, 255, 255); // White text
+          }
           doc.setFontSize(6); // Reduced from default 8 to 6 (~25% reduction)
           doc.setFont('helvetica', 'bold');
           
@@ -4847,11 +5819,11 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
               }
             });
           } else {
-            // Single line text
+            // Single line text - always draw text, even if empty (for cell borders)
             if (align === 'right') {
-              safeText(text, x + width - 3, y + actualHeight/2 + 3);
+              safeText(text || '', x + width - 3, y + actualHeight/2 + 3);
             } else {
-              safeText(text, x + 3, y + actualHeight/2 + 3);
+              safeText(text || '', x + 3, y + actualHeight/2 + 3);
             }
           }
           
@@ -4886,14 +5858,6 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           }
         });
         
-        let ccXPos = ccTableStartX;
-        ccHeaders.forEach((header, i) => {
-          const needsWrapping = header.length > 20;
-          drawCCCell(ccXPos, yPos, ccColWidths[i], maxHeaderHeight, header, 'darkBlue', 'white', 'center', needsWrapping);
-          ccXPos += ccColWidths[i];
-        });
-        yPos += maxHeaderHeight;
-        
         // Generate all days of the month
         // Convert month name to number if necessary
         let month = reportData.month;
@@ -4906,17 +5870,160 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
         }
         const year = parseInt(reportData.year);
         const daysInMonth = new Date(year, month, 0).getDate();
+        const monthStr = month.toString().padStart(2, '0');
+        const yearStr = year.toString();
         
-        // Create a map of existing entries for quick lookup
-        const entriesMap = {};
+        // Query database for cost center filtered data
+        const mileageQuery = `
+          SELECT date, startLocation, endLocation, miles, odometerReading
+          FROM mileage_entries 
+          WHERE employeeId = ? 
+          AND costCenter = ?
+          AND strftime("%m", date) = ? 
+          AND strftime("%Y", date) = ?
+          ORDER BY date
+        `;
         
-        (reportData.dailyEntries || []).forEach(entry => {
-          if (entry.date) {
-            entriesMap[entry.date] = entry;
+        const timeTrackingQuery = `
+          SELECT date, description, hours
+          FROM time_tracking 
+          WHERE employeeId = ? 
+          AND costCenter = ?
+          AND strftime("%m", date) = ? 
+          AND strftime("%Y", date) = ?
+          ORDER BY date
+        `;
+        
+        // Fetch filtered data for this cost center
+        db.all(mileageQuery, [reportData.employeeId, costCenter, monthStr, yearStr], (err, mileageEntries) => {
+          if (err) {
+            console.error('❌ Error fetching mileage entries:', err);
+            mileageEntries = [];
+          } else {
+            console.log(`📊 Found ${mileageEntries.length} mileage entries for ${costCenter}`);
           }
-        });
+          
+          db.all(timeTrackingQuery, [reportData.employeeId, costCenter, monthStr, yearStr], (err, timeEntries) => {
+            if (err) {
+              console.error('❌ Error fetching time tracking entries:', err);
+              timeEntries = [];
+            } else {
+              console.log(`📊 Found ${timeEntries.length} time tracking entries for ${costCenter}`);
+            }
+            
+            // NOW draw the title, subtitle, and header AFTER data is fetched
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            safeText(`COST CENTER TRAVEL SHEET - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
+            
+            yPos += 30;
+            doc.setFontSize(11);
+            safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
+            
+            yPos += 40;
+            
+            // Draw header row AFTER titles
+            let ccXPos = ccTableStartX;
+            ccHeaders.forEach((header, i) => {
+              const needsWrapping = header.length > 20;
+              drawCCCell(ccXPos, yPos, ccColWidths[i], maxHeaderHeight, header, 'darkBlue', 'white', 'center', needsWrapping);
+              ccXPos += ccColWidths[i];
+            });
+            yPos += maxHeaderHeight;
+            
+            // Build maps for daily data aggregation
+            const dailyDataMap = {};
+            
+            // Process mileage entries
+            mileageEntries.forEach(entry => {
+              // Handle both YYYY-MM-DD and MM/DD/YY formats
+              let day;
+              if (entry.date.includes('-')) {
+                // YYYY-MM-DD format
+                day = parseInt(entry.date.split('-')[2]);
+              } else {
+                // MM/DD/YY format
+                day = parseInt(entry.date.split('/')[1]);
+              }
+              if (!dailyDataMap[day]) {
+                dailyDataMap[day] = {
+                  date: entry.date,
+                  description: '',
+                  hours: 0,
+                  odometerStart: entry.odometerReading || 0,
+                  odometerEnd: entry.odometerReading || 0,
+                  miles: entry.miles || 0,
+                  mileageAmount: (entry.miles || 0) * 0.655 // Standard IRS mileage rate (can be adjusted)
+                };
+              } else {
+                // Sum mileage data if multiple entries per day
+                dailyDataMap[day].miles += (entry.miles || 0);
+                dailyDataMap[day].mileageAmount += ((entry.miles || 0) * 0.655);
+                if (entry.odometerReading && entry.odometerReading > dailyDataMap[day].odometerEnd) {
+                  dailyDataMap[day].odometerEnd = entry.odometerReading;
+                }
+              }
+            });
+            
+            // Process time tracking entries (for descriptions and hours)
+            timeEntries.forEach(entry => {
+              // Handle both YYYY-MM-DD and MM/DD/YY formats
+              let day;
+              if (entry.date.includes('-')) {
+                // YYYY-MM-DD format
+                day = parseInt(entry.date.split('-')[2]);
+              } else {
+                // MM/DD/YY format
+                day = parseInt(entry.date.split('/')[1]);
+              }
+              if (!dailyDataMap[day]) {
+                dailyDataMap[day] = {
+                  date: entry.date,
+                  description: entry.description || '',
+                  hours: parseFloat(entry.hours) || 0,
+                  odometerStart: 0,
+                  odometerEnd: 0,
+                  miles: 0,
+                  mileageAmount: 0
+                };
+              } else {
+                // Append description if multiple entries per day
+                if (entry.description) {
+                  dailyDataMap[day].description = dailyDataMap[day].description 
+                    ? `${dailyDataMap[day].description}\n${entry.description}` 
+                    : entry.description;
+                }
+                dailyDataMap[day].hours += (parseFloat(entry.hours) || 0);
+              }
+            });
+            
+            // Calculate totals for this cost center
+            let totalMiles = 0;
+            let totalHours = 0;
+            let totalAmount = 0;
+            Object.values(dailyDataMap).forEach(dayData => {
+              totalMiles += dayData.miles;
+              totalHours += dayData.hours;
+              totalAmount += dayData.mileageAmount;
+            });
+            
+            console.log(`📊 ${costCenter}: ${Object.keys(dailyDataMap).length} days with data, Total: ${totalMiles} miles, ${totalHours} hours`);
+            console.log(`📊 About to draw rows for ${costCenter}`);
+            console.log(`📊 Variables: yPos=${yPos}, daysInMonth=${daysInMonth}, month=${month}, year=${year}`);
+            console.log(`📊 Drawing rows for ${costCenter}, yPos before loop: ${yPos}, daysIn readable: ${daysInMonth}`);
+            
+            // Draw header row first
+            let headerXPos = ccTableStartX;
+            ccHeaders.forEach((header, i) => {
+              const headerColor = 'lightBlue'; // Header row background
+              drawCCCell(headerXPos, yPos, ccColWidths[i], ccCellHeight, header, headerColor, 'black', 'left', false);
+              headerXPos += ccColWidths[i];
+            });
+            yPos += ccCellHeight;
+            console.log(`📊 Drew header row, yPos now: ${yPos}`);
         
         // Generate rows for all days of the month
+            let rowsDrawn = 0;
         for (let day = 1; day <= daysInMonth; day++) {
           if (yPos > pageHeight - 100) {
             doc.addPage();
@@ -4924,21 +6031,34 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           }
           
           const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
-          const entry = entriesMap[dateStr] || {};
+              const dayData = dailyDataMap[day] || {
+                date: dateStr,
+                description: '',
+                hours: 0,
+                odometerStart: 0,
+                odometerEnd: 0,
+                miles: 0,
+                mileageAmount: 0
+              };
+              
+              // Debug: Log first few rows with data
+              if (day <= 5 || dayData.hours > 0 || dayData.description) {
+                console.log(`  Day ${day}: hours=${dayData.hours}, desc="${dayData.description?.substring(0, 30)}", yPos=${yPos}`);
+              }
           
           ccXPos = ccTableStartX;
           const rowData = [
             dateStr,
-            entry.description || '',
-            (entry.hoursWorked || 0).toString(),
-            (entry.odometerStart || 0).toString(),
-            (entry.odometerEnd || 0).toString(),
-            Math.round(entry.milesTraveled || 0).toString(),
-            `$${(entry.mileageAmount || 0).toFixed(2)}`
+                dayData.description || '',
+                dayData.hours > 0 ? dayData.hours.toString() : '',
+                dayData.odometerStart > 0 ? dayData.odometerStart.toString() : '',
+                dayData.odometerEnd > 0 ? dayData.odometerEnd.toString() : '',
+                dayData.miles > 0 ? Math.round(dayData.miles).toString() : '',
+                dayData.mileageAmount > 0 ? `$${dayData.mileageAmount.toFixed(2)}` : ''
           ];
           
           // Check if description needs wrapping and calculate required height
-          const descriptionNeedsWrapping = (entry.description || '').length > 20;
+              const descriptionNeedsWrapping = (dayData.description || '').length > 20;
           let maxRowHeight = ccCellHeight; // Start with base height
           
           // Calculate the height needed for the description cell if it needs wrapping
@@ -4946,7 +6066,7 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
             // Use the same calculation as drawCCCell for consistency
             const maxCharsPerLine = Math.floor((ccColWidths[1] - 6) / 3.5); // 6px padding, ~3.5px per character at size 6
             
-            const descriptionText = entry.description || '';
+                const descriptionText = dayData.description || '';
             // First split on explicit newlines, then apply word wrapping to each segment
             const segments = descriptionText.split('\n');
             let lines = [];
@@ -4980,6 +6100,11 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
             const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
             const textAlign = 'left'; // All data left-aligned
             const shouldWrap = i === 1 && descriptionNeedsWrapping; // Wrap description column if needed
+                
+                // Debug: Log first few cells with data
+                if (day <= 3 && i === 0) {
+                  console.log(`    Drawing cell ${i} for day ${day}: text="${data}", x=${ccXPos}, y=${yPos}, color=${cellColor}`);
+                }
             
             // All cells in the row should be the same height as the tallest cell
             drawCCCell(ccXPos, yPos, ccColWidths[i], maxRowHeight, data, cellColor, 'black', textAlign, shouldWrap);
@@ -4987,228 +6112,45 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
           });
           
           yPos += maxRowHeight;
+              rowsDrawn++;
         }
+            
+            console.log(`📊 ${costCenter}: Drew ${rowsDrawn} rows, yPos after loop: ${yPos}`);
         
         yPos += 25;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        safeText(`Total Miles: ${Math.round(reportData.totalMiles || 0)}`, margin, yPos);
+            safeText(`Total Miles: ${Math.round(totalMiles)}`, margin, yPos);
         yPos += 18;
-        safeText(`Total Hours: ${(reportData.totalHours || 0).toFixed(1)}`, margin, yPos);
+            safeText(`Total Hours: ${totalHours.toFixed(1)}`, margin, yPos);
         yPos += 18;
-        safeText(`Total Amount: $${(reportData.totalMileageAmount || 0).toFixed(2)}`, margin, yPos);
-      });
-      
-      // Page Last: Timesheet (with all days of month and grid)
-      doc.addPage();
-      yPos = margin + 20;
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      safeText('MONTHLY TIMESHEET', pageWidth / 2, yPos, { align: 'center' });
-      
-      yPos += 30;
-      doc.setFontSize(11);
-      safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
-      
-      yPos += 40;
-      
-      // Table dimensions for Timesheet - adjusted for portrait page with proper widths (downsized by ~20% total)
-      const tsCellHeight = 12; // ~20% reduction from original 15
-      const tsColWidths = [48, 96, 64]; // ~20% reduction from original widths
-      const tsHeaders = ['Date', 'Cost Center', 'Hours Worked'];
-      
-      // Calculate total table width and center it on the page
-      const totalTsTableWidth = tsColWidths.reduce((sum, width) => sum + width, 0);
-      const tsTableStartX = (pageWidth - totalTsTableWidth) / 2;
-      
-      // Helper function for Timesheet table cells
-      const drawTSCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left') => {
-        // Set fill color
-        setColor(color);
-        
-        // Draw filled rectangle with border
-        doc.rect(x, y, width, height, 'FD'); // Fill and draw border
-        
-        // Set text color and font
-        doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
-        doc.setFontSize(6); // Reduced from default 8 to 6 (~25% reduction)
-        doc.setFont('helvetica', 'bold');
-        
-        if (align === 'right') {
-          safeText(text, x + width - 3, y + height/2 + 3);
-        } else if (align === 'center') {
-          safeText(text, x + width/2, y + height/2 + 3, { align: 'center' });
-        } else {
-          safeText(text, x + 3, y + height/2 + 3);
-        }
-        
-        doc.setTextColor(0, 0, 0); // Reset to black
+            safeText(`Total Amount: $${totalAmount.toFixed(2)}`, margin, yPos);
+            
+            // This cost center sheet is complete, call the callback to process the next one
+            onComplete();
+          });
+        });
       };
       
-      // Header row
-      let tsXPos = tsTableStartX;
-      tsHeaders.forEach((header, i) => {
-        drawTSCell(tsXPos, yPos, tsColWidths[i], tsCellHeight, header, 'darkBlue', 'white', 'center');
-        tsXPos += tsColWidths[i];
-      });
-      yPos += tsCellHeight;
-      
-      // Generate all days of the month for timesheet
-      // Convert month name to number if necessary
-      let month = reportData.month;
-      if (typeof month === 'string' && isNaN(parseInt(month))) {
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                           'July', 'August', 'September', 'October', 'November', 'December'];
-        month = monthNames.indexOf(month) + 1;
-      } else {
-        month = parseInt(month);
-      }
-      const year = parseInt(reportData.year);
-      const daysInMonth = new Date(year, month, 0).getDate();
-      
-      // Create a map of existing entries for quick lookup
-      const entriesMap = {};
-      (reportData.dailyEntries || []).forEach(entry => {
-        if (entry.date) {
-          entriesMap[entry.date] = entry;
-        }
-      });
-      
-      // Generate rows for all days of the month
-      for (let day = 1; day <= daysInMonth; day++) {
-        if (yPos > pageHeight - 100) {
-          doc.addPage();
-          yPos = margin;
+      // Process cost centers sequentially, one at a time
+      const processCostCenterSheetsSequentially = (index = 0) => {
+        if (index >= costCentersToProcess.length) {
+          // All cost center sheets done, now generate timesheet and finalize PDF
+          generateTimesheetAndFinalizePDF();
+          return;
         }
         
-        const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
-        const entry = entriesMap[dateStr] || {};
-        
-        tsXPos = tsTableStartX;
-        const rowData = [
-          dateStr,
-          (reportData.costCenters && reportData.costCenters[0]) || 'N/A',
-          (entry.hoursWorked || 0).toString()
-        ];
-        
-        rowData.forEach((data, i) => {
-          const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
-          const textAlign = i === 2 ? 'center' : 'left'; // Hours centered, others left-aligned
-          drawTSCell(tsXPos, yPos, tsColWidths[i], tsCellHeight, data, cellColor, 'black', textAlign);
-          tsXPos += tsColWidths[i];
-        });
-        
-        yPos += tsCellHeight;
-      }
-      
-      yPos += 30;
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      safeText('TIME TRACKING SUMMARY:', margin, yPos);
-      yPos += 25;
-      
-      // Calculate dimensions for Time Tracking Summary table
-      const timeTrackingTableWidth = 200;
-      const timeTrackingTableStartX = (pageWidth - timeTrackingTableWidth) / 2; // Center the summary table
-      const timeTrackingRowHeight = 20;
-      const timeTrackingCategoryColWidth = 120; // Width for Category column
-      const timeTrackingHoursColWidth = 80; // Width for Hours column
-      const timeTrackingStartY = yPos;
-      
-      doc.setFont('helvetica', 'normal');
-      
-      // Get time tracking data grouped by cost center
-      const timeTrackingQuery = `
-        SELECT costCenter, SUM(hours) as totalHours
-        FROM time_tracking 
-        WHERE employeeId = ? 
-        AND strftime("%m", date) = ? 
-        AND strftime("%Y", date) = ?
-        AND costCenter IS NOT NULL 
-        AND costCenter != ''
-        GROUP BY costCenter
-        ORDER BY costCenter
-      `;
-      
-      const monthStr = reportData.month.toString().padStart(2, '0');
-      const yearStr = reportData.year.toString();
-      
-      db.all(timeTrackingQuery, [reportData.employeeId, monthStr, yearStr], (err, timeTrackingRows) => {
-        if (err) {
-          console.error('❌ Error fetching time tracking data:', err);
-          // Fallback to empty data
-          timeTrackingRows = [];
-        }
-        
-        // Create time categories from cost centers
-        const timeCategories = timeTrackingRows.map(row => [
-          `${row.costCenter} Hours`,
-          row.totalHours || 0
-        ]);
-        
-        // If no time tracking data, show a default message
-        if (timeCategories.length === 0) {
-          timeCategories.push(['No time tracking data', 0]);
-        }
-        
-        // Draw header row with separate cells
-        doc.setFont('helvetica', 'bold');
-        setColor('darkBlue');
-        doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
-        doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(8);
-        safeText('Category', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
-        safeText('Hours', timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
-        yPos += timeTrackingRowHeight;
-        
-        // Draw data rows with separate cells
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(7);
-        
-        timeCategories.forEach(([category, hours]) => {
-          setColor('white');
-          doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
-          doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
-          safeText(`${category}:`, timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
-          safeText(`${hours} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
-          yPos += timeTrackingRowHeight;
-        });
-        
-        // Draw total row with separate cells
-        doc.setFont('helvetica', 'bold');
-        setColor('lightBlue');
-        doc.rect(timeTrackingTableStartX, yPos, timeTrackingCategoryColWidth, timeTrackingRowHeight, 'FD');
-        doc.rect(timeTrackingTableStartX + timeTrackingCategoryColWidth, yPos, timeTrackingHoursColWidth, timeTrackingRowHeight, 'FD');
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(8);
-        safeText('Total Hours:', timeTrackingTableStartX + 10, yPos + timeTrackingRowHeight/2 + 3);
-        safeText(`${reportData.totalHours || 0} hours`, timeTrackingTableStartX + timeTrackingCategoryColWidth + 10, yPos + timeTrackingRowHeight/2 + 3);
-        yPos += timeTrackingRowHeight;
-        
-        // Generate filename matching Staff Portal format
-        const nameParts = (reportData.name || 'UNKNOWN').split(' ');
-        const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
-        const firstName = nameParts[0] || 'UNKNOWN';
-        const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-        const monthIndex = parseInt(report.month) - 1;
-        const monthAbbr = monthNames[monthIndex] || 'UNK';
-        const yearShort = report.year.toString().slice(-2);
-        const filename = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
-        
-        // Get PDF as buffer
-        const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
-        
-        // Set response headers
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        
-        // Send buffer
-        res.send(pdfBuffer);
-        
-        console.log(`✅ Exported expense report to PDF: ${filename}`);
-      }); // Close database callback
+        const costCenter = costCentersToProcess[index];
+        processCostCenterSheet(costCenter, index, () => {
+          // Callback: this cost center is done, process the next one
+          processCostCenterSheetsSequentially(index + 1);
+            });
+          };
+          
+      // Start processing cost centers sequentially
+      processCostCenterSheetsSequentially(0);
+            
+      // NOTE: The above function is called after all cost center sheets complete
     } catch (error) {
       console.error('❌ Error exporting report to PDF:', error);
       res.status(500).json({ error: 'Failed to generate PDF' });
@@ -5830,9 +6772,22 @@ initDatabase().then(async () => {
   }
   
   console.log('🌐 Starting HTTP server...');
-  server.listen(PORT, () => {
+  
+  // Listen on all network interfaces (0.0.0.0) to allow mobile device connections
+  server.listen(PORT, '0.0.0.0', () => {
+    const networkIPs = getNetworkIPs();
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/ws`);
+    
+    if (networkIPs.length > 0) {
+      console.log(`📱 Mobile app connection URLs:`);
+      networkIPs.forEach(ip => {
+        console.log(`   http://${ip}:${PORT}`);
+        console.log(`   ws://${ip}:${PORT}/ws`);
+      });
+      console.log(`\n💡 Use one of the above IPs instead of localhost from your mobile device`);
+    }
+    
     console.log(`📊 Database path: ${DB_PATH}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log('✅ Server startup completed successfully!');

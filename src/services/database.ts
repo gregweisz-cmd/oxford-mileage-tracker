@@ -1051,7 +1051,10 @@ export class DatabaseService {
       vendor: receipt.vendor,
       amount: receipt.amount,
       category: receipt.category,
-      hasProvidedId: !!receipt.id
+      hasProvidedId: !!receipt.id,
+      hasImageUri: !!receipt.imageUri,
+      imageUriType: receipt.imageUri ? typeof receipt.imageUri : 'none',
+      imageUriPreview: receipt.imageUri ? (typeof receipt.imageUri === 'string' ? receipt.imageUri.substring(0, 50) : String(receipt.imageUri).substring(0, 50)) : 'none'
     });
     
     await database.runAsync(

@@ -29,6 +29,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
 
 import {
@@ -223,7 +225,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [completenessLoading, setCompletenessLoading] = useState(false);
 
   // Report submission and approval state
-  const [, setReportStatus] = useState<'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision'>('draft');
+  const [reportStatus, setReportStatus] = useState<'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision'>('draft');
+  const [revisionItems, setRevisionItems] = useState<{mileage: number, receipts: number, time: number}>({mileage: 0, receipts: 0, time: 0});
+  // Raw line item data for revision checking
+  const [rawMileageEntries, setRawMileageEntries] = useState<any[]>([]);
+  const [rawTimeEntries, setRawTimeEntries] = useState<any[]>([]);
   // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
   // Real-time sync
@@ -494,17 +500,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
           
           // Fetch real data from backend APIs
-          const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse] = await Promise.all([
+          const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, reportResponse] = await Promise.all([
             fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
             fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
             fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`${API_BASE_URL}/api/daily-descriptions?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
+            fetch(`${API_BASE_URL}/api/daily-descriptions?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
+            fetch(`${API_BASE_URL}/api/monthly-reports?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
           const receipts = receiptsResponse.ok ? await receiptsResponse.json() : [];
           const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
           const dailyDescriptions = dailyDescriptionsResponse.ok ? await dailyDescriptionsResponse.json() : [];
+          
+          // Parse monthly report status
+          if (reportResponse.ok) {
+            const reports = await reportResponse.json();
+            const currentReport = Array.isArray(reports) && reports.length > 0 
+              ? reports.filter((r: any) => r.month === reportMonth && r.year === reportYear)[0]
+              : null;
+            if (currentReport?.status) {
+              setReportStatus(currentReport.status);
+            }
+          }
           
           const currentMonthMileage = mileageEntries.filter((entry: any) => {
             const entryDate = new Date(entry.date);
@@ -837,6 +855,47 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId, loading]);
+
+  // Check for revision requests
+  useEffect(() => {
+    const checkRevisionItems = async () => {
+      if (reportStatus === 'needs_revision' && employeeId) {
+        try {
+          // Fetch receipts, mileage entries, and time entries to check for revision flags
+          const [receiptsRes, mileageRes, timeRes] = await Promise.all([
+            fetch(`http://localhost:3002/api/receipts?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
+            fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
+            fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
+          ]);
+
+          const receipts = await receiptsRes.json();
+          const mileageEntries = await mileageRes.json();
+          const timeEntries = await timeRes.json();
+
+          // Store raw data for revision checking
+          setRawMileageEntries(mileageEntries);
+          setRawTimeEntries(timeEntries);
+
+          // Count items needing revision
+          const revisionCounts = {
+            mileage: (mileageEntries as any[]).filter((e: any) => e.needsRevision).length,
+            receipts: (receipts as any[]).filter((e: any) => e.needsRevision).length,
+            time: (timeEntries as any[]).filter((e: any) => e.needsRevision).length
+          };
+
+          setRevisionItems(revisionCounts);
+        } catch (error) {
+          console.error('Error checking revision items:', error);
+        }
+      } else {
+        setRevisionItems({ mileage: 0, receipts: 0, time: 0 });
+        setRawMileageEntries([]);
+        setRawTimeEntries([]);
+      }
+    };
+
+    checkRevisionItems();
+  }, [reportStatus, employeeId, reportMonth, reportYear]);
 
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -2845,6 +2904,30 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         showStatus={true}
       />
 
+      {/* Revision Notification Banner */}
+      {reportStatus === 'needs_revision' && (revisionItems.mileage > 0 || revisionItems.receipts > 0 || revisionItems.time > 0) && (
+        <Alert severity="warning" sx={{ mb: 2, mt: 2 }}>
+          <AlertTitle><strong>⚠️ Revision Requested</strong></AlertTitle>
+          <Typography variant="body2">
+            Your supervisor has requested revisions on the following items:
+          </Typography>
+          <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2 }}>
+            {revisionItems.mileage > 0 && (
+              <li><strong>{revisionItems.mileage}</strong> mileage entries need revision</li>
+            )}
+            {revisionItems.receipts > 0 && (
+              <li><strong>{revisionItems.receipts}</strong> receipts need revision</li>
+            )}
+            {revisionItems.time > 0 && (
+              <li><strong>{revisionItems.time}</strong> time entries need revision</li>
+            )}
+          </Box>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Please review and update the flagged items, then resubmit your report.
+          </Typography>
+        </Alert>
+      )}
+
       {/* Approval Cover Sheet Tab */}
       <TabPanel value={activeTab} index={0}>
         <Card variant="outlined">
@@ -3324,26 +3407,42 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {employeeData.dailyEntries.filter((entry: any) => entry.milesTraveled > 0).map((entry: any, index: number) => (
-                    <TableRow key={index}>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{entry.date}</TableCell>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {entry.startLocationName || 'N/A'}
-                      </TableCell>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {entry.endLocationName || 'N/A'}
-                      </TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {Math.round(entry.milesTraveled)}
-                      </TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        ${entry.mileageAmount?.toFixed(2) || '0.00'}
-                      </TableCell>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {employeeData.dailyEntries.filter((entry: any) => entry.milesTraveled > 0).map((entry: any, index: number) => {
+                    // Check if any mileage entries for this date need revision
+                    const entryDate = new Date(entry.date);
+                    const needsRevision = rawMileageEntries.some((m: any) => {
+                      const mDate = new Date(m.date);
+                      return mDate.getUTCDate() === entryDate.getUTCDate() && 
+                             mDate.getUTCMonth() === entryDate.getUTCMonth() && 
+                             m.needsRevision;
+                    });
+                    
+                    return (
+                      <TableRow key={index} sx={{ bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {entry.date}
+                          {needsRevision && (
+                            <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {entry.startLocationName || 'N/A'}
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {entry.endLocationName || 'N/A'}
+                        </TableCell>
+                        <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {Math.round(entry.milesTraveled)}
+                        </TableCell>
+                        <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
+                          ${entry.mileageAmount?.toFixed(2) || '0.00'}
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {employeeData.dailyEntries.filter((entry: any) => entry.milesTraveled > 0).length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
@@ -3506,9 +3605,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {employeeData.dailyEntries.map((entry, index) => (
-                    <TableRow key={index}>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{entry.date}</TableCell>
+                  {employeeData.dailyEntries.map((entry, index) => {
+                    // Check if any time entries for this date need revision
+                    const entryDate = new Date(entry.date);
+                    const needsRevision = rawTimeEntries.some((t: any) => {
+                      const tDate = new Date(t.date);
+                      return tDate.getUTCDate() === entryDate.getUTCDate() && 
+                             tDate.getUTCMonth() === entryDate.getUTCMonth() && 
+                             t.needsRevision;
+                    });
+                    
+                    return (
+                      <TableRow key={index} sx={{ bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {entry.date}
+                          {needsRevision && (
+                            <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
+                          )}
+                        </TableCell>
                       <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>
                         {editingCell?.row === index && editingCell?.field === 'description' ? (
                           <TextField
@@ -3560,7 +3674,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               '&:hover': { bgcolor: 'grey.100' } 
                             }}
                           >
-                            {entry.hoursWorked}
+                            {typeof entry.hoursWorked === 'number' ? entry.hoursWorked.toFixed(1) : entry.hoursWorked}
                           </Box>
                         )}
                       </TableCell>
@@ -3671,13 +3785,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                   
                   {/* Subtotals row */}
                   <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{employeeData.totalHours}</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{typeof employeeData.totalHours === 'number' ? employeeData.totalHours.toFixed(1) : employeeData.totalHours}</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{employeeData.totalMiles}</strong></TableCell>
@@ -3877,13 +3992,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, minWidth: 120 }}><strong>Cost Center</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 120, minWidth: 120, maxWidth: 120 }}><strong>Cost Center</strong></TableCell>
                     {Array.from({ length: daysInMonth }, (_, i) => (
-                      <TableCell key={i} align="center" sx={{ minWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
+                      <TableCell key={i} align="center" sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
                         {i + 1}
                       </TableCell>
                     ))}
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, minWidth: 100 }}><strong>TOTALS</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }}><strong>TOTALS</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -3906,8 +4021,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                         editingTimesheetCell?.day === day && 
                                         editingTimesheetCell?.type === 'costCenter';
                         
+                        // Check if any time entries for this day need revision
+                        const entryDate = new Date(reportYear, reportMonth - 1, day);
+                        const needsRevision = rawTimeEntries.some((t: any) => {
+                          const tDate = new Date(t.date);
+                          return tDate.getUTCDate() === entryDate.getUTCDate() && 
+                                 tDate.getUTCMonth() === entryDate.getUTCMonth() && 
+                                 t.needsRevision;
+                        });
+                        
                         return (
-                          <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5 }}>
+                          <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
                             {isEditing ? (
                               <TextField
                                 value={editingTimesheetValue}
@@ -3962,10 +4086,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         );
                       })}
                       <TableCell align="center" sx={{ fontWeight: 'bold', color: 'primary.main', border: '1px solid #ccc', p: 1 }}>
-                        {employeeData?.dailyEntries.reduce((sum, entry) => {
+                        {(employeeData?.dailyEntries.reduce((sum, entry) => {
                           const propertyName = `costCenter${index}Hours`;
                           return sum + ((entry as any)?.[propertyName] || 0);
-                        }, 0)} {center}
+                        }, 0) || 0).toFixed(1)} {center}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -3986,8 +4110,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       editingTimesheetCell?.day === day && 
                                       editingTimesheetCell?.type === 'billable';
                       
+                      // Check if any time entries for this day need revision
+                      const entryDate = new Date(reportYear, reportMonth - 1, day);
+                      const needsRevision = rawTimeEntries.some((t: any) => {
+                        const tDate = new Date(t.date);
+                        return tDate.getUTCDate() === entryDate.getUTCDate() && 
+                               tDate.getUTCMonth() === entryDate.getUTCMonth() && 
+                               t.needsRevision;
+                      });
+                      
                       return (
-                        <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5 }}>
+                        <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
                           {isEditing ? (
                             <TextField
                               value={editingTimesheetValue}
@@ -4019,13 +4152,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       );
                     })}
                     <TableCell align="center" sx={{ fontWeight: 'bold', color: 'primary.main', border: '1px solid #ccc', p: 1 }}>
-                      {employeeData?.dailyEntries.reduce((sum, entry) => {
+                      {(employeeData?.dailyEntries.reduce((sum, entry) => {
                         const costCenterHours = employeeData?.costCenters.reduce((costSum, _, costCenterIndex) => {
                           const propertyName = `costCenter${costCenterIndex}Hours`;
                           return costSum + ((entry as any)?.[propertyName] || 0);
                         }, 0) || 0;
                         return sum + costCenterHours;
-                      }, 0)} BILLABLE HOURS
+                      }, 0) || 0).toFixed(1)} BILLABLE HOURS
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -4041,13 +4174,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, minWidth: 80 }}><strong>Category</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 120, minWidth: 120, maxWidth: 120 }}><strong>Category</strong></TableCell>
                     {Array.from({ length: daysInMonth }, (_, i) => (
-                      <TableCell key={i} align="center" sx={{ minWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
+                      <TableCell key={i} align="center" sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
                         {i + 1}
                       </TableCell>
                     ))}
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, minWidth: 80 }}><strong>TOTAL</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }}><strong>TOTAL</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -4061,8 +4194,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         const isEditing = editingCategoryCell?.category === category && 
                                         editingCategoryCell?.day === day;
                         
+                        // Check if any time entries for this day need revision
+                        const entryDate = new Date(reportYear, reportMonth - 1, day);
+                        const needsRevision = rawTimeEntries.some((t: any) => {
+                          const tDate = new Date(t.date);
+                          return tDate.getUTCDate() === entryDate.getUTCDate() && 
+                                 tDate.getUTCMonth() === entryDate.getUTCMonth() && 
+                                 t.needsRevision;
+                        });
+                        
                         return (
-                          <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5 }}>
+                          <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
                             {isEditing ? (
                               <TextField
                                 value={editingCategoryValue}
@@ -4117,7 +4259,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         );
                       })}
                       <TableCell align="center" sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>
-                        {employeeData?.dailyEntries.reduce((sum, entry) => sum + ((entry as any)?.categoryHours?.[category] || 0), 0)} {category}
+                        {(employeeData?.dailyEntries.reduce((sum, entry) => sum + ((entry as any)?.categoryHours?.[category] || 0), 0) || 0).toFixed(1)} {category}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -4142,14 +4284,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       
                       const totalHoursForDay = costCenterHours + categoryHours;
                       
+                      // Check if any time entries for this day need revision
+                      const entryDate = new Date(reportYear, reportMonth - 1, day);
+                      const needsRevision = rawTimeEntries.some((t: any) => {
+                        const tDate = new Date(t.date);
+                        return tDate.getUTCDate() === entryDate.getUTCDate() && 
+                               tDate.getUTCMonth() === entryDate.getUTCMonth() && 
+                               t.needsRevision;
+                      });
+                      
                       return (
-                        <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
+                        <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem', bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
                           {totalHoursForDay}
                         </TableCell>
                       );
                     })}
                     <TableCell align="center" sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>
-                      {employeeData?.dailyEntries.reduce((sum, entry) => {
+                      {(employeeData?.dailyEntries.reduce((sum, entry) => {
                         // Calculate total hours for this day by summing all cost center and category hours
                         const costCenterHours = employeeData?.costCenters.reduce((costSum, _, costCenterIndex) => {
                           const propertyName = `costCenter${costCenterIndex}Hours`;
@@ -4161,7 +4312,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         }, 0);
                         
                         return sum + costCenterHours + categoryHours;
-                      }, 0)} GRAND TOTAL
+                      }, 0) || 0).toFixed(1)} GRAND TOTAL
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -4212,11 +4363,33 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {receipts.map((receipt) => (
-                    <TableRow key={receipt.id}>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.date}</TableCell>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.vendor}</TableCell>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.description}</TableCell>
+                  {receipts.map((receipt) => {
+                    const needsRevision = (receipt as any).needsRevision;
+                    return (
+                      <TableRow 
+                        key={receipt.id}
+                        sx={needsRevision ? { bgcolor: 'warning.light' } : {}}
+                      >
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {receipt.date}
+                          {needsRevision && (
+                            <Chip 
+                              label="⚠️ Revision Requested" 
+                              size="small" 
+                              color="warning" 
+                              sx={{ ml: 1 }} 
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.vendor}</TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          {receipt.description}
+                          {needsRevision && (receipt as any).revisionReason && (
+                            <Typography variant="caption" color="error" display="block">
+                              Reason: {(receipt as any).revisionReason}
+                            </Typography>
+                          )}
+                        </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${receipt.amount.toFixed(2)}</TableCell>
                       <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.category}</TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
@@ -4314,8 +4487,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           <DeleteIcon />
                         </IconButton>
                       </TableCell>
-                    </TableRow>
-                  ))}
+                      </TableRow>
+                    );
+                  })}
                   {receipts.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} align="center" sx={{ border: '1px solid #ccc', p: 1 }}>

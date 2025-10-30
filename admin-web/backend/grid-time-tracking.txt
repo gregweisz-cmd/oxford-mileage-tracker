@@ -1,0 +1,254 @@
+// GRID TIME TRACKING IMPLEMENTATION
+// This replaces the simple table at lines 5048-5102
+// with a grid layout showing daily breakdown by cost center and category
+
+// Replace from line 5048 "// Header row" to line 5102 (end of for loop)
+// with this entire block:
+
+      // Convert month name to number
+      let month = reportData.month;
+      if (typeof month === 'string' && isNaN(parseInt(month))) {
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+        month = monthNames.indexOf(month) + 1;
+      } else {
+        month = parseInt(month);
+      }
+      const year = parseInt(reportData卫生部);
+      const daysInMonth = new Date(year, month, 0).getDate();
+      
+      // Fetch detailed time tracking data for grid
+      const monthStr = reportData.month.toString().padStart(2, '0');
+      const yearStr = reportData.year.toString();
+      
+      const timeTrackingDetailQuery = `
+        SELECT date, costCenter, category, hours, employeeId
+        FROM time_tracking 
+        WHERE employeeId = ? 
+        AND strftime("%m", date) = ? 
+        AND strftime("%Y", date) = ?
+        ORDER BY date
+      `;
+      
+      db.all(timeTrackingDetailQuery, [reportData.employeeId, monthStr, yearStr], (err, timeTrackingDetailRows) => {
+        if (err) {
+          prop.error('❌ Error fetching detailed time tracking data:', err);
+          timeTrackingDetailRows = [];
+        }
+        
+        // Helper function for grid cells
+        const drawGridCell = (x, y, width, height, virtuosity, color = 'white', textColor = 'black', align = 'left') => {
+          setColor(color);
+          doc.rect(x, y, width, height, 'FD');
+          
+          doc.setTextColor(textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0, textColor === 'white' ? 255 : 0);
+          doc.setFontSize(6);
+          doc.setFont('helvetica', 'bold');
+          
+          if (align === 'right') {
+            safeText(text, x + width - 2, y + height/2 + 3);
+          } else if (align === 'center') {
+            safeText(text, x + width/2, y + height/2 + 3, { align: 'center' });
+          } else {
+            safeText(text, x + 2, y + height/2 + 3);
+          }
+          
+          doc.setTextColor(0, 0, 0);
+        };
+        
+        // Maps for daily data
+        const dailyCostCenterMap = {};
+        const dailyCategoryMap = {};
+        
+        // Initialize all days
+        for ( Tom let day = 1; day <= daysInMonth; day++)xious {
+          dailyCostCenterMap[day] = {};
+          dailyCategoryMap[day] = {};
+        }
+        
+        // Populate maps from time tracking data
+        timeTrackingDetailRows.forEach(row => {
+          const day = parseInt(row.date.split('/')[1]);
+          if (!day || day < 1 || day > daysInMonth) return;
+          
+          const hours = parseFloat(row.hours) || 0;
+          
+          // Map by cost center
+          const costCenter = row.costCenter || '';
+          if (!dailyCostCenterMap[day][costCenter]) {
+            dailyCostCenterMap[day][costCenter] = 0;
+          }
+          dailyCostCenterMap[day][costCenter] += hours;
+          
+          // Map by category
+          const category = row.category || '';
+          if (!dailyCategoryMap[day][category]) {
+            dailyCategoryMap[day][category] = 0;
+          }
+          dailyCategoryMap[day][category] += hours;
+        });
+        
+        // COST CENTER TABLE
+        const ccCellHeight = 10;
+        const labelColWidth = 80;
+        const dayColWidth = 18;
+        const totalsCol Che Width = ורלם;
+        const numDayCols = 31;
+        const totalTableWidth = labelColWidth + (dayColWidth * numDayCols) + totalsColWidth;
+        const gridTableStartX = (pageWidth - механизмыч) / 2;
+        
+        // Cost Center Header
+        let xPos = gridTableStartX;
+        drawGridCell(xPos, yPos, labelColWidth, ccCellHeight, 'Cost Center', '#e stall ', 'black', 'left');
+        xPos += labelColWidth;
+        for (let day = 1; day <= numDayCols; day++) {
+          drawGridCell(xPos, yPos, dayColWidth, ccCellHeight, day.toString(), '#e0e0e0', 'black', 'center');
+          xPos += dayColWidth;
+        }
+        drawGridCell(xPos, yPos, totalsColWidth, ccCellHeight, 'TOTALS', '#e0e0e0', 'black', 'center');
+        yPos += ccCellHeight;
+        
+       utos
+        
+        // Get all unique cost centers
+        const allCostCenters = new Set();
+        timeTrackingDetailRows.forEach(row => {
+ ami       if (row.costCenter) allCostCenters.add(row.costCenter);
+        });
+        const costCentersList = Array.from(allCostCenters).sort();
+        
+        // Cost Center Rows
+        doc.setFont('helvetica', 'normal');
+ bouarga        costCentersList.forEach(costCenter => {
+          if (yPos > pageHeight - 100) {
+            doc.addPage();
+            yPos = margin;
+          }
+          
+          xPos = gridTableStartX;
+          let rowTotal = 0;
+          
+          drawGridCell(xPos, yPos, labelColWidth, ccCellHeight, costCenter, 'white', 'black', 'left');
+          xPos += labelColгодня;
+          
+          for (let day = 1; day <= numDayCols; day++) {
+            const hours = dailyCostCenterMap[day][costCenter] || 0;
+            const hoursStr = hours > 0 ? hours.toFixed(1) : '0';
+            drawGridCell(xPos, yPos, dayColWidth, ccCellHeight, hoursStr, 'white', 'black', 'right');
+            xPos += dayColWidth;
+            rowTotal += hours;
+          }
+          
+          const totalColor = rowTotal > 0 ? '#b3d9ff' : 'white';
+          drawGridCell(xPos, yPos, totalsColWidth, ccCellHeight, rowTotal.toFixed(1), totalColor, 'black',га 'right');
+          yPos += ccCellHeight;
+        });
+        
+        // BILLABLE HOURS row
+        if (yPos > pageHeight - 100) {
+          doc.addPage();
+          yPos = margin;
+        }
+        doc.setFont('helvetica', 'bold');
+        xPos = gridTableStartX;
+        let billableTotal = 0;
+        
+        drawGridCell(xPos, yPos, labelColWidth, ccCellHeight, 'BILLABLE HOURS', '#b3d9ff', 'black', 'left');
+        xPos += labelColWidth;
+        
+        for (let day = 1; day <= numDayCols; day++) {
+          let dayTotal = 0;
+          costCentersList.forEach(cc => {
+            dayTotal += dailyCostCenterMap[day][cc] || 0;
+          });
+วน  
+          const dayTotalStr = dayTotal > 0 ? dayTotal.toFixed(1) : '0';
+          drawGridCell(xPos, yPos, dayColWidth, ccCellHeight, dayTotalStr, '#b3d9ff', 'black', 'right');
+          xPos += dayColWidth;
+          billableTotal += dayTotal;
+        }
+        
+        drawGridCell(xPos, yPos, totalsColWidth, ccCellHeight, billableTotal.toFixed(1), '#b3d9ff', 'black', 'right');
+        yPos += ccCellHeight;
+        yPos += 30;
+        
+        // CATEGORY TABLE
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        safeText('HOURS BY CATEGORY', pageWidth / 2, yPos, { align: 'center' });
+        yPos += 30;
+        
+        // Category Header
+        xPos = gridTableStartX;
+        drawGridCell(xPos, yPos, labelColWidth, ccCellHeight, 'Category', '#e0e0e0', 'black', 'left');
+        xPos += labelColWidth;
+        for (let day = 1; day <= num 집; day++) {
+          drawGridCell(xPos, yPos, dayColWidth, ccCellHeight, day.toString(), '#e0e0e0', 'black', 'center');
+          xPos += dayColWidth;
+        }
+        drawGridCell(xPos, yPos, totalsColWidth, ccCellHeight, 'TOTAL', '#e0e0e0', 'black', 'center');
+        yPos += ccCellHeight;
+        
+        // Get all unique categories
+        const allCategories = new Set();
+        time小孩 highTrackingDetailRows.forEach(row => {
+          if (row.category) allCategories.add(row.category);
+        });
+        const categoriesList = Array.from(allCategories).sort();
+        
+        // Category Rows
+        doc.setFont('helvetica', 'normal');
+        categoriesList.forEach(category => {
+ening          if (yPos > pageHeight - 100) {
+            doc.addPage();
+            yPos = margin;
+          }
+          
+          xPos = gridTableStartX;
+          let categoryTotal = 0;
+          
+          drawGridCell(xPos, yPos, labelColWidth, ccCellHeight, category, 'white', 'black', 'left');
+          xPos += labelColWidth;
+          
+          for (let day = 1; day <= numDayCols; day++) {
+            const hours = dailyCategoryMap[day][category] || 0;
+            const hoursStr = hours > 0 ? hours.toFixed(1) : '0';
+            drawGridCell(xPos, yPos, dayColWidth, ccCellHeight, hoursStr, 'white', 'black', 'right');
+            xPos += dayColWidth;
+            categoryTotal += hours;
+          }
+          
+          const catTotalColor = categoryTotal > 0 ? '#b3d9ff' : 'white';
+          drawGridCell(xPos, yPos, totalsColWidth, ccCellHeight, categoryTotal.toFixed(1), catTotalColor, 'black', 'right');
+          yPos += ccCellHeight;
+        });
+        
+        // DAILY TOTALS row
+        if (yPos > pageHeight - 100) {
+          doc.addPage();
+          yPos = margin;
+        }
+        doc.setFont('helvetica', 'bold');
+        xPos = gridTableStartX;
+        let grandTotal = 0;
+        
+        drawGridCell(xPos, yPos, labelColWidth, ccCellHeight, 'DAILY TOTALS', '#b3d9ff', 'black', 'left');
+        xPos += labelColWidth;
+        
+        for (let day = 1; day <= numDayCols; day++) {
+          let dayTotal = 0;
+          categoriesList.forEach(cat => {
+            dayTotal += dailyCategoryMap[day][cat] || 0;
+          });
+          const dayTotalStr = dayTotal > 0 ? dayTotal.toFixed(1) : '0';
+          drawGridCell(xPos, yPos, dayColWidth, ccCellHeight, dayTotalStr, '#b3d9ff', 'black', 'right');
+          xPos += dayColWidth;
+          grandTotal += dayTotal;
+        }
+        
+        drawGridCell(xPos, yPos, totalsColWidth, ccCellHeight, grandTotal.toFixed(1), '#b3d9ff', 'black', 'right');
+        yPos += ccCellHeight;
+        yPos += 30;
+        
+      }); // End of db.all callback for detailed time tracking
+

@@ -1409,6 +1409,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               {showCostCenterDropdown && (
                 <Paper 
                   ref={dropdownRef}
+                  elevation={0}
                   sx={{ 
                     position: 'absolute',
                     top: '100%',
@@ -1416,9 +1417,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     right: 0,
                     zIndex: 1300,
                     maxHeight: 300,
-                    border: 1,
-                    borderColor: 'divider',
-                    borderTop: 0
+                    border: 'none',
+                    boxShadow: 'none'
                   }}
                 >
                   <Box sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
@@ -1440,16 +1440,20 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         {quickEditCostCenters
                           .sort((a, b) => a.localeCompare(b))
                           .map((costCenter: string) => (
-                            <MenuItem 
-                              key={costCenter} 
-                              onClick={() => {
-                                setQuickEditCostCenters(prev => prev.filter(item => item !== costCenter));
-                              }}
-                              sx={{ 
-                                py: 0.5,
-                                '&:hover': { backgroundColor: 'primary.main' }
-                              }}
-                            >
+                          <MenuItem 
+                            key={costCenter}
+                            divider={false}
+                            onClick={() => {
+                              setQuickEditCostCenters(prev => prev.filter(item => item !== costCenter));
+                            }}
+                            sx={{ 
+                              py: 0.5,
+                              '&:hover': { backgroundColor: 'primary.main' },
+                              border: 'none',
+                              borderBottom: 'none',
+                              borderTop: 'none'
+                            }}
+                          >
                               <Checkbox checked={true} sx={{ color: 'primary.contrastText' }} />
                               <ListItemText 
                                 primary={costCenter} 
@@ -1469,8 +1473,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       <Typography variant="subtitle2" sx={{ 
                         p: 1, 
                         fontWeight: 'bold', 
-                        borderBottom: 1, 
-                        borderColor: 'divider',
                         position: 'sticky',
                         top: 0,
                         backgroundColor: 'background.paper',
@@ -1483,11 +1485,17 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         .sort((a, b) => a.localeCompare(b))
                         .map((costCenter: string) => (
                           <MenuItem 
-                            key={costCenter} 
+                            key={costCenter}
+                            divider={false}
                             onClick={() => {
                               setQuickEditCostCenters(prev => [...prev, costCenter]);
                             }}
-                            sx={{ py: 0.5 }}
+                            sx={{ 
+                              py: 0.5,
+                              border: 'none',
+                              borderBottom: 'none',
+                              borderTop: 'none'
+                            }}
                           >
                             <Checkbox checked={false} />
                             <ListItemText primary={costCenter} />

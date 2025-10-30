@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -25,7 +25,8 @@ import {
   Tab,
   Divider,
 } from '@mui/material';
-import { CheckCircle, Cancel, Edit, Visibility, Comment } from '@mui/icons-material';
+import { CheckCircle, Edit, Visibility, Comment } from '@mui/icons-material';
+import DetailedReportView from './DetailedReportView';
 
 interface MonthlyReport {
   id: string;
@@ -58,17 +59,24 @@ interface SupervisorDashboardProps {
 export default function SupervisorDashboard({ currentEmployee }: SupervisorDashboardProps) {
   const [pendingReports, setPendingReports] = useState<MonthlyReport[]>([]);
   const [reviewedReports, setReviewedReports] = useState<MonthlyReport[]>([]);
+  const [acceptedReports, setAcceptedReports] = useState<MonthlyReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState<MonthlyReport | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
-  const [reviewAction, setReviewAction] = useState<'approve' | 'reject' | 'revision' | null>(null);
+  const [reviewAction, setReviewAction] = useState<'approve' | 'revision' | null>(null);
   const [comments, setComments] = useState('');
-  const [rejectionReason, setRejectionReason] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDetailedView, setShowDetailedView] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+
+  const handleCloseDetailedView = useCallback(() => {
+    setShowDetailedView(false);
+    setSelectedReportId(null);
+  }, []);
 
   useEffect(() => {
     loadReports();
@@ -103,14 +111,23 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
 
       const all = await allResponse.json();
       
-      // Filter for reports reviewed by this supervisor
+      // Filter for reports reviewed by this supervisor (needs revision)
       const reviewed = all.filter(
         (report: MonthlyReport) =>
           report.reviewedBy === currentEmployee.id &&
-          (report.status === 'approved' || report.status === 'rejected')
+          report.status === 'needs_revision'
       );
       
       setReviewedReports(reviewed);
+
+      // Filter for reports approved by this supervisor
+      const accepted = all.filter(
+        (report: MonthlyReport) =>
+          report.approvedBy === currentEmployee.id &&
+          report.status === 'approved'
+      );
+      
+      setAcceptedReports(accepted);
     } catch (error: any) {
       console.error('Error loading reports:', error);
       setError(error.message || 'Failed to load reports');
@@ -119,11 +136,10 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
     }
   };
 
-  const handleReview = (report: MonthlyReport, action: 'approve' | 'reject' | 'revision') => {
+  const handleReview = (report: MonthlyReport, action: 'approve' | 'revision') => {
     setSelectedReport(report);
     setReviewAction(action);
     setComments('');
-    setRejectionReason('');
     setShowReviewDialog(true);
   };
 
@@ -131,8 +147,8 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
     if (!selectedReport || !reviewAction) return;
 
     // Validation
-    if (reviewAction === 'reject' && !rejectionReason.trim()) {
-      alert('Please provide a reason for rejection');
+    if (reviewAction === 'revision' && !comments.trim()) {
+      alert('Please provide revision request details');
       return;
     }
 
@@ -141,14 +157,12 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
 
       const endpoint = {
         approve: `/api/monthly-reports/${selectedReport.id}/approve`,
-        reject: `/api/monthly-reports/${selectedReport.id}/reject`,
         revision: `/api/monthly-reports/${selectedReport.id}/request-revision`,
       }[reviewAction];
 
       const body = {
-        [reviewAction === 'approve' ? 'approvedBy' : reviewAction === 'reject' ? 'rejectedBy' : 'reviewedBy']:
+        [reviewAction === 'approve' ? 'approvedBy' : 'reviewedBy']:
           currentEmployee.id,
-        ...(reviewAction === 'reject' && { rejectionReason }),
         ...(comments && { comments }),
       };
 
@@ -175,7 +189,6 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
       // Show success message
       const actionText = {
         approve: 'approved',
-        reject: 'rejected',
         revision: 'returned for revision',
       }[reviewAction];
 
@@ -210,8 +223,6 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
         return 'primary';
       case 'approved':
         return 'success';
-      case 'rejected':
-        return 'error';
       case 'needs_revision':
         return 'warning';
       default:
@@ -251,7 +262,12 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
             iconPosition="start"
           />
           <Tab 
-            label={`Reviewed (${reviewedReports.length})`}
+            label={`Needs Revision (${reviewedReports.length})`}
+            icon={<Edit />}
+            iconPosition="start"
+          />
+          <Tab 
+            label={`Accepted (${acceptedReports.length})`}
             icon={<CheckCircle />}
             iconPosition="start"
           />
@@ -332,8 +348,8 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
                     <Button
                       startIcon={<Visibility />}
                       onClick={() => {
-                        // TODO: Open detailed report view
-                        alert('View details - Coming soon');
+                        setSelectedReportId(report.id);
+                        setShowDetailedView(true);
                       }}
                     >
                       View Details
@@ -344,13 +360,6 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
                       onClick={() => handleReview(report, 'revision')}
                     >
                       Request Revision
-                    </Button>
-                    <Button
-                      startIcon={<Cancel />}
-                      color="error"
-                      onClick={() => handleReview(report, 'reject')}
-                    >
-                      Reject
                     </Button>
                     <Button
                       startIcon={<CheckCircle />}
@@ -428,6 +437,75 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
         </Box>
       )}
 
+      {/* Accepted Reports Tab */}
+      {activeTab === 2 && (
+        <Box>
+          {acceptedReports.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center' }}>
+              <Typography variant="h6" color="text.secondary">
+                No Accepted Reports Yet
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Reports you approve will appear here
+              </Typography>
+            </Paper>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Employee</TableCell>
+                    <TableCell>Period</TableCell>
+                    <TableCell align="right">Miles</TableCell>
+                    <TableCell align="right">Expenses</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Approved Date</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {acceptedReports.map((report) => (
+                    <TableRow key={report.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="bold">
+                          {report.employeeName}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {report.employeeEmail}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{formatMonthYear(report.month, report.year)}</TableCell>
+                      <TableCell align="right">{report.totalMiles.toFixed(1)}</TableCell>
+                      <TableCell align="right">${report.totalExpenses.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={report.status}
+                          color={getStatusColor(report.status) as any}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>{formatDate(report.approvedAt)}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="small"
+                          startIcon={<Visibility />}
+                          onClick={() => {
+                            setSelectedReportId(report.id);
+                            setShowDetailedView(true);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      )}
+
       {/* Review Dialog */}
       <Dialog
         open={showReviewDialog}
@@ -437,7 +515,6 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
       >
         <DialogTitle>
           {reviewAction === 'approve' && 'Approve Report'}
-          {reviewAction === 'reject' && 'Reject Report'}
           {reviewAction === 'revision' && 'Request Revision'}
         </DialogTitle>
 
@@ -459,20 +536,6 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
 
               <Divider sx={{ my: 2 }} />
 
-              {reviewAction === 'reject' && (
-                <TextField
-                  label="Reason for Rejection *"
-                  fullWidth
-                  multiline
-                  rows={3}
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  sx={{ mb: 2 }}
-                  required
-                  helperText="Please explain why this report is being rejected"
-                />
-              )}
-
               <TextField
                 label={reviewAction === 'revision' ? 'Revision Request *' : 'Comments (Optional)'}
                 fullWidth
@@ -483,8 +546,6 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
                 helperText={
                   reviewAction === 'approve'
                     ? 'Add any additional notes for the employee'
-                    : reviewAction === 'reject'
-                    ? 'Add any additional context or instructions'
                     : 'Explain what needs to be corrected'
                 }
                 required={reviewAction === 'revision'}
@@ -500,19 +561,23 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
           <Button
             onClick={submitReview}
             variant="contained"
-            color={
-              reviewAction === 'approve'
-                ? 'success'
-                : reviewAction === 'reject'
-                ? 'error'
-                : 'warning'
-            }
-            disabled={submitting || (reviewAction === 'reject' && !rejectionReason.trim()) || (reviewAction === 'revision' && !comments.trim())}
+            color={reviewAction === 'approve' ? 'success' : 'warning'}
+            disabled={submitting || (reviewAction === 'revision' && !comments.trim())}
           >
             {submitting ? <CircularProgress size={20} /> : 'Confirm'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Detailed Report View */}
+      {showDetailedView && selectedReportId && (
+        <DetailedReportView
+          key={selectedReportId}
+          reportId={selectedReportId}
+          open={true}
+          onClose={handleCloseDetailedView}
+        />
+      )}
     </Box>
   );
 }

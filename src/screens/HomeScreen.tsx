@@ -21,6 +21,7 @@ import { PerDiemDashboardService } from '../services/perDiemDashboardService';
 import { PreferencesService } from '../services/preferencesService';
 import { DemoDataService } from '../services/demoDataService';
 import { PermissionService } from '../services/permissionService';
+import RealtimeSyncService from '../services/realtimeSyncService';
 import { MileageEntry, Employee, Receipt } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
 import UnifiedHeader from '../components/UnifiedHeader';
@@ -523,6 +524,30 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       // Admin/Supervisor functions are handled in the web portal only
       setAvailableEmployees([employee]); // Only show themselves
       
+      // Initialize real-time sync
+      const realtimeSync = RealtimeSyncService.getInstance();
+      realtimeSync.connect('http://localhost:3002', employee.id);
+      
+      // Set up real-time sync event listeners
+      realtimeSync.on('data_update', (data) => {
+        console.log('📡 Real-time data update received:', data);
+        // Refresh data when updates are received
+        loadEmployeeData(employee.id, employee);
+      });
+      
+      realtimeSync.on('notification', (notification) => {
+        console.log('📢 Real-time notification received:', notification);
+        // Notifications are already shown by the service
+      });
+      
+      realtimeSync.on('connection_established', () => {
+        console.log('✅ Real-time sync connected');
+      });
+      
+      realtimeSync.on('error', (error) => {
+        console.error('❌ Real-time sync error:', error);
+      });
+
       // Sync data from backend on app startup
       if (!HomeScreen.isSyncing) {
         HomeScreen.isSyncing = true;
