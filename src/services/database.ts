@@ -902,8 +902,8 @@ export class DatabaseService {
       values.push(
         updates.startLocationDetails.name || null,
         updates.startLocationDetails.address || null,
-        updates.startLocationDetails.latitude || null,
-        updates.startLocationDetails.longitude || null
+        updates.startLocationDetails.latitude ?? null,
+        updates.startLocationDetails.longitude ?? null
       );
     }
     
@@ -912,8 +912,8 @@ export class DatabaseService {
       values.push(
         updates.endLocationDetails.name || null,
         updates.endLocationDetails.address || null,
-        updates.endLocationDetails.latitude || null,
-        updates.endLocationDetails.longitude || null
+        updates.endLocationDetails.latitude ?? null,
+        updates.endLocationDetails.longitude ?? null
       );
     }
     
@@ -1878,7 +1878,12 @@ export class DatabaseService {
   // End odometer is now calculated at the end of the day, not after each entry
 
   private static generateId(): string {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    // Use a counter to ensure uniqueness even within the same millisecond
+    // This prevents ID collisions when multiple entries are created rapidly
+    const now = Date.now();
+    const random = Math.random().toString(36).substring(2, 15); // Longer random string
+    const counter = Math.floor(Math.random() * 100000).toString(36);
+    return `${now.toString(36)}${random}${counter}`;
   }
 
   // Time Tracking Methods

@@ -73,6 +73,9 @@ import { ReportApprovalService } from './services/reportApprovalService';
 // User settings component
 import UserSettings from './components/UserSettings';
 
+// Address formatting utility
+import { formatAddressForDisplay } from './utils/addressFormatter';
+
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -583,11 +586,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 // For the first trip, include the starting location
                 if (index === 0) {
                   const startLocation = entry.startLocation || '';
-                  // Check if it's already formatted (contains parentheses) or if it's just a name
+                  // Check if it's already formatted (contains parentheses)
                   if (startLocation.includes('(') && startLocation.includes(')')) {
                     tripSegments.push(startLocation);
+                  } else if (startLocation === 'BA' || startLocation.toLowerCase() === 'base address') {
+                    tripSegments.push('BA');
+                  } else if (startLocation) {
+                    // Try to format if we can detect it's a base address
+                    tripSegments.push(formatAddressForDisplay(startLocation, false));
                   } else {
-                    // Use the location as-is (might be a name or address)
                     tripSegments.push(startLocation);
                   }
                 }
@@ -596,9 +603,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 const endLocation = entry.endLocation || '';
                 const purpose = entry.purpose || 'Travel';
                 
-                // Check if endLocation is already formatted
-                if (endLocation.includes('(') && endLocation.includes(')')) {
+                // Check if endLocation is BA - don't add purpose for base address returns
+                if (endLocation === 'BA' || endLocation.toLowerCase() === 'base address') {
+                  tripSegments.push('to BA');
+                } else if (endLocation.includes('(') && endLocation.includes(')')) {
+                  // Already formatted
                   tripSegments.push(`to ${endLocation} for ${purpose}`);
+                } else if (endLocation) {
+                  // Try to format if we can detect it's a base address
+                  tripSegments.push(`to ${formatAddressForDisplay(endLocation, false)} for ${purpose}`);
                 } else {
                   tripSegments.push(`to ${endLocation} for ${purpose}`);
                 }

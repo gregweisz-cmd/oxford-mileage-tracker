@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import 'react-native-gesture-handler';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, Text, ActivityIndicator } from 'react-native';
 import { useFonts } from 'expo-font';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useReactNavigationDevTools } from '@dev-plugins/react-navigation';
 import { GpsTrackingProvider } from './src/contexts/GpsTrackingContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { TipsProvider } from './src/contexts/TipsContext';
@@ -45,6 +46,12 @@ export default function App() {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentRouteName, setCurrentRouteName] = useState<string>('');
+  
+  // Navigation ref for devtools
+  const navigationRef = useNavigationContainerRef();
+  
+  // Enable React Navigation devtools (only in development)
+  useReactNavigationDevTools(navigationRef);
   
   // Load fonts using the useFonts hook
   const [fontsLoaded] = useFonts({
@@ -134,6 +141,7 @@ export default function App() {
         <NotificationProvider currentEmployeeId={currentEmployee?.id}>
           <GpsTrackingProvider>
           <NavigationContainer
+            ref={navigationRef}
             onStateChange={(state) => {
               // Track current route name
               const route = state?.routes[state.index];
