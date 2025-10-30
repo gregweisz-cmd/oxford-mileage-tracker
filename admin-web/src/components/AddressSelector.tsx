@@ -331,7 +331,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                 <ListItem key={index} disablePadding>
                   <ListItemButton onClick={() => handleSelectAddress(address)}>
                     <ListItemText
-                      primary={`Base Address ${index + 1}`}
+                      primary="BA"
                       secondary={address}
                     />
                   </ListItemButton>
