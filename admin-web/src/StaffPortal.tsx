@@ -2643,7 +2643,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         supervisorSignature: supervisorSignatureState
       };
 
-      const response = await fetch('http://localhost:3002/api/expense-reports', {
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2701,7 +2701,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       setReportsLoading(true);
       
-      const response = await fetch(`http://localhost:3002/api/expense-reports/${employeeId}`);
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch reports');
@@ -2735,7 +2735,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  // Handle PDF export
+  // Handle PDF export - using backend export endpoint for consistency
   const handleExportPdf = async () => {
     if (!employeeData) {
       alert('No employee data available');
@@ -2758,46 +2758,71 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setLoading(true);
       
       try {
-        // Prepare data for PDF export with comprehensive safety checks
-        const exportData = {
+        // First, ensure report is saved to backend
+        const reportData = {
           ...employeeData,
-          // Ensure all arrays exist
-          costCenters: employeeData.costCenters || [],
-          dailyEntries: employeeData.dailyEntries || [],
-          otherExpenses: (employeeData as any).otherExpenses || [],
-          dailyOdometerReadings: (employeeData as any).dailyOdometerReadings || [],
-          // Ensure all numeric values exist
-          airRailBus: (employeeData as any).airRailBus || 0,
-          vehicleRentalFuel: (employeeData as any).vehicleRentalFuel || 0,
-          parkingTolls: (employeeData as any).parkingTolls || 0,
-          groundTransportation: (employeeData as any).groundTransportation || 0,
-          hotelsAirbnb: (employeeData as any).hotelsAirbnb || 0,
-          perDiem: (employeeData as any).perDiem || 0,
-          phoneInternetFax: (employeeData as any).phoneInternetFax || 0,
-          shippingPostage: (employeeData as any).shippingPostage || 0,
-          printingCopying: (employeeData as any).printingCopying || 0,
-          officeSupplies: (employeeData as any).officeSupplies || 0,
-          eesSupplies: (employeeData as any).eesSupplies || 0,
-          devices: (employeeData as any).devices || 0,
-          gaHours: (employeeData as any).gaHours || 0,
-          holidayHours: (employeeData as any).holidayHours || 0,
-          ptoHours: (employeeData as any).ptoHours || 0,
-          stdLtdHours: (employeeData as any).stdLtdHours || 0,
-          pflPfmlHours: (employeeData as any).pflPfmlHours || 0,
+          receipts: receipts,
+          dailyDescriptions: dailyDescriptions,
           employeeSignature: signatureImage,
-          supervisorSignature: supervisorSignature
-        } as any;
+          supervisorSignature: supervisorSignatureState
+        };
+
+        // Save report to backend
+        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            employeeId: employeeData.employeeId,
+            month: reportMonth,
+            year: reportYear,
+            reportData: reportData
+          }),
+        });
+
+        // Now fetch the report to get its ID
+        const loadResponse = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${reportMonth}/${reportYear}`);
         
-        // Use the new comprehensive PDF export service
-        await TabPdfExportService.exportAllTabsInOnePDF(
-          exportData,
-          receipts as any,
-          [] // Empty time tracking array for now
-        );
+        if (!loadResponse.ok) {
+          throw new Error('Failed to load expense report');
+        }
+
+        const savedReport = await loadResponse.json();
+        const reportId = savedReport.id;
+
+        // Use the backend PDF export endpoint (same as Finance Portal)
+        const response = await fetch(`${API_BASE_URL}/api/export/expense-report-pdf/${reportId}`, {
+          method: 'GET',
+        });
+
+        if (!response.ok) {
+          console.error('❌ Export failed with status:', response.status);
+          const errorText = await response.text();
+          console.error('❌ Export error response:', errorText);
+          throw new Error(`Export failed: ${response.status} ${errorText}`);
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
         
-        // PDF export completed successfully
-        alert('Complete PDF exported successfully with all tabs!');
+        // Generate filename matching Staff Portal format: LASTNAME,FIRSTNAME EXPENSES MMM-YY.pdf
+        const nameParts = (employeeData.preferredName || employeeData.name).split(' ');
+        const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
+        const firstName = nameParts[0] || 'UNKNOWN';
+        const monthNamesShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const monthAbbr = monthNamesShort[reportMonth - 1] || 'UNK';
+        const yearShort = reportYear.toString().slice(-2);
         
+        link.download = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        console.log('✅ PDF export completed successfully');
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert(`Error generating PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
