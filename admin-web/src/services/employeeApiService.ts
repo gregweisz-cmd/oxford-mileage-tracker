@@ -154,4 +154,21 @@ export class EmployeeApiService {
 
     return response.json();
   }
+
+  static async resetEmployeePassword(id: string, password: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/employees/${id}/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ password }),
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to reset password');
+    }
+
+    return response.json();
+  }
 }

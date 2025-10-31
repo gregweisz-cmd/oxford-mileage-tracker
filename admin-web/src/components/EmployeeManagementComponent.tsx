@@ -397,20 +397,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     
     if (window.confirm(`Reset password for ${employee.name} to "${newPassword}"?`)) {
       try {
-        // Use dedicated password endpoint instead of full employee update
-        const response = await fetch(`http://localhost:3002/api/employees/${employee.id}/password`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ password: newPassword }),
-        });
-        
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to reset password');
-        }
-        
+        // Use EmployeeApiService for consistent API URL handling
+        await EmployeeApiService.resetEmployeePassword(employee.id, newPassword);
         alert(`Password reset successfully for ${employee.name} to "${newPassword}"`);
       } catch (error) {
         console.error('Error resetting password:', error);
