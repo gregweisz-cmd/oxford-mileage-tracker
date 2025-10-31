@@ -6603,96 +6603,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Function to seed test accounts
-async function seedTestAccounts() {
-  const testAccounts = [
-    {
-      id: 'greg-weisz-001',
-      name: 'Greg Weisz',
-      preferredName: 'Greg',
-      email: 'greg.weisz@oxfordhouse.org',
-      password: 'ImtheBoss5!',
-      oxfordHouseId: 'oxford-house-001',
-      position: 'Senior Data Analyst/Administrator',
-      phoneNumber: '(555) 123-4567',
-      baseAddress: '230 Wagner St, Troutman, NC 28166',
-      costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-      selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-      defaultCostCenter: 'PS-Unfunded'
-    },
-    {
-      id: 'jackson-longan-001',
-      name: 'Jackson Longan',
-      preferredName: 'Jackson',
-      email: 'jackson.longan@oxfordhouse.org',
-      password: 'Jacksonwelcome1',
-      oxfordHouseId: 'oxford-house-002',
-      position: 'Director of Communication and Information/Administrator',
-      phoneNumber: '(555) 345-6789',
-      baseAddress: '123 Main St, Oklahoma City, OK 73101',
-      costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative']),
-      selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative']),
-      defaultCostCenter: 'Administrative'
-    },
-    {
-      id: 'kathleen-gibson-001',
-      name: 'Kathleen Gibson',
-      preferredName: 'Kathleen',
-      email: 'kathleen.gibson@oxfordhouse.org',
-      password: 'Kathleenwelcome1',
-      oxfordHouseId: 'oxford-house-003',
-      position: 'CEO/Administrator',
-      phoneNumber: '(555) 234-5678',
-      baseAddress: '9016 Mustard Seed Ln, Garner, NC 27529',
-      costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative', 'Training', 'Direct Care', 'Travel', 'Other']),
-      selectedCostCenters: JSON.stringify(['PS-Unfunded']),
-      defaultCostCenter: 'PS-Unfunded'
-    },
-    {
-      id: 'alex-szary-001',
-      name: 'Alex Szary',
-      preferredName: 'Alex',
-      email: 'alex.szary@oxfordhouse.org',
-      password: 'Alexwelcome1',
-      oxfordHouseId: 'oxford-house-004',
-      position: 'Senior Manager of Data and Analytics/Administrator',
-      phoneNumber: '(555) 456-7890',
-      baseAddress: '456 Oak St, Austin, TX 78701',
-      costCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative']),
-      selectedCostCenters: JSON.stringify(['PS-Unfunded', 'PS-Funded', 'Administrative']),
-      defaultCostCenter: 'Administrative'
-    }
-  ];
-
-  const promises = testAccounts.map(account => {
-    return new Promise((resolve, reject) => {
-      const sql = `INSERT OR REPLACE INTO employees (
-        id, name, preferredName, email, password, oxfordHouseId, position,
-        phoneNumber, baseAddress, costCenters, selectedCostCenters,
-        defaultCostCenter, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
-      
-      db.run(sql, [
-        account.id, account.name, account.preferredName, account.email,
-        account.password, account.oxfordHouseId, account.position,
-        account.phoneNumber, account.baseAddress, account.costCenters,
-        account.selectedCostCenters, account.defaultCostCenter
-      ], (err) => {
-        if (err) {
-          console.error(`❌ Failed to create ${account.name}:`, err);
-          reject(err);
-        } else {
-          console.log(`✅ Created/Updated ${account.name}`);
-          resolve();
-        }
-      });
-    });
-  });
-
-  await Promise.all(promises);
-}
-
-// Function to clean up duplicate entries (Second occurrence - should match first)
+// Function to clean up duplicate entries - DISABLED (was deleting employees incorrectly)
 async function cleanupDuplicates2() {
   return new Promise(async (resolve, reject) => {
     try {
@@ -6874,7 +6785,7 @@ async function seedTestAccounts() {
       if (existingAccount) {
         console.log(`🔄 ${account.name} already exists, updating...`);
         
-        // Update existing account
+        // Update existing account by email (since ID might be different)
         await new Promise((resolve, reject) => {
           db.run(
             `UPDATE employees SET 
@@ -6890,7 +6801,7 @@ async function seedTestAccounts() {
               selectedCostCenters = ?,
               defaultCostCenter = ?,
               updatedAt = ?
-            WHERE id = ?`,
+            WHERE email = ?`,
             [
               account.name,
               account.preferredName,
@@ -6904,7 +6815,7 @@ async function seedTestAccounts() {
               account.selectedCostCenters,
               account.defaultCostCenter,
               now,
-              account.id
+              account.email
             ],
             (err) => {
               if (err) reject(err);
