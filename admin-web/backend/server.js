@@ -4101,16 +4101,59 @@ app.post('/api/reports/submit', (req, res) => {
   const id = `status-${Date.now()}`;
   const now = new Date().toISOString();
 
-  db.run(
-    'INSERT INTO report_status (id, reportId, employeeId, status, supervisorId, submittedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, reportId, employeeId, 'pending', supervisorId, now, now, now],
-    function(err) {
+  // Check if employee is a Regional Manager (RM)
+  db.get(
+    'SELECT position FROM employees WHERE id = ?',
+    [employeeId],
+    (err, employee) => {
       if (err) {
         console.error('Database error:', err.message);
         res.status(500).json({ error: err.message });
         return;
       }
-      res.json({ id, message: 'Report submitted for approval successfully' });
+
+      // If employee is a Regional Manager, auto-approve and mark as ready for finance
+      if (employee && employee.position && employee.position.toLowerCase().includes('regional manager')) {
+        const statusId = `status-${Date.now()}`;
+        db.run(
+          'INSERT INTO report_status (id, reportId, employeeId, status, supervisorId, supervisorName, submittedAt, approvedAt, reviewedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [statusId, reportId, employeeId, 'approved', 'RM_AUTO_APPROVE', 'System', now, now, now, now, now],
+          function(insertErr) {
+            if (insertErr) {
+              console.error('Database error:', insertErr.message);
+              res.status(500).json({ error: insertErr.message });
+              return;
+            }
+
+            // Create approval record
+            const approvalId = `approval-${Date.now()}`;
+            db.run(
+              'INSERT INTO report_approvals (id, reportId, employeeId, supervisorId, supervisorName, action, comments, timestamp, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [approvalId, reportId, employeeId, 'RM_AUTO_APPROVE', 'System', 'approve', 'Auto-approved for Regional Manager', now, now],
+              function(approvalErr) {
+                if (approvalErr) {
+                  console.error('Error creating approval record:', approvalErr.message);
+                }
+                res.json({ id: statusId, message: 'Report auto-approved and submitted to Finance' });
+              }
+            );
+          }
+        );
+      } else {
+        // Regular submission - needs supervisor approval
+        db.run(
+          'INSERT INTO report_status (id, reportId, employeeId, status, supervisorId, submittedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [id, reportId, employeeId, 'pending', supervisorId, now, now, now],
+          function(insertErr) {
+            if (insertErr) {
+              console.error('Database error:', insertErr.message);
+              res.status(500).json({ error: insertErr.message });
+              return;
+            }
+            res.json({ id, message: 'Report submitted for approval successfully' });
+          }
+        );
+      }
     }
   );
 });
