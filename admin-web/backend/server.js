@@ -551,6 +551,7 @@ function ensureTablesExist() {
         defaultCostCenter TEXT DEFAULT '',
         preferredName TEXT DEFAULT '',
         supervisorId TEXT DEFAULT NULL,
+        approvalFrequency TEXT DEFAULT 'monthly',
         signature TEXT DEFAULT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
@@ -569,6 +570,15 @@ function ensureTablesExist() {
         notes TEXT,
         hoursWorked REAL DEFAULT 0,
         isGpsTracked INTEGER NOT NULL DEFAULT 0,
+        costCenter TEXT DEFAULT '',
+        startLocationName TEXT DEFAULT '',
+        startLocationAddress TEXT DEFAULT '',
+        startLocationLat REAL DEFAULT 0,
+        startLocationLng REAL DEFAULT 0,
+        endLocationName TEXT DEFAULT '',
+        endLocationAddress TEXT DEFAULT '',
+        endLocationLat REAL DEFAULT 0,
+        endLocationLng REAL DEFAULT 0,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
@@ -582,6 +592,7 @@ function ensureTablesExist() {
         description TEXT,
         category TEXT NOT NULL,
         imageUri TEXT,
+        costCenter TEXT DEFAULT '',
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
@@ -593,6 +604,7 @@ function ensureTablesExist() {
         category TEXT NOT NULL,
         hours REAL NOT NULL,
         description TEXT,
+        costCenter TEXT DEFAULT '',
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
