@@ -1570,7 +1570,7 @@ app.get('/api/mileage-entries', (req, res) => {
   const { employeeId, month, year } = req.query;
   
   let query = `
-    SELECT me.*, e.name as employeeName, e.costCenters 
+    SELECT me.*, COALESCE(NULLIF(e.preferredName, ''), e.name) as employeeName, e.costCenters 
     FROM mileage_entries me 
     LEFT JOIN employees e ON me.employeeId = e.id 
   `;
@@ -2781,7 +2781,7 @@ app.get('/api/expense-reports', (req, res) => {
   const { status, month, year } = req.query;
   
   let query = `
-    SELECT er.*, e.name as employeeName, e.email as employeeEmail
+    SELECT er.*, COALESCE(NULLIF(e.preferredName, ''), e.name) as employeeName, e.email as employeeEmail
     FROM expense_reports er
     LEFT JOIN employees e ON er.employeeId = e.id
   `;
