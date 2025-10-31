@@ -6933,6 +6933,69 @@ async function seedTestAccounts() {
   console.log('🎉 All test accounts processed!');
 }
 
+// Function to seed supervisor assignments
+async function seedSupervisorAssignments() {
+  // Try to load supervisor assignments module
+  let SUPERVISOR_ASSIGNMENTS = [];
+  
+  try {
+    // Dynamically require the module if it exists
+    const assignmentsModule = require('./supervisor-assignments-module.js');
+    SUPERVISOR_ASSIGNMENTS = assignmentsModule.SUPERVISOR_ASSIGNMENTS || [];
+  } catch (error) {
+    // File doesn't exist yet, that's okay
+    console.log('📝 No supervisor-assignments-module.js found, skipping assignments');
+    return;
+  }
+  
+  if (SUPERVISOR_ASSIGNMENTS.length === 0) {
+    console.log('📝 No supervisor assignments to seed');
+    return;
+  }
+  
+  console.log(`👥 Seeding ${SUPERVISOR_ASSIGNMENTS.length} supervisor assignments...`);
+  
+  const now = new Date().toISOString();
+  let successCount = 0;
+  let skipCount = 0;
+  
+  for (const assignment of SUPERVISOR_ASSIGNMENTS) {
+    try {
+      // Check if employee exists before trying to update
+      const employee = await new Promise((resolve, reject) => {
+        db.get('SELECT id FROM employees WHERE id = ?', [assignment.id], (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
+      });
+      
+      if (!employee) {
+        // Employee doesn't exist, skip
+        skipCount++;
+        continue;
+      }
+      
+      // Update the employee's supervisor
+      await new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE employees SET supervisorId = ?, updatedAt = ? WHERE id = ?',
+          [assignment.supervisorId, now, assignment.id],
+          function(updateErr) {
+            if (updateErr) reject(updateErr);
+            else resolve();
+          }
+        );
+      });
+      
+      successCount++;
+    } catch (error) {
+      console.error(`❌ Error updating supervisor for ${assignment.id}:`, error.message);
+    }
+  }
+  
+  console.log(`✅ Supervisor assignments seeded: ${successCount} updated, ${skipCount} skipped`);
+}
+
 // Initialize database and start server
 console.log('🚀 Starting server initialization...');
 console.log(`📊 Database path: ${DB_PATH}`);
@@ -6948,6 +7011,14 @@ initDatabase().then(async () => {
     console.log('✅ Test accounts created successfully');
   } catch (error) {
     console.error('❌ Error creating test accounts:', error);
+  }
+  
+  // Seed supervisor assignments if module exists
+  console.log('🔧 Seeding supervisor assignments...');
+  try {
+    await seedSupervisorAssignments();
+  } catch (error) {
+    console.error('❌ Error seeding supervisor assignments:', error);
   }
   
   console.log('🌐 Starting HTTP server...');
