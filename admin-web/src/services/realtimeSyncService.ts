@@ -138,6 +138,11 @@ export class RealtimeSyncService {
           this.send({ type: 'heartbeat_response' });
           break;
           
+        case 'heartbeat_response':
+        case 'connection_established':
+          // Server acknowledgments - no action needed
+          break;
+          
         case 'data_update':
         case 'data_updated':  // Handle both types for backward compatibility
           this.handleDataUpdate(message.data);
