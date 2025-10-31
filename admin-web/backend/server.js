@@ -176,10 +176,8 @@ app.use('/uploads', express.static(uploadsDir));
 // Multer configuration for file uploads
 const upload = multer({ dest: uploadsDir });
 
-// Database path - use in-memory for Render free tier, file for development
-const DB_PATH = process.env.RENDER_SERVICE_ID 
-  ? ':memory:'  // In-memory database for Render (resets on restart)
-  : path.join(__dirname, 'expense_tracker.db'); // Backend's own database
+// Database path - use persistent file for both development and production
+const DB_PATH = path.join(__dirname, 'expense_tracker.db');
 
 // Database connection
 let db;
