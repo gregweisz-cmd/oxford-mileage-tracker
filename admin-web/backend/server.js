@@ -4387,6 +4387,152 @@ app.put('/api/notifications/:id/read', (req, res) => {
   );
 });
 
+// ===== SUPERVISOR REASSIGNMENT API ENDPOINTS =====
+
+// Get all supervised employees for an RM or Admin to manage
+app.get('/api/supervisor/:supervisorId/managed-employees', async (req, res) => {
+  const { supervisorId } = req.params;
+  
+  try {
+    // Get all supervised employees (direct + indirect)
+    const supervisedEmployeeIds = await getAllSupervisedEmployees(supervisorId);
+    
+    if (supervisedEmployeeIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const placeholders = supervisedEmployeeIds.map(() => '?').join(',');
+    
+    db.all(
+      `SELECT id, name, email, position, supervisorId FROM employees WHERE id IN (${placeholders}) ORDER BY position, name`,
+      supervisedEmployeeIds,
+      (err, employees) => {
+        if (err) {
+          console.error('❌ Error fetching managed employees:', err);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(employees);
+      }
+    );
+  } catch (error) {
+    console.error('❌ Error fetching managed employees:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reassign supervisor for an employee (RM/Admin only)
+app.put('/api/supervisor/reassign', async (req, res) => {
+  const { requestedByUserId, employeeId, newSupervisorId } = req.body;
+  
+  if (!requestedByUserId || !employeeId || newSupervisorId === undefined) {
+    return res.status(400).json({ error: 'requestedByUserId, employeeId, and newSupervisorId are required' });
+  }
+
+  const now = new Date().toISOString();
+
+  // Check if requesting user is an RM or Admin
+  db.get(
+    'SELECT position FROM employees WHERE id = ?',
+    [requestedByUserId],
+    (err, requester) => {
+      if (err) {
+        console.error('❌ Error checking requester role:', err);
+        res.status(500).json({ error: 'Failed to verify permissions' });
+        return;
+      }
+
+      if (!requester) {
+        return res.status(404).json({ error: 'Requester not found' });
+      }
+
+      const isRM = requester.position && requester.position.toLowerCase().includes('regional manager');
+      const isAdmin = requester.position && requester.position.toLowerCase().includes('admin');
+      
+      if (!isRM && !isAdmin) {
+        return res.status(403).json({ error: 'Only Regional Managers and Admins can reassign supervisors' });
+      }
+
+      // Verify that the employee is supervised by the requester (RM only)
+      if (isRM && !isAdmin) {
+        getAllSupervisedEmployees(requestedByUserId)
+          .then(supervisedIds => {
+            if (!supervisedIds.includes(employeeId)) {
+              return res.status(403).json({ error: 'You can only reassign supervisors for employees you supervise' });
+            }
+            
+            // Proceed with reassignment
+            performReassignment(employeeId, newSupervisorId, now, res);
+          })
+          .catch(error => {
+            console.error('❌ Error checking supervision:', error);
+            res.status(500).json({ error: 'Failed to verify supervision' });
+          });
+      } else {
+        // Admin can reassign anyone
+        performReassignment(employeeId, newSupervisorId, now, res);
+      }
+    }
+  );
+
+  function performReassignment(empId, newSupId, timestamp, response) {
+    // Check if newSupervisorId is valid (allow null to remove supervisor)
+    if (newSupId !== null) {
+      db.get(
+        'SELECT id FROM employees WHERE id = ?',
+        [newSupId],
+        (checkErr, supervisor) => {
+          if (checkErr) {
+            console.error('❌ Error checking new supervisor:', checkErr);
+            response.status(500).json({ error: 'Failed to verify new supervisor' });
+            return;
+          }
+
+          if (!supervisor) {
+            return response.status(404).json({ error: 'New supervisor not found' });
+          }
+
+          updateSupervisor(empId, newSupId, timestamp, response);
+        }
+      );
+    } else {
+      // Removing supervisor
+      updateSupervisor(empId, null, timestamp, response);
+    }
+  }
+
+  function updateSupervisor(empId, newSupId, timestamp, response) {
+    db.run(
+      'UPDATE employees SET supervisorId = ?, updatedAt = ? WHERE id = ?',
+      [newSupId, timestamp, empId],
+      function(updateErr) {
+        if (updateErr) {
+          console.error('❌ Error updating supervisor:', updateErr);
+          response.status(500).json({ error: 'Failed to update supervisor' });
+          return;
+        }
+
+        if (this.changes === 0) {
+          return response.status(404).json({ error: 'Employee not found' });
+        }
+
+        console.log(`✅ Supervisor reassigned: ${empId} → ${newSupId || 'none'}`);
+        
+        // Broadcast the change
+        broadcastDataChange('employee', 'update', { id: empId, supervisorId: newSupId });
+        
+        response.json({ 
+          success: true, 
+          message: 'Supervisor reassigned successfully',
+          employeeId: empId,
+          newSupervisorId: newSupId
+        });
+      }
+    );
+  }
+});
+
 // Send message to staff
 app.post('/api/messages/send', (req, res) => {
   const { employeeId, supervisorId, supervisorName, message } = req.body;
