@@ -64,7 +64,7 @@ export interface Employee {
   costCenters: string[];
   selectedCostCenters: string[];
   defaultCostCenter: string;
-  supervisorId?: string; // ID of the supervisor this employee reports to
+  supervisorId?: string | null; // ID of the supervisor this employee reports to (null = no supervisor)
   signature?: string;
   createdAt: Date;
   updatedAt: Date;

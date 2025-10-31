@@ -1220,7 +1220,8 @@ app.put('/api/employees/bulk-update', (req, res) => {
   const values = [];
   
   Object.keys(updates).forEach(key => {
-    if (updates[key] !== undefined && updates[key] !== null) {
+    // Include both defined values and null (null is valid for clearing fields)
+    if (updates[key] !== undefined) {
       updateFields.push(`${key} = ?`);
       values.push(updates[key]);
     }

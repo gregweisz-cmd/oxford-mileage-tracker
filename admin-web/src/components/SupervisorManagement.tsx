@@ -199,7 +199,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
 
   const handleRemoveStaff = async (staffMember: Employee) => {
     try {
-      await onUpdateEmployee(staffMember.id, { supervisorId: undefined });
+      await onUpdateEmployee(staffMember.id, { supervisorId: null });
       
       // Refresh the employee list
       await onRefresh();
@@ -237,7 +237,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         selectedCostCenters: employeeToPromote.selectedCostCenters,
         defaultCostCenter: employeeToPromote.defaultCostCenter,
         position: newPosition,
-        supervisorId: undefined // Supervisors/Senior Staff don't report to other supervisors
+        supervisorId: null // Supervisors/Senior Staff don't report to other supervisors
       });
       
       setPromoteSupervisorDialogOpen(false);
@@ -308,7 +308,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         ?.staffMembers.map(s => s.id) || [];
       
       if (staffIds.length > 0) {
-        await onBulkUpdateEmployees(staffIds, { supervisorId: undefined });
+        await onBulkUpdateEmployees(staffIds, { supervisorId: null });
       }
 
       setDeleteConfirmOpen(false);
