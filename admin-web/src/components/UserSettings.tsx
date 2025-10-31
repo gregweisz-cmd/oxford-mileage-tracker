@@ -209,7 +209,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       setLoading(true);
       
       // Load employee data from API
-      const response = await fetch(`http://localhost:3002/api/employees/${employeeId}`);
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
       if (response.ok) {
         const employeeData = await response.json();
         console.log('🔍 Loaded employee data:', employeeData);
@@ -309,7 +310,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       console.log('Saving profile data:', updateData);
       
       // Update via API
-      const response = await fetch(`http://localhost:3002/api/employees/${employeeId}`, {
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
