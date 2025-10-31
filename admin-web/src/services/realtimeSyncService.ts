@@ -145,10 +145,14 @@ export class RealtimeSyncService {
           
         case 'data_update':
         case 'data_updated':  // Handle both types for backward compatibility
+          // Some messages have data, others are just notifications
           if (message.data) {
             this.handleDataUpdate(message.data);
           } else {
-            console.warn('⚠️ RealtimeSync: Received data_update/updated without data:', message);
+            // This is a notification-style message without data payload
+            // It's just telling us something changed, not what changed
+            console.log('🔄 RealtimeSync: Received change notification:', message);
+            // Could trigger a refresh here if needed
           }
           break;
           
