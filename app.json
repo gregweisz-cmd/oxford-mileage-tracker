@@ -18,8 +18,14 @@
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Oxford House Expense Tracker needs location access to automatically track mileage for Oxford House employees.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Oxford House Expense Tracker needs location access to continuously track mileage even when the app is in the background or your phone is locked.",
         "NSCameraUsageDescription": "Oxford House Expense Tracker needs camera access to take photos of receipts for expense tracking.",
-        "NSPhotoLibraryUsageDescription": "Oxford House Expense Tracker needs photo library access to select receipt images for expense tracking."
+        "NSPhotoLibraryUsageDescription": "Oxford House Expense Tracker needs photo library access to select receipt images for expense tracking.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {

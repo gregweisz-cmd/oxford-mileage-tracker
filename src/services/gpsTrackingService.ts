@@ -24,26 +24,45 @@ export class GpsTrackingService {
         return false;
       }
 
-      // Check current permission status first
-      const { status: currentStatus } = await Location.getForegroundPermissionsAsync();
-      console.log('🔐 GPS: Current permission status:', currentStatus);
+      // Check foreground permission status first
+      const { status: foregroundStatus } = await Location.getForegroundPermissionsAsync();
+      console.log('🔐 GPS: Foreground permission status:', foregroundStatus);
       
-      if (currentStatus === 'granted') {
-        console.log('✅ GPS: Location permissions already granted');
-        return true;
+      // Request foreground permissions if not granted
+      if (foregroundStatus !== 'granted') {
+        const { status: requestedForegroundStatus } = await Location.requestForegroundPermissionsAsync();
+        console.log('🔐 GPS: Foreground permission request result:', requestedForegroundStatus);
+        
+        if (requestedForegroundStatus !== 'granted') {
+          console.error('❌ GPS: Foreground location permission denied');
+          return false;
+        }
       }
 
-      // Request permissions if not already granted
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      console.log('🔐 GPS: Permission request result:', status);
-      
-      if (status === 'granted') {
-        console.log('✅ GPS: Location permissions granted');
-        return true;
-      } else {
-        console.error('❌ GPS: Location permission denied');
-        return false;
+      // Now try to get background permissions for tracking when app is backgrounded
+      try {
+        const { status: backgroundStatus } = await Location.getBackgroundPermissionsAsync();
+        console.log('🔐 GPS: Background permission status:', backgroundStatus);
+        
+        if (backgroundStatus !== 'granted') {
+          console.log('🔐 GPS: Requesting background location permissions...');
+          const { status: requestedBackgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+          console.log('🔐 GPS: Background permission request result:', requestedBackgroundStatus);
+          
+          if (requestedBackgroundStatus !== 'granted') {
+            console.log('⚠️ GPS: Background location permission denied - tracking will pause when app is in background');
+          } else {
+            console.log('✅ GPS: Background location permissions granted');
+          }
+        } else {
+          console.log('✅ GPS: Background location permissions already granted');
+        }
+      } catch (backgroundError) {
+        // Background permissions might not be available on all platforms
+        console.log('⚠️ GPS: Background permissions not available on this platform:', backgroundError);
       }
+
+      return true;
     } catch (error) {
       console.error('❌ GPS: Error requesting location permissions:', error);
       // If it's a prepareAsync error, try again after a longer delay
