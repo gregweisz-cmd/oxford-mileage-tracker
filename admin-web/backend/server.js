@@ -351,6 +351,57 @@ function broadcastToClients(message) {
   });
 }
 
+// Get all employees supervised by a supervisor (directly and indirectly) - Promise based
+function getAllSupervisedEmployees(supervisorId) {
+  return new Promise((resolve, reject) => {
+    const supervisedEmployees = new Set();
+    const visited = new Set();
+    
+    function findSupervisedRecursive(currentSupervisorId) {
+      // Prevent infinite loops
+      if (visited.has(currentSupervisorId)) {
+        return Promise.resolve();
+      }
+      visited.add(currentSupervisorId);
+      
+      return new Promise((innerResolve, innerReject) => {
+        // Find direct reports
+        db.all(
+          'SELECT id FROM employees WHERE supervisorId = ?',
+          [currentSupervisorId],
+          (err, rows) => {
+            if (err) {
+              console.error('Error finding supervised employees:', err);
+              innerReject(err);
+              return;
+            }
+            
+            // Add direct reports
+            rows.forEach(row => {
+              supervisedEmployees.add(row.id);
+            });
+            
+            // Recursively find reports of reports
+            const promises = rows.map(row => findSupervisedRecursive(row.id));
+            
+            // Wait for all recursive calls to complete
+            Promise.all(promises).then(() => {
+              innerResolve();
+            }).catch(innerReject);
+          }
+        );
+      });
+    }
+    
+    // Start recursive search
+    findSupervisedRecursive(supervisorId)
+      .then(() => {
+        resolve(Array.from(supervisedEmployees));
+      })
+      .catch(reject);
+  });
+}
+
 // Helper function to broadcast data changes
 function broadcastDataChange(type, action, data, employeeId = null) {
   const update = {
@@ -3973,46 +4024,41 @@ app.post('/api/biweekly-reports/:id/request-revision', (req, res) => {
   );
 });
 
-// Get pending biweekly reports for supervisor
-app.get('/api/biweekly-reports/supervisor/:supervisorId/pending', (req, res) => {
+// Get pending biweekly reports for supervisor (including cascading supervision)
+app.get('/api/biweekly-reports/supervisor/:supervisorId/pending', async (req, res) => {
   const { supervisorId } = req.params;
 
-  db.all(
-    'SELECT id FROM employees WHERE supervisorId = ?',
-    [supervisorId],
-    (err, employees) => {
-      if (err) {
-        console.error('❌ Error fetching supervised employees:', err);
-        res.status(500).json({ error: err.message });
-        return;
-      }
-
-      if (employees.length === 0) {
-        res.json([]);
-        return;
-      }
-
-      const employeeIds = employees.map(e => e.id);
-      const placeholders = employeeIds.map(() => '?').join(',');
-
-      db.all(
-        `SELECT br.*, e.name as employeeName, e.email as employeeEmail
-         FROM biweekly_reports br
-         JOIN employees e ON br.employeeId = e.id
-         WHERE br.employeeId IN (${placeholders}) AND br.status = 'submitted'
-         ORDER BY br.year DESC, br.month DESC, br.periodNumber DESC`,
-        employeeIds,
-        (err, reports) => {
-          if (err) {
-            console.error('❌ Error fetching pending biweekly reports:', err);
-            res.status(500).json({ error: err.message });
-            return;
-          }
-          res.json(reports);
-        }
-      );
+  try {
+    // Get all supervised employees (direct + indirect)
+    const supervisedEmployeeIds = await getAllSupervisedEmployees(supervisorId);
+    
+    if (supervisedEmployeeIds.length === 0) {
+      res.json([]);
+      return;
     }
-  );
+
+    const placeholders = supervisedEmployeeIds.map(() => '?').join(',');
+
+    db.all(
+      `SELECT br.*, e.name as employeeName, e.email as employeeEmail
+       FROM biweekly_reports br
+       JOIN employees e ON br.employeeId = e.id
+       WHERE br.employeeId IN (${placeholders}) AND br.status = 'submitted'
+       ORDER BY br.year DESC, br.month DESC, br.periodNumber DESC`,
+      supervisedEmployeeIds,
+      (err, reports) => {
+        if (err) {
+          console.error('❌ Error fetching pending biweekly reports:', err);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(reports);
+      }
+    );
+  } catch (error) {
+    console.error('❌ Error fetching supervised employees:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Delete biweekly report
@@ -4057,39 +4103,69 @@ app.post('/api/reports/submit', (req, res) => {
   );
 });
 
-// Get pending reports for supervisor
-app.get('/api/reports/pending/:supervisorId', (req, res) => {
+// Get pending reports for supervisor (including cascading supervision)
+app.get('/api/reports/pending/:supervisorId', async (req, res) => {
   const { supervisorId } = req.params;
   
-  db.all(
-    'SELECT * FROM report_status WHERE supervisorId = ? AND status = ? ORDER BY submittedAt ASC',
-    [supervisorId, 'pending'],
-    (err, rows) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json(rows);
+  try {
+    // Get all supervised employees (direct + indirect)
+    const supervisedEmployeeIds = await getAllSupervisedEmployees(supervisorId);
+    
+    if (supervisedEmployeeIds.length === 0) {
+      res.json([]);
+      return;
     }
-  );
+
+    const placeholders = supervisedEmployeeIds.map(() => '?').join(',');
+    
+    db.all(
+      `SELECT * FROM report_status WHERE employeeId IN (${placeholders}) AND status = ? ORDER BY submittedAt ASC`,
+      [...supervisedEmployeeIds, 'pending'],
+      (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      }
+    );
+  } catch (error) {
+    console.error('❌ Error fetching supervised employees:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Get report history for supervisor
-app.get('/api/reports/history/:supervisorId', (req, res) => {
+// Get report history for supervisor (including cascading supervision)
+app.get('/api/reports/history/:supervisorId', async (req, res) => {
   const { supervisorId } = req.params;
   const limit = req.query.limit || 50;
   
-  db.all(
-    'SELECT * FROM report_status WHERE supervisorId = ? ORDER BY COALESCE(reviewedAt, submittedAt) DESC LIMIT ?',
-    [supervisorId, limit],
-    (err, rows) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json(rows);
+  try {
+    // Get all supervised employees (direct + indirect)
+    const supervisedEmployeeIds = await getAllSupervisedEmployees(supervisorId);
+    
+    if (supervisedEmployeeIds.length === 0) {
+      res.json([]);
+      return;
     }
-  );
+
+    const placeholders = supervisedEmployeeIds.map(() => '?').join(',');
+    
+    db.all(
+      `SELECT * FROM report_status WHERE employeeId IN (${placeholders}) ORDER BY COALESCE(reviewedAt, submittedAt) DESC LIMIT ?`,
+      [...supervisedEmployeeIds, limit],
+      (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      }
+    );
+  } catch (error) {
+    console.error('❌ Error fetching supervised employees:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Get reports for employee
