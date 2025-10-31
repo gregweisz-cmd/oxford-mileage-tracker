@@ -30,6 +30,36 @@ function getNetworkIPs() {
   return ips;
 }
 
+// Generate a unique employee ID
+function generateEmployeeId(employeeName) {
+  if (!employeeName) {
+    return `emp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  }
+  
+  // Clean the name for ID generation
+  const cleanName = employeeName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+  const nameParts = cleanName.split('-').filter(p => p.length > 0);
+  
+  // Take first 3 significant parts (or all if less than 3)
+  const significantParts = nameParts.slice(0, 3);
+  const nameBase = significantParts.join('-').substring(0, 20);
+  
+  // Add timestamp and random suffix for uniqueness
+  const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).substring(2, 7);
+  
+  return `${nameBase}-${timestamp}-${randomSuffix}`;
+}
+
+// Generate a default password based on employee name
+function generateDefaultPassword(fullName) {
+  if (!fullName) {
+    return 'Welcome123!';
+  }
+  const firstName = fullName.split(' ')[0];
+  return `${firstName}welcome1`;
+}
+
 // Middleware - CORS configuration (allow all origins for mobile apps)
 app.use(cors({
   origin: function (origin, callback) {
@@ -1271,17 +1301,22 @@ app.post('/api/employees/bulk-create', (req, res) => {
     }
     
     const employee = employees[index];
-    const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    // Generate ID based on employee name
+    const id = generateEmployeeId(employee.name);
     const now = new Date().toISOString();
     
+    // Generate password if not provided
+    const employeePassword = employee.password || generateDefaultPassword(employee.name);
+    
     db.run(
-      'INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id,
         employee.name,
+        employee.preferredName || '',
         employee.email,
-        employee.password || '',
-        employee.oxfordHouseId,
+        employeePassword,
+        employee.oxfordHouseId || '',
         employee.position,
         employee.phoneNumber || '',
         employee.baseAddress || '',
@@ -1314,20 +1349,50 @@ app.post('/api/employees/bulk-create', (req, res) => {
 
 // Create new employee
 app.post('/api/employees', (req, res) => {
-  const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, supervisorId } = req.body;
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, preferredName, password } = req.body;
+  
+  // Validate required fields
+  if (!name || !email || !position) {
+    return res.status(400).json({ error: 'Name, email, and position are required' });
+  }
+  
+  // Generate ID based on employee name
+  const id = generateEmployeeId(name);
   const now = new Date().toISOString();
+  
+  // Generate password if not provided
+  const employeePassword = password || generateDefaultPassword(name);
+  
+  console.log('📝 Creating new employee:', { id, name, email });
 
   db.run(
-    'INSERT INTO employees (id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2 || '', costCenters || '[]', supervisorId || null, now, now],
+    'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      id, 
+      name, 
+      preferredName || '', 
+      email, 
+      employeePassword,
+      oxfordHouseId || '', 
+      position, 
+      phoneNumber || '', 
+      baseAddress || '', 
+      baseAddress2 || '', 
+      typeof costCenters === 'string' ? costCenters : JSON.stringify(costCenters || []),
+      typeof selectedCostCenters === 'string' ? selectedCostCenters : JSON.stringify(selectedCostCenters || costCenters || []),
+      defaultCostCenter || '',
+      supervisorId || null, 
+      now, 
+      now
+    ],
     function(err) {
       if (err) {
         console.error('Database error:', err.message);
         res.status(500).json({ error: err.message });
         return;
       }
-      res.json({ id, message: 'Employee created successfully' });
+      console.log('✅ Employee created successfully:', id);
+      res.json({ id, message: 'Employee created successfully', temporaryPassword: !password ? employeePassword : undefined });
     }
   );
 });
