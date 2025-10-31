@@ -2809,7 +2809,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         link.href = url;
         
         // Generate filename matching Staff Portal format: LASTNAME,FIRSTNAME EXPENSES MMM-YY.pdf
-        const nameParts = (employeeData.preferredName || employeeData.name).split(' ');
+        // Always use full legal name for filename, not preferred name
+        const nameParts = employeeData.name.split(' ');
         const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
         const firstName = nameParts[0] || 'UNKNOWN';
         const monthNamesShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];

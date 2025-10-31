@@ -145,7 +145,11 @@ export class RealtimeSyncService {
           
         case 'data_update':
         case 'data_updated':  // Handle both types for backward compatibility
-          this.handleDataUpdate(message.data);
+          if (message.data) {
+            this.handleDataUpdate(message.data);
+          } else {
+            console.warn('⚠️ RealtimeSync: Received data_update/updated without data:', message);
+          }
           break;
           
         case 'sync_request':
@@ -165,6 +169,12 @@ export class RealtimeSyncService {
    */
   private handleDataUpdate(update: RealtimeUpdate): void {
     console.log('🔄 RealtimeSync: Received data update:', update);
+    
+    // Skip if update is undefined or missing type
+    if (!update || !update.type) {
+      console.warn('⚠️ RealtimeSync: Skipping invalid update:', update);
+      return;
+    }
     
     // Notify all listeners for this data type
     const listeners = this.listeners.get(update.type) || [];
