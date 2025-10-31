@@ -903,13 +903,9 @@ function ensureTablesExist() {
 
       console.log('✅ All tables ensured to exist with sample data');
       
-      // Clean up duplicate entries (mileage, time tracking, etc.)
-      cleanupDuplicates().then(() => {
+      // REMOVED: cleanupDuplicates() - was deleting employees incorrectly
+      
       resolve();
-      }).catch((err) => {
-        console.error('❌ Error during cleanup, but continuing:', err);
-        resolve(); // Still resolve even if cleanup fails
-      });
     });
   });
 }
