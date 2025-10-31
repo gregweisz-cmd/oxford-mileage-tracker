@@ -139,6 +139,7 @@ export class RealtimeSyncService {
           break;
           
         case 'data_update':
+        case 'data_updated':  // Handle both types for backward compatibility
           this.handleDataUpdate(message.data);
           break;
           

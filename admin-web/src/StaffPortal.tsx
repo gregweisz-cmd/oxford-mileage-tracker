@@ -1152,34 +1152,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     } catch (error) {
       console.error('❌ Error saving to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-    
-    // Auto-save changes to backend and sync to source tables
-    try {
-      const reportData = {
-        ...employeeData,
-        receipts: receipts,
-        dailyDescriptions: dailyDescriptions,
-        employeeSignature: signatureImage,
-        supervisorSignature: supervisorSignatureState
-      };
-  
-      await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          employeeId: employeeData.employeeId,
-          month: reportMonth,
-          year: reportYear,
-          reportData: reportData
-        }),
-      });
-      
-      console.log('✅ Timesheet changes auto-saved and synced to source tables');
-    } catch (error) {
-      console.error('Error auto-saving timesheet changes:', error);
+      return; // Don't continue if save failed
     }
     
     // Clear editing state
@@ -1272,35 +1245,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     } catch (error) {
       console.error('❌ Error saving category hours to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return; // Don't continue if save failed
     }
     
-    // Auto-save changes to backend and sync to source tables
-    try {
-      const reportData = {
-        ...employeeData,
-        receipts: receipts,
-        dailyDescriptions: dailyDescriptions,
-        employeeSignature: signatureImage,
-        supervisorSignature: supervisorSignatureState
-      };
-
-      await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          employeeId: employeeData.employeeId,
-          month: reportMonth,
-          year: reportYear,
-          reportData: reportData
-        }),
-      });
-      
-      console.log('✅ Category hours synced to source tables');
-    } catch (error) {
-      console.error('Error syncing category hours:', error);
-    }
+    // Clear editing state
+    setEditingCategoryCell(null);
+    setEditingCategoryValue('');
     
     // Refresh timesheet data to show updated values
     await refreshTimesheetData(employeeData);
