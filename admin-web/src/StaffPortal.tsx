@@ -1339,7 +1339,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Remove signature
   const handleRemoveSignature = async () => {
     setSignatureImage(null);
-    setSavedSignature(null); // Also clear saved signature
+    // Don't clear savedSignature - user may want to re-import it later
     
     // Auto-save signature removal
     if (employeeData) {
@@ -1365,21 +1365,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         });
         
         console.log('✅ Signature removal synced to expense report');
-        
-        // Also remove from user settings in the backend
-        await fetch(`${API_BASE_URL}/api/employees/${employeeData.employeeId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            signature: null
-          }),
-        });
-        
-        console.log('✅ Signature removed from user settings');
         setSignatureDialogOpen(false);
-        showSuccess('Signature removed from Settings and this report');
+        showSuccess('Signature removed from this report');
       } catch (error) {
         console.error('Error removing signature:', error);
         showError('Failed to remove signature');
