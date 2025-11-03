@@ -170,12 +170,12 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         {/* Left Section - Logo and Title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 300 }}>
           <OxfordHouseLogo size={36} />
-          <Box>
-            <Typography variant="h6" component="h1" sx={{ fontWeight: 'bold', fontSize: '1rem' }}>
+          <Box sx={{ lineHeight: 1.2 }}>
+            <Typography variant="h6" component="h1" sx={{ fontWeight: 'bold', fontSize: '0.95rem', lineHeight: 1.2 }}>
               {title}
             </Typography>
             {subtitle && (
-              <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
+              <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem', lineHeight: 1.2, display: 'block' }}>
                 {subtitle}
               </Typography>
             )}
@@ -183,7 +183,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         </Box>
 
         {/* Center Section - Employee Info, Date Selectors, and Status */}
-        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2.5 }}>
           {/* Employee Info with Date Selectors */}
           {employeeName && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -249,7 +249,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
 
           {/* Real-time Status */}
           {showRealTimeStatus && (
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', ml: -1.25 }}>
               <RealtimeStatusIndicator compact onRefresh={handleRefresh} />
             </Box>
           )}
