@@ -76,6 +76,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [perDiemStats, setPerDiemStats] = useState<any>(null);
   const [isEditingTiles, setIsEditingTiles] = useState(false);
   const [dashboardTiles, setDashboardTiles] = useState<TileConfig[]>([]);
+  
+  // Month/Year selector state
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [showMonthYearModal, setShowMonthYearModal] = useState(false);
 
   // Generate dynamic styles based on theme
   const dynamicStyles = StyleSheet.create({
@@ -1106,6 +1112,16 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         </TouchableOpacity>
       </View>
 
+      {/* Month/Year Selector */}
+      <View style={dynamicStyles.costCenterSection}>
+        <TouchableOpacity onPress={() => setShowMonthYearModal(true)} style={styles.costCenterContainer}>
+          <Text style={dynamicStyles.costCenterText}>
+            Viewing: {new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </Text>
+          <MaterialIcons name="edit" size={16} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
       {/* Batch Mode Indicator */}
       {isBatchMode && (
         <View style={styles.batchModeIndicator}>
@@ -1585,6 +1601,92 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 disabled={selectedCostCenters.length === 0}
               >
                 <Text style={styles.costCentersModalConfirmButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Month/Year Selector Modal */}
+      <Modal
+        visible={showMonthYearModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowMonthYearModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={dynamicStyles.modalContent}>
+            <Text style={dynamicStyles.modalTitle}>Select Month and Year</Text>
+            
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Month</Text>
+              <ScrollView style={{ maxHeight: 200 }}>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                  <TouchableOpacity
+                    key={month}
+                    style={{
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      backgroundColor: selectedMonth === month ? colors.primary : 'transparent',
+                      borderRadius: 8,
+                      marginBottom: 4,
+                    }}
+                    onPress={() => setSelectedMonth(month)}
+                  >
+                    <Text style={{
+                      fontSize: 16,
+                      color: selectedMonth === month ? '#fff' : colors.text,
+                      fontWeight: selectedMonth === month ? '600' : '400',
+                    }}>
+                      {new Date(2024, month - 1, 1).toLocaleDateString('en-US', { month: 'long' })}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Year</Text>
+              <ScrollView style={{ maxHeight: 200 }}>
+                {Array.from({ length: 10 }, (_, i) => now.getFullYear() - i).map((year) => (
+                  <TouchableOpacity
+                    key={year}
+                    style={{
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      backgroundColor: selectedYear === year ? colors.primary : 'transparent',
+                      borderRadius: 8,
+                      marginBottom: 4,
+                    }}
+                    onPress={() => setSelectedYear(year)}
+                  >
+                    <Text style={{
+                      fontSize: 16,
+                      color: selectedYear === year ? '#fff' : colors.text,
+                      fontWeight: selectedYear === year ? '600' : '400',
+                    }}>
+                      {year}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={dynamicStyles.modalButtonSecondary} 
+                onPress={() => setShowMonthYearModal(false)}
+              >
+                <Text style={dynamicStyles.modalButtonSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={dynamicStyles.modalButtonPrimary} 
+                onPress={() => {
+                  setShowMonthYearModal(false);
+                  loadData(); // Reload data with new month/year
+                }}
+              >
+                <Text style={dynamicStyles.modalButtonPrimaryText}>Done</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2415,12 +2517,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginHorizontal: 20,
     marginBottom: 12,
-  },
-  syncStatusText: {
-    fontSize: 12,
-    color: '#2e7d32',
-    marginLeft: 6,
-    fontWeight: '500',
   },
   // Draggable Tiles Styles
   actionsHeader: {

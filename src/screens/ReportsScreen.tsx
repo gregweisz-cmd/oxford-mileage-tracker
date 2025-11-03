@@ -40,10 +40,15 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
   });
   const [currentMonthReportStatus, setCurrentMonthReportStatus] = useState<MonthlyReportStatus | null>(null);
   const [submittingReport, setSubmittingReport] = useState(false);
+  
+  // State for selected month/year
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedMonth, selectedYear]);
 
   const loadData = async () => {
     try {
@@ -56,18 +61,17 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
         const employeeReports = await DatabaseService.getMonthlyReports(employee.id);
         setReports(employeeReports);
         
-        // Load daily summaries for the current month
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        // Load daily summaries for the selected month
+        const startOfMonth = new Date(selectedYear, selectedMonth - 1, 1);
+        const endOfMonth = new Date(selectedYear, selectedMonth, 0);
         const summaries = await DailyMileageService.getDailyMileageSummaries(employee.id, startOfMonth, endOfMonth);
         setDailySummaries(summaries);
         
-        // Load current month's report status from backend
+        // Load selected month's report status from backend
         const reportStatus = await MonthlyReportService.getMonthlyReport(
           employee.id,
-          now.getFullYear(),
-          now.getMonth() + 1
+          selectedYear,
+          selectedMonth
         );
         setCurrentMonthReportStatus(reportStatus);
       }
@@ -180,10 +184,6 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
   const submitReportForApproval = async () => {
     if (!currentEmployee) return;
 
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-
     // Check if report already submitted
     if (currentMonthReportStatus && currentMonthReportStatus.status !== 'draft' && currentMonthReportStatus.status !== 'needs_revision') {
       Alert.alert(
@@ -194,9 +194,9 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
       return;
     }
 
-    // Calculate totals for the current month
-    const entries = await DatabaseService.getMileageEntries(currentEmployee.id, currentMonth, currentYear);
-    const receipts = await DatabaseService.getReceipts(currentEmployee.id, currentMonth, currentYear);
+    // Calculate totals for the selected month
+    const entries = await DatabaseService.getMileageEntries(currentEmployee.id, selectedMonth, selectedYear);
+    const receipts = await DatabaseService.getReceipts(currentEmployee.id, selectedMonth, selectedYear);
     
     const totalMiles = entries.reduce((sum, entry) => sum + entry.miles, 0);
     const totalExpenses = receipts.reduce((sum, receipt) => sum + receipt.amount, 0);
@@ -206,9 +206,10 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
       return;
     }
 
+    const monthDate = new Date(selectedYear, selectedMonth - 1, 1);
     Alert.alert(
       'Submit Report for Approval',
-      `You are about to submit your ${now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} report:\n\n` +
+      `You are about to submit your ${monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} report:\n\n` +
       `• ${totalMiles.toFixed(1)} miles\n` +
       `• $${totalExpenses.toFixed(2)} in expenses\n\n` +
       `Once submitted, you won't be able to edit entries for this month until your supervisor reviews it.\n\n` +
@@ -226,8 +227,8 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
               const reportResult = await MonthlyReportService.saveMonthlyReport({
                 id: currentMonthReportStatus?.id,
                 employeeId: currentEmployee.id,
-                month: currentMonth,
-                year: currentYear,
+                month: selectedMonth,
+                year: selectedYear,
                 totalMiles,
                 totalExpenses,
                 status: 'draft', // First save as draft
