@@ -213,8 +213,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
       if (response.ok) {
         const employeeData = await response.json();
-        console.log('🔍 Loaded employee data:', employeeData);
-        console.log('🔍 preferredName from API:', employeeData.preferredName);
         
         // Parse cost centers if they're stored as JSON string
         let costCenters = ['NC.F-SAPTBG']; // Default fallback
@@ -288,8 +286,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   };
 
   const handleSaveProfile = async () => {
-    console.log('🚀 handleSaveProfile called');
-    console.log('📝 Current profile.preferredName:', profile.preferredName);
     setLoading(true);
     try {
       // Prepare data for API update
@@ -308,10 +304,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         signature: profile.signature,
       };
       
-      // Log the data being sent
-      console.log('💾 SAVING profile data:', updateData);
-      console.log('💾 preferredName value:', profile.preferredName);
-      
       // Update via API
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
       const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
@@ -324,15 +316,12 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ Save response from server:', result);
         showMessage('success', 'Profile updated successfully!');
         if (onSettingsUpdate) {
           onSettingsUpdate(profile);
         }
         // Reload the profile to confirm changes were saved
-        console.log('🔄 Reloading profile to verify changes...');
         await loadUserProfile();
-        console.log('✅ Profile reloaded after save');
       } else {
         const errorData = await response.json();
         console.error('Server error response:', errorData);
@@ -789,21 +778,11 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       </Box>
 
       {/* Save Button */}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-        <Typography variant="body2" color="text.secondary">
-          Version: a22ee42
-        </Typography>
+      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
         <Button
           variant="contained"
-          color="primary"
           startIcon={<SaveIcon />}
-          onClick={(e) => {
-            console.log('🔘 Save button clicked!');
-            console.log('🔘 Event:', e);
-            console.log('🔘 Button type:', e.currentTarget.type);
-            e.preventDefault();
-            handleSaveProfile();
-          }}
+          onClick={handleSaveProfile}
           disabled={loading}
           sx={{ minWidth: 120 }}
         >
