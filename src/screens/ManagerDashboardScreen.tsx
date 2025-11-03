@@ -106,7 +106,8 @@ export default function ManagerDashboardScreen({ navigation }: ManagerDashboardS
           selectedMonth.getMonth() + 1,
           selectedMonth.getFullYear(),
           monthEntries,
-          employee
+          employee,
+          monthReceipts
         );
         
         const expenseBreakdown = PerDiemService.getExpenseBreakdown(

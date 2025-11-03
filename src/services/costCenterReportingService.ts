@@ -155,7 +155,8 @@ export class CostCenterReportingService {
         month,
         year,
         data.mileageEntries,
-        employee || { id: employeeId, name: '', email: '', password: '', oxfordHouseId: '', position: '', baseAddress: '', costCenters: [], selectedCostCenters: [], createdAt: new Date(), updatedAt: new Date() }
+        employee || { id: employeeId, name: '', email: '', password: '', oxfordHouseId: '', position: '', baseAddress: '', costCenters: [], selectedCostCenters: [], createdAt: new Date(), updatedAt: new Date() },
+        data.receipts
       );
       const costCenterPerDiem = perDiemCalculation.totalPerDiem;
       

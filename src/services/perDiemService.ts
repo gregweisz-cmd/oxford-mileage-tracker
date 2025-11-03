@@ -1,5 +1,6 @@
-import { MileageEntry, Employee } from '../types';
+import { MileageEntry, Employee, Receipt } from '../types';
 import { PerDiemRulesService, PerDiemRule } from './perDiemRulesService';
+import { DistanceService } from './distanceService';
 
 export interface PerDiemCalculation {
   totalPerDiem: number;
@@ -13,6 +14,7 @@ export interface PerDiemDay {
   hoursWorked: number;
   milesDriven: number;
   distanceFromBase: number;
+  isOvernight: boolean;
   isEligible: boolean;
   reason: string;
   amount: number;
@@ -34,7 +36,8 @@ export class PerDiemService {
     month: number,
     year: number,
     entries: MileageEntry[],
-    employee: Employee
+    employee: Employee,
+    receipts?: Receipt[]
   ): Promise<PerDiemCalculation> {
     // Filter entries for the specified month
     const monthEntries = entries.filter(entry => {
@@ -49,9 +52,13 @@ export class PerDiemService {
     let totalPerDiem = 0;
     let eligibleDays = 0;
 
+    // Group receipts by date for overnight stay detection
+    const receiptsByDate = receipts ? this.groupReceiptsByDate(receipts) : new Map();
+    
     for (const [dateStr, dayEntries] of entriesByDate) {
       const date = new Date(dateStr);
-      const dayCalculation = await this.calculateDayPerDiem(date, dayEntries, employee);
+      const dayReceipts = receiptsByDate.get(dateStr) || [];
+      const dayCalculation = await this.calculateDayPerDiem(date, dayEntries, employee, dayReceipts);
       
       breakdown.push(dayCalculation);
       
@@ -78,51 +85,63 @@ export class PerDiemService {
   private static async calculateDayPerDiem(
     date: Date,
     dayEntries: MileageEntry[],
-    employee: Employee
+    employee: Employee,
+    dayReceipts: Receipt[] = []
   ): Promise<PerDiemDay> {
     const totalHours = dayEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
     const totalMiles = dayEntries.reduce((sum, entry) => sum + entry.miles, 0);
     
-    // Calculate distance from base address (simplified - would need geocoding in real implementation)
-    const distanceFromBase = this.calculateDistanceFromBase(dayEntries, employee.baseAddress);
-    
-    // Get the employee's cost center (use default if none specified)
-    const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
-    
-    // Get Per Diem calculation using rules
-    const perDiemResult = await PerDiemRulesService.calculatePerDiem(
-      costCenter,
-      totalHours,
-      totalMiles,
-      distanceFromBase,
-      0 // actualExpenses - would need to be calculated from receipts for this day
+    // Check for overnight stay - look for lodging receipts (Hotels/AirBnB)
+    const isOvernight = dayReceipts.some(receipt => 
+      receipt.category === 'Hotels/AirBnB' || 
+      receipt.category === 'Lodging' ||
+      receipt.vendor.toLowerCase().includes('hotel') ||
+      receipt.vendor.toLowerCase().includes('motel') ||
+      receipt.vendor.toLowerCase().includes('inn') ||
+      receipt.vendor.toLowerCase().includes('airbnb')
     );
-
+    
+    // Calculate distance from base address using Google Maps geocoding
+    const distanceFromBase = await this.calculateDistanceFromBase(dayEntries, employee.baseAddress);
+    
+    // New eligibility rules:
+    // 1. Must work 8+ hours (always required)
+    // 2. Must meet ONE of the following:
+    //    - Stay overnight away from base (50+ miles from base) OR
+    //    - Drive 100+ miles in the day
+    
+    const meetsHoursRequirement = totalHours >= this.MIN_HOURS_FOR_PER_DIEM;
+    const isOvernightAwayFromBase = isOvernight && distanceFromBase >= this.MIN_DISTANCE_FROM_BASE;
+    const droveEnough = totalMiles >= this.MIN_MILES_FOR_PER_DIEM;
+    
+    // Eligibility: 8+ hours AND (overnight 50+ miles away OR 100+ miles driven)
+    const isEligible = meetsHoursRequirement && (isOvernightAwayFromBase || droveEnough);
+    
     let reason = '';
-    if (!perDiemResult.meetsRequirements) {
-      const rule = perDiemResult.rule;
-      if (rule) {
-        const unmetRequirements = [];
-        if (totalHours < rule.minHours) {
-          unmetRequirements.push(`${totalHours.toFixed(1)}h < ${rule.minHours}h required`);
-        }
-        if (totalMiles < rule.minMiles) {
-          unmetRequirements.push(`${totalMiles.toFixed(1)}mi < ${rule.minMiles}mi required`);
-        }
-        if (distanceFromBase < rule.minDistanceFromBase) {
-          unmetRequirements.push(`${distanceFromBase.toFixed(1)}mi from base < ${rule.minDistanceFromBase}mi required`);
-        }
-        reason = `Requirements not met: ${unmetRequirements.join(', ')}`;
-      } else {
-        reason = 'No Per Diem rule found for cost center';
+    let amount = 0;
+    
+    if (!meetsHoursRequirement) {
+      reason = `Not eligible: Only ${totalHours.toFixed(1)}h worked (8h required)`;
+    } else if (isEligible) {
+      amount = this.PER_DIEM_RATE;
+      if (isOvernightAwayFromBase) {
+        reason = `Eligible: Overnight stay ${distanceFromBase.toFixed(1)}mi from base + ${totalHours.toFixed(1)}h worked`;
+      } else if (droveEnough) {
+        reason = `Eligible: ${totalMiles.toFixed(1)}mi driven + ${totalHours.toFixed(1)}h worked`;
       }
     } else {
-      const rule = perDiemResult.rule;
-      if (rule) {
-        reason = `${rule.useActualAmount ? 'Actual expenses' : 'Fixed amount'} (${rule.maxAmount.toFixed(2)}) - Requirements met`;
-      } else {
-        reason = `Default rate (${this.PER_DIEM_RATE}) - Requirements met`;
+      const missingCriteria = [];
+      if (!isOvernightAwayFromBase && !droveEnough) {
+        if (!isOvernight) {
+          missingCriteria.push('no overnight stay away from base');
+        } else {
+          missingCriteria.push(`overnight only ${distanceFromBase.toFixed(1)}mi from base (50mi required)`);
+        }
+        if (totalMiles < this.MIN_MILES_FOR_PER_DIEM) {
+          missingCriteria.push(`only ${totalMiles.toFixed(1)}mi driven (100mi required)`);
+        }
       }
+      reason = `Not eligible: ${missingCriteria.join(', ')}`;
     }
 
     return {
@@ -130,10 +149,11 @@ export class PerDiemService {
       hoursWorked: totalHours,
       milesDriven: totalMiles,
       distanceFromBase,
-      isEligible: perDiemResult.meetsRequirements,
+      isOvernight,
+      isEligible,
       reason,
-      amount: perDiemResult.amount,
-      rule: perDiemResult.rule || undefined
+      amount,
+      rule: undefined
     };
   }
 
@@ -155,22 +175,64 @@ export class PerDiemService {
   }
 
   /**
-   * Calculate approximate distance from base address
-   * This is a simplified calculation - in a real implementation you'd use geocoding
+   * Group receipts by date
    */
-  private static calculateDistanceFromBase(entries: MileageEntry[], baseAddress: string): number {
-    // For now, we'll use a simple heuristic based on the entries
-    // In a real implementation, you'd geocode the base address and calculate actual distances
+  private static groupReceiptsByDate(receipts: Receipt[]): Map<string, Receipt[]> {
+    const grouped = new Map<string, Receipt[]>();
     
-    if (!baseAddress || baseAddress.trim() === '') {
+    receipts.forEach(receipt => {
+      const dateStr = receipt.date.toISOString().split('T')[0]; // YYYY-MM-DD format
+      if (!grouped.has(dateStr)) {
+        grouped.set(dateStr, []);
+      }
+      grouped.get(dateStr)!.push(receipt);
+    });
+    
+    return grouped;
+  }
+
+  /**
+   * Calculate maximum distance from base address across all entries for a day
+   * Uses Google Maps API geocoding for accurate distance calculation
+   */
+  private static async calculateDistanceFromBase(entries: MileageEntry[], baseAddress: string): Promise<number> {
+    if (!baseAddress || baseAddress.trim() === '' || !entries || entries.length === 0) {
       return 0;
     }
 
-    // Simple heuristic: if any entry has location details with coordinates, 
-    // we could calculate distance. For now, return 0 as placeholder.
-    // This would need to be implemented with actual geocoding service.
-    
-    return 0; // Placeholder - would need geocoding implementation
+    try {
+      // Get the furthest location from base for this day's entries
+      let maxDistance = 0;
+      
+      for (const entry of entries) {
+        // Check start location
+        if (entry.startLocation && entry.startLocation.trim() !== '' && entry.startLocation !== 'BA') {
+          try {
+            const distance = await DistanceService.calculateDistance(baseAddress, entry.startLocation);
+            maxDistance = Math.max(maxDistance, distance);
+          } catch (error) {
+            console.warn(`Could not calculate distance to start location: ${entry.startLocation}`, error);
+          }
+        }
+        
+        // Check end location
+        if (entry.endLocation && entry.endLocation.trim() !== '' && entry.endLocation !== 'BA') {
+          try {
+            const distance = await DistanceService.calculateDistance(baseAddress, entry.endLocation);
+            maxDistance = Math.max(maxDistance, distance);
+          } catch (error) {
+            console.warn(`Could not calculate distance to end location: ${entry.endLocation}`, error);
+          }
+        }
+      }
+      
+      return Math.round(maxDistance * 10) / 10; // Round to nearest tenth
+    } catch (error) {
+      console.error('Error calculating distance from base address:', error);
+      // Return 0 on error - this will make the day ineligible for per diem
+      // User can manually adjust if needed
+      return 0;
+    }
   }
 
   /**
