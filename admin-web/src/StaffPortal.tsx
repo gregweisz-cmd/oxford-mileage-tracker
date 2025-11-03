@@ -39,6 +39,7 @@ import {
   Delete as DeleteIcon,
   Close as CloseIcon,
   CloudUpload as UploadIcon,
+  CloudDownload as CloudDownloadIcon,
   Check as CheckIcon,
 } from '@mui/icons-material';
 
@@ -3107,6 +3108,53 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </Box>
                       )}
                     </Box>
+                    {/* Import Saved Signature Button */}
+                    {savedSignature && (!signatureImage || signatureImage !== savedSignature) && (
+                      <Box sx={{ mt: 1 }}>
+                        <Button
+                          variant="text"
+                          size="small"
+                          onClick={async () => {
+                            setSignatureImage(savedSignature);
+                            
+                            // Auto-save to expense report
+                            if (employeeData) {
+                              try {
+                                const reportData = {
+                                  ...employeeData,
+                                  receipts: receipts,
+                                  employeeSignature: savedSignature,
+                                  supervisorSignature: supervisorSignatureState
+                                };
+
+                                await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    employeeId: employeeData.employeeId,
+                                    month: currentMonth,
+                                    year: currentYear,
+                                    reportData: reportData
+                                  }),
+                                });
+                                
+                                console.log('✅ Imported saved signature to report');
+                                showSuccess('Saved signature imported');
+                              } catch (error) {
+                                console.error('Error importing signature:', error);
+                                showError('Failed to import signature');
+                              }
+                            }
+                          }}
+                          startIcon={<CloudDownloadIcon />}
+                          sx={{ fontSize: '0.8rem', textTransform: 'none' }}
+                        >
+                          Import Saved Signature
+                        </Button>
+                      </Box>
+                    )}
                     <Typography variant="body2" color="textSecondary">{employeeData.name}</Typography>
                     <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
                   </Box>
