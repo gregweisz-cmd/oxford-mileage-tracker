@@ -779,6 +779,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           })));
           setDailyDescriptions(dailyDescriptions);
           
+          // Load signature from employee data
+          if (employee.signature) {
+            setSignatureImage(employee.signature);
+          }
+          
           // Refresh timesheet data to load actual hours from database
           await refreshTimesheetData(expenseData);
       } catch (error) {
