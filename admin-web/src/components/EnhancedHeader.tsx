@@ -134,72 +134,75 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         // Prevent shrinking on scroll
         transform: 'none !important',
         transition: 'none !important',
-        // Increase height to accommodate subtitle text
-        height: '80px !important',
-        minHeight: '80px !important',
-        maxHeight: '80px !important',
+        // More compact height
+        height: '60px !important',
+        minHeight: '60px !important',
+        maxHeight: '60px !important',
         // Override any potential CSS that might cause shrinking
         '&.MuiAppBar-root': {
-          height: '80px !important',
-          minHeight: '80px !important',
-          maxHeight: '80px !important',
+          height: '60px !important',
+          minHeight: '60px !important',
+          maxHeight: '60px !important',
           transform: 'none !important',
           transition: 'none !important'
         }
       }}
     >
       <Toolbar sx={{ 
-        minHeight: '80px !important',
-        height: '80px !important',
-        maxHeight: '80px !important',
+        minHeight: '60px !important',
+        height: '60px !important',
+        maxHeight: '60px !important',
         // Prevent any scaling or transformation
         transform: 'none !important',
         transition: 'none !important',
         // Ensure padding is consistent
-        paddingTop: '8px !important',
-        paddingBottom: '8px !important',
+        paddingTop: '4px !important',
+        paddingBottom: '4px !important',
         // Override any potential CSS that might cause shrinking
         '&.MuiToolbar-root': {
-          minHeight: '80px !important',
-          height: '80px !important',
-          maxHeight: '80px !important',
+          minHeight: '60px !important',
+          height: '60px !important',
+          maxHeight: '60px !important',
           transform: 'none !important',
           transition: 'none !important'
         }
       }}>
-        {/* Left Section - Logo, Title and Info */}
-        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
-          <OxfordHouseLogo size={40} />
+        {/* Left Section - Logo and Title */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 300 }}>
+          <OxfordHouseLogo size={36} />
           <Box>
-            <Typography variant="h6" component="h1" sx={{ fontWeight: 'bold' }}>
+            <Typography variant="h6" component="h1" sx={{ fontWeight: 'bold', fontSize: '1rem' }}>
               {title}
             </Typography>
             {subtitle && (
-              <Typography variant="body2" color="textSecondary">
+              <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
                 {subtitle}
               </Typography>
             )}
           </Box>
+        </Box>
 
-          {/* Employee Info */}
+        {/* Center Section - Employee Info, Date Selectors, and Status */}
+        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+          {/* Employee Info with Date Selectors */}
           {employeeName && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ width: 28, height: 28, bgcolor: 'primary.main' }}>
                 {employeeName.charAt(0).toUpperCase()}
               </Avatar>
               <Box>
-                <Typography variant="body2" fontWeight="medium">
+                <Typography variant="body2" fontWeight="medium" sx={{ fontSize: '0.85rem' }}>
                   {employeeName}
                 </Typography>
                 {reportMonth && reportYear && onMonthYearChange && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <FormControl size="small" sx={{ minWidth: 80 }}>
+                    <FormControl size="small" sx={{ minWidth: 70 }}>
                       <Select
                         value={reportMonth}
                         onChange={(e) => onMonthYearChange(Number(e.target.value), reportYear)}
                         variant="standard"
                         disableUnderline
-                        sx={{ fontSize: '0.75rem', fontWeight: 400 }}
+                        sx={{ fontSize: '0.7rem', fontWeight: 400 }}
                       >
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
                           <MenuItem key={m} value={m} sx={{ fontSize: '0.75rem' }}>
@@ -208,13 +211,13 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                         ))}
                       </Select>
                     </FormControl>
-                    <FormControl size="small" sx={{ minWidth: 60 }}>
+                    <FormControl size="small" sx={{ minWidth: 55 }}>
                       <Select
                         value={reportYear}
                         onChange={(e) => onMonthYearChange(reportMonth, Number(e.target.value))}
                         variant="standard"
                         disableUnderline
-                        sx={{ fontSize: '0.75rem', fontWeight: 400 }}
+                        sx={{ fontSize: '0.7rem', fontWeight: 400 }}
                       >
                         {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map(y => (
                           <MenuItem key={y} value={y} sx={{ fontSize: '0.75rem' }}>
@@ -226,7 +229,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   </Box>
                 )}
                 {reportMonth && reportYear && !onMonthYearChange && (
-                  <Typography variant="caption" color="textSecondary">
+                  <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
                     {getMonthName(reportMonth)} {reportYear}
                   </Typography>
                 )}
@@ -241,42 +244,21 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
             color={getStatusColor()}
             size="small"
             variant="outlined"
+            sx={{ height: 24 }}
           />
+
+          {/* Real-time Status */}
+          {showRealTimeStatus && (
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <RealtimeStatusIndicator compact onRefresh={handleRefresh} />
+            </Box>
+          )}
         </Box>
 
-        {/* Center Section - Real-time Status */}
-        {showRealTimeStatus && (
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <RealtimeStatusIndicator compact onRefresh={handleRefresh} />
-          </Box>
-        )}
-
         {/* Right Section - Actions */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
-          {/* Refresh Button */}
-          <Tooltip title="Refresh Data">
-            <IconButton
-              onClick={handleRefresh}
-              disabled={loading}
-              size="small"
-            >
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
-
-          {/* Notifications */}
-          {notifications > 0 && (
-            <Tooltip title={`${notifications} notifications`}>
-              <IconButton size="small">
-                <Badge badgeContent={notifications} color="error">
-                  <NotificationsIcon />
-                </Badge>
-              </IconButton>
-            </Tooltip>
-          )}
-
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 'auto' }}>
           {/* Action Buttons */}
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
             {onSignatureCapture && (
               <Button
                 variant="outlined"
@@ -351,15 +333,29 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
             )}
           </Box>
 
-          {/* Settings Menu */}
-          <Tooltip title="Settings">
-            <IconButton
-              onClick={handleMenuOpen}
-              size="small"
-            >
-              <AccountIcon />
-            </IconButton>
-          </Tooltip>
+          {/* Settings and Refresh */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 0.5 }}>
+            {/* Refresh Button */}
+            <Tooltip title="Refresh Data">
+              <IconButton
+                onClick={handleRefresh}
+                disabled={loading}
+                size="small"
+              >
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+
+            {/* Settings Menu */}
+            <Tooltip title="Settings">
+              <IconButton
+                onClick={handleMenuOpen}
+                size="small"
+              >
+                <AccountIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
 
           <Menu
             anchorEl={anchorEl}
