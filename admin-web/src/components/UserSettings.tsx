@@ -288,6 +288,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   };
 
   const handleSaveProfile = async () => {
+    console.log('🚀 handleSaveProfile called');
+    console.log('📝 Current profile.preferredName:', profile.preferredName);
     setLoading(true);
     try {
       // Prepare data for API update
