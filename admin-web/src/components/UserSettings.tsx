@@ -789,12 +789,18 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       </Box>
 
       {/* Save Button */}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+        <Typography variant="body2" color="text.secondary">
+          Version: a22ee42
+        </Typography>
         <Button
           variant="contained"
+          color="primary"
           startIcon={<SaveIcon />}
           onClick={(e) => {
             console.log('🔘 Save button clicked!');
+            console.log('🔘 Event:', e);
+            console.log('🔘 Button type:', e.currentTarget.type);
             e.preventDefault();
             handleSaveProfile();
           }}
