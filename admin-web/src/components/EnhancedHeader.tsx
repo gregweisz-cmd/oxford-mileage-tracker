@@ -13,6 +13,8 @@ import {
   MenuItem,
   Divider,
   Badge,
+  Select,
+  FormControl,
   // Fade // Currently unused
 } from '@mui/material';
 import {
@@ -51,6 +53,7 @@ interface EnhancedHeaderProps {
   onCheckCompleteness?: () => void;
   onRefresh?: () => void;
   onSettings?: () => void;
+  onMonthYearChange?: (month: number, year: number) => void;
   notifications?: number;
   showRealTimeStatus?: boolean;
 }
@@ -71,6 +74,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   onCheckCompleteness,
   onRefresh,
   onSettings,
+  onMonthYearChange,
   notifications = 0,
   showRealTimeStatus = true
 }) => {
@@ -187,7 +191,41 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                 <Typography variant="body2" fontWeight="medium">
                   {employeeName}
                 </Typography>
-                {reportMonth && reportYear && (
+                {reportMonth && reportYear && onMonthYearChange && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <FormControl size="small" sx={{ minWidth: 80 }}>
+                      <Select
+                        value={reportMonth}
+                        onChange={(e) => onMonthYearChange(Number(e.target.value), reportYear)}
+                        variant="standard"
+                        disableUnderline
+                        sx={{ fontSize: '0.75rem', fontWeight: 400 }}
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                          <MenuItem key={m} value={m} sx={{ fontSize: '0.75rem' }}>
+                            {getMonthName(m)}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ minWidth: 60 }}>
+                      <Select
+                        value={reportYear}
+                        onChange={(e) => onMonthYearChange(reportMonth, Number(e.target.value))}
+                        variant="standard"
+                        disableUnderline
+                        sx={{ fontSize: '0.75rem', fontWeight: 400 }}
+                      >
+                        {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                          <MenuItem key={y} value={y} sx={{ fontSize: '0.75rem' }}>
+                            {y}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+                {reportMonth && reportYear && !onMonthYearChange && (
                   <Typography variant="caption" color="textSecondary">
                     {getMonthName(reportMonth)} {reportYear}
                   </Typography>

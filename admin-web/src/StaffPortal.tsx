@@ -201,6 +201,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   supervisorId,
   supervisorName
 }) => {
+  // Use state for current month/year so users can change them
+  const [currentMonth, setCurrentMonth] = useState(reportMonth);
+  const [currentYear, setCurrentYear] = useState(reportYear);
   const [activeTab, setActiveTab] = useState(0);
   const [employeeData, setEmployeeData] = useState<EmployeeExpenseData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -264,7 +267,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   } = useWebTips();
 
   // Calculate days in the current month
-  const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
+  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
   // State to prevent multiple simultaneous calls to refreshTimesheetData
   const [isRefreshingTimesheet, setIsRefreshingTimesheet] = useState(false);
@@ -866,7 +869,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     };
     
     loadEmployeeData();
-  }, [employeeId, reportMonth, reportYear, refreshTrigger]);
+  }, [employeeId, currentMonth, currentYear, refreshTrigger]);
 
   // Initialize tips when employee data is loaded
   useEffect(() => {
@@ -2866,8 +2869,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         title="MONTHLY EXPENSE REPORT - OXFORD HOUSE, INC."
         subtitle="Comprehensive expense tracking and reporting system"
         employeeName={employeeData?.preferredName || employeeData?.name}
-        reportMonth={reportMonth}
-        reportYear={reportYear}
+        reportMonth={currentMonth}
+        reportYear={currentYear}
         loading={loading}
         isAdminView={isAdminView}
         onExportPdf={handleExportPdf}
@@ -2890,6 +2893,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }, 1500);
         }}
         onSettings={() => setActiveTab(employeeData ? employeeData.costCenters.length + 7 : 7)}
+        onMonthYearChange={(month, year) => {
+          setCurrentMonth(month);
+          setCurrentYear(year);
+        }}
         showRealTimeStatus={true}
       />
 
