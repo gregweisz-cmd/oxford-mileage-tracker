@@ -39,6 +39,7 @@ import {
   Delete as DeleteIcon,
   Close as CloseIcon,
   CloudUpload as UploadIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 
 // PDF generation imports
@@ -214,6 +215,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
+  const [savedSignature, setSavedSignature] = useState<string | null>(null); // Signature saved in Settings
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
   const [supervisorSignatureState, setSupervisorSignature] = useState<string | null>(supervisorSignature || null);
   const [editingTimesheetCell, setEditingTimesheetCell] = useState<{costCenter: number, day: number, type: string} | null>(null);
@@ -781,7 +783,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Load signature from employee data
           if (employee.signature) {
-            setSignatureImage(employee.signature);
+            setSavedSignature(employee.signature); // Save as the saved signature
+            setSignatureImage(employee.signature); // Also set as current for this report
           }
           
           // Refresh timesheet data to load actual hours from database
@@ -1271,7 +1274,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // Handle signature file upload
-  const handleSignatureUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSignatureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'image/png') {
       const reader = new FileReader();
@@ -1279,9 +1282,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const result = e.target?.result as string;
         // Signature uploaded successfully
         setSignatureImage(result);
+        setSavedSignature(result); // Also save as the saved signature
         setSignatureDialogOpen(false);
         
-        // Auto-save signature
+        // Auto-save signature to expense report
         if (employeeData) {
           try {
             const reportData = {
@@ -1304,9 +1308,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               }),
             });
             
-            console.log('✅ Signature upload synced to source tables');
+            console.log('✅ Signature upload synced to expense report');
+            
+            // Also save to user settings in the backend
+            await fetch(`${API_BASE_URL}/api/employees/${employeeData.employeeId}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                signature: result
+              }),
+            });
+            
+            console.log('✅ Signature saved to user settings');
+            showSuccess('Signature saved to Settings and applied to this report');
           } catch (error) {
-            console.error('Error syncing signature upload:', error);
+            console.error('Error saving signature:', error);
+            showError('Failed to save signature');
           }
         }
       };
@@ -2881,7 +2900,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onExportPdf={handleExportPdf}
         onSaveReport={handleSaveReport}
         onSubmitReport={handleSubmitReport}
-        onSignatureCapture={() => setSignatureDialogOpen(true)}
         onViewAllReports={fetchAllReports}
         onCheckCompleteness={handleCheckCompleteness}
         onRefresh={() => {
@@ -3032,19 +3050,44 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       overflow: 'hidden'
                     }}>
                       {signatureImage ? (
-                        <img 
-                          src={signatureImage} 
-                          alt="Employee Signature" 
-                          style={{ 
-                            maxHeight: '100%', 
-                            maxWidth: '100%',
-                            objectFit: 'contain'
-                          }} 
-                        />
+                        <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+                          <img 
+                            src={signatureImage} 
+                            alt="Employee Signature" 
+                            style={{ 
+                              maxHeight: '100%', 
+                              maxWidth: '100%',
+                              objectFit: 'contain'
+                            }} 
+                          />
+                          <IconButton
+                            size="small"
+                            onClick={() => setSignatureDialogOpen(true)}
+                            sx={{ 
+                              position: 'absolute', 
+                              top: 4, 
+                              right: 4, 
+                              bgcolor: 'white',
+                              '&:hover': { bgcolor: 'grey.100' }
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       ) : (
-                        <Typography variant="caption" color="textSecondary">
-                          Upload signature using "Signature Capture" button
-                        </Typography>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, p: 2 }}>
+                          <Typography variant="caption" color="textSecondary">
+                            No signature available
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => setSignatureDialogOpen(true)}
+                            startIcon={<UploadIcon />}
+                          >
+                            Upload Signature
+                          </Button>
+                        </Box>
                       )}
                     </Box>
                     <Typography variant="body2" color="textSecondary">{employeeData.name}</Typography>
@@ -4582,6 +4625,52 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             )}
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {savedSignature && (
+                <Button
+                  variant="outlined"
+                  color="success"
+                  startIcon={<CheckIcon />}
+                  onClick={async () => {
+                    setSignatureImage(savedSignature);
+                    
+                    // Auto-save to expense report
+                    if (employeeData) {
+                      try {
+                        const reportData = {
+                          ...employeeData,
+                          receipts: receipts,
+                          employeeSignature: savedSignature,
+                          supervisorSignature: supervisorSignatureState
+                        };
+
+                        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            employeeId: employeeData.employeeId,
+                            month: currentMonth,
+                            year: currentYear,
+                            reportData: reportData
+                          }),
+                        });
+                        
+                        console.log('✅ Saved signature synced to source tables');
+                      } catch (error) {
+                        console.error('Error syncing saved signature:', error);
+                      }
+                    }
+                    
+                    setSignatureDialogOpen(false);
+                    showSuccess('Using saved signature');
+                  }}
+                  fullWidth
+                >
+                  Use Saved Signature
+                </Button>
+              )}
+              
               <input
                 type="file"
                 accept=".png"
@@ -4596,7 +4685,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   startIcon={<UploadIcon />}
                   fullWidth
                 >
-                  Choose PNG File
+                  Upload New Signature
                 </Button>
               </label>
               

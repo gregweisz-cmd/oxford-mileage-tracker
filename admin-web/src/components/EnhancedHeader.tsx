@@ -48,7 +48,6 @@ interface EnhancedHeaderProps {
   onExportPdf?: () => void;
   onSaveReport?: () => void;
   onSubmitReport?: () => void;
-  onSignatureCapture?: () => void;
   onViewAllReports?: () => void;
   onCheckCompleteness?: () => void;
   onRefresh?: () => void;
@@ -69,7 +68,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   onExportPdf,
   onSaveReport,
   onSubmitReport,
-  onSignatureCapture,
   onViewAllReports,
   onCheckCompleteness,
   onRefresh,
@@ -259,18 +257,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 'auto' }}>
           {/* Action Buttons */}
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {onSignatureCapture && (
-              <Button
-                variant="outlined"
-                startIcon={<UploadIcon />}
-                onClick={onSignatureCapture}
-                disabled={loading || isAdminView}
-                size="small"
-              >
-                Signature
-              </Button>
-            )}
-
             {onViewAllReports && (
               <Button
                 variant="outlined"
