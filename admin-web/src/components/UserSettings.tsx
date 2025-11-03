@@ -793,7 +793,11 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         <Button
           variant="contained"
           startIcon={<SaveIcon />}
-          onClick={handleSaveProfile}
+          onClick={(e) => {
+            console.log('🔘 Save button clicked!');
+            e.preventDefault();
+            handleSaveProfile();
+          }}
           disabled={loading}
           sx={{ minWidth: 120 }}
         >
