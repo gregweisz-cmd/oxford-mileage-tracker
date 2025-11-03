@@ -4956,6 +4956,45 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       doc.rect(signaturesTableStartX + signaturesColWidth, yPos, signaturesColWidth, signaturesRowHeight, 'FD');
       doc.setTextColor(0, 0, 0);
       
+      // Add signature images if they exist
+      const signatureImgWidth = 150; // Width for signature images
+      const signatureImgHeight = 40; // Height for signature images
+      const signatureImgPadding = 5; // Padding from box edges
+      
+      // Employee signature (left box)
+      if (reportData.employeeSignature) {
+        try {
+          doc.addImage(
+            reportData.employeeSignature,
+            'PNG',
+            signaturesTableStartX + signatureImgPadding,
+            yPos + signatureImgPadding,
+            signatureImgWidth,
+            signatureImgHeight
+          );
+        } catch (err) {
+          console.error('❌ Error adding employee signature:', err);
+          // Signature box will remain empty if image fails to load
+        }
+      }
+      
+      // Supervisor signature (right box)
+      if (reportData.supervisorSignature) {
+        try {
+          doc.addImage(
+            reportData.supervisorSignature,
+            'PNG',
+            signaturesTableStartX + signaturesColWidth + signatureImgPadding,
+            yPos + signatureImgPadding,
+            signatureImgWidth,
+            signatureImgHeight
+          );
+        } catch (err) {
+          console.error('❌ Error adding supervisor signature:', err);
+          // Signature box will remain empty if image fails to load
+        }
+      }
+      
       // Page 2: Summary Sheet (with colors and grid like screenshot)
       console.log(`📄 Before summary page: yPos=${yPos}, pageHeight=${pageHeight}`);
       // Calculate estimated space needed for summary section (title, 3 lines of info, table)
