@@ -307,7 +307,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       };
       
       // Log the data being sent
-      console.log('Saving profile data:', updateData);
+      console.log('💾 SAVING profile data:', updateData);
+      console.log('💾 preferredName value:', profile.preferredName);
       
       // Update via API
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';

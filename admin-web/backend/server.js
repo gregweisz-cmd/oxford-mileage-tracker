@@ -4011,32 +4011,32 @@ app.get('/api/biweekly-reports/supervisor/:supervisorId/pending', async (req, re
     const supervisedEmployeeIds = await getAllSupervisedEmployees(supervisorId);
     
     if (supervisedEmployeeIds.length === 0) {
-      res.json([]);
-      return;
-    }
+        res.json([]);
+        return;
+      }
 
     const placeholders = supervisedEmployeeIds.map(() => '?').join(',');
 
-    db.all(
-      `SELECT br.*, e.name as employeeName, e.email as employeeEmail
-       FROM biweekly_reports br
-       JOIN employees e ON br.employeeId = e.id
-       WHERE br.employeeId IN (${placeholders}) AND br.status = 'submitted'
-       ORDER BY br.year DESC, br.month DESC, br.periodNumber DESC`,
+      db.all(
+        `SELECT br.*, e.name as employeeName, e.email as employeeEmail
+         FROM biweekly_reports br
+         JOIN employees e ON br.employeeId = e.id
+         WHERE br.employeeId IN (${placeholders}) AND br.status = 'submitted'
+         ORDER BY br.year DESC, br.month DESC, br.periodNumber DESC`,
       supervisedEmployeeIds,
-      (err, reports) => {
-        if (err) {
-          console.error('❌ Error fetching pending biweekly reports:', err);
-          res.status(500).json({ error: err.message });
-          return;
+        (err, reports) => {
+          if (err) {
+            console.error('❌ Error fetching pending biweekly reports:', err);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          res.json(reports);
         }
-        res.json(reports);
-      }
-    );
+      );
   } catch (error) {
     console.error('❌ Error fetching supervised employees:', error);
     res.status(500).json({ error: error.message });
-  }
+    }
 });
 
 // Delete biweekly report
@@ -4125,9 +4125,9 @@ app.post('/api/reports/submit', (req, res) => {
           if (insertErr) {
             console.error('Database error:', insertErr.message);
             res.status(500).json({ error: insertErr.message });
-            return;
-          }
-          res.json({ id, message: 'Report submitted for approval successfully' });
+        return;
+      }
+      res.json({ id, message: 'Report submitted for approval successfully' });
         }
       );
     }
@@ -4148,18 +4148,18 @@ app.get('/api/reports/pending/:supervisorId', async (req, res) => {
     }
 
     const placeholders = supervisedEmployeeIds.map(() => '?').join(',');
-    
-    db.all(
+  
+  db.all(
       `SELECT * FROM report_status WHERE employeeId IN (${placeholders}) AND status = ? ORDER BY submittedAt ASC`,
       [...supervisedEmployeeIds, 'pending'],
-      (err, rows) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        res.json(rows);
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
       }
-    );
+      res.json(rows);
+    }
+  );
   } catch (error) {
     console.error('❌ Error fetching supervised employees:', error);
     res.status(500).json({ error: error.message });
@@ -4181,18 +4181,18 @@ app.get('/api/reports/history/:supervisorId', async (req, res) => {
     }
 
     const placeholders = supervisedEmployeeIds.map(() => '?').join(',');
-    
-    db.all(
+  
+  db.all(
       `SELECT * FROM report_status WHERE employeeId IN (${placeholders}) ORDER BY COALESCE(reviewedAt, submittedAt) DESC LIMIT ?`,
       [...supervisedEmployeeIds, limit],
-      (err, rows) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        res.json(rows);
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
       }
-    );
+      res.json(rows);
+    }
+  );
   } catch (error) {
     console.error('❌ Error fetching supervised employees:', error);
     res.status(500).json({ error: error.message });
@@ -5247,21 +5247,21 @@ app.get('/api/export/expense-report-pdf/:id', (req, res) => {
       }
       yPos += cellHeight;
       
-          // Phone / Internet / Fax
+      // Phone / Internet / Fax
           const [phoneInternetFaxCenters, phoneInternetFaxTotal] = calculateCategoryAmounts(
             'Phone / Internet / Fax',
             ['Phone/Internet/Fax', 'Phone / Internet / Fax']
           );
           console.log(`📦 Phone/Internet/Fax distribution`, { centers: phoneInternetFaxCenters, total: phoneInternetFaxTotal });
 
-          drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Phone / Internet / Fax', 'lightOrange', 'black', 'left');
-          xPos = tableStartX + colWidths[0];
+      drawCell(tableStartX, yPos, colWidths[0], cellHeight, 'Phone / Internet / Fax', 'lightOrange', 'black', 'left');
+      xPos = tableStartX + colWidths[0];
           // Cost center columns (#1..numCenters)
           for (let i = 1; i <= numCenters; i++) {
             const val = phoneInternetFaxCenters[i - 1] || 0;
             drawCell(xPos, yPos, colWidths[i], cellHeight, `$${val.toFixed(2)}`, 'lightOrange', 'black', 'left');
-            xPos += colWidths[i];
-          }
+        xPos += colWidths[i];
+      }
           // Subtotals (by category) column
           drawCell(xPos, yPos, colWidths[colWidths.length - 1], cellHeight, `$${phoneInternetFaxTotal.toFixed(2)}`, 'lightOrange', 'black', 'left');
       yPos += cellHeight;

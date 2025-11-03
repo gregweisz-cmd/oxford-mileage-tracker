@@ -1122,12 +1122,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
       const requestBody = {
-        employeeId: employeeData.employeeId,
-        date: dateStr,
-        hours: value,
-        category: category,
-        description: `${category} hours worked on ${dateStr}`,
-        costCenter: actualCostCenter
+          employeeId: employeeData.employeeId,
+          date: dateStr,
+          hours: value,
+          category: category,
+          description: `${category} hours worked on ${dateStr}`,
+          costCenter: actualCostCenter
       };
       
       console.log(`📤 Saving to time tracking API:`, requestBody);
@@ -1215,12 +1215,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
       const requestBody = {
-        employeeId: employeeData.employeeId,
-        date: dateStr,
-        hours: value,
-        category: mappedCategory,
-        description: `${mappedCategory} hours worked on ${dateStr}`,
-        costCenter: actualCostCenter
+          employeeId: employeeData.employeeId,
+          date: dateStr,
+          hours: value,
+          category: mappedCategory,
+          description: `${mappedCategory} hours worked on ${dateStr}`,
+          costCenter: actualCostCenter
       };
       
       console.log(`📤 Saving to time tracking API:`, requestBody);
