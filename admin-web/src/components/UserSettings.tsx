@@ -25,7 +25,7 @@ import {
 import {
   Save as SaveIcon,
   Edit as EditIcon,
-  // Delete as DeleteIcon, // Currently unused
+  Delete as DeleteIcon,
   Add as AddIcon,
   PhotoCamera as PhotoCameraIcon,
   Security as SecurityIcon,
@@ -603,16 +603,28 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                     alt="Signature" 
                     style={{ maxWidth: '100%', maxHeight: 120 }}
                   />
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      const input = document.getElementById('signature-input');
-                      input?.click();
-                    }}
-                    sx={{ position: 'absolute', top: 8, right: 8 }}
-                  >
-                    <EditIcon />
-                  </IconButton>
+                  <Box sx={{ display: 'flex', gap: 0.5, position: 'absolute', top: 4, right: 4 }}>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        const input = document.getElementById('signature-input');
+                        input?.click();
+                      }}
+                      sx={{ bgcolor: 'white', '&:hover': { bgcolor: 'grey.100' } }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setProfile(prev => ({ ...prev, signature: '' }));
+                        showMessage('info', 'Signature removed. Click "Save Settings" to confirm.');
+                      }}
+                      sx={{ bgcolor: 'white', '&:hover': { bgcolor: 'error.light', color: 'error.main' } }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
                 </Box>
               ) : (
                 <Box sx={{ 
