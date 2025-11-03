@@ -649,6 +649,7 @@ export class ApiSyncService {
       return data.map((emp: any) => ({
         id: emp.id,
         name: emp.name,
+        preferredName: emp.preferredName || '',
         email: emp.email,
         password: emp.password || '',
         oxfordHouseId: emp.oxfordHouseId,
@@ -657,6 +658,8 @@ export class ApiSyncService {
         baseAddress: emp.baseAddress,
         baseAddress2: emp.baseAddress2 || '',
         costCenters: Array.isArray(emp.costCenters) ? emp.costCenters : (emp.costCenters ? JSON.parse(emp.costCenters) : []),
+        selectedCostCenters: Array.isArray(emp.selectedCostCenters) ? emp.selectedCostCenters : (emp.selectedCostCenters ? JSON.parse(emp.selectedCostCenters) : []),
+        defaultCostCenter: emp.defaultCostCenter || '',
         createdAt: new Date(emp.createdAt),
         updatedAt: new Date(emp.updatedAt)
       }));
