@@ -290,7 +290,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     try {
       // Fetch updated time tracking data
-      const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`);
+      const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
       const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
       
       // Filter for current month
@@ -298,7 +298,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const trackingDate = new Date(tracking.date);
         const trackingMonth = trackingDate.getUTCMonth() + 1;
         const trackingYear = trackingDate.getUTCFullYear();
-        return trackingMonth === reportMonth && trackingYear === reportYear;
+        return trackingMonth === currentMonth && trackingYear === currentYear;
       });
       
       // NEW APPROACH: Group by day and create daily hour distributions
@@ -424,7 +424,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       setIsRefreshingTimesheet(false);
     }
     console.log('🔄 refreshTimesheetData completed');
-  }, [employeeId, reportMonth, reportYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
   // console.log('🔍 StaffPortal Debug:', {
@@ -433,10 +433,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   //   showDeleteButton: (reportStatus === 'draft' || reportStatus === 'submitted') && !isAdminView
   // });
   
-  // Format month name
+  // Format month name (use currentMonth for display)
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                     'July', 'August', 'September', 'October', 'November', 'December'];
-  const monthName = monthNames[reportMonth - 1];
+  const monthName = monthNames[currentMonth - 1];
 
   // Load employee data based on props
   useEffect(() => {
@@ -502,16 +502,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                             'July', 'August', 'September', 'October', 'November', 'December'];
-          const monthName = monthNames[reportMonth - 1];
-          const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
+          const monthName = monthNames[currentMonth - 1];
+          const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
           
           // Fetch real data from backend APIs
           const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, reportResponse] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`${API_BASE_URL}/api/daily-descriptions?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`${API_BASE_URL}/api/monthly-reports?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
+            fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`${API_BASE_URL}/api/daily-descriptions?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`${API_BASE_URL}/api/monthly-reports?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
@@ -523,7 +523,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           if (reportResponse.ok) {
             const reports = await reportResponse.json();
             const currentReport = Array.isArray(reports) && reports.length > 0 
-              ? reports.filter((r: any) => r.month === reportMonth && r.year === reportYear)[0]
+              ? reports.filter((r: any) => r.month === currentMonth && r.year === currentYear)[0]
               : null;
             if (currentReport?.status) {
               setReportStatus(currentReport.status);
@@ -534,21 +534,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             const entryDate = new Date(entry.date);
             const entryMonth = entryDate.getUTCMonth() + 1; // Use UTC to avoid timezone issues
             const entryYear = entryDate.getUTCFullYear();
-            return entryMonth === reportMonth && entryYear === reportYear;
+            return entryMonth === currentMonth && entryYear === currentYear;
           });
           
           const currentMonthReceipts = receipts.filter((receipt: any) => {
             const receiptDate = new Date(receipt.date);
             const receiptMonth = receiptDate.getUTCMonth() + 1;
             const receiptYear = receiptDate.getUTCFullYear();
-            return receiptMonth === reportMonth && receiptYear === reportYear;
+            return receiptMonth === currentMonth && receiptYear === currentYear;
           });
           
           const currentMonthTimeTracking = timeTracking.filter((tracking: any) => {
             const trackingDate = new Date(tracking.date);
             const trackingMonth = trackingDate.getUTCMonth() + 1;
             const trackingYear = trackingDate.getUTCFullYear();
-            return trackingMonth === reportMonth && trackingYear === reportYear;
+            return trackingMonth === currentMonth && trackingYear === currentYear;
           });
           
           // Data filtered for current month
@@ -556,7 +556,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Generate daily entries based on real data
           const dailyEntries = await Promise.all(Array.from({ length: daysInMonth }, async (_, i) => {
             const day = i + 1;
-            const date = new Date(reportYear, reportMonth - 1, day);
+            const date = new Date(currentYear, currentMonth - 1, day);
             const dateStr = date.toLocaleDateString('en-US', { 
               month: '2-digit', 
               day: '2-digit', 
@@ -729,8 +729,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             name: employee.name,
             preferredName: employee.preferredName,
             month: monthName,
-            year: reportYear,
-            dateCompleted: new Date(reportYear, reportMonth, 0).toLocaleDateString('en-US', { 
+            year: currentYear,
+            dateCompleted: new Date(currentYear, currentMonth, 0).toLocaleDateString('en-US', { 
               month: '2-digit', 
               day: '2-digit', 
               year: '2-digit' 
@@ -786,13 +786,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         // Create dynamic fallback data instead of using hardcoded mock data
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                           'July', 'August', 'September', 'October', 'November', 'December'];
-        const monthName = monthNames[reportMonth - 1];
-        const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
+        const monthName = monthNames[currentMonth - 1];
+        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
         
         // Generate daily entries for the selected month
         const dailyEntries = Array.from({ length: daysInMonth }, (_, i) => {
           const day = i + 1;
-          const date = new Date(reportYear, reportMonth - 1, day);
+          const date = new Date(currentYear, currentMonth - 1, day);
           const dateStr = date.toLocaleDateString('en-US', { 
             month: '2-digit', 
             day: '2-digit', 
@@ -824,8 +824,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           name: employee?.name || 'Unknown Employee',
           preferredName: employee?.preferredName,
           month: monthName,
-          year: reportYear,
-          dateCompleted: new Date(reportYear, reportMonth, 0).toLocaleDateString('en-US', { 
+          year: currentYear,
+          dateCompleted: new Date(currentYear, currentMonth, 0).toLocaleDateString('en-US', { 
             month: '2-digit', 
             day: '2-digit', 
             year: '2-digit' 
@@ -887,9 +887,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         try {
           // Fetch receipts, mileage entries, and time entries to check for revision flags
           const [receiptsRes, mileageRes, timeRes] = await Promise.all([
-            fetch(`http://localhost:3002/api/receipts?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`),
-            fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${reportMonth}&year=${reportYear}`)
+            fetch(`http://localhost:3002/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
           ]);
 
           const receipts = await receiptsRes.json();
@@ -919,7 +919,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     };
 
     checkRevisionItems();
-  }, [reportStatus, employeeId, reportMonth, reportYear]);
+  }, [reportStatus, employeeId, currentMonth, currentYear]);
 
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -964,7 +964,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Also update the dailyDescriptions state for proper syncing
       const updatedDailyDescriptions = [...dailyDescriptions];
       const entry = newEntries[row];
-      const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${entry.day.toString().padStart(2, '0')}`;
+      const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${entry.day.toString().padStart(2, '0')}`;
       const hasDescription = editingValue && editingValue.trim();
       
       // Find existing daily description for this date
@@ -1056,8 +1056,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         },
         body: JSON.stringify({
           employeeId: updatedData.employeeId,
-          month: reportMonth,
-          year: reportYear,
+          month: currentMonth,
+          year: currentYear,
           reportData: reportData
         }),
       });
@@ -1122,7 +1122,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     // Save to time tracking API with correct cost center and category
     try {
-      const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
       const requestBody = {
           employeeId: employeeData.employeeId,
@@ -1215,7 +1215,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     // Save to time tracking API with correct category
     try {
-      const dateStr = `${reportYear}-${reportMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
       const requestBody = {
           employeeId: employeeData.employeeId,
@@ -1293,8 +1293,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               },
               body: JSON.stringify({
                 employeeId: employeeData.employeeId,
-                month: reportMonth,
-                year: reportYear,
+                month: currentMonth,
+                year: currentYear,
                 reportData: reportData
               }),
             });
@@ -1332,8 +1332,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           },
           body: JSON.stringify({
             employeeId: employeeData.employeeId,
-            month: reportMonth,
-            year: reportYear,
+            month: currentMonth,
+            year: currentYear,
             reportData: reportData
           }),
         });
@@ -1375,8 +1375,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       const report = await ReportCompletenessService.analyzeReportCompleteness(
         employeeData.employeeId,
-        reportMonth,
-        reportYear
+        currentMonth,
+        currentYear
       );
       
       setCompletenessReport(report);
@@ -1385,8 +1385,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Show error state
       setCompletenessReport({
         employeeId: employeeData.employeeId,
-        month: reportMonth,
-        year: reportYear,
+        month: currentMonth,
+        year: currentYear,
         overallScore: 0,
         issues: [{
           id: 'error-analysis',
@@ -2481,8 +2481,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         },
         body: JSON.stringify({
           employeeId: employeeData.employeeId,
-          month: reportMonth,
-          year: reportYear,
+          month: currentMonth,
+          year: currentYear,
           reportData: reportData
         }),
       });
@@ -2653,8 +2653,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         },
         body: JSON.stringify({
           employeeId: employeeData.employeeId,
-          month: reportMonth,
-          year: reportYear,
+          month: currentMonth,
+          year: currentYear,
           reportData: reportData,
           status: 'submitted'
         }),
@@ -2669,7 +2669,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // If supervisor mode is enabled, submit for approval workflow
       if (supervisorMode && supervisorId) {
         try {
-          const reportId = `report-${employeeData.employeeId}-${reportYear}-${reportMonth.toString().padStart(2, '0')}`;
+          const reportId = `report-${employeeData.employeeId}-${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
           await ReportApprovalService.submitReportForApproval(
             reportId,
             employeeData.employeeId,
@@ -2778,14 +2778,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           },
           body: JSON.stringify({
             employeeId: employeeData.employeeId,
-            month: reportMonth,
-            year: reportYear,
+            month: currentMonth,
+            year: currentYear,
             reportData: reportData
           }),
         });
 
         // Now fetch the report to get its ID
-        const loadResponse = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${reportMonth}/${reportYear}`);
+        const loadResponse = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}`);
         
         if (!loadResponse.ok) {
           throw new Error('Failed to load expense report');
@@ -2817,8 +2817,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
         const firstName = nameParts[0] || 'UNKNOWN';
         const monthNamesShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-        const monthAbbr = monthNamesShort[reportMonth - 1] || 'UNK';
-        const yearShort = reportYear.toString().slice(-2);
+        const monthAbbr = monthNamesShort[currentMonth - 1] || 'UNK';
+        const yearShort = currentYear.toString().slice(-2);
         
         link.download = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
         document.body.appendChild(link);
