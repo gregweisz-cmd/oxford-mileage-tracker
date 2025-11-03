@@ -1,6 +1,7 @@
 export interface Employee {
   id: string;
   name: string;
+  preferredName?: string; // User's preferred name for display
   email: string;
   password: string; // Added password field
   oxfordHouseId: string;

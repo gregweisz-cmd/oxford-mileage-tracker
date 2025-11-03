@@ -276,8 +276,53 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     </View>
   );
 
+  const handleEditPreferredName = () => {
+    if (!currentEmployee) return;
+    
+    Alert.prompt(
+      'Edit Preferred Name',
+      'Enter your preferred name',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Save',
+          onPress: async (preferredName: string | undefined) => {
+            if (!preferredName || !currentEmployee?.id) return;
+            
+            try {
+              await DatabaseService.updateEmployee(currentEmployee.id, {
+                preferredName: preferredName.trim()
+              } as any);
+              
+              // Refresh employee data
+              const updated = await DatabaseService.getEmployeeById(currentEmployee.id);
+              setCurrentEmployee(updated);
+              
+              Alert.alert('Success', 'Preferred name updated successfully');
+            } catch (error) {
+              console.error('❌ Error updating preferred name:', error);
+              Alert.alert('Error', 'Failed to update preferred name');
+            }
+          },
+        },
+      ],
+      'plain-text',
+      currentEmployee.preferredName || currentEmployee.name.split(' ')[0]
+    );
+  };
+
   const renderEssentialSettings = () => (
     <View style={styles.sectionContent}>
+      {renderSettingRow(
+        'Preferred Name',
+        'Your preferred name for display',
+        currentEmployee?.preferredName || currentEmployee?.name?.split(' ')[0] || 'Not set',
+        handleEditPreferredName
+      )}
+      
       {renderSettingRow(
         'App Preferences',
         'Customize GPS, display, notifications, and features',

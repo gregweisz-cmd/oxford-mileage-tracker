@@ -600,6 +600,7 @@ export class DatabaseService {
     return {
       id: result.id,
       name: result.name,
+      preferredName: result.preferredName || '',
       email: result.email,
       password: result.password,
       oxfordHouseId: result.oxfordHouseId,
@@ -624,6 +625,7 @@ export class DatabaseService {
     return {
       id: result.id,
       name: result.name,
+      preferredName: result.preferredName || '',
       email: result.email,
       password: result.password,
       oxfordHouseId: result.oxfordHouseId,
@@ -645,8 +647,8 @@ export class DatabaseService {
     const database = await getDatabase();
     
     await database.runAsync(
-      'INSERT INTO employees (id, name, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, employee.name, employee.email, employee.password, employee.oxfordHouseId, employee.position, employee.phoneNumber || '', employee.baseAddress, JSON.stringify(employee.costCenters || []), JSON.stringify(employee.selectedCostCenters || []), employee.defaultCostCenter || '', now, now]
+      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, employee.name, employee.preferredName || '', employee.email, employee.password, employee.oxfordHouseId, employee.position, employee.phoneNumber || '', employee.baseAddress, JSON.stringify(employee.costCenters || []), JSON.stringify(employee.selectedCostCenters || []), employee.defaultCostCenter || '', now, now]
     );
 
     const newEmployee = {
@@ -669,6 +671,7 @@ export class DatabaseService {
     
     return result.map((row: any) => ({
       ...row,
+      preferredName: row.preferredName || '',
       costCenters: row.costCenters ? JSON.parse(row.costCenters) : [],
       selectedCostCenters: row.selectedCostCenters ? JSON.parse(row.selectedCostCenters) : [],
       defaultCostCenter: row.defaultCostCenter || '',
@@ -2067,7 +2070,8 @@ export class DatabaseService {
       { column: 'password', type: 'TEXT DEFAULT \'\'' },
       { column: 'baseAddress2', type: 'TEXT DEFAULT \'\'' },
       { column: 'selectedCostCenters', type: 'TEXT DEFAULT \'[]\'' },
-      { column: 'defaultCostCenter', type: 'TEXT DEFAULT \'\'' }
+      { column: 'defaultCostCenter', type: 'TEXT DEFAULT \'\'' },
+      { column: 'preferredName', type: 'TEXT DEFAULT \'\'' }
     ];
 
     for (const migration of employeeMigrations) {

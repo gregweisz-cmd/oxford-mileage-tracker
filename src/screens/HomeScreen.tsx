@@ -1672,6 +1672,27 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               </ScrollView>
             </View>
             
+            {/* Go to Current Month/Year Button */}
+            <TouchableOpacity
+              style={{
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                marginBottom: 16,
+                alignItems: 'center',
+              }}
+              onPress={() => {
+                const currentDate = new Date();
+                setSelectedMonth(currentDate.getMonth() + 1);
+                setSelectedYear(currentDate.getFullYear());
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                Go to Current
+              </Text>
+            </TouchableOpacity>
+            
             <View style={styles.modalButtons}>
               <TouchableOpacity 
                 style={dynamicStyles.modalButtonSecondary} 
