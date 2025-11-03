@@ -401,20 +401,21 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
-      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <SettingsIcon sx={{ mr: 2 }} />
-        User Settings
-      </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <Box sx={{ flex: 1, p: 3, maxWidth: 1200, mx: 'auto', width: '100%', pb: 10 }}>
+        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+          <SettingsIcon sx={{ mr: 2 }} />
+          User Settings
+        </Typography>
 
-      {message.text && (
-        <Alert severity={message.type as any} sx={{ mb: 3 }} onClose={() => setMessage({ type: '' as any, text: '' })}>
-          {message.text}
-        </Alert>
-      )}
+        {message.text && (
+          <Alert severity={message.type as any} sx={{ mb: 3 }} onClose={() => setMessage({ type: '' as any, text: '' })}>
+            {message.text}
+          </Alert>
+        )}
 
-      {/* Profile Information */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {/* Profile Information */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
@@ -775,19 +776,32 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             </Box>
           </CardContent>
         </Card>
+        </Box>
       </Box>
 
-      {/* Save Button */}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSaveProfile}
-          disabled={loading}
-          sx={{ minWidth: 120 }}
-        >
-          {loading ? 'Saving...' : 'Save Settings'}
-        </Button>
+      {/* Sticky Save Button */}
+      <Box sx={{ 
+        position: 'sticky', 
+        bottom: 0, 
+        bgcolor: 'background.paper', 
+        borderTop: 1, 
+        borderColor: 'divider',
+        p: 2,
+        boxShadow: '0 -2px 8px rgba(0,0,0,0.1)',
+        zIndex: 1000
+      }}>
+        <Box sx={{ maxWidth: 1200, mx: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<SaveIcon />}
+            onClick={handleSaveProfile}
+            disabled={loading}
+            sx={{ minWidth: 150 }}
+          >
+            {loading ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </Box>
       </Box>
 
       {/* Cost Center Dialog */}
