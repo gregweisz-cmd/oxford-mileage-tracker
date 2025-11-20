@@ -481,7 +481,18 @@ export const ReceiptForm: React.FC<BaseFormProps & {
   const { notifyDataChange } = useRealtimeSync();
 
   const receiptCategories = [
+    'EES',
+    'Rental Car',
+    'Rental Car Fuel',
     'Office Supplies',
+    'Ground Transportation',
+    'Phone/Internet/Fax',
+    'Postage/Shipping',
+    'Printing',
+    'Airfare/Bus/Train',
+    'Parking/Tolls',
+    'Hotels/AirBnB',
+    'Per Diem',
     'Meals',
     'Travel',
     'Communication',

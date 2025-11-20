@@ -5520,14 +5520,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 value={editingReceipt?.category || ''}
                 onChange={(e) => setEditingReceipt({...editingReceipt!, category: e.target.value})}
               >
-                <MenuItem value="Working Hours">Working Hours</MenuItem>
-                <MenuItem value="G&A">G&A</MenuItem>
-                <MenuItem value="Holiday">Holiday</MenuItem>
-                <MenuItem value="PTO">PTO</MenuItem>
-                <MenuItem value="STD/LTD">STD/LTD</MenuItem>
-                <MenuItem value="PFL/PFML">PFL/PFML</MenuItem>
-                <MenuItem value="Training">Training</MenuItem>
+                <MenuItem value="EES">EES</MenuItem>
+                <MenuItem value="Rental Car">Rental Car</MenuItem>
+                <MenuItem value="Rental Car Fuel">Rental Car Fuel</MenuItem>
+                <MenuItem value="Office Supplies">Office Supplies</MenuItem>
+                <MenuItem value="Ground Transportation">Ground Transportation</MenuItem>
+                <MenuItem value="Phone/Internet/Fax">Phone/Internet/Fax</MenuItem>
+                <MenuItem value="Postage/Shipping">Postage/Shipping</MenuItem>
+                <MenuItem value="Printing">Printing</MenuItem>
+                <MenuItem value="Airfare/Bus/Train">Airfare/Bus/Train</MenuItem>
+                <MenuItem value="Parking/Tolls">Parking/Tolls</MenuItem>
+                <MenuItem value="Hotels/AirBnB">Hotels/AirBnB</MenuItem>
+                <MenuItem value="Per Diem">Per Diem</MenuItem>
+                <MenuItem value="Meals">Meals</MenuItem>
                 <MenuItem value="Travel">Travel</MenuItem>
+                <MenuItem value="Communication">Communication</MenuItem>
+                <MenuItem value="Equipment">Equipment</MenuItem>
+                <MenuItem value="Training">Training</MenuItem>
                 <MenuItem value="Other">Other</MenuItem>
               </Select>
             </FormControl>
