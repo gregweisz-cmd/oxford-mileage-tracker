@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box } from '@mui/material';
+import { debugLog, debugError } from '../config/debug';
 
 interface OxfordHouseLogoProps {
   size?: number;
@@ -49,8 +50,8 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
             maxHeight: '100%',
           }}
           onError={(e) => {
-            console.error('Failed to load Oxford House logo from /oxford-house-logo.png');
-            console.error('Error details:', e);
+            debugError('Failed to load Oxford House logo from /oxford-house-logo.png');
+            debugError('Error details:', e);
             // Fallback to a simple placeholder if image doesn't load
             const target = e.target as HTMLImageElement;
             target.style.display = 'none';
@@ -84,9 +85,9 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
           }}
           onLoad={(e) => {
             const target = e.target as HTMLImageElement;
-            console.log('Oxford House logo loaded successfully from /oxford-house-logo.png');
-            console.log('Image dimensions:', target.naturalWidth, 'x', target.naturalHeight);
-            console.log('Image element:', target);
+            debugLog('Oxford House logo loaded successfully from /oxford-house-logo.png');
+            debugLog('Image dimensions:', target.naturalWidth, 'x', target.naturalHeight);
+            debugLog('Image element:', target);
           }}
         />
       </Box>

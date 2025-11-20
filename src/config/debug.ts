@@ -1,30 +1,43 @@
 /**
  * Debug Configuration
- * Control verbose logging throughout the application
+ * Controls verbose logging throughout the application
  */
 
-export const DEBUG_CONFIG = {
-  // Enable verbose logging for development
-  ENABLED: __DEV__,
-  
-  // Specific debug flags for different modules
-  DATABASE: false,
-  API_SYNC: false,
-  PER_DIEM_RULES: false,
-  GPS_TRACKING: false,
-  RECEIPTS: false,
-  AUTHENTICATION: false,
-  
-  // Helper function to log only when debug is enabled
-  log: (module: keyof Omit<typeof DEBUG_CONFIG, 'ENABLED' | 'log' | 'error'>, ...args: any[]) => {
-    if (DEBUG_CONFIG.ENABLED && DEBUG_CONFIG[module]) {
-      console.log(...args);
-    }
-  },
-  
-  // Always log errors regardless of debug settings
-  error: (...args: any[]) => {
-    console.error(...args);
+// Enable/disable debug logging
+// Set to true for development, false for production
+const DEBUG = __DEV__ || false;
+
+/**
+ * Debug logging utility
+ * Only logs when DEBUG is enabled
+ */
+export const debugLog = (...args: any[]) => {
+  if (DEBUG) {
+    console.log(...args);
   }
 };
 
+/**
+ * Debug error logging
+ * Always logs errors, regardless of DEBUG flag
+ */
+export const debugError = (...args: any[]) => {
+  console.error(...args);
+};
+
+/**
+ * Debug warning logging
+ * Logs warnings when DEBUG is enabled
+ */
+export const debugWarn = (...args: any[]) => {
+  if (DEBUG) {
+    console.warn(...args);
+  }
+};
+
+/**
+ * Check if debug mode is enabled
+ */
+export const isDebugEnabled = () => DEBUG;
+
+export default DEBUG;

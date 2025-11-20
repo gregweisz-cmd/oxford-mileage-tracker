@@ -171,4 +171,55 @@ export class EmployeeApiService {
 
     return response.json();
   }
+
+  static async archiveEmployee(id: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/employees/${id}/archive`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to archive employee');
+    }
+  }
+
+  static async restoreEmployee(id: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/employees/${id}/restore`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to restore employee');
+    }
+  }
+
+  static async getArchivedEmployees(): Promise<Employee[]> {
+    console.log('🌐 API: Fetching archived employees from:', `${this.baseUrl}/employees/archived`);
+    
+    const response = await fetch(`${this.baseUrl}/employees/archived`, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
+    });
+
+    console.log('🌐 API: Response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API: Error response:', errorText);
+      throw new Error(`Failed to fetch archived employees: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('🌐 API: Received archived employees:', Array.isArray(data) ? `${data.length} employees` : 'Invalid data format', data);
+    
+    return data;
+  }
 }

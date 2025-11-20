@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 // API Configuration
 // Use central config so mobile uses the same base URL (local IP) as the app
 import { API_BASE_URL } from '../config/api';
@@ -62,20 +63,20 @@ export class ApiSyncService {
    */
   static async initialize(): Promise<void> {
     try {
-      console.log('🔄 ApiSync: Initializing API sync service...');
+      debugLog('🔄 ApiSync: Initializing API sync service...');
       
       // Test connection to backend
       const isConnected = await this.testConnection();
       if (isConnected) {
-        console.log('✅ ApiSync: Connected to backend API');
+        debugLog('✅ ApiSync: Connected to backend API');
       } else {
-        console.log('⚠️ ApiSync: Backend API not available');
+        debugLog('⚠️ ApiSync: Backend API not available');
       }
       
       // Load last sync time from storage
       this.lastSyncTime = await this.getLastSyncTime();
       
-      console.log('🔄 ApiSync: Initialization completed');
+      debugLog('🔄 ApiSync: Initialization completed');
     } catch (error) {
       console.error('❌ ApiSync: Initialization failed:', error);
     }
@@ -86,7 +87,7 @@ export class ApiSyncService {
    */
   static async testConnection(): Promise<boolean> {
     try {
-      console.log('🔄 ApiSync: Testing connection to cloud backend...');
+      debugLog('🔄 ApiSync: Testing connection to cloud backend...');
       
       const response = await fetch(`${this.config.baseUrl}/health`, {
         method: 'GET',
@@ -96,10 +97,10 @@ export class ApiSyncService {
       });
       
       if (response.ok) {
-        console.log('✅ ApiSync: Successfully connected to cloud backend');
+        debugLog('✅ ApiSync: Successfully connected to cloud backend');
         return true;
       } else {
-        console.log('⚠️ ApiSync: Cloud backend responded with status:', response.status);
+        debugLog('⚠️ ApiSync: Cloud backend responded with status:', response.status);
         return false;
       }
     } catch (error) {
@@ -118,7 +119,7 @@ export class ApiSyncService {
     timeTracking?: TimeTracking[];
   }): Promise<SyncResult> {
     try {
-      console.log('📤 ApiSync: Syncing data to backend...');
+      debugLog('📤 ApiSync: Syncing data to backend...');
       
       const results: SyncResult[] = [];
       
@@ -155,7 +156,7 @@ export class ApiSyncService {
         await this.saveLastSyncTime(this.lastSyncTime);
       }
       
-      console.log('📤 ApiSync: Backend sync completed:', {
+      debugLog('📤 ApiSync: Backend sync completed:', {
         successful: allSuccessful,
         results: results.length
       });
@@ -181,7 +182,7 @@ export class ApiSyncService {
    */
   static async syncFromBackend(employeeId?: string): Promise<SyncResult> {
     try {
-      console.log('📥 ApiSync: Syncing data from backend...');
+      debugLog('📥 ApiSync: Syncing data from backend...');
       
       const syncData: any = {};
       
@@ -227,7 +228,7 @@ export class ApiSyncService {
       this.lastSyncTime = new Date();
       await this.saveLastSyncTime(this.lastSyncTime);
       
-      console.log('📥 ApiSync: Backend sync completed:', {
+      debugLog('📥 ApiSync: Backend sync completed:', {
         employees: employees.length,
         mileageEntries: mileageEntries.length,
         receipts: receipts.length,
@@ -409,27 +410,76 @@ export class ApiSyncService {
    */
   private static async uploadReceiptImage(imageUri: string): Promise<{ success: boolean; uri?: string; error?: string }> {
     try {
-      console.log(`📤 ApiSync: Uploading image from ${imageUri}`);
-      console.log(`📤 ApiSync: Upload URL will be: ${this.config.baseUrl}/receipts/upload-image`);
+      debugLog(`📤 ApiSync: Uploading image from ${imageUri}`);
+      
+      // Validate and sanitize the image URI
+      if (!imageUri || typeof imageUri !== 'string') {
+        return { success: false, error: 'Invalid image URI: URI is empty or not a string' };
+      }
+      
+      // Check if URI is malformed (contains invalid characters)
+      if (imageUri.includes('=') && !imageUri.includes('?')) {
+        debugWarn(`⚠️ ApiSync: Suspicious URI format detected: ${imageUri}`);
+        // Try to decode or fix the URI
+        const decodedUri = decodeURIComponent(imageUri);
+        if (decodedUri !== imageUri) {
+          debugLog(`📤 ApiSync: Decoded URI: ${decodedUri}`);
+          imageUri = decodedUri;
+        }
+      }
+      
+      // Verify the file exists (on React Native, we can't directly check file existence,
+      // but we can validate the URI format)
+      if (!imageUri.startsWith('file://') && !imageUri.startsWith('content://') && !imageUri.startsWith('ph://')) {
+        debugWarn(`⚠️ ApiSync: URI doesn't match expected format: ${imageUri}`);
+        // Continue anyway - some platforms might use different URI schemes
+      }
+      
+      debugLog(`📤 ApiSync: Upload URL will be: ${this.config.baseUrl}/receipts/upload-image`);
       
       // Create FormData for file upload
-      const formData = new FormData();
+      let formData: FormData;
+      try {
+        formData = new FormData();
+        
+        // Extract file extension from URI if possible, otherwise default to jpg
+        let fileExtension = '.jpg';
+        const uriMatch = imageUri.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        if (uriMatch) {
+          fileExtension = uriMatch[0].toLowerCase();
+        }
+        
+        // Add the image file to FormData
+        const fileName = `receipt_${Date.now()}${fileExtension}`;
+        formData.append('image', {
+          uri: imageUri,
+          type: 'image/jpeg',
+          name: fileName,
+        } as any);
+        
+        debugLog(`📤 ApiSync: FormData created successfully`);
+      } catch (formDataError) {
+        // Catch errors when creating FormData (e.g., file doesn't exist)
+        const errorMsg = formDataError instanceof Error ? formDataError.message : String(formDataError);
+        if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260")) {
+          debugWarn(`⚠️ ApiSync: File not found or cannot be opened: ${imageUri}`);
+          return { 
+            success: false, 
+            error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+          };
+        }
+        // Re-throw other FormData errors
+        throw formDataError;
+      }
       
-      // Add the image file to FormData
-      const fileName = `receipt_${Date.now()}.jpg`;
-      formData.append('image', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: fileName,
-      } as any);
-      
-      console.log(`📤 ApiSync: FormData created, preparing request with timeout...`);
+      debugLog(`📤 ApiSync: FormData created, preparing request with timeout...`);
       
       // Add a timeout so we don't hang forever
       const controller = new AbortController();
-      const timeoutMs = 20000; // 20s
+      const timeoutMs = 60000; // 60s - increased to match backend timeout
       const timeoutId = setTimeout(() => {
-        console.warn(`⏱️ ApiSync: Upload timed out after ${timeoutMs}ms`);
+        // Timeout is expected for large images or slow connections - use debugLog instead of debugWarn
+        debugLog(`⏱️ ApiSync: Upload timed out after ${timeoutMs}ms (continuing with local image)`);
         controller.abort();
       }, timeoutMs);
       
@@ -443,7 +493,7 @@ export class ApiSyncService {
         });
         
         clearTimeout(timeoutId);
-        console.log(`📤 ApiSync: Response received, status:`, response.status);
+        debugLog(`📤 ApiSync: Response received, status:`, response.status);
         
         if (!response.ok) {
           const errorText = await response.text();
@@ -452,7 +502,7 @@ export class ApiSyncService {
         }
         
         const result = await response.json();
-        console.log(`✅ ApiSync: Image upload successful:`, result);
+        debugLog(`✅ ApiSync: Image upload successful:`, result);
         
         // Backend may return imageUri, imagePath, or filename. Normalize to /uploads/<filename> when possible
         const filename = result?.imageUri || result?.imagePath || result?.filename || '';
@@ -463,15 +513,42 @@ export class ApiSyncService {
         return { success: true, uri: normalizedUri };
       } catch (fetchError) {
         clearTimeout(timeoutId);
-        console.error(`❌ ApiSync: Upload request error:`, fetchError);
-        return { success: false, error: fetchError instanceof Error ? fetchError.message : 'Unknown fetch error' };
+        // For timeout errors, use debugLog since they're expected and non-blocking
+        // For other errors, use debugWarn
+        let errorMessage = 'Unknown upload error';
+        if (fetchError instanceof Error) {
+          if (fetchError.name === 'AbortError' || fetchError.message.includes('Aborted')) {
+            errorMessage = `Upload timed out after ${timeoutMs / 1000} seconds. The image may be too large or the connection is slow. Please try again.`;
+            debugLog(`⏱️ ApiSync: Upload timeout (expected for large images/slow connections): ${errorMessage}`);
+          } else {
+            errorMessage = fetchError.message;
+            debugWarn(`⚠️ ApiSync: Upload request error:`, fetchError);
+          }
+        } else {
+          debugWarn(`⚠️ ApiSync: Upload request error:`, fetchError);
+        }
+        return { success: false, error: errorMessage };
       }
       
     } catch (error) {
       console.error(`❌ ApiSync: Error uploading image:`, error);
+      
+      // Provide more specific error messages for common issues
+      let errorMessage = 'Unknown upload error';
+      if (error instanceof Error) {
+        const errorMsg = error.message;
+        if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260")) {
+          errorMessage = `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.`;
+        } else if (errorMsg.includes("NSCocoaErrorDomain")) {
+          errorMessage = `File system error: The image file cannot be accessed. Please check the file path.`;
+        } else {
+          errorMessage = errorMsg;
+        }
+      }
+      
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown upload error' 
+        error: errorMessage
       };
     }
   }
@@ -488,21 +565,43 @@ export class ApiSyncService {
           let backendImageUri = receipt.imageUri || '';
           
           // Upload image to backend if we have a local image URI
+          // Make this non-blocking - if upload fails, continue with sync using original URI
           if (receipt.imageUri && receipt.imageUri.startsWith('file://')) {
-            console.log(`📤 ApiSync: Uploading image for receipt ${receipt.id}...`);
+            debugLog(`📤 ApiSync: Uploading image for receipt ${receipt.id}...`);
             
             try {
-              console.log(`📤 ApiSync: Calling uploadReceiptImage for receipt ${receipt.id}...`);
-              const uploadResult = await this.uploadReceiptImage(receipt.imageUri);
-              console.log(`📤 ApiSync: uploadReceiptImage returned:`, uploadResult);
+              debugLog(`📤 ApiSync: Calling uploadReceiptImage for receipt ${receipt.id}...`);
+              // Use Promise.race to ensure we don't wait forever
+              const uploadPromise = this.uploadReceiptImage(receipt.imageUri);
+              const timeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
+                setTimeout(() => {
+                  resolve({ success: false, error: 'Upload timeout - continuing with local image' });
+                }, 65000); // Slightly longer than the upload timeout
+              });
+              
+              const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
+              debugLog(`📤 ApiSync: uploadReceiptImage returned:`, uploadResult);
+              
               if (uploadResult.success && uploadResult.uri) {
                 backendImageUri = uploadResult.uri;
-                console.log(`✅ ApiSync: Image uploaded successfully: ${backendImageUri}`);
+                debugLog(`✅ ApiSync: Image uploaded successfully: ${backendImageUri}`);
               } else {
-                console.warn(`⚠️ ApiSync: Image upload failed for receipt ${receipt.id}, using original URI. Result:`, uploadResult);
+                // Silently continue with original URI - don't fail the entire sync
+                // Use debugLog instead of debugWarn since this is expected behavior for large images/slow connections
+                if (uploadResult.error?.includes('timed out') || uploadResult.error?.includes('timeout')) {
+                  debugLog(`⏱️ ApiSync: Image upload timed out for receipt ${receipt.id}, continuing with local URI (expected behavior)`);
+                } else {
+                  debugWarn(`⚠️ ApiSync: Image upload failed for receipt ${receipt.id}, continuing with local URI. Error: ${uploadResult.error || 'Unknown'}`);
+                }
               }
             } catch (uploadError) {
-              console.error(`❌ ApiSync: Error uploading image for receipt ${receipt.id}:`, uploadError);
+              // Silently continue - don't fail the entire sync for image upload issues
+              const errorMsg = uploadError instanceof Error ? uploadError.message : 'Unknown error';
+              if (errorMsg.includes('timeout') || errorMsg.includes('Aborted')) {
+                debugLog(`⏱️ ApiSync: Image upload timed out for receipt ${receipt.id}, continuing with local URI (expected behavior)`);
+              } else {
+                debugWarn(`⚠️ ApiSync: Image upload error for receipt ${receipt.id}, continuing with local URI:`, errorMsg);
+              }
               // Continue with original imageUri if upload fails
             }
           }
@@ -539,7 +638,7 @@ export class ApiSyncService {
                 ...receipt,
                 imageUri: backendImageUri
               });
-              console.log(`✅ ApiSync: Updated local receipt ${receipt.id} with backend image URI`);
+              debugLog(`✅ ApiSync: Updated local receipt ${receipt.id} with backend image URI`);
             } catch (updateError) {
               console.error(`⚠️ ApiSync: Failed to update local receipt with backend image URI:`, updateError);
             }
@@ -589,11 +688,11 @@ export class ApiSyncService {
             costCenter: entry.costCenter || ''
           };
           
-          console.log(`📤 ApiSync: Syncing time tracking ${entry.id}:`, timeTrackingData);
+          debugLog(`📤 ApiSync: Syncing time tracking ${entry.id}:`, timeTrackingData);
           
           // Validate JSON serialization
           const jsonPayload = JSON.stringify(timeTrackingData);
-          console.log(`📤 ApiSync: JSON payload for time tracking ${entry.id}:`, jsonPayload);
+          debugLog(`📤 ApiSync: JSON payload for time tracking ${entry.id}:`, jsonPayload);
           
           const response = await fetch(`${this.config.baseUrl}/time-tracking`, {
             method: 'POST',
@@ -834,7 +933,7 @@ export class ApiSyncService {
     }
     
     const data = await response.json();
-    console.log(`📋 ApiSync: Fetched ${data.length} Per Diem rules from backend`);
+    debugLog(`📋 ApiSync: Fetched ${data.length} Per Diem rules from backend`);
     return data.map((rule: any) => ({
       id: rule.id,
       costCenter: rule.costCenter,
@@ -854,7 +953,7 @@ export class ApiSyncService {
    */
   private static async syncPerDiemRulesToLocal(perDiemRules: any[]): Promise<void> {
     try {
-      console.log(`📥 ApiSync: Syncing ${perDiemRules.length} Per Diem rules to local database...`);
+      debugLog(`📥 ApiSync: Syncing ${perDiemRules.length} Per Diem rules to local database...`);
       
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
@@ -884,7 +983,7 @@ export class ApiSyncService {
         );
       }
 
-      console.log(`✅ ApiSync: Stored ${perDiemRules.length} Per Diem rules locally`);
+      debugLog(`✅ ApiSync: Stored ${perDiemRules.length} Per Diem rules locally`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing Per Diem rules to local database:', error);
     }
@@ -895,7 +994,7 @@ export class ApiSyncService {
    */
   private static async syncDailyDescriptionsToLocal(dailyDescriptions: DailyDescription[]): Promise<void> {
     try {
-      console.log(`📥 ApiSync: Syncing ${dailyDescriptions.length} daily descriptions to local database...`);
+      debugLog(`📥 ApiSync: Syncing ${dailyDescriptions.length} daily descriptions to local database...`);
       
       for (const desc of dailyDescriptions) {
         try {
@@ -908,7 +1007,7 @@ export class ApiSyncService {
               description: desc.description,
               costCenter: desc.costCenter
             });
-            console.log(`✅ ApiSync: Updated daily description for ${desc.date}`);
+            debugLog(`✅ ApiSync: Updated daily description for ${desc.date}`);
           } else {
             // Create new description
             await DatabaseService.createDailyDescription({
@@ -917,14 +1016,14 @@ export class ApiSyncService {
               description: desc.description,
               costCenter: desc.costCenter || ''
             });
-            console.log(`✅ ApiSync: Created daily description for ${desc.date}`);
+            debugLog(`✅ ApiSync: Created daily description for ${desc.date}`);
           }
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing daily description for ${desc.date}:`, error);
         }
       }
       
-      console.log(`✅ ApiSync: Daily descriptions sync completed`);
+      debugLog(`✅ ApiSync: Daily descriptions sync completed`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing daily descriptions to local database:', error);
     }
@@ -935,7 +1034,7 @@ export class ApiSyncService {
    */
   private static async syncMileageEntriesToLocal(mileageEntries: MileageEntry[]): Promise<void> {
     try {
-      console.log(`📥 ApiSync: Syncing ${mileageEntries.length} mileage entries to local database...`);
+      debugLog(`📥 ApiSync: Syncing ${mileageEntries.length} mileage entries to local database...`);
       
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
@@ -986,7 +1085,7 @@ export class ApiSyncService {
         }
       }
       
-      console.log(`✅ ApiSync: Mileage entries sync completed`);
+      debugLog(`✅ ApiSync: Mileage entries sync completed`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing mileage entries to local database:', error);
     }
@@ -997,7 +1096,7 @@ export class ApiSyncService {
    */
   private static async syncReceiptsToLocal(receipts: Receipt[]): Promise<void> {
     try {
-      console.log(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
+      debugLog(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
       
       // Get database connection once outside the loop
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
@@ -1014,7 +1113,7 @@ export class ApiSyncService {
           const existsById = allExistingReceipts.some(existing => existing.id === receipt.id);
           
           if (existsById) {
-            console.log(`ℹ️ ApiSync: Receipt ${receipt.id} already exists by ID, skipping`);
+            debugLog(`ℹ️ ApiSync: Receipt ${receipt.id} already exists by ID, skipping`);
             continue;
           }
           
@@ -1031,7 +1130,7 @@ export class ApiSyncService {
           );
           
           if (existsByData) {
-            console.log(`ℹ️ ApiSync: Duplicate receipt detected (same date/amount/category/vendor), skipping:`, {
+            debugLog(`ℹ️ ApiSync: Duplicate receipt detected (same date/amount/category/vendor), skipping:`, {
               date: dateStr,
               amount: receipt.amount,
               category: receipt.category,
@@ -1063,13 +1162,13 @@ export class ApiSyncService {
             vendor: receipt.vendor
           });
           
-          console.log(`✅ ApiSync: Created receipt for ${dateStr}: ${receipt.vendor} - $${receipt.amount}`);
+          debugLog(`✅ ApiSync: Created receipt for ${dateStr}: ${receipt.vendor} - $${receipt.amount}`);
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, error);
         }
       }
       
-      console.log(`✅ ApiSync: Receipts sync completed`);
+      debugLog(`✅ ApiSync: Receipts sync completed`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing receipts to local database:', error);
     }
@@ -1080,7 +1179,7 @@ export class ApiSyncService {
    */
   private static async syncTimeTrackingToLocal(timeTracking: TimeTracking[]): Promise<void> {
     try {
-      console.log(`📥 ApiSync: Syncing ${timeTracking.length} time tracking entries to local database...`);
+      debugLog(`📥 ApiSync: Syncing ${timeTracking.length} time tracking entries to local database...`);
       
       // Get all existing time tracking entries for this employee to avoid duplicates
       const existingEntries = await DatabaseService.getTimeTrackingEntries(timeTracking[0]?.employeeId || '');
@@ -1096,7 +1195,7 @@ export class ApiSyncService {
           const trackingKey = `${tracking.date.toDateString()}_${tracking.category}_${tracking.hours}`;
           
           if (existingKeys.has(trackingKey)) {
-            console.log(`ℹ️ ApiSync: Time tracking for ${tracking.date} (${tracking.category}) already exists locally, skipping`);
+            debugLog(`ℹ️ ApiSync: Time tracking for ${tracking.date} (${tracking.category}) already exists locally, skipping`);
             skippedCount++;
             continue;
           }
@@ -1110,14 +1209,14 @@ export class ApiSyncService {
             description: tracking.description,
             costCenter: tracking.costCenter || ''
           });
-          console.log(`✅ ApiSync: Created time tracking for ${tracking.date} (${tracking.category})`);
+          debugLog(`✅ ApiSync: Created time tracking for ${tracking.date} (${tracking.category})`);
           syncedCount++;
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing time tracking ${tracking.id}:`, error);
         }
       }
       
-      console.log(`✅ ApiSync: Time tracking sync completed - ${syncedCount} synced, ${skippedCount} skipped`);
+      debugLog(`✅ ApiSync: Time tracking sync completed - ${syncedCount} synced, ${skippedCount} skipped`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing time tracking to local database:', error);
     }
@@ -1128,7 +1227,7 @@ export class ApiSyncService {
    */
   static async syncMileageEntriesFromBackend(employeeId: string): Promise<SyncResult> {
     try {
-      console.log(`📥 ApiSync: Syncing mileage entries for employee ${employeeId}...`);
+      debugLog(`📥 ApiSync: Syncing mileage entries for employee ${employeeId}...`);
       
       const mileageEntries = await this.fetchMileageEntries(employeeId);
       
@@ -1136,7 +1235,7 @@ export class ApiSyncService {
         await this.syncMileageEntriesToLocal(mileageEntries);
       }
       
-      console.log(`✅ ApiSync: Mileage entries sync completed for employee ${employeeId}: ${mileageEntries.length} entries`);
+      debugLog(`✅ ApiSync: Mileage entries sync completed for employee ${employeeId}: ${mileageEntries.length} entries`);
       
       return {
         success: true,
@@ -1159,7 +1258,7 @@ export class ApiSyncService {
    */
   static async syncReceiptsFromBackend(employeeId: string): Promise<SyncResult> {
     try {
-      console.log(`📥 ApiSync: Syncing receipts for employee ${employeeId}...`);
+      debugLog(`📥 ApiSync: Syncing receipts for employee ${employeeId}...`);
       
       const receipts = await this.fetchReceipts(employeeId);
       
@@ -1167,7 +1266,7 @@ export class ApiSyncService {
         await this.syncReceiptsToLocal(receipts);
       }
       
-      console.log(`✅ ApiSync: Receipts sync completed for employee ${employeeId}: ${receipts.length} receipts`);
+      debugLog(`✅ ApiSync: Receipts sync completed for employee ${employeeId}: ${receipts.length} receipts`);
       
       return {
         success: true,
@@ -1190,13 +1289,13 @@ export class ApiSyncService {
    */
   static async syncTimeTrackingFromBackend(employeeId: string): Promise<SyncResult> {
     try {
-      console.log(`📥 ApiSync: Syncing time tracking for employee ${employeeId}...`);
+      debugLog(`📥 ApiSync: Syncing time tracking for employee ${employeeId}...`);
       
       const timeTracking = await this.fetchTimeTracking(employeeId);
       
       // Safety check: if there are too many entries, something might be wrong
       if (timeTracking.length > 1000) {
-        console.warn(`⚠️ ApiSync: Too many time tracking entries (${timeTracking.length}), skipping sync to prevent issues`);
+        debugWarn(`⚠️ ApiSync: Too many time tracking entries (${timeTracking.length}), skipping sync to prevent issues`);
         return {
           success: false,
           error: `Too many time tracking entries (${timeTracking.length}), skipping sync`,
@@ -1208,7 +1307,7 @@ export class ApiSyncService {
         await this.syncTimeTrackingToLocal(timeTracking);
       }
       
-      console.log(`✅ ApiSync: Time tracking sync completed for employee ${employeeId}: ${timeTracking.length} entries`);
+      debugLog(`✅ ApiSync: Time tracking sync completed for employee ${employeeId}: ${timeTracking.length} entries`);
       
       return {
         success: true,
@@ -1231,7 +1330,7 @@ export class ApiSyncService {
    */
   static async syncDailyDescriptionsFromBackend(employeeId: string): Promise<SyncResult> {
     try {
-      console.log(`📥 ApiSync: Syncing daily descriptions for employee ${employeeId}...`);
+      debugLog(`📥 ApiSync: Syncing daily descriptions for employee ${employeeId}...`);
       
       const dailyDescriptions = await this.fetchDailyDescriptions(employeeId);
       
@@ -1239,7 +1338,7 @@ export class ApiSyncService {
         await this.syncDailyDescriptionsToLocal(dailyDescriptions);
       }
       
-      console.log(`✅ ApiSync: Daily descriptions sync completed for employee ${employeeId}: ${dailyDescriptions.length} descriptions`);
+      debugLog(`✅ ApiSync: Daily descriptions sync completed for employee ${employeeId}: ${dailyDescriptions.length} descriptions`);
       
       return {
         success: true,
@@ -1262,7 +1361,7 @@ export class ApiSyncService {
    */
   static async syncAllDataFromBackend(employeeId: string): Promise<SyncResult> {
     try {
-      console.log(`📥 ApiSync: Syncing all data for employee ${employeeId}...`);
+      debugLog(`📥 ApiSync: Syncing all data for employee ${employeeId}...`);
       
       const results = await Promise.all([
         this.syncMileageEntriesFromBackend(employeeId),
@@ -1274,7 +1373,7 @@ export class ApiSyncService {
       const allSuccessful = results.every(result => result.success);
       
       if (allSuccessful) {
-        console.log(`✅ ApiSync: All data sync completed successfully for employee ${employeeId}`);
+        debugLog(`✅ ApiSync: All data sync completed successfully for employee ${employeeId}`);
       } else {
         console.error(`❌ ApiSync: Some data sync operations failed for employee ${employeeId}`);
       }
@@ -1366,7 +1465,7 @@ export class ApiSyncService {
     try {
       // In React Native, you would use AsyncStorage
       // For now, we'll just store it in memory
-      console.log('💾 ApiSync: Last sync time saved:', time.toISOString());
+      debugLog('💾 ApiSync: Last sync time saved:', time.toISOString());
     } catch (error) {
       console.error('❌ ApiSync: Error saving last sync time:', error);
     }
@@ -1391,6 +1490,6 @@ export class ApiSyncService {
    */
   static updateConfig(newConfig: Partial<ApiSyncConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    console.log('🔄 ApiSync: Configuration updated:', this.config);
+    debugLog('🔄 ApiSync: Configuration updated:', this.config);
   }
 }

@@ -11,7 +11,7 @@ export class DashboardService {
   /**
    * Get dashboard stats using unified data service
    */
-  static async getDashboardStats(employeeId: string): Promise<{
+  static async getDashboardStats(employeeId: string, month?: number, year?: number): Promise<{
     recentMileageEntries: MileageEntry[];
     recentReceipts: Receipt[];
     monthlyStats: {
@@ -24,8 +24,8 @@ export class DashboardService {
     };
   }> {
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+    const selectedMonth = month || now.getMonth() + 1;
+    const selectedYear = year || now.getFullYear();
 
     try {
       // Get recent entries (last 5)
@@ -35,10 +35,10 @@ export class DashboardService {
       ]);
 
       // Get monthly summary using unified service
-      const monthlySummary = await UnifiedDataService.getDashboardSummary(employeeId, month, year);
+      const monthlySummary = await UnifiedDataService.getDashboardSummary(employeeId, selectedMonth, selectedYear);
       
       // Get monthly data for detailed breakdown
-      const monthlyData = await UnifiedDataService.getMonthData(employeeId, month, year);
+      const monthlyData = await UnifiedDataService.getMonthData(employeeId, selectedMonth, selectedYear);
       
       // Extract mileage entries and receipts from monthly data
       const monthlyMileageEntries: MileageEntry[] = [];

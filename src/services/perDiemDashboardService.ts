@@ -23,7 +23,7 @@ export interface PerDiemDashboardStats {
 }
 
 export class PerDiemDashboardService {
-  private static readonly MONTHLY_LIMIT = 350;
+  private static readonly DEFAULT_MONTHLY_LIMIT = 350; // Fallback if no rule found
 
   /**
    * Get comprehensive Per Diem statistics for dashboard
@@ -34,6 +34,13 @@ export class PerDiemDashboardService {
     year: number
   ): Promise<PerDiemDashboardStats> {
     try {
+      // Get employee's cost center for Per Diem rules
+      const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
+      const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
+      
+      // Use rule's monthly limit or fallback to default
+      const monthlyLimit = rule?.monthlyLimit || this.DEFAULT_MONTHLY_LIMIT;
+      
       // Get all receipts for the month
       const receipts = await DatabaseService.getReceipts(employee.id, month, year);
       const perDiemReceipts = receipts.filter(r => r.category === 'Per Diem');
@@ -48,14 +55,14 @@ export class PerDiemDashboardService {
       const todayEligibility = await this.checkEligibilityForToday(employee);
       
       // Calculate statistics
-      const remaining = this.MONTHLY_LIMIT - currentMonthTotal;
-      const percentUsed = (currentMonthTotal / this.MONTHLY_LIMIT) * 100;
+      const remaining = monthlyLimit - currentMonthTotal;
+      const percentUsed = monthlyLimit > 0 ? (currentMonthTotal / monthlyLimit) * 100 : 0;
       
       // Determine status
       let status: 'safe' | 'warning' | 'limit_reached';
-      if (currentMonthTotal >= this.MONTHLY_LIMIT) {
+      if (currentMonthTotal >= monthlyLimit) {
         status = 'limit_reached';
-      } else if (currentMonthTotal >= this.MONTHLY_LIMIT * 0.85) {
+      } else if (currentMonthTotal >= monthlyLimit * 0.85) {
         status = 'warning';
       } else {
         status = 'safe';
@@ -69,7 +76,7 @@ export class PerDiemDashboardService {
 
       return {
         currentMonthTotal,
-        monthlyLimit: this.MONTHLY_LIMIT,
+        monthlyLimit,
         remaining,
         percentUsed,
         daysEligible: eligibilityAnalysis.eligibleDays,
@@ -218,8 +225,8 @@ export class PerDiemDashboardService {
   private static getEmptyStats(): PerDiemDashboardStats {
     return {
       currentMonthTotal: 0,
-      monthlyLimit: this.MONTHLY_LIMIT,
-      remaining: this.MONTHLY_LIMIT,
+      monthlyLimit: this.DEFAULT_MONTHLY_LIMIT,
+      remaining: this.DEFAULT_MONTHLY_LIMIT,
       percentUsed: 0,
       daysEligible: 0,
       daysClaimed: 0,

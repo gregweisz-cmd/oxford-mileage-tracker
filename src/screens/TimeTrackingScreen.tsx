@@ -37,11 +37,13 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [timeEntries, setTimeEntries] = useState<TimeTracking[]>([]);
+  const [allTimeEntries, setAllTimeEntries] = useState<TimeTracking[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimeTracking | null>(null);
   const [inlineEditingEntry, setInlineEditingEntry] = useState<string | null>(null);
   const [inlineEditingValue, setInlineEditingValue] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -60,6 +62,33 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
       loadTimeEntries();
     }
   }, [currentEmployee, currentMonth]);
+
+  // Filter time entries based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setTimeEntries(allTimeEntries);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    const filtered = allTimeEntries.filter(entry => {
+      const category = entry.category?.toLowerCase() || '';
+      const description = entry.description?.toLowerCase() || '';
+      const costCenter = entry.costCenter?.toLowerCase() || '';
+      const hours = entry.hours.toString();
+      const date = entry.date.toLocaleDateString('en-US').toLowerCase();
+      
+      return (
+        category.includes(query) ||
+        description.includes(query) ||
+        costCenter.includes(query) ||
+        hours.includes(query) ||
+        date.includes(query)
+      );
+    });
+    
+    setTimeEntries(filtered);
+  }, [searchQuery, allTimeEntries]);
 
   const loadEmployee = async () => {
     try {
@@ -168,6 +197,7 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
         currentMonth.getFullYear()
       );
       console.log('🕒 Loaded time entries:', entries.length, 'entries');
+      setAllTimeEntries(entries);
       setTimeEntries(entries);
     } catch (error) {
       console.error('Error loading time entries:', error);
@@ -479,6 +509,28 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
 
       {/* Summary Cards */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search entries by category, description, hours, date..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              style={styles.clearSearchButton}
+            >
+              <MaterialIcons name="close" size={20} color="#999" />
+            </TouchableOpacity>
+          )}
+        </View>
+
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryTitle}>Monthly Summary</Text>
           {TIME_CATEGORIES.map(category => {
@@ -492,14 +544,20 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
           })}
         </View>
 
-        {/* Time Entries */}
+        {/* Hours Worked Header */}
         <View style={styles.entriesContainer}>
-          <Text style={styles.entriesTitle}>Time Entries</Text>
+          <Text style={styles.entriesTitle}>Hours Worked</Text>
           {timeEntries.length === 0 ? (
             <View style={styles.emptyState}>
               <MaterialIcons name="schedule" size={48} color="#ccc" />
-              <Text style={styles.emptyText}>No time entries for this month</Text>
-              <Text style={styles.emptySubtext}>Tap the + button to add your first entry</Text>
+              <Text style={styles.emptyText}>
+                {searchQuery.trim() ? 'No entries found matching your search' : 'No time entries for this month'}
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {searchQuery.trim() 
+                  ? 'Try adjusting your search terms' 
+                  : 'Tap the + button to add your first entry'}
+              </Text>
               <TouchableOpacity 
                 style={styles.sampleButton}
                 onPress={createSampleTimeEntries}
@@ -556,6 +614,9 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
                 )}
                 {entry.description && (
                   <Text style={styles.entryDescription}>{entry.description}</Text>
+                )}
+                {entry.costCenter && (
+                  <Text style={styles.entryCostCenter}>Cost Center: {entry.costCenter}</Text>
                 )}
               </View>
             ))
@@ -730,6 +791,34 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  clearSearchButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
   summaryContainer: {
     marginBottom: 24,
   },
@@ -841,6 +930,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     fontStyle: 'italic',
+  },
+  entryCostCenter: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
   },
   editableHours: {
     padding: 4,

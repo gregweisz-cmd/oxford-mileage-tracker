@@ -1,5 +1,5 @@
 // Authentication Service for Admin Web Portal
-export type UserRole = 'employee' | 'supervisor' | 'admin';
+export type UserRole = 'employee' | 'supervisor' | 'admin' | 'finance';
 
 export interface User {
   id: string;
@@ -42,6 +42,16 @@ export class AuthService {
         'view_team_employees',
         'manage_team_settings'
       ],
+      finance: [
+        'view_own_data',
+        'edit_own_profile',
+        'view_all_data',
+        'approve_reports',
+        'export_data',
+        'view_finance_reports',
+        'manage_expense_approvals',
+        'view_financial_analytics'
+      ],
       admin: [
         'view_own_data',
         'submit_reports',
@@ -68,7 +78,8 @@ export class AuthService {
     
     try {
       // First, get all employees to find the one with matching email
-      const response = await fetch('http://localhost:3002/api/employees');
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const response = await fetch(`${API_BASE_URL}/api/employees`);
       if (!response.ok) {
         throw new Error('Failed to fetch employees');
       }
@@ -136,6 +147,19 @@ export class AuthService {
     if (nameLower.includes('greg') || nameLower.includes('goose') || nameLower.includes('admin') || 
         positionLower.includes('executive director') || emailLower.includes('greg.weisz')) {
       return 'admin';
+    }
+
+    // Finance users (check before supervisor to avoid conflicts)
+    if (
+      positionLower.includes('finance') ||
+      positionLower.includes('financial') ||
+      positionLower.includes('accounting') ||
+      positionLower.includes('accountant') ||
+      positionLower.includes('controller') ||
+      positionLower.includes('cfo') ||
+      positionLower.includes('chief financial')
+    ) {
+      return 'finance';
     }
 
     // Supervisors (positions that typically manage teams) - be more specific
@@ -251,6 +275,10 @@ export class AuthService {
     return user?.role === 'supervisor';
   }
 
+  static isFinance(user: User | null): boolean {
+    return user?.role === 'finance';
+  }
+
   static isAdmin(user: User | null): boolean {
     return user?.role === 'admin';
   }
@@ -260,7 +288,11 @@ export class AuthService {
   }
 
   static canViewAllData(user: User | null): boolean {
-    return AuthService.isAdmin(user);
+    return AuthService.isAdmin(user) || AuthService.isFinance(user);
+  }
+
+  static canApproveReports(user: User | null): boolean {
+    return AuthService.isAdmin(user) || AuthService.isSupervisor(user) || AuthService.isFinance(user);
   }
 }
 

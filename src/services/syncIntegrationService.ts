@@ -1,5 +1,6 @@
 import { DatabaseService } from './database';
 import { ApiSyncService } from './apiSyncService';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 
 export interface SyncQueueItem {
@@ -24,14 +25,14 @@ export class SyncIntegrationService {
    */
   static async initialize(): Promise<void> {
     try {
-      console.log('🔄 SyncIntegration: Initializing sync integration service...');
+      debugLog('🔄 SyncIntegration: Initializing sync integration service...');
       
       // Register callback with DatabaseService
       const { setSyncCallback } = await import('./database');
       setSyncCallback((operation, entityType, data) => {
         this.queueSyncOperation(operation as any, entityType as any, data);
       });
-      console.log('✅ SyncIntegration: Callback registered with DatabaseService');
+      debugLog('✅ SyncIntegration: Callback registered with DatabaseService');
       
       // Initialize API sync service
       await ApiSyncService.initialize();
@@ -39,10 +40,10 @@ export class SyncIntegrationService {
       // Start auto-sync immediately
       if (this.autoSyncEnabled) {
         this.startAutoSync();
-        console.log('✅ SyncIntegration: Auto-sync enabled and started (syncs every 5 seconds)');
+        debugLog('✅ SyncIntegration: Auto-sync enabled and started (syncs every 5 seconds)');
       }
       
-      console.log('✅ SyncIntegration: Sync integration service initialized');
+      debugLog('✅ SyncIntegration: Sync integration service initialized');
     } catch (error) {
       console.error('❌ SyncIntegration: Failed to initialize:', error);
     }
@@ -60,7 +61,7 @@ export class SyncIntegrationService {
       this.stopAutoSync();
     }
     
-    console.log(`🔄 SyncIntegration: Auto-sync ${enabled ? 'enabled' : 'disabled'}`);
+    debugLog(`🔄 SyncIntegration: Auto-sync ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   /**
@@ -75,7 +76,7 @@ export class SyncIntegrationService {
       this.processSyncQueue();
     }, this.SYNC_INTERVAL_MS);
     
-    console.log('🔄 SyncIntegration: Auto-sync timer started');
+    debugLog('🔄 SyncIntegration: Auto-sync timer started');
   }
 
   /**
@@ -87,7 +88,7 @@ export class SyncIntegrationService {
       this.syncInterval = null;
     }
     
-    console.log('🔄 SyncIntegration: Auto-sync timer stopped');
+    debugLog('🔄 SyncIntegration: Auto-sync timer stopped');
   }
 
   /**
@@ -101,7 +102,7 @@ export class SyncIntegrationService {
     const afterLength = this.syncQueue.length;
     
     if (beforeLength > afterLength) {
-      console.log(`🗑️ SyncIntegration: Removed ${beforeLength - afterLength} ${entityType} items from queue for ID: ${entityId}`);
+      debugLog(`🗑️ SyncIntegration: Removed ${beforeLength - afterLength} ${entityType} items from queue for ID: ${entityId}`);
     }
   }
 
@@ -138,12 +139,12 @@ export class SyncIntegrationService {
     );
     
     if (recentDuplicates.length > 0) {
-      console.log(`⚠️ SyncIntegration: Duplicate ${operation} for ${entityType} ${data.id} already queued recently, skipping`);
+      debugLog(`⚠️ SyncIntegration: Duplicate ${operation} for ${entityType} ${data.id} already queued recently, skipping`);
       return;
     }
     
     this.syncQueue.push(queueItem);
-    console.log(`🔄 SyncIntegration: Queued ${operation} operation for ${entityType}:`, data.id);
+    debugLog(`🔄 SyncIntegration: Queued ${operation} operation for ${entityType}:`, data.id);
     
     // Don't process immediately - let the interval handle it to avoid duplicates
     // The interval will process the queue every 5 seconds
@@ -158,13 +159,13 @@ export class SyncIntegrationService {
     }
     
     this.isProcessingQueue = true;
-    console.log(`🔄 SyncIntegration: Processing sync queue (${this.syncQueue.length} items)`);
+    debugLog(`🔄 SyncIntegration: Processing sync queue (${this.syncQueue.length} items)`);
     
     try {
       // Test connection first
       const isConnected = await ApiSyncService.testConnection();
       if (!isConnected) {
-        console.log('🔄 SyncIntegration: No connection, skipping sync queue processing');
+        debugLog('🔄 SyncIntegration: No connection, skipping sync queue processing');
         return;
       }
       
@@ -181,7 +182,7 @@ export class SyncIntegrationService {
         !groupedOperations[item.entityType]?.includes(item)
       );
       
-      console.log(`✅ SyncIntegration: Processed sync queue, ${this.syncQueue.length} items remaining`);
+      debugLog(`✅ SyncIntegration: Processed sync queue, ${this.syncQueue.length} items remaining`);
       
     } catch (error) {
       console.error('❌ SyncIntegration: Error processing sync queue:', error);
@@ -266,7 +267,7 @@ export class SyncIntegrationService {
              entityType === 'timeTracking' ? 'timeTracking' : 
              `${entityType}s`] = entities;
     
-    console.log(`🔄 SyncIntegration: Processing ${operations.length} ${entityType} operations:`, {
+    debugLog(`🔄 SyncIntegration: Processing ${operations.length} ${entityType} operations:`, {
       entityType,
       operationCount: operations.length,
       syncDataKeys: Object.keys(syncData),
@@ -280,7 +281,7 @@ export class SyncIntegrationService {
       throw new Error(result.error || 'Sync failed');
     }
     
-    console.log(`✅ SyncIntegration: Successfully synced ${operations.length} ${entityType} operations`);
+    debugLog(`✅ SyncIntegration: Successfully synced ${operations.length} ${entityType} operations`);
   }
 
   /**
@@ -301,7 +302,7 @@ export class SyncIntegrationService {
           throw new Error(`Delete failed: ${response.statusText}`);
         }
         
-        console.log(`✅ SyncIntegration: Successfully deleted ${entityType}:`, operation.data.id);
+        debugLog(`✅ SyncIntegration: Successfully deleted ${entityType}:`, operation.data.id);
       } catch (error) {
         console.error(`❌ SyncIntegration: Error deleting ${entityType}:`, error);
         throw error;
@@ -313,7 +314,9 @@ export class SyncIntegrationService {
    * Get the delete endpoint for an entity type
    */
   private static getDeleteEndpoint(entityType: string, id: string): string {
-    const baseUrl = 'http://localhost:3002/api';
+    // Use production API for production builds, local for development
+    // This file is for mobile app - should use the API config from config/api.ts
+    const baseUrl = __DEV__ ? 'http://192.168.86.101:3002/api' : 'https://oxford-mileage-backend.onrender.com/api';
     
     switch (entityType) {
       case 'employee':
@@ -334,14 +337,14 @@ export class SyncIntegrationService {
    */
   static async forceSync(): Promise<boolean> {
     try {
-      console.log('🔄 SyncIntegration: Force sync requested');
+      debugLog('🔄 SyncIntegration: Force sync requested');
       
       // Process queue immediately
       await this.processSyncQueue();
       
       // If queue is empty, do a full sync
       if (this.syncQueue.length === 0) {
-        console.log('🔄 SyncIntegration: Queue empty, performing full sync');
+        debugLog('🔄 SyncIntegration: Queue empty, performing full sync');
         
         // Get all data and sync to backend
         const employees = await DatabaseService.getEmployees();
@@ -357,7 +360,7 @@ export class SyncIntegrationService {
         });
         
         if (result.success) {
-          console.log('✅ SyncIntegration: Force sync completed successfully');
+          debugLog('✅ SyncIntegration: Force sync completed successfully');
           return true;
         } else {
           console.error('❌ SyncIntegration: Force sync failed:', result.error);
@@ -394,7 +397,7 @@ export class SyncIntegrationService {
    */
   static clearSyncQueue(): void {
     this.syncQueue = [];
-    console.log('🔄 SyncIntegration: Sync queue cleared');
+    debugLog('🔄 SyncIntegration: Sync queue cleared');
   }
 
   /**
@@ -402,9 +405,9 @@ export class SyncIntegrationService {
    */
   static async refreshPerDiemRules(): Promise<void> {
     try {
-      console.log('🔄 SyncIntegration: Manually refreshing Per Diem rules...');
+      debugLog('🔄 SyncIntegration: Manually refreshing Per Diem rules...');
       await ApiSyncService.syncFromBackend();
-      console.log('✅ SyncIntegration: Per Diem rules refreshed successfully');
+      debugLog('✅ SyncIntegration: Per Diem rules refreshed successfully');
     } catch (error) {
       console.error('❌ SyncIntegration: Error refreshing Per Diem rules:', error);
       throw error;
@@ -417,6 +420,6 @@ export class SyncIntegrationService {
   static cleanup(): void {
     this.stopAutoSync();
     this.clearSyncQueue();
-    console.log('🔄 SyncIntegration: Cleanup completed');
+    debugLog('🔄 SyncIntegration: Cleanup completed');
   }
 }

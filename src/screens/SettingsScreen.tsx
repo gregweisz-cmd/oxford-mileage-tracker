@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import UnifiedHeader from '../components/UnifiedHeader';
@@ -46,6 +48,9 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
+  // Refs for keyboard handling
+  const scrollViewRef = useRef<ScrollView>(null);
+
   useEffect(() => {
     loadEmployee();
   }, []);
@@ -59,6 +64,12 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     if (employeeId) {
       const employee = await DatabaseService.getEmployeeById(employeeId);
       setCurrentEmployee(employee);
+    } else {
+      // Try to get current employee from database if no route param
+      const currentEmployee = await DatabaseService.getCurrentEmployee();
+      if (currentEmployee) {
+        setCurrentEmployee(currentEmployee);
+      }
     }
   };
 
@@ -79,7 +90,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
       await PerformanceOptimizationService.initializeTables();
       await DeviceControlService.getInstance().initialize();
       
-      // Load essential settings only
+      // Load essential settings
       console.log('🔄 SettingsScreen: Loading essential settings...');
       const [device, deviceControl, input] = await Promise.all([
         DeviceIntelligenceService.getDeviceSettings(currentEmployee.id),
@@ -420,13 +431,58 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
         onBackPress={() => navigation.goBack()}
       />
 
-      <View style={styles.content}>
+      <KeyboardAvoidingView 
+        style={styles.content}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+      >
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Essential Settings</Text>
         
-        <ScrollView style={styles.settingsContainer} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.settingsContainer} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 100 }}
+        >
           {renderEssentialSettings()}
+          
+          {/* Temporary test button for Setup Wizard */}
+          {__DEV__ && currentEmployee && (
+            <TouchableOpacity
+              style={[styles.actionButton, styles.resetButton, { marginTop: 20 }]}
+              onPress={async () => {
+                Alert.alert(
+                  'Reset Setup Data',
+                  'This will clear your base address and cost centers so you can test the Setup Wizard. Continue?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Reset',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await DatabaseService.resetSetupData(currentEmployee!.id);
+                          Alert.alert(
+                            'Setup Data Reset',
+                            'Your setup data has been cleared. Please log out and log back in to see the Setup Wizard.',
+                            [{ text: 'OK' }]
+                          );
+                        } catch (error) {
+                          Alert.alert('Error', `Failed to reset setup data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <MaterialIcons name="refresh" size={20} color="#f44336" />
+              <Text style={styles.resetButtonText}>Test Setup Wizard (Dev Only)</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
 
       {renderThemeModal()}
     </View>
@@ -615,5 +671,67 @@ const styles = StyleSheet.create({
   modalCancelText: {
     fontSize: 16,
     color: '#666',
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginBottom: 12,
+  },
+  button: {
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  buttonDisabled: {
+    backgroundColor: '#ccc',
+    opacity: 0.6,
+  },
+  buttonPrimary: {
+    backgroundColor: '#2196F3',
+  },
+  buttonSecondary: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  buttonTextSecondary: {
+    color: '#333',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#1976D2',
+    marginLeft: 8,
+    flex: 1,
+  },
+  modalBody: {
+    padding: 20,
   },
 });

@@ -10,9 +10,12 @@ import {
 } from '@mui/material';
 import { EmployeeManagementComponent } from './EmployeeManagementComponent';
 import { CostCenterManagement } from './CostCenterManagement';
+import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import { SupervisorManagement } from './SupervisorManagement';
+import { SystemSettings } from './SystemSettings';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { BulkImportResult } from '../services/bulkImportService';
+import { debugLog, debugError } from '../config/debug';
 import { Employee } from '../types';
 // import OxfordHouseLogo from './OxfordHouseLogo'; // Logo is in PortalSwitcher
 
@@ -64,10 +67,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     try {
       setLoading(true);
       const employeeData = await EmployeeApiService.getAllEmployees(skipCache);
-      console.log(`📊 Loaded ${employeeData.length} employees${skipCache ? ' (cache bypassed)' : ''}`);
+      debugLog(`📊 Loaded ${employeeData.length} employees${skipCache ? ' (cache bypassed)' : ''}`);
       setEmployees(employeeData);
     } catch (error) {
-      console.error('Error loading employees:', error);
+      debugError('Error loading employees:', error);
       showSnackbar('Failed to load employees', 'error');
     } finally {
       setLoading(false);
@@ -85,7 +88,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
       showSnackbar('Employee created successfully', 'success');
       return createdEmployee;
     } catch (error) {
-      console.error('Error creating employee:', error);
+      debugError('Error creating employee:', error);
       showSnackbar('Failed to create employee', 'error');
       throw error;
     }
@@ -97,7 +100,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
       await loadEmployees(true); // Refresh the list, skip cache
       showSnackbar('Employee updated successfully', 'success');
     } catch (error) {
-      console.error('Error updating employee:', error);
+      debugError('Error updating employee:', error);
       showSnackbar('Failed to update employee', 'error');
       throw error;
     }
@@ -105,12 +108,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
 
   const handleDeleteEmployee = async (id: string): Promise<void> => {
     try {
-      await EmployeeApiService.deleteEmployee(id);
+      // Archive instead of delete - employees should be archived first, then permanently deleted from archived section
+      await EmployeeApiService.archiveEmployee(id);
       await loadEmployees(); // Refresh the list
-      showSnackbar('Employee deleted successfully', 'success');
-    } catch (error) {
-      console.error('Error deleting employee:', error);
-      showSnackbar('Failed to delete employee', 'error');
+      showSnackbar('Employee archived successfully', 'success');
+    } catch (error: any) {
+      debugError('Error archiving employee:', error);
+      showSnackbar(error.message || 'Failed to archive employee', 'error');
       throw error;
     }
   };
@@ -121,7 +125,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
       await loadEmployees(); // Refresh the list
       showSnackbar(`Successfully updated ${result.updatedCount} employees`, 'success');
     } catch (error) {
-      console.error('Error bulk updating employees:', error);
+      debugError('Error bulk updating employees:', error);
       showSnackbar('Failed to bulk update employees', 'error');
       throw error;
     }
@@ -129,13 +133,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
 
   const handleBulkDeleteEmployees = async (employeeIds: string[]): Promise<void> => {
     try {
-      console.log(`🗑️ Deleting ${employeeIds.length} employees:`, employeeIds);
+      debugLog(`🗑️ Deleting ${employeeIds.length} employees:`, employeeIds);
       const result = await EmployeeApiService.bulkDeleteEmployees({ employeeIds });
-      console.log(`✅ Delete result:`, result);
+      debugLog(`✅ Delete result:`, result);
       await loadEmployees(true); // Refresh the list, skip cache
       showSnackbar(`Successfully deleted ${result.deletedCount} employees`, 'success');
     } catch (error) {
-      console.error('Error bulk deleting employees:', error);
+      debugError('Error bulk deleting employees:', error);
       showSnackbar('Failed to bulk delete employees', 'error');
       throw error;
     }
@@ -177,6 +181,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
             onDeleteEmployee={handleDeleteEmployee}
             onBulkUpdateEmployees={handleBulkUpdateEmployees}
             onBulkDeleteEmployees={handleBulkDeleteEmployees}
+            onRefresh={() => loadEmployees(true)}
           />
         </TabPanel>
 
@@ -194,23 +199,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         </TabPanel>
 
         <TabPanel value={activeTab} index={3}>
-          <Typography variant="h4" gutterBottom>
-            Reports & Analytics
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            This section will contain comprehensive reporting and analytics features.
-            Coming soon!
-          </Typography>
+          <ReportsAnalyticsTab />
         </TabPanel>
 
         <TabPanel value={activeTab} index={4}>
-          <Typography variant="h4" gutterBottom>
-            System Settings
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            This section will contain system configuration and settings.
-            Coming soon!
-          </Typography>
+          <SystemSettings />
         </TabPanel>
       </Container>
 

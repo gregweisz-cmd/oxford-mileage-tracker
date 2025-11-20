@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oxford House Expense Reporting System - Training Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #e3f2fd;
+            border-bottom: 2px solid #1976d2;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 1rem 2rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #555;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .nav-tab:hover {
+            background: rgba(25, 118, 210, 0.1);
+        }
+
+        .nav-tab.active {
+            background: white;
+            color: #1976d2;
+            border-bottom: 3px solid #1976d2;
+        }
+
+        .content-section {
+            display: none;
+            padding: 2rem;
+            min-height: 600px;
+        }
+
+        .content-section.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .toc {
+            background: #f8f9fa;
+            border-left: 4px solid #1976d2;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 4px;
+        }
+
+        .toc h2 {
+            color: #1976d2;
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
+        }
+
+        .toc ul {
+            list-style: none;
+        }
+
+        .toc ul ul {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .toc a {
+            color: #555;
+            text-decoration: none;
+            display: block;
+            padding: 0.3rem 0;
+            transition: color 0.2s;
+        }
+
+        .toc a:hover {
+            color: #1976d2;
+        }
+
+        h1 {
+            color: #1976d2;
+            font-size: 2.2rem;
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid #1976d2;
+        }
+
+        h2 {
+            color: #1565c0;
+            font-size: 1.8rem;
+            margin: 2rem 0 1rem;
+            padding-top: 1rem;
+        }
+
+        h3 {
+            color: #424242;
+            font-size: 1.4rem;
+            margin: 1.5rem 0 0.8rem;
+        }
+
+        h4 {
+            color: #616161;
+            font-size: 1.2rem;
+            margin: 1.2rem 0 0.6rem;
+        }
+
+        h5 {
+            color: #757575;
+            font-size: 1.1rem;
+            margin: 1rem 0 0.5rem;
+            font-weight: 600;
+        }
+
+        p {
+            margin: 1rem 0;
+            text-align: justify;
+        }
+
+        ul, ol {
+            margin: 1rem 0 1rem 2rem;
+        }
+
+        li {
+            margin: 0.5rem 0;
+        }
+
+        code {
+            background: #f5f5f5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #d63384;
+        }
+
+        pre {
+            background: #f5f5f5;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        blockquote {
+            border-left: 4px solid #1976d2;
+            padding-left: 1rem;
+            margin: 1rem 0;
+            color: #555;
+            font-style: italic;
+        }
+
+        .screenshot-placeholder {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border: 2px dashed #1976d2;
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 1.5rem 0;
+            text-align: center;
+            position: relative;
+        }
+
+        .screenshot-placeholder::before {
+            content: '📸';
+            font-size: 3rem;
+            display: block;
+            margin-bottom: 1rem;
+        }
+
+        .screenshot-placeholder strong {
+            display: block;
+            color: #1565c0;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .screenshot-placeholder p {
+            color: #555;
+            font-size: 0.95rem;
+            margin: 0;
+            text-align: center;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .feature-card h3 {
+            color: #1976d2;
+            margin-top: 0;
+            font-size: 1.3rem;
+        }
+
+        .feature-card .icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .step-list {
+            counter-reset: step-counter;
+            list-style: none;
+            margin-left: 0;
+        }
+
+        .step-list li {
+            counter-increment: step-counter;
+            margin: 1.5rem 0;
+            padding-left: 3rem;
+            position: relative;
+        }
+
+        .step-list li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: #1976d2;
+            color: white;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .highlight-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+
+        .warning-box {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+
+        .success-box {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        th {
+            background: #1976d2;
+            color: white;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 0.8rem 1rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin: 0 0.25rem;
+        }
+
+        .badge-primary {
+            background: #1976d2;
+            color: white;
+        }
+
+        .badge-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .badge-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: #1976d2;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s;
+            margin: 0.5rem;
+        }
+
+        .btn:hover {
+            background: #1565c0;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .scroll-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #1976d2;
+            color: white;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+
+        .scroll-to-top.visible {
+            opacity: 1;
+        }
+
+        .scroll-to-top:hover {
+            background: #1565c0;
+        }
+
+        @media print {
+            .nav-tabs, .scroll-to-top {
+                display: none;
+            }
+            .content-section {
+                display: block !important;
+            }
+            .screenshot-placeholder {
+                border: 1px solid #ccc;
+                background: #f9f9f9;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            .nav-tabs {
+                flex-direction: column;
+            }
+            .nav-tab {
+                border-bottom: 1px solid #ccc;
+                border-left: 3px solid transparent;
+            }
+            .nav-tab.active {
+                border-left: 3px solid #1976d2;
+                border-bottom: 1px solid #ccc;
+            }
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+            h1 {
+                font-size: 1.8rem;
+            }
+            h2 {
+                font-size: 1.5rem;
+            }
+        }
+
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(to right, transparent, #1976d2, transparent);
+            margin: 3rem 0;
+        }
+
+        .demo-flow {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+
+        .demo-flow h3 {
+            color: #1976d2;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Oxford House Expense Reporting System</h1>
+            <p>Training Guide & Executive Summary</p>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showSection('executive')">Executive Summary</button>
+            <button class="nav-tab" onclick="showSection('training')">Training Guide</button>
+        </div>
+
+        <!-- Executive Summary Section -->
+        <div id="executive" class="content-section active">
+            <div style="padding: 2rem;">
+                <h1>Executive Summary - CEO/CFO Briefing</h1>
+                
+                <div class="info-box">
+                    <strong>Last Updated:</strong> [Current Date]<br>
+                    <strong>Version:</strong> 1.0
+                </div>
+
+                <h2>Overview</h2>
+                <p>The Oxford House Expense Reporting System is a comprehensive web-based platform for managing employee expense reports from submission through approval to payment processing. The system provides real-time analytics, automated workflows, and detailed reporting capabilities to streamline financial operations and ensure compliance.</p>
+
+                <div class="section-divider"></div>
+
+                <h2>Key Features at a Glance</h2>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="icon">📊</div>
+                        <h3>Real-Time Analytics Dashboard</h3>
+                        <ul>
+                            <li><strong>Instant Insights:</strong> View total expenses, active reports, and submission metrics at a glance</li>
+                            <li><strong>Trend Analysis:</strong> Multi-month expense trends with predictive forecasting</li>
+                            <li><strong>Department Analysis:</strong> Track spending by cost center, identify hotspots, and monitor mileage patterns</li>
+                            <li><strong>Visual Dashboards:</strong> Submission funnel charts, trend graphs, and geographic activity maps</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="icon">🔄</div>
+                        <h3>Automated Approval Workflow</h3>
+                        <ul>
+                            <li><strong>Multi-Stage Approval:</strong> Employee → Supervisor → Finance → Payment</li>
+                            <li><strong>Delegation Support:</strong> Supervisors can delegate approvals to peers</li>
+                            <li><strong>Reminder System:</strong> Automatic notifications for pending approvals</li>
+                            <li><strong>Audit Trail:</strong> Complete history of all approvals and changes</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="icon">📋</div>
+                        <h3>Flexible Reporting & Export</h3>
+                        <ul>
+                            <li><strong>Custom Report Builder:</strong> Create reports with any columns and filters</li>
+                            <li><strong>Scheduled Reports:</strong> Automated email delivery (daily/weekly/monthly)</li>
+                            <li><strong>Multiple Formats:</strong> Export to CSV or PDF for external analysis</li>
+                            <li><strong>Real-Time Data:</strong> All exports use current database information</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="icon">👥</div>
+                        <h3>User Portals by Role</h3>
+                        <ul>
+                            <li><strong>Employee Portal:</strong> Create and submit expense reports with GPS mileage tracking</li>
+                            <li><strong>Supervisor Portal:</strong> Review, approve, and delegate team member reports</li>
+                            <li><strong>Finance Portal:</strong> Comprehensive review, approval, and reporting tools</li>
+                            <li><strong>Admin Portal:</strong> Employee management, cost center configuration, system analytics</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <h2>Business Value</h2>
+
+                <h3>💰 Cost Management</h3>
+                <ul>
+                    <li><strong>Visibility:</strong> Real-time view of all expenses across the organization</li>
+                    <li><strong>Trend Analysis:</strong> Identify spending patterns and forecast future costs</li>
+                    <li><strong>Department Tracking:</strong> Monitor spending by cost center for budget control</li>
+                    <li><strong>Anomaly Detection:</strong> Quickly identify unusual expenses or patterns</li>
+                </ul>
+
+                <h3>⚡ Efficiency Gains</h3>
+                <ul>
+                    <li><strong>Automated Workflows:</strong> Reduced manual processing time</li>
+                    <li><strong>Scheduled Reports:</strong> No need to manually generate regular reports</li>
+                    <li><strong>Bulk Operations:</strong> Handle multiple reports simultaneously</li>
+                    <li><strong>Quick Filtering:</strong> Find specific reports in seconds vs. minutes</li>
+                </ul>
+
+                <h3>✅ Compliance & Control</h3>
+                <ul>
+                    <li><strong>Approval Chains:</strong> Enforced multi-stage approval process</li>
+                    <li><strong>Audit Trail:</strong> Complete history of all actions and changes</li>
+                    <li><strong>Revision Tracking:</strong> Detailed records of what was changed and why</li>
+                    <li><strong>Status Visibility:</strong> Clear visibility into where reports are in the process</li>
+                </ul>
+
+                <h3>📈 Strategic Insights</h3>
+                <ul>
+                    <li><strong>Forecasting:</strong> Predictive analytics for budget planning</li>
+                    <li><strong>Department Analytics:</strong> Compare spending across cost centers</li>
+                    <li><strong>Submission Patterns:</strong> Understand submission and approval timelines</li>
+                    <li><strong>Mileage Analysis:</strong> Geographic activity mapping for resource planning</li>
+                </ul>
+
+                <div class="section-divider"></div>
+
+                <h2>Key Metrics Available</h2>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h3>Financial Metrics</h3>
+                        <ul>
+                            <li>Total expenses (current period, year-to-date, custom ranges)</li>
+                            <li>Average expense per report</li>
+                            <li>Top spending cost centers</li>
+                            <li>Expense trends over time</li>
+                            <li>Forecasted next-month spending</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3>Operational Metrics</h3>
+                        <ul>
+                            <li>Number of active reports</li>
+                            <li>Pending approvals count</li>
+                            <li>Submission rates</li>
+                            <li>Approval turnaround times</li>
+                            <li>Reports needing attention</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3>Employee Metrics</h3>
+                        <ul>
+                            <li>Reports per employee</li>
+                            <li>Miles traveled per employee/cost center</li>
+                            <li>Hours worked tracking</li>
+                            <li>Submission compliance rates</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <h2>Quick Start Guide</h2>
+
+                <h3>For CEO/CFO: Viewing Organizational Overview</h3>
+                <ol class="step-list">
+                    <li><strong>Access Reports & Analytics Tab</strong>
+                        <ul>
+                            <li>Navigate to Finance Portal or Admin Portal</li>
+                            <li>Click "Reports & Analytics" tab</li>
+                        </ul>
+                    </li>
+                    <li><strong>View Summary Dashboard</strong>
+                        <ul>
+                            <li>Review summary cards (Total Expenses, Active Reports, etc.)</li>
+                            <li>Check submission funnel (visual representation of report statuses)</li>
+                            <li>Review top cost centers by spend and miles</li>
+                        </ul>
+                    </li>
+                    <li><strong>Analyze Trends</strong>
+                        <ul>
+                            <li>Scroll to "Trends" section</li>
+                            <li>View expense trend chart over time</li>
+                            <li>Review forecast for next month</li>
+                        </ul>
+                    </li>
+                    <li><strong>Generate Custom Report</strong>
+                        <ul>
+                            <li>Scroll to "Report Builder" section</li>
+                            <li>Select desired columns (e.g., Employee, Cost Center, Amount, Status)</li>
+                            <li>Set date range (e.g., This Quarter, This Year)</li>
+                            <li>Optionally filter by cost center or status</li>
+                            <li>Click "Run Report" to view data</li>
+                            <li>Click "Export to CSV" to download</li>
+                        </ul>
+                    </li>
+                    <li><strong>Schedule Automated Reports</strong>
+                        <ul>
+                            <li>Configure a scheduled report (e.g., Weekly Expense Summary)</li>
+                            <li>Set frequency (Daily/Weekly/Monthly)</li>
+                            <li>Add recipient email addresses</li>
+                            <li>Select columns and filters</li>
+                            <li>System will automatically email reports on schedule</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <div class="section-divider"></div>
+
+                <h2>System Capabilities Summary</h2>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Filtering & Search</strong></td>
+                            <td>Filter by date range, status, employee, cost center, state. Search within reports. Sort by any column.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Reporting & Analytics</strong></td>
+                            <td>Real-time summary cards, submission funnel, multi-month trends, top cost centers, geographic maps, custom report builder, scheduled deliveries.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Export & Integration</strong></td>
+                            <td>Export to CSV, export to PDF, scheduled email delivery, print preview, bulk export capabilities.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Workflow Management</strong></td>
+                            <td>Multi-stage approval chains, delegation support, revision requests, automatic reminders, status tracking, complete audit trail.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="section-divider"></div>
+
+                <h2>Recommended Use Cases</h2>
+
+                <div class="demo-flow">
+                    <h3>Monthly Executive Review</h3>
+                    <p><strong>Scenario:</strong> CEO wants monthly expense summary</p>
+                    <p><strong>Solution:</strong> Create scheduled monthly report with Total Expenses, Cost Center Breakdown, Top Expenses. Set to email on 1st of each month in PDF format.</p>
+                </div>
+
+                <div class="demo-flow">
+                    <h3>Department Budget Tracking</h3>
+                    <p><strong>Scenario:</strong> CFO needs quarterly cost center spending</p>
+                    <p><strong>Solution:</strong> Use Report Builder with filters. Select date range: This Quarter. Filter by specific cost centers. Export to CSV for budget comparison.</p>
+                </div>
+
+                <div class="demo-flow">
+                    <h3>Approval Workflow Monitoring</h3>
+                    <p><strong>Scenario:</strong> Finance Director wants to see pending approvals</p>
+                    <p><strong>Solution:</strong> Navigate to Finance Portal → Pending Review tab. View dashboard showing pending count. Filter by date range or cost center. Use "Request Revision" for any issues.</p>
+                </div>
+
+                <div class="demo-flow">
+                    <h3>Trend Analysis & Forecasting</h3>
+                    <p><strong>Scenario:</strong> CFO needs spending forecast for next quarter</p>
+                    <p><strong>Solution:</strong> Navigate to Reports & Analytics → Trends section. Review multi-month expense trend. Check forecasted next-month spend. Export trend data to CSV for presentation.</p>
+                </div>
+
+                <div class="demo-flow">
+                    <h3>Compliance Audit</h3>
+                    <p><strong>Scenario:</strong> Need complete approval history for audit</p>
+                    <p><strong>Solution:</strong> Use Report Builder. Include all approval-related columns. Filter by date range for audit period. Export to CSV with full detail. Use print preview for official documentation.</p>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Training Guide Section -->
+        <div id="training" class="content-section">
+            <div style="padding: 2rem;">
+                <h1>Training Guide - Complete Instructions</h1>
+                
+                <div class="info-box">
+                    <strong>Note:</strong> Screenshot placeholders are marked with 📸 throughout this guide. Add actual screenshots in those locations for a complete visual reference.
+                </div>
+
+                <div class="toc">
+                    <h2>Table of Contents</h2>
+                    <ul>
+                        <li><a href="#admin-portal">Admin Portal</a>
+                            <ul>
+                                <li><a href="#employee-management">Employee Management</a></li>
+                                <li><a href="#supervisor-management">Supervisor Management</a></li>
+                                <li><a href="#cost-center-management">Cost Center Management</a></li>
+                                <li><a href="#admin-reports">Reports & Analytics</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="#finance-portal">Finance Portal</a>
+                            <ul>
+                                <li><a href="#filtering">Filtering and Searching</a></li>
+                                <li><a href="#all-reports">All Reports</a></li>
+                                <li><a href="#pending-review">Pending Review</a></li>
+                                <li><a href="#approved-reports">Approved Reports</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="#supervisor-portal">Supervisor Portal</a>
+                            <ul>
+                                <li><a href="#approvals">Approvals</a></li>
+                                <li><a href="#team-reports">Team Reports</a></li>
+                                <li><a href="#team-members">Team Members</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="#reports-analytics">Reports & Analytics</a>
+                            <ul>
+                                <li><a href="#summary-cards">Summary Cards</a></li>
+                                <li><a href="#submission-funnel">Submission Funnel</a></li>
+                                <li><a href="#trends">Trends</a></li>
+                                <li><a href="#mileage-map">Mileage Activity Map</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="#report-builder">Report Builder</a>
+                            <ul>
+                                <li><a href="#column-selection">Column Selection</a></li>
+                                <li><a href="#filters">Filters</a></li>
+                                <li><a href="#presets">Presets</a></li>
+                                <li><a href="#scheduled-deliveries">Scheduled Deliveries</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="#quick-reference">Quick Reference</a></li>
+                    </ul>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <h2 id="admin-portal">Admin Portal</h2>
+                <p><strong>Access:</strong> Available to administrators with full system access.</p>
+
+                <h3 id="employee-management">Tab 1: Employee Management</h3>
+                
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Admin Portal - Employee Management tab showing the employee list with search bar and action buttons</p>
+                </div>
+
+                <h4>View All Employees</h4>
+                <ol class="step-list">
+                    <li>Navigate to <strong>Admin Portal</strong> → <strong>Employee Management</strong> tab</li>
+                    <li>The employee list displays all active employees</li>
+                    <li>Use the search bar to find specific employees</li>
+                    <li>Click on an employee row to view/edit details</li>
+                </ol>
+
+                <h4>Create a New Employee</h4>
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Employee creation form dialog with all input fields</p>
+                </div>
+                <ol class="step-list">
+                    <li>Click the <strong>"Add Employee"</strong> or <strong>"Create Employee"</strong> button</li>
+                    <li>Fill in required fields:
+                        <ul>
+                            <li>Name</li>
+                            <li>Email</li>
+                            <li>Position</li>
+                            <li>Supervisor (optional)</li>
+                            <li>Cost Centers (select from dropdown or create new)</li>
+                        </ul>
+                    </li>
+                    <li>Click <strong>"Save"</strong> to create the employee</li>
+                </ol>
+
+                <div class="highlight-box">
+                    <strong>💡 Tip:</strong> Use the bulk import feature for adding multiple employees at once. Download the template CSV, fill it in, and upload.
+                </div>
+
+                <h3 id="supervisor-management">Tab 2: Supervisor Management</h3>
+                <p>Assign supervisors to employees, view supervisor hierarchy, and manage supervisor relationships.</p>
+
+                <h3 id="cost-center-management">Tab 3: Cost Center Management</h3>
+                <p>Create, edit, and manage cost centers. Assign cost centers to employees and track spending by department.</p>
+
+                <div class="section-divider"></div>
+
+                <h2 id="finance-portal">Finance Portal</h2>
+                <p><strong>Access:</strong> Available to finance department staff for expense report review and approval.</p>
+
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Finance Portal main view showing tabs (All Reports, Pending Review, Approved Reports, Needs Revision, Reports & Analytics) and filter section</p>
+                </div>
+
+                <h3 id="filtering">Filtering and Searching Reports</h3>
+                
+                <h4>Use Date Range Filters</h4>
+                <ol class="step-list">
+                    <li>At the top of the portal, locate the filter section</li>
+                    <li>Select a <strong>Date Range</strong> preset:
+                        <ul>
+                            <li>This Week</li>
+                            <li>Last Week</li>
+                            <li>This Month (default)</li>
+                            <li>Last Month</li>
+                            <li>This Quarter</li>
+                            <li>Last Quarter</li>
+                            <li>This Year</li>
+                            <li>Custom Range</li>
+                        </ul>
+                    </li>
+                    <li>For <strong>Custom Range</strong>:
+                        <ul>
+                            <li>Select <strong>Start Date</strong> using date picker</li>
+                            <li>Select <strong>End Date</strong> using date picker</li>
+                            <li>Or use <strong>Month</strong> and <strong>Year</strong> dropdowns</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h3 id="all-reports">Tab 1: All Reports</h3>
+                
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>All Reports tab showing the full table with columns (Employee, Period, Miles, Mileage ($), Total Expenses, Status, Submitted, Actions)</p>
+                </div>
+
+                <h4>View All Expense Reports</h4>
+                <ol class="step-list">
+                    <li>Click <strong>"All Reports"</strong> tab (default)</li>
+                    <li>View comprehensive list of all reports matching current filters</li>
+                    <li>Each row shows:
+                        <ul>
+                            <li>Employee name</li>
+                            <li>Period (Month/Year)</li>
+                            <li>Total miles</li>
+                            <li>Mileage reimbursement amount</li>
+                            <li>Total expenses</li>
+                            <li>Status (color-coded chip)</li>
+                            <li>Submission date</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h4>View Report Details</h4>
+                <ol class="step-list">
+                    <li>Find the report in the table</li>
+                    <li>Click the <strong>View</strong> icon (eye icon) in the Actions column</li>
+                    <li>Review report details in the dialog:
+                        <ul>
+                            <li>Summary information</li>
+                            <li>Daily breakdown</li>
+                            <li>Expense categories</li>
+                            <li>Receipt summary (if applicable)</li>
+                        </ul>
+                    </li>
+                    <li>Close dialog when done</li>
+                </ol>
+
+                <h4>Print Preview</h4>
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Print Preview dialog showing style customization options (Font Size, Spacing, Orientation) and preview pane</p>
+                </div>
+                <ol class="step-list">
+                    <li>Find the report in the table</li>
+                    <li>Click the <strong>Print</strong> icon (printer icon)</li>
+                    <li>In the print preview dialog:
+                        <ul>
+                            <li>Customize print styles:
+                                <ul>
+                                    <li>Font Size (Small/Normal/Large)</li>
+                                    <li>Spacing (Compact/Normal/Relaxed)</li>
+                                    <li>Orientation (Portrait/Landscape)</li>
+                                </ul>
+                            </li>
+                            <li>Review the formatted report</li>
+                        </ul>
+                    </li>
+                    <li>Click <strong>"Print"</strong> to print or <strong>"Close"</strong> to exit</li>
+                </ol>
+
+                <h3 id="pending-review">Tab 2: Pending Review</h3>
+                <p>View only reports with status "Submitted" that are awaiting finance department review.</p>
+
+                <h3 id="approved-reports">Tab 3: Approved Reports</h3>
+                <p>View all reports that have been approved. Useful for historical review, generating reports, and auditing purposes.</p>
+
+                <div class="section-divider"></div>
+
+                <h2 id="supervisor-portal">Supervisor Portal</h2>
+                <p><strong>Access:</strong> Available to supervisors to review and approve team member expense reports.</p>
+
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Supervisor Portal header showing logo, welcome message, toggle switches (Show widgets, Show supervisor dashboard), Refresh and Export buttons</p>
+                </div>
+
+                <h3 id="approvals">Tab 1: Approvals</h3>
+                <p>View approval dashboard and manage pending approvals for your team members.</p>
+
+                <h4>Approve a Report</h4>
+                <ol class="step-list">
+                    <li>Navigate to <strong>"Reports"</strong> tab</li>
+                    <li>Find report with status "Pending Supervisor" or "Submitted"</li>
+                    <li>Click the <strong>View</strong> icon</li>
+                    <li>Review report details in the dialog</li>
+                    <li>Click <strong>"Approve Report"</strong> button (green checkmark)</li>
+                    <li>Report moves to next approval stage (typically Finance)</li>
+                </ol>
+
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Supervisor Portal showing a report with approval buttons (Approve, Reject, Delegate, Comment)</p>
+                </div>
+
+                <h3 id="team-reports">Tab 2: Reports</h3>
+                <p>View all expense reports from your team members. Filter by status, month, or search by employee name.</p>
+
+                <h3 id="team-members">Tab 3: Team</h3>
+                <p>View list of all your direct reports. Click on a team member's name to view their expense report.</p>
+
+                <div class="section-divider"></div>
+
+                <h2 id="reports-analytics">Reports & Analytics (Shared)</h2>
+                <p><strong>Access:</strong> Available in both Admin Portal and Finance Portal.</p>
+
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Reports & Analytics tab showing filter controls at top, summary cards grid, and submission funnel chart</p>
+                </div>
+
+                <h3 id="summary-cards">Summary Cards Section</h3>
+                
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Grid of summary cards showing Total Expenses, Total Miles, Active Reports, Pending Approvals, Average per Report, Cost Center Count, Employee Count, and Submission Rate with formatted values</p>
+                </div>
+
+                <p>View key metrics at a glance:</p>
+                <ul>
+                    <li><strong>Total Expenses:</strong> Sum of all expenses in date range</li>
+                    <li><strong>Total Miles:</strong> Total miles traveled</li>
+                    <li><strong>Active Reports:</strong> Number of reports in progress</li>
+                    <li><strong>Pending Approvals:</strong> Reports awaiting approval</li>
+                    <li><strong>Average per Report:</strong> Average expense amount per report</li>
+                    <li><strong>Cost Center Count:</strong> Number of unique cost centers</li>
+                    <li><strong>Employee Count:</strong> Number of employees with reports</li>
+                    <li><strong>Submission Rate:</strong> Percentage of reports submitted on time</li>
+                </ul>
+
+                <h3 id="submission-funnel">Submission Funnel Chart</h3>
+                
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Horizontal bar chart (funnel) showing report counts by status with color-coded bars (Draft, Submitted, Pending Supervisor, etc.) with counts and percentages</p>
+                </div>
+
+                <p>The submission funnel shows where reports are in the approval pipeline:</p>
+                <ul>
+                    <li>Left side: Total reports</li>
+                    <li>Right side: Approved reports</li>
+                    <li>Identifies bottlenecks (where reports are piling up)</li>
+                </ul>
+
+                <h3 id="trends">Trends Section</h3>
+                
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Trends section showing Sparkline chart with monthly data points and forecast information below the chart</p>
+                </div>
+
+                <p>View multi-month expense trends with predictive forecasting:</p>
+                <ul>
+                    <li><strong>Chart:</strong> Line graph showing monthly expense totals</li>
+                    <li><strong>Forecast:</strong> Predicted total expenses for next month</li>
+                    <li><strong>Trend Direction:</strong> Visual indication if spending is increasing/decreasing</li>
+                </ul>
+
+                <h3 id="mileage-map">Mileage Activity Map</h3>
+                
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Map visualization showing GPS route segments as lines, activity clusters as circles, with color intensity indicating frequency</p>
+                </div>
+
+                <p>View geographic visualization of GPS-tracked mileage (if data available):</p>
+                <ul>
+                    <li><strong>Routes:</strong> GPS-tracked mileage segments</li>
+                    <li><strong>Clusters:</strong> Aggregated activity points</li>
+                    <li><strong>Colors:</strong> Intensity of activity (darker = more frequent)</li>
+                    <li><strong>Privacy:</strong> Data is aggregated and anonymized</li>
+                </ul>
+
+                <div class="section-divider"></div>
+
+                <h2 id="report-builder">Report Builder</h2>
+                <p><strong>Access:</strong> Available in Reports & Analytics tab (bottom section).</p>
+
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Report Builder section showing column selector dropdown, filters section, and Run Report button</p>
+                </div>
+
+                <h3 id="column-selection">Column Selection</h3>
+                <p>Select which columns to include in your custom report. Choose from Employee Name, Report ID, Status, Total Expenses, Total Miles, Cost Centers, Dates, and more.</p>
+
+                <h3 id="filters">Filters Section</h3>
+                <p>Apply filters to narrow down your report:</p>
+                <ul>
+                    <li><strong>Date Range:</strong> Start and end dates</li>
+                    <li><strong>Status:</strong> One or more statuses</li>
+                    <li><strong>Cost Centers:</strong> One or more cost centers</li>
+                    <li><strong>Employee IDs:</strong> Specific employees</li>
+                    <li><strong>Search:</strong> Text search in descriptions</li>
+                    <li><strong>Total Expenses:</strong> Min and max amounts</li>
+                </ul>
+
+                <h4>Run Report</h4>
+                <ol class="step-list">
+                    <li>After selecting columns and filters, click <strong>"Run Report"</strong> button</li>
+                    <li>Wait for data to load (progress indicator shows)</li>
+                    <li>Results appear in the data grid below</li>
+                    <li>Click <strong>"Export to CSV"</strong> to download results</li>
+                </ol>
+
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Data grid showing report results with selected columns, sortable headers, and formatted values (currency, dates)</p>
+                </div>
+
+                <h3 id="presets">Presets Management</h3>
+                <p>Save your report configurations for future use:</p>
+                <ul>
+                    <li><strong>Save Preset:</strong> Save current column and filter selections</li>
+                    <li><strong>Load Preset:</strong> Quickly load a saved configuration</li>
+                    <li><strong>Update Preset:</strong> Modify and save changes to existing preset</li>
+                    <li><strong>Delete Preset:</strong> Remove presets you no longer need</li>
+                </ul>
+
+                <h3 id="scheduled-deliveries">Scheduled Deliveries</h3>
+                
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Scheduled Deliveries section showing table of schedules with columns (Name, Frequency, Recipients, Next Run, Formats, Status) and Add Schedule button</p>
+                </div>
+
+                <h4>Create New Schedule</h4>
+                <div class="screenshot-placeholder">
+                    <strong>📸 Screenshot Placeholder</strong>
+                    <p>Schedule creation dialog/form showing all fields: Name, Description, Recipients, Frequency dropdown, Day/Time selectors, Timezone, Attachment checkboxes (CSV/PDF), Row Limit</p>
+                </div>
+
+                <ol class="step-list">
+                    <li>Click <strong>"Add Schedule"</strong> or <strong>"New Schedule"</strong> button</li>
+                    <li>Fill in the form:
+                        <ul>
+                            <li><strong>Name:</strong> Descriptive name for the schedule</li>
+                            <li><strong>Recipients:</strong> Comma-separated email addresses</li>
+                            <li><strong>Frequency:</strong> Daily, Weekly, or Monthly</li>
+                            <li><strong>Day/Time:</strong> Select appropriate day and time</li>
+                            <li><strong>Timezone:</strong> Select timezone</li>
+                            <li><strong>Attachment Formats:</strong> Check CSV and/or PDF</li>
+                        </ul>
+                    </li>
+                    <li>Configure report filters and select columns</li>
+                    <li>Click <strong>"Save Schedule"</strong> to create</li>
+                </ol>
+
+                <div class="section-divider"></div>
+
+                <h2 id="quick-reference">Quick Reference</h2>
+
+                <h3>Status Definitions</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="badge badge-primary">Draft</span></td>
+                            <td>Employee is still working on the report, not submitted</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-primary">Submitted</span></td>
+                            <td>Employee submitted the report, awaiting supervisor approval</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-warning">Pending Supervisor</span></td>
+                            <td>Report is waiting for supervisor approval</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-primary">Pending Finance</span></td>
+                            <td>Report approved by supervisor, awaiting finance review</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-success">Approved</span></td>
+                            <td>Report has been fully approved and is ready for payment</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-danger">Needs Revision</span></td>
+                            <td>Report was sent back to employee for corrections</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Common Workflows</h3>
+
+                <div class="demo-flow">
+                    <h3>Employee Submits Report → Supervisor Approves → Finance Approves → Payment</h3>
+                    <ol class="step-list">
+                        <li>Employee creates and submits expense report</li>
+                        <li>Supervisor receives notification</li>
+                        <li>Supervisor reviews and approves (or requests changes)</li>
+                        <li>If approved, report moves to Finance</li>
+                        <li>Finance reviews and approves</li>
+                        <li>Report is marked approved and ready for payment processing</li>
+                    </ol>
+                </div>
+
+                <div class="highlight-box">
+                    <strong>💡 Tip for Demo:</strong> Emphasize the real-time nature of the system, comprehensive filtering capabilities, and automation features like scheduled reports.
+                </div>
+
+            </div>
+        </div>
+
+        <div class="scroll-to-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" id="scrollTop">
+            ↑
+        </div>
+    </div>
+
+    <script>
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected section
+            document.getElementById(sectionId).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+            
+            // Scroll to top
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        // Show scroll to top button when scrolling down
+        window.addEventListener('scroll', function() {
+            const scrollTop = document.getElementById('scrollTop');
+            if (window.pageYOffset > 300) {
+                scrollTop.classList.add('visible');
+            } else {
+                scrollTop.classList.remove('visible');
+            }
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

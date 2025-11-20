@@ -16,7 +16,7 @@ interface DashboardTileProps {
   isDragging?: boolean;
 }
 
-export default function DashboardTile({ tile, isDragging }: DashboardTileProps) {
+function DashboardTile({ tile, isDragging }: DashboardTileProps) {
   return (
     <TouchableOpacity
       style={[
@@ -38,6 +38,8 @@ export default function DashboardTile({ tile, isDragging }: DashboardTileProps) 
     </TouchableOpacity>
   );
 }
+
+export default React.memo(DashboardTile);
 
 const styles = StyleSheet.create({
   primaryTile: {

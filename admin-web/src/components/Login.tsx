@@ -24,9 +24,12 @@ interface LoginProps {
 export default function Login({ onLoginSuccess }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
+  const [phoneNumberLast4, setPhoneNumberLast4] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,13 +42,33 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ 
+          email, 
+          password,
+          ...(twoFactorCode && { twoFactorCode })
+        }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
+        // Check if 2FA is required
+        if (data.requiresTwoFactor && !twoFactorCode) {
+          setRequiresTwoFactor(true);
+          setPhoneNumberLast4(data.phoneNumberLast4 || '');
+          setError('');
+          setLoading(false);
+          return;
+        }
         throw new Error(data.error || 'Login failed');
+      }
+
+      // Check if 2FA code is required
+      if (data.requiresTwoFactor && !twoFactorCode) {
+        setRequiresTwoFactor(true);
+        setPhoneNumberLast4(data.phoneNumberLast4 || '');
+        setLoading(false);
+        return;
       }
 
       // Store token and employee data
@@ -117,7 +140,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
+              disabled={loading || requiresTwoFactor}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -133,14 +156,42 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               }}
             />
 
+            {requiresTwoFactor && (
+              <>
+                <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+                  A verification code has been sent to your phone ending in {phoneNumberLast4 || '****'}.
+                  Please enter the code below.
+                </Alert>
+                <TextField
+                  margin="normal"
+                  required
+                  fullWidth
+                  name="twoFactorCode"
+                  label="Verification Code"
+                  type="text"
+                  id="twoFactorCode"
+                  autoComplete="off"
+                  value={twoFactorCode}
+                  onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  disabled={loading}
+                  placeholder="Enter 6-digit code"
+                  inputProps={{
+                    maxLength: 6,
+                    pattern: '[0-9]*',
+                    inputMode: 'numeric'
+                  }}
+                />
+              </>
+            )}
+
             <Button
               type="submit"
               fullWidth
               variant="contained"
               sx={{ mt: 3, mb: 2, py: 1.5 }}
-              disabled={loading || !email || !password}
+              disabled={loading || !email || !password || (requiresTwoFactor && !twoFactorCode)}
             >
-              {loading ? 'Signing In...' : 'Sign In'}
+              {loading ? 'Signing In...' : requiresTwoFactor ? 'Verify & Sign In' : 'Sign In'}
             </Button>
           </Box>
         </Paper>

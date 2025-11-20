@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Database files
+*.db
+*.db.backup
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Google Cloud credentials (should not be committed)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
+# Uploads directory (user-uploaded files)
+uploads/*
+!uploads/.gitkeep
+
+# Scheduled report outbox
+routes/scheduled-report-outbox/*
+!routes/scheduled-report-outbox/.gitkeep
+scheduled-report-outbox/*
+!scheduled-report-outbox/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Test files and temporary files
+test-*.jpg
+test-*.png
+test-*.pdf
+test-*.txt
+*.tmp
+*.temp
+
+# Build files
+dist/
+build/
+
+# Debug and test scripts output (keep scripts, ignore outputs)
+*.test-output
+*.debug-output
+
+# Backup files
+*.backup
+*.bak
+
+# Local configuration overrides
+config.local.js
+settings.local.json
+

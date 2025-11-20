@@ -15,6 +15,7 @@ import { DatabaseService } from '../services/database';
 import { SlackService } from '../services/slackService';
 import { DailyMileageService, DailyMileageSummary } from '../services/dailyMileageService';
 import { MonthlyReportService, MonthlyReport as MonthlyReportStatus } from '../services/monthlyReportService';
+import { ReportCompletenessService } from '../services/reportCompletenessService';
 import { MonthlyReport, MileageEntry, Employee } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
 
@@ -40,6 +41,15 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
   });
   const [currentMonthReportStatus, setCurrentMonthReportStatus] = useState<MonthlyReportStatus | null>(null);
   const [submittingReport, setSubmittingReport] = useState(false);
+  const [showSubmissionReview, setShowSubmissionReview] = useState(false);
+  const [submissionReviewData, setSubmissionReviewData] = useState<{
+    totalMiles: number;
+    totalExpenses: number;
+    completenessScore?: number;
+    entriesCount: number;
+    receiptsCount: number;
+    monthDate: Date;
+  } | null>(null);
   
   // State for selected month/year
   const now = new Date();
@@ -206,66 +216,213 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
       return;
     }
 
+    // Run completeness check before submission
+    try {
+      setSubmittingReport(true);
+      
+      console.log('🔍 Running completeness check before submission...');
+      const completenessReport = await ReportCompletenessService.analyzeReportCompleteness(
+        currentEmployee.id,
+        selectedMonth,
+        selectedYear
+      );
+      
+      console.log('📊 Completeness check results:', {
+        score: completenessReport.overallScore,
+        isReady: completenessReport.isReadyForSubmission,
+        issuesCount: completenessReport.issues.length
+      });
+      
+      // If report is not ready, show issues and ask to proceed
+      if (!completenessReport.isReadyForSubmission) {
+        const criticalIssues = completenessReport.issues.filter(issue => issue.severity === 'critical');
+        const highIssues = completenessReport.issues.filter(issue => issue.severity === 'high');
+        
+        let message = `⚠️ Report Completeness Check\n\n`;
+        message += `Completeness Score: ${completenessReport.overallScore}/100\n\n`;
+        
+        if (criticalIssues.length > 0) {
+          message += `🚨 Critical Issues (${criticalIssues.length}):\n`;
+          criticalIssues.slice(0, 3).forEach(issue => {
+            message += `• ${issue.title}\n`;
+          });
+          if (criticalIssues.length > 3) {
+            message += `... and ${criticalIssues.length - 3} more\n`;
+          }
+          message += `\n`;
+        }
+        
+        if (highIssues.length > 0) {
+          message += `⚠️ High Priority Issues (${highIssues.length}):\n`;
+          highIssues.slice(0, 3).forEach(issue => {
+            message += `• ${issue.title}\n`;
+          });
+          if (highIssues.length > 3) {
+            message += `... and ${highIssues.length - 3} more\n`;
+          }
+          message += `\n`;
+        }
+        
+        message += `💡 Recommendations:\n`;
+        completenessReport.recommendations.slice(0, 3).forEach(rec => {
+          message += `• ${rec}\n`;
+        });
+        message += `\n`;
+        
+        if (criticalIssues.length > 0) {
+          message += `Critical issues must be fixed before submission.`;
+          setSubmittingReport(false);
+          Alert.alert('Report Not Ready', message, [{ text: 'OK' }]);
+          return;
+        } else {
+          // High issues only - allow user to proceed
+          Alert.alert(
+            'Report Has Issues',
+            message + `\nYou can still submit, but it's recommended to fix these issues first.\n\nProceed anyway?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => setSubmittingReport(false) },
+              { text: 'Proceed', onPress: () => proceedWithSubmission(totalMiles, totalExpenses) }
+            ]
+          );
+          return;
+        }
+      }
+      
+      // Report passed completeness check - proceed with normal submission flow
+      setSubmittingReport(false);
+      proceedWithSubmissionConfirmation(totalMiles, totalExpenses, completenessReport.overallScore);
+      
+    } catch (error) {
+      console.error('❌ Error running completeness check:', error);
+      setSubmittingReport(false);
+      // If completeness check fails, still allow submission but warn user
+      Alert.alert(
+        'Completeness Check Failed',
+        'Unable to run completeness check. You can still submit, but please review your report carefully.\n\nProceed with submission?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Proceed', onPress: () => proceedWithSubmissionConfirmation(totalMiles, totalExpenses) }
+        ]
+      );
+    }
+  };
+
+  const proceedWithSubmissionConfirmation = async (totalMiles: number, totalExpenses: number, completenessScore?: number) => {
+    if (!currentEmployee) return;
+    
+    // Get detailed counts for review
+    const entries = await DatabaseService.getMileageEntries(currentEmployee.id, selectedMonth, selectedYear);
+    const receipts = await DatabaseService.getReceipts(currentEmployee.id, selectedMonth, selectedYear);
     const monthDate = new Date(selectedYear, selectedMonth - 1, 1);
-    Alert.alert(
-      'Submit Report for Approval',
-      `You are about to submit your ${monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} report:\n\n` +
-      `• ${totalMiles.toFixed(1)} miles\n` +
-      `• $${totalExpenses.toFixed(2)} in expenses\n\n` +
-      `Once submitted, you won't be able to edit entries for this month until your supervisor reviews it.\n\n` +
-      `Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Submit',
-          style: 'default',
-          onPress: async () => {
-            try {
-              setSubmittingReport(true);
+    
+    // Set review data and show modal
+    setSubmissionReviewData({
+      totalMiles,
+      totalExpenses,
+      completenessScore,
+      entriesCount: entries.length,
+      receiptsCount: receipts.length,
+      monthDate
+    });
+    setShowSubmissionReview(true);
+  };
 
-              // Create or update the monthly report
-              const reportResult = await MonthlyReportService.saveMonthlyReport({
-                id: currentMonthReportStatus?.id,
-                employeeId: currentEmployee.id,
-                month: selectedMonth,
-                year: selectedYear,
-                totalMiles,
-                totalExpenses,
-                status: 'draft', // First save as draft
-              });
+  const proceedWithSubmission = async (totalMiles: number, totalExpenses: number, retryCount = 0) => {
+    if (!currentEmployee) return;
+    
+    const MAX_RETRIES = 2;
+    
+    // Close the review modal
+    setShowSubmissionReview(false);
+    
+    try {
+      setSubmittingReport(true);
 
-              if (!reportResult.success || !reportResult.reportId) {
-                throw new Error(reportResult.error || 'Failed to save report');
-              }
+      // Create or update the monthly report
+      const reportResult = await MonthlyReportService.saveMonthlyReport({
+        id: currentMonthReportStatus?.id,
+        employeeId: currentEmployee.id,
+        month: selectedMonth,
+        year: selectedYear,
+        totalMiles,
+        totalExpenses,
+        status: 'draft', // First save as draft
+      });
 
-              // Submit for approval
-              const submitResult = await MonthlyReportService.submitForApproval(
-                reportResult.reportId,
-                currentEmployee.id
-              );
+      if (!reportResult.success || !reportResult.reportId) {
+        throw new Error(reportResult.error || 'Failed to save report');
+      }
 
-              if (!submitResult.success) {
-                throw new Error(submitResult.error || 'Failed to submit report');
-              }
+      // Submit for approval
+      const submitResult = await MonthlyReportService.submitForApproval(
+        reportResult.reportId,
+        currentEmployee.id
+      );
 
-              Alert.alert(
-                'Report Submitted! ✅',
-                'Your monthly report has been submitted to your supervisor for approval. You\'ll be notified when it\'s reviewed.',
-                [{ text: 'OK' }]
-              );
+      if (!submitResult.success) {
+        throw new Error(submitResult.error || 'Failed to submit report');
+      }
 
-              // Refresh to get new status
-              loadData();
-            } catch (error: any) {
-              console.error('Error submitting report:', error);
-              Alert.alert('Submission Failed', error.message || 'Failed to submit report for approval. Please try again.');
-            } finally {
-              setSubmittingReport(false);
-            }
+      Alert.alert(
+        'Report Submitted! ✅',
+        'Your monthly report has been submitted to your supervisor for approval. You\'ll be notified when it\'s reviewed.',
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // Refresh to get new status
+            loadData();
+          }
+        }]
+      );
+    } catch (error: any) {
+      console.error('Error submitting report:', error);
+      
+      // Retry logic for network errors
+      const errorMessage = error.message || 'Unknown error';
+      const isNetworkError = errorMessage.toLowerCase().includes('network') || 
+                             errorMessage.toLowerCase().includes('timeout') ||
+                             errorMessage.toLowerCase().includes('fetch');
+      
+      if (isNetworkError && retryCount < MAX_RETRIES) {
+        Alert.alert(
+          'Network Error',
+          'Connection problem detected. Would you like to retry?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => setSubmittingReport(false),
+            },
+            {
+              text: 'Retry',
+              onPress: () => {
+                // Wait a moment before retrying
+                setTimeout(() => {
+                  proceedWithSubmission(totalMiles, totalExpenses, retryCount + 1);
+                }, 1000);
+              },
+            },
+          ]
+        );
+        return;
+      }
+      
+      // Show error with specific message
+      Alert.alert(
+        'Submission Failed', 
+        `${errorMessage}${retryCount >= MAX_RETRIES ? '\n\nPlease check your connection and try again later.' : ''}`,
+        [
+          {
+            text: 'OK',
+            onPress: () => setSubmittingReport(false),
           },
-        },
-      ]
-    );
+        ]
+      );
+    } finally {
+      if (retryCount === 0) {
+        setSubmittingReport(false);
+      }
+    }
   };
 
   const viewReportEntries = async (report: MonthlyReport) => {
@@ -893,6 +1050,105 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Submission Review Modal */}
+      <Modal
+        visible={showSubmissionReview}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSubmissionReview(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.reviewModalContent}>
+            <View style={styles.reviewModalHeader}>
+              <Text style={styles.reviewModalTitle}>Review Before Submission</Text>
+              <TouchableOpacity
+                onPress={() => setShowSubmissionReview(false)}
+                style={styles.closeButton}
+              >
+                <MaterialIcons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {submissionReviewData && (
+              <ScrollView style={styles.reviewContent}>
+                <View style={styles.reviewSection}>
+                  <Text style={styles.reviewSectionTitle}>Report Period</Text>
+                  <Text style={styles.reviewSectionValue}>
+                    {submissionReviewData.monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </Text>
+                </View>
+
+                <View style={styles.reviewSection}>
+                  <Text style={styles.reviewSectionTitle}>Summary</Text>
+                  <View style={styles.reviewSummaryRow}>
+                    <Text style={styles.reviewSummaryLabel}>Total Miles:</Text>
+                    <Text style={styles.reviewSummaryValue}>{submissionReviewData.totalMiles.toFixed(1)} miles</Text>
+                  </View>
+                  <View style={styles.reviewSummaryRow}>
+                    <Text style={styles.reviewSummaryLabel}>Total Expenses:</Text>
+                    <Text style={styles.reviewSummaryValue}>${submissionReviewData.totalExpenses.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.reviewSummaryRow}>
+                    <Text style={styles.reviewSummaryLabel}>Mileage Entries:</Text>
+                    <Text style={styles.reviewSummaryValue}>{submissionReviewData.entriesCount} entries</Text>
+                  </View>
+                  <View style={styles.reviewSummaryRow}>
+                    <Text style={styles.reviewSummaryLabel}>Receipts:</Text>
+                    <Text style={styles.reviewSummaryValue}>{submissionReviewData.receiptsCount} receipts</Text>
+                  </View>
+                  {submissionReviewData.completenessScore !== undefined && (
+                    <View style={styles.reviewSummaryRow}>
+                      <Text style={styles.reviewSummaryLabel}>Completeness Score:</Text>
+                      <Text style={[
+                        styles.reviewSummaryValue,
+                        { color: submissionReviewData.completenessScore >= 80 ? '#4CAF50' : 
+                                submissionReviewData.completenessScore >= 60 ? '#FF9800' : '#f44336' }
+                      ]}>
+                        {submissionReviewData.completenessScore}/100
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.reviewWarningBox}>
+                  <MaterialIcons name="info" size={20} color="#FF9800" />
+                  <Text style={styles.reviewWarningText}>
+                    Once submitted, you won't be able to edit entries for this month until your supervisor reviews it.
+                  </Text>
+                </View>
+              </ScrollView>
+            )}
+
+            <View style={styles.reviewModalActions}>
+              <TouchableOpacity
+                style={styles.reviewCancelButton}
+                onPress={() => setShowSubmissionReview(false)}
+              >
+                <Text style={styles.reviewCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.reviewSubmitButton}
+                onPress={() => {
+                  if (submissionReviewData) {
+                    proceedWithSubmission(submissionReviewData.totalMiles, submissionReviewData.totalExpenses);
+                  }
+                }}
+                disabled={submittingReport}
+              >
+                {submittingReport ? (
+                  <MaterialIcons name="hourglass-empty" size={20} color="#fff" />
+                ) : (
+                  <MaterialIcons name="send" size={20} color="#fff" />
+                )}
+                <Text style={styles.reviewSubmitButtonText}>
+                  {submittingReport ? 'Submitting...' : 'Submit for Approval'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1323,6 +1579,117 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  // Submission Review Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  reviewModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+  },
+  reviewModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  reviewModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  reviewContent: {
+    padding: 20,
+  },
+  reviewSection: {
+    marginBottom: 24,
+  },
+  reviewSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  reviewSectionValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2196F3',
+  },
+  reviewSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  reviewSummaryLabel: {
+    fontSize: 15,
+    color: '#666',
+  },
+  reviewSummaryValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  reviewWarningBox: {
+    flexDirection: 'row',
+    backgroundColor: '#fff3cd',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'flex-start',
+    marginTop: 8,
+  },
+  reviewWarningText: {
+    fontSize: 14,
+    color: '#856404',
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 20,
+  },
+  reviewModalActions: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    gap: 12,
+  },
+  reviewCancelButton: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  reviewCancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  reviewSubmitButton: {
+    flex: 1,
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewSubmitButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

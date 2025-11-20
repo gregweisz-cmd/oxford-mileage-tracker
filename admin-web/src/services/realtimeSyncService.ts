@@ -1,4 +1,5 @@
 // import { Employee, MileageEntry, Receipt, TimeTracking } from '../types'; // Types available but currently unused
+import { debugLog, debugError, debugWarn } from '../config/debug';
 
 export interface RealtimeUpdate {
   type: 'employee' | 'mileage' | 'receipt' | 'time_tracking';
@@ -45,11 +46,11 @@ export class RealtimeSyncService {
    */
   async initialize(): Promise<void> {
     try {
-      console.log('🔄 RealtimeSync: Initializing real-time sync service...');
+      debugLog('🔄 RealtimeSync: Initializing real-time sync service...');
       
       // Check if WebSocket is supported
       if (typeof WebSocket === 'undefined') {
-        console.warn('⚠️ RealtimeSync: WebSocket not supported in this environment');
+        debugWarn('⚠️ RealtimeSync: WebSocket not supported in this environment');
         return;
       }
 
@@ -59,7 +60,7 @@ export class RealtimeSyncService {
       // Connect to WebSocket server
       await this.connect();
       
-      console.log('✅ RealtimeSync: Real-time sync service initialized');
+      debugLog('✅ RealtimeSync: Real-time sync service initialized');
     } catch (error) {
       console.error('❌ RealtimeSync: Failed to initialize:', error);
     }
@@ -72,12 +73,12 @@ export class RealtimeSyncService {
     return new Promise((resolve, reject) => {
       try {
         const wsUrl = this.getWebSocketUrl();
-        console.log(`🔄 RealtimeSync: Connecting to ${wsUrl}`);
+        debugLog(`🔄 RealtimeSync: Connecting to ${wsUrl}`);
         
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
-          console.log('✅ RealtimeSync: Connected to WebSocket server');
+          debugLog('✅ RealtimeSync: Connected to WebSocket server');
           this.isConnected = true;
           this.reconnectAttempts = 0;
           this.startHeartbeat();
@@ -89,7 +90,7 @@ export class RealtimeSyncService {
         };
         
         this.ws.onclose = (event) => {
-          console.log('🔌 RealtimeSync: WebSocket connection closed:', event.code, event.reason);
+          debugLog('🔌 RealtimeSync: WebSocket connection closed:', event.code, event.reason);
           this.isConnected = false;
           this.stopHeartbeat();
           
@@ -151,7 +152,7 @@ export class RealtimeSyncService {
           } else {
             // This is a notification-style message without data payload
             // It's just telling us something changed, not what changed
-            console.log('🔄 RealtimeSync: Received change notification:', message);
+            debugLog('🔄 RealtimeSync: Received change notification:', message);
             // Could trigger a refresh here if needed
           }
           break;
@@ -161,7 +162,7 @@ export class RealtimeSyncService {
           break;
           
         default:
-          console.log('🔄 RealtimeSync: Unknown message type:', message.type);
+          debugLog('🔄 RealtimeSync: Unknown message type:', message.type);
       }
     } catch (error) {
       console.error('❌ RealtimeSync: Error parsing message:', error);
@@ -172,11 +173,11 @@ export class RealtimeSyncService {
    * Handle data updates from server
    */
   private handleDataUpdate(update: RealtimeUpdate): void {
-    console.log('🔄 RealtimeSync: Received data update:', update);
+    debugLog('🔄 RealtimeSync: Received data update:', update);
     
     // Skip if update is undefined or missing type
     if (!update || !update.type) {
-      console.warn('⚠️ RealtimeSync: Skipping invalid update:', update);
+      debugWarn('⚠️ RealtimeSync: Skipping invalid update:', update);
       return;
     }
     
@@ -195,7 +196,7 @@ export class RealtimeSyncService {
    * Handle sync request from server
    */
   private handleSyncRequest(data: any): void {
-    console.log('🔄 RealtimeSync: Received sync request:', data);
+    debugLog('🔄 RealtimeSync: Received sync request:', data);
     // Trigger a data refresh
     this.requestDataRefresh(data.entityType, data.employeeId);
   }
@@ -207,7 +208,7 @@ export class RealtimeSyncService {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
-      console.warn('⚠️ RealtimeSync: Cannot send message, WebSocket not connected');
+      debugWarn('⚠️ RealtimeSync: Cannot send message, WebSocket not connected');
     }
   }
 
@@ -283,7 +284,7 @@ export class RealtimeSyncService {
    */
   private scheduleReconnect(): void {
     this.reconnectAttempts++;
-    console.log(`🔄 RealtimeSync: Scheduling reconnect attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts}`);
+    debugLog(`🔄 RealtimeSync: Scheduling reconnect attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts}`);
     
     setTimeout(() => {
       if (this.config.enabled) {
@@ -301,9 +302,9 @@ export class RealtimeSyncService {
     // Handle page visibility changes
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        console.log('🔄 RealtimeSync: Page hidden, pausing sync');
+        debugLog('🔄 RealtimeSync: Page hidden, pausing sync');
       } else {
-        console.log('🔄 RealtimeSync: Page visible, resuming sync');
+        debugLog('🔄 RealtimeSync: Page visible, resuming sync');
         if (!this.isConnected && this.config.enabled) {
           this.connect().catch(error => {
             console.error('❌ RealtimeSync: Failed to reconnect:', error);
@@ -314,7 +315,7 @@ export class RealtimeSyncService {
 
     // Handle online/offline events
     window.addEventListener('online', () => {
-      console.log('🔄 RealtimeSync: Network online, attempting to reconnect');
+      debugLog('🔄 RealtimeSync: Network online, attempting to reconnect');
       if (!this.isConnected && this.config.enabled) {
         this.connect().catch(error => {
           console.error('❌ RealtimeSync: Failed to reconnect:', error);
@@ -323,7 +324,7 @@ export class RealtimeSyncService {
     });
 
     window.addEventListener('offline', () => {
-      console.log('🔄 RealtimeSync: Network offline, connection will be lost');
+      debugLog('🔄 RealtimeSync: Network offline, connection will be lost');
     });
   }
 
@@ -341,7 +342,7 @@ export class RealtimeSyncService {
    * Disconnect and cleanup
    */
   disconnect(): void {
-    console.log('🔄 RealtimeSync: Disconnecting...');
+    debugLog('🔄 RealtimeSync: Disconnecting...');
     this.config.enabled = false;
     this.stopHeartbeat();
     

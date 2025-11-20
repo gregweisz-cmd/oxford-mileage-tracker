@@ -1,4 +1,5 @@
 import { Alert } from 'react-native';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 
 export interface WebSocketMessage {
   type: string;
@@ -68,7 +69,7 @@ export class RealtimeSyncService {
   public static initialize(): void {
     // Get the instance to initialize it
     RealtimeSyncService.getInstance();
-    console.log('✅ RealtimeSyncService: Initialized (ready for connection)');
+    debugLog('✅ RealtimeSyncService: Initialized (ready for connection)');
   }
 
   private initializeEventListeners(): void {
@@ -88,14 +89,17 @@ export class RealtimeSyncService {
 
   public connect(baseUrl: string, employeeId: string): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      console.log('📡 WebSocket already connected');
+      debugLog('📡 WebSocket already connected');
       return;
     }
 
     this.currentEmployeeId = employeeId;
-    const wsUrl = baseUrl.replace('http', 'ws') + '/ws';
     
-    console.log('📡 Connecting to WebSocket:', wsUrl);
+    // Remove /api suffix if present, then convert to WebSocket URL
+    const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
+    const wsUrl = cleanBaseUrl.replace('http', 'ws') + '/ws';
+    
+    debugLog('📡 Connecting to WebSocket:', wsUrl);
     
     try {
       this.ws = new WebSocket(wsUrl);
@@ -110,7 +114,7 @@ export class RealtimeSyncService {
     if (!this.ws) return;
 
     this.ws.onopen = () => {
-      console.log('✅ WebSocket connected');
+      debugLog('✅ WebSocket connected');
       this.reconnectAttempts = 0;
       this.reconnectDelay = 1000;
       this.startHeartbeat();
@@ -126,7 +130,7 @@ export class RealtimeSyncService {
     };
 
     this.ws.onclose = (event) => {
-      console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+      debugLog('🔌 WebSocket disconnected:', event.code, event.reason);
       this.stopHeartbeat();
       
       // Note: Reconnection is handled by the caller with the correct baseUrl
@@ -134,12 +138,14 @@ export class RealtimeSyncService {
     };
 
     this.ws.onerror = (error) => {
-      console.error('❌ WebSocket error:', error);
+      // WebSocket errors are common in development (Metro bundler, network issues)
+      // Use debugWarn instead of console.error to reduce noise
+      debugWarn('⚠️ WebSocket error (this is often expected in development):', error);
     };
   }
 
   private handleMessage(message: WebSocketMessage): void {
-    console.log('📨 WebSocket message received:', message.type);
+    debugLog('📨 WebSocket message received:', message.type);
 
     switch (message.type) {
       case 'connection_established':
@@ -163,7 +169,7 @@ export class RealtimeSyncService {
         break;
         
       default:
-        console.log('🔄 Unknown WebSocket message type:', message.type);
+        debugLog('🔄 Unknown WebSocket message type:', message.type);
     }
   }
 
@@ -172,11 +178,11 @@ export class RealtimeSyncService {
     
     // Only process updates for the current employee or global updates
     if (data.employeeId && data.employeeId !== this.currentEmployeeId) {
-      console.log('📡 Ignoring data update for different employee:', data.employeeId);
+      debugLog('📡 Ignoring data update for different employee:', data.employeeId);
       return;
     }
 
-    console.log(`📡 Data update: ${data.type} ${data.action}`, data.data);
+    debugLog(`📡 Data update: ${data.type} ${data.action}`, data.data);
     
     // Emit the data update event
     this.emit('data_update', data);
@@ -190,11 +196,11 @@ export class RealtimeSyncService {
     
     // Only show notifications for the current employee or global notifications
     if (data.employeeId && data.employeeId !== this.currentEmployeeId) {
-      console.log('📡 Ignoring notification for different employee:', data.employeeId);
+      debugLog('📡 Ignoring notification for different employee:', data.employeeId);
       return;
     }
 
-    console.log(`📢 Notification: ${data.title} - ${data.message}`);
+    debugLog(`📢 Notification: ${data.title} - ${data.message}`);
     
     // Show native notification
     Alert.alert(data.title, data.message);
@@ -212,7 +218,7 @@ export class RealtimeSyncService {
     // Import ApiSyncService dynamically to avoid circular dependencies
     import('./apiSyncService').then(({ ApiSyncService }) => {
       if (this.currentEmployeeId) {
-        console.log('🔄 Triggering sync due to real-time update');
+        debugLog('🔄 Triggering sync due to real-time update');
         ApiSyncService.syncFromBackend(this.currentEmployeeId).catch(error => {
           console.error('❌ Error syncing after real-time update:', error);
         });
@@ -247,7 +253,7 @@ export class RealtimeSyncService {
     }
 
     this.reconnectAttempts++;
-    console.log(`🔄 Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectDelay}ms`);
+    debugLog(`🔄 Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectDelay}ms`);
     
     setTimeout(() => {
       this.connect(baseUrl, employeeId);

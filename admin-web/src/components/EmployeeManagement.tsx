@@ -35,6 +35,8 @@ import {
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Archive as ArchiveIcon,
+  Restore as RestoreIcon,
   Add as AddIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
@@ -49,7 +51,14 @@ import {
   Phone as PhoneIcon,
   LocationOn as LocationIcon,
   GetApp as ExportIcon,
+  FolderDelete as FolderDeleteIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  UnfoldMore as UnfoldMoreIcon,
 } from '@mui/icons-material';
+
+// API configuration - use environment variable or default to localhost for development
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 interface Employee {
   id: string;
@@ -184,20 +193,91 @@ const EmployeeManagement: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedEmployees, setArchivedEmployees] = useState<Employee[]>([]);
+  const [sortedArchivedEmployees, setSortedArchivedEmployees] = useState<Employee[]>([]);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
+  
+  // Sorting state
+  const [sortField, setSortField] = useState<keyof Employee | ''>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     loadEmployees();
-  }, []);
+    if (showArchived) {
+      loadArchivedEmployees();
+    }
+  }, [showArchived]);
 
   useEffect(() => {
     filterEmployees();
   }, [employees, searchTerm, roleFilter, statusFilter]);
 
+  // Helper function to sort employees
+  const sortEmployees = (employees: Employee[]): Employee[] => {
+    if (!sortField) return employees;
+    
+    const sorted = [...employees];
+    sorted.sort((a, b) => {
+      let aValue = a[sortField];
+      let bValue = b[sortField];
+      
+      // Handle string comparisons
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+      
+      // Handle null/undefined values
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return 1;
+      if (bValue == null) return -1;
+      
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return sorted;
+  };
+
+  // Apply sorting to filtered employees
+  useEffect(() => {
+    setFilteredEmployees(prev => sortEmployees(prev));
+  }, [sortField, sortDirection]);
+
+  // Apply sorting to archived employees
+  useEffect(() => {
+    setSortedArchivedEmployees(sortEmployees(archivedEmployees));
+  }, [archivedEmployees, sortField, sortDirection]);
+
+  const handleSort = (field: keyof Employee) => {
+    if (sortField === field) {
+      // Toggle direction if clicking the same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new field and default to ascending
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: keyof Employee) => {
+    if (sortField !== field) {
+      return <UnfoldMoreIcon sx={{ fontSize: 16, opacity: 0.5 }} />;
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUpwardIcon sx={{ fontSize: 16 }} />
+      : <ArrowDownwardIcon sx={{ fontSize: 16 }} />;
+  };
+
   const loadEmployees = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:3002/api/employees');
+      const response = await fetch(`${API_BASE_URL}/api/employees`);
       if (!response.ok) throw new Error('Failed to fetch employees');
       
       const employeesData = await response.json();
@@ -214,6 +294,32 @@ const EmployeeManagement: React.FC = () => {
     } catch (err: any) {
       console.error('Error loading employees:', err);
       setError(err.message || 'Failed to load employees');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadArchivedEmployees = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/employees/archived`);
+      if (!response.ok) throw new Error('Failed to fetch archived employees');
+      
+      const employeesData = await response.json();
+      
+      // Parse costCenters from JSON string if needed
+      const parsedEmployees = employeesData.map((emp: any) => ({
+        ...emp,
+        costCenters: typeof emp.costCenters === 'string' 
+          ? emp.costCenters 
+          : JSON.stringify(emp.costCenters || [])
+      }));
+      
+      setArchivedEmployees(parsedEmployees);
+    } catch (err: any) {
+      console.error('Error loading archived employees:', err);
+      setError(err.message || 'Failed to load archived employees');
     } finally {
       setLoading(false);
     }
@@ -316,7 +422,7 @@ const EmployeeManagement: React.FC = () => {
 
       if (editingEmployee) {
         // Update existing employee
-        const response = await fetch(`http://localhost:3002/api/employees/${editingEmployee.id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/employees/${editingEmployee.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -335,7 +441,7 @@ const EmployeeManagement: React.FC = () => {
         setSuccess('Employee updated successfully!');
       } else {
         // Create new employee
-        const response = await fetch('http://localhost:3002/api/employees', {
+        const response = await fetch(`${API_BASE_URL}/api/employees`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -363,8 +469,8 @@ const EmployeeManagement: React.FC = () => {
     }
   };
 
-  const handleDelete = async (employee: Employee) => {
-    if (!window.confirm(`Are you sure you want to delete ${employee.name}? This action cannot be undone.`)) {
+  const handleArchive = async (employee: Employee) => {
+    if (!window.confirm(`Are you sure you want to archive ${employee.name}? They will be moved to the archived employees section.`)) {
       return;
     }
 
@@ -372,7 +478,73 @@ const EmployeeManagement: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch(`http://localhost:3002/api/employees/${employee.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/employees/${employee.id}/archive`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to archive employee');
+      }
+
+      setSuccess('Employee archived successfully!');
+      await loadEmployees();
+      if (showArchived) {
+        await loadArchivedEmployees();
+      }
+    } catch (err: any) {
+      console.error('Error archiving employee:', err);
+      setError(err.message || 'Failed to archive employee');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestore = async (employee: Employee) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/employees/${employee.id}/restore`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to restore employee');
+      }
+
+      setSuccess('Employee restored successfully!');
+      await loadArchivedEmployees();
+      await loadEmployees();
+    } catch (err: any) {
+      console.error('Error restoring employee:', err);
+      setError(err.message || 'Failed to restore employee');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (employee: Employee) => {
+    setEmployeeToDelete(employee);
+    setDeleteConfirmText('');
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteConfirmText !== 'CONFIRM') {
+      setError('Please type "CONFIRM" to confirm deletion');
+      return;
+    }
+
+    if (!employeeToDelete) return;
+
+    setLoading(true);
+    setError(null);
+    setDeleteConfirmOpen(false);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeToDelete.id}`, {
         method: 'DELETE'
       });
 
@@ -381,8 +553,10 @@ const EmployeeManagement: React.FC = () => {
         throw new Error(errorData.error || 'Failed to delete employee');
       }
 
-      setSuccess('Employee deleted successfully!');
-      await loadEmployees();
+      setSuccess('Employee permanently deleted successfully!');
+      await loadArchivedEmployees();
+      setEmployeeToDelete(null);
+      setDeleteConfirmText('');
     } catch (err: any) {
       console.error('Error deleting employee:', err);
       setError(err.message || 'Failed to delete employee');
@@ -446,17 +620,43 @@ const EmployeeManagement: React.FC = () => {
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
-            Manage Employees
+            {showArchived ? 'Archived Employees' : 'Manage Employees'}
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => openDialog()}
-            disabled={loading}
-            sx={{ backgroundColor: '#6366f1' }}
-          >
-            Add Employee
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            {!showArchived && (
+              <Button
+                variant="outlined"
+                startIcon={<FolderDeleteIcon />}
+                onClick={() => {
+                  setShowArchived(true);
+                  loadArchivedEmployees();
+                }}
+                disabled={loading}
+              >
+                View Archived
+              </Button>
+            )}
+            {showArchived && (
+              <Button
+                variant="outlined"
+                onClick={() => setShowArchived(false)}
+                disabled={loading}
+              >
+                Back to Active Employees
+              </Button>
+            )}
+            {!showArchived && (
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => openDialog()}
+                disabled={loading}
+                sx={{ backgroundColor: '#6366f1' }}
+              >
+                Add Employee
+              </Button>
+            )}
+          </Box>
         </Box>
 
         {/* Summary Bar */}
@@ -547,18 +747,68 @@ const EmployeeManagement: React.FC = () => {
           <Table>
             <TableHead>
               <TableRow sx={{ backgroundColor: '#f8fafc' }}>
-                <TableCell sx={{ fontWeight: 'bold', cursor: 'pointer', userSelect: 'none' }}>
-                  Full name ↕️
+                <TableCell 
+                  sx={{ 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer', 
+                    userSelect: 'none',
+                    '&:hover': { backgroundColor: '#f1f5f9' }
+                  }}
+                  onClick={() => handleSort('name')}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    Full name
+                    {getSortIcon('name')}
+                  </Box>
                 </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Display name</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Email address</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Account type</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Phone</TableCell>
+                <TableCell 
+                  sx={{ 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer', 
+                    userSelect: 'none',
+                    '&:hover': { backgroundColor: '#f1f5f9' }
+                  }}
+                  onClick={() => handleSort('email')}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    Email address
+                    {getSortIcon('email')}
+                  </Box>
+                </TableCell>
+                <TableCell 
+                  sx={{ 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer', 
+                    userSelect: 'none',
+                    '&:hover': { backgroundColor: '#f1f5f9' }
+                  }}
+                  onClick={() => handleSort('position')}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    Account type
+                    {getSortIcon('position')}
+                  </Box>
+                </TableCell>
+                <TableCell 
+                  sx={{ 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer', 
+                    userSelect: 'none',
+                    '&:hover': { backgroundColor: '#f1f5f9' }
+                  }}
+                  onClick={() => handleSort('phoneNumber')}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    Phone
+                    {getSortIcon('phoneNumber')}
+                  </Box>
+                </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredEmployees.map((employee, index) => {
+              {(showArchived ? sortedArchivedEmployees : filteredEmployees).map((employee, index) => {
                 const costCenters = parseCostCenters(employee.costCenters);
                 const initials = getInitials(employee.name);
                 const roleLabel = getRoleLabel(employee.position);
@@ -663,18 +913,38 @@ const EmployeeManagement: React.FC = () => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={() => { openDialog(selectedEmployee); handleMenuClose(); }}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Edit employee</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => { handleDelete(selectedEmployee!); handleMenuClose(); }}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Delete employee</ListItemText>
-        </MenuItem>
+        {!showArchived && (
+          <>
+            <MenuItem onClick={() => { openDialog(selectedEmployee); handleMenuClose(); }}>
+              <ListItemIcon>
+                <EditIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Edit employee</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => { handleArchive(selectedEmployee!); handleMenuClose(); }}>
+              <ListItemIcon>
+                <ArchiveIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Archive employee</ListItemText>
+            </MenuItem>
+          </>
+        )}
+        {showArchived && (
+          <>
+            <MenuItem onClick={() => { handleRestore(selectedEmployee!); handleMenuClose(); }}>
+              <ListItemIcon>
+                <RestoreIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Restore employee</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => { handleDeleteClick(selectedEmployee!); handleMenuClose(); }}>
+              <ListItemIcon>
+                <DeleteIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Permanently delete</ListItemText>
+            </MenuItem>
+          </>
+        )}
       </Menu>
 
       {/* Employee Form Dialog */}
@@ -800,6 +1070,68 @@ const EmployeeManagement: React.FC = () => {
             sx={{ backgroundColor: '#6366f1' }}
           >
             {loading ? 'Saving...' : editingEmployee ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteConfirmText('');
+          setEmployeeToDelete(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <DeleteIcon sx={{ color: 'error.main' }} />
+            Confirm Permanent Deletion
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              This action cannot be undone!
+            </Typography>
+            <Typography variant="body2">
+              You are about to permanently delete <strong>{employeeToDelete?.name}</strong>. This will remove all data associated with this employee from the system.
+            </Typography>
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            To confirm this deletion, please type <strong>CONFIRM</strong> in the box below:
+          </Typography>
+          <TextField
+            fullWidth
+            label="Type CONFIRM to delete"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            error={deleteConfirmText !== '' && deleteConfirmText !== 'CONFIRM'}
+            helperText={deleteConfirmText !== '' && deleteConfirmText !== 'CONFIRM' ? 'You must type "CONFIRM" exactly' : ''}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setDeleteConfirmOpen(false);
+              setDeleteConfirmText('');
+              setEmployeeToDelete(null);
+            }}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDeleteConfirm}
+            variant="contained"
+            color="error"
+            disabled={loading || deleteConfirmText !== 'CONFIRM'}
+            startIcon={<DeleteIcon />}
+          >
+            Permanently Delete
           </Button>
         </DialogActions>
       </Dialog>

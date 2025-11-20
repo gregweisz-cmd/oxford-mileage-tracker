@@ -1,4 +1,5 @@
 import { DatabaseService } from './database';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 
 // API Configuration - use local backend for testing, cloud backend for production
 const API_BASE_URL = __DEV__ 
@@ -28,7 +29,7 @@ export class PerDiemRulesService {
    */
   static async fetchPerDiemRules(): Promise<PerDiemRule[]> {
     try {
-      console.log('📋 PerDiemRules: Fetching rules from backend...');
+      debugLog('📋 PerDiemRules: Fetching rules from backend...');
       
       const response = await fetch(`${API_BASE_URL}/per-diem-rules`, {
         method: 'GET',

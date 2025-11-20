@@ -24,6 +24,8 @@ import { PermissionService } from '../services/permissionService';
 import RealtimeSyncService from '../services/realtimeSyncService';
 import { MileageEntry, Employee, Receipt } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
+import { API_BASE_URL } from '../config/api';
+import { debugWarn } from '../config/debug';
 import UnifiedHeader from '../components/UnifiedHeader';
 import CostCenterSelector from '../components/CostCenterSelector';
 import PerDiemWidget from '../components/PerDiemWidget';
@@ -33,6 +35,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { BaseAddressDetectionService } from '../services/baseAddressDetectionService';
 import { CostCenterImportService } from '../services/costCenterImportService';
 import { COST_CENTERS } from '../constants/costCenters';
+import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
 
 interface HomeScreenProps {
   navigation: any;
@@ -42,6 +45,9 @@ interface HomeScreenProps {
     };
   };
 }
+
+// Module-level variable to prevent concurrent syncs
+let homeScreenIsSyncing = false;
 
 function HomeScreen({ navigation, route }: HomeScreenProps) {
   const { colors } = useTheme();
@@ -82,6 +88,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [showMonthYearModal, setShowMonthYearModal] = useState(false);
+  
+  // Smart notifications state
+  const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
+  const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
 
   // Generate dynamic styles based on theme
   const dynamicStyles = StyleSheet.create({
@@ -346,20 +356,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         color: colors.primary,
         onPress: () => navigation.navigate('DailyDescription'),
       },
-      'cost-center-reports': {
-        id: 'cost-center-reports',
-        icon: 'assessment',
-        label: 'Cost Center Reports',
-        color: colors.primary,
-        onPress: () => navigation.navigate('CostCenterReporting'),
-      },
-      'view-reports': {
-        id: 'view-reports',
-        icon: 'assessment',
-        label: 'View Reports',
-        color: colors.primary,
-        onPress: handleViewReports,
-      },
     };
 
     // Get saved order from preferences
@@ -379,6 +375,13 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     initializeTiles().then(setDashboardTiles);
   }, []);
 
+  // Reload data when selected month/year changes
+  useEffect(() => {
+    if (currentEmployee) {
+      loadEmployeeData(currentEmployee.id, currentEmployee);
+    }
+  }, [selectedMonth, selectedYear]);
+
   // Refresh data when screen comes into focus (but DON'T sync again)
   useFocusEffect(
     React.useCallback(() => {
@@ -395,6 +398,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         setCurrentEmployee(employee);
         setViewingEmployee(employee);
         await loadEmployeeData(employee.id, employee);
+        // Check for smart notifications when refreshing
+        await checkSmartNotifications(employee.id);
       }
     } catch (error) {
       console.error('Error refreshing local data:', error);
@@ -412,8 +417,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       }
 
 
-      // Get all dashboard data using unified service
-      const dashboardData = await DashboardService.getDashboardStats(employeeId);
+      // Get all dashboard data using unified service with selected month/year
+      const dashboardData = await DashboardService.getDashboardStats(employeeId, selectedMonth, selectedYear);
       
       // Set recent entries and receipts
       setRecentEntries(dashboardData.recentMileageEntries);
@@ -429,11 +434,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       setPerDiemThisMonth(perDiemFromReceipts);
       
       // Load enhanced Per Diem statistics
-      const now = new Date();
       const stats = await PerDiemDashboardService.getPerDiemStats(
         employee,
-        now.getMonth() + 1,
-        now.getFullYear()
+        selectedMonth,
+        selectedYear
       );
       setPerDiemStats(stats);
 
@@ -490,6 +494,31 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  const checkSmartNotifications = async (employeeId: string) => {
+    try {
+      const notifications = await SmartNotificationService.checkNotifications(employeeId);
+      // Filter out dismissed notifications
+      const activeNotifications = notifications.filter(
+        notification => !dismissedNotifications.has(notification.id)
+      );
+      setSmartNotifications(activeNotifications);
+    } catch (error) {
+      console.error('Error checking smart notifications:', error);
+    }
+  };
+
+  const handleDismissNotification = (notificationId: string) => {
+    setDismissedNotifications(prev => new Set(prev).add(notificationId));
+    setSmartNotifications(prev => prev.filter(n => n.id !== notificationId));
+  };
+
+  const handleNotificationAction = (notification: SmartNotification) => {
+    if (notification.actionRoute) {
+      navigation.navigate(notification.actionRoute);
+    }
+    handleDismissNotification(notification.id);
+  };
+
   const handleEditEntry = (entryId: string) => {
     // Navigate to MileageEntryScreen with the entry ID for editing
     navigation.navigate('MileageEntry', { 
@@ -532,7 +561,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       
       // Initialize real-time sync
       const realtimeSync = RealtimeSyncService.getInstance();
-      realtimeSync.connect('http://localhost:3002', employee.id);
+      realtimeSync.connect(API_BASE_URL, employee.id);
       
       // Set up real-time sync event listeners
       realtimeSync.on('data_update', (data) => {
@@ -555,19 +584,27 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       });
 
       // Sync data from backend on app startup
-      if (!HomeScreen.isSyncing) {
-        HomeScreen.isSyncing = true;
-        try {
-          const { ApiSyncService } = await import('../services/apiSyncService');
-          const syncResult = await ApiSyncService.syncFromBackend(employee.id);
-          if (syncResult.success) {
-            setLastSyncTime(new Date());
+      // Make this non-blocking - don't show errors during initial sync
+      if (!homeScreenIsSyncing) {
+        homeScreenIsSyncing = true;
+        // Run sync in background without blocking UI
+        (async () => {
+          try {
+            const { ApiSyncService } = await import('../services/apiSyncService');
+            const syncResult = await ApiSyncService.syncFromBackend(employee.id);
+            if (syncResult.success) {
+              setLastSyncTime(new Date());
+            } else {
+              // Only log errors during initial sync, don't show alerts
+              debugWarn('⚠️ Initial sync completed with some errors (this is normal):', syncResult.error);
+            }
+          } catch (syncError) {
+            // Silently log errors during initial sync - don't show alerts
+            debugWarn('⚠️ Error during initial backend sync (non-blocking):', syncError instanceof Error ? syncError.message : 'Unknown error');
+          } finally {
+            homeScreenIsSyncing = false;
           }
-        } catch (syncError) {
-          console.error('❌ Error during backend sync:', syncError);
-        } finally {
-          HomeScreen.isSyncing = false;
-        }
+        })();
       }
       
       // Load data for the viewing employee
@@ -575,6 +612,9 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       
       // Check for base address suggestions
       await checkBaseAddressSuggestion(employee);
+      
+      // Check for smart notifications
+      await checkSmartNotifications(employee.id);
       
     } catch (error) {
       console.error('Error loading data:', error);
@@ -591,10 +631,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     navigation.navigate('MileageEntry');
   };
 
-  const handleViewReports = () => {
-    navigation.navigate('Reports');
-  };
-
   const handleGpsTracking = () => {
     navigation.navigate('GpsTracking');
   };
@@ -604,7 +640,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const handleViewReceipts = () => {
-    navigation.navigate('Receipts');
+    navigation.navigate('Receipts', {
+      selectedMonth,
+      selectedYear,
+    });
   };
 
   const handleViewHoursWorked = () => {
@@ -1122,6 +1161,57 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         </TouchableOpacity>
       </View>
 
+      {/* Smart Notifications */}
+      {smartNotifications.length > 0 && (
+        <View style={styles.notificationsContainer}>
+          {smartNotifications.map((notification) => {
+            const priorityColor = 
+              notification.priority === 'high' ? '#F44336' :
+              notification.priority === 'medium' ? '#FF9800' : '#2196F3';
+            
+            return (
+              <View key={notification.id} style={[styles.notificationCard, { borderLeftColor: priorityColor }]}>
+                <View style={styles.notificationHeader}>
+                  <View style={styles.notificationTitleContainer}>
+                    <MaterialIcons 
+                      name={
+                        notification.type === 'mileage' ? 'drive-eta' :
+                        notification.type === 'receipt' ? 'receipt' :
+                        notification.type === 'report' ? 'assessment' :
+                        notification.type === 'per_diem' ? 'location-on' : 'info'
+                      } 
+                      size={20} 
+                      color={priorityColor} 
+                      style={styles.notificationIcon}
+                    />
+                    <Text style={[styles.notificationTitle, { color: colors.text }]}>
+                      {notification.title}
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => handleDismissNotification(notification.id)}
+                    style={styles.dismissButton}
+                  >
+                    <MaterialIcons name="close" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.notificationMessage, { color: colors.textSecondary }]}>
+                  {notification.message}
+                </Text>
+                {notification.actionLabel && (
+                  <TouchableOpacity 
+                    onPress={() => handleNotificationAction(notification)}
+                    style={[styles.notificationAction, { backgroundColor: priorityColor }]}
+                  >
+                    <Text style={styles.notificationActionText}>{notification.actionLabel}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       {/* Batch Mode Indicator */}
       {isBatchMode && (
         <View style={styles.batchModeIndicator}>
@@ -1196,39 +1286,44 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Reports')}>
+          <View style={dynamicStyles.statCard}>
             <MaterialIcons name="attach-money" size={24} color="#FF9800" />
             <Text style={dynamicStyles.statValue}>${totalExpensesThisMonth.toFixed(2)}</Text>
             <Text style={dynamicStyles.statLabel}>Total Expenses</Text>
-          </TouchableOpacity>
+          </View>
           
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Reports')}>
+          <View style={dynamicStyles.statCard}>
             <MaterialIcons name="speed" size={24} color="#4CAF50" />
             <Text style={dynamicStyles.statValue}>{totalMilesThisMonth.toFixed(1)}</Text>
             <Text style={dynamicStyles.statLabel}>Miles This Month</Text>
-          </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Enhanced Per Diem Widget */}
-        {perDiemStats && (
-          <PerDiemWidget
-            currentTotal={perDiemStats.currentMonthTotal}
-            monthlyLimit={perDiemStats.monthlyLimit}
-            daysEligible={perDiemStats.daysEligible}
-            daysClaimed={perDiemStats.daysClaimed}
-            isEligibleToday={perDiemStats.isEligibleToday}
-            onPress={() => navigation.navigate('Receipts')}
-            colors={{
-              card: colors.card,
-              text: colors.text,
-              textSecondary: colors.textSecondary
-            }}
-          />
-        )}
+        {/* Enhanced Per Diem Widget - Always visible */}
+        <PerDiemWidget
+          currentTotal={perDiemStats?.currentMonthTotal || 0}
+          monthlyLimit={perDiemStats?.monthlyLimit || 350}
+          daysEligible={perDiemStats?.daysEligible || 0}
+          daysClaimed={perDiemStats?.daysClaimed || 0}
+          isEligibleToday={perDiemStats?.isEligibleToday || false}
+          onPress={() => {
+            // Navigate to Receipts screen with Per Diem filter
+            navigation.navigate('Receipts', { 
+              selectedMonth,
+              selectedYear,
+              filterCategory: 'Per Diem' 
+            });
+          }}
+          colors={{
+            card: colors.card,
+            text: colors.text,
+            textSecondary: colors.textSecondary
+          }}
+        />
 
         {/* Secondary Stats */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Receipts')}>
+          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Receipts', { selectedMonth, selectedYear })}>
             <MaterialIcons name="receipt" size={24} color="#E91E63" />
             <Text style={dynamicStyles.statValue}>${totalReceiptsThisMonth.toFixed(2)}</Text>
             <Text style={dynamicStyles.statLabel}>Other Receipts</Text>
@@ -1243,38 +1338,34 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
         {/* Total Expenses Card */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Reports')}>
+          <View style={dynamicStyles.statCard}>
             <MaterialIcons name="attach-money" size={24} color="#4CAF50" />
             <Text style={dynamicStyles.statValue}>${totalExpensesThisMonth.toFixed(2)}</Text>
             <Text style={dynamicStyles.statLabel}>Total Expenses</Text>
-          </TouchableOpacity>
+          </View>
           
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Reports')}>
+          <View style={dynamicStyles.statCard}>
             <MaterialIcons name="list" size={24} color="#2196F3" />
             <Text style={dynamicStyles.statValue}>{recentEntries.length}</Text>
             <Text style={dynamicStyles.statLabel}>Recent Entries</Text>
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* Monthly Mileage Link */}
         <View style={styles.monthlyMileageContainer}>
-          <TouchableOpacity 
-            style={dynamicStyles.monthlyMileageButton}
-            onPress={() => navigation.navigate('Reports')}
-          >
+          <View style={dynamicStyles.monthlyMileageButton}>
             <View style={styles.monthlyMileageContent}>
               <View style={styles.monthlyMileageIconContainer}>
                 <MaterialIcons name="speed" size={28} color={colors.primary} />
               </View>
               <View style={styles.monthlyMileageTextContainer}>
-                <Text style={dynamicStyles.monthlyMileageTitle}>View Monthly Mileage</Text>
+                <Text style={dynamicStyles.monthlyMileageTitle}>Monthly Mileage Summary</Text>
                 <Text style={dynamicStyles.monthlyMileageSubtitle}>
                   {totalMilesThisMonth.toFixed(1)} miles • {recentEntries.length} entries • {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </Text>
               </View>
-              <MaterialIcons name="chevron-right" size={24} color={colors.primary} />
             </View>
-          </TouchableOpacity>
+          </View>
         </View>
 
 
@@ -1361,13 +1452,9 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         <View style={styles.quickActionsContainer}>
           <View style={styles.quickActionsHeader}>
             <Text style={styles.quickActionsTitle}>Quick Actions</Text>
-            <TouchableOpacity 
-              style={styles.quickActionsViewAllButton}
-              onPress={() => navigation.navigate('Reports')}
-            >
-              <Text style={styles.quickActionsViewAllText}>View All</Text>
-              <MaterialIcons name="chevron-right" size={16} color="#2196F3" />
-            </TouchableOpacity>
+            <View style={styles.quickActionsViewAllButton}>
+              <Text style={styles.quickActionsViewAllText}>Recent Activity</Text>
+            </View>
           </View>
           
           {recentEntries.filter(entry => {
@@ -1704,7 +1791,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 style={dynamicStyles.modalButtonPrimary} 
                 onPress={() => {
                   setShowMonthYearModal(false);
-                  loadData(); // Reload data with new month/year
+                  // Data will reload automatically via useEffect dependency on selectedMonth/selectedYear
                 }}
               >
                 <Text style={dynamicStyles.modalButtonPrimaryText}>Done</Text>
@@ -2596,9 +2683,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Smart Notifications Styles
+  notificationsContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  notificationCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 16,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  notificationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  notificationTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  notificationIcon: {
+    marginRight: 8,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  dismissButton: {
+    padding: 4,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  notificationAction: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  notificationActionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
-
-// Static property to prevent concurrent syncs
-(HomeScreen as any).isSyncing = false;
 
 export default HomeScreen;

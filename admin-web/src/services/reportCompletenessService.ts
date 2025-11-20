@@ -37,11 +37,12 @@ export class ReportCompletenessService {
       // Get all data for the month from the backend API
       console.log('🔍 ReportCompleteness: Fetching data from APIs...');
       
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
       const [mileageResponse, receiptsResponse, timeTrackingResponse, employeeResponse] = await Promise.all([
-        fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}&month=${month}&year=${year}`),
-        fetch(`http://localhost:3002/api/receipts?employeeId=${employeeId}&month=${month}&year=${year}`),
-        fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${month}&year=${year}`),
-        fetch(`http://localhost:3002/api/employees/${employeeId}`)
+        fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${month}&year=${year}`),
+        fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${month}&year=${year}`),
+        fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${month}&year=${year}`),
+        fetch(`${API_BASE_URL}/api/employees/${employeeId}`)
       ]);
 
       console.log('🔍 ReportCompleteness: API responses received:', {

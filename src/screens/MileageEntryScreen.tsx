@@ -36,6 +36,7 @@ import { useNotifications } from '../contexts/NotificationContext';
 import { TripChainingAiService, TripChainSuggestion } from '../services/tripChainingAiService';
 import TripChainingModal from '../components/TripChainingModal';
 import { COST_CENTERS } from '../constants/costCenters';
+import { CostCenterAutoSelectionService, CostCenterSuggestion } from '../services/costCenterAutoSelectionService';
 
 interface MileageEntryScreenProps {
   navigation: any;
@@ -72,6 +73,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const [showTripChainingModal, setShowTripChainingModal] = useState(false);
   const [loadingChainingSuggestions, setLoadingChainingSuggestions] = useState(false);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
+  const [costCenterSuggestion, setCostCenterSuggestion] = useState<CostCenterSuggestion | null>(null);
+  const [isCostCenterAutoSelected, setIsCostCenterAutoSelected] = useState(false);
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
   const [hasExistingEntriesToday, setHasExistingEntriesToday] = useState(false);
   
@@ -201,6 +204,59 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     loadTripChainingSuggestions();
   }, [formData.startLocation, formData.endLocation, currentEmployee]);
 
+  // Auto-select cost center when end location changes
+  useEffect(() => {
+    const autoSelectCostCenter = async () => {
+      // Only auto-select if we have an end location and employee, and we're not editing
+      if (!currentEmployee || !formData.endLocation || !formData.endLocation.trim() || isEditing) {
+        // Clear auto-selection if end location is cleared
+        if (!formData.endLocation || !formData.endLocation.trim()) {
+          setIsCostCenterAutoSelected(false);
+          setCostCenterSuggestion(null);
+        }
+        return;
+      }
+
+      // Reset auto-selection flag if end location changed significantly
+      const lastSuggestionLocation = costCenterSuggestion ? 'previous' : null;
+      if (lastSuggestionLocation && formData.endLocation !== lastSuggestionLocation) {
+        setIsCostCenterAutoSelected(false);
+      }
+
+      try {
+        const suggestion = await CostCenterAutoSelectionService.getSuggestion(
+          currentEmployee.id,
+          formData.endLocation,
+          currentEmployee
+        );
+
+        if (suggestion) {
+          // Only auto-select if the suggested cost center is in the employee's selected cost centers
+          const isValidCostCenter = currentEmployee.selectedCostCenters?.includes(suggestion.costCenter);
+          
+          if (isValidCostCenter) {
+            setSelectedCostCenter(suggestion.costCenter);
+            setCostCenterSuggestion(suggestion);
+            setIsCostCenterAutoSelected(true);
+            console.log(`✅ Auto-selected cost center: ${suggestion.costCenter} (${suggestion.reason})`);
+          }
+        } else {
+          // Don't clear auto-selection if no suggestion - might just be a new location
+          // Only clear if user manually changes it
+        }
+      } catch (error) {
+        console.error('Error auto-selecting cost center:', error);
+      }
+    };
+
+    // Debounce to avoid too many calls while user is typing
+    const timeoutId = setTimeout(() => {
+      autoSelectCostCenter();
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.endLocation, currentEmployee, isEditing]);
+
   const loadEmployee = async () => {
     try {
       const currentEmployee = await DatabaseService.getCurrentEmployee();
@@ -210,6 +266,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         // Initialize cost center
         const costCenter = currentEmployee.defaultCostCenter || currentEmployee.selectedCostCenters?.[0] || '';
         setSelectedCostCenter(costCenter);
+        setIsCostCenterAutoSelected(false);
+        setCostCenterSuggestion(null);
         
         setTipsEmployee(currentEmployee);
         if (showTips) {
@@ -1251,7 +1309,17 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         {/* Cost Center Selector - only show if user has multiple cost centers */}
         {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Cost Center</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Cost Center</Text>
+              {isCostCenterAutoSelected && costCenterSuggestion && (
+                <View style={styles.autoSelectedBadge}>
+                  <MaterialIcons name="auto-awesome" size={14} color="#4CAF50" />
+                  <Text style={styles.autoSelectedText}>
+                    {CostCenterAutoSelectionService.getSuggestionReasonText(costCenterSuggestion)}
+                  </Text>
+                </View>
+              )}
+            </View>
             <View style={styles.costCenterSelector}>
               {currentEmployee.selectedCostCenters.map((costCenter) => (
                 <TouchableOpacity
@@ -1260,7 +1328,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                     styles.costCenterOption,
                     selectedCostCenter === costCenter && styles.costCenterOptionSelected
                   ]}
-                  onPress={() => setSelectedCostCenter(costCenter)}
+                  onPress={() => {
+                    setSelectedCostCenter(costCenter);
+                    // Clear auto-selection flag when user manually changes it
+                    if (costCenter !== costCenterSuggestion?.costCenter) {
+                      setIsCostCenterAutoSelected(false);
+                    }
+                  }}
                 >
                   <Text style={[
                     styles.costCenterOptionText,
@@ -1268,6 +1342,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                   ]}>
                     {costCenter}
                   </Text>
+                  {isCostCenterAutoSelected && 
+                   selectedCostCenter === costCenter && 
+                   costCenterSuggestion?.costCenter === costCenter && (
+                    <MaterialIcons name="auto-awesome" size={16} color="#4CAF50" style={{ marginLeft: 4 }} />
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -1465,7 +1544,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
               {/* Results List */}
               {oxfordHouseLoading ? (
                 <View style={styles.loadingContainer}>
-                  <Text style={styles.loadingText}>Loading Oxford Houses...</Text>
+                  <Text style={styles.oxfordHouseLoadingText}>Loading Oxford Houses...</Text>
                 </View>
               ) : (
                 <FlatList
@@ -2020,6 +2099,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  autoSelectedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  autoSelectedText: {
+    fontSize: 11,
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
   
   // Odometer Display Styles
   odometerDisplay: {
@@ -2150,7 +2249,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 40,
   },
-  loadingText: {
+  oxfordHouseLoadingText: {
     fontSize: 16,
     color: '#666',
   },

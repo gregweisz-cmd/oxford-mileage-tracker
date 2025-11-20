@@ -24,19 +24,19 @@ import EmployeeProfileScreen from './src/screens/EmployeeProfileScreen';
 import LogoutService from './src/services/logoutService';
 import HomeScreen from './src/screens/HomeScreen';
 import MileageEntryScreen from './src/screens/MileageEntryScreen';
-import ReportsScreen from './src/screens/ReportsScreen';
 import GpsTrackingScreen from './src/screens/GpsTrackingScreen';
 import ReceiptsScreen from './src/screens/ReceiptsScreen';
 import AddReceiptScreen from './src/screens/AddReceiptScreen';
 import HoursWorkedScreen from './src/screens/HoursWorkedScreen';
 import DailyDescriptionScreen from './src/screens/DailyDescriptionScreen';
-import CostCenterReportingScreen from './src/screens/CostCenterReportingScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import ManagerDashboardScreen from './src/screens/ManagerDashboardScreen';
 import SavedAddressesScreen from './src/screens/SavedAddressesScreen';
 import DataSyncScreen from './src/screens/DataSyncScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import PreferencesScreen from './src/screens/PreferencesScreen';
+import OnboardingScreen from './src/components/OnboardingScreen';
+import SetupWizard from './src/components/SetupWizard';
 import { RootStackParamList } from './src/types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -45,6 +45,8 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState<string>('');
   
   // Navigation ref for devtools
@@ -83,6 +85,18 @@ export default function App() {
         if (employee) {
           setCurrentEmployee(employee);
           setIsAuthenticated(true);
+          
+          // Check if user has completed onboarding
+          const hasCompletedOnboarding = await DatabaseService.hasCompletedOnboarding(employee.id);
+          if (!hasCompletedOnboarding) {
+            setShowOnboarding(true);
+          } else {
+            // Check if user has completed the Setup Wizard
+            const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(employee.id);
+            if (!hasCompletedSetupWizard) {
+              setShowSetupWizard(true);
+            }
+          }
         }
       }
     } catch (error) {
@@ -92,9 +106,42 @@ export default function App() {
     }
   };
 
-  const handleLogin = (employee: Employee) => {
-    setCurrentEmployee(employee);
+  const handleLogin = async (employee: Employee) => {
     setIsAuthenticated(true);
+    
+    // Always fetch fresh employee data from database to avoid stale cache issues
+    const freshEmployee = await DatabaseService.getEmployeeById(employee.id);
+    if (!freshEmployee) {
+      console.error('❌ Could not fetch employee after login');
+      setIsAuthenticated(false);
+      return;
+    }
+    
+    setCurrentEmployee(freshEmployee);
+    
+    // Check if user has completed onboarding
+    const hasCompleted = await DatabaseService.hasCompletedOnboarding(freshEmployee.id);
+    if (!hasCompleted) {
+      setShowOnboarding(true);
+      return;
+    }
+    
+    // Check if user has completed the Setup Wizard
+    // The wizard will show on first login regardless of backend data
+    // Backend data (if exists) will be used to pre-populate the wizard fields
+    const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(freshEmployee.id);
+    console.log('🔍 Setup Wizard Check (with fresh data):', {
+      employeeId: freshEmployee.id,
+      hasCompletedSetupWizard,
+      baseAddress: freshEmployee.baseAddress || '(will be pre-filled)',
+      defaultCostCenter: freshEmployee.defaultCostCenter || '(will be pre-filled)',
+    });
+    if (!hasCompletedSetupWizard) {
+      console.log('✅ Showing Setup Wizard (first login - will pre-populate with backend data if available)');
+      setShowSetupWizard(true);
+    } else {
+      console.log('⏭️ Setup Wizard already completed, skipping');
+    }
   };
 
   const handleLogout = async () => {
@@ -135,6 +182,56 @@ export default function App() {
     );
   }
 
+  // Show onboarding screen if needed
+  if (showOnboarding && currentEmployee) {
+    return (
+      <ThemeProvider>
+        <TipsProvider>
+          <GpsTrackingProvider>
+            <StatusBar style="light" />
+            <OnboardingScreen 
+              employeeId={currentEmployee.id}
+              onComplete={async () => {
+                setShowOnboarding(false);
+                // After onboarding, check if Setup Wizard is needed
+                if (currentEmployee) {
+                  const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(currentEmployee.id);
+                  if (!hasCompletedSetupWizard) {
+                    setShowSetupWizard(true);
+                  }
+                }
+              }} 
+            />
+          </GpsTrackingProvider>
+        </TipsProvider>
+      </ThemeProvider>
+    );
+  }
+
+  // Show setup wizard if needed
+  if (showSetupWizard && currentEmployee) {
+    return (
+      <ThemeProvider>
+        <TipsProvider>
+          <GpsTrackingProvider>
+            <StatusBar style="light" />
+            <SetupWizard 
+              employee={currentEmployee} 
+              onComplete={async () => {
+                setShowSetupWizard(false);
+                // Reload employee data after setup
+                const updatedEmployee = await DatabaseService.getEmployeeById(currentEmployee.id);
+                if (updatedEmployee) {
+                  setCurrentEmployee(updatedEmployee);
+                }
+              }} 
+            />
+          </GpsTrackingProvider>
+        </TipsProvider>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
       <TipsProvider>
@@ -162,13 +259,11 @@ export default function App() {
               component={HomeScreen}
             />
             <Stack.Screen name="MileageEntry" component={MileageEntryScreen} />
-            <Stack.Screen name="Reports" component={ReportsScreen} />
             <Stack.Screen name="GpsTracking" component={GpsTrackingScreen} />
             <Stack.Screen name="Receipts" component={ReceiptsScreen} />
             <Stack.Screen name="AddReceipt" component={AddReceiptScreen} />
             <Stack.Screen name="HoursWorked" component={HoursWorkedScreen} />
             <Stack.Screen name="DailyDescription" component={DailyDescriptionScreen} />
-            <Stack.Screen name="CostCenterReporting" component={CostCenterReportingScreen} />
             <Stack.Screen name="Admin" component={AdminScreen} />
             <Stack.Screen name="ManagerDashboard" component={ManagerDashboardScreen} />
             <Stack.Screen name="SavedAddresses" component={SavedAddressesScreen} />

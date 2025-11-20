@@ -36,6 +36,7 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
+import { TwoFactorService, TwoFactorStatus } from '../services/twoFactorService';
 
 // Cost center options from mobile app
 const COST_CENTERS = [
@@ -191,14 +192,23 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   });
 
   // Dialog states
-  const [costCenterDialogOpen, setCostCenterDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordDialogPurpose, setPasswordDialogPurpose] = useState<'password' | 'disable2fa'>('password');
   
   // Form states
-  const [newCostCenter, setNewCostCenter] = useState('');
-  const [costCenterSearch, setCostCenterSearch] = useState('');
   const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
   const [showPassword, setShowPassword] = useState(false);
+  
+  // 2FA states
+  const [twoFactorStatus, setTwoFactorStatus] = useState<TwoFactorStatus>({
+    twoFactorEnabled: false,
+    phoneNumberVerified: false,
+    phoneNumber: null
+  });
+  const [twoFactorPhoneNumber, setTwoFactorPhoneNumber] = useState('');
+  const [twoFactorVerificationCode, setTwoFactorVerificationCode] = useState('');
+  const [showTwoFactorSetup, setShowTwoFactorSetup] = useState(false);
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
   
   // Status
   const [loading, setLoading] = useState(false);
@@ -278,7 +288,82 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
   useEffect(() => {
     loadUserProfile();
+    loadTwoFactorStatus();
   }, [loadUserProfile]);
+
+  const loadTwoFactorStatus = async () => {
+    try {
+      const status = await TwoFactorService.getStatus(employeeId);
+      setTwoFactorStatus(status);
+    } catch (error) {
+      console.error('Error loading 2FA status:', error);
+      // 2FA might not be configured, set default status
+      setTwoFactorStatus({
+        twoFactorEnabled: false,
+        phoneNumberVerified: false,
+        phoneNumber: null
+      });
+    }
+  };
+
+  const handleSendTwoFactorCode = async () => {
+    if (!twoFactorPhoneNumber.trim()) {
+      showMessage('error', 'Please enter your phone number');
+      return;
+    }
+
+    setTwoFactorLoading(true);
+    try {
+      await TwoFactorService.sendCode(employeeId, twoFactorPhoneNumber);
+      showMessage('success', 'Verification code sent to your phone');
+      setShowTwoFactorSetup(true);
+    } catch (error) {
+      showMessage('error', error instanceof Error ? error.message : 'Failed to send verification code');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleVerifyTwoFactorCode = async () => {
+    if (!twoFactorVerificationCode.trim() || twoFactorVerificationCode.length !== 6) {
+      showMessage('error', 'Please enter a valid 6-digit verification code');
+      return;
+    }
+
+    setTwoFactorLoading(true);
+    try {
+      await TwoFactorService.verifyPhone(employeeId, twoFactorPhoneNumber, twoFactorVerificationCode);
+      showMessage('success', 'Two-factor authentication enabled successfully');
+      setShowTwoFactorSetup(false);
+      setTwoFactorPhoneNumber('');
+      setTwoFactorVerificationCode('');
+      await loadTwoFactorStatus();
+    } catch (error) {
+      showMessage('error', error instanceof Error ? error.message : 'Failed to verify code');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleDisableTwoFactor = async () => {
+    if (!passwordData.current) {
+      showMessage('error', 'Please enter your password to disable 2FA');
+      return;
+    }
+
+    setTwoFactorLoading(true);
+    try {
+      await TwoFactorService.disable(employeeId, passwordData.current);
+      showMessage('success', 'Two-factor authentication disabled successfully');
+      setPasswordData({ current: '', new: '', confirm: '' });
+      setPasswordDialogOpen(false);
+      await loadTwoFactorStatus();
+    } catch (error) {
+      showMessage('error', error instanceof Error ? error.message : 'Failed to disable 2FA');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
 
   const showMessage = (type: 'success' | 'error' | 'info', text: string) => {
     setMessage({ type, text });
@@ -335,28 +420,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
     }
   };
 
-  const handleCostCenterAdd = () => {
-    if (newCostCenter.trim() && !profile.costCenters.includes(newCostCenter)) {
-      const updatedCostCenters = [...profile.costCenters, newCostCenter.trim()];
-      setProfile(prev => ({ ...prev, costCenters: updatedCostCenters }));
-      setNewCostCenter('');
-      setCostCenterSearch('');
-      setCostCenterDialogOpen(false);
-      showMessage('success', 'Cost center added successfully!');
-    } else {
-      showMessage('error', 'Please select a unique cost center.');
-    }
-  };
-
-  const handleCostCenterRemove = (toRemove: string) => {
-    if (profile.costCenters.length > 1) {
-      const updatedCostCenters = profile.costCenters.filter(cc => cc !== toRemove);
-      setProfile(prev => ({ ...prev, costCenters: updatedCostCenters }));
-      showMessage('success', 'Cost center removed successfully!');
-    } else {
-      showMessage('error', 'You must have at least one cost center.');
-    }
-  };
 
   const handlePasswordChange = () => {
     if (passwordData.new !== passwordData.confirm) {
@@ -499,34 +562,29 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             </Typography>
             
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Select your assigned cost centers from the available list for expense reporting
+              Your assigned cost centers for expense reporting (managed by administrators)
             </Typography>
 
             <Box sx={{ mb: 2 }}>
-              {profile.costCenters.map((costCenter, index) => (
-                <Chip
-                  key={index}
-                  label={costCenter}
-                  onDelete={() => handleCostCenterRemove(costCenter)}
-                  sx={{ mr: 1, mb: 1 }}
-                  color="primary"
-                  variant="outlined"
-                />
-              ))}
-              <Chip
-                icon={<AddIcon />}
-                label="Add Cost Center"
-                onClick={() => {
-                  setCostCenterDialogOpen(true);
-                  setCostCenterSearch('');
-                }}
-                sx={{ mr: 1, mb: 1 }}
-                color="secondary"
-              />
+              {profile.costCenters.length > 0 ? (
+                profile.costCenters.map((costCenter, index) => (
+                  <Chip
+                    key={index}
+                    label={costCenter}
+                    sx={{ mr: 1, mb: 1 }}
+                    color="primary"
+                    variant="outlined"
+                  />
+                ))
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No cost centers assigned. Please contact your administrator.
+                </Typography>
+              )}
             </Box>
 
-            <Typography variant="caption" color="error">
-              Note: You must have at least one cost center assigned
+            <Typography variant="caption" color="text.secondary">
+              Changes to cost centers can only be made by administrators
             </Typography>
           </CardContent>
         </Card>
@@ -681,6 +739,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <Button
                 variant="outlined"
                 onClick={() => {
+                  setPasswordDialogPurpose('password');
                   setPasswordDialogOpen(true);
                   setPasswordData({ current: '', new: '', confirm: '' });
                 }}
@@ -691,18 +750,106 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
               <Divider sx={{ my: 1 }} />
 
-              <FormControlLabel
-                control={
+              {/* Two-Factor Authentication */}
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Box>
+                    <Typography variant="body1" fontWeight="medium">
+                      Two-Factor Authentication (2FA)
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {twoFactorStatus.twoFactorEnabled 
+                        ? `Enabled for phone ending in ${twoFactorStatus.phoneNumber || '****'}`
+                        : 'Add an extra layer of security to your account'}
+                    </Typography>
+                  </Box>
                   <Switch
-                    checked={profile.preferences.smsNotifications}
-                    onChange={(e) => setProfile(prev => ({
-                      ...prev,
-                      preferences: { ...prev.preferences, smsNotifications: e.target.checked }
-                    }))}
+                    checked={twoFactorStatus.twoFactorEnabled}
+                    disabled={twoFactorLoading}
+                    onChange={(e) => {
+                      if (!e.target.checked && twoFactorStatus.twoFactorEnabled) {
+                        // Disable 2FA - require password
+                        setPasswordDialogPurpose('disable2fa');
+                        setPasswordDialogOpen(true);
+                        setPasswordData({ current: '', new: '', confirm: '' });
+                      } else if (e.target.checked && !twoFactorStatus.twoFactorEnabled) {
+                        // Enable 2FA - show setup
+                        setShowTwoFactorSetup(true);
+                        setTwoFactorPhoneNumber('');
+                        setTwoFactorVerificationCode('');
+                      }
+                    }}
                   />
-                }
-                label="Two-Factor Authentication via SMS"
-              />
+                </Box>
+
+                {!twoFactorStatus.twoFactorEnabled && (
+                  <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    {!showTwoFactorSetup ? (
+                      <>
+                        <TextField
+                          fullWidth
+                          label="Phone Number"
+                          type="tel"
+                          value={twoFactorPhoneNumber}
+                          onChange={(e) => setTwoFactorPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                          placeholder="(123) 456-7890"
+                          margin="normal"
+                          helperText="Enter your phone number to receive verification codes"
+                        />
+                        <Button
+                          variant="contained"
+                          onClick={handleSendTwoFactorCode}
+                          disabled={twoFactorLoading || !twoFactorPhoneNumber.trim()}
+                          sx={{ mt: 1 }}
+                        >
+                          {twoFactorLoading ? 'Sending...' : 'Send Verification Code'}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                          Verification code sent to {twoFactorPhoneNumber}
+                        </Alert>
+                        <TextField
+                          fullWidth
+                          label="Verification Code"
+                          type="text"
+                          value={twoFactorVerificationCode}
+                          onChange={(e) => setTwoFactorVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="Enter 6-digit code"
+                          margin="normal"
+                          inputProps={{
+                            maxLength: 6,
+                            pattern: '[0-9]*',
+                            inputMode: 'numeric'
+                          }}
+                        />
+                        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                          <Button
+                            variant="contained"
+                            onClick={handleVerifyTwoFactorCode}
+                            disabled={twoFactorLoading || twoFactorVerificationCode.length !== 6}
+                          >
+                            {twoFactorLoading ? 'Verifying...' : 'Verify & Enable'}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            onClick={() => {
+                              setShowTwoFactorSetup(false);
+                              setTwoFactorVerificationCode('');
+                            }}
+                            disabled={twoFactorLoading}
+                          >
+                            Cancel
+                          </Button>
+                        </Box>
+                      </>
+                    )}
+                  </Box>
+                )}
+              </Box>
+
+              <Divider sx={{ my: 1 }} />
 
               <FormControlLabel
                 control={
@@ -816,104 +963,90 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         </Box>
       </Box>
 
-      {/* Cost Center Dialog */}
-      <Dialog open={costCenterDialogOpen} onClose={() => setCostCenterDialogOpen(false)}>
-        <DialogTitle>Add New Cost Center</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Search Cost Centers"
-            variant="outlined"
-            value={costCenterSearch}
-            onChange={(e) => setCostCenterSearch(e.target.value)}
-            placeholder="Type to filter cost centers..."
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Select Cost Center</InputLabel>
-            <Select
-              value={newCostCenter}
-              onChange={(e) => setNewCostCenter(e.target.value)}
-              label="Select Cost Center"
-              autoFocus
-            >
-              {COST_CENTERS
-                .filter(cc => 
-                  !profile.costCenters.includes(cc) && 
-                  cc.toLowerCase().includes(costCenterSearch.toLowerCase())
-                )
-                .map((costCenter) => (
-                  <MenuItem key={costCenter} value={costCenter}>
-                    {costCenter}
-                  </MenuItem>
-                ))}
-            </Select>
-          </FormControl>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Only available cost centers not already assigned to you are shown.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setCostCenterDialogOpen(false);
-            setCostCenterSearch('');
-          }}>Cancel</Button>
-          <Button 
-            onClick={handleCostCenterAdd} 
-            variant="contained"
-            disabled={!newCostCenter}
-          >
-            Add
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Password Change Dialog */}
+      {/* Password Change / Disable 2FA Dialog */}
       <Dialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)}>
-        <DialogTitle>Change Password</DialogTitle>
+        <DialogTitle>
+          {passwordDialogPurpose === 'disable2fa' ? 'Disable Two-Factor Authentication' : 'Change Password'}
+        </DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Current Password"
-            type={showPassword ? 'text' : 'password'}
-            fullWidth
-            variant="outlined"
-            value={passwordData.current}
-            onChange={(e) => setPasswordData(prev => ({ ...prev, current: e.target.value }))}
-            InputProps={{
-              endAdornment: (
-                <IconButton
-                  onClick={() => setShowPassword(!showPassword)}
-                  edge="end"
-                >
-                  {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                </IconButton>
-              ),
-            }}
-          />
-          <TextField
-            margin="dense"
-            label="New Password"
-            type={showPassword ? 'text' : 'password'}
-            fullWidth
-            variant="outlined"
-            value={passwordData.new}
-            onChange={(e) => setPasswordData(prev => ({ ...prev, new: e.target.value }))}
-          />
-          <TextField
-            margin="dense"
-            label="Confirm New Password"
-            type={showPassword ? 'text' : 'password'}
-            fullWidth
-            variant="outlined"
-            value={passwordData.confirm}
-            onChange={(e) => setPasswordData(prev => ({ ...prev, confirm: e.target.value }))}
-          />
+          {passwordDialogPurpose === 'disable2fa' ? (
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Please enter your password to disable two-factor authentication.
+              </Alert>
+              <TextField
+                autoFocus
+                margin="dense"
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                fullWidth
+                variant="outlined"
+                value={passwordData.current}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, current: e.target.value }))}
+                InputProps={{
+                  endAdornment: (
+                    <IconButton
+                      onClick={() => setShowPassword(!showPassword)}
+                      edge="end"
+                    >
+                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    </IconButton>
+                  ),
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <TextField
+                autoFocus
+                margin="dense"
+                label="Current Password"
+                type={showPassword ? 'text' : 'password'}
+                fullWidth
+                variant="outlined"
+                value={passwordData.current}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, current: e.target.value }))}
+                InputProps={{
+                  endAdornment: (
+                    <IconButton
+                      onClick={() => setShowPassword(!showPassword)}
+                      edge="end"
+                    >
+                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    </IconButton>
+                  ),
+                }}
+              />
+              <TextField
+                margin="dense"
+                label="New Password"
+                type={showPassword ? 'text' : 'password'}
+                fullWidth
+                variant="outlined"
+                value={passwordData.new}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, new: e.target.value }))}
+              />
+              <TextField
+                margin="dense"
+                label="Confirm New Password"
+                type={showPassword ? 'text' : 'password'}
+                fullWidth
+                variant="outlined"
+                value={passwordData.confirm}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, confirm: e.target.value }))}
+              />
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPasswordDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handlePasswordChange} variant="contained">Change Password</Button>
+          <Button 
+            onClick={passwordDialogPurpose === 'disable2fa' ? handleDisableTwoFactor : handlePasswordChange} 
+            variant="contained"
+            disabled={!passwordData.current || (passwordDialogPurpose === 'password' && (!passwordData.new || passwordData.new !== passwordData.confirm))}
+          >
+            {passwordDialogPurpose === 'disable2fa' ? 'Disable 2FA' : 'Change Password'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

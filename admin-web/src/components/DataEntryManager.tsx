@@ -42,6 +42,9 @@ import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 import { MileageEntryForm, ReceiptForm, TimeTrackingForm, MileageEntryFormData, ReceiptFormData, TimeTrackingFormData } from './DataEntryForms';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
+// API configuration - use environment variable or default to localhost for development
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+
 interface DataEntryManagerProps {
   employee: Employee;
   month: number;
@@ -134,7 +137,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
       
       if (editingMileage) {
         // Update existing entry
-        const response = await fetch(`http://localhost:3002/api/mileage-entries/${editingMileage.id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/mileage-entries/${editingMileage.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(backendData)
@@ -148,7 +151,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         ));
       } else {
         // Create new entry
-        const response = await fetch('http://localhost:3002/api/mileage-entries', {
+        const response = await fetch(`${API_BASE_URL}/api/mileage-entries`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(backendData)
@@ -184,7 +187,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
     try {
       if (editingReceipt) {
         // Update existing receipt
-        const response = await fetch(`http://localhost:3002/api/receipts/${editingReceipt.id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/receipts/${editingReceipt.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
@@ -198,7 +201,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         ));
       } else {
         // Create new receipt
-        const response = await fetch('http://localhost:3002/api/receipts', {
+        const response = await fetch(`${API_BASE_URL}/api/receipts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
@@ -231,7 +234,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
     try {
       if (editingTimeTracking) {
         // Update existing entry
-        const response = await fetch(`http://localhost:3002/api/time-tracking/${editingTimeTracking.id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/time-tracking/${editingTimeTracking.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
@@ -245,7 +248,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         ));
       } else {
         // Create new entry
-        const response = await fetch('http://localhost:3002/api/time-tracking', {
+        const response = await fetch(`${API_BASE_URL}/api/time-tracking`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
@@ -282,7 +285,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
       const endpoint = type === 'mileage' ? 'mileage-entries' : 
                      type === 'receipt' ? 'receipts' : 'time-tracking';
       
-      const response = await fetch(`http://localhost:3002/api/${endpoint}/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/${endpoint}/${id}`, {
         method: 'DELETE'
       });
       

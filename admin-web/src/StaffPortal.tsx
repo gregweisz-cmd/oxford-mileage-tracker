@@ -1,6 +1,7 @@
 // Staff Portal - Expense Report Management Interface
 // Designed to mirror the uploaded spreadsheet layout for easy transition
 import React, { useState, useEffect, useCallback } from 'react';
+import { debugLog, debugError, debugWarn } from './config/debug';
 
 // Material-UI components for spreadsheet-like interface
 import {
@@ -31,6 +32,7 @@ import {
   MenuItem,
   Alert,
   AlertTitle,
+  Checkbox,
 } from '@mui/material';
 
 import {
@@ -69,11 +71,11 @@ import { UIEnhancementProvider } from './services/uiEnhancementService';
 // Report completeness checker
 import { ReportCompletenessService, CompletenessReport, CompletenessIssue } from './services/reportCompletenessService';
 
-// Report approval service
-import { ReportApprovalService } from './services/reportApprovalService';
-
 // User settings component
 import UserSettings from './components/UserSettings';
+
+// Approval status card
+import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistoryEntry } from './components/EmployeeApprovalStatusCard';
 
 // Address formatting utility
 import { formatAddressForDisplay } from './utils/addressFormatter';
@@ -213,12 +215,72 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingValue, setEditingValue] = useState('');
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [dailyDescriptions, setDailyDescriptions] = useState<any[]>([]);
+
+  // Helper function to normalize dates to YYYY-MM-DD format
+  const normalizeDate = (dateValue: any): string => {
+    if (!dateValue) return '';
+    
+    // If already in YYYY-MM-DD format, ensure proper padding and return
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      return dateValue;
+    }
+    
+    // Handle MM/DD/YY or MM/DD/YYYY format
+    if (typeof dateValue === 'string' && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateValue)) {
+      const parts = dateValue.split('/');
+      const month = parseInt(parts[0], 10);
+      const day = parseInt(parts[1], 10);
+      let year = parseInt(parts[2], 10);
+      // Convert 2-digit year to 4-digit (assuming 2000s)
+      if (year < 100) {
+        year += 2000;
+      }
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    
+    // Handle YYYY-MM-DD format (may have inconsistent padding)
+    if (typeof dateValue === 'string') {
+      const dateStr = dateValue.split('T')[0]; // Remove time if present
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const month = parts[1].padStart(2, '0');
+        const day = parts[2].padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    }
+    
+    // Handle Date objects
+    if (dateValue instanceof Date) {
+      const year = dateValue.getFullYear();
+      const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+      const day = String(dateValue.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Fallback: try to parse as date string
+    try {
+      const date = new Date(dateValue);
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (e) {
+      // Ignore parsing errors
+    }
+    
+    return String(dateValue).split('T')[0];
+  };
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null); // Signature saved in Settings
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
   const [supervisorSignatureState, setSupervisorSignature] = useState<string | null>(supervisorSignature || null);
+  const [employeeCertificationAcknowledged, setEmployeeCertificationAcknowledged] = useState<boolean>(false);
+  const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
   const [editingTimesheetCell, setEditingTimesheetCell] = useState<{costCenter: number, day: number, type: string} | null>(null);
   const [editingTimesheetValue, setEditingTimesheetValue] = useState('');
   const [editingCategoryCell, setEditingCategoryCell] = useState<{category: string, day: number} | null>(null);
@@ -234,24 +296,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [completenessLoading, setCompletenessLoading] = useState(false);
 
   // Report submission and approval state
-  const [reportStatus, setReportStatus] = useState<'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision'>('draft');
+  const [reportStatus, setReportStatus] = useState<
+    'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision' | 'pending_supervisor' | 'pending_finance' | 'under_review'
+  >('draft');
   const [revisionItems, setRevisionItems] = useState<{mileage: number, receipts: number, time: number}>({mileage: 0, receipts: 0, time: 0});
   // Raw line item data for revision checking
   const [rawMileageEntries, setRawMileageEntries] = useState<any[]>([]);
   const [rawTimeEntries, setRawTimeEntries] = useState<any[]>([]);
   // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
+  // Approval workflow data
+  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+  const [approvalWorkflow, setApprovalWorkflow] = useState<ApprovalWorkflowStepSummary[]>([]);
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistoryEntry[]>([]);
+  const [approvalHistoryLoading, setApprovalHistoryLoading] = useState(false);
+  const [reportSubmittedAt, setReportSubmittedAt] = useState<string | null>(null);
+  const [reportApprovedAt, setReportApprovedAt] = useState<string | null>(null);
+  const [currentApprovalStage, setCurrentApprovalStage] = useState<string | null>(null);
+  const [currentApproverName, setCurrentApproverName] = useState<string | null>(null);
+  const [approvalCommentDialogOpen, setApprovalCommentDialogOpen] = useState(false);
+  const [approvalCommentText, setApprovalCommentText] = useState('');
+
   // Real-time sync
   useRealtimeStatus();
   useRealtimeSync({
     enabled: true,
     onUpdate: (update) => {
-      console.log('🔄 StaffPortal: Received real-time update:', update);
+      debugLog('🔄 StaffPortal: Received real-time update:', update);
       // Refresh data when updates are received
       // Note: loadEmployeeData will be called via useEffect on employeeId/reportMonth/reportYear changes
     },
     onConnectionChange: (connected) => {
-      console.log(`🔄 StaffPortal: Real-time sync ${connected ? 'connected' : 'disconnected'}`);
+      debugLog(`🔄 StaffPortal: Real-time sync ${connected ? 'connected' : 'disconnected'}`);
     }
   });
 
@@ -275,18 +351,75 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // State to prevent multiple simultaneous calls to refreshTimesheetData
   const [isRefreshingTimesheet, setIsRefreshingTimesheet] = useState(false);
 
+  const fetchApprovalHistory = useCallback(
+    async (reportId: string) => {
+      if (!reportId) {
+        return;
+      }
+
+      setApprovalHistoryLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/history`);
+        if (!response.ok) {
+          throw new Error(`Failed to load approval history (${response.status})`);
+        }
+
+        const data = await response.json();
+        if (Array.isArray(data.workflow)) {
+          setApprovalWorkflow(data.workflow);
+        } else {
+          setApprovalWorkflow([]);
+        }
+
+        if (Array.isArray(data.history)) {
+          setApprovalHistory(data.history);
+        } else {
+          setApprovalHistory([]);
+        }
+
+        if (data.report) {
+          const statusValue = (data.report.status || 'draft') as
+            | 'draft'
+            | 'submitted'
+            | 'approved'
+            | 'rejected'
+            | 'needs_revision'
+            | 'pending_supervisor'
+            | 'pending_finance'
+            | 'under_review';
+
+          setReportStatus(statusValue);
+          setCurrentApprovalStage(data.report.currentApprovalStage || null);
+          setCurrentApproverName(data.report.currentApproverName || null);
+          setReportSubmittedAt(data.report.submittedAt || null);
+          setReportApprovedAt(data.report.approvedAt || null);
+        }
+      } catch (error) {
+        debugError('Error fetching approval history:', error);
+        setApprovalWorkflow([]);
+        setApprovalHistory([]);
+        if (typeof showError === 'function') {
+          showError('Failed to load approval progress. Please try again.');
+        }
+      } finally {
+        setApprovalHistoryLoading(false);
+      }
+    },
+    [showError]
+  );
+
   // Function to refresh timesheet data after saving - NEW APPROACH: Daily Hours Distribution
   const refreshTimesheetData = useCallback(async (dataToUse?: any) => {
-    console.log('🔄 refreshTimesheetData called');
+    debugLog('🔄 refreshTimesheetData called');
     const data = dataToUse || employeeData;
     if (!data) {
-      console.log('❌ No employeeData, skipping refresh');
+      debugLog('❌ No employeeData, skipping refresh');
       return;
     }
     
     // Prevent multiple simultaneous calls
     if (isRefreshingTimesheet) {
-      console.log('⏳ refreshTimesheetData already running, skipping');
+      debugLog('⏳ refreshTimesheetData already running, skipping');
       return;
     }
     setIsRefreshingTimesheet(true);
@@ -318,12 +451,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       // Process all time tracking entries and group by day
-      console.log('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
+      debugLog('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
       currentMonthTimeTracking.forEach((tracking: any) => {
         const trackingDate = new Date(tracking.date);
         const day = trackingDate.getUTCDate();
         
-        console.log(`🔍 Processing entry: Day ${day}, CostCenter: "${tracking.costCenter}", Category: "${tracking.category}", Hours: ${tracking.hours}`);
+        debugLog(`🔍 Processing entry: Day ${day}, CostCenter: "${tracking.costCenter}", Category: "${tracking.category}", Hours: ${tracking.hours}`);
         
         if (day >= 1 && day <= daysInMonth) {
           const dayData = dailyHourDistributions[day];
@@ -332,22 +465,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           if (tracking.costCenter && tracking.costCenter !== '') {
             // Cost center entry - use assignment since deterministic IDs should prevent duplicates
             const costCenterIndex = data.costCenters.findIndex((cc: string) => cc === tracking.costCenter);
-            console.log(`🔍 Cost center entry: "${tracking.costCenter}" -> index ${costCenterIndex}`);
+            debugLog(`🔍 Cost center entry: "${tracking.costCenter}" -> index ${costCenterIndex}`);
             if (costCenterIndex >= 0) {
               dayData.costCenterHours[costCenterIndex] = (tracking.hours || 0);
-              console.log(`✅ Updated cost center ${costCenterIndex} for day ${day}: ${tracking.hours} hours`);
+              debugLog(`✅ Updated cost center ${costCenterIndex} for day ${day}: ${tracking.hours} hours`);
             }
           } else if (categoryTypes.includes(tracking.category)) {
             // Category entry - use assignment since deterministic IDs should prevent duplicates
             dayData.categoryHours[tracking.category] = (tracking.hours || 0);
-            console.log(`✅ Updated category "${tracking.category}" for day ${day}: ${tracking.hours} hours`);
+            debugLog(`✅ Updated category "${tracking.category}" for day ${day}: ${tracking.hours} hours`);
           } else if (tracking.category === 'Working Hours' || tracking.category === 'Regular Hours') {
             // Working hours entry - treat as cost center 0, use assignment since deterministic IDs should prevent duplicates
             dayData.costCenterHours[0] = (tracking.hours || 0);
-            console.log(`✅ Updated working hours (cost center 0) for day ${day}: ${tracking.hours} hours`);
+            debugLog(`✅ Updated working hours (cost center 0) for day ${day}: ${tracking.hours} hours`);
           } else {
             // Unknown entry type - log for debugging
-            console.log(`⚠️ Unknown entry type: CostCenter="${tracking.costCenter}", Category="${tracking.category}"`);
+            debugLog(`⚠️ Unknown entry type: CostCenter="${tracking.costCenter}", Category="${tracking.category}"`);
           }
         }
       });
@@ -380,6 +513,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           workingHours: 0
         };
         
+        // Check if this day is marked as day off and sync description
+        const entryDateStr = normalizeDate(entry.date);
+        const dayDescription = dailyDescriptions.find((desc: any) => {
+          const descDateStr = normalizeDate(desc.date);
+          return entryDateStr === descDateStr;
+        });
         
         // Build updated entry with distributed hours
         const updatedEntry = {
@@ -387,6 +526,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           hoursWorked: dayData.totalHours,
           workingHours: dayData.workingHours
         };
+        
+        // If it's a day off, populate description with day off type
+        if (dayDescription?.dayOff && dayDescription?.dayOffType) {
+          updatedEntry.description = dayDescription.dayOffType;
+        }
         
         // Add cost center specific hours
         data.costCenters.forEach((costCenter: string, index: number) => {
@@ -399,7 +543,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         
         // Debug logging for this entry
         if (dayData.totalHours > 0) {
-          console.log(`🔍 Day ${entry.day} distribution:`, {
+          debugLog(`🔍 Day ${entry.day} distribution:`, {
             costCenterHours: dayData.costCenterHours,
             categoryHours: dayData.categoryHours,
             totalHours: dayData.totalHours,
@@ -420,17 +564,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         totalHours: totalHours
       } : null);
       
-      console.log('✅ Timesheet data refreshed with new distribution approach');
+      debugLog('✅ Timesheet data refreshed with new distribution approach');
     } catch (error) {
       console.error('❌ Error refreshing timesheet data:', error);
     } finally {
       setIsRefreshingTimesheet(false);
     }
-    console.log('🔄 refreshTimesheetData completed');
+    debugLog('🔄 refreshTimesheetData completed');
   }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
-  // console.log('🔍 StaffPortal Debug:', {
+  // debugLog('🔍 StaffPortal Debug:', {
   //   reportStatus,
   //   isAdminView,
   //   showDeleteButton: (reportStatus === 'draft' || reportStatus === 'submitted') && !isAdminView
@@ -463,27 +607,27 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${backendEmployeeId}`);
         if (!employeeResponse.ok) {
           // If employee not found, silently try with fallback ID
-          console.log(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
+          debugLog(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
           const fallbackResponse = await fetch(`${API_BASE_URL}/api/employees/mggwglbfk9dij3oze8l`);
           if (fallbackResponse.ok) {
             employee = await fallbackResponse.json();
-            console.log('✅ Successfully loaded fallback employee data for:', employee.name);
+            debugLog('✅ Successfully loaded fallback employee data for:', employee.name);
           } else {
             throw new Error('Failed to fetch employee data');
           }
         } else {
           employee = await employeeResponse.json();
-          console.log('✅ Successfully loaded employee data for:', employee.name);
+          debugLog('✅ Successfully loaded employee data for:', employee.name);
         }
         
         // Parse costCenters if it's a JSON string
         if (employee.costCenters) {
-          console.log('🔍 StaffPortal: costCenters type:', typeof employee.costCenters, 'value:', employee.costCenters);
+          debugLog('🔍 StaffPortal: costCenters type:', typeof employee.costCenters, 'value:', employee.costCenters);
           try {
             if (typeof employee.costCenters === 'string') {
               // Check if it's the string "[object Object]" which means it's not valid JSON
               if (employee.costCenters === '[object Object]') {
-                console.warn('costCenters is "[object Object]" string, using default');
+                debugWarn('costCenters is "[object Object]" string, using default');
                 costCenters = ['NC.F-SAPTBG'];
               } else {
                 costCenters = JSON.parse(employee.costCenters);
@@ -495,7 +639,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               costCenters = Object.values(employee.costCenters);
             }
           } catch (error) {
-            console.warn('Failed to parse costCenters:', error);
+            debugWarn('Failed to parse costCenters:', error);
             costCenters = ['NC.F-SAPTBG']; // Use default
           }
         }
@@ -520,7 +664,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
           const receipts = receiptsResponse.ok ? await receiptsResponse.json() : [];
           const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
-          const dailyDescriptions = dailyDescriptionsResponse.ok ? await dailyDescriptionsResponse.json() : [];
+          const dailyDescriptionsRaw = dailyDescriptionsResponse.ok ? await dailyDescriptionsResponse.json() : [];
+          // Normalize all dates in dailyDescriptions to ensure consistent format
+          const dailyDescriptions = dailyDescriptionsRaw.map((desc: any) => ({
+            ...desc,
+            date: normalizeDate(desc.date) // Normalize date to YYYY-MM-DD format
+          }));
           
           // Parse monthly report status
           if (reportResponse.ok) {
@@ -662,30 +811,56 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             // Calculate Per Diem amount from receipts
             const perDiemFromReceipts = dayPerDiemReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
             
+            // Check if stayed overnight for this day
+            const stayedOvernight = dayDescription?.stayedOvernight || false;
+            
             // Calculate Per Diem based on rules if no receipts exist
+            // New requirement: Per Diem qualifies if stayedOvernight is checked AND 50+ miles from base address
             let calculatedPerDiem = perDiemFromReceipts;
-            if (perDiemFromReceipts === 0 && totalDayMiles > 0 && dayTimeTracking?.hours > 0) {
+            if (perDiemFromReceipts === 0) {
               // Get employee's cost center
               const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
               
+              // Calculate distance from base address (simplified: use total miles as proxy if no geocoding available)
+              // For now, if stayedOvernight is checked and there are mileage entries, assume they qualify
+              // In a full implementation, this would use geocoding to calculate actual distance
+              let distanceFromBase = 0;
+              if (stayedOvernight && totalDayMiles > 0) {
+                // If stayed overnight and has mileage, estimate they're at least 50 miles away
+                // This is a simplified check - in production, use actual geocoding
+                distanceFromBase = Math.max(totalDayMiles, 50); // Use miles traveled as proxy, minimum 50
+              }
+              
               // Calculate Per Diem using rules
+              // Requirement: stayedOvernight must be true AND distanceFromBase >= 50
               try {
                 const perDiemResult = await PerDiemRulesService.calculatePerDiem(
                   costCenter,
-                  dayTimeTracking.hours || 0,
+                  dayTimeTracking?.hours || 0,
                   totalDayMiles,
-                  0, // distanceFromBase - would need geocoding
+                  distanceFromBase,
                   perDiemFromReceipts
                 );
                 
-                if (perDiemResult.meetsRequirements) {
+                // Additional check: must have stayed overnight AND be 50+ miles from base
+                const qualifiesForPerDiem = stayedOvernight && distanceFromBase >= 50 && perDiemResult.meetsRequirements;
+                
+                if (qualifiesForPerDiem) {
                   calculatedPerDiem = perDiemResult.amount;
-                  console.log(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
+                  debugLog(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
                     costCenter,
-                    hours: dayTimeTracking.hours,
+                    hours: dayTimeTracking?.hours || 0,
                     miles: totalDayMiles,
+                    stayedOvernight,
+                    distanceFromBase,
                     amount: calculatedPerDiem,
                     rule: perDiemResult.rule
+                  });
+                } else {
+                  debugLog(`💰 StaffPortal: Per Diem not qualified for ${employee.name} on ${dateStr}:`, {
+                    stayedOvernight,
+                    distanceFromBase,
+                    meetsRequirements: perDiemResult.meetsRequirements
                   });
                 }
               } catch (error) {
@@ -896,9 +1071,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         try {
           // Fetch receipts, mileage entries, and time entries to check for revision flags
           const [receiptsRes, mileageRes, timeRes] = await Promise.all([
-            fetch(`http://localhost:3002/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`http://localhost:3002/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
+            fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
           ]);
 
           const receipts = await receiptsRes.json();
@@ -956,6 +1131,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Handle cell editing
   const handleCellEdit = (rowIndex: number, field: string, currentValue: any) => {
+    // Don't allow editing description if it's a day off
+    if (field === 'description' && employeeData) {
+      const entry = employeeData.dailyEntries[rowIndex];
+      const entryDateStr = normalizeDate(entry.date);
+      const dayDescription = dailyDescriptions.find((desc: any) => {
+        const descDateStr = normalizeDate(desc.date);
+        return entryDateStr === descDateStr;
+      });
+      
+      if (dayDescription?.dayOff) {
+        // Day off - don't allow editing
+        return;
+      }
+    }
+    
     setEditingCell({ row: rowIndex, field });
     setEditingValue(currentValue.toString());
   };
@@ -968,24 +1158,44 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const newEntries = [...employeeData.dailyEntries];
     
     if (field === 'description') {
+      // Check if this day is marked as day off - if so, don't allow editing
+      const entry = newEntries[row];
+      const entryDateStr = normalizeDate(entry.date);
+      const dayDescription = dailyDescriptions.find((desc: any) => {
+        const descDateStr = normalizeDate(desc.date);
+        return entryDateStr === descDateStr;
+      });
+      
+      if (dayDescription?.dayOff) {
+        // Day off - don't allow editing, keep the day off type as description
+        setEditingCell(null);
+        return;
+      }
+      
       newEntries[row].description = editingValue;
       
       // Also update the dailyDescriptions state for proper syncing
       const updatedDailyDescriptions = [...dailyDescriptions];
-      const entry = newEntries[row];
-      const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${entry.day.toString().padStart(2, '0')}`;
+      const dateStr = normalizeDate(entry.date);
       const hasDescription = editingValue && editingValue.trim();
       
       // Find existing daily description for this date
-      const existingDescIndex = updatedDailyDescriptions.findIndex(desc => desc.date === dateStr);
+      const existingDescIndex = updatedDailyDescriptions.findIndex((desc: any) => {
+        const descDateStr = normalizeDate(desc.date);
+        return descDateStr === dateStr;
+      });
       
       if (existingDescIndex >= 0) {
         if (hasDescription) {
-          // Update existing description
-          updatedDailyDescriptions[existingDescIndex].description = editingValue;
+          // Update existing description (but don't overwrite if it's a day off)
+          if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
+            updatedDailyDescriptions[existingDescIndex].description = editingValue;
+          }
         } else {
-          // Remove existing description if it's empty
-          updatedDailyDescriptions.splice(existingDescIndex, 1);
+          // Remove existing description if it's empty (but not if it's a day off)
+          if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
+            updatedDailyDescriptions.splice(existingDescIndex, 1);
+          }
         }
       } else if (hasDescription) {
         // Create new description entry only if it has content
@@ -1054,7 +1264,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         receipts: receipts,
         dailyDescriptions: dailyDescriptions,
         employeeSignature: signatureImage,
-        supervisorSignature: supervisorSignatureState
+        supervisorSignature: supervisorSignatureState,
+        employeeCertificationAcknowledged: employeeCertificationAcknowledged,
+        supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
       };
 
       // Sync to source tables (mileage_entries, time_tracking, receipts, employees)
@@ -1071,7 +1283,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }),
       });
       
-      console.log('✅ Changes auto-saved and synced to source tables');
+      debugLog('✅ Changes auto-saved and synced to source tables');
     } catch (error) {
       console.error('Error auto-saving changes:', error);
       // Don't show alert for auto-save failures to avoid interrupting user workflow
@@ -1098,8 +1310,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       return;
     }
     
-    console.log('🔍 NEW APPROACH: Saving timesheet cell');
-    console.log(`  Day: ${day}, Type: ${type}, Cost Center Index: ${costCenter}, Value: ${value}`);
+    debugLog('🔍 NEW APPROACH: Saving timesheet cell');
+    debugLog(`  Day: ${day}, Type: ${type}, Cost Center Index: ${costCenter}, Value: ${value}`);
     
     // Determine the actual cost center name and category based on the cell type
     let actualCostCenter = '';
@@ -1126,8 +1338,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       actualCostCenter = ''; // Category entries don't have cost centers
     }
     
-    console.log(`  Final actualCostCenter: "${actualCostCenter}"`);
-    console.log(`  Final category: "${category}"`);
+    debugLog(`  Final actualCostCenter: "${actualCostCenter}"`);
+    debugLog(`  Final category: "${category}"`);
     
     // Save to time tracking API with correct cost center and category
     try {
@@ -1142,7 +1354,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           costCenter: actualCostCenter
       };
       
-      console.log(`📤 Saving to time tracking API:`, requestBody);
+      debugLog(`📤 Saving to time tracking API:`, requestBody);
       
       // Save to time tracking table
       const response = await fetch(`${API_BASE_URL}/api/time-tracking`, {
@@ -1160,7 +1372,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       const result = await response.json();
-      console.log(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+      debugLog(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
     } catch (error) {
       console.error('❌ Error saving to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1183,7 +1395,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Handle category cell editing
   const handleCategoryCellEdit = (category: string, day: number, currentValue: any) => {
-    console.log(`🔍 Debug category cell edit: ${category} for day ${day}, current value: ${currentValue}`);
+    debugLog(`🔍 Debug category cell edit: ${category} for day ${day}, current value: ${currentValue}`);
     setEditingCategoryCell({ category, day });
     setEditingCategoryValue(currentValue.toString());
   };
@@ -1218,9 +1430,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const mappedCategory = categoryMap[category] || category;
     const actualCostCenter = ''; // Category rows don't belong to specific cost centers
     
-    console.log('🔍 NEW APPROACH: Saving category cell');
-    console.log(`  Day: ${day}, Category: ${category}, Mapped: ${mappedCategory}, Value: ${value}`);
-    console.log(`  Cost Center: "${actualCostCenter}" (empty for categories)`);
+    debugLog('🔍 NEW APPROACH: Saving category cell');
+    debugLog(`  Day: ${day}, Category: ${category}, Mapped: ${mappedCategory}, Value: ${value}`);
+    debugLog(`  Cost Center: "${actualCostCenter}" (empty for categories)`);
     
     // Save to time tracking API with correct category
     try {
@@ -1235,7 +1447,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           costCenter: actualCostCenter
       };
       
-      console.log(`📤 Saving to time tracking API:`, requestBody);
+      debugLog(`📤 Saving to time tracking API:`, requestBody);
       
       // Save to time tracking table
       const response = await fetch(`${API_BASE_URL}/api/time-tracking`, {
@@ -1253,7 +1465,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       const result = await response.json();
-      console.log(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+      debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
     } catch (error) {
       console.error('❌ Error saving category hours to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1309,7 +1521,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               }),
             });
             
-            console.log('✅ Signature upload synced to expense report');
+            debugLog('✅ Signature upload synced to expense report');
             
             // Also save to user settings in the backend
             await fetch(`${API_BASE_URL}/api/employees/${employeeData.employeeId}`, {
@@ -1322,7 +1534,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               }),
             });
             
-            console.log('✅ Signature saved to user settings');
+            debugLog('✅ Signature saved to user settings');
             showSuccess('Signature saved to Settings and applied to this report');
           } catch (error) {
             console.error('Error saving signature:', error);
@@ -1364,7 +1576,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }),
         });
         
-        console.log('✅ Signature removal synced to expense report');
+        debugLog('✅ Signature removal synced to expense report');
         setSignatureDialogOpen(false);
         showSuccess('Signature removed from this report');
       } catch (error) {
@@ -1572,7 +1784,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   async function generateSummarySheet(pdf: any, data: EmployeeExpenseData) {
     // Generating Summary Sheet
-    console.log('🔧 generateSummarySheet called with updated alignment logic');
+    debugLog('🔧 generateSummarySheet called with updated alignment logic');
     
     // Header (moved up by 10mm)
     pdf.setFontSize(16);
@@ -2470,7 +2682,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           pdf.text('   [Receipt Image Available]', 20, yPos);
           yPos += 10;
         } catch (error) {
-          console.warn('Could not add receipt image:', error);
+          debugWarn('Could not add receipt image:', error);
         }
       }
       
@@ -2499,7 +2711,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         receipts: receipts,
         dailyDescriptions: dailyDescriptions,
         employeeSignature: signatureImage,
-        supervisorSignature: supervisorSignatureState
+        supervisorSignature: supervisorSignatureState,
+        employeeCertificationAcknowledged: employeeCertificationAcknowledged,
+        supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
       };
 
       // Use the sync endpoint to save AND sync to source tables
@@ -2517,7 +2731,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save expense report');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ Save error response:', errorData);
+        throw new Error(`Failed to save expense report: ${errorData.error || errorData.message || 'Unknown error'}`);
       }
 
       await response.json();
@@ -2550,8 +2766,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}/${reportMonth}/${reportYear}`);
       
       if (response.status === 404) {
-        // No saved report found, using current data
-        return; // No saved report, keep current data
+        setCurrentReportId(null);
+        setApprovalWorkflow([]);
+        setApprovalHistory([]);
+        setCurrentApprovalStage(null);
+        setCurrentApproverName(null);
+        setReportSubmittedAt(null);
+        setReportApprovedAt(null);
+        return;
       }
       
       if (!response.ok) {
@@ -2563,16 +2785,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       // Restore the saved data
       if (savedReport.reportData) {
-        const { receipts: savedReceipts, signatureImage: savedSignature, supervisorSignature: savedSupervisorSignature, ...savedEmployeeData } = savedReport.reportData;
+        const { receipts: savedReceipts, signatureImage: savedSignature, supervisorSignature: savedSupervisorSignature, employeeCertificationAcknowledged: savedEmployeeCert, supervisorCertificationAcknowledged: savedSupervisorCert, ...savedEmployeeData } = savedReport.reportData;
         
         setEmployeeData(savedEmployeeData);
         setReceipts(savedReceipts || []);
         setSignatureImage(savedSignature || null);
         setSupervisorSignature(savedSupervisorSignature || null);
+        setEmployeeCertificationAcknowledged(savedEmployeeCert || false);
+        setSupervisorCertificationAcknowledged(savedSupervisorCert || false);
         
         // Also load the report status
         if (savedReport.status) {
-          setReportStatus(savedReport.status);
+          const statusValue = (savedReport.status || 'draft') as
+            | 'draft'
+            | 'submitted'
+            | 'approved'
+            | 'rejected'
+            | 'needs_revision'
+            | 'pending_supervisor'
+            | 'pending_finance'
+            | 'under_review';
+          setReportStatus(statusValue);
+        }
+        setCurrentReportId(savedReport.id || null);
+        setCurrentApprovalStage(savedReport.currentApprovalStage || null);
+        setCurrentApproverName(savedReport.currentApproverName || null);
+        setReportSubmittedAt(savedReport.submittedAt || null);
+        setReportApprovedAt(savedReport.approvedAt || null);
+        if (savedReport.id) {
+          fetchApprovalHistory(savedReport.id);
+        } else {
+          setApprovalWorkflow([]);
+          setApprovalHistory([]);
         }
         
         alert('Expense report loaded successfully!');
@@ -2593,19 +2837,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       return;
     }
 
+    // Check if employee has acknowledged the certification statement
+    if (!employeeCertificationAcknowledged) {
+      alert('Please acknowledge the certification statement before submitting your report.');
+      return;
+    }
+
     // First, run completeness check automatically
     let completenessReport: CompletenessReport;
     try {
       setLoading(true);
       
-      console.log('🔍 Running automatic completeness check before submission...');
+      debugLog('🔍 Running automatic completeness check before submission...');
       completenessReport = await ReportCompletenessService.analyzeReportCompleteness(
         employeeData.employeeId,
         reportMonth,
         reportYear
       );
       
-      console.log('📊 Completeness check results:', {
+      debugLog('📊 Completeness check results:', {
         score: completenessReport.overallScore,
         isReady: completenessReport.isReadyForSubmission,
         issuesCount: completenessReport.issues.length
@@ -2648,7 +2898,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       // If we get here, the report passed completeness check
-      console.log('✅ Report passed completeness check, proceeding with submission...');
+      debugLog('✅ Report passed completeness check, proceeding with submission...');
       
     } catch (error) {
       console.error('❌ Error running completeness check:', error);
@@ -2694,25 +2944,69 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       await response.json();
-      
-      // If supervisor mode is enabled, submit for approval workflow
-      if (supervisorMode && supervisorId) {
+
+      let resolvedReportId = currentReportId;
+
+      if (!resolvedReportId) {
         try {
-          const reportId = `report-${employeeData.employeeId}-${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
-          await ReportApprovalService.submitReportForApproval(
-            reportId,
-            employeeData.employeeId,
-            supervisorId
+          const latestReportResponse = await fetch(
+            `${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}`
           );
-          setReportStatus('submitted');
+          if (latestReportResponse.ok) {
+            const latestReport = await latestReportResponse.json();
+            if (latestReport && latestReport.id) {
+              resolvedReportId = latestReport.id;
+              setCurrentReportId(latestReport.id);
+            }
+          }
+        } catch (resolveError) {
+          debugError('Error determining report ID after submission:', resolveError);
+        }
+      }
+
+      if (resolvedReportId) {
+        const statusResponse = await fetch(`${API_BASE_URL}/api/expense-reports/${resolvedReportId}/status`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: 'submitted' }),
+        });
+
+        if (!statusResponse.ok) {
+          throw new Error('Failed to start approval workflow');
+        }
+
+        const statusPayload = await statusResponse.json();
+        const statusValue = (statusPayload.status || 'submitted') as
+          | 'draft'
+          | 'submitted'
+          | 'approved'
+          | 'rejected'
+          | 'needs_revision'
+          | 'pending_supervisor'
+          | 'pending_finance'
+          | 'under_review';
+
+        setReportStatus(statusValue);
+        setCurrentApprovalStage(statusPayload.currentApprovalStage || null);
+        setCurrentApproverName(statusPayload.currentApproverName || null);
+        setReportSubmittedAt(statusPayload.submittedAt || new Date().toISOString());
+        setReportApprovedAt(statusPayload.approvedAt || null);
+        fetchApprovalHistory(resolvedReportId);
+
+        if (typeof showSuccess === 'function') {
+          showSuccess('Expense report submitted! Your supervisor has been notified.');
+        } else {
           alert('🎉 Expense report submitted successfully! It has been sent to your supervisor for review.');
-        } catch (approvalError) {
-          console.error('Error submitting for approval:', approvalError);
-          alert('Report saved but failed to submit for approval. Please contact your supervisor.');
         }
       } else {
         setReportStatus('submitted');
-        alert('🎉 Expense report submitted successfully! It is now ready for supervisor review.');
+        if (typeof showSuccess === 'function') {
+          showSuccess('Expense report submitted! Your supervisor has been notified.');
+        } else {
+          alert('🎉 Expense report submitted successfully! It is now ready for supervisor review.');
+        }
       }
       
     } catch (error) {
@@ -2720,6 +3014,49 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       alert(`Error submitting report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCloseApprovalComment = () => {
+    setApprovalCommentDialogOpen(false);
+    setApprovalCommentText('');
+  };
+
+  const handleSubmitApprovalComment = async () => {
+    if (!currentReportId || !employeeData || !approvalCommentText.trim()) {
+      handleCloseApprovalComment();
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}/approval`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'comment',
+          approverId: employeeData.employeeId,
+          approverName: employeeData.preferredName || employeeData.name,
+          comments: approvalCommentText.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send comment');
+      }
+
+      if (typeof showSuccess === 'function') {
+        showSuccess('Comment sent to your supervisor.');
+      }
+
+      handleCloseApprovalComment();
+      fetchApprovalHistory(currentReportId);
+    } catch (error) {
+      debugError('Error submitting approval comment:', error);
+      if (typeof showError === 'function') {
+        showError('Unable to send comment. Please try again.');
+      }
     }
   };
 
@@ -2796,7 +3133,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           receipts: receipts,
           dailyDescriptions: dailyDescriptions,
           employeeSignature: signatureImage,
-          supervisorSignature: supervisorSignatureState
+          supervisorSignature: supervisorSignatureState,
+          employeeCertificationAcknowledged: employeeCertificationAcknowledged,
+          supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
         };
 
         // Save report to backend
@@ -2855,7 +3194,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
         
-        console.log('✅ PDF export completed successfully');
+        debugLog('✅ PDF export completed successfully');
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert(`Error generating PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -2908,7 +3247,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onViewAllReports={fetchAllReports}
         onCheckCompleteness={handleCheckCompleteness}
         onRefresh={() => {
-          console.log('🔄 StaffPortal: Refreshing data from backend...');
+          debugLog('🔄 StaffPortal: Refreshing data from backend...');
           startLoading('Refreshing data from backend...');
           
           // Increment the refresh trigger to force useEffect to re-run
@@ -2951,6 +3290,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         variant="backdrop" 
       />
 
+      <EmployeeApprovalStatusCard
+        status={reportStatus}
+        workflow={approvalWorkflow}
+        history={approvalHistory}
+        submittedAt={reportSubmittedAt || undefined}
+        currentStage={currentApprovalStage || undefined}
+        currentApproverName={currentApproverName || undefined}
+        loading={approvalHistoryLoading}
+        onAddComment={() => setApprovalCommentDialogOpen(true)}
+        onResubmit={reportStatus === 'needs_revision' ? handleSubmitReport : undefined}
+        disableResubmit={loading}
+      />
+
       {/* Enhanced Tab Navigation */}
       <EnhancedTabNavigation
         value={activeTab}
@@ -2959,6 +3311,35 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         employeeData={employeeData}
         showStatus={true}
       />
+
+      <Dialog open={approvalCommentDialogOpen} onClose={handleCloseApprovalComment} maxWidth="sm" fullWidth>
+        <DialogTitle>Send a Comment to Your Supervisor</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Add any notes or clarification for your supervisor. They will see this in their approval timeline.
+          </Typography>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Message"
+            fullWidth
+            multiline
+            minRows={4}
+            value={approvalCommentText}
+            onChange={(event) => setApprovalCommentText(event.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseApprovalComment}>Cancel</Button>
+          <Button
+            onClick={handleSubmitApprovalComment}
+            disabled={!approvalCommentText.trim() || !currentReportId}
+            variant="contained"
+          >
+            Send Comment
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Revision Notification Banner */}
       {reportStatus === 'needs_revision' && (revisionItems.mileage > 0 || revisionItems.receipts > 0 || revisionItems.time > 0) && (
@@ -3033,6 +3414,39 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <strong>* Note:</strong> in order to be reimbursed for per diem, your daily work activities must 
                 entail your having been away from home for a minimum of eight hours, as documented in your Travel
               </Typography>
+            </Box>
+
+            {/* Certification Statement */}
+            <Box sx={{ mt: 4, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
+              <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
+                By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
+              </Typography>
+              
+              {/* Employee Acknowledgment Checkbox */}
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Checkbox
+                  checked={employeeCertificationAcknowledged}
+                  onChange={(e) => setEmployeeCertificationAcknowledged(e.target.checked)}
+                  size="small"
+                />
+                <Typography variant="body2" component="div">
+                  I have read and agree to the certification statement above
+                </Typography>
+              </Box>
+
+              {/* Supervisor Acknowledgment Checkbox (only visible if supervisor mode) */}
+              {supervisorMode && (
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Checkbox
+                    checked={supervisorCertificationAcknowledged}
+                    onChange={(e) => setSupervisorCertificationAcknowledged(e.target.checked)}
+                    size="small"
+                  />
+                  <Typography variant="body2" component="div">
+                    Supervisor: I have read and agree to the certification statement above
+                  </Typography>
+                </Box>
+              )}
             </Box>
 
             <Box sx={{ mt: 4 }}>
@@ -3127,7 +3541,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   }),
                                 });
                                 
-                                console.log('✅ Imported saved signature to report');
+                                debugLog('✅ Imported saved signature to report');
                                 showSuccess('Saved signature imported');
                               } catch (error) {
                                 console.error('Error importing signature:', error);
@@ -3610,17 +4024,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '15%' }}><strong>Date</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '70%' }}><strong>Activity Description</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Activity Description</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '140px' }}><strong>Stayed overnight</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '80px' }}><strong>Day Off</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '15%' }}><strong>Cost Center</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {employeeData && employeeData.dailyEntries && employeeData.dailyEntries.map((entry: any, index: number) => {
                     // Find the corresponding daily description
+                    const entryDateStr = normalizeDate(entry.date);
                     const dayDescription = dailyDescriptions.find((desc: any) => {
-                      const entryDate = new Date(entry.date);
-                      const descDate = new Date(desc.date);
-                      return entryDate.getUTCDate() === descDate.getUTCDate();
+                      const descDateStr = normalizeDate(desc.date);
+                      return entryDateStr === descDateStr;
                     });
                     
                     return (
@@ -3629,45 +4045,311 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           <TextField
                             value={dayDescription?.description || ''}
-                            onChange={(e) => {
-                              // Update or create daily description
-                              const newDescriptions = [...dailyDescriptions];
-                              const existingIndex = newDescriptions.findIndex((desc: any) => {
-                                const entryDate = new Date(entry.date);
-                                const descDate = new Date(desc.date);
-                                return entryDate.getUTCDate() === descDate.getUTCDate();
-                              });
-                              
-                              if (existingIndex >= 0) {
-                                // Update existing
-                                newDescriptions[existingIndex] = {
-                                  ...newDescriptions[existingIndex],
-                                  description: e.target.value
-                                };
-                              } else {
-                                // Create new
-                                const entryDate = new Date(entry.date);
-                                entryDate.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
-                                newDescriptions.push({
-                                  id: `desc-${employeeId}-${entry.date}`,
-                                  employeeId: employeeId,
-                                  date: entryDate.toISOString(),
-                                  description: e.target.value,
-                                  costCenter: entry.costCenter || employeeData.costCenters[0] || '',
-                                  createdAt: new Date().toISOString(),
-                                  updatedAt: new Date().toISOString()
+                            onChange={async (e) => {
+                              try {
+                                // Update or create daily description
+                                const newDescriptions = [...dailyDescriptions];
+                                const entryDateStr = normalizeDate(entry.date);
+                                const existingIndex = newDescriptions.findIndex((desc: any) => {
+                                  const descDateStr = normalizeDate(desc.date);
+                                  return entryDateStr === descDateStr;
                                 });
+                                
+                                let descToSave: any;
+                                
+                                if (existingIndex >= 0) {
+                                  // Update existing
+                                  newDescriptions[existingIndex] = {
+                                    ...newDescriptions[existingIndex],
+                                    description: e.target.value
+                                  };
+                                  descToSave = newDescriptions[existingIndex];
+                                } else {
+                                  // Create new - use normalized date string
+                                  descToSave = {
+                                    id: `desc-${employeeId}-${entryDateStr}`,
+                                    employeeId: employeeId,
+                                    date: entryDateStr, // Use normalized date string
+                                    description: e.target.value,
+                                    costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+                                    stayedOvernight: false,
+                                    dayOff: false,
+                                    createdAt: new Date().toISOString(),
+                                    updatedAt: new Date().toISOString()
+                                  };
+                                  newDescriptions.push(descToSave);
+                                }
+                                
+                                setDailyDescriptions(newDescriptions);
+                                
+                                // Save to backend
+                                const dateToSave = normalizeDate(descToSave.date);
+                                const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    id: descToSave.id,
+                                    employeeId: descToSave.employeeId,
+                                    date: dateToSave,
+                                    description: descToSave.description || '',
+                                    costCenter: descToSave.costCenter || '',
+                                    stayedOvernight: descToSave.stayedOvernight || false,
+                                    dayOff: descToSave.dayOff || false,
+                                    dayOffType: descToSave.dayOffType || null
+                                  })
+                                });
+                                
+                                if (!response.ok) {
+                                  const errorText = await response.text();
+                                  console.error('Error saving description:', response.status, errorText);
+                                }
+                              } catch (error) {
+                                console.error('Error saving description:', error);
                               }
-                              
-                              setDailyDescriptions(newDescriptions);
                             }}
                             fullWidth
                             multiline
                             rows={2}
                             size="small"
-                            placeholder="Describe daily activities (e.g., 'Meetings, phone calls, site visits')"
+                            placeholder={dayDescription?.dayOff ? `${dayDescription?.dayOffType || 'Day Off'}` : "Describe daily activities (e.g., 'Meetings, phone calls, site visits')"}
+                            disabled={isAdminView || dayDescription?.dayOff}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1, textAlign: 'center', whiteSpace: 'nowrap', width: '140px' }}>
+                          <Checkbox
+                            checked={dayDescription?.stayedOvernight || false}
+                            onChange={async (e) => {
+                              try {
+                                // Update or create daily description
+                                const newDescriptions = [...dailyDescriptions];
+                                const entryDateStr = normalizeDate(entry.date);
+                                const existingIndex = newDescriptions.findIndex((desc: any) => {
+                                  const descDateStr = normalizeDate(desc.date);
+                                  return entryDateStr === descDateStr;
+                                });
+                                
+                                let descToSave: any;
+                                
+                                if (existingIndex >= 0) {
+                                  // Update existing
+                                  newDescriptions[existingIndex] = {
+                                    ...newDescriptions[existingIndex],
+                                    stayedOvernight: e.target.checked
+                                  };
+                                  descToSave = newDescriptions[existingIndex];
+                                } else {
+                                  // Create new - use normalized date string
+                                  descToSave = {
+                                    id: `desc-${employeeId}-${entryDateStr}`,
+                                    employeeId: employeeId,
+                                    date: entryDateStr, // Use normalized date string
+                                    description: '',
+                                    costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+                                    stayedOvernight: e.target.checked,
+                                    dayOff: false,
+                                    createdAt: new Date().toISOString(),
+                                    updatedAt: new Date().toISOString()
+                                  };
+                                  newDescriptions.push(descToSave);
+                                }
+                                
+                                setDailyDescriptions(newDescriptions);
+                                
+                                // Save to backend
+                                const dateToSave = normalizeDate(descToSave.date);
+                                const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    id: descToSave.id,
+                                    employeeId: descToSave.employeeId,
+                                    date: dateToSave,
+                                    description: descToSave.description || '',
+                                    costCenter: descToSave.costCenter || '',
+                                    stayedOvernight: descToSave.stayedOvernight || false,
+                                    dayOff: descToSave.dayOff || false,
+                                    dayOffType: descToSave.dayOffType || null
+                                  })
+                                });
+                                
+                                if (!response.ok) {
+                                  const errorText = await response.text();
+                                  console.error('Error saving stayed overnight status:', response.status, errorText);
+                                }
+                              } catch (error) {
+                                console.error('Error saving stayed overnight status:', error);
+                              }
+                            }}
                             disabled={isAdminView}
                           />
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '80px' }}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
+                            <Checkbox
+                              checked={dayDescription?.dayOff || false}
+                              onChange={async (e) => {
+                                try {
+                                  // Update or create daily description
+                                  const newDescriptions = [...dailyDescriptions];
+                                  // Normalize entry date to YYYY-MM-DD format
+                                  const entryDateStr = normalizeDate(entry.date);
+                                  const existingIndex = newDescriptions.findIndex((desc: any) => {
+                                    const descDateStr = normalizeDate(desc.date);
+                                    return entryDateStr === descDateStr;
+                                  });
+                                  
+                                  let descToSave: any;
+                                  
+                                  if (existingIndex >= 0) {
+                                    // Update existing
+                                    const dayOffType = e.target.checked ? (newDescriptions[existingIndex].dayOffType || 'PTO') : null;
+                                    newDescriptions[existingIndex] = {
+                                      ...newDescriptions[existingIndex],
+                                      dayOff: e.target.checked,
+                                      dayOffType: dayOffType,
+                                      description: e.target.checked ? (dayOffType || 'Day Off') : newDescriptions[existingIndex].description
+                                    };
+                                    descToSave = newDescriptions[existingIndex];
+                                  } else {
+                                    // Create new - use normalized date string (YYYY-MM-DD) instead of ISO string
+                                    const dayOffType = e.target.checked ? 'PTO' : null;
+                                    descToSave = {
+                                      id: `desc-${employeeId}-${entryDateStr}`,
+                                      employeeId: employeeId,
+                                      date: entryDateStr, // Use normalized date string
+                                      description: e.target.checked ? (dayOffType || 'Day Off') : '',
+                                      costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+                                      dayOff: e.target.checked,
+                                      dayOffType: dayOffType,
+                                      stayedOvernight: false,
+                                      createdAt: new Date().toISOString(),
+                                      updatedAt: new Date().toISOString()
+                                    };
+                                    newDescriptions.push(descToSave);
+                                  }
+                                  
+                                  // Update the daily entry description to match
+                                  const updatedEntries = [...employeeData.dailyEntries];
+                                  const entryIndex = updatedEntries.findIndex((e: any) => {
+                                    const eDateStr = normalizeDate(e.date);
+                                    return eDateStr === entryDateStr;
+                                  });
+                                  if (entryIndex >= 0) {
+                                    if (e.target.checked) {
+                                      updatedEntries[entryIndex].description = descToSave.dayOffType || 'Day Off';
+                                    }
+                                  }
+                                  setEmployeeData({ ...employeeData, dailyEntries: updatedEntries });
+                                  
+                                  // Update state first for immediate UI feedback
+                                  setDailyDescriptions(newDescriptions);
+                                  
+                                  // Immediately save to backend - use normalized date string
+                                  const dateToSave = normalizeDate(descToSave.date);
+                                  const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                      id: descToSave.id,
+                                      employeeId: descToSave.employeeId,
+                                      date: dateToSave, // Use normalized date string
+                                      description: descToSave.description || '',
+                                      costCenter: descToSave.costCenter || '',
+                                      stayedOvernight: descToSave.stayedOvernight || false,
+                                      dayOff: descToSave.dayOff || false,
+                                      dayOffType: descToSave.dayOffType || null
+                                    })
+                                  });
+                                  
+                                  if (!response.ok) {
+                                    const errorText = await response.text();
+                                    console.error('Error saving day off status:', response.status, errorText);
+                                  }
+                                } catch (error) {
+                                  console.error('Error saving day off status:', error);
+                                }
+                              }}
+                              disabled={isAdminView}
+                            />
+                            {dayDescription?.dayOff && (
+                              <FormControl size="small" sx={{ minWidth: 120 }}>
+                                <Select
+                                  value={dayDescription?.dayOffType || 'PTO'}
+                                  onChange={async (e) => {
+                                    try {
+                                      const newDescriptions = [...dailyDescriptions];
+                                      const entryDateStr = normalizeDate(entry.date);
+                                      const existingIndex = newDescriptions.findIndex((desc: any) => {
+                                        const descDateStr = normalizeDate(desc.date);
+                                        return entryDateStr === descDateStr;
+                                      });
+                                      
+                                      if (existingIndex >= 0) {
+                                        const dayOffType = e.target.value;
+                                        newDescriptions[existingIndex] = {
+                                          ...newDescriptions[existingIndex],
+                                          dayOffType: dayOffType,
+                                          description: dayOffType // Update description to match day off type
+                                        };
+                                        
+                                        // Update the daily entry description to match
+                                        const updatedEntries = [...employeeData.dailyEntries];
+                                        const entryIndex = updatedEntries.findIndex((e: any) => {
+                                          const eDateStr = normalizeDate(e.date);
+                                          return eDateStr === entryDateStr;
+                                        });
+                                        if (entryIndex >= 0) {
+                                          updatedEntries[entryIndex].description = dayOffType;
+                                        }
+                                        setEmployeeData({ ...employeeData, dailyEntries: updatedEntries });
+                                        
+                                        setDailyDescriptions(newDescriptions);
+                                        
+                                        // Save to backend
+                                        const descToSave = newDescriptions[existingIndex];
+                                        const dateToSave = normalizeDate(descToSave.date);
+                                        const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+                                          method: 'POST',
+                                          headers: {
+                                            'Content-Type': 'application/json',
+                                          },
+                                          body: JSON.stringify({
+                                            id: descToSave.id,
+                                            employeeId: descToSave.employeeId,
+                                            date: dateToSave,
+                                            description: descToSave.description || '',
+                                            costCenter: descToSave.costCenter || '',
+                                            stayedOvernight: descToSave.stayedOvernight || false,
+                                            dayOff: descToSave.dayOff || false,
+                                            dayOffType: descToSave.dayOffType || null
+                                          })
+                                        });
+                                        
+                                        if (!response.ok) {
+                                          const errorText = await response.text();
+                                          console.error('Error saving day off type:', response.status, errorText);
+                                        }
+                                      }
+                                    } catch (error) {
+                                      console.error('Error saving day off type:', error);
+                                    }
+                                  }}
+                                  disabled={isAdminView}
+                                >
+                                  <MenuItem value="PTO">PTO</MenuItem>
+                                  <MenuItem value="Sick Day">Sick Day</MenuItem>
+                                  <MenuItem value="Holiday">Holiday</MenuItem>
+                                  <MenuItem value="Unpaid Leave">Unpaid Leave</MenuItem>
+                                </Select>
+                              </FormControl>
+                            )}
+                          </Box>
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
@@ -3743,8 +4425,30 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                              t.needsRevision;
                     });
                     
+                    // Check if this day is marked as day off
+                    // Normalize dates to YYYY-MM-DD format for comparison
+                    const entryDateStr = normalizeDate(entry.date);
+                    const dayDescription = dailyDescriptions.find((desc: any) => {
+                      const descDateStr = normalizeDate(desc.date);
+                      return entryDateStr === descDateStr;
+                    });
+                    const isDayOff = dayDescription?.dayOff === true || dayDescription?.dayOff === 1;
+                    
                     return (
-                      <TableRow key={index} sx={{ bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
+                      <TableRow 
+                        key={index} 
+                        sx={{ 
+                          ...(needsRevision && { bgcolor: 'warning.light' }),
+                          ...(isDayOff && !needsRevision && { 
+                            bgcolor: '#e0e0e0',
+                            opacity: 0.6,
+                            '& td': {
+                              bgcolor: '#e0e0e0',
+                              opacity: 0.6
+                            }
+                          })
+                        }}
+                      >
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           {entry.date}
                           {needsRevision && (
@@ -3752,7 +4456,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           )}
                         </TableCell>
                       <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>
-                        {editingCell?.row === index && editingCell?.field === 'description' ? (
+                        {isDayOff ? (
+                          // Day off - show day off type and make it uneditable
+                          <Box 
+                            sx={{ 
+                              minHeight: '24px',
+                              whiteSpace: 'pre-wrap',
+                              color: 'text.secondary',
+                              fontStyle: 'italic'
+                            }}
+                          >
+                            {dayDescription?.dayOffType || 'Day Off'}
+                          </Box>
+                        ) : editingCell?.row === index && editingCell?.field === 'description' ? (
                           <TextField
                             value={editingValue}
                             onChange={(e) => setEditingValue(e.target.value)}
@@ -4708,7 +5424,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           }),
                         });
                         
-                        console.log('✅ Saved signature synced to source tables');
+                        debugLog('✅ Saved signature synced to source tables');
                       } catch (error) {
                         console.error('Error syncing saved signature:', error);
                       }
@@ -5161,7 +5877,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           employeeId={employeeId} 
           onSettingsUpdate={(settings) => {
             // Optional callback when settings are updated
-            console.log('Settings updated:', settings);
+            debugLog('Settings updated:', settings);
           }} 
         />
       </TabPanel>

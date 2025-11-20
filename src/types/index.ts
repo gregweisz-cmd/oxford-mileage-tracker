@@ -12,6 +12,10 @@ export interface Employee {
   costCenters: string[]; // All available cost centers
   selectedCostCenters: string[]; // Cost centers this employee can bill to
   defaultCostCenter?: string; // Default cost center for new entries
+  typicalWorkStartHour?: number; // Typical work start hour (0-23)
+  typicalWorkEndHour?: number; // Typical work end hour (0-23)
+  hasCompletedSetupWizard?: boolean; // Whether the employee has completed the setup wizard
+  hasCompletedOnboarding?: boolean; // Whether the employee has completed the onboarding flow
   createdAt: Date;
   updatedAt: Date;
 }
@@ -152,6 +156,9 @@ export interface DailyDescription {
   date: Date;
   description: string;
   costCenter?: string; // Cost center for this specific daily description
+  stayedOvernight?: boolean; // Whether employee stayed overnight for work
+  dayOff?: boolean; // Whether employee took the day off
+  dayOffType?: string; // Type of day off: 'PTO', 'Sick Day', 'Holiday', 'Unpaid Leave'
   createdAt: Date;
   updatedAt: Date;
 }
@@ -198,13 +205,11 @@ export interface SlackConfig {
 export type RootStackParamList = {
   Home: undefined;
   MileageEntry: { entryId?: string };
-  Reports: undefined;
   GpsTracking: { showEndModal?: boolean };
   Receipts: undefined;
   AddReceipt: undefined;
   HoursWorked: undefined;
   DailyDescription: undefined;
-  CostCenterReporting: undefined;
   Admin: undefined;
   ManagerDashboard: undefined;
   SavedAddresses: undefined;

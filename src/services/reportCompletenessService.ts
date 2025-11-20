@@ -1,5 +1,5 @@
-import { DatabaseService } from './database';
 import { MileageEntry, Receipt, TimeTracking, Employee } from '../types';
+import { DatabaseService } from './database';
 
 export interface CompletenessIssue {
   id: string;
@@ -25,7 +25,7 @@ export interface CompletenessReport {
 
 export class ReportCompletenessService {
   /**
-   * Analyze report completeness for a given month/year
+   * Analyze report completeness for a given month/year using mobile app database
    */
   static async analyzeReportCompleteness(
     employeeId: string,
@@ -35,11 +35,25 @@ export class ReportCompletenessService {
     console.log('🔍 ReportCompleteness: Analyzing report for', { employeeId, month, year });
     
     try {
-      // Get all data for the month
-      const mileageEntries = await DatabaseService.getMileageEntries(employeeId, month, year);
-      const receipts = await DatabaseService.getReceipts(employeeId, month, year);
-      const timeTracking = await DatabaseService.getTimeTracking(employeeId, month, year);
-      const employee = await DatabaseService.getEmployee(employeeId);
+      // Get all data for the month from the mobile database
+      console.log('🔍 ReportCompleteness: Fetching data from local database...');
+      
+      const startOfMonth = new Date(year, month - 1, 1);
+      const endOfMonth = new Date(year, month, 0);
+      
+      const [mileageEntries, receipts, timeTracking, employee] = await Promise.all([
+        DatabaseService.getMileageEntries(employeeId, month, year),
+        DatabaseService.getReceipts(employeeId, month, year),
+        DatabaseService.getTimeTrackingEntries(employeeId, month, year),
+        DatabaseService.getEmployeeById(employeeId)
+      ]);
+
+      console.log('🔍 ReportCompleteness: Data loaded:', {
+        mileageCount: mileageEntries.length,
+        receiptsCount: receipts.length,
+        timeTrackingCount: timeTracking.length,
+        employeeName: employee?.name
+      });
       
       if (!employee) {
         throw new Error('Employee not found');
@@ -52,6 +66,7 @@ export class ReportCompletenessService {
       issues.push(...this.checkIncompleteCostCenterHours(timeTracking, employee));
       issues.push(...this.checkMissingReceipts(mileageEntries, receipts));
       issues.push(...this.checkUnusualGaps(mileageEntries, timeTracking));
+      issues.push(...this.checkMissingWorkDays(mileageEntries, timeTracking, month, year));
       issues.push(...this.checkMissingPurposes(mileageEntries));
       issues.push(...this.checkIncompleteRoutes(mileageEntries));
       
@@ -100,46 +115,30 @@ export class ReportCompletenessService {
     const entriesByDate = this.groupEntriesByDate(mileageEntries);
     
     Object.entries(entriesByDate).forEach(([dateStr, entries]) => {
-      const sortedEntries = entries.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      const sortedEntries = entries.sort((a, b) => {
+        const aDate = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
+        const bDate = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+        return aDate.getTime() - bDate.getTime();
+      });
       
       // Check for trip chains without proper odometer readings
       for (let i = 0; i < sortedEntries.length - 1; i++) {
         const currentEntry = sortedEntries[i];
         const nextEntry = sortedEntries[i + 1];
         
-        // Check if entries form a chain (end location of current = start location of next)
-        if (currentEntry.endLocation === nextEntry.startLocation) {
-          const currentEndOdometer = currentEntry.odometerReading ? 
-            currentEntry.odometerReading + currentEntry.miles : null;
-          const nextStartOdometer = nextEntry.odometerReading;
-          
-          // Missing odometer readings in chain
-          if (!currentEntry.odometerReading || !nextEntry.odometerReading) {
-            issues.push({
-              id: `missing-odometer-${dateStr}-${i}`,
-              type: 'missing_odometer',
-              severity: 'high',
-              title: 'Missing Odometer Readings in Trip Chain',
-              description: `Trip chain on ${new Date(dateStr).toLocaleDateString()} missing odometer readings`,
-              suggestion: 'Add odometer readings to ensure accurate mileage calculation',
-              affectedEntries: [currentEntry.id, nextEntry.id],
-              date: new Date(dateStr)
-            });
-          }
-          // Inconsistent odometer readings
-          else if (currentEndOdometer && nextStartOdometer && 
-                   Math.abs(currentEndOdometer - nextStartOdometer) > 5) {
-            issues.push({
-              id: `inconsistent-odometer-${dateStr}-${i}`,
-              type: 'missing_odometer',
-              severity: 'medium',
-              title: 'Inconsistent Odometer Readings',
-              description: `Odometer readings don't align between chained trips (${Math.abs(currentEndOdometer - nextStartOdometer).toFixed(1)} mile difference)`,
-              suggestion: 'Verify odometer readings are accurate and sequential',
-              affectedEntries: [currentEntry.id, nextEntry.id],
-              date: new Date(dateStr)
-            });
-          }
+        // If current entry has odometer but next doesn't, it's an issue
+        if (currentEntry.odometerReading && !nextEntry.odometerReading && 
+            currentEntry.endLocation === nextEntry.startLocation) {
+          issues.push({
+            id: `missing-odometer-${nextEntry.id}`,
+            type: 'missing_odometer',
+            severity: 'high',
+            title: 'Missing Odometer Reading',
+            description: `Entry on ${dateStr} starting from ${nextEntry.startLocation} is missing odometer reading. Previous entry ended at the same location with reading ${currentEntry.odometerReading}`,
+            suggestion: 'Add odometer reading to ensure accurate mileage calculation',
+            affectedEntries: [nextEntry.id],
+            date: new Date(dateStr)
+          });
         }
       }
     });
@@ -148,52 +147,38 @@ export class ReportCompletenessService {
   }
   
   /**
-   * Check for incomplete cost center hours
+   * Check for incomplete cost center hour allocations
    */
-  private static checkIncompleteCostCenterHours(
-    timeTracking: TimeTracking[], 
-    employee: Employee
-  ): CompletenessIssue[] {
+  private static checkIncompleteCostCenterHours(timeTracking: TimeTracking[], employee: Employee): CompletenessIssue[] {
     const issues: CompletenessIssue[] = [];
     
-    if (!employee.costCenters || employee.costCenters.length === 0) {
-      return issues;
+    if (!employee || !employee.costCenters || employee.costCenters.length === 0) {
+      return issues; // No cost centers to check
     }
     
     // Group time tracking by date
-    const timeByDate = this.groupTimeTrackingByDate(timeTracking);
+    const trackingByDate = this.groupTimeTrackingByDate(timeTracking);
     
-    Object.entries(timeByDate).forEach(([dateStr, entries]) => {
+    Object.entries(trackingByDate).forEach(([dateStr, entries]) => {
       const totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
-      const costCenterHours = entries
-        .filter(entry => employee.costCenters?.includes(entry.category))
-        .reduce((sum, entry) => sum + entry.hours, 0);
       
-      // Check if cost center hours are missing
-      if (costCenterHours === 0 && totalHours > 0) {
-        issues.push({
-          id: `missing-cost-center-${dateStr}`,
-          type: 'incomplete_hours',
-          severity: 'high',
-          title: 'Missing Cost Center Hours',
-          description: `${totalHours} hours logged but no cost center hours specified`,
-          suggestion: 'Add cost center hours for proper expense allocation',
-          date: new Date(dateStr),
-          category: 'Cost Center Hours'
-        });
-      }
+      // Check if hours are distributed across cost centers properly
+      const costCenterHours = new Map<string, number>();
+      entries.forEach(entry => {
+        const cc = entry.costCenter || 'Unknown';
+        costCenterHours.set(cc, (costCenterHours.get(cc) || 0) + entry.hours);
+      });
       
-      // Check if cost center hours seem incomplete
-      if (costCenterHours > 0 && costCenterHours < totalHours * 0.5) {
+      // If employee has multiple cost centers but all hours go to one, suggest distribution
+      if (employee.costCenters.length > 1 && costCenterHours.size === 1 && totalHours >= 8) {
         issues.push({
-          id: `incomplete-cost-center-${dateStr}`,
+          id: `incomplete-hours-${dateStr}`,
           type: 'incomplete_hours',
           severity: 'medium',
-          title: 'Incomplete Cost Center Hours',
-          description: `Only ${costCenterHours} of ${totalHours} hours allocated to cost centers`,
-          suggestion: 'Consider allocating more hours to cost centers',
-          date: new Date(dateStr),
-          category: 'Cost Center Hours'
+          title: 'Hours Not Distributed Across Cost Centers',
+          description: `On ${dateStr}, all ${totalHours} hours were allocated to a single cost center. Consider distributing across multiple cost centers if applicable.`,
+          suggestion: 'Review and distribute hours across appropriate cost centers',
+          date: new Date(dateStr)
         });
       }
     });
@@ -204,46 +189,37 @@ export class ReportCompletenessService {
   /**
    * Check for missing receipts for expenses
    */
-  private static checkMissingReceipts(
-    mileageEntries: MileageEntry[], 
-    receipts: Receipt[]
-  ): CompletenessIssue[] {
+  private static checkMissingReceipts(mileageEntries: MileageEntry[], receipts: Receipt[]): CompletenessIssue[] {
     const issues: CompletenessIssue[] = [];
     
-    // Group entries by date
-    const entriesByDate = this.groupEntriesByDate(mileageEntries);
-    const receiptsByDate = this.groupReceiptsByDate(receipts);
-    
-    Object.entries(entriesByDate).forEach(([dateStr, entries]) => {
-      const dayReceipts = receiptsByDate[dateStr] || [];
-      const totalMileage = entries.reduce((sum, entry) => sum + entry.miles, 0);
-      const totalReceiptAmount = dayReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
-      
-      // High mileage day with no receipts
-      if (totalMileage > 100 && dayReceipts.length === 0) {
-        issues.push({
-          id: `missing-receipts-${dateStr}`,
-          type: 'missing_receipt',
-          severity: 'medium',
-          title: 'Missing Receipts for High Mileage Day',
-          description: `${totalMileage.toFixed(1)} miles driven but no receipts submitted`,
-          suggestion: 'Consider adding receipts for meals, parking, or other expenses',
-          date: new Date(dateStr),
-          category: 'Receipts'
-        });
+    // Group receipts by date
+    const receiptsByDate = new Map<string, Receipt[]>();
+    receipts.forEach(receipt => {
+      const dateStr = receipt.date instanceof Date 
+        ? receipt.date.toISOString().split('T')[0]
+        : new Date(receipt.date).toISOString().split('T')[0];
+      if (!receiptsByDate.has(dateStr)) {
+        receiptsByDate.set(dateStr, []);
       }
+      receiptsByDate.get(dateStr)!.push(receipt);
+    });
+    
+    // Check if there are days with mileage but no receipts
+    mileageEntries.forEach(entry => {
+      const dateStr = entry.date instanceof Date 
+        ? entry.date.toISOString().split('T')[0]
+        : new Date(entry.date).toISOString().split('T')[0];
       
-      // Check for unusual expense patterns
-      if (totalMileage > 200 && totalReceiptAmount < 20) {
+      if (!receiptsByDate.has(dateStr) && entry.miles > 50) {
+        // High mileage days might have expenses
         issues.push({
-          id: `low-receipts-${dateStr}`,
+          id: `missing-receipt-${entry.id}`,
           type: 'missing_receipt',
           severity: 'low',
-          title: 'Low Receipt Amount for High Mileage',
-          description: `${totalMileage.toFixed(1)} miles with only $${totalReceiptAmount.toFixed(2)} in receipts`,
-          suggestion: 'Verify all expenses are captured',
-          date: new Date(dateStr),
-          category: 'Receipts'
+          title: 'No Receipts for High Mileage Day',
+          description: `${entry.miles} miles driven on ${dateStr} but no receipts recorded`,
+          suggestion: 'Consider if any expenses (gas, tolls, parking) were incurred',
+          date: new Date(dateStr)
         });
       }
     });
@@ -252,43 +228,41 @@ export class ReportCompletenessService {
   }
   
   /**
-   * Check for unusual gaps in daily entries
+   * Check for unusual gaps in work patterns
    */
-  private static checkUnusualGaps(
-    mileageEntries: MileageEntry[], 
-    timeTracking: TimeTracking[]
-  ): CompletenessIssue[] {
+  private static checkUnusualGaps(mileageEntries: MileageEntry[], timeTracking: TimeTracking[]): CompletenessIssue[] {
     const issues: CompletenessIssue[] = [];
     
-    // Get all dates with activity
-    const mileageDates = new Set(mileageEntries.map(entry => entry.date.toDateString()));
-    const timeDates = new Set(timeTracking.map(entry => entry.date.toDateString()));
-    const allDates = new Set([...mileageDates, ...timeDates]);
+    // Combine all dates
+    const allDates = new Set<string>();
+    mileageEntries.forEach(entry => {
+      const dateStr = entry.date instanceof Date 
+        ? entry.date.toISOString().split('T')[0]
+        : new Date(entry.date).toISOString().split('T')[0];
+      allDates.add(dateStr);
+    });
+    timeTracking.forEach(entry => {
+      const dateStr = entry.date instanceof Date 
+        ? entry.date.toISOString().split('T')[0]
+        : new Date(entry.date).toISOString().split('T')[0];
+      allDates.add(dateStr);
+    });
     
-    // Find gaps in activity
-    const sortedDates = Array.from(allDates).sort();
+    const sortedDates = Array.from(allDates).sort().map(d => new Date(d));
     
-    for (let i = 0; i < sortedDates.length - 1; i++) {
-      const currentDate = new Date(sortedDates[i]);
-      const nextDate = new Date(sortedDates[i + 1]);
-      const daysDiff = Math.floor((nextDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Gap of more than 3 days during work week
-      if (daysDiff > 3) {
-        const isWorkWeek = currentDate.getDay() >= 1 && currentDate.getDay() <= 5;
-        
-        if (isWorkWeek) {
-          issues.push({
-            id: `gap-${sortedDates[i]}-${sortedDates[i + 1]}`,
-            type: 'gap_detection',
-            severity: 'low',
-            title: 'Unusual Gap in Activity',
-            description: `${daysDiff} days gap between ${currentDate.toLocaleDateString()} and ${nextDate.toLocaleDateString()}`,
-            suggestion: 'Verify no entries were missed during this period',
-            date: currentDate,
-            category: 'Activity Gaps'
-          });
-        }
+    // Check for gaps longer than 7 days
+    for (let i = 1; i < sortedDates.length; i++) {
+      const gapDays = Math.floor((sortedDates[i].getTime() - sortedDates[i-1].getTime()) / (1000 * 60 * 60 * 24));
+      if (gapDays > 7) {
+        issues.push({
+          id: `gap-${sortedDates[i-1].toISOString()}`,
+          type: 'gap_detection',
+          severity: 'low',
+          title: 'Long Gap Detected',
+          description: `Gap of ${gapDays} days between ${sortedDates[i-1].toLocaleDateString()} and ${sortedDates[i].toLocaleDateString()}`,
+          suggestion: 'Ensure all work days are properly recorded',
+          date: sortedDates[i]
+        });
       }
     }
     
@@ -296,91 +270,107 @@ export class ReportCompletenessService {
   }
   
   /**
-   * Check for missing trip purposes
+   * Check for missing work days
+   */
+  private static checkMissingWorkDays(mileageEntries: MileageEntry[], timeTracking: TimeTracking[], month: number, year: number): CompletenessIssue[] {
+    const issues: CompletenessIssue[] = [];
+    
+    // This is a simplified check - can be enhanced
+    const workDays = mileageEntries.length + timeTracking.length;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    // If very few work days recorded, might be an issue
+    if (workDays < 10 && daysInMonth > 20) {
+      issues.push({
+        id: `missing-workdays-${month}-${year}`,
+        type: 'gap_detection',
+        severity: 'medium',
+        title: 'Few Work Days Recorded',
+        description: `Only ${workDays} work days recorded for the month`,
+        suggestion: 'Review your calendar and ensure all work days are recorded'
+      });
+    }
+    
+    return issues;
+  }
+  
+  /**
+   * Check for missing purposes
    */
   private static checkMissingPurposes(mileageEntries: MileageEntry[]): CompletenessIssue[] {
     const issues: CompletenessIssue[] = [];
     
-    const entriesWithoutPurpose = mileageEntries.filter(entry => 
-      !entry.purpose || entry.purpose.trim() === ''
-    );
-    
-    if (entriesWithoutPurpose.length > 0) {
-      issues.push({
-        id: 'missing-purposes',
-        type: 'missing_purpose',
-        severity: 'high',
-        title: 'Missing Trip Purposes',
-        description: `${entriesWithoutPurpose.length} trips without purpose specified`,
-        suggestion: 'Add purpose for each trip to ensure proper expense categorization',
-        affectedEntries: entriesWithoutPurpose.map(entry => entry.id),
-        category: 'Trip Purposes'
-      });
-    }
+    mileageEntries.forEach(entry => {
+      if (!entry.purpose || entry.purpose.trim().length === 0) {
+        issues.push({
+          id: `missing-purpose-${entry.id}`,
+          type: 'missing_purpose',
+          severity: 'high',
+          title: 'Missing Purpose',
+          description: `Mileage entry on ${entry.date instanceof Date ? entry.date.toLocaleDateString() : new Date(entry.date).toLocaleDateString()} is missing a purpose`,
+          suggestion: 'Add a purpose to explain why this mileage was incurred',
+          affectedEntries: [entry.id],
+          date: entry.date instanceof Date ? entry.date : new Date(entry.date)
+        });
+      }
+    });
     
     return issues;
   }
   
   /**
-   * Check for incomplete route information
+   * Check for incomplete routes
    */
   private static checkIncompleteRoutes(mileageEntries: MileageEntry[]): CompletenessIssue[] {
     const issues: CompletenessIssue[] = [];
     
-    const incompleteRoutes = mileageEntries.filter(entry => 
-      !entry.startLocation || !entry.endLocation ||
-      entry.startLocation.trim() === '' || entry.endLocation.trim() === ''
-    );
-    
-    if (incompleteRoutes.length > 0) {
-      issues.push({
-        id: 'incomplete-routes',
-        type: 'incomplete_route',
-        severity: 'critical',
-        title: 'Incomplete Route Information',
-        description: `${incompleteRoutes.length} trips with missing start or end locations`,
-        suggestion: 'Complete route information for accurate mileage tracking',
-        affectedEntries: incompleteRoutes.map(entry => entry.id),
-        category: 'Route Information'
-      });
-    }
+    mileageEntries.forEach(entry => {
+      if (!entry.startLocation || !entry.endLocation) {
+        issues.push({
+          id: `incomplete-route-${entry.id}`,
+          type: 'incomplete_route',
+          severity: 'high',
+          title: 'Incomplete Route Information',
+          description: `Mileage entry is missing start or end location`,
+          suggestion: 'Add both start and end locations for accurate tracking',
+          affectedEntries: [entry.id],
+          date: entry.date instanceof Date ? entry.date : new Date(entry.date)
+        });
+      }
+    });
     
     return issues;
   }
   
   /**
-   * Calculate overall completeness score
+   * Calculate overall completeness score (0-100)
    */
-  private static calculateCompletenessScore(
-    issues: CompletenessIssue[], 
-    mileageCount: number, 
-    receiptCount: number
-  ): number {
+  private static calculateCompletenessScore(issues: CompletenessIssue[], mileageCount: number, receiptCount: number): number {
     if (mileageCount === 0 && receiptCount === 0) {
-      return 0; // No data
+      return 0; // No data = 0 score
     }
     
     let score = 100;
     
-    // Deduct points based on issue severity
+    // Deduct points for each issue by severity
     issues.forEach(issue => {
       switch (issue.severity) {
         case 'critical':
           score -= 20;
           break;
         case 'high':
-          score -= 15;
-          break;
-        case 'medium':
           score -= 10;
           break;
-        case 'low':
+        case 'medium':
           score -= 5;
+          break;
+        case 'low':
+          score -= 2;
           break;
       }
     });
     
-    return Math.max(0, score);
+    return Math.max(0, Math.min(100, score));
   }
   
   /**
@@ -389,46 +379,49 @@ export class ReportCompletenessService {
   private static generateRecommendations(issues: CompletenessIssue[]): string[] {
     const recommendations: string[] = [];
     
-    const criticalIssues = issues.filter(issue => issue.severity === 'critical');
-    const highIssues = issues.filter(issue => issue.severity === 'high');
+    const criticalIssues = issues.filter(i => i.severity === 'critical');
+    const highIssues = issues.filter(i => i.severity === 'high');
+    const missingOdometer = issues.filter(i => i.type === 'missing_odometer');
+    const missingPurpose = issues.filter(i => i.type === 'missing_purpose');
+    const incompleteRoute = issues.filter(i => i.type === 'incomplete_route');
     
     if (criticalIssues.length > 0) {
-      recommendations.push('🚨 Address critical issues before submitting report');
+      recommendations.push(`Fix ${criticalIssues.length} critical issue(s) before submission`);
     }
     
     if (highIssues.length > 0) {
-      recommendations.push('⚠️ Review high-priority issues for accuracy');
+      recommendations.push(`Address ${highIssues.length} high-priority issue(s)`);
     }
     
-    const missingOdometer = issues.filter(issue => issue.type === 'missing_odometer');
     if (missingOdometer.length > 0) {
-      recommendations.push('📊 Add odometer readings for accurate mileage calculation');
+      recommendations.push(`Add odometer readings for ${missingOdometer.length} entry/entries`);
     }
     
-    const missingReceipts = issues.filter(issue => issue.type === 'missing_receipt');
-    if (missingReceipts.length > 0) {
-      recommendations.push('🧾 Consider adding receipts for expenses');
+    if (missingPurpose.length > 0) {
+      recommendations.push(`Add purpose descriptions for ${missingPurpose.length} mileage entry/entries`);
     }
     
-    const incompleteHours = issues.filter(issue => issue.type === 'incomplete_hours');
-    if (incompleteHours.length > 0) {
-      recommendations.push('⏰ Complete cost center hour allocations');
+    if (incompleteRoute.length > 0) {
+      recommendations.push(`Complete route information for ${incompleteRoute.length} entry/entries`);
     }
     
     if (recommendations.length === 0) {
-      recommendations.push('✅ Report looks complete and ready for submission!');
+      recommendations.push('Report looks complete and ready for submission!');
     }
     
     return recommendations;
   }
   
-  // Helper methods
-  
+  /**
+   * Group mileage entries by date
+   */
   private static groupEntriesByDate(entries: MileageEntry[]): Record<string, MileageEntry[]> {
     const grouped: Record<string, MileageEntry[]> = {};
     
     entries.forEach(entry => {
-      const dateStr = entry.date.toDateString();
+      const dateStr = entry.date instanceof Date 
+        ? entry.date.toISOString().split('T')[0]
+        : new Date(entry.date).toISOString().split('T')[0];
       if (!grouped[dateStr]) {
         grouped[dateStr] = [];
       }
@@ -438,25 +431,16 @@ export class ReportCompletenessService {
     return grouped;
   }
   
-  private static groupReceiptsByDate(receipts: Receipt[]): Record<string, Receipt[]> {
-    const grouped: Record<string, Receipt[]> = {};
-    
-    receipts.forEach(receipt => {
-      const dateStr = receipt.date.toDateString();
-      if (!grouped[dateStr]) {
-        grouped[dateStr] = [];
-      }
-      grouped[dateStr].push(receipt);
-    });
-    
-    return grouped;
-  }
-  
+  /**
+   * Group time tracking by date
+   */
   private static groupTimeTrackingByDate(entries: TimeTracking[]): Record<string, TimeTracking[]> {
     const grouped: Record<string, TimeTracking[]> = {};
     
     entries.forEach(entry => {
-      const dateStr = entry.date.toDateString();
+      const dateStr = entry.date instanceof Date 
+        ? entry.date.toISOString().split('T')[0]
+        : new Date(entry.date).toISOString().split('T')[0];
       if (!grouped[dateStr]) {
         grouped[dateStr] = [];
       }

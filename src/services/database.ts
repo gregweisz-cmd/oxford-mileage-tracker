@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription, CostCenterSummary } from '../types';
 import { MileageAnalysisService } from './mileageAnalysisService';
 import { ApiSyncService } from './apiSyncService';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 // Removed SyncIntegrationService import to break circular dependency
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -89,31 +90,31 @@ export class DatabaseService {
       // Skip table creation but ensure employee setup
       try {
         const allEmployees = await this.getEmployees();
-        console.log('🔧 Database: Found employees:', allEmployees.length);
+        debugLog('🔧 Database: Found employees:', allEmployees.length);
         
         // If no employees, create test data first
         if (allEmployees.length === 0) {
-          console.log('🔧 Database: No employees found, creating test employees...');
+          debugLog('🔧 Database: No employees found, creating test employees...');
           const { TestDataService } = await import('./testDataService');
           await TestDataService.initializeTestData();
-          console.log('✅ Database: Test employees created successfully');
+          debugLog('✅ Database: Test employees created successfully');
         }
         
         // NOW ensure there's always a current employee set (after employees exist)
-        console.log('🔧 Database: Checking current employee session...');
+        debugLog('🔧 Database: Checking current employee session...');
         const currentEmployee = await this.getCurrentEmployee();
         if (!currentEmployee) {
-          console.log('🔧 Database: No current employee session found, setting up Greg Weisz...');
+          debugLog('🔧 Database: No current employee session found, setting up Greg Weisz...');
           const employeesAfterImport = await this.getEmployees();
-          console.log('🔧 Database: Employees after setup:', employeesAfterImport.length);
+          debugLog('🔧 Database: Employees after setup:', employeesAfterImport.length);
           if (employeesAfterImport.length > 0) {
             const defaultEmployee = employeesAfterImport.find(emp => emp.name === 'Greg Weisz') || employeesAfterImport[0];
-            console.log('🔧 Database: Setting default employee:', defaultEmployee.name);
+            debugLog('🔧 Database: Setting default employee:', defaultEmployee.name);
             await this.setCurrentEmployee(defaultEmployee.id);
-            console.log('✅ Database: Default employee set as current employee:', defaultEmployee.name);
+            debugLog('✅ Database: Default employee set as current employee:', defaultEmployee.name);
           }
         } else {
-          console.log('✅ Database: Current employee session exists:', currentEmployee.name);
+          debugLog('✅ Database: Current employee session exists:', currentEmployee.name);
         }
       } catch (error) {
         console.error('❌ Database: Error setting up employees and employee session:', error);
@@ -124,14 +125,14 @@ export class DatabaseService {
     try {
       // For web platform, add a small delay to allow WASM to load
       if (Platform.OS === 'web') {
-        console.log('🌐 Database: Web platform detected, waiting for WASM initialization...');
+        debugLog('🌐 Database: Web platform detected, waiting for WASM initialization...');
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
       const database = await getDatabase();
       
       // Initialize database schema (only create tables if they don't exist)
-      console.log('Initializing database schema...');
+      debugLog('Initializing database schema...');
       
       // Create mileage_entries table
       await database.execAsync(`
@@ -353,10 +354,49 @@ export class DatabaseService {
           date TEXT NOT NULL,
           description TEXT NOT NULL,
           costCenter TEXT,
+          stayedOvernight INTEGER DEFAULT 0,
+          dayOff INTEGER DEFAULT 0,
+          dayOffType TEXT,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );
       `);
+
+      // Add stayedOvernight column if it doesn't exist (migration)
+      try {
+        await database.execAsync(`
+          ALTER TABLE daily_descriptions ADD COLUMN stayedOvernight INTEGER DEFAULT 0;
+        `);
+      } catch (error: any) {
+        // Column may already exist, which is fine
+        if (!error?.message?.includes('duplicate column name')) {
+          debugWarn('⚠️ Database: Error adding stayedOvernight column (may already exist):', error);
+        }
+      }
+
+      // Add dayOff column if it doesn't exist (migration)
+      try {
+        await database.execAsync(`
+          ALTER TABLE daily_descriptions ADD COLUMN dayOff INTEGER DEFAULT 0;
+        `);
+      } catch (error: any) {
+        // Column may already exist, which is fine
+        if (!error?.message?.includes('duplicate column name')) {
+          debugWarn('⚠️ Database: Error adding dayOff column (may already exist):', error);
+        }
+      }
+
+      // Add dayOffType column if it doesn't exist (migration)
+      try {
+        await database.execAsync(`
+          ALTER TABLE daily_descriptions ADD COLUMN dayOffType TEXT;
+        `);
+      } catch (error: any) {
+        // Column may already exist, which is fine
+        if (!error?.message?.includes('duplicate column name')) {
+          debugWarn('⚠️ Database: Error adding dayOffType column (may already exist):', error);
+        }
+      }
 
       // Create cost_center_summaries table for reporting
       await database.execAsync(`
@@ -416,6 +456,24 @@ export class DatabaseService {
         // Column might already exist, ignore error
       }
 
+      // Add hasCompletedOnboarding column to existing current_employee tables (migration)
+      try {
+        await database.execAsync(`
+          ALTER TABLE current_employee ADD COLUMN hasCompletedOnboarding INTEGER DEFAULT 0;
+        `);
+      } catch (error) {
+        // Column might already exist, ignore error
+      }
+
+      // Add hasCompletedSetupWizard column to existing current_employee tables (migration)
+      try {
+        await database.execAsync(`
+          ALTER TABLE current_employee ADD COLUMN hasCompletedSetupWizard INTEGER DEFAULT 0;
+        `);
+      } catch (error) {
+        // Column might already exist, ignore error
+      }
+
       // Add approval workflow columns to monthly_reports table (migration)
       const approvalColumns = [
         'submittedBy TEXT',
@@ -439,7 +497,7 @@ export class DatabaseService {
       }
 
       // Create performance indexes
-      console.log('Creating database indexes for performance...');
+      debugLog('Creating database indexes for performance...');
       
       // Indexes for mileage_entries table
       await database.execAsync('CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_date ON mileage_entries(employeeId, date)');
@@ -460,36 +518,36 @@ export class DatabaseService {
       // Indexes for daily_odometer_readings table
       await database.execAsync('CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_date ON daily_odometer_readings(employeeId, date)');
       
-      console.log('✅ Database indexes created successfully');
+      debugLog('✅ Database indexes created successfully');
 
       
-      console.log('Database initialized successfully');
+      debugLog('Database initialized successfully');
       
       // Initialize sync integration service
       try {
         // Initialize sync integration service
         // Note: SyncIntegrationService will register its callback via setSyncCallback
-        console.log('✅ Database: Sync integration service initialized');
+        debugLog('✅ Database: Sync integration service initialized');
       } catch (error) {
         console.error('❌ Database: Failed to initialize sync integration service:', error);
       }
       
       // Ensure there are employees in the database (create test employees if none exist)
       try {
-        console.log('🔧 Database: Checking employee setup...');
+        debugLog('🔧 Database: Checking employee setup...');
         const allEmployees = await this.getEmployees();
-        console.log('🔧 Database: Found employees:', allEmployees.length);
+        debugLog('🔧 Database: Found employees:', allEmployees.length);
         
         if (allEmployees.length === 0) {
-          console.log('🔧 Database: No employees found, creating test employees...');
+          debugLog('🔧 Database: No employees found, creating test employees...');
           const { TestDataService } = await import('./testDataService');
           await TestDataService.initializeTestData();
-          console.log('✅ Database: Test employees created successfully');
+          debugLog('✅ Database: Test employees created successfully');
         }
         
         // Clean up entries and force fresh sync with correct dates
         try {
-          console.log('🧹 Database: Cleaning up all synced entries to force fresh sync...');
+          debugLog('🧹 Database: Cleaning up all synced entries to force fresh sync...');
           const database = await getDatabase();
           
           // Delete ALL entries that came from backend sync
@@ -502,31 +560,31 @@ export class DatabaseService {
             OR id LIKE 'mgteze%'
           `);
           if (deleted.changes > 0) {
-            console.log(`✅ Database: Removed ${deleted.changes} entries to force fresh sync with correct dates`);
+            debugLog(`✅ Database: Removed ${deleted.changes} entries to force fresh sync with correct dates`);
           }
           
           // Count remaining entries
           const remaining = await database.getFirstAsync('SELECT COUNT(*) as count FROM mileage_entries') as any;
-          console.log(`📊 Database: ${remaining.count} mileage entries remaining after cleanup`);
+          debugLog(`📊 Database: ${remaining.count} mileage entries remaining after cleanup`);
         } catch (error) {
           console.error('⚠️ Database: Error cleaning entries:', error);
         }
       
       // Check if user wants to stay logged in
-      console.log('🔧 Database: Checking current employee session...');
+      debugLog('🔧 Database: Checking current employee session...');
       const currentEmployee = await this.getCurrentEmployee();
       if (!currentEmployee) {
-        console.log('🔧 Database: No current employee session found, auto-logging in as Greg Weisz...');
+        debugLog('🔧 Database: No current employee session found, auto-logging in as Greg Weisz...');
         const employees = await this.getEmployees();
         const gregWeisz = employees.find(emp => emp.name === 'Greg Weisz');
         if (gregWeisz) {
           await this.setCurrentEmployee(gregWeisz.id);
-          console.log('✅ Database: Auto-logged in as Greg Weisz');
+          debugLog('✅ Database: Auto-logged in as Greg Weisz');
         } else {
-          console.log('⚠️ Database: Greg Weisz not found, no auto-login');
+          debugLog('⚠️ Database: Greg Weisz not found, no auto-login');
         }
       } else {
-        console.log('✅ Database: Current employee session exists:', currentEmployee.name);
+        debugLog('✅ Database: Current employee session exists:', currentEmployee.name);
       }
       } catch (error) {
         console.error('❌ Database: Error setting up employees and employee session:', error);
@@ -573,18 +631,132 @@ export class DatabaseService {
     await database.execAsync('DELETE FROM current_employee');
   }
 
-  static async getCurrentEmployeeSession(): Promise<{employeeId: string, stayLoggedIn: boolean} | null> {
+  static async getCurrentEmployeeSession(): Promise<{employeeId: string, stayLoggedIn: boolean, hasCompletedOnboarding?: boolean, hasCompletedSetupWizard?: boolean} | null> {
     const database = await getDatabase();
-    const result = await database.getFirstAsync('SELECT employeeId, stayLoggedIn FROM current_employee') as any;
+    const result = await database.getFirstAsync('SELECT employeeId, stayLoggedIn, hasCompletedOnboarding, hasCompletedSetupWizard FROM current_employee') as any;
     
     if (result) {
       return {
         employeeId: result.employeeId,
-        stayLoggedIn: result.stayLoggedIn === 1
+        stayLoggedIn: result.stayLoggedIn === 1,
+        hasCompletedOnboarding: result.hasCompletedOnboarding === 1,
+        hasCompletedSetupWizard: result.hasCompletedSetupWizard === 1
       };
     }
     
     return null;
+  }
+
+  static async hasCompletedOnboarding(employeeId?: string): Promise<boolean> {
+    const database = await getDatabase();
+    
+    // If employeeId is provided, check the employees table directly
+    if (employeeId) {
+      const result = await database.getFirstAsync(
+        'SELECT hasCompletedOnboarding FROM employees WHERE id = ?',
+        [employeeId]
+      ) as any;
+      return result?.hasCompletedOnboarding === 1;
+    }
+    
+    // Otherwise, check via current_employee table (for backward compatibility)
+    const currentSession = await this.getCurrentEmployeeSession();
+    if (currentSession?.employeeId) {
+      const result = await database.getFirstAsync(
+        'SELECT hasCompletedOnboarding FROM employees WHERE id = ?',
+        [currentSession.employeeId]
+      ) as any;
+      return result?.hasCompletedOnboarding === 1;
+    }
+    
+    return false;
+  }
+
+  static async setCompletedOnboarding(employeeId?: string): Promise<void> {
+    const database = await getDatabase();
+    
+    // If employeeId is provided, update the employees table directly
+    if (employeeId) {
+      await database.runAsync(
+        'UPDATE employees SET hasCompletedOnboarding = 1 WHERE id = ?',
+        [employeeId]
+      );
+      // Also update current_employee for backward compatibility
+      await database.runAsync(
+        'UPDATE current_employee SET hasCompletedOnboarding = 1 WHERE employeeId = ?',
+        [employeeId]
+      );
+      return;
+    }
+    
+    // Otherwise, update via current_employee table
+    const currentSession = await this.getCurrentEmployeeSession();
+    if (currentSession?.employeeId) {
+      await database.runAsync(
+        'UPDATE employees SET hasCompletedOnboarding = 1 WHERE id = ?',
+        [currentSession.employeeId]
+      );
+      await database.runAsync(
+        'UPDATE current_employee SET hasCompletedOnboarding = 1 WHERE employeeId = ?',
+        [currentSession.employeeId]
+      );
+    }
+  }
+
+  static async hasCompletedSetupWizard(employeeId?: string): Promise<boolean> {
+    const database = await getDatabase();
+    
+    // If employeeId is provided, check the employees table directly
+    if (employeeId) {
+      const result = await database.getFirstAsync(
+        'SELECT hasCompletedSetupWizard FROM employees WHERE id = ?',
+        [employeeId]
+      ) as any;
+      return result?.hasCompletedSetupWizard === 1;
+    }
+    
+    // Otherwise, check via current_employee table (for backward compatibility)
+    const currentSession = await this.getCurrentEmployeeSession();
+    if (currentSession?.employeeId) {
+      const result = await database.getFirstAsync(
+        'SELECT hasCompletedSetupWizard FROM employees WHERE id = ?',
+        [currentSession.employeeId]
+      ) as any;
+      return result?.hasCompletedSetupWizard === 1;
+    }
+    
+    return false;
+  }
+
+  static async setCompletedSetupWizard(employeeId?: string): Promise<void> {
+    const database = await getDatabase();
+    
+    // If employeeId is provided, update the employees table directly
+    if (employeeId) {
+      await database.runAsync(
+        'UPDATE employees SET hasCompletedSetupWizard = 1 WHERE id = ?',
+        [employeeId]
+      );
+      // Also update current_employee for backward compatibility
+      await database.runAsync(
+        'UPDATE current_employee SET hasCompletedSetupWizard = 1 WHERE employeeId = ?',
+        [employeeId]
+      );
+      return;
+    }
+    
+    // Otherwise, update via current_employee table
+    const currentSession = await this.getCurrentEmployeeSession();
+    if (currentSession?.employeeId) {
+      await database.runAsync(
+        'UPDATE employees SET hasCompletedSetupWizard = 1 WHERE id = ?',
+        [currentSession.employeeId]
+      );
+      await database.runAsync(
+        'UPDATE current_employee SET hasCompletedSetupWizard = 1 WHERE employeeId = ?',
+        [currentSession.employeeId]
+      );
+    }
   }
 
 
@@ -606,11 +778,15 @@ export class DatabaseService {
       oxfordHouseId: result.oxfordHouseId,
       position: result.position,
       phoneNumber: result.phoneNumber,
-      baseAddress: result.baseAddress,
+      baseAddress: result.baseAddress || '',
       baseAddress2: result.baseAddress2 || '',
       costCenters: result.costCenters ? JSON.parse(result.costCenters) : [],
       selectedCostCenters: result.selectedCostCenters ? JSON.parse(result.selectedCostCenters) : [],
       defaultCostCenter: result.defaultCostCenter || '',
+      typicalWorkStartHour: result.typicalWorkStartHour !== null && result.typicalWorkStartHour !== undefined ? Number(result.typicalWorkStartHour) : undefined,
+      typicalWorkEndHour: result.typicalWorkEndHour !== null && result.typicalWorkEndHour !== undefined ? Number(result.typicalWorkEndHour) : undefined,
+      hasCompletedSetupWizard: result.hasCompletedSetupWizard === 1,
+      hasCompletedOnboarding: result.hasCompletedOnboarding === 1,
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt)
     };
@@ -631,11 +807,15 @@ export class DatabaseService {
       oxfordHouseId: result.oxfordHouseId,
       position: result.position,
       phoneNumber: result.phoneNumber,
-      baseAddress: result.baseAddress,
+      baseAddress: result.baseAddress || '',
       baseAddress2: result.baseAddress2 || '',
       costCenters: result.costCenters ? JSON.parse(result.costCenters) : [],
       selectedCostCenters: result.selectedCostCenters ? JSON.parse(result.selectedCostCenters) : [],
       defaultCostCenter: result.defaultCostCenter || '',
+      typicalWorkStartHour: result.typicalWorkStartHour !== null && result.typicalWorkStartHour !== undefined ? Number(result.typicalWorkStartHour) : undefined,
+      typicalWorkEndHour: result.typicalWorkEndHour !== null && result.typicalWorkEndHour !== undefined ? Number(result.typicalWorkEndHour) : undefined,
+      hasCompletedSetupWizard: result.hasCompletedSetupWizard === 1,
+      hasCompletedOnboarding: result.hasCompletedOnboarding === 1,
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt)
     };
@@ -672,9 +852,13 @@ export class DatabaseService {
     return result.map((row: any) => ({
       ...row,
       preferredName: row.preferredName || '',
+      baseAddress: row.baseAddress || '',
+      baseAddress2: row.baseAddress2 || '',
       costCenters: row.costCenters ? JSON.parse(row.costCenters) : [],
       selectedCostCenters: row.selectedCostCenters ? JSON.parse(row.selectedCostCenters) : [],
       defaultCostCenter: row.defaultCostCenter || '',
+      typicalWorkStartHour: row.typicalWorkStartHour !== null && row.typicalWorkStartHour !== undefined ? Number(row.typicalWorkStartHour) : undefined,
+      typicalWorkEndHour: row.typicalWorkEndHour !== null && row.typicalWorkEndHour !== undefined ? Number(row.typicalWorkEndHour) : undefined,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
@@ -903,20 +1087,20 @@ export class DatabaseService {
     if (updates.startLocationDetails) {
       simpleFields.push('startLocationName', 'startLocationAddress', 'startLocationLat', 'startLocationLng');
       values.push(
-        updates.startLocationDetails.name || null,
-        updates.startLocationDetails.address || null,
-        updates.startLocationDetails.latitude ?? null,
-        updates.startLocationDetails.longitude ?? null
+        updates.startLocationDetails.name || undefined,
+        updates.startLocationDetails.address || undefined,
+        updates.startLocationDetails.latitude ?? undefined,
+        updates.startLocationDetails.longitude ?? undefined
       );
     }
     
     if (updates.endLocationDetails) {
       simpleFields.push('endLocationName', 'endLocationAddress', 'endLocationLat', 'endLocationLng');
       values.push(
-        updates.endLocationDetails.name || null,
-        updates.endLocationDetails.address || null,
-        updates.endLocationDetails.latitude ?? null,
-        updates.endLocationDetails.longitude ?? null
+        updates.endLocationDetails.name || undefined,
+        updates.endLocationDetails.address || undefined,
+        updates.endLocationDetails.latitude ?? undefined,
+        updates.endLocationDetails.longitude ?? undefined
       );
     }
     
@@ -973,7 +1157,7 @@ export class DatabaseService {
     try {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       SyncIntegrationService.removeFromQueue('mileageEntry', id);
-      console.log('✅ Database: Removed mileage entry from sync queue');
+      debugLog('✅ Database: Removed mileage entry from sync queue');
     } catch (error) {
       console.error('⚠️ Database: Could not remove from sync queue:', error);
     }
@@ -985,9 +1169,9 @@ export class DatabaseService {
         method: 'DELETE',
       });
       if (response.ok) {
-        console.log('✅ Database: Deleted mileage entry from backend');
+        debugLog('✅ Database: Deleted mileage entry from backend');
       } else {
-        console.warn('⚠️ Database: Failed to delete from backend:', response.status);
+        debugWarn('⚠️ Database: Failed to delete from backend:', response.status);
       }
     } catch (error) {
       console.error('⚠️ Database: Could not delete from backend:', error);
@@ -1049,7 +1233,7 @@ export class DatabaseService {
     const database = await getDatabase();
     
     // Log who's creating receipts to debug duplicates
-    console.log('💾 Database: Creating receipt:', {
+    debugLog('💾 Database: Creating receipt:', {
       id,
       vendor: receipt.vendor,
       amount: receipt.amount,
@@ -1120,12 +1304,12 @@ export class DatabaseService {
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear().toString();
 
-    console.log('📊 Database: Getting dashboard stats for employee:', employeeId, 'month:', month, 'year:', year);
-    console.log('📊 Database: Current date:', now.toISOString(), 'month:', (now.getMonth() + 1), 'year:', now.getFullYear());
+    debugLog('📊 Database: Getting dashboard stats for employee:', employeeId, 'month:', month, 'year:', year);
+    debugLog('📊 Database: Current date:', now.toISOString(), 'month:', (now.getMonth() + 1), 'year:', now.getFullYear());
 
     try {
       // Get recent entries and receipts in parallel
-      console.log('🔍 Database: Querying monthly time tracking for:', { employeeId, month, year });
+      debugLog('🔍 Database: Querying monthly time tracking for:', { employeeId, month, year });
       const [recentMileageEntries, recentReceipts, monthlyMileageEntries, monthlyReceipts, monthlyTimeTracking] = await Promise.all([
         // Get recent mileage entries (last 5)
         database.getAllAsync(
@@ -1252,7 +1436,7 @@ export class DatabaseService {
   const totalMileageHours = processedMileageEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
   const totalHours: number = totalTimeTrackingHours + totalMileageHours;
   
-  console.log('🕒 Database: Hours calculation debug:', {
+  debugLog('🕒 Database: Hours calculation debug:', {
     timeTrackingEntries: monthlyTimeTracking.length,
     timeTrackingHours: totalTimeTrackingHours,
     mileageEntriesWithHours: processedMileageEntries.filter(e => e.hoursWorked > 0).length,
@@ -1264,7 +1448,7 @@ export class DatabaseService {
   
   const totalReceipts = processedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
 
-  console.log('📊 Database: Dashboard stats calculated:', {
+  debugLog('📊 Database: Dashboard stats calculated:', {
     recentMileageEntries: processedRecentMileageEntries.length,
     recentReceipts: processedRecentReceipts.length,
     totalMiles,
@@ -1391,16 +1575,16 @@ export class DatabaseService {
 
   static async deleteReceipt(id: string): Promise<void> {
     const database = await getDatabase();
-    console.log('🗑️ Database: Deleting receipt with ID:', id);
+    debugLog('🗑️ Database: Deleting receipt with ID:', id);
     
     const result = await database.runAsync('DELETE FROM receipts WHERE id = ?', [id]);
-    console.log('✅ Database: Receipt deleted, rows affected:', result.changes);
+    debugLog('✅ Database: Receipt deleted, rows affected:', result.changes);
     
     // Remove from sync queue to prevent it from being uploaded to backend
     try {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       SyncIntegrationService.removeFromQueue('receipt', id);
-      console.log('✅ Database: Removed receipt from sync queue');
+      debugLog('✅ Database: Removed receipt from sync queue');
     } catch (error) {
       console.error('⚠️ Database: Could not remove from sync queue:', error);
     }
@@ -1418,10 +1602,10 @@ export class DatabaseService {
     const day = String(reading.date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
     
-    console.log('💾 Database: Creating daily odometer reading');
-    console.log('💾 Database: Employee ID:', reading.employeeId);
-    console.log('💾 Database: Date (local):', dateStr);
-    console.log('💾 Database: Odometer Reading:', reading.odometerReading);
+    debugLog('💾 Database: Creating daily odometer reading');
+    debugLog('💾 Database: Employee ID:', reading.employeeId);
+    debugLog('💾 Database: Date (local):', dateStr);
+    debugLog('💾 Database: Odometer Reading:', reading.odometerReading);
     
     await database.runAsync(
       'INSERT INTO daily_odometer_readings (id, employeeId, date, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -1436,7 +1620,7 @@ export class DatabaseService {
       ]
     );
 
-    console.log('✅ Database: Daily odometer reading created successfully with ID:', id);
+    debugLog('✅ Database: Daily odometer reading created successfully with ID:', id);
 
     const newReading = {
       id,
@@ -1460,23 +1644,23 @@ export class DatabaseService {
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
     
-    console.log('🔍 Database: Looking for odometer reading');
-    console.log('🔍 Database: Employee ID:', employeeId);
-    console.log('🔍 Database: Date string (local):', dateStr);
+    debugLog('🔍 Database: Looking for odometer reading');
+    debugLog('🔍 Database: Employee ID:', employeeId);
+    debugLog('🔍 Database: Date string (local):', dateStr);
     
     const result = await database.getFirstAsync(
       'SELECT * FROM daily_odometer_readings WHERE employeeId = ? AND date = ?',
       [employeeId, dateStr]
     ) as any;
 
-    console.log('🔍 Database: Query result:', result);
+    debugLog('🔍 Database: Query result:', result);
 
     if (!result) {
-      console.log('🔍 Database: No reading found for this date');
+      debugLog('🔍 Database: No reading found for this date');
       return null;
     }
 
-    console.log('🔍 Database: Reading found:', result);
+    debugLog('🔍 Database: Reading found:', result);
     return {
       id: result.id,
       employeeId: result.employeeId,
@@ -1565,7 +1749,7 @@ export class DatabaseService {
       values
     );
     
-    console.log('🔧 Database: Updated daily odometer reading for employee:', employeeId, 'date:', dateStr, 'updates:', updates);
+    debugLog('🔧 Database: Updated daily odometer reading for employee:', employeeId, 'date:', dateStr, 'updates:', updates);
   }
 
   static async deleteDailyOdometerReading(id: string): Promise<void> {
@@ -2071,7 +2255,11 @@ export class DatabaseService {
       { column: 'baseAddress2', type: 'TEXT DEFAULT \'\'' },
       { column: 'selectedCostCenters', type: 'TEXT DEFAULT \'[]\'' },
       { column: 'defaultCostCenter', type: 'TEXT DEFAULT \'\'' },
-      { column: 'preferredName', type: 'TEXT DEFAULT \'\'' }
+      { column: 'preferredName', type: 'TEXT DEFAULT \'\'' },
+      { column: 'typicalWorkStartHour', type: 'INTEGER' },
+      { column: 'typicalWorkEndHour', type: 'INTEGER' },
+      { column: 'hasCompletedSetupWizard', type: 'INTEGER DEFAULT 0' },
+      { column: 'hasCompletedOnboarding', type: 'INTEGER DEFAULT 0' }
     ];
 
     for (const migration of employeeMigrations) {
@@ -2079,10 +2267,10 @@ export class DatabaseService {
         await database.execAsync(`
           ALTER TABLE employees ADD COLUMN ${migration.column} ${migration.type};
         `);
-        console.log(`✅ Added column ${migration.column} to employees table`);
+        debugLog(`✅ Added column ${migration.column} to employees table`);
       } catch (error) {
         // Column already exists, ignore error
-        console.log(`ℹ️ Column ${migration.column} already exists in employees table`);
+        debugLog(`ℹ️ Column ${migration.column} already exists in employees table`);
       }
     }
   }
@@ -2109,10 +2297,10 @@ export class DatabaseService {
         await database.execAsync(`
           ALTER TABLE mileage_entries ADD COLUMN ${migration.column} ${migration.type};
         `);
-        console.log(`✅ Added column ${migration.column} to mileage_entries table`);
+        debugLog(`✅ Added column ${migration.column} to mileage_entries table`);
       } catch (error) {
         // Column already exists, ignore error
-        console.log(`ℹ️ Column ${migration.column} already exists in mileage_entries table`);
+        debugLog(`ℹ️ Column ${migration.column} already exists in mileage_entries table`);
       }
     }
   }
@@ -2122,7 +2310,7 @@ export class DatabaseService {
   static async updateMonthlyReport(reportId: string, updates: Partial<MonthlyReport>): Promise<void> {
     const database = await getDatabase();
     
-    console.log('🔄 Database: Updating monthly report:', reportId, updates);
+    debugLog('🔄 Database: Updating monthly report:', reportId, updates);
     
     const fields = Object.keys(updates).filter(key => 
       key !== 'id' && 
@@ -2141,21 +2329,21 @@ export class DatabaseService {
       
       await database.runAsync(updateQuery, [...values, new Date().toISOString(), reportId] as any[]);
       
-      console.log('✅ Database: Monthly report updated successfully');
+      debugLog('✅ Database: Monthly report updated successfully');
     }
   }
 
   static async deleteMonthlyReport(reportId: string): Promise<void> {
     const database = await getDatabase();
     
-    console.log('🗑️ Database: Deleting monthly report:', reportId);
+    debugLog('🗑️ Database: Deleting monthly report:', reportId);
     
     await database.runAsync(
       'DELETE FROM monthly_reports WHERE id = ?',
       [reportId]
     );
     
-    console.log('✅ Database: Monthly report deleted successfully');
+    debugLog('✅ Database: Monthly report deleted successfully');
   }
 
   /**
@@ -2172,10 +2360,10 @@ export class DatabaseService {
         await database.execAsync(`
           ALTER TABLE receipts ADD COLUMN ${migration.column} ${migration.type};
         `);
-        console.log(`✅ Added column ${migration.column} to receipts table`);
+        debugLog(`✅ Added column ${migration.column} to receipts table`);
       } catch (error) {
         // Column already exists, ignore error
-        console.log(`ℹ️ Column ${migration.column} already exists in receipts table`);
+        debugLog(`ℹ️ Column ${migration.column} already exists in receipts table`);
       }
     }
   }
@@ -2194,10 +2382,10 @@ export class DatabaseService {
         await database.execAsync(`
           ALTER TABLE time_tracking ADD COLUMN ${migration.column} ${migration.type};
         `);
-        console.log(`✅ Added column ${migration.column} to time_tracking table`);
+        debugLog(`✅ Added column ${migration.column} to time_tracking table`);
       } catch (error) {
         // Column already exists, ignore error
-        console.log(`ℹ️ Column ${migration.column} already exists in time_tracking table`);
+        debugLog(`ℹ️ Column ${migration.column} already exists in time_tracking table`);
       }
     }
   }
@@ -2219,30 +2407,33 @@ export class DatabaseService {
       updatedAt: new Date(now)
     };
     
-    console.log('💬 Database: Creating daily description:', dailyDescription);
+    debugLog('💬 Database: Creating daily description:', dailyDescription);
     
     await database.runAsync(
-      `INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, createdAt, updatedAt) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         dailyDescription.id,
         dailyDescription.employeeId,
         dailyDescription.date.toISOString().split('T')[0], // Store as YYYY-MM-DD
         dailyDescription.description,
         dailyDescription.costCenter || '',
+        dailyDescription.stayedOvernight ? 1 : 0,
+        dailyDescription.dayOff ? 1 : 0,
+        dailyDescription.dayOffType || null,
         now,
         now
       ]
     );
     
-    console.log('✅ Database: Daily description created successfully');
+    debugLog('✅ Database: Daily description created successfully');
     return dailyDescription;
   }
 
   static async updateDailyDescription(id: string, updates: Partial<DailyDescription>): Promise<void> {
     const database = await getDatabase();
     
-    console.log('🔄 Database: Updating daily description:', id, updates);
+    debugLog('🔄 Database: Updating daily description:', id, updates);
     
     const fields = Object.keys(updates).filter(key => 
       key !== 'id' && 
@@ -2264,21 +2455,21 @@ export class DatabaseService {
       
       await database.runAsync(updateQuery, [...values, new Date().toISOString(), id] as any[]);
       
-      console.log('✅ Database: Daily description updated successfully');
+      debugLog('✅ Database: Daily description updated successfully');
     }
   }
 
   static async deleteDailyDescription(id: string): Promise<void> {
     const database = await getDatabase();
     
-    console.log('🗑️ Database: Deleting daily description:', id);
+    debugLog('🗑️ Database: Deleting daily description:', id);
     
     await database.runAsync(
       'DELETE FROM daily_descriptions WHERE id = ?',
       [id]
     );
     
-    console.log('✅ Database: Daily description deleted successfully');
+    debugLog('✅ Database: Daily description deleted successfully');
   }
 
   static async getDailyDescription(id: string): Promise<DailyDescription | null> {
@@ -2299,6 +2490,9 @@ export class DatabaseService {
       date: new Date(result.date + 'T00:00:00.000Z'),
       description: result.description,
       costCenter: result.costCenter,
+      stayedOvernight: result.stayedOvernight === 1 || result.stayedOvernight === true,
+      dayOff: result.dayOff === 1 || result.dayOff === true,
+      dayOffType: result.dayOffType || undefined,
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt)
     };
@@ -2325,6 +2519,9 @@ export class DatabaseService {
       date: new Date(result.date + 'T00:00:00.000Z'),
       description: result.description,
       costCenter: result.costCenter,
+      stayedOvernight: result.stayedOvernight === 1 || result.stayedOvernight === true,
+      dayOff: result.dayOff === 1 || result.dayOff === true,
+      dayOffType: result.dayOffType || undefined,
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt)
     }));
@@ -2381,7 +2578,7 @@ export class DatabaseService {
       updatedAt: new Date(now)
     };
     
-    console.log('📊 Database: Creating cost center summary:', summary);
+    debugLog('📊 Database: Creating cost center summary:', summary);
     
     await database.runAsync(
       `INSERT INTO cost_center_summaries (id, employeeId, costCenter, month, year, totalHours, totalMiles, totalReceipts, totalPerDiem, totalExpenses, mileageEntries, receiptEntries, timeTrackingEntries, descriptionEntries, createdAt, updatedAt) 
@@ -2406,14 +2603,14 @@ export class DatabaseService {
       ]
     );
     
-    console.log('✅ Database: Cost center summary created successfully');
+    debugLog('✅ Database: Cost center summary created successfully');
     return summary;
   }
 
   static async updateCostCenterSummary(id: string, updates: Partial<CostCenterSummary>): Promise<void> {
     const database = await getDatabase();
     
-    console.log('🔄 Database: Updating cost center summary:', id, updates);
+    debugLog('🔄 Database: Updating cost center summary:', id, updates);
     
     const fields = Object.keys(updates).filter(key => 
       key !== 'id' && 
@@ -2429,7 +2626,7 @@ export class DatabaseService {
       
       await database.runAsync(updateQuery, [...values, new Date().toISOString(), id] as any[]);
       
-      console.log('✅ Database: Cost center summary updated successfully');
+      debugLog('✅ Database: Cost center summary updated successfully');
     }
   }
 
@@ -2503,14 +2700,14 @@ export class DatabaseService {
   static async deleteCostCenterSummary(id: string): Promise<void> {
     const database = await getDatabase();
     
-    console.log('🗑️ Database: Deleting cost center summary:', id);
+    debugLog('🗑️ Database: Deleting cost center summary:', id);
     
     await database.runAsync(
       'DELETE FROM cost_center_summaries WHERE id = ?',
       [id]
     );
     
-    console.log('✅ Database: Cost center summary deleted successfully');
+    debugLog('✅ Database: Cost center summary deleted successfully');
   }
 
   /**
@@ -2526,17 +2723,117 @@ export class DatabaseService {
         ['%Comcast%', '%Verizon%']
       );
       
-      console.log(`🧹 Database: Cleaned up ${result.changes} old demo receipts`);
+      debugLog(`🧹 Database: Cleaned up ${result.changes} old demo receipts`);
       
       // Also clean up any receipts without proper cost center assignments
       const result2 = await database.runAsync(
         'DELETE FROM receipts WHERE costCenter IS NULL OR costCenter = ""'
       );
       
-      console.log(`🧹 Database: Cleaned up ${result2.changes} receipts without cost centers`);
+      debugLog(`🧹 Database: Cleaned up ${result2.changes} receipts without cost centers`);
       
     } catch (error) {
       console.error('❌ Database: Error cleaning up old receipts:', error);
+    }
+  }
+
+  /**
+   * Check if employee has completed setup
+   * Setup is complete if employee has baseAddress and defaultCostCenter
+   */
+  static async hasCompletedSetup(employeeId: string): Promise<boolean> {
+    try {
+      const employee = await this.getEmployeeById(employeeId);
+      if (!employee) {
+        console.log('🔍 Setup Check: Employee not found');
+        return false;
+      }
+      
+      const baseAddressValue = employee.baseAddress || '';
+      const defaultCostCenterValue = employee.defaultCostCenter || '';
+      
+      const hasBaseAddress = Boolean(baseAddressValue.trim().length > 0);
+      const hasDefaultCostCenter = Boolean(defaultCostCenterValue.trim().length > 0);
+      
+      console.log('🔍 Setup Check:', {
+        employeeId,
+        baseAddress: baseAddressValue,
+        defaultCostCenter: defaultCostCenterValue,
+        hasBaseAddress,
+        hasDefaultCostCenter,
+        hasCompletedSetup: hasBaseAddress && hasDefaultCostCenter
+      });
+      
+      return hasBaseAddress && hasDefaultCostCenter;
+    } catch (error) {
+      console.error('❌ Database: Error checking setup completion:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Mark setup as complete (currently just updates employee record)
+   * The actual completion is determined by baseAddress and defaultCostCenter
+   */
+  static async markSetupComplete(employeeId: string): Promise<void> {
+    // Setup completion is determined by the presence of baseAddress and defaultCostCenter
+    // This method is mainly for logging/tracking purposes
+    debugLog(`✅ Database: Setup marked as complete for employee: ${employeeId}`);
+  }
+
+  /**
+   * Reset setup data for testing purposes
+   * This clears baseAddress, defaultCostCenter, and work hours so the setup wizard can be tested
+   * Also resets the Setup Wizard completion flag
+   * Uses updateEmployee to ensure changes sync to the backend
+   */
+  static async resetSetupData(employeeId: string): Promise<void> {
+    try {
+      const database = await getDatabase();
+      console.log(`🔄 Database: Resetting setup data for employee: ${employeeId}`);
+      
+      // First, check current state
+      const beforeEmployee = await this.getEmployeeById(employeeId);
+      console.log('🔍 Before reset:', {
+        baseAddress: beforeEmployee?.baseAddress,
+        defaultCostCenter: beforeEmployee?.defaultCostCenter,
+        typicalWorkStartHour: beforeEmployee?.typicalWorkStartHour,
+        typicalWorkEndHour: beforeEmployee?.typicalWorkEndHour
+      });
+      
+      // Use updateEmployee to ensure changes sync to backend
+      // Set to empty strings (not NULL) since baseAddress has a NOT NULL constraint
+      // Work hours can be NULL since they're optional
+      await this.updateEmployee(employeeId, {
+        baseAddress: '',
+        defaultCostCenter: '',
+        typicalWorkStartHour: undefined,
+        typicalWorkEndHour: undefined
+      });
+      
+      // Reset the Setup Wizard completion flag
+      await database.runAsync(
+        'UPDATE current_employee SET hasCompletedSetupWizard = 0 WHERE employeeId = ?',
+        [employeeId]
+      );
+      
+      // Verify the reset
+      const afterEmployee = await this.getEmployeeById(employeeId);
+      console.log('🔍 After reset:', {
+        baseAddress: afterEmployee?.baseAddress,
+        defaultCostCenter: afterEmployee?.defaultCostCenter,
+        typicalWorkStartHour: afterEmployee?.typicalWorkStartHour,
+        typicalWorkEndHour: afterEmployee?.typicalWorkEndHour
+      });
+      
+      // Verify hasCompletedSetupWizard returns false
+      const hasCompletedWizard = await this.hasCompletedSetupWizard();
+      console.log('🔍 Setup Wizard completion check after reset:', hasCompletedWizard);
+      
+      console.log(`✅ Database: Setup data reset successfully for employee: ${employeeId} (synced to backend)`);
+    } catch (error) {
+      console.error('❌ Database: Error resetting setup data:', error);
+      throw error;
     }
   }
 }

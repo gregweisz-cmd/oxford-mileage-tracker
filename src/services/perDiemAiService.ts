@@ -1,5 +1,6 @@
 import { MileageEntry, TimeTracking, Employee } from '../types';
 import { DatabaseService } from './database';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 
 export interface PerDiemEligibility {
   isEligible: boolean;
@@ -46,7 +47,7 @@ export class PerDiemAiService {
     date: Date
   ): Promise<PerDiemEligibility> {
     try {
-      console.log('💵 PerDiemAI: Checking eligibility for:', { employeeId, date });
+      debugLog('💵 PerDiemAI: Checking eligibility for:', { employeeId, date });
 
       // Get employee data
       const employees = await DatabaseService.getEmployees();
@@ -112,7 +113,7 @@ export class PerDiemAiService {
         confidence
       };
 
-      console.log('💵 PerDiemAI: Eligibility result:', response);
+      debugLog('💵 PerDiemAI: Eligibility result:', response);
       return response;
 
     } catch (error) {
@@ -383,6 +384,6 @@ export class PerDiemAiService {
    */
   static updatePerDiemRules(rules: PerDiemRule[]): void {
     // In a production app, you'd save this to a configuration database
-    console.log('💵 PerDiemAI: Updated per diem rules:', rules);
+    debugLog('💵 PerDiemAI: Updated per diem rules:', rules);
   }
 }

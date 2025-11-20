@@ -5,18 +5,32 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node scripts/test/test-api.js && node scripts/test/test-websocket.js && node scripts/test/test-database.js",
+    "test:api": "node scripts/test/test-api.js",
+    "test:ws": "node scripts/test/test-websocket.js",
+    "test:db": "node scripts/test/test-database.js",
+    "deploy": "node scripts/deployment/deploy-to-production.js",
+    "deploy:no-push": "node scripts/deployment/deploy-to-production.js --no-push",
+    "deploy:production": "node scripts/deployment/deploy-to-production.js --no-revert"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "sqlite3": "^5.1.6",
-    "cors": "^2.8.5",
-    "body-parser": "^1.20.2",
-    "ws": "^8.14.2",
-    "xlsx": "^0.18.5",
+    "@google-cloud/vision": "^5.3.4",
     "axios": "^1.6.0",
+    "bcryptjs": "^3.0.3",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.18.2",
+    "firebase-admin": "^13.0.1",
+    "jspdf": "^2.5.1",
     "multer": "^1.4.5-lts.1",
-    "jspdf": "^2.5.1"
+    "nodemailer": "^6.9.13",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.17.2",
+    "sqlite3": "^5.1.6",
+    "ws": "^8.14.2",
+    "xlsx": "^0.18.5"
   },
   "engines": {
     "node": ">=18.0.0"

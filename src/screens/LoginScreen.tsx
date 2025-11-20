@@ -16,9 +16,10 @@ import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
+import { GoogleAuthService } from '../services/googleAuthService';
 
 interface LoginScreenProps {
-  navigation: any;
+  navigation?: any;
   onLogin: (employee: Employee) => void;
 }
 
@@ -26,6 +27,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -75,12 +77,14 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
           },
           body: JSON.stringify({
             email: email.toLowerCase(),
-            password: password
+            password: password,
           }),
         });
 
+        const data = await response.json();
+
         if (response.ok) {
-          const employeeData = await response.json();
+          const employeeData = data;
           // Create or update employee in local database with backend ID
           const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
           
@@ -116,6 +120,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               // Set current employee with the existing employee ID
               await DatabaseService.setCurrentEmployee(existingEmployee.id, stayLoggedIn);
               console.log('✅ LoginScreen: Employee updated and logged in:', updatedEmployee.name);
+              
               onLogin(updatedEmployee);
               return;
             } catch (updateError) {
@@ -141,6 +146,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             
             // Set current employee with the new employee ID
             await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
+            
             onLogin(employeeData);
             return;
           }
@@ -158,6 +164,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       if (employee) {
         // Employee exists and password matches, log them in
         await DatabaseService.setCurrentEmployee(employee.id, stayLoggedIn);
+        
         onLogin(employee);
       } else {
         // Employee doesn't exist or password is wrong
@@ -205,6 +212,78 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const isValidEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  };
+
+  // Handle Google Sign-In
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      // Sign in with Google
+      const googleUserInfo = await GoogleAuthService.signInWithGoogle();
+      
+      // Verify with backend and get employee data
+      const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
+      const employeeData = await GoogleAuthService.verifyWithBackend(googleUserInfo);
+      
+      // Create or update employee in local database
+      const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
+      
+      if (existingEmployee) {
+        // Update existing employee
+        await DatabaseService.updateEmployee(existingEmployee.id, {
+          name: employeeData.name,
+          email: employeeData.email,
+          password: '', // No password for Google sign-in
+          oxfordHouseId: employeeData.oxfordHouseId || existingEmployee.oxfordHouseId || '',
+          position: employeeData.position || existingEmployee.position || '',
+          phoneNumber: employeeData.phoneNumber || existingEmployee.phoneNumber || '',
+          baseAddress: employeeData.baseAddress || existingEmployee.baseAddress || '',
+          costCenters: employeeData.costCenters || existingEmployee.costCenters || [],
+          selectedCostCenters: (employeeData.selectedCostCenters && employeeData.selectedCostCenters.length > 0)
+            ? employeeData.selectedCostCenters
+            : (existingEmployee.selectedCostCenters || employeeData.costCenters || []),
+          defaultCostCenter: employeeData.defaultCostCenter
+            || existingEmployee.defaultCostCenter
+            || employeeData.costCenters?.[0]
+            || ''
+        });
+        
+        const updatedEmployee = await DatabaseService.getEmployeeById(existingEmployee.id);
+        if (!updatedEmployee) {
+          Alert.alert('Error', 'Failed to load updated employee data');
+          return;
+        }
+        
+        await DatabaseService.setCurrentEmployee(existingEmployee.id, stayLoggedIn);
+        onLogin(updatedEmployee);
+      } else {
+        // Create new employee
+        await DatabaseService.createEmployee({
+          id: employeeData.id,
+          name: employeeData.name,
+          email: employeeData.email,
+          password: '', // No password for Google sign-in
+          oxfordHouseId: employeeData.oxfordHouseId || '',
+          position: employeeData.position || '',
+          phoneNumber: employeeData.phoneNumber || '',
+          baseAddress: employeeData.baseAddress || '',
+          costCenters: employeeData.costCenters || [],
+          selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
+          defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
+        });
+        
+        await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
+        onLogin(employeeData);
+      }
+    } catch (error) {
+      console.error('Google Sign-In error:', error);
+      Alert.alert(
+        'Sign-In Failed',
+        error instanceof Error ? error.message : 'Failed to sign in with Google. Please try again.'
+      );
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   return (
@@ -299,6 +378,25 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             </Text>
           </TouchableOpacity>
 
+          {/* Divider */}
+          <View style={styles.dividerContainer}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Google Sign-In Button */}
+          <TouchableOpacity
+            style={[styles.googleButton, googleLoading && styles.googleButtonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={googleLoading}
+          >
+            <MaterialIcons name="google" size={24} color="#fff" />
+            <Text style={styles.googleButtonText}>
+              {googleLoading ? 'Signing In...' : 'Sign in with Google'}
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.helpButton}
             onPress={() => setShowEmployeeList(true)}
@@ -339,6 +437,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             </View>
           </View>
         )}
+
         </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -518,5 +617,44 @@ const styles = StyleSheet.create({
   employeePosition: {
     fontSize: 12,
     color: '#999',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ddd',
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4285F4',
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  googleButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  googleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 12,
   },
 });

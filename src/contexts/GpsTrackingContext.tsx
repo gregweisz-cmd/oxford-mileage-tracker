@@ -50,18 +50,8 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
         });
         
         // Update session less frequently to reduce re-renders
-        const session = GpsTrackingService.getCurrentSession();
-        if (session) {
-          setCurrentSession(prevSession => {
-            // Only update if there are meaningful changes
-            if (!prevSession || 
-                Math.abs(session.totalMiles - prevSession.totalMiles) > 0.01 ||
-                session.endLocation !== prevSession.endLocation) {
-              return { ...session };
-            }
-            return prevSession;
-          });
-        }
+        // Note: We're intentionally NOT updating currentSession here to prevent re-renders
+        // The session data is fetched fresh when needed, and this interval already updates distance
       }
     }, 15000); // Update every 15 seconds to minimize performance impact on scrolling
 

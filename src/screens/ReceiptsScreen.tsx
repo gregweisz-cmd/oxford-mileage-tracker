@@ -8,19 +8,45 @@ import {
   Alert,
   Image,
   Modal,
+  TextInput,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { PdfService } from '../services/pdfService';
 import { Receipt, Employee } from '../types';
 
+const RECEIPT_CATEGORIES = [
+  'EES',
+  'Rental Car',
+  'Rental Car Fuel',
+  'Office Supplies',
+  'Ground Transportation',
+  'Phone/Internet/Fax',
+  'Postage/Shipping',
+  'Printing',
+  'Airfare/Bus/Train',
+  'Parking/Tolls',
+  'Hotels/AirBnB',
+  'Per Diem',
+  'Other'
+];
+
 interface ReceiptsScreenProps {
   navigation: any;
+  route?: {
+    params?: {
+      selectedMonth?: number;
+      selectedYear?: number;
+      filterCategory?: string;
+    };
+  };
 }
 
-export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
+export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProps) {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,17 +55,111 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedReceiptIds, setSelectedReceiptIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [allReceipts, setAllReceipts] = useState<Receipt[]>([]);
+  
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterCategory, setFilterCategory] = useState<string>('');
+  const [filterCostCenter, setFilterCostCenter] = useState<string>('');
+  const [filterDateStart, setFilterDateStart] = useState<Date | null>(null);
+  const [filterDateEnd, setFilterDateEnd] = useState<Date | null>(null);
+  const [filterAmountMin, setFilterAmountMin] = useState<string>('');
+  const [filterAmountMax, setFilterAmountMax] = useState<string>('');
+  const [showDateStartPicker, setShowDateStartPicker] = useState(false);
+  const [showDateEndPicker, setShowDateEndPicker] = useState(false);
+
+  // Get month/year from route params, default to current month/year
+  const now = new Date();
+  const selectedMonth = route?.params?.selectedMonth ?? (now.getMonth() + 1);
+  const selectedYear = route?.params?.selectedYear ?? now.getFullYear();
+  const routeFilterCategory = route?.params?.filterCategory;
+  
+  // Initialize filter category from route if provided
+  useEffect(() => {
+    if (routeFilterCategory && !filterCategory) {
+      setFilterCategory(routeFilterCategory);
+    }
+  }, [routeFilterCategory]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedMonth, selectedYear]);
+
+  // Filter receipts based on search query and all filters
+  useEffect(() => {
+    let filtered = [...allReceipts];
+
+    // Apply search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(receipt => {
+        const vendor = receipt.vendor?.toLowerCase() || '';
+        const description = receipt.description?.toLowerCase() || '';
+        const category = receipt.category?.toLowerCase() || '';
+        const costCenter = receipt.costCenter?.toLowerCase() || '';
+        const amount = receipt.amount.toString();
+        
+        return (
+          vendor.includes(query) ||
+          description.includes(query) ||
+          category.includes(query) ||
+          costCenter.includes(query) ||
+          amount.includes(query)
+        );
+      });
+    }
+
+    // Apply category filter
+    if (filterCategory) {
+      filtered = filtered.filter(receipt => receipt.category === filterCategory);
+    }
+
+    // Apply cost center filter
+    if (filterCostCenter) {
+      filtered = filtered.filter(receipt => receipt.costCenter === filterCostCenter);
+    }
+
+    // Apply date range filter
+    if (filterDateStart) {
+      filtered = filtered.filter(receipt => {
+        const receiptDate = new Date(receipt.date);
+        return receiptDate >= filterDateStart;
+      });
+    }
+    if (filterDateEnd) {
+      filtered = filtered.filter(receipt => {
+        const receiptDate = new Date(receipt.date);
+        // Set end date to end of day for inclusive filtering
+        const endDate = new Date(filterDateEnd);
+        endDate.setHours(23, 59, 59, 999);
+        return receiptDate <= endDate;
+      });
+    }
+
+    // Apply amount range filter
+    if (filterAmountMin) {
+      const minAmount = parseFloat(filterAmountMin);
+      if (!isNaN(minAmount)) {
+        filtered = filtered.filter(receipt => receipt.amount >= minAmount);
+      }
+    }
+    if (filterAmountMax) {
+      const maxAmount = parseFloat(filterAmountMax);
+      if (!isNaN(maxAmount)) {
+        filtered = filtered.filter(receipt => receipt.amount <= maxAmount);
+      }
+    }
+    
+    setReceipts(filtered);
+  }, [searchQuery, allReceipts, filterCategory, filterCostCenter, filterDateStart, filterDateEnd, filterAmountMin, filterAmountMax]);
 
   // Refresh data when screen comes into focus (e.g., after adding a receipt)
   useFocusEffect(
     React.useCallback(() => {
       console.log('📄 ReceiptsScreen: Screen focused, refreshing data');
       loadData();
-    }, [])
+    }, [selectedMonth, selectedYear, filterCategory])
   );
 
   const loadData = async () => {
@@ -51,9 +171,17 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
       
       if (employee) {
         setCurrentEmployee(employee);
-        const employeeReceipts = await DatabaseService.getReceipts(employee.id);
-        setReceipts(employeeReceipts);
-        console.log('📄 ReceiptsScreen: Loaded', employeeReceipts.length, 'receipts for', employee.name);
+        
+        // Get receipts for the selected month/year
+        const employeeReceipts = await DatabaseService.getReceipts(
+          employee.id,
+          selectedMonth,
+          selectedYear
+        );
+        
+        // Store all receipts - filters will be applied in useEffect
+        setAllReceipts(employeeReceipts);
+        console.log(`📄 ReceiptsScreen: Loaded ${employeeReceipts.length} receipts for ${employee.name} (${selectedMonth}/${selectedYear})`);
       } else {
         console.log('📄 ReceiptsScreen: No current employee found');
         setReceipts([]);
@@ -74,18 +202,14 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
 
     try {
       console.log('Starting PDF generation for employee:', currentEmployee.name);
-      
-      const now = new Date();
-      const month = now.getMonth() + 1;
-      const year = now.getFullYear();
 
-      console.log(`Getting receipts for ${month}/${year}`);
+      console.log(`Getting receipts for ${selectedMonth}/${selectedYear}`);
 
-      // Get receipts for current month
+      // Get receipts for selected month/year
       const monthlyReceipts = await DatabaseService.getReceipts(
         currentEmployee.id,
-        month,
-        year
+        selectedMonth,
+        selectedYear
       );
 
       console.log('Found receipts:', monthlyReceipts.length);
@@ -107,14 +231,14 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
       const pdfUri = await PdfService.generateMonthlyReceiptsPdf(
         monthlyReceipts,
         currentEmployee,
-        month,
-        year
+        selectedMonth,
+        selectedYear
       );
 
       console.log('PDF generated successfully, sharing...');
 
       // Share PDF
-      await PdfService.shareReceiptsPdf(pdfUri, currentEmployee, month, year);
+      await PdfService.shareReceiptsPdf(pdfUri, currentEmployee, selectedMonth, selectedYear);
 
       Alert.alert('Success', 'Monthly receipts PDF generated and shared successfully');
     } catch (error) {
@@ -199,6 +323,41 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
     }, {} as Record<string, number>);
   };
 
+  // Get available cost centers from receipts
+  const getAvailableCostCenters = () => {
+    const costCenters = new Set<string>();
+    allReceipts.forEach(receipt => {
+      if (receipt.costCenter) {
+        costCenters.add(receipt.costCenter);
+      }
+    });
+    return Array.from(costCenters).sort();
+  };
+
+  // Count active filters
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filterCategory) count++;
+    if (filterCostCenter) count++;
+    if (filterDateStart) count++;
+    if (filterDateEnd) count++;
+    if (filterAmountMin) count++;
+    if (filterAmountMax) count++;
+    return count;
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setFilterCategory('');
+    setFilterCostCenter('');
+    setFilterDateStart(null);
+    setFilterDateEnd(null);
+    setFilterAmountMin('');
+    setFilterAmountMax('');
+  };
+
+  const hasActiveFilters = getActiveFilterCount() > 0;
+
   // Multi-select functions
   const toggleMultiSelectMode = () => {
     setMultiSelectMode(!multiSelectMode);
@@ -231,9 +390,25 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
     }
 
     const selectedCount = selectedReceiptIds.size;
+    const selectedReceipts = receipts.filter(receipt => selectedReceiptIds.has(receipt.id));
+    const totalAmount = selectedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
+    
+    // Build summary of what will be deleted
+    const categorySummary = selectedReceipts.reduce((summary, receipt) => {
+      summary[receipt.category] = (summary[receipt.category] || 0) + 1;
+      return summary;
+    }, {} as Record<string, number>);
+    
+    const categoryBreakdown = Object.entries(categorySummary)
+      .map(([category, count]) => `  • ${category}: ${count} receipt${count > 1 ? 's' : ''}`)
+      .join('\n');
+
     Alert.alert(
       'Delete Selected Receipts',
-      `Are you sure you want to delete ${selectedCount} receipt${selectedCount > 1 ? 's' : ''}?`,
+      `Are you sure you want to delete ${selectedCount} receipt${selectedCount > 1 ? 's' : ''}?\n\n` +
+      `Total Amount: $${totalAmount.toFixed(2)}\n\n` +
+      `Breakdown by Category:\n${categoryBreakdown}\n\n` +
+      `This action cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -242,24 +417,54 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
           onPress: async () => {
             try {
               setLoading(true);
-              const deletePromises = Array.from(selectedReceiptIds).map(id => 
-                DatabaseService.deleteReceipt(id)
-              );
-              await Promise.all(deletePromises);
               
-              Alert.alert('Success', `${selectedCount} receipt${selectedCount > 1 ? 's' : ''} deleted successfully`);
+              // Delete receipts one by one to track successes and failures
+              const deleteResults = await Promise.allSettled(
+                Array.from(selectedReceiptIds).map(id => DatabaseService.deleteReceipt(id))
+              );
+              
+              const successCount = deleteResults.filter(result => result.status === 'fulfilled').length;
+              const failureCount = deleteResults.filter(result => result.status === 'rejected').length;
+              
+              // Log any failures for debugging
+              deleteResults.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                  const receiptId = Array.from(selectedReceiptIds)[index];
+                  console.error(`Failed to delete receipt ${receiptId}:`, result.reason);
+                }
+              });
+              
+              if (failureCount === 0) {
+                Alert.alert(
+                  'Success', 
+                  `${successCount} receipt${successCount > 1 ? 's' : ''} deleted successfully`
+                );
+              } else if (successCount > 0) {
+                Alert.alert(
+                  'Partial Success',
+                  `${successCount} receipt${successCount > 1 ? 's' : ''} deleted successfully.\n` +
+                  `${failureCount} receipt${failureCount > 1 ? 's' : ''} could not be deleted.`
+                );
+              } else {
+                Alert.alert(
+                  'Error',
+                  `Failed to delete ${failureCount} receipt${failureCount > 1 ? 's' : ''}. Please try again.`
+                );
+              }
+              
               setMultiSelectMode(false);
               setSelectedReceiptIds(new Set());
               loadData(); // Refresh the list
             } catch (error) {
               console.error('Error deleting receipts:', error);
-              Alert.alert('Error', 'Failed to delete some receipts');
+              Alert.alert('Error', 'Failed to delete receipts. Please try again.');
             } finally {
               setLoading(false);
             }
           },
         },
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
@@ -282,7 +487,9 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {multiSelectMode ? `Select Receipts (${selectedReceiptIds.size})` : 'Receipts'}
+          {multiSelectMode 
+            ? `Select Receipts (${selectedReceiptIds.size})` 
+            : `Receipts${filterCategory ? ` - ${filterCategory}` : ''} (${new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`}
         </Text>
         <View style={styles.headerRight}>
           {multiSelectMode && (
@@ -299,6 +506,185 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search receipts by vendor, description, amount, category..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              style={styles.clearSearchButton}
+            >
+              <MaterialIcons name="close" size={20} color="#999" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Filter Button */}
+        <View style={styles.filterHeader}>
+          <TouchableOpacity
+            style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <MaterialIcons 
+              name={showFilters ? "filter-list" : "filter-list"} 
+              size={20} 
+              color={hasActiveFilters ? "#fff" : "#2196F3"} 
+            />
+            <Text style={[styles.filterButtonText, hasActiveFilters && styles.filterButtonTextActive]}>
+              Filters {hasActiveFilters ? `(${getActiveFilterCount()})` : ''}
+            </Text>
+          </TouchableOpacity>
+          {hasActiveFilters && (
+            <TouchableOpacity
+              style={styles.clearFiltersButton}
+              onPress={clearAllFilters}
+            >
+              <MaterialIcons name="clear" size={18} color="#666" />
+              <Text style={styles.clearFiltersText}>Clear</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Filters Panel */}
+        {showFilters && (
+          <View style={styles.filtersPanel}>
+            {/* Category Filter */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Category</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChips}>
+                <TouchableOpacity
+                  style={[styles.filterChip, !filterCategory && styles.filterChipActive]}
+                  onPress={() => setFilterCategory('')}
+                >
+                  <Text style={[styles.filterChipText, !filterCategory && styles.filterChipTextActive]}>
+                    All
+                  </Text>
+                </TouchableOpacity>
+                {RECEIPT_CATEGORIES.map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[styles.filterChip, filterCategory === category && styles.filterChipActive]}
+                    onPress={() => setFilterCategory(category)}
+                  >
+                    <Text style={[styles.filterChipText, filterCategory === category && styles.filterChipTextActive]}>
+                      {category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Cost Center Filter */}
+            {getAvailableCostCenters().length > 0 && (
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>Cost Center</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChips}>
+                  <TouchableOpacity
+                    style={[styles.filterChip, !filterCostCenter && styles.filterChipActive]}
+                    onPress={() => setFilterCostCenter('')}
+                  >
+                    <Text style={[styles.filterChipText, !filterCostCenter && styles.filterChipTextActive]}>
+                      All
+                    </Text>
+                  </TouchableOpacity>
+                  {getAvailableCostCenters().map((costCenter) => (
+                    <TouchableOpacity
+                      key={costCenter}
+                      style={[styles.filterChip, filterCostCenter === costCenter && styles.filterChipActive]}
+                      onPress={() => setFilterCostCenter(costCenter)}
+                    >
+                      <Text style={[styles.filterChipText, filterCostCenter === costCenter && styles.filterChipTextActive]}>
+                        {costCenter}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Date Range Filter */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Date Range</Text>
+              <View style={styles.dateRangeContainer}>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowDateStartPicker(true)}
+                >
+                  <MaterialIcons name="calendar-today" size={18} color="#666" />
+                  <Text style={styles.dateButtonText}>
+                    {filterDateStart ? formatDate(filterDateStart) : 'Start Date'}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.dateRangeSeparator}>to</Text>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowDateEndPicker(true)}
+                >
+                  <MaterialIcons name="calendar-today" size={18} color="#666" />
+                  <Text style={styles.dateButtonText}>
+                    {filterDateEnd ? formatDate(filterDateEnd) : 'End Date'}
+                  </Text>
+                </TouchableOpacity>
+                {(filterDateStart || filterDateEnd) && (
+                  <TouchableOpacity
+                    style={styles.clearDateButton}
+                    onPress={() => {
+                      setFilterDateStart(null);
+                      setFilterDateEnd(null);
+                    }}
+                  >
+                    <MaterialIcons name="close" size={18} color="#666" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Amount Range Filter */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Amount Range</Text>
+              <View style={styles.amountRangeContainer}>
+                <TextInput
+                  style={styles.amountInput}
+                  placeholder="Min"
+                  placeholderTextColor="#999"
+                  value={filterAmountMin}
+                  onChangeText={setFilterAmountMin}
+                  keyboardType="numeric"
+                />
+                <Text style={styles.amountRangeSeparator}>to</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  placeholder="Max"
+                  placeholderTextColor="#999"
+                  value={filterAmountMax}
+                  onChangeText={setFilterAmountMax}
+                  keyboardType="numeric"
+                />
+                {(filterAmountMin || filterAmountMax) && (
+                  <TouchableOpacity
+                    style={styles.clearDateButton}
+                    onPress={() => {
+                      setFilterAmountMin('');
+                      setFilterAmountMax('');
+                    }}
+                  >
+                    <MaterialIcons name="close" size={18} color="#666" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Summary Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
@@ -395,9 +781,15 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
           {receipts.length === 0 ? (
             <View style={styles.emptyState}>
               <MaterialIcons name="receipt" size={48} color="#ccc" />
-              <Text style={styles.emptyStateText}>No receipts added yet</Text>
+              <Text style={styles.emptyStateText}>
+                {hasActiveFilters || searchQuery.trim() 
+                  ? 'No receipts found matching your filters' 
+                  : 'No receipts added yet'}
+              </Text>
               <Text style={styles.emptyStateSubtext}>
-                Tap the + button to add your first receipt
+                {hasActiveFilters || searchQuery.trim() 
+                  ? 'Try adjusting your filters or search terms' 
+                  : 'Tap the + button to add your first receipt'}
               </Text>
             </View>
           ) : (
@@ -504,6 +896,103 @@ export default function ReceiptsScreen({ navigation }: ReceiptsScreenProps) {
         </View>
       </Modal>
 
+      {/* Date Picker Modals */}
+      {showDateStartPicker && (
+        <>
+          {Platform.OS === 'ios' && (
+            <Modal
+              visible={showDateStartPicker}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setShowDateStartPicker(false)}
+            >
+              <View style={styles.modalContainer}>
+                <View style={styles.datePickerModalContent}>
+                  <View style={styles.datePickerHeader}>
+                    <Text style={styles.datePickerTitle}>Select Start Date</Text>
+                    <TouchableOpacity onPress={() => setShowDateStartPicker(false)}>
+                      <MaterialIcons name="close" size={24} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={filterDateStart || new Date()}
+                    mode="date"
+                    display="spinner"
+                    onChange={(event, selectedDate) => {
+                      if (event.type === 'set' && selectedDate) {
+                        setFilterDateStart(selectedDate);
+                      }
+                      setShowDateStartPicker(false);
+                    }}
+                  />
+                </View>
+              </View>
+            </Modal>
+          )}
+          {Platform.OS === 'android' && (
+            <DateTimePicker
+              value={filterDateStart || new Date()}
+              mode="date"
+              display="default"
+              onChange={(event, selectedDate) => {
+                setShowDateStartPicker(false);
+                if (event.type === 'set' && selectedDate) {
+                  setFilterDateStart(selectedDate);
+                }
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {showDateEndPicker && (
+        <>
+          {Platform.OS === 'ios' && (
+            <Modal
+              visible={showDateEndPicker}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setShowDateEndPicker(false)}
+            >
+              <View style={styles.modalContainer}>
+                <View style={styles.datePickerModalContent}>
+                  <View style={styles.datePickerHeader}>
+                    <Text style={styles.datePickerTitle}>Select End Date</Text>
+                    <TouchableOpacity onPress={() => setShowDateEndPicker(false)}>
+                      <MaterialIcons name="close" size={24} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={filterDateEnd || new Date()}
+                    mode="date"
+                    display="spinner"
+                    onChange={(event, selectedDate) => {
+                      if (event.type === 'set' && selectedDate) {
+                        setFilterDateEnd(selectedDate);
+                      }
+                      setShowDateEndPicker(false);
+                    }}
+                  />
+                </View>
+              </View>
+            </Modal>
+          )}
+          {Platform.OS === 'android' && (
+            <DateTimePicker
+              value={filterDateEnd || new Date()}
+              mode="date"
+              display="default"
+              onChange={(event, selectedDate) => {
+                setShowDateEndPicker(false);
+                if (event.type === 'set' && selectedDate) {
+                  setFilterDateEnd(selectedDate);
+                }
+              }}
+            />
+          )}
+        </>
+      )}
+
       {/* Receipt Details Modal */}
       <Modal
         visible={showDetailsModal}
@@ -608,6 +1097,34 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  clearSearchButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -1038,6 +1555,164 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  // Filter styles
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    backgroundColor: '#fff',
+  },
+  filterButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  filterButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2196F3',
+    marginLeft: 8,
+  },
+  filterButtonTextActive: {
+    color: '#fff',
+  },
+  clearFiltersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 4,
+  },
+  filtersPanel: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  filterSection: {
+    marginBottom: 20,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  filterChips: {
+    flexDirection: 'row',
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  filterChipActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  filterChipText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  filterChipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  dateRangeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginRight: 8,
+  },
+  dateButtonText: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 8,
+  },
+  dateRangeSeparator: {
+    fontSize: 14,
+    color: '#666',
+    marginHorizontal: 8,
+  },
+  clearDateButton: {
+    padding: 8,
+  },
+  amountRangeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  amountInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    fontSize: 14,
+    color: '#333',
+    marginRight: 8,
+  },
+  amountRangeSeparator: {
+    fontSize: 14,
+    color: '#666',
+    marginHorizontal: 8,
+  },
+  datePickerModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+    maxHeight: '50%',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
   },
 });
 

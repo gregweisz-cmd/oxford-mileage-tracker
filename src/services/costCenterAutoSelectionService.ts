@@ -4,471 +4,200 @@
  */
 
 import { DatabaseService } from './database';
-import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
+import { MileageEntry, Employee } from '../types';
+import { debugLog } from '../config/debug';
 
-interface CostCenterFrequency {
+export interface CostCenterSuggestion {
   costCenter: string;
-  count: number;
-  lastUsed: Date;
-}
-
-interface CostCenterContext {
-  destination?: string;
-  purpose?: string;
-  category?: string; // For receipts
-  screen: 'mileage' | 'receipt' | 'timeTracking' | 'description';
+  reason: 'same_destination' | 'most_frequent' | 'default';
+  confidence: 'high' | 'medium' | 'low';
 }
 
 export class CostCenterAutoSelectionService {
-  private static lastUsedCache = new Map<string, string>(); // In-memory cache for performance
-  
   /**
-   * Get smart cost center suggestion based on context
+   * Get suggested cost center for a new mileage entry
+   * Priority:
+   * 1. Same destination - if we've been to this location before, use that cost center
+   * 2. Most frequent - use the cost center used most often by this employee
+   * 3. Default - use the employee's default cost center
    */
-  static async suggestCostCenter(
-    employee: Employee,
-    context: CostCenterContext
-  ): Promise<string> {
-    try {
-      // Priority 1: Check for same destination in recent entries
-      if (context.destination && context.screen === 'mileage') {
-        const destinationCostCenter = await this.getCostCenterForDestination(
-          employee.id,
-          context.destination
-        );
-        if (destinationCostCenter) {
-          console.log(`📍 CostCenter: Using cost center from previous trip to "${context.destination}": ${destinationCostCenter}`);
-          return destinationCostCenter;
-        }
-      }
-
-      // Priority 2: Check for same purpose/category
-      if (context.purpose && context.screen === 'mileage') {
-        const purposeCostCenter = await this.getCostCenterForPurpose(
-          employee.id,
-          context.purpose
-        );
-        if (purposeCostCenter) {
-          console.log(`📍 CostCenter: Using cost center from previous "${context.purpose}" trips: ${purposeCostCenter}`);
-          return purposeCostCenter;
-        }
-      }
-
-      if (context.category && context.screen === 'receipt') {
-        const categoryCostCenter = await this.getCostCenterForReceiptCategory(
-          employee.id,
-          context.category
-        );
-        if (categoryCostCenter) {
-          console.log(`📍 CostCenter: Using cost center from previous "${context.category}" receipts: ${categoryCostCenter}`);
-          return categoryCostCenter;
-        }
-      }
-
-      // Priority 3: Get last used cost center for this screen
-      const lastUsed = await this.getLastUsedCostCenter(employee.id, context.screen);
-      if (lastUsed) {
-        console.log(`📍 CostCenter: Using last cost center for ${context.screen}: ${lastUsed}`);
-        return lastUsed;
-      }
-
-      // Priority 4: Get most frequently used cost center
-      const mostFrequent = await this.getMostFrequentCostCenter(employee.id);
-      if (mostFrequent) {
-        console.log(`📍 CostCenter: Using most frequent cost center: ${mostFrequent}`);
-        return mostFrequent;
-      }
-
-      // Priority 5: Use employee's default cost center
-      if (employee.defaultCostCenter) {
-        console.log(`📍 CostCenter: Using employee default: ${employee.defaultCostCenter}`);
-        return employee.defaultCostCenter;
-      }
-
-      // Priority 6: Use first available cost center
-      const firstCostCenter = employee.costCenters?.[0] || 'Program Services';
-      console.log(`📍 CostCenter: Using first available: ${firstCostCenter}`);
-      return firstCostCenter;
-
-    } catch (error) {
-      console.error('❌ CostCenter: Error suggesting cost center:', error);
-      return employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
-    }
-  }
-
-  /**
-   * Get cost center used for a specific destination
-   */
-  private static async getCostCenterForDestination(
+  static async getSuggestion(
     employeeId: string,
-    destination: string
-  ): Promise<string | null> {
+    endLocation: string,
+    employee?: Employee
+  ): Promise<CostCenterSuggestion | null> {
     try {
-      const entries = await DatabaseService.getMileageEntries(employeeId);
-      
-      // Find entries with similar destination (case-insensitive partial match)
-      const matchingEntries = entries.filter(entry => {
-        const endLocation = entry.endLocation?.toLowerCase() || '';
-        const endLocationName = entry.endLocationDetails?.name?.toLowerCase() || '';
-        const searchTerm = destination.toLowerCase();
-        
-        return endLocation.includes(searchTerm) || 
-               endLocationName.includes(searchTerm) ||
-               searchTerm.includes(endLocation) ||
-               searchTerm.includes(endLocationName);
-      });
-
-      if (matchingEntries.length > 0) {
-        // Get the most recent entry's cost center
-        const sortedEntries = matchingEntries.sort((a, b) => 
-          b.date.getTime() - a.date.getTime()
-        );
-        return sortedEntries[0].costCenter || null;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('❌ CostCenter: Error getting cost center for destination:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get cost center used for a specific purpose
-   */
-  private static async getCostCenterForPurpose(
-    employeeId: string,
-    purpose: string
-  ): Promise<string | null> {
-    try {
-      const entries = await DatabaseService.getMileageEntries(employeeId);
-      
-      // Find entries with similar purpose (case-insensitive partial match)
-      const matchingEntries = entries.filter(entry => {
-        const entryPurpose = entry.purpose?.toLowerCase() || '';
-        const searchTerm = purpose.toLowerCase();
-        
-        return entryPurpose.includes(searchTerm) || searchTerm.includes(entryPurpose);
-      });
-
-      if (matchingEntries.length > 0) {
-        // Get the most common cost center for this purpose
-        const costCenterCounts = new Map<string, number>();
-        matchingEntries.forEach(entry => {
-          if (entry.costCenter) {
-            costCenterCounts.set(entry.costCenter, (costCenterCounts.get(entry.costCenter) || 0) + 1);
-          }
-        });
-
-        // Find the most frequent
-        let maxCount = 0;
-        let mostFrequentCostCenter: string | null = null;
-        costCenterCounts.forEach((count, costCenter) => {
-          if (count > maxCount) {
-            maxCount = count;
-            mostFrequentCostCenter = costCenter;
-          }
-        });
-
-        return mostFrequentCostCenter;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('❌ CostCenter: Error getting cost center for purpose:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get cost center used for a specific receipt category
-   */
-  private static async getCostCenterForReceiptCategory(
-    employeeId: string,
-    category: string
-  ): Promise<string | null> {
-    try {
-      const receipts = await DatabaseService.getReceipts(employeeId);
-      
-      // Find receipts with same category
-      const matchingReceipts = receipts.filter(receipt => 
-        receipt.category?.toLowerCase() === category.toLowerCase()
-      );
-
-      if (matchingReceipts.length > 0) {
-        // Get the most common cost center for this category
-        const costCenterCounts = new Map<string, number>();
-        matchingReceipts.forEach(receipt => {
-          const costCenter = (receipt as any).costCenter;
-          if (costCenter) {
-            costCenterCounts.set(costCenter, (costCenterCounts.get(costCenter) || 0) + 1);
-          }
-        });
-
-        // Find the most frequent
-        let maxCount = 0;
-        let mostFrequentCostCenter: string | null = null;
-        costCenterCounts.forEach((count, costCenter) => {
-          if (count > maxCount) {
-            maxCount = count;
-            mostFrequentCostCenter = costCenter;
-          }
-        });
-
-        return mostFrequentCostCenter;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('❌ CostCenter: Error getting cost center for category:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get last used cost center for a specific screen
-   */
-  static async getLastUsedCostCenter(
-    employeeId: string,
-    screen: 'mileage' | 'receipt' | 'timeTracking' | 'description'
-  ): Promise<string | null> {
-    try {
-      const key = `${employeeId}_${screen}`;
-      
-      // Check cache first
-      if (this.lastUsedCache.has(key)) {
-        return this.lastUsedCache.get(key) || null;
-      }
-
-      // Get from most recent entry of that type
-      let costCenter: string | null = null;
-
-      switch (screen) {
-        case 'mileage':
-          const mileageEntries = await DatabaseService.getRecentMileageEntries(employeeId, 1);
-          costCenter = mileageEntries[0]?.costCenter || null;
-          break;
-        case 'receipt':
-          const receipts = await DatabaseService.getReceipts(employeeId);
-          if (receipts.length > 0) {
-            const sortedReceipts = receipts.sort((a, b) => b.date.getTime() - a.date.getTime());
-            costCenter = (sortedReceipts[0] as any).costCenter || null;
-          }
-          break;
-        case 'timeTracking':
-          const timeTracking = await DatabaseService.getTimeTrackingEntries(employeeId);
-          if (timeTracking.length > 0) {
-            const sortedTracking = timeTracking.sort((a, b) => b.date.getTime() - a.date.getTime());
-            costCenter = sortedTracking[0].costCenter || null;
-          }
-          break;
-        case 'description':
-          const descriptions = await DatabaseService.getDailyDescriptions(employeeId);
-          if (descriptions.length > 0) {
-            const sortedDescriptions = descriptions.sort((a, b) => b.date.getTime() - a.date.getTime());
-            costCenter = sortedDescriptions[0].costCenter || null;
-          }
-          break;
-      }
-
-      // Cache the result
-      if (costCenter) {
-        this.lastUsedCache.set(key, costCenter);
-      }
-
-      return costCenter;
-    } catch (error) {
-      console.error('❌ CostCenter: Error getting last used cost center:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Save last used cost center for a specific screen
-   */
-  static async saveLastUsedCostCenter(
-    employeeId: string,
-    screen: 'mileage' | 'receipt' | 'timeTracking' | 'description',
-    costCenter: string
-  ): Promise<void> {
-    try {
-      const key = `${employeeId}_${screen}`;
-      this.lastUsedCache.set(key, costCenter);
-      // Note: The actual save happens when the entry/receipt/tracking is created
-    } catch (error) {
-      console.error('❌ CostCenter: Error saving last used cost center:', error);
-    }
-  }
-
-  /**
-   * Get most frequently used cost center across all activities
-   */
-  private static async getMostFrequentCostCenter(employeeId: string): Promise<string | null> {
-    try {
-      const [mileageEntries, receipts, timeTracking] = await Promise.all([
-        DatabaseService.getMileageEntries(employeeId),
-        DatabaseService.getReceipts(employeeId),
-        DatabaseService.getTimeTrackingEntries(employeeId)
-      ]);
-
-      const costCenterCounts = new Map<string, CostCenterFrequency>();
-
-      // Count from mileage entries
-      mileageEntries.forEach(entry => {
-        if (entry.costCenter) {
-          const existing = costCenterCounts.get(entry.costCenter);
-          if (existing) {
-            existing.count++;
-            if (entry.date > existing.lastUsed) {
-              existing.lastUsed = entry.date;
-            }
-          } else {
-            costCenterCounts.set(entry.costCenter, {
-              costCenter: entry.costCenter,
-              count: 1,
-              lastUsed: entry.date
-            });
-          }
-        }
-      });
-
-      // Count from receipts
-      receipts.forEach(receipt => {
-        const costCenter = (receipt as any).costCenter;
-        if (costCenter) {
-          const existing = costCenterCounts.get(costCenter);
-          if (existing) {
-            existing.count++;
-            if (receipt.date > existing.lastUsed) {
-              existing.lastUsed = receipt.date;
-            }
-          } else {
-            costCenterCounts.set(costCenter, {
-              costCenter: costCenter,
-              count: 1,
-              lastUsed: receipt.date
-            });
-          }
-        }
-      });
-
-      // Count from time tracking
-      timeTracking.forEach(entry => {
-        if (entry.costCenter) {
-          const existing = costCenterCounts.get(entry.costCenter);
-          if (existing) {
-            existing.count++;
-            if (entry.date > existing.lastUsed) {
-              existing.lastUsed = entry.date;
-            }
-          } else {
-            costCenterCounts.set(entry.costCenter, {
-              costCenter: entry.costCenter,
-              count: 1,
-              lastUsed: entry.date
-            });
-          }
-        }
-      });
-
-      if (costCenterCounts.size === 0) {
+      if (!endLocation || !endLocation.trim()) {
         return null;
       }
 
-      // Find the most frequent, with recency as tiebreaker
-      let mostFrequent: CostCenterFrequency | null = null;
-      costCenterCounts.forEach(freq => {
-        if (!mostFrequent || 
-            freq.count > mostFrequent.count ||
-            (freq.count === mostFrequent.count && freq.lastUsed > mostFrequent.lastUsed)) {
-          mostFrequent = freq;
-        }
-      });
+      const trimmedLocation = endLocation.trim().toLowerCase();
 
-      return mostFrequent?.costCenter || null;
+      // Load employee if not provided
+      let currentEmployee = employee;
+      if (!currentEmployee) {
+        currentEmployee = await DatabaseService.getCurrentEmployee();
+        if (!currentEmployee) {
+          debugLog('No employee found for cost center suggestion');
+          return null;
+        }
+      }
+
+      // Get all mileage entries for this employee
+      const allEntries = await DatabaseService.getMileageEntries(employeeId);
+
+      // Strategy 1: Check for same destination
+      const sameDestinationEntries = allEntries.filter(entry => {
+        const entryLocation = (entry.endLocation || '').trim().toLowerCase();
+        // Exact match or check if locations are similar (within 50 characters and 80% similarity)
+        return entryLocation === trimmedLocation || 
+               (entryLocation.length > 0 && trimmedLocation.length > 0 &&
+                this.calculateLocationSimilarity(entryLocation, trimmedLocation) > 0.8);
+      }).filter(entry => entry.costCenter && entry.costCenter.trim());
+
+      if (sameDestinationEntries.length > 0) {
+        // Find the most frequently used cost center for this destination
+        const costCenterCounts = new Map<string, number>();
+        sameDestinationEntries.forEach(entry => {
+          const cc = entry.costCenter.trim();
+          costCenterCounts.set(cc, (costCenterCounts.get(cc) || 0) + 1);
+        });
+
+        // Get the most frequent one
+        let maxCount = 0;
+        let mostFrequentCC = '';
+        costCenterCounts.forEach((count, cc) => {
+          if (count > maxCount) {
+            maxCount = count;
+            mostFrequentCC = cc;
+          }
+        });
+
+        if (mostFrequentCC) {
+          debugLog(`Cost center suggestion: ${mostFrequentCC} (same destination, used ${maxCount} times)`);
+          return {
+            costCenter: mostFrequentCC,
+            reason: 'same_destination',
+            confidence: maxCount >= 3 ? 'high' : maxCount >= 2 ? 'medium' : 'low'
+          };
+        }
+      }
+
+      // Strategy 2: Most frequently used cost center overall
+      const entriesWithCostCenter = allEntries.filter(
+        entry => entry.costCenter && entry.costCenter.trim()
+      );
+
+      if (entriesWithCostCenter.length > 0) {
+        const costCenterCounts = new Map<string, number>();
+        entriesWithCostCenter.forEach(entry => {
+          const cc = entry.costCenter.trim();
+          costCenterCounts.set(cc, (costCenterCounts.get(cc) || 0) + 1);
+        });
+
+        // Get the most frequent one
+        let maxCount = 0;
+        let mostFrequentCC = '';
+        costCenterCounts.forEach((count, cc) => {
+          if (count > maxCount) {
+            maxCount = count;
+            mostFrequentCC = cc;
+          }
+        });
+
+        if (mostFrequentCC) {
+          const totalEntries = entriesWithCostCenter.length;
+          const usagePercentage = (maxCount / totalEntries) * 100;
+          
+          debugLog(`Cost center suggestion: ${mostFrequentCC} (most frequent, used ${maxCount}/${totalEntries} times, ${usagePercentage.toFixed(1)}%)`);
+          
+          return {
+            costCenter: mostFrequentCC,
+            reason: 'most_frequent',
+            confidence: usagePercentage >= 50 ? 'high' : usagePercentage >= 30 ? 'medium' : 'low'
+          };
+        }
+      }
+
+      // Strategy 3: Use employee's default cost center
+      if (currentEmployee.defaultCostCenter) {
+        debugLog(`Cost center suggestion: ${currentEmployee.defaultCostCenter} (employee default)`);
+        return {
+          costCenter: currentEmployee.defaultCostCenter,
+          reason: 'default',
+          confidence: 'medium'
+        };
+      }
+
+      // Strategy 4: Use first selected cost center if no default
+      if (currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 0) {
+        const firstCC = currentEmployee.selectedCostCenters[0];
+        debugLog(`Cost center suggestion: ${firstCC} (first selected)`);
+        return {
+          costCenter: firstCC,
+          reason: 'default',
+          confidence: 'low'
+        };
+      }
+
+      return null;
     } catch (error) {
-      console.error('❌ CostCenter: Error getting most frequent cost center:', error);
+      console.error('Error getting cost center suggestion:', error);
       return null;
     }
   }
 
   /**
-   * Get cost center statistics for an employee
+   * Calculate similarity between two location strings
+   * Uses simple character-based similarity (can be enhanced with Levenshtein distance)
    */
-  static async getCostCenterStats(employeeId: string): Promise<{
-    mostFrequent: string | null;
-    distribution: Map<string, number>;
-    recentlyUsed: string[];
-  }> {
-    try {
-      const [mileageEntries, receipts, timeTracking] = await Promise.all([
-        DatabaseService.getMileageEntries(employeeId),
-        DatabaseService.getReceipts(employeeId),
-        DatabaseService.getTimeTrackingEntries(employeeId)
-      ]);
+  private static calculateLocationSimilarity(loc1: string, loc2: string): number {
+    // Normalize locations
+    const normalize = (str: string) => 
+      str.toLowerCase()
+        .replace(/[^\w\s]/g, '') // Remove punctuation
+        .replace(/\s+/g, ' ')     // Normalize whitespace
+        .trim();
 
-      const costCenterCounts = new Map<string, CostCenterFrequency>();
+    const n1 = normalize(loc1);
+    const n2 = normalize(loc2);
 
-      // Aggregate all cost center usage
-      const processCostCenter = (costCenter: string | undefined, date: Date) => {
-        if (!costCenter) return;
-        
-        const existing = costCenterCounts.get(costCenter);
-        if (existing) {
-          existing.count++;
-          if (date > existing.lastUsed) {
-            existing.lastUsed = date;
-          }
-        } else {
-          costCenterCounts.set(costCenter, {
-            costCenter,
-            count: 1,
-            lastUsed: date
-          });
-        }
-      };
+    // Exact match
+    if (n1 === n2) return 1.0;
 
-      mileageEntries.forEach(entry => processCostCenter(entry.costCenter, entry.date));
-      receipts.forEach(receipt => processCostCenter((receipt as any).costCenter, receipt.date));
-      timeTracking.forEach(entry => processCostCenter(entry.costCenter, entry.date));
+    // Check if one contains the other
+    if (n1.includes(n2) || n2.includes(n1)) {
+      const longer = Math.max(n1.length, n2.length);
+      const shorter = Math.min(n1.length, n2.length);
+      return shorter / longer;
+    }
 
-      // Get distribution
-      const distribution = new Map<string, number>();
-      costCenterCounts.forEach((freq, costCenter) => {
-        distribution.set(costCenter, freq.count);
-      });
+    // Calculate character overlap
+    const set1 = new Set(n1.split(''));
+    const set2 = new Set(n2.split(''));
+    
+    let intersection = 0;
+    set1.forEach(char => {
+      if (set2.has(char)) intersection++;
+    });
 
-      // Get most frequent
-      let mostFrequent: string | null = null;
-      let maxCount = 0;
-      costCenterCounts.forEach(freq => {
-        if (freq.count > maxCount) {
-          maxCount = freq.count;
-          mostFrequent = freq.costCenter;
-        }
-      });
+    const union = set1.size + set2.size - intersection;
+    return union > 0 ? intersection / union : 0;
+  }
 
-      // Get recently used (last 30 days, sorted by recency)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      const recentCostCenters = Array.from(costCenterCounts.values())
-        .filter(freq => freq.lastUsed >= thirtyDaysAgo)
-        .sort((a, b) => b.lastUsed.getTime() - a.lastUsed.getTime())
-        .map(freq => freq.costCenter);
-
-      return {
-        mostFrequent,
-        distribution,
-        recentlyUsed: recentCostCenters
-      };
-    } catch (error) {
-      console.error('❌ CostCenter: Error getting cost center stats:', error);
-      return {
-        mostFrequent: null,
-        distribution: new Map(),
-        recentlyUsed: []
-      };
+  /**
+   * Get suggestion reason as human-readable text
+   */
+  static getSuggestionReasonText(suggestion: CostCenterSuggestion): string {
+    switch (suggestion.reason) {
+      case 'same_destination':
+        return `Previously used for this location`;
+      case 'most_frequent':
+        return `Your most frequently used cost center`;
+      case 'default':
+        return `Your default cost center`;
+      default:
+        return 'Suggested cost center';
     }
   }
 }

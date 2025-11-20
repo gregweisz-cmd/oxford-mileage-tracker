@@ -1,39 +1,40 @@
 import Constants from 'expo-constants';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 
 export class DistanceService {
   private static readonly GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
 
   static async calculateDistance(startAddress: string, endAddress: string): Promise<number> {
-    console.log('DistanceService: Starting calculation');
-    console.log(`From: ${startAddress}`);
-    console.log(`To: ${endAddress}`);
+    debugLog('DistanceService: Starting calculation');
+    debugLog(`From: ${startAddress}`);
+    debugLog(`To: ${endAddress}`);
     
     // Check API key status
     if (!this.GOOGLE_MAPS_API_KEY || this.GOOGLE_MAPS_API_KEY === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-      console.log('⚠️ Google Maps API key not configured - using estimation method');
-      console.log('💡 To get accurate route-based distances, configure a Google Maps API key');
+      debugLog('⚠️ Google Maps API key not configured - using estimation method');
+      debugLog('💡 To get accurate route-based distances, configure a Google Maps API key');
     } else {
-      console.log('✅ Google Maps API key found - attempting route calculation');
+      debugLog('✅ Google Maps API key found - attempting route calculation');
     }
     
     // Try Google Maps API first if configured
     if (this.GOOGLE_MAPS_API_KEY && this.GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
       try {
-        console.log('🚗 Using Google Maps API for accurate route calculation');
+        debugLog('🚗 Using Google Maps API for accurate route calculation');
         const distance = await this.calculateDistanceWithGoogleMaps(startAddress, endAddress);
-        console.log(`✅ Route distance calculated: ${distance} miles`);
+        debugLog(`✅ Route distance calculated: ${distance} miles`);
         return distance;
       } catch (error) {
         console.error('❌ Google Maps API error:', error);
-        console.log('🔄 Falling back to estimation method');
+        debugLog('🔄 Falling back to estimation method');
       }
     }
     
     // Fallback: Use improved estimation method
     try {
-      console.log('📏 Using estimation method (straight-line distance with buffer)');
+      debugLog('📏 Using estimation method (straight-line distance with buffer)');
       const distance = await this.calculateDistanceEstimation(startAddress, endAddress);
-      console.log(`📏 Estimated distance: ${distance} miles`);
+      debugLog(`📏 Estimated distance: ${distance} miles`);
       return distance;
     } catch (error) {
       console.error('❌ Error calculating distance:', error);
@@ -53,13 +54,13 @@ export class DistanceService {
 
   // Main Google Maps distance calculation method
   private static async calculateDistanceWithGoogleMaps(startAddress: string, endAddress: string): Promise<number> {
-    console.log('Geocoding addresses...');
+    debugLog('Geocoding addresses...');
     
     // First, geocode both addresses to get coordinates
     const startCoords = await this.geocodeAddress(startAddress);
     const endCoords = await this.geocodeAddress(endAddress);
 
-    console.log('Calculating driving distance...');
+    debugLog('Calculating driving distance...');
     
     // Calculate distance using Google Maps Distance Matrix API
     const distance = await this.getDistanceFromGoogleMaps(startCoords, endCoords);
@@ -68,7 +69,7 @@ export class DistanceService {
     const miles = distance * 0.000621371;
     const roundedMiles = Math.round(miles * 10) / 10;
     
-    console.log(`Distance calculated: ${roundedMiles} miles`);
+    debugLog(`Distance calculated: ${roundedMiles} miles`);
     return roundedMiles;
   }
 
@@ -76,7 +77,7 @@ export class DistanceService {
     const encodedAddress = encodeURIComponent(address);
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${this.GOOGLE_MAPS_API_KEY}`;
 
-    console.log(`Geocoding: ${address}`);
+    debugLog(`Geocoding: ${address}`);
     
     const response = await fetch(url);
     const data = await response.json();
@@ -86,7 +87,7 @@ export class DistanceService {
     }
 
     const location = data.results[0].geometry.location;
-    console.log(`Coordinates found: ${location.lat}, ${location.lng}`);
+    debugLog(`Coordinates found: ${location.lat}, ${location.lng}`);
     
     return {
       lat: location.lat,
@@ -100,12 +101,12 @@ export class DistanceService {
   ): Promise<number> {
     const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${startCoords.lat},${startCoords.lng}&destinations=${endCoords.lat},${endCoords.lng}&units=imperial&mode=driving&key=${this.GOOGLE_MAPS_API_KEY}`;
 
-    console.log(`Distance Matrix API URL: ${url.replace(this.GOOGLE_MAPS_API_KEY, 'API_KEY_HIDDEN')}`);
+    debugLog(`Distance Matrix API URL: ${url.replace(this.GOOGLE_MAPS_API_KEY, 'API_KEY_HIDDEN')}`);
     
     const response = await fetch(url);
     const data = await response.json();
 
-    console.log('Distance Matrix API Response:', JSON.stringify(data, null, 2));
+    debugLog('Distance Matrix API Response:', JSON.stringify(data, null, 2));
 
     if (data.status !== 'OK') {
       throw new Error(`Google Maps API error: ${data.error_message || data.status}`);
@@ -122,7 +123,7 @@ export class DistanceService {
 
     // Return distance in meters
     const distanceInMeters = element.distance.value;
-    console.log(`Distance in meters: ${distanceInMeters}`);
+    debugLog(`Distance in meters: ${distanceInMeters}`);
     
     return distanceInMeters;
   }
@@ -191,7 +192,7 @@ Current method provides good estimates but Google Maps will give you the exact d
     const testEnd = '456 Oak Ave, Charlotte, NC';
     
     try {
-      console.log('🧪 Testing distance calculation system...');
+      debugLog('🧪 Testing distance calculation system...');
       const distance = await this.calculateDistance(testStart, testEnd);
       const info = this.getDistanceCalculationInfo();
       
@@ -274,14 +275,14 @@ Current method provides good estimates but Google Maps will give you the exact d
 
   // Improved estimation method using free geocoding services
   private static async calculateDistanceEstimation(startAddress: string, endAddress: string): Promise<number> {
-    console.log('DistanceService: Using improved estimation method');
+    debugLog('DistanceService: Using improved estimation method');
     
     // First try to use free geocoding services for more accurate estimation
     try {
-      console.log('🌍 Attempting geocoding with free services...');
+      debugLog('🌍 Attempting geocoding with free services...');
       return await this.calculateDistanceWithFreeGeocoding(startAddress, endAddress);
     } catch (error) {
-      console.log('⚠️ Free geocoding failed, using keyword-based estimation');
+      debugLog('⚠️ Free geocoding failed, using keyword-based estimation');
     }
     
     // Fallback: Simple keyword-based estimation for common locations
@@ -290,14 +291,14 @@ Current method provides good estimates but Google Maps will give you the exact d
     // Check for exact matches first
     const key = `${startAddress.toLowerCase()} to ${endAddress.toLowerCase()}`;
     if (commonDistances[key]) {
-      console.log(`📍 Found exact match: ${key} = ${commonDistances[key]} miles`);
+      debugLog(`📍 Found exact match: ${key} = ${commonDistances[key]} miles`);
       return commonDistances[key];
     }
     
     // Check for partial matches
     for (const [locationKey, distance] of Object.entries(commonDistances)) {
       if (locationKey.includes(startAddress.toLowerCase()) && locationKey.includes(endAddress.toLowerCase())) {
-        console.log(`📍 Found partial match: ${locationKey} = ${distance} miles`);
+        debugLog(`📍 Found partial match: ${locationKey} = ${distance} miles`);
         return distance;
       }
     }
@@ -309,20 +310,20 @@ Current method provides good estimates but Google Maps will give you the exact d
     if (startCity === endCity && startCity !== 'unknown') {
       // Same city - estimate 5-15 miles
       const estimate = Math.round((Math.random() * 10 + 5) * 10) / 10;
-      console.log(`🏙️ Same city (${startCity}) estimate: ${estimate} miles`);
+      debugLog(`🏙️ Same city (${startCity}) estimate: ${estimate} miles`);
       return estimate;
     }
     
     // Different cities - estimate based on common patterns
     const cityDistance = this.getCityDistanceEstimate(startCity, endCity);
     if (cityDistance > 0) {
-      console.log(`🏙️ City distance estimate: ${cityDistance} miles`);
+      debugLog(`🏙️ City distance estimate: ${cityDistance} miles`);
       return cityDistance;
     }
     
     // Default estimation: 10-50 miles
     const estimate = Math.round((Math.random() * 40 + 10) * 10) / 10;
-    console.log(`❓ Default estimate: ${estimate} miles`);
+    debugLog(`❓ Default estimate: ${estimate} miles`);
     return estimate;
   }
 
@@ -343,7 +344,7 @@ Current method provides good estimates but Google Maps will give you the exact d
       // Round to nearest tenth
       const roundedDistance = Math.round(estimatedDrivingDistance * 10) / 10;
       
-      console.log(`📏 Geocoded distance: ${straightLineDistance.toFixed(1)} mi straight-line → ${roundedDistance} mi estimated driving`);
+      debugLog(`📏 Geocoded distance: ${straightLineDistance.toFixed(1)} mi straight-line → ${roundedDistance} mi estimated driving`);
       
       return roundedDistance;
     } catch (error) {
@@ -356,7 +357,7 @@ Current method provides good estimates but Google Maps will give you the exact d
     const encodedAddress = encodeURIComponent(address);
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=1&countrycodes=us`;
     
-    console.log(`🌍 Geocoding with Nominatim: ${address}`);
+    debugLog(`🌍 Geocoding with Nominatim: ${address}`);
     
     const response = await fetch(url, {
       headers: {
@@ -380,7 +381,7 @@ Current method provides good estimates but Google Maps will give you the exact d
       lng: parseFloat(result.lon)
     };
     
-    console.log(`📍 Coordinates found: ${coords.lat}, ${coords.lng}`);
+    debugLog(`📍 Coordinates found: ${coords.lat}, ${coords.lng}`);
     return coords;
   }
 

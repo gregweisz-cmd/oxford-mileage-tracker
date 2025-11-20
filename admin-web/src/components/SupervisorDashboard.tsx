@@ -25,7 +25,28 @@ import {
   Tab,
   Divider,
 } from '@mui/material';
-import { CheckCircle, Edit, Visibility, Comment } from '@mui/icons-material';
+import {
+  CheckCircle,
+  Edit,
+  Visibility,
+  Comment,
+  People as PeopleIcon,
+  AssignmentLate,
+  TrendingUp,
+  TrendingDown,
+  TrendingFlat,
+  AttachMoney,
+  Speed,
+} from '@mui/icons-material';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import DetailedReportView from './DetailedReportView';
 
 interface MonthlyReport {
@@ -54,9 +75,40 @@ interface MonthlyReport {
 
 interface SupervisorDashboardProps {
   currentEmployee: any;
+  showKpiCards?: boolean;
 }
 
-export default function SupervisorDashboard({ currentEmployee }: SupervisorDashboardProps) {
+interface SupervisorKpiData {
+  teamMembers: {
+    total: number;
+    active: number;
+    archived: number;
+  };
+  reportStats: {
+    pending: number;
+    needsRevision: number;
+    approvedTotal: number;
+  };
+  approvals: {
+    thisMonth: { count: number; totalExpenses: number };
+    lastMonth: { count: number; totalExpenses: number };
+  };
+  performance: {
+    avgApprovalTimeHours: number | null;
+    fastestApprovalHours: number | null;
+    approvalRate: number | null;
+    totalReviewed: number;
+  };
+  expenseTrend: {
+    month: string;
+    label: string;
+    submitted: number;
+    approved: number;
+    totalExpenses: number;
+  }[];
+}
+
+export default function SupervisorDashboard({ currentEmployee, showKpiCards = true }: SupervisorDashboardProps) {
   const [pendingReports, setPendingReports] = useState<MonthlyReport[]>([]);
   const [reviewedReports, setReviewedReports] = useState<MonthlyReport[]>([]);
   const [acceptedReports, setAcceptedReports] = useState<MonthlyReport[]>([]);
@@ -70,6 +122,9 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
   const [error, setError] = useState<string | null>(null);
   const [showDetailedView, setShowDetailedView] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [kpis, setKpis] = useState<SupervisorKpiData | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(true);
+  const [kpiError, setKpiError] = useState<string | null>(null);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -78,12 +133,31 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
     setSelectedReportId(null);
   }, []);
 
-  useEffect(() => {
-    loadReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentEmployee]);
+  const loadKpis = useCallback(async () => {
+    if (!currentEmployee) {
+      setKpis(null);
+      return;
+    }
 
-  const loadReports = async () => {
+    try {
+      setKpiLoading(true);
+      setKpiError(null);
+      const response = await fetch(`${API_BASE_URL}/api/supervisors/${currentEmployee.id}/kpis`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch supervisor KPIs');
+      }
+      const data = await response.json();
+      setKpis(data);
+    } catch (error: any) {
+      console.error('Error loading supervisor KPIs:', error);
+      setKpiError(error.message || 'Failed to load KPIs');
+      setKpis(null);
+    } finally {
+      setKpiLoading(false);
+    }
+  }, [API_BASE_URL, currentEmployee]);
+
+  const loadReports = useCallback(async () => {
     if (!currentEmployee) return;
 
     try {
@@ -134,7 +208,12 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE_URL, currentEmployee]);
+
+  useEffect(() => {
+    loadReports();
+    loadKpis();
+  }, [loadReports, loadKpis]);
 
   const handleReview = (report: MonthlyReport, action: 'approve' | 'revision') => {
     setSelectedReport(report);
@@ -198,8 +277,52 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
       alert(`Failed to submit review: ${error.message}`);
     } finally {
       setSubmitting(false);
+      await loadKpis();
     }
   };
+
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
+
+  const formatDuration = (hours: number | null) => {
+    if (hours === null || Number.isNaN(hours)) return 'N/A';
+    if (hours < 1) {
+      const minutes = Math.round(hours * 60);
+      return `${minutes}m`;
+    }
+    if (hours < 72) {
+      return `${Math.round(hours)}h`;
+    }
+    const days = hours / 24;
+    return `${days.toFixed(1)}d`;
+  };
+
+  const computeChangePercent = (current: number, previous: number) => {
+    if (previous === 0) {
+      if (current === 0) return 0;
+      return 100;
+    }
+    return ((current - previous) / previous) * 100;
+  };
+
+  const approvalChange = kpis
+    ? computeChangePercent(kpis.approvals.thisMonth.count, kpis.approvals.lastMonth.count)
+    : 0;
+
+  const changeColor = approvalChange > 0
+    ? 'success.main'
+    : approvalChange < 0
+      ? 'error.main'
+      : 'text.secondary';
+
+  const changeIcon = approvalChange > 0
+    ? <TrendingUp fontSize="small" />
+    : approvalChange < 0
+      ? <TrendingDown fontSize="small" />
+      : <TrendingFlat fontSize="small" />;
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -247,6 +370,143 @@ export default function SupervisorDashboard({ currentEmployee }: SupervisorDashb
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Review and approve expense reports from your team
       </Typography>
+
+      {kpiError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setKpiError(null)}>
+          {kpiError}
+        </Alert>
+      )}
+
+      {showKpiCards && (
+        kpiLoading ? (
+          <Box display="flex" justifyContent="center" py={3}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : kpis ? (
+          <>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 2,
+              gridTemplateColumns: {
+                xs: 'repeat(1, minmax(0, 1fr))',
+                sm: 'repeat(2, minmax(0, 1fr))',
+                md: 'repeat(4, minmax(0, 1fr))',
+              },
+              mb: 3,
+            }}
+          >
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Team Members
+                  </Typography>
+                  <PeopleIcon color="primary" />
+                </Box>
+                <Typography variant="h4">{kpis.teamMembers.active}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {`${kpis.teamMembers.active} active / ${kpis.teamMembers.total} total`}
+                </Typography>
+                {kpis.teamMembers.archived > 0 && (
+                  <Typography variant="caption" color="text.secondary">
+                    {`${kpis.teamMembers.archived} archived`}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Pending Reviews
+                  </Typography>
+                  <AssignmentLate color="warning" />
+                </Box>
+                <Typography variant="h4">{kpis.reportStats.pending}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {`Needs revision: ${kpis.reportStats.needsRevision}`}
+                </Typography>
+              </CardContent>
+            </Card>
+
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Approvals This Month
+                  </Typography>
+                  <AttachMoney color="success" />
+                </Box>
+                <Typography variant="h4">{kpis.approvals.thisMonth.count}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box component="span" sx={{ color: changeColor, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {changeIcon}
+                    {`${approvalChange > 0 ? '+' : ''}${Math.round(approvalChange)}%`}
+                  </Box>
+                  vs last month
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {`Approved spend: ${formatCurrency(kpis.approvals.thisMonth.totalExpenses)}`}
+                </Typography>
+              </CardContent>
+            </Card>
+
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Avg Approval Time
+                  </Typography>
+                  <Speed color="info" />
+                </Box>
+                <Typography variant="h4">{formatDuration(kpis.performance.avgApprovalTimeHours)}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {`Fastest: ${formatDuration(kpis.performance.fastestApprovalHours)}`}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {`Approval rate: ${kpis.performance.approvalRate !== null
+                    ? `${Math.round(kpis.performance.approvalRate * 100)}%`
+                    : 'N/A'}`}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Box>
+
+          {kpis.expenseTrend.length > 0 && (
+            <Paper sx={{ mb: 3, p: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                Team Expense Trend (Last 6 Months)
+              </Typography>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={kpis.expenseTrend}>
+                  <defs>
+                    <linearGradient id="teamExpenseGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#1976d2" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#1976d2" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" vertical={false} />
+                  <XAxis dataKey="label" stroke="#9e9e9e" />
+                  <YAxis hide />
+                  <RechartsTooltip
+                    formatter={(value: number, name: string) => {
+                      if (name === 'totalExpenses') {
+                        return [formatCurrency(value), 'Approved Spend'];
+                      }
+                      return [value, name === 'approved' ? 'Approved' : 'Submitted'];
+                    }}
+                    labelFormatter={(label: string) => label}
+                  />
+                  <Area type="monotone" dataKey="totalExpenses" stroke="#1976d2" fill="url(#teamExpenseGradient)" name="totalExpenses" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Paper>
+          )}
+        </>
+        ) : null
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>

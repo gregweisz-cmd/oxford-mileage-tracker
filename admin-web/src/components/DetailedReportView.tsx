@@ -34,6 +34,9 @@ import {
   Download as DownloadIcon,
 } from '@mui/icons-material';
 
+// API configuration - use environment variable or default to localhost for development
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+
 interface MileageEntry {
   id: string;
   date: string;
@@ -129,7 +132,7 @@ const DetailedReportViewInner = ({ reportId, open, onClose }: DetailedReportView
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3002/api/monthly-reports/${reportId}/detailed`);
+      const response = await fetch(`${API_BASE_URL}/api/monthly-reports/${reportId}/detailed`);
       
       if (!response.ok) {
         throw new Error('Failed to load detailed report');
@@ -252,14 +255,15 @@ const DetailedReportViewInner = ({ reportId, open, onClose }: DetailedReportView
         reason: revisionReason
       }));
 
-      const response = await fetch(`http://localhost:3002/api/monthly-reports/${reportId}/request-line-item-revision`, {
+      const response = await fetch(`${API_BASE_URL}/api/monthly-reports/${reportId}/request-line-item-revision`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           requestedBy: 'greg-weisz-001', // TODO: Get from current user context
-          items
+          items,
+          reason: revisionReason
         }),
       });
 
@@ -953,7 +957,7 @@ const DetailedReportViewInner = ({ reportId, open, onClose }: DetailedReportView
                               if (!path) {
                                 return <Typography variant="caption" color="text.secondary">No image</Typography>;
                               }
-                              const src = `http://localhost:3002${path}`;
+                              const src = `${API_BASE_URL}${path}`;
                               return (
                                 <img
                                   src={src}

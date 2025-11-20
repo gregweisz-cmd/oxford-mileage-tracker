@@ -3,6 +3,8 @@
  * Imports cost centers from Google Sheets and updates the database
  */
 
+import { debugLog, debugError, debugWarn } from '../config/debug';
+
 export class CostCenterImportService {
   private static readonly SHEET_ID = '1WByevxN6vlHQtWuDm8s3wxY72pYn-cn7aqeaCjQSxlk';
   private static readonly COST_CENTER_COLUMN = 'C';
@@ -12,20 +14,20 @@ export class CostCenterImportService {
    */
   static async importCostCenters(): Promise<string[]> {
     try {
-      console.log('📊 CostCenterImport: Starting cost center import from Google Sheet...');
+      debugLog('📊 CostCenterImport: Starting cost center import from Google Sheet...');
       
       // Get data from Google Sheet
       const costCenters = await this.fetchCostCentersFromSheet();
       
       if (costCenters.length === 0) {
-        console.log('⚠️ CostCenterImport: No cost centers found in sheet');
+        debugLog('⚠️ CostCenterImport: No cost centers found in sheet');
         return [];
       }
 
       // Sort alphabetically
       const sortedCostCenters = costCenters.sort((a, b) => a.localeCompare(b));
       
-      console.log('✅ CostCenterImport: Successfully imported cost centers:', sortedCostCenters);
+      debugLog('✅ CostCenterImport: Successfully imported cost centers:', sortedCostCenters);
       
       return sortedCostCenters;
     } catch (error) {
@@ -42,7 +44,7 @@ export class CostCenterImportService {
       // Use the public CSV export URL for the Google Sheet
       const csvUrl = `https://docs.google.com/spreadsheets/d/${this.SHEET_ID}/export?format=csv&gid=0`;
       
-      console.log('📊 CostCenterImport: Fetching data from:', csvUrl);
+      debugLog('📊 CostCenterImport: Fetching data from:', csvUrl);
       
       const response = await fetch(csvUrl);
       
@@ -51,7 +53,7 @@ export class CostCenterImportService {
       }
       
       const csvText = await response.text();
-      console.log('📊 CostCenterImport: Raw CSV data received, length:', csvText.length);
+      debugLog('📊 CostCenterImport: Raw CSV data received, length:', csvText.length);
       
       // Parse CSV and extract column C
       const costCenters = this.parseCostCentersFromCSV(csvText);
@@ -94,7 +96,7 @@ export class CostCenterImportService {
         }
       }
       
-      console.log('📊 CostCenterImport: Parsed cost centers:', costCenters);
+      debugLog('📊 CostCenterImport: Parsed cost centers:', costCenters);
       return costCenters;
     } catch (error) {
       console.error('❌ CostCenterImport: Error parsing CSV:', error);
@@ -134,7 +136,7 @@ export class CostCenterImportService {
    */
   static async updateEmployeesWithCostCenters(costCenters: string[]): Promise<void> {
     try {
-      console.log('📊 CostCenterImport: Updating employees with cost centers...');
+      debugLog('📊 CostCenterImport: Updating employees with cost centers...');
       
       const { DatabaseService } = await import('./database');
       const employees = await DatabaseService.getEmployees();
@@ -145,10 +147,10 @@ export class CostCenterImportService {
           costCenters: costCenters
         });
         
-        console.log(`✅ CostCenterImport: Updated employee ${employee.name} with ${costCenters.length} cost centers`);
+        debugLog(`✅ CostCenterImport: Updated employee ${employee.name} with ${costCenters.length} cost centers`);
       }
       
-      console.log('✅ CostCenterImport: Successfully updated all employees with cost centers');
+      debugLog('✅ CostCenterImport: Successfully updated all employees with cost centers');
     } catch (error) {
       console.error('❌ CostCenterImport: Error updating employees:', error);
       throw error;
@@ -160,20 +162,20 @@ export class CostCenterImportService {
    */
   static async importAndUpdateCostCenters(): Promise<string[]> {
     try {
-      console.log('📊 CostCenterImport: Starting full import and update process...');
+      debugLog('📊 CostCenterImport: Starting full import and update process...');
       
       // Import cost centers from Google Sheet
       const costCenters = await this.importCostCenters();
       
       if (costCenters.length === 0) {
-        console.log('⚠️ CostCenterImport: No cost centers to update');
+        debugLog('⚠️ CostCenterImport: No cost centers to update');
         return [];
       }
       
       // Update all employees with the new cost centers
       await this.updateEmployeesWithCostCenters(costCenters);
       
-      console.log('✅ CostCenterImport: Full import and update process completed');
+      debugLog('✅ CostCenterImport: Full import and update process completed');
       return costCenters;
     } catch (error) {
       console.error('❌ CostCenterImport: Error in full import process:', error);

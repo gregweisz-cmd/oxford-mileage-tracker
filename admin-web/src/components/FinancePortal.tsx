@@ -37,8 +37,12 @@ import {
   Visibility as ViewIcon,
   Send as SendIcon,
   FilterList as FilterIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  UnfoldMore as UnfoldMoreIcon,
 } from '@mui/icons-material';
 import { getEmployeeDisplayName } from '../utils/employeeUtils';
+import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -51,6 +55,7 @@ interface ExpenseReport {
   id: string;
   employeeId: string;
   employeeName: string;
+  employeeFullName?: string; // Full name from database (e.name), used for exports
   employeeEmail: string;
   month: number;
   year: number;
@@ -60,6 +65,8 @@ interface ExpenseReport {
   totalExpenses: number;
   submittedAt?: string;
   reportData?: any;
+  state?: string;
+  costCenters?: string[];
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, financeUserName }) => {
@@ -78,6 +85,15 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth() + 1);
   const [filterYear, setFilterYear] = useState<number>(new Date().getFullYear());
   const [filterEmployee, setFilterEmployee] = useState<string>('all');
+  const [dateRangePreset, setDateRangePreset] = useState<string>('custom');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [filterState, setFilterState] = useState<string>('all');
+  const [filterCostCenter, setFilterCostCenter] = useState<string>('all');
+  
+  // Sorting state
+  const [sortField, setSortField] = useState<keyof ExpenseReport | ''>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Print style customization
   const [printStyles, setPrintStyles] = useState({
@@ -95,7 +111,82 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   useEffect(() => {
     applyFilters();
-  }, [reports, filterStatus, filterMonth, filterYear, filterEmployee]);
+  }, [reports, filterStatus, filterMonth, filterYear, filterEmployee, dateRangePreset, filterStartDate, filterEndDate, filterState, filterCostCenter]);
+
+  // Apply sorting to filtered reports
+  useEffect(() => {
+    if (!sortField) return;
+    
+    setFilteredReports(prev => {
+      const sorted = [...prev];
+      
+      sorted.sort((a, b) => {
+        let aValue: any = a[sortField];
+        let bValue: any = b[sortField];
+        
+        // Handle date comparisons
+        if (sortField === 'submittedAt') {
+          aValue = aValue ? new Date(aValue).getTime() : 0;
+          bValue = bValue ? new Date(bValue).getTime() : 0;
+        }
+        
+        // Handle string comparisons
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          aValue = aValue.toLowerCase();
+          bValue = bValue.toLowerCase();
+        }
+        
+        // Handle null/undefined values
+        if (aValue == null && bValue == null) return 0;
+        if (aValue == null) return 1;
+        if (bValue == null) return -1;
+        
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+      
+      return sorted;
+    });
+  }, [sortField, sortDirection]);
+
+  const handleSort = (field: keyof ExpenseReport) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: keyof ExpenseReport) => {
+    if (sortField !== field) {
+      return <UnfoldMoreIcon sx={{ fontSize: 16, opacity: 0.5 }} />;
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUpwardIcon sx={{ fontSize: 16 }} />
+      : <ArrowDownwardIcon sx={{ fontSize: 16 }} />;
+  };
+
+  // Helper function to get display name: "PreferredName LastName" format
+  // e.g., "Greg Weisz" (preferredName + lastName from full name)
+  const getDisplayName = (report: ExpenseReport): string => {
+    const preferredName = report.employeeName || ''; // This is the preferredName from backend
+    const fullName = report.employeeFullName || preferredName || '';
+    
+    // If we have a full name, extract the last name and combine with preferred name
+    if (fullName && fullName !== preferredName) {
+      const nameParts = fullName.trim().split(/\s+/).filter(p => p.length > 0);
+      if (nameParts.length >= 2) {
+        const lastName = nameParts[nameParts.length - 1];
+        // Return "PreferredName LastName"
+        return `${preferredName} ${lastName}`;
+      }
+    }
+    
+    // Fallback: use preferredName if available, otherwise fullName, otherwise 'Unknown'
+    return preferredName || fullName || 'Unknown';
+  };
 
   const loadReports = async () => {
     setLoading(true);
@@ -107,15 +198,39 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       console.log('📊 Loaded reports:', data.length, 'reports');
       console.log('📊 First report structure:', data[0]);
       
-      // Calculate totals from reportData
+      // Calculate totals from reportData and extract state/cost centers
       const reportsWithTotals = data.map((report: any) => {
         const reportData = report.reportData || {};
         console.log(`📊 Report ${report.id} data:`, reportData);
+        
+        // Extract state from baseAddress (format: "City, ST ZIP" or "Address, City, ST ZIP")
+        let state = '';
+        const baseAddress = reportData.baseAddress || '';
+        if (baseAddress) {
+          // Try to extract state from address (look for 2-letter state code followed by ZIP)
+          const stateMatch = baseAddress.match(/\b([A-Z]{2})\s+\d{5}(-\d{4})?\b/);
+          if (stateMatch) {
+            state = stateMatch[1];
+          } else {
+            // Fallback: try to find state after comma
+            const parts = baseAddress.split(',');
+            if (parts.length >= 2) {
+              const lastPart = parts[parts.length - 1].trim();
+              const stateFromLastPart = lastPart.match(/\b([A-Z]{2})\b/);
+              if (stateFromLastPart) {
+                state = stateFromLastPart[1];
+              }
+            }
+          }
+        }
+        
         return {
           ...report,
           totalMiles: reportData.totalMiles || 0,
           totalMileageAmount: reportData.totalMileageAmount || 0,
           totalExpenses: calculateTotalExpenses(reportData),
+          state: state,
+          costCenters: reportData.costCenters || [],
         };
       });
       
@@ -150,6 +265,47 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
            shippingPostage + printingCopying + officeSupplies + eesReceipt + meals + other;
   };
 
+  // Helper function to check if a report month/year falls within a preset range
+  const isReportInPresetRange = (reportMonth: number, reportYear: number, preset: string): boolean => {
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+    
+    switch (preset) {
+      case 'this-week':
+      case 'last-week':
+        // For weekly presets, we'll include the current month (since reports are monthly)
+        return reportMonth === currentMonth && reportYear === currentYear;
+      case 'this-month':
+        return reportMonth === currentMonth && reportYear === currentYear;
+      case 'last-month':
+        const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+        const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+        return reportMonth === lastMonth && reportYear === lastMonthYear;
+      case 'this-quarter':
+        const quarter = Math.floor((currentMonth - 1) / 3);
+        const quarterStartMonth = quarter * 3 + 1;
+        const quarterEndMonth = (quarter + 1) * 3;
+        return reportYear === currentYear && reportMonth >= quarterStartMonth && reportMonth <= quarterEndMonth;
+      case 'last-quarter':
+        const lastQuarter = Math.floor((currentMonth - 1) / 3) - 1;
+        if (lastQuarter < 0) {
+          // Last quarter of previous year
+          const lastQuarterStartMonth = 10;
+          const lastQuarterEndMonth = 12;
+          return reportYear === currentYear - 1 && reportMonth >= lastQuarterStartMonth && reportMonth <= lastQuarterEndMonth;
+        } else {
+          const lastQuarterStartMonth = lastQuarter * 3 + 1;
+          const lastQuarterEndMonth = (lastQuarter + 1) * 3;
+          return reportYear === currentYear && reportMonth >= lastQuarterStartMonth && reportMonth <= lastQuarterEndMonth;
+        }
+      case 'this-year':
+        return reportYear === currentYear;
+      default:
+        return true;
+    }
+  };
+
   const applyFilters = () => {
     let filtered = [...reports];
 
@@ -158,14 +314,55 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       filtered = filtered.filter(r => r.status === filterStatus);
     }
 
-    // Filter by month/year
-    if (filterMonth && filterYear) {
-      filtered = filtered.filter(r => r.month === filterMonth && r.year === filterYear);
+    // Filter by date range preset or custom date range
+    if (dateRangePreset !== 'custom') {
+      filtered = filtered.filter(r => isReportInPresetRange(r.month, r.year, dateRangePreset));
+    } else if (filterStartDate || filterEndDate) {
+      // Custom date range
+      if (filterStartDate) {
+        const start = new Date(filterStartDate);
+        filtered = filtered.filter(r => {
+          const reportDate = new Date(r.year, r.month - 1, 1);
+          return reportDate >= start;
+        });
+      }
+      if (filterEndDate) {
+        const end = new Date(filterEndDate);
+        end.setMonth(end.getMonth() + 1); // End of month
+        filtered = filtered.filter(r => {
+          const reportDate = new Date(r.year, r.month - 1, 1);
+          return reportDate < end;
+        });
+      }
+    } else {
+      // Fallback to month/year filter if no date range preset
+      if (filterYear) {
+        // Always filter by year if year is selected
+        filtered = filtered.filter(r => r.year === filterYear);
+        
+        // If a specific month is selected (not "All Months" which is 0), also filter by month
+        if (filterMonth && filterMonth !== 0) {
+          filtered = filtered.filter(r => r.month === filterMonth);
+        }
+      }
     }
 
     // Filter by employee
     if (filterEmployee !== 'all') {
       filtered = filtered.filter(r => r.employeeId === filterEmployee);
+    }
+
+    // Filter by state
+    if (filterState !== 'all') {
+      filtered = filtered.filter(r => r.state === filterState);
+    }
+
+    // Filter by cost center
+    if (filterCostCenter !== 'all') {
+      filtered = filtered.filter(r => {
+        const costCenters = r.costCenters || [];
+        return costCenters.includes(filterCostCenter);
+      });
     }
 
     setFilteredReports(filtered);
@@ -221,21 +418,52 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       const link = document.createElement('a');
       link.href = url;
       
-      // Generate filename matching Staff Portal format: LASTNAME,FIRSTNAME EXPENSES MMM-YY.pdf
-      const nameParts = report.employeeName.split(' ');
-      const lastName = nameParts[nameParts.length - 1] || 'UNKNOWN';
-      const firstName = nameParts[0] || 'UNKNOWN';
+      // Generate filename matching Staff Portal format: LASTNAME, FIRSTNAME EXPENSES MMM-YY.pdf
+      // Use employeeFullName (full name from database) if available, otherwise fall back to employeeName
+      const fullName = report.employeeFullName || report.employeeName || '';
+      
+      let lastName = 'UNKNOWN';
+      let firstName = 'UNKNOWN';
+      
+      if (fullName.includes(',')) {
+        // Format: "Lastname, Firstname"
+        const parts = fullName.split(',').map(p => p.trim());
+        lastName = parts[0] || 'UNKNOWN';
+        firstName = parts[1] || 'UNKNOWN';
+      } else {
+        // Format: "Firstname Lastname" or single name
+        const nameParts = fullName.trim().split(/\s+/).filter(p => p.length > 0);
+        if (nameParts.length >= 2) {
+          // Multiple words: last word is last name, first word(s) are first name
+          lastName = nameParts[nameParts.length - 1];
+          firstName = nameParts.slice(0, -1).join(' ');
+        } else if (nameParts.length === 1) {
+          // Single word: use as last name, no first name
+          lastName = nameParts[0];
+          firstName = '';
+        }
+      }
+      
       const monthNamesShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
       const monthAbbr = monthNamesShort[report.month - 1] || 'UNK';
       const yearShort = report.year.toString().slice(-2);
       
-      link.download = `${lastName.toUpperCase()},${firstName.toUpperCase()} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
+      // Format: LASTNAME, FIRSTNAME EXPENSES MMM-YY.pdf (with space after comma)
+      const namePart = firstName ? `${lastName.toUpperCase()}, ${firstName.toUpperCase()}` : lastName.toUpperCase();
+      link.download = `${namePart} EXPENSES ${monthAbbr}-${yearShort}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
       console.log('✅ PDF export completed successfully');
+      
+      // Show helpful message about printing workaround for HP printers
+      // Note: jsPDF-generated PDFs sometimes have issues with HP printer drivers
+      // Only show warning for HP printers (Epson and most others work fine)
+      // Show a simpler success message since Epson printers work well
+      console.log('✅ PDF export completed - Ready to print!');
+      // Note: No alert for printing since Epson printers work fine
     } catch (error) {
       console.error('Error exporting to PDF:', error);
       alert(`Failed to export report: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -259,15 +487,16 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     const reportData = selectedReport.reportData;
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                        'July', 'August', 'September', 'October', 'November', 'December'];
+    const displayName = getDisplayName(selectedReport);
     
     // Generate all pages
-    const pages = generateAllPages(selectedReport, reportData, monthNames);
+    const pages = generateAllPages(selectedReport, reportData, monthNames, displayName);
     
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Expense Report - ${selectedReport.employeeName} - ${monthNames[selectedReport.month - 1]} ${selectedReport.year}</title>
+        <title>Expense Report - ${displayName} - ${monthNames[selectedReport.month - 1]} ${selectedReport.year}</title>
         <style>
           @media print {
             @page {
@@ -321,29 +550,29 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     }, 500);
   };
 
-  const generateAllPages = (report: any, reportData: any, monthNames: string[]) => {
+  const generateAllPages = (report: any, reportData: any, monthNames: string[], displayName: string) => {
     const pages = [];
     
     // Page 1: Approval Cover Sheet
-    pages.push(generateApprovalPage(report, reportData, monthNames));
+    pages.push(generateApprovalPage(report, reportData, monthNames, displayName));
     
     // Page 2: Summary Sheet
-    pages.push(generateSummaryPage(report, reportData, monthNames));
+    pages.push(generateSummaryPage(report, reportData, monthNames, displayName));
     
     // Pages 3+: Cost Center Sheets
     if (reportData?.costCenters && reportData.costCenters.length > 0) {
       reportData.costCenters.forEach((costCenter: string, index: number) => {
-        pages.push(generateCostCenterPage(report, reportData, monthNames, costCenter, index));
+        pages.push(generateCostCenterPage(report, reportData, monthNames, costCenter, index, displayName));
       });
     }
     
     // Last Page: Timesheet
-    pages.push(generateTimesheetPage(report, reportData, monthNames));
+    pages.push(generateTimesheetPage(report, reportData, monthNames, displayName));
     
     return pages;
   };
 
-  const generateApprovalPage = (report: any, reportData: any, monthNames: string[]) => {
+  const generateApprovalPage = (report: any, reportData: any, monthNames: string[], displayName: string) => {
     return `
       <div class="page-break">
         <div class="header">
@@ -357,7 +586,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         
         <div class="section">
           <table class="summary-table">
-            <tr><th>Name:</th><td>${report.employeeName}</td></tr>
+            <tr><th>Name:</th><td>${displayName}</td></tr>
             <tr><th>Month:</th><td>${monthNames[report.month - 1]}, ${report.year}</td></tr>
             <tr><th>Date Completed:</th><td>${report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : 'Not submitted'}</td></tr>
             <tr><th>Total Miles:</th><td>${report.totalMiles.toFixed(1)}</td></tr>
@@ -380,7 +609,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     `;
   };
 
-  const generateSummaryPage = (report: any, reportData: any, monthNames: string[]) => {
+  const generateSummaryPage = (report: any, reportData: any, monthNames: string[], displayName: string) => {
     return `
       <div class="page-break">
         <div class="header">
@@ -389,7 +618,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         
         <div class="section">
           <table class="summary-table">
-            <tr><th>Name:</th><td>${report.employeeName}</td></tr>
+            <tr><th>Name:</th><td>${displayName}</td></tr>
             <tr><th>Month:</th><td>${monthNames[report.month - 1]}, ${report.year}</td></tr>
             <tr><th>Date Completed:</th><td>${report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : 'Not submitted'}</td></tr>
           </table>
@@ -412,21 +641,21 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         </div>
         
         <div class="section">
-          <p><strong>Payable to:</strong> ${report.employeeName}</p>
+          <p><strong>Payable to:</strong> ${displayName}</p>
           <p><strong>Base Address:</strong> ${reportData?.baseAddress || 'N/A'}</p>
         </div>
       </div>
     `;
   };
 
-  const generateCostCenterPage = (report: any, reportData: any, monthNames: string[], costCenter: string, index: number) => {
+  const generateCostCenterPage = (report: any, reportData: any, monthNames: string[], costCenter: string, index: number, displayName: string) => {
     const daysInMonth = new Date(report.year, report.month - 1, 0).getDate();
     
     return `
       <div class="page-break">
         <div class="header">
           <h1>COST CENTER TRAVEL SHEET - ${costCenter}</h1>
-          <h3>${report.employeeName} - ${monthNames[report.month - 1]} ${report.year}</h3>
+          <h3>${displayName} - ${monthNames[report.month - 1]} ${report.year}</h3>
         </div>
         
         <div class="section">
@@ -479,14 +708,14 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     `;
   };
 
-  const generateTimesheetPage = (report: any, reportData: any, monthNames: string[]) => {
+  const generateTimesheetPage = (report: any, reportData: any, monthNames: string[], displayName: string) => {
     const daysInMonth = new Date(report.year, report.month - 1, 0).getDate();
     
     return `
       <div class="page-break">
         <div class="header">
           <h1>MONTHLY TIMESHEET</h1>
-          <h3>${report.employeeName} - ${monthNames[report.month - 1]} ${report.year}</h3>
+          <h3>${displayName} - ${monthNames[report.month - 1]} ${report.year}</h3>
         </div>
         
         <div class="section">
@@ -556,8 +785,32 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const uniqueEmployees = Array.from(new Set(reports.map(r => r.employeeId)))
     .map(id => {
       const report = reports.find(r => r.employeeId === id);
-      return { id, name: report?.employeeName || id };
+      return { id, name: report ? getDisplayName(report) : id };
     });
+
+  // Get unique states for filter
+  const uniqueStates = Array.from(new Set(
+    reports
+      .map(r => r.state)
+      .filter((state): state is string => !!state)
+  )).sort();
+
+  // Get unique cost centers for filter
+  const uniqueCostCenters = Array.from(new Set(
+    reports.flatMap(r => r.costCenters || [])
+  )).sort();
+
+  // Handle date range preset change
+  const handleDateRangePresetChange = (preset: string) => {
+    setDateRangePreset(preset);
+    if (preset !== 'custom') {
+      // Clear month/year filters when using preset
+      setFilterMonth(0);
+      setFilterYear(0);
+      setFilterStartDate('');
+      setFilterEndDate('');
+    }
+  };
 
   const TabPanel = ({ children, value, index }: any) => (
     <div role="tabpanel" hidden={value !== index}>
@@ -582,70 +835,146 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         <Tab label="Pending Review" />
         <Tab label="Approved Reports" />
         <Tab label="Needs Revision" />
+        <Tab label="Reports & Analytics" />
       </Tabs>
 
       {/* Filters */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={filterStatus}
-                label="Status"
-                onChange={(e) => setFilterStatus(e.target.value)}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* First Row: Date Range Presets */}
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Date Range</InputLabel>
+                <Select
+                  value={dateRangePreset}
+                  label="Date Range"
+                  onChange={(e) => handleDateRangePresetChange(e.target.value)}
+                >
+                  <MenuItem value="custom">Custom Range</MenuItem>
+                  <MenuItem value="this-week">This Week</MenuItem>
+                  <MenuItem value="last-week">Last Week</MenuItem>
+                  <MenuItem value="this-month">This Month</MenuItem>
+                  <MenuItem value="last-month">Last Month</MenuItem>
+                  <MenuItem value="this-quarter">This Quarter</MenuItem>
+                  <MenuItem value="last-quarter">Last Quarter</MenuItem>
+                  <MenuItem value="this-year">This Year</MenuItem>
+                </Select>
+              </FormControl>
+
+              {dateRangePreset === 'custom' && (
+                <>
+                  <TextField
+                    size="small"
+                    label="Start Date"
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ width: 160 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="End Date"
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ width: 160 }}
+                  />
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <InputLabel>Month</InputLabel>
+                    <Select
+                      value={filterMonth}
+                      label="Month"
+                      onChange={(e) => setFilterMonth(Number(e.target.value))}
+                    >
+                      <MenuItem value={0}>All Months</MenuItem>
+                      {monthNames.map((month, idx) => (
+                        <MenuItem key={idx} value={idx + 1}>{month}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    label="Year"
+                    type="number"
+                    value={filterYear || ''}
+                    onChange={(e) => setFilterYear(Number(e.target.value) || 0)}
+                    sx={{ width: 100 }}
+                    placeholder="All Years"
+                  />
+                </>
+              )}
+            </Box>
+
+            {/* Second Row: Other Filters */}
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={filterStatus}
+                  label="Status"
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <MenuItem value="all">All Statuses</MenuItem>
+                  <MenuItem value="draft">Draft</MenuItem>
+                  <MenuItem value="submitted">Submitted</MenuItem>
+                  <MenuItem value="approved">Approved</MenuItem>
+                  <MenuItem value="needs_revision">Needs Revision</MenuItem>
+                </Select>
+              </FormControl>
+              
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Employee</InputLabel>
+                <Select
+                  value={filterEmployee}
+                  label="Employee"
+                  onChange={(e) => setFilterEmployee(e.target.value)}
+                >
+                  <MenuItem value="all">All Employees</MenuItem>
+                  {uniqueEmployees.map(emp => (
+                    <MenuItem key={emp.id} value={emp.id}>{emp.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>State</InputLabel>
+                <Select
+                  value={filterState}
+                  label="State"
+                  onChange={(e) => setFilterState(e.target.value)}
+                >
+                  <MenuItem value="all">All States</MenuItem>
+                  {uniqueStates.map(state => (
+                    <MenuItem key={state} value={state}>{state}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Cost Center</InputLabel>
+                <Select
+                  value={filterCostCenter}
+                  label="Cost Center"
+                  onChange={(e) => setFilterCostCenter(e.target.value)}
+                >
+                  <MenuItem value="all">All Cost Centers</MenuItem>
+                  {uniqueCostCenters.map(cc => (
+                    <MenuItem key={cc} value={cc}>{cc}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={loadReports}
               >
-                <MenuItem value="all">All Statuses</MenuItem>
-                <MenuItem value="draft">Draft</MenuItem>
-                <MenuItem value="submitted">Submitted</MenuItem>
-                <MenuItem value="approved">Approved</MenuItem>
-                <MenuItem value="needs_revision">Needs Revision</MenuItem>
-              </Select>
-            </FormControl>
-            
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel>Month</InputLabel>
-              <Select
-                value={filterMonth}
-                label="Month"
-                onChange={(e) => setFilterMonth(Number(e.target.value))}
-              >
-                {monthNames.map((month, idx) => (
-                  <MenuItem key={idx} value={idx + 1}>{month}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            
-            <TextField
-              size="small"
-              label="Year"
-              type="number"
-              value={filterYear}
-              onChange={(e) => setFilterYear(Number(e.target.value))}
-              sx={{ width: 100 }}
-            />
-            
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Employee</InputLabel>
-              <Select
-                value={filterEmployee}
-                label="Employee"
-                onChange={(e) => setFilterEmployee(e.target.value)}
-              >
-                <MenuItem value="all">All Employees</MenuItem>
-                {uniqueEmployees.map(emp => (
-                  <MenuItem key={emp.id} value={emp.id}>{emp.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={loadReports}
-            >
-              Refresh
-            </Button>
+                Refresh
+              </Button>
+            </Box>
           </Box>
         </CardContent>
       </Card>
@@ -663,20 +992,71 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
             <Table>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'grey.100' }}>
-                  <TableCell><strong>Employee</strong></TableCell>
+                  <TableCell 
+                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                    onClick={() => handleSort('employeeName')}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <strong>Employee</strong>
+                      {getSortIcon('employeeName')}
+                    </Box>
+                  </TableCell>
                   <TableCell><strong>Period</strong></TableCell>
-                  <TableCell align="right"><strong>Miles</strong></TableCell>
-                  <TableCell align="right"><strong>Mileage ($)</strong></TableCell>
-                  <TableCell align="right"><strong>Total Expenses ($)</strong></TableCell>
-                  <TableCell><strong>Status</strong></TableCell>
-                  <TableCell><strong>Submitted</strong></TableCell>
+                  <TableCell 
+                    align="right"
+                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                    onClick={() => handleSort('totalMiles')}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                      <strong>Miles</strong>
+                      {getSortIcon('totalMiles')}
+                    </Box>
+                  </TableCell>
+                  <TableCell 
+                    align="right"
+                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                    onClick={() => handleSort('totalMileageAmount')}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                      <strong>Mileage ($)</strong>
+                      {getSortIcon('totalMileageAmount')}
+                    </Box>
+                  </TableCell>
+                  <TableCell 
+                    align="right"
+                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                    onClick={() => handleSort('totalExpenses')}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                      <strong>Total Expenses ($)</strong>
+                      {getSortIcon('totalExpenses')}
+                    </Box>
+                  </TableCell>
+                  <TableCell 
+                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                    onClick={() => handleSort('status')}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <strong>Status</strong>
+                      {getSortIcon('status')}
+                    </Box>
+                  </TableCell>
+                  <TableCell 
+                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                    onClick={() => handleSort('submittedAt')}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <strong>Submitted</strong>
+                      {getSortIcon('submittedAt')}
+                    </Box>
+                  </TableCell>
                   <TableCell align="center"><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredReports.map((report) => (
                   <TableRow key={report.id} hover>
-                    <TableCell>{report.employeeName}</TableCell>
+                    <TableCell>{getDisplayName(report)}</TableCell>
                     <TableCell>{monthNames[report.month - 1]} {report.year}</TableCell>
                     <TableCell align="right">{report.totalMiles.toFixed(1)}</TableCell>
                     <TableCell align="right">${report.totalMileageAmount.toFixed(2)}</TableCell>
@@ -738,6 +1118,11 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         )}
       </TabPanel>
 
+      {/* Reports & Analytics */}
+      <TabPanel value={activeTab} index={4}>
+        <ReportsAnalyticsTab />
+      </TabPanel>
+
       {/* Pending Review Tab */}
       <TabPanel value={activeTab} index={1}>
         {filteredReports.filter(r => r.status === 'submitted').length === 0 ? (
@@ -757,7 +1142,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
               <TableBody>
                 {filteredReports.filter(r => r.status === 'submitted').map((report) => (
                   <TableRow key={report.id} hover>
-                    <TableCell>{report.employeeName}</TableCell>
+                    <TableCell>{getDisplayName(report)}</TableCell>
                     <TableCell>{monthNames[report.month - 1]} {report.year}</TableCell>
                     <TableCell align="right">${report.totalExpenses.toFixed(2)}</TableCell>
                     <TableCell>
@@ -808,7 +1193,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
               <TableBody>
                 {filteredReports.filter(r => r.status === 'approved').map((report) => (
                   <TableRow key={report.id} hover>
-                    <TableCell>{report.employeeName}</TableCell>
+                    <TableCell>{getDisplayName(report)}</TableCell>
                     <TableCell>{monthNames[report.month - 1]} {report.year}</TableCell>
                     <TableCell align="right">${report.totalExpenses.toFixed(2)}</TableCell>
                     <TableCell align="center">
@@ -860,7 +1245,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
               <TableBody>
                 {filteredReports.filter(r => r.status === 'needs_revision').map((report) => (
                   <TableRow key={report.id} hover>
-                    <TableCell>{report.employeeName}</TableCell>
+                    <TableCell>{getDisplayName(report)}</TableCell>
                     <TableCell>{monthNames[report.month - 1]} {report.year}</TableCell>
                     <TableCell align="right">${report.totalExpenses.toFixed(2)}</TableCell>
                     <TableCell align="center">
@@ -888,7 +1273,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         fullWidth
       >
         <DialogTitle>
-          {selectedReport?.employeeName} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
+          {selectedReport && getDisplayName(selectedReport)} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
         </DialogTitle>
         <DialogContent>
           {selectedReport && (
@@ -970,7 +1355,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         <DialogTitle>Request Revision</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            Request revisions from {selectedReport?.employeeName} for {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
+            Request revisions from {selectedReport && getDisplayName(selectedReport)} for {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
           </Typography>
           <TextField
             fullWidth
@@ -1003,7 +1388,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         fullWidth
       >
         <DialogTitle>
-          Print Preview - {selectedReport?.employeeName}
+          Print Preview - {selectedReport && getDisplayName(selectedReport)}
           <IconButton
             onClick={() => setPrintPreviewOpen(false)}
             sx={{ position: 'absolute', right: 8, top: 8 }}
@@ -1080,7 +1465,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                 MONTHLY EXPENSE REPORT
               </Typography>
               <Typography variant="h6" color="textSecondary">
-                {selectedReport?.employeeName} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
+                {selectedReport && getDisplayName(selectedReport)} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
               </Typography>
             </Box>
 

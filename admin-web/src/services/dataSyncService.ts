@@ -33,8 +33,8 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 
-// API base URL
-const API_BASE_URL = 'http://localhost:3002/api';
+// API base URL - use environment variable or default to localhost for development
+const API_BASE_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api`;
 
 // Initialize real-time sync
 let realtimeInitialized = false;

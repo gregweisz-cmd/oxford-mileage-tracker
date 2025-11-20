@@ -16,7 +16,7 @@ interface PerDiemWidgetProps {
   };
 }
 
-export default function PerDiemWidget({
+function PerDiemWidget({
   currentTotal,
   monthlyLimit,
   daysEligible = 0,
@@ -30,7 +30,7 @@ export default function PerDiemWidget({
   }
 }: PerDiemWidgetProps) {
   const remaining = monthlyLimit - currentTotal;
-  const percentUsed = (currentTotal / monthlyLimit) * 100;
+  const percentUsed = monthlyLimit > 0 ? (currentTotal / monthlyLimit) * 100 : 0;
   
   // Determine status color
   const getStatusColor = () => {
@@ -198,3 +198,4 @@ const styles = StyleSheet.create({
   },
 });
 
+export default React.memo(PerDiemWidget);

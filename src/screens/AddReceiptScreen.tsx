@@ -33,7 +33,9 @@ import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 import { useNotifications } from '../contexts/NotificationContext';
 import { CategoryAiService, CategorySuggestion } from '../services/categoryAiService';
 import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiService';
+import { ReceiptOcrService } from '../services/receiptOcrService';
 import { COST_CENTERS } from '../constants/costCenters';
+import { ReceiptPhotoQualityService, PhotoQualityResult } from '../services/receiptPhotoQualityService';
 
 interface AddReceiptScreenProps {
   navigation: any;
@@ -54,6 +56,9 @@ const RECEIPT_CATEGORIES = [
   'Per Diem',
   'Other'
 ];
+
+const EES_NOTE_TEXT = 'Not for reimbursement';
+const EES_NOTE_SUFFIX = ` - ${EES_NOTE_TEXT}`;
 
 export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) {
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
@@ -90,6 +95,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const [autoPerDiemEnabled, setAutoPerDiemEnabled] = useState(true);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [currentPerDiemRule, setCurrentPerDiemRule] = useState<any>(null);
+  
+  // OCR state
+  const [processingOcr, setProcessingOcr] = useState(false);
+  
+  // Photo quality state
+  const [photoQualityResult, setPhotoQualityResult] = useState<PhotoQualityResult | null>(null);
+  const [dismissedQualityWarning, setDismissedQualityWarning] = useState(false);
 
   useEffect(() => {
     loadEmployee();
@@ -183,14 +195,50 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       
       // Initialize cost center
       if (employee) {
-        // Use smart cost center auto-selection
-        const suggestedCostCenter = await CostCenterAutoSelectionService.suggestCostCenter(
-          employee,
-          {
-            category: formData.category || undefined,
-            screen: 'receipt'
+        // Get most frequently used cost center from receipts, or use default
+        let suggestedCostCenter = '';
+        try {
+          // Get all receipts to find most frequently used cost center
+          const allReceipts = await DatabaseService.getReceipts(employee.id);
+          const receiptsWithCostCenter = allReceipts.filter(r => r.costCenter && r.costCenter.trim());
+          
+          if (receiptsWithCostCenter.length > 0) {
+            // Count cost center usage
+            const costCenterCounts = new Map<string, number>();
+            receiptsWithCostCenter.forEach(receipt => {
+              if (receipt.costCenter) {
+                const cc = receipt.costCenter.trim();
+                costCenterCounts.set(cc, (costCenterCounts.get(cc) || 0) + 1);
+              }
+            });
+            
+            // Find most frequent
+            let maxCount = 0;
+            let mostFrequentCC = '';
+            costCenterCounts.forEach((count, cc) => {
+              if (count > maxCount) {
+                maxCount = count;
+                mostFrequentCC = cc;
+              }
+            });
+            
+            suggestedCostCenter = mostFrequentCC;
           }
-        );
+          
+          // Fall back to default if no receipts found
+          if (!suggestedCostCenter) {
+            suggestedCostCenter = employee.defaultCostCenter || 
+                                 employee.selectedCostCenters?.[0] || 
+                                 '';
+          }
+        } catch (error) {
+          console.error('Error getting cost center suggestion:', error);
+          // Fall back to default
+          suggestedCostCenter = employee.defaultCostCenter || 
+                               employee.selectedCostCenters?.[0] || 
+                               '';
+        }
+        
         console.log('📄 AddReceiptScreen: Auto-selected cost center:', suggestedCostCenter);
         setSelectedCostCenter(suggestedCostCenter);
         
@@ -249,6 +297,51 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }
   };
 
+  const ensureEesNoteInDescription = (description: string): string => {
+    const trimmed = description.trim();
+    if (trimmed.length === 0) {
+      return EES_NOTE_TEXT;
+    }
+
+    if (trimmed.toLowerCase().includes(EES_NOTE_TEXT.toLowerCase())) {
+      return trimmed;
+    }
+
+    return `${trimmed}${EES_NOTE_SUFFIX}`;
+  };
+
+  const removeEesNoteFromDescription = (description: string): string => {
+    const trimmed = description.trim();
+    const noteLower = EES_NOTE_TEXT.toLowerCase();
+    const legacySuffix = ` — ${EES_NOTE_TEXT}`;
+
+    if (trimmed.toLowerCase() === noteLower) {
+      return '';
+    }
+
+    if (trimmed.endsWith(EES_NOTE_SUFFIX)) {
+      return trimmed.slice(0, trimmed.length - EES_NOTE_SUFFIX.length).trim();
+    }
+
+    if (trimmed.endsWith(legacySuffix)) {
+      return trimmed.slice(0, trimmed.length - legacySuffix.length).trim();
+    }
+
+    return description;
+  };
+
+  const adjustDescriptionForCategory = (prevCategory: string, nextCategory: string, description: string): string => {
+    if (nextCategory === 'EES') {
+      return ensureEesNoteInDescription(description);
+    }
+
+    if (prevCategory === 'EES' && nextCategory !== 'EES') {
+      return removeEesNoteFromDescription(description);
+    }
+
+    return description;
+  };
+
   const handleInputChange = async (field: string, value: string) => {
     // Auto-set amount based on Per Diem rules when Per Diem is selected
     if (field === 'category' && value === 'Per Diem') {
@@ -279,7 +372,15 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         console.error('❌ AddReceipt: Error getting Per Diem rule:', error);
       }
       
-      setFormData(prev => ({ ...prev, [field]: value, amount: defaultAmount }));
+      setFormData(prev => {
+        const description = adjustDescriptionForCategory(prev.category, value, prev.description);
+        return { ...prev, [field]: value, amount: defaultAmount, description };
+      });
+    } else if (field === 'category') {
+      setFormData(prev => {
+        const description = adjustDescriptionForCategory(prev.category, value, prev.description);
+        return { ...prev, [field]: value, description };
+      });
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -361,6 +462,66 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }
   };
 
+  const processOcrOnImage = async (uri: string) => {
+    try {
+      console.log('🔍 Starting OCR processing...');
+      setProcessingOcr(true);
+      
+      const ocrResult = await ReceiptOcrService.processReceipt(uri);
+      
+      if (ocrResult.vendor || ocrResult.amount || ocrResult.date || ocrResult.suggestedCategory) {
+        console.log('✅ OCR results:', ocrResult);
+        
+        // Update form with OCR results
+        const updates: any = {
+          vendor: ocrResult.vendor || formData.vendor,
+          amount: ocrResult.amount ? ocrResult.amount.toString() : formData.amount,
+          date: ocrResult.date || formData.date
+        };
+        
+        // Set suggested category if available and category is empty or default
+        if (ocrResult.suggestedCategory && 
+            (!formData.category || formData.category === RECEIPT_CATEGORIES[0])) {
+          // Only auto-set if category is empty or set to first category (likely default)
+          if (RECEIPT_CATEGORIES.includes(ocrResult.suggestedCategory)) {
+            updates.category = ocrResult.suggestedCategory;
+          }
+        }
+        
+        setFormData(prev => ({
+          ...prev,
+          ...updates
+        }));
+        
+        // Build success message
+        let message = 'Extracted:\n';
+        if (ocrResult.vendor) message += `• Vendor: ${ocrResult.vendor}\n`;
+        if (ocrResult.amount) message += `• Amount: $${ocrResult.amount.toFixed(2)}\n`;
+        if (ocrResult.date) message += `• Date: ${ocrResult.date.toLocaleDateString()}\n`;
+        if (ocrResult.suggestedCategory && updates.category) {
+          message += `• Category: ${ocrResult.suggestedCategory} (suggested)\n`;
+        }
+        message += '\nPlease verify the information.';
+        
+        // Show success message
+        Alert.alert('Auto-Fill Complete', message, [{ text: 'OK' }]);
+      } else {
+        console.log('⚠️ OCR: No useful data extracted');
+        Alert.alert(
+          'Unable to Auto-Fill',
+          'Could not extract information from the receipt image. Please enter the details manually.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ OCR error:', error);
+      // Don't show error to user, just silently fail
+      // OCR is a convenience feature, not essential
+    } finally {
+      setProcessingOcr(false);
+    }
+  };
+
   const takePicture = async () => {
     try {
       console.log('📸 Taking picture...');
@@ -386,6 +547,21 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         const uri = result.assets[0].uri;
         console.log('📸 Image captured:', uri);
         setImageUri(uri);
+        setDismissedQualityWarning(false); // Reset warning dismissal when new image is selected
+        
+        // Check photo quality
+        const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(uri);
+        console.log('📊 Photo quality analysis:', {
+          score: qualityResult.score,
+          issues: qualityResult.issues.length,
+          warnings: qualityResult.warnings.length,
+          isValid: qualityResult.isValid,
+          issuesDetail: qualityResult.issues.map(i => `${i.type} (${i.severity})`)
+        });
+        setPhotoQualityResult(qualityResult);
+        
+        // Run OCR on the captured image
+        await processOcrOnImage(uri);
       } else {
         console.log('📸 Camera was canceled or no image captured');
       }
@@ -411,6 +587,21 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         const uri = result.assets[0].uri;
         console.log('📷 Image selected:', uri);
         setImageUri(uri);
+        setDismissedQualityWarning(false); // Reset warning dismissal when new image is selected
+        
+        // Check photo quality
+        const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(uri);
+        console.log('📊 Photo quality analysis:', {
+          score: qualityResult.score,
+          issues: qualityResult.issues.length,
+          warnings: qualityResult.warnings.length,
+          isValid: qualityResult.isValid,
+          issuesDetail: qualityResult.issues.map(i => `${i.type} (${i.severity})`)
+        });
+        setPhotoQualityResult(qualityResult);
+        
+        // Run OCR on the selected image
+        await processOcrOnImage(uri);
       } else {
         console.log('📷 Gallery selection was canceled or no image selected');
       }
@@ -422,11 +613,15 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
 
   const validateForm = async (): Promise<boolean> => {
-    if (!imageUri) {
+    const isPerDiem = formData.category === 'Per Diem';
+    
+    // Photo is optional for Per Diem receipts
+    if (!imageUri && !isPerDiem) {
       Alert.alert('Validation Error', 'Please take or select a receipt photo');
       return false;
     }
-    if (!formData.vendor.trim()) {
+    // Vendor is optional for Per Diem receipts (when photo isn't required)
+    if (!formData.vendor.trim() && !isPerDiem) {
       Alert.alert('Validation Error', 'Vendor is required');
       return false;
     }
@@ -548,7 +743,12 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
   const handleSave = async () => {
     const isValid = await validateForm();
-    if (!isValid || !currentEmployee || !imageUri) return;
+    if (!isValid || !currentEmployee) return;
+    
+    // Photo is optional for Per Diem receipts, required for others
+    if (!imageUri && formData.category !== 'Per Diem') {
+      return;
+    }
 
     // Prevent duplicate saves by checking if already saving
     if (loading) {
@@ -559,25 +759,60 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     setLoading(true);
     try {
       // Check for duplicate receipts (same vendor, amount, and date)
-      const existingReceipts = await DatabaseService.getReceiptsByCategoryAndDate(
+      // Get all receipts for the same date to check across all categories
+      const receiptDate = new Date(formData.date);
+      const month = receiptDate.getMonth() + 1;
+      const year = receiptDate.getFullYear();
+      
+      const allReceiptsForDate = await DatabaseService.getReceipts(
         currentEmployee.id,
-        formData.category,
-        formData.date
+        month,
+        year
       );
       
-      const duplicateReceipt = existingReceipts.find(receipt => 
-        receipt.vendor.toLowerCase() === formData.vendor.toLowerCase() &&
-        Math.abs(receipt.amount - Number(formData.amount)) < 0.01 // Allow for small rounding differences
-      );
+      // Filter to receipts on the exact same date
+      const sameDateReceipts = allReceiptsForDate.filter(receipt => {
+        const receiptDateObj = new Date(receipt.date);
+        const formDateObj = new Date(formData.date);
+        
+        // Compare year, month, and day
+        return receiptDateObj.getFullYear() === formDateObj.getFullYear() &&
+               receiptDateObj.getMonth() === formDateObj.getMonth() &&
+               receiptDateObj.getDate() === formDateObj.getDate();
+      });
+      
+      // Check for duplicate (same vendor, amount, and date)
+      // Normalize vendor for comparison (handle empty vendors, especially for Per Diem)
+      const normalizedFormVendor = (formData.vendor || (formData.category === 'Per Diem' ? 'Per Diem' : '')).toLowerCase().trim();
+      
+      const duplicateReceipt = sameDateReceipts.find(receipt => {
+        const normalizedReceiptVendor = (receipt.vendor || (receipt.category === 'Per Diem' ? 'Per Diem' : '')).toLowerCase().trim();
+        const vendorMatch = normalizedReceiptVendor === normalizedFormVendor;
+        const amountMatch = Math.abs(receipt.amount - Number(formData.amount)) < 0.01; // Allow for small rounding differences
+        
+        return vendorMatch && amountMatch;
+      });
       
       if (duplicateReceipt) {
+        const duplicateDate = new Date(duplicateReceipt.date).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        });
+        
         Alert.alert(
-          'Duplicate Receipt',
-          `A receipt for ${formData.vendor} with amount $${formData.amount} already exists for this date. Do you want to add it anyway?`,
+          'Duplicate Receipt Detected',
+          `A similar receipt already exists:\n\n` +
+          `• Vendor: ${duplicateReceipt.vendor}\n` +
+          `• Amount: $${duplicateReceipt.amount.toFixed(2)}\n` +
+          `• Date: ${duplicateDate}\n` +
+          `• Category: ${duplicateReceipt.category}\n\n` +
+          `Do you want to add this receipt anyway?`,
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: 'Cancel', style: 'cancel', onPress: () => setLoading(false) },
             { text: 'Add Anyway', onPress: () => proceedWithSave() }
-          ]
+          ],
+          { cancelable: false }
         );
         return;
       }
@@ -592,7 +827,12 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   };
 
   const proceedWithSave = async () => {
-    if (!currentEmployee || !imageUri) return;
+    if (!currentEmployee) return;
+    
+    // Photo is optional for Per Diem receipts
+    if (!imageUri && formData.category !== 'Per Diem') {
+      return;
+    }
     
     try {
       // For Car Rental Fuel, combine with existing Car Rental if it exists
@@ -620,10 +860,10 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             employeeId: currentEmployee.id,
             date: formData.date,
             amount: Number(formData.amount),
-            vendor: formData.vendor.trim(),
+            vendor: formData.vendor.trim() || 'Rental Car Fuel',
             category: 'Rental Car', // Change category to Rental Car
             description: formData.description.trim(),
-            imageUri,
+            imageUri: imageUri || '',
             costCenter: selectedCostCenter,
           };
           await DatabaseService.createReceipt(receiptData);
@@ -650,7 +890,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             amount: combinedAmount,
             vendor: `${formData.vendor.trim()} + ${existingFuel[0].vendor}`,
             category: 'Rental Car',
-            imageUri,
+            imageUri: imageUri || '',
             costCenter: selectedCostCenter,
           };
           await DatabaseService.createReceipt(receiptData);
@@ -663,27 +903,26 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       }
 
       // Regular save for all other categories
+      const finalDescription =
+        formData.category === 'EES'
+          ? ensureEesNoteInDescription(formData.description)
+          : removeEesNoteFromDescription(formData.description).trim();
+
       const receiptData = {
         employeeId: currentEmployee.id,
         date: formData.date,
         amount: Number(formData.amount),
-        vendor: formData.vendor.trim(),
+        vendor: formData.vendor.trim() || (formData.category === 'Per Diem' ? 'Per Diem' : ''),
         category: formData.category,
-        description: formData.description.trim(),
-        imageUri,
+        description: finalDescription,
+        imageUri: imageUri || '',
         costCenter: selectedCostCenter,
       };
 
       await DatabaseService.createReceipt(receiptData);
       
-      // Save the selected cost center for future auto-selection
-      if (selectedCostCenter) {
-        await CostCenterAutoSelectionService.saveLastUsedCostCenter(
-          currentEmployee.id,
-          'receipt',
-          selectedCostCenter
-        );
-      }
+      // Note: Cost center usage is tracked automatically through receipt history
+      // No need to explicitly save - it will be used for future suggestions
       
       // Run anomaly detection BEFORE showing success alert
       let anomalyMessage = '';
@@ -764,13 +1003,49 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         {/* Receipt Photo */}
         <View style={styles.photoContainer}>
           <View style={styles.labelRow}>
-            <Text style={styles.label}>Receipt Photo *</Text>
+            <Text style={styles.label}>
+              Receipt Photo {formData.category === 'Per Diem' ? '(Optional)' : '*'}
+            </Text>
           </View>
           
           {imageUri ? (
             <View style={styles.imageContainer}>
               <Image source={{ uri: imageUri }} style={styles.receiptImage} />
               
+              {/* Photo Quality Warning - Only show for significant issues (score < 70) */}
+              {photoQualityResult && !dismissedQualityWarning && photoQualityResult.score < 70 && (
+                <View style={[
+                  styles.qualityWarning,
+                  photoQualityResult.score < 50 && styles.qualityWarningHigh
+                ]}>
+                  <View style={styles.qualityWarningContent}>
+                    <MaterialIcons 
+                      name={photoQualityResult.score < 50 ? "error" : "warning"} 
+                      size={18} 
+                      color={photoQualityResult.score < 50 ? "#F44336" : "#FF9800"} 
+                    />
+                    <View style={styles.qualityWarningText}>
+                      <Text style={[
+                        styles.qualityWarningTitle,
+                        photoQualityResult.score < 50 && styles.qualityWarningTitleHigh
+                      ]}>
+                        {ReceiptPhotoQualityService.getQualityMessage(photoQualityResult) || 'Photo quality could be improved'}
+                      </Text>
+                      {ReceiptPhotoQualityService.getPrimarySuggestion(photoQualityResult) && (
+                        <Text style={styles.qualityWarningSuggestion}>
+                          {ReceiptPhotoQualityService.getPrimarySuggestion(photoQualityResult)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => setDismissedQualityWarning(true)}
+                    style={styles.qualityWarningDismiss}
+                  >
+                    <MaterialIcons name="close" size={18} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              )}
               
               <TouchableOpacity
                 style={styles.changePhotoButton}
@@ -879,7 +1154,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         {/* Vendor */}
         <View style={styles.inputGroup}>
           <View style={styles.vendorHeader}>
-            <Text style={styles.label}>Vendor *</Text>
+            <Text style={styles.label}>
+              Vendor {formData.category === 'Per Diem' ? '(Optional)' : '*'}
+            </Text>
             {nearbyVendors.length > 0 && (
               <TouchableOpacity 
                 style={styles.nearbyButton}
@@ -1038,6 +1315,20 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             ))}
           </View>
         </View>
+
+        {formData.category === 'EES' && (
+          <View style={styles.inputGroup}>
+            <View style={styles.eesNoticeContainer}>
+              <MaterialIcons name="info" size={20} color="#d84315" style={styles.eesNoticeIcon} />
+              <View style={styles.eesNoticeTextContainer}>
+                <Text style={styles.eesNoticeTitle}>Not for reimbursement</Text>
+                <Text style={styles.eesNoticeDescription}>
+                  EES payments are required self-pay contributions. Log them here for tracking only - we do not reimburse these charges.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Cost Center Selector - show if user has cost centers assigned */}
         {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 0 && (
@@ -1234,6 +1525,48 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 8,
     backgroundColor: '#fff',
+  },
+  qualityWarning: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#FFF3E0',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  qualityWarningHigh: {
+    backgroundColor: '#FFEBEE',
+    borderLeftColor: '#F44336',
+  },
+  qualityWarningContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+    gap: 8,
+  },
+  qualityWarningText: {
+    flex: 1,
+    gap: 4,
+  },
+  qualityWarningTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FF9800',
+  },
+  qualityWarningTitleHigh: {
+    color: '#F44336',
+  },
+  qualityWarningSuggestion: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  qualityWarningDismiss: {
+    padding: 4,
+    marginLeft: 8,
   },
   changePhotoButton: {
     position: 'absolute',
@@ -1560,6 +1893,35 @@ const styles = StyleSheet.create({
   },
   confidenceBadgeTop: {
     backgroundColor: '#FF9800',
+  },
+
+  // EES Notice Styles
+  eesNoticeContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF3E0',
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F57C00',
+  },
+  eesNoticeIcon: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  eesNoticeTextContainer: {
+    flex: 1,
+  },
+  eesNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#BF360C',
+    marginBottom: 4,
+  },
+  eesNoticeDescription: {
+    fontSize: 13,
+    color: '#5f6368',
+    lineHeight: 18,
   },
 
   // Per Diem Styles

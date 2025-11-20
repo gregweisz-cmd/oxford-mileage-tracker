@@ -117,6 +117,8 @@ export class PerDiemRulesService {
       const activeRule = rule || defaultRule;
       
       // Check if requirements are met
+      // Note: stayedOvernight check is handled at the caller level (StaffPortal)
+      // This service checks the rule-based requirements (hours, miles, distance)
       const meetsRequirements = 
         hoursWorked >= activeRule.minHours &&
         milesTraveled >= activeRule.minMiles &&

@@ -158,23 +158,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     };
   }, [isTracking, currentSession?.id]); // Only restart when tracking status or session ID changes
 
-  // Poll for distance updates while tracking
-  useEffect(() => {
-    let distanceInterval: NodeJS.Timeout;
-    
-    if (isTracking) {
-      distanceInterval = setInterval(() => {
-        const distance = GpsTrackingService.getCurrentDistance();
-        setCurrentDistance(distance);
-      }, 3000) as any; // Update every 3 seconds to avoid performance issues
-    }
-
-    return () => {
-      if (distanceInterval) {
-        clearInterval(distanceInterval);
-      }
-    };
-  }, [isTracking]);
+  // Removed: Poll for distance updates - now handled by GpsTrackingContext to avoid duplicate updates
 
   // Handle selected address from SavedAddressesScreen
   useEffect(() => {
@@ -670,7 +654,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
-        contentContainerStyle={{ flexGrow: 1 }}
       >
         {/* Tracking Status */}
         <View style={styles.statusContainer}>

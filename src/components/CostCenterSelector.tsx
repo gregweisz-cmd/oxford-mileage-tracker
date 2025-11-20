@@ -19,7 +19,7 @@ interface CostCenterSelectorProps {
   currentValue?: string;
 }
 
-export default function CostCenterSelector({
+function CostCenterSelector({
   visible,
   onClose,
   onSelect,
@@ -254,4 +254,5 @@ const styles = StyleSheet.create({
   },
 });
 
+export default React.memo(CostCenterSelector);
 

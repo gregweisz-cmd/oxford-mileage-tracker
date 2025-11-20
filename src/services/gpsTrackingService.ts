@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { debugLog, debugError, debugWarn } from '../config/debug';
 import { GpsTrackingSession } from '../types';
 
 export class GpsTrackingService {
@@ -12,7 +13,7 @@ export class GpsTrackingService {
 
   static async requestPermissions(): Promise<boolean> {
     try {
-      console.log('🔐 GPS: Requesting location permissions...');
+      debugLog('🔐 GPS: Requesting location permissions...');
       
       // Wait for location module to be ready
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -26,12 +27,12 @@ export class GpsTrackingService {
 
       // Check foreground permission status first
       const { status: foregroundStatus } = await Location.getForegroundPermissionsAsync();
-      console.log('🔐 GPS: Foreground permission status:', foregroundStatus);
+      debugLog('🔐 GPS: Foreground permission status:', foregroundStatus);
       
       // Request foreground permissions if not granted
       if (foregroundStatus !== 'granted') {
         const { status: requestedForegroundStatus } = await Location.requestForegroundPermissionsAsync();
-        console.log('🔐 GPS: Foreground permission request result:', requestedForegroundStatus);
+        debugLog('🔐 GPS: Foreground permission request result:', requestedForegroundStatus);
         
         if (requestedForegroundStatus !== 'granted') {
           console.error('❌ GPS: Foreground location permission denied');
@@ -42,24 +43,24 @@ export class GpsTrackingService {
       // Now try to get background permissions for tracking when app is backgrounded
       try {
         const { status: backgroundStatus } = await Location.getBackgroundPermissionsAsync();
-        console.log('🔐 GPS: Background permission status:', backgroundStatus);
+        debugLog('🔐 GPS: Background permission status:', backgroundStatus);
         
         if (backgroundStatus !== 'granted') {
-          console.log('🔐 GPS: Requesting background location permissions...');
+          debugLog('🔐 GPS: Requesting background location permissions...');
           const { status: requestedBackgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-          console.log('🔐 GPS: Background permission request result:', requestedBackgroundStatus);
+          debugLog('🔐 GPS: Background permission request result:', requestedBackgroundStatus);
           
           if (requestedBackgroundStatus !== 'granted') {
-            console.log('⚠️ GPS: Background location permission denied - tracking will pause when app is in background');
+            debugLog('⚠️ GPS: Background location permission denied - tracking will pause when app is in background');
           } else {
-            console.log('✅ GPS: Background location permissions granted');
+            debugLog('✅ GPS: Background location permissions granted');
           }
         } else {
-          console.log('✅ GPS: Background location permissions already granted');
+          debugLog('✅ GPS: Background location permissions already granted');
         }
       } catch (backgroundError) {
         // Background permissions might not be available on all platforms
-        console.log('⚠️ GPS: Background permissions not available on this platform:', backgroundError);
+        debugLog('⚠️ GPS: Background permissions not available on this platform:', backgroundError);
       }
 
       return true;
@@ -67,7 +68,7 @@ export class GpsTrackingService {
       console.error('❌ GPS: Error requesting location permissions:', error);
       // If it's a prepareAsync error, try again after a longer delay
       if (error instanceof Error && error.message.includes('prepareAsync')) {
-        console.log('🔄 GPS: Retrying after prepareAsync error...');
+        debugLog('🔄 GPS: Retrying after prepareAsync error...');
         await new Promise(resolve => setTimeout(resolve, 2000));
         try {
           const { status } = await Location.requestForegroundPermissionsAsync();
@@ -88,10 +89,10 @@ export class GpsTrackingService {
     notes?: string
   ): Promise<GpsTrackingSession> {
     try {
-      console.log('🚀 GPS: Starting tracking session...');
-      console.log('🚀 GPS: Employee ID:', employeeId);
-      console.log('🚀 GPS: Purpose:', purpose);
-      console.log('🚀 GPS: Odometer Reading:', odometerReading);
+      debugLog('🚀 GPS: Starting tracking session...');
+      debugLog('🚀 GPS: Employee ID:', employeeId);
+      debugLog('🚀 GPS: Purpose:', purpose);
+      debugLog('🚀 GPS: Odometer Reading:', odometerReading);
 
       // Wait for location module to initialize properly
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -109,7 +110,7 @@ export class GpsTrackingService {
       }
 
       // Get current location with more lenient settings
-      console.log('📍 GPS: Getting current location...');
+      debugLog('📍 GPS: Getting current location...');
       let location;
       try {
         location = await Location.getCurrentPositionAsync({
@@ -120,7 +121,7 @@ export class GpsTrackingService {
       } catch (locationError) {
         console.error('❌ GPS: Error getting location:', locationError);
         if (locationError instanceof Error && locationError.message.includes('prepareAsync')) {
-          console.log('🔄 GPS: Retrying location after prepareAsync error...');
+          debugLog('🔄 GPS: Retrying location after prepareAsync error...');
           await new Promise(resolve => setTimeout(resolve, 3000));
           location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Lowest, // Use lowest accuracy for retry
@@ -136,7 +137,7 @@ export class GpsTrackingService {
         throw new Error('Unable to get current location. Please check your GPS signal.');
       }
 
-      console.log('📍 GPS: Current location obtained:', location.coords);
+      debugLog('📍 GPS: Current location obtained:', location.coords);
 
       // Create tracking session
       const session: GpsTrackingSession = {

@@ -29,6 +29,9 @@ import {
   Edit as EditIcon,
 } from '@mui/icons-material';
 
+// API configuration - use environment variable or default to localhost for development
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -97,7 +100,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const loadEmployeeData = useCallback(async () => {
     try {
       // Load employee's base addresses
-      const employeeResponse = await fetch(`http://localhost:3002/api/employees/${employeeId}`);
+      const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
       let baseAddress = '';
       
       if (employeeResponse.ok) {
@@ -135,7 +138,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const loadSavedAddresses = async () => {
     try {
       // Load saved addresses (from saved_addresses table if exists)
-      const savedResponse = await fetch(`http://localhost:3002/api/saved-addresses?employeeId=${employeeId}`);
+      const savedResponse = await fetch(`${API_BASE_URL}/api/saved-addresses?employeeId=${employeeId}`);
       if (savedResponse.ok) {
         const saved = await savedResponse.json();
         setSavedAddresses(saved);
@@ -148,7 +151,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const loadFrequentAddresses = async () => {
     try {
       // Load frequent addresses from mileage entries
-      const mileageResponse = await fetch(`http://localhost:3002/api/mileage-entries?employeeId=${employeeId}`);
+      const mileageResponse = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}`);
       if (mileageResponse.ok) {
         const entries = await mileageResponse.json();
         
@@ -215,7 +218,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   const loadOxfordHouses = async (baseAddress: string = '') => {
     try {
-      const response = await fetch(`http://localhost:3002/api/oxford-houses`);
+      const response = await fetch(`${API_BASE_URL}/api/oxford-houses`);
       if (response.ok) {
         const houses = await response.json();
         setOxfordHouses(houses);

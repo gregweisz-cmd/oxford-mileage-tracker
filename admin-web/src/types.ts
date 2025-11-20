@@ -66,6 +66,10 @@ export interface Employee {
   defaultCostCenter: string;
   supervisorId?: string | null; // ID of the supervisor this employee reports to (null = no supervisor)
   signature?: string;
+  typicalWorkStartHour?: number; // Typical work start hour (0-23)
+  typicalWorkEndHour?: number; // Typical work end hour (0-23)
+  hasCompletedOnboarding?: boolean; // Whether the employee has completed the onboarding flow
+  hasCompletedSetupWizard?: boolean; // Whether the employee has completed the setup wizard
   createdAt: Date;
   updatedAt: Date;
 }

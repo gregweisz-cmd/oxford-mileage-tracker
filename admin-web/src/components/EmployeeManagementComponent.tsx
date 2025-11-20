@@ -43,7 +43,10 @@ import {
   LockReset,
   Search,
   ExpandMore,
-  ExpandLess
+  ExpandLess,
+  Archive,
+  Restore,
+  FolderDelete
 } from '@mui/icons-material';
 import { BulkImportService, BulkImportResult, EmployeeImportData } from '../services/bulkImportService';
 import { EmployeeApiService } from '../services/employeeApiService';
@@ -58,6 +61,7 @@ interface EmployeeManagementProps {
   onDeleteEmployee: (id: string) => Promise<void>;
   onBulkUpdateEmployees: (employeeIds: string[], updates: Partial<Employee>) => Promise<void>;
   onBulkDeleteEmployees: (employeeIds: string[]) => Promise<void>;
+  onRefresh?: () => void;
 }
 
 interface TabPanelProps {
@@ -88,7 +92,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   onUpdateEmployee,
   onDeleteEmployee,
   onBulkUpdateEmployees,
-  onBulkDeleteEmployees
+  onBulkDeleteEmployees,
+  onRefresh
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
@@ -112,6 +117,11 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [quickEditCostCenters, setQuickEditCostCenters] = useState<string[]>([]);
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [showEmployeeCostCenterDropdown, setShowEmployeeCostCenterDropdown] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedEmployees, setArchivedEmployees] = useState<Employee[]>([]);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
@@ -136,8 +146,36 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     };
   }, [showCostCenterDropdown, showEmployeeCostCenterDropdown]);
 
+  // Load archived employees when viewing archived section
+  React.useEffect(() => {
+    if (showArchived) {
+      loadArchivedEmployees();
+    }
+  }, [showArchived]);
+
+  const loadArchivedEmployees = async () => {
+    try {
+      console.log('🔄 Loading archived employees...');
+      const archived = await EmployeeApiService.getArchivedEmployees();
+      console.log(`✅ Archived employees loaded: ${archived.length} employees`, archived);
+      
+      if (archived.length === 0) {
+        console.log('ℹ️ No archived employees found in database');
+      }
+      
+      setArchivedEmployees(archived);
+    } catch (error) {
+      console.error('❌ Error loading archived employees:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error details:', errorMessage);
+      alert(`Failed to load archived employees: ${errorMessage}`);
+      // Set empty array on error to avoid stale data
+      setArchivedEmployees([]);
+    }
+  };
+
   // Filter employees based on search text
-  const filteredEmployees = existingEmployees.filter(employee => {
+  const filteredEmployees = (showArchived ? archivedEmployees : existingEmployees).filter(employee => {
     if (!searchText) return true;
     const searchLower = searchText.toLowerCase();
     return (
@@ -383,12 +421,62 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   };
 
   const handleDeleteEmployee = async (employeeId: string) => {
-    if (window.confirm('Are you sure you want to delete this employee?')) {
+    if (window.confirm('Are you sure you want to archive this employee? They will be moved to the archived employees section. You can restore them later if needed.')) {
       try {
+        // onDeleteEmployee now handles archiving (updated in AdminPortal)
         await onDeleteEmployee(employeeId);
-      } catch (error) {
-        console.error('Error deleting employee:', error);
+        // Refresh archived list if user is viewing archived section
+        if (showArchived) {
+          await loadArchivedEmployees();
+        }
+      } catch (error: any) {
+        console.error('Error archiving employee:', error);
+        alert(error.message || 'Failed to archive employee. Please try again.');
       }
+    }
+  };
+
+  const handleRestoreEmployee = async (employeeId: string) => {
+    if (window.confirm('Are you sure you want to restore this employee? They will be moved back to the active employees list.')) {
+      try {
+        await EmployeeApiService.restoreEmployee(employeeId);
+        await loadArchivedEmployees(); // Refresh archived list
+        // Trigger parent refresh to update active employees list
+        if (onRefresh) {
+          onRefresh();
+        }
+        alert('Employee restored successfully');
+      } catch (error: any) {
+        console.error('Error restoring employee:', error);
+        alert(error.message || 'Failed to restore employee. Please try again.');
+      }
+    }
+  };
+
+  const handleDeleteClick = (employeeId: string) => {
+    setEmployeeToDelete(employeeId);
+    setDeleteConfirmText('');
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteConfirmText !== 'CONFIRM') {
+      alert('Please type "CONFIRM" to permanently delete this employee.');
+      return;
+    }
+
+    if (!employeeToDelete) return;
+
+    try {
+      await EmployeeApiService.deleteEmployee(employeeToDelete);
+      await loadArchivedEmployees(); // Refresh archived list
+      setDeleteConfirmOpen(false);
+      setEmployeeToDelete(null);
+      setDeleteConfirmText('');
+      alert('Employee permanently deleted');
+    } catch (error: any) {
+      console.error('Error deleting employee:', error);
+      alert(error.message || 'Failed to delete employee. Please try again.');
     }
   };
 
@@ -465,15 +553,46 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6">
-                Current Employees ({filteredEmployees.length} {searchText && `of ${existingEmployees.length}`})
+                {showArchived ? 'Archived Employees' : 'Current Employees'} ({filteredEmployees.length}{!showArchived && searchText && ` of ${existingEmployees.length}`})
               </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={handleAddEmployee}
-              >
-                Add Employee
-              </Button>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                {showArchived ? (
+                                     <Button
+                     variant="outlined"
+                     startIcon={<Archive />}
+                     onClick={() => {
+                       setShowArchived(false);
+                       setSearchText('');
+                       // Clear archived employees when switching back to active
+                       setArchivedEmployees([]);
+                     }}
+                   >
+                     Back to Active Employees
+                   </Button>
+                ) : (
+                  <>
+                                         <Button
+                       variant="outlined"
+                       startIcon={<Archive />}
+                       onClick={async () => {
+                         setShowArchived(true);
+                         setSearchText('');
+                         // Explicitly load archived employees when switching to archived view
+                         await loadArchivedEmployees();
+                       }}
+                     >
+                       View Archived
+                     </Button>
+                    <Button
+                      variant="contained"
+                      startIcon={<Add />}
+                      onClick={handleAddEmployee}
+                    >
+                      Add Employee
+                    </Button>
+                  </>
+                )}
+              </Box>
             </Box>
             
             {/* Search Bar */}
@@ -557,12 +676,12 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                               key={center} 
                               label={center} 
                               size="small" 
-                              clickable
-                              onClick={() => handleQuickCostCenterEdit(employee)}
+                              clickable={!showArchived}
+                              onClick={showArchived ? undefined : () => handleQuickCostCenterEdit(employee)}
                               sx={{ 
                                 mr: 0.5,
-                                cursor: 'pointer',
-                                '&:hover': {
+                                cursor: showArchived ? 'default' : 'pointer',
+                                '&:hover': showArchived ? {} : {
                                   backgroundColor: 'primary.light',
                                   color: 'primary.contrastText'
                                 }
@@ -570,43 +689,70 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             />
                           ))}
                         </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                          Click to edit cost centers
-                        </Typography>
+                        {!showArchived && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                            Click to edit cost centers
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Tooltip title="Edit Employee">
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleEditEmployee(employee)}
-                          >
-                            <Edit />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Reset Password">
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleResetPassword(employee)}
-                            color="primary"
-                          >
-                            <LockReset />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete Employee">
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleDeleteEmployee(employee.id)}
-                            color="error"
-                          >
-                            <Delete />
-                          </IconButton>
-                        </Tooltip>
+                        {showArchived ? (
+                          <>
+                            <Tooltip title="Restore Employee">
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleRestoreEmployee(employee.id)}
+                                color="primary"
+                              >
+                                <Restore />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Permanently Delete Employee">
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleDeleteClick(employee.id)}
+                                color="error"
+                              >
+                                <FolderDelete />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        ) : (
+                          <>
+                            <Tooltip title="Edit Employee">
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleEditEmployee(employee)}
+                              >
+                                <Edit />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Reset Password">
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleResetPassword(employee)}
+                                color="primary"
+                              >
+                                <LockReset />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Archive Employee">
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleDeleteEmployee(employee.id)}
+                                color="warning"
+                              >
+                                <Archive />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
                   {filteredEmployees.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
+                      <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
                         <Search sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
                         <Typography variant="h6" color="text.secondary" gutterBottom>
                           No employees found
@@ -614,6 +760,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         <Typography variant="body2" color="text.secondary">
                           {searchText 
                             ? `No results for "${searchText}". Try a different search term.`
+                            : showArchived
+                            ? 'No archived employees found.'
                             : 'No employees have been added yet. Click "Add Employee" to get started.'}
                         </Typography>
                       </TableCell>
@@ -1506,6 +1654,67 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
             disabled={quickEditCostCenters.length === 0}
           >
             Save Cost Centers
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteConfirmText('');
+          setEmployeeToDelete(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FolderDelete color="error" />
+            <Typography variant="h6">Permanently Delete Employee</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <Typography variant="body2" fontWeight="bold">
+              Warning: This action cannot be undone!
+            </Typography>
+            <Typography variant="body2">
+              This will permanently delete the employee and all associated data. 
+              This action is only available for archived employees.
+            </Typography>
+          </Alert>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            To confirm permanent deletion, please type <strong>CONFIRM</strong> in the field below:
+          </Typography>
+          <TextField
+            fullWidth
+            label="Type CONFIRM to delete"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            placeholder="CONFIRM"
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setDeleteConfirmOpen(false);
+              setDeleteConfirmText('');
+              setEmployeeToDelete(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDeleteConfirm}
+            variant="contained"
+            color="error"
+            disabled={deleteConfirmText !== 'CONFIRM'}
+            startIcon={<FolderDelete />}
+          >
+            Permanently Delete
           </Button>
         </DialogActions>
       </Dialog>
