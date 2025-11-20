@@ -36,6 +36,7 @@ const systemRoutes = require('./routes/system');
 const approvalRoutes = require('./routes/approval');
 const notificationRoutes = require('./routes/notifications');
 const supervisorRoutes = require('./routes/supervisor');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const server = http.createServer(app);
@@ -116,6 +117,7 @@ app.use('/', systemRoutes);
 app.use('/', approvalRoutes);
 app.use('/', notificationRoutes);
 app.use('/', supervisorRoutes);
+app.use('/', adminRoutes);
 
 // Get all employees supervised by a supervisor (directly and indirectly) - Promise based
 // getAllSupervisedEmployees is now in dbService
