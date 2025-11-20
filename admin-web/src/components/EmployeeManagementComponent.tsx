@@ -399,12 +399,25 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     }
     
     try {
-      const updatedEmployee = {
+      const updatedEmployee: any = {
         ...editingEmployee,
         costCenters: selectedCostCenters,
         selectedCostCenters: selectedCostCenters,
         defaultCostCenter: defaultCostCenter || selectedCostCenters[0]
       };
+      
+      // Handle password: only include it if it's been changed (not a hash)
+      // If password field is empty or still a hash, don't include it in the update
+      // If password is a new plain text password, include it
+      if (editingEmployee.password && 
+          editingEmployee.password.trim() !== '' && 
+          !editingEmployee.password.startsWith('$2b$')) {
+        // This is a new plain text password - include it in the update
+        updatedEmployee.password = editingEmployee.password;
+      } else {
+        // Remove password from update - keep existing password
+        delete updatedEmployee.password;
+      }
       
       if (editingEmployee.id) {
         await onUpdateEmployee(editingEmployee.id, updatedEmployee);
@@ -1098,11 +1111,14 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   <TextField
                     fullWidth
                     label="Password"
-                    value={editingEmployee.password}
+                    type="password"
+                    value={editingEmployee.password || ''}
+                    placeholder={editingEmployee.password && editingEmployee.password.startsWith('$2b$') ? 'Enter new password to change' : 'Enter password'}
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
                       password: e.target.value
                     })}
+                    helperText={editingEmployee.password && editingEmployee.password.startsWith('$2b$') ? 'Current password is hashed. Enter a new password to change it.' : 'Leave empty to keep current password'}
                   />
                 </Box>
                 

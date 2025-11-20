@@ -496,7 +496,7 @@ router.post('/api/employees',
  *   "position": "Senior Manager"
  * }
  */
-router.put('/api/employees/:id', (req, res) => {
+router.put('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
   const now = new Date().toISOString();
@@ -510,7 +510,7 @@ router.put('/api/employees/:id', (req, res) => {
   }
 
   // First, get the current employee data to merge with updates
-  db.get('SELECT * FROM employees WHERE id = ?', [id], (getErr, currentEmployee) => {
+  db.get('SELECT * FROM employees WHERE id = ?', [id], async (getErr, currentEmployee) => {
     if (getErr) {
       debugError('❌ Error fetching employee:', getErr);
       res.status(500).json({ error: 'Failed to fetch employee data', details: getErr.message });
@@ -546,6 +546,26 @@ router.put('/api/employees/:id', (req, res) => {
     const hasCompletedOnboarding = updateData.hasCompletedOnboarding !== undefined ? (updateData.hasCompletedOnboarding === true || updateData.hasCompletedOnboarding === 1 ? 1 : 0) : (currentEmployee.hasCompletedOnboarding === 1 ? 1 : 0);
     const hasCompletedSetupWizard = updateData.hasCompletedSetupWizard !== undefined ? (updateData.hasCompletedSetupWizard === true || updateData.hasCompletedSetupWizard === 1 ? 1 : 0) : (currentEmployee.hasCompletedSetupWizard === 1 ? 1 : 0);
 
+    // Handle password update: only hash if password is provided and is plain text (not already hashed)
+    let password = currentEmployee.password || '';
+    if (updateData.password !== undefined && updateData.password !== null && updateData.password.trim() !== '') {
+      // Check if password is already hashed (bcrypt hashes start with $2b$)
+      if (!updateData.password.startsWith('$2b$')) {
+        // This is a plain text password - hash it
+        try {
+          password = await helpers.hashPassword(updateData.password);
+          debugLog(`✅ Password updated for employee: ${id}`);
+        } catch (hashError) {
+          debugError('❌ Error hashing password:', hashError);
+          res.status(500).json({ error: 'Failed to hash password' });
+          return;
+        }
+      } else {
+        // Password is already hashed (shouldn't happen from frontend, but handle it)
+        password = updateData.password;
+      }
+    }
+
     // Validate required fields before update
     if (!name || name.trim() === '') {
       debugError('❌ Validation error: name is required');
@@ -564,8 +584,8 @@ router.put('/api/employees/:id', (req, res) => {
     }
 
     db.run(
-      'UPDATE employees SET name = ?, preferredName = ?, email = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, updatedAt = ? WHERE id = ?',
-      [name, preferredName, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, now, id],
+      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, updatedAt = ? WHERE id = ?',
+      [name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, now, id],
       function(err) {
         if (err) {
           debugError('❌ Database error updating employee:', err.message);
