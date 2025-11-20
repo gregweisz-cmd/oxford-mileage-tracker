@@ -344,7 +344,12 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
 
   const handleEditFromProfile = () => {
     if (!viewingEmployee) return;
-    setEditingEmployee(viewingEmployee);
+    // Create a copy of employee but clear the password field (don't show hashed password)
+    const employeeToEdit = {
+      ...viewingEmployee,
+      password: '' // Clear password field - user can enter new password if needed
+    };
+    setEditingEmployee(employeeToEdit);
     const costCenters = parseCostCenters(viewingEmployee.costCenters);
     setSelectedCostCenters(costCenters);
     setDefaultCostCenter(viewingEmployee.defaultCostCenter || costCenters[0] || '');
@@ -353,7 +358,12 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   };
 
   const handleEditEmployee = (employee: Employee) => {
-    setEditingEmployee(employee);
+    // Create a copy of employee but clear the password field (don't show hashed password)
+    const employeeToEdit = {
+      ...employee,
+      password: '' // Clear password field - user can enter new password if needed
+    };
+    setEditingEmployee(employeeToEdit);
     const costCenters = parseCostCenters(employee.costCenters);
     setSelectedCostCenters(costCenters);
     setDefaultCostCenter(employee.defaultCostCenter || costCenters[0] || '');
@@ -1113,12 +1123,12 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     label="Password"
                     type="password"
                     value={editingEmployee.password || ''}
-                    placeholder={editingEmployee.password && editingEmployee.password.startsWith('$2b$') ? 'Enter new password to change' : 'Enter password'}
+                    placeholder="Enter new password to change (leave empty to keep current)"
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
                       password: e.target.value
                     })}
-                    helperText={editingEmployee.password && editingEmployee.password.startsWith('$2b$') ? 'Current password is hashed. Enter a new password to change it.' : 'Leave empty to keep current password'}
+                    helperText="Leave empty to keep current password. Enter a new password to change it."
                   />
                 </Box>
                 
