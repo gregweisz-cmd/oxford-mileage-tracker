@@ -95,7 +95,18 @@ function parseJsonSafe(value, fallback) {
 }
 
 /**
- * Check if position is finance-related
+ * Check if employee has finance role (uses database role field, not position)
+ * @param {Object} employee - Employee object with role field
+ * @returns {boolean} True if employee has finance role
+ */
+function isFinanceRole(employee) {
+  if (!employee) return false;
+  return employee.role === 'finance';
+}
+
+/**
+ * Check if position is finance-related (legacy function, prefer isFinanceRole)
+ * @deprecated Use isFinanceRole with employee object instead
  */
 function isFinancePosition(position = '') {
   return typeof position === 'string' && /finance/i.test(position);
@@ -129,7 +140,8 @@ module.exports = {
   hashPassword,
   comparePassword,
   parseJsonSafe,
-  isFinancePosition,
+  isFinanceRole,
+  isFinancePosition, // Keep for backward compatibility
   isSupervisorPosition,
   addHours,
   computeEscalationDueAt,

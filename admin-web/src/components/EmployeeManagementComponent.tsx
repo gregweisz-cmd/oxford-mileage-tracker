@@ -126,6 +126,29 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Format phone number to (###) ###-####
+  const formatPhoneNumber = (phone: string | null | undefined): string => {
+    if (!phone || phone === '-') return '-';
+    
+    // Remove all non-numeric characters
+    const cleaned = phone.replace(/\D/g, '');
+    
+    // If it starts with 1 (US country code), remove it
+    const digits = cleaned.startsWith('1') && cleaned.length === 11 ? cleaned.slice(1) : cleaned;
+    
+    // Format as (###) ###-#### if we have 10 digits
+    if (digits.length === 10) {
+      return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    
+    // If not 10 digits, return original or cleaned if it's a reasonable format
+    if (digits.length > 0) {
+      return phone; // Return original if it doesn't match expected format
+    }
+    
+    return '-';
+  };
+
   // Close dropdown when clicking outside
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -379,6 +402,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       password: '',
       oxfordHouseId: '',
       position: '',
+      role: 'employee', // Default login role
       phoneNumber: '',
       baseAddress: '',
       costCenters: ['Program Services'],
@@ -411,6 +435,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     try {
       const updatedEmployee: any = {
         ...editingEmployee,
+        role: editingEmployee.role || 'employee', // Ensure role is set (defaults to 'employee')
         costCenters: selectedCostCenters,
         selectedCostCenters: selectedCostCenters,
         defaultCostCenter: defaultCostCenter || selectedCostCenters[0]
@@ -639,43 +664,57 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               sx={{ mb: 2 }}
             />
             
-            <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
-              <Table stickyHeader>
+            <TableContainer 
+              component={Paper} 
+              sx={{ 
+                maxHeight: 600,
+                width: '100%',
+                overflowX: 'auto',
+                overflowY: 'auto'
+              }}
+            >
+              <Table stickyHeader size="medium" sx={{ tableLayout: 'fixed', width: '100%' }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell padding="checkbox">
+                    <TableCell padding="checkbox" sx={{ width: '56px', minWidth: '56px', paddingLeft: '10px', paddingRight: '10px' }}>
                       <Checkbox
                         indeterminate={selectedEmployees.length > 0 && selectedEmployees.length < filteredEmployees.length}
                         checked={selectedEmployees.length === filteredEmployees.length && filteredEmployees.length > 0}
                         onChange={handleSelectAll}
+                        size="small"
                       />
                     </TableCell>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Position</TableCell>
-                    <TableCell>Last Login</TableCell>
-                    <TableCell>Phone</TableCell>
-                    <TableCell>Supervisor</TableCell>
-                    <TableCell>Cost Centers</TableCell>
-                    <TableCell>Actions</TableCell>
+                    <TableCell sx={{ width: '14%', minWidth: 140 }}>Name</TableCell>
+                    <TableCell sx={{ width: '18%', minWidth: 180 }}>Email</TableCell>
+                    <TableCell sx={{ width: '14%', minWidth: 140 }}>Position</TableCell>
+                    <TableCell sx={{ width: '10%', minWidth: 90 }}>Login Role</TableCell>
+                    <TableCell sx={{ width: '12%', minWidth: 120 }}>Last Login</TableCell>
+                    <TableCell sx={{ width: '10%', minWidth: 100 }}>Phone</TableCell>
+                    <TableCell sx={{ width: '12%', minWidth: 120 }}>Supervisor</TableCell>
+                    <TableCell sx={{ width: '10%', minWidth: 100 }}>Cost Centers</TableCell>
+                    <TableCell sx={{ width: '8%', minWidth: 80 }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredEmployees.map((employee) => (
                     <TableRow key={employee.id}>
-                      <TableCell padding="checkbox">
+                      <TableCell padding="checkbox" sx={{ width: '56px', minWidth: '56px', paddingLeft: '10px', paddingRight: '10px' }}>
                         <Checkbox
                           checked={selectedEmployees.includes(employee.id)}
                           onChange={() => handleSelectEmployee(employee.id)}
+                          size="small"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ width: '14%', minWidth: 140, fontSize: '0.875rem', padding: '10px' }}>
                         <Box
                           onClick={() => handleViewEmployee(employee)}
                           sx={{
                             cursor: 'pointer',
                             color: 'primary.main',
                             fontWeight: 500,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                             '&:hover': {
                               textDecoration: 'underline',
                             },
@@ -684,9 +723,49 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           {employee.name}
                         </Box>
                       </TableCell>
-                      <TableCell>{employee.email}</TableCell>
-                      <TableCell>{employee.position}</TableCell>
-                      <TableCell>
+                      <TableCell sx={{ width: '18%', minWidth: 180, fontSize: '0.875rem', padding: '10px' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {employee.email}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ width: '14%', minWidth: 140, fontSize: '0.875rem', padding: '10px' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {employee.position || '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ width: '10%', minWidth: 90, padding: '10px' }}>
+                        <Chip
+                          label={employee.role || 'employee'}
+                          size="small"
+                          color={
+                            employee.role === 'admin' ? 'error' :
+                            employee.role === 'finance' ? 'warning' :
+                            employee.role === 'supervisor' ? 'info' :
+                            'default'
+                          }
+                          sx={{ 
+                            textTransform: 'capitalize',
+                            fontSize: '0.7rem',
+                            height: 22,
+                            fontWeight: employee.role === 'admin' || employee.role === 'finance' ? 'bold' : 'normal'
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ width: '12%', minWidth: 120, fontSize: '0.875rem', padding: '10px' }}>
                         {employee.lastLoginAt 
                           ? new Date(employee.lastLoginAt).toLocaleString('en-US', {
                               month: '2-digit',
@@ -696,96 +775,140 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                               minute: '2-digit',
                               hour12: true
                             })
-                          : <Typography component="span" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          : <Typography component="span" variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                               Never
                             </Typography>
                         }
                       </TableCell>
-                      <TableCell>{employee.phoneNumber}</TableCell>
-                      <TableCell>
-                        {employee.supervisorId ? 
-                          existingEmployees.find(emp => emp.id === employee.supervisorId)?.name || 'Unknown' :
-                          'No Supervisor'
-                        }
+                      <TableCell sx={{ width: '10%', minWidth: 100, fontSize: '0.875rem', padding: '10px' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {formatPhoneNumber(employee.phoneNumber)}
+                        </Typography>
                       </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {parseCostCenters(employee.costCenters).map(center => (
+                      <TableCell sx={{ width: '12%', minWidth: 120, fontSize: '0.875rem', padding: '10px' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {employee.supervisorId ? 
+                            existingEmployees.find(emp => emp.id === employee.supervisorId)?.name || 'Unknown' :
+                            'No Supervisor'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ width: '10%', minWidth: 100, fontSize: '0.875rem', padding: '10px' }}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, maxWidth: 200 }}>
+                          {parseCostCenters(employee.costCenters).slice(0, 2).map(center => (
                             <Chip 
                               key={center} 
                               label={center} 
-                              size="small" 
-                              clickable={!showArchived}
-                              onClick={showArchived ? undefined : () => handleQuickCostCenterEdit(employee)}
+                              size="small"
                               sx={{ 
-                                mr: 0.5,
+                                fontSize: '0.7rem',
+                                height: 20,
                                 cursor: showArchived ? 'default' : 'pointer',
                                 '&:hover': showArchived ? {} : {
                                   backgroundColor: 'primary.light',
                                   color: 'primary.contrastText'
                                 }
                               }}
+                              clickable={!showArchived}
+                              onClick={showArchived ? undefined : () => handleQuickCostCenterEdit(employee)}
                             />
                           ))}
+                          {parseCostCenters(employee.costCenters).length > 2 && (
+                            <Chip 
+                              label={`+${parseCostCenters(employee.costCenters).length - 2}`}
+                              size="small"
+                              sx={{ 
+                                fontSize: '0.7rem',
+                                height: 20,
+                                cursor: showArchived ? 'default' : 'pointer',
+                                '&:hover': showArchived ? {} : {
+                                  backgroundColor: 'primary.light',
+                                  color: 'primary.contrastText'
+                                }
+                              }}
+                              clickable={!showArchived}
+                              onClick={showArchived ? undefined : () => handleQuickCostCenterEdit(employee)}
+                            />
+                          )}
                         </Box>
-                        {!showArchived && (
-                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                            Click to edit cost centers
+                        {!showArchived && parseCostCenters(employee.costCenters).length > 0 && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: 'block', fontSize: '0.7rem' }}>
+                            Click to edit
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell>
-                        {showArchived ? (
-                          <>
-                            <Tooltip title="Restore Employee">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleRestoreEmployee(employee.id)}
-                                color="primary"
-                              >
-                                <Restore />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Permanently Delete Employee">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleDeleteClick(employee.id)}
-                                color="error"
-                              >
-                                <FolderDelete />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        ) : (
-                          <>
-                            <Tooltip title="Edit Employee">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleEditEmployee(employee)}
-                              >
-                                <Edit />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Reset Password">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleResetPassword(employee)}
-                                color="primary"
-                              >
-                                <LockReset />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Archive Employee">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleDeleteEmployee(employee.id)}
-                                color="warning"
-                              >
-                                <Archive />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
+                      <TableCell sx={{ width: '8%', minWidth: 80, padding: '10px' }}>
+                        <Box sx={{ display: 'flex', gap: 0.25 }}>
+                          {showArchived ? (
+                            <>
+                              <Tooltip title="Restore">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleRestoreEmployee(employee.id)}
+                                  color="primary"
+                                  sx={{ padding: '4px' }}
+                                >
+                                  <Restore fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleDeleteClick(employee.id)}
+                                  color="error"
+                                  sx={{ padding: '4px' }}
+                                >
+                                  <FolderDelete fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          ) : (
+                            <>
+                              <Tooltip title="Edit">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleEditEmployee(employee)}
+                                  sx={{ padding: '4px' }}
+                                >
+                                  <Edit fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Reset Password">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleResetPassword(employee)}
+                                  color="primary"
+                                  sx={{ padding: '4px' }}
+                                >
+                                  <LockReset fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Archive">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleDeleteEmployee(employee.id)}
+                                  color="warning"
+                                  sx={{ padding: '4px' }}
+                                >
+                                  <Archive fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1047,36 +1170,66 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   />
                 </Box>
                 
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <FormControl fullWidth>
-                    <InputLabel>Role</InputLabel>
-                    <Select
-                      value={editingEmployee.position}
-                      onChange={(e) => setEditingEmployee({
-                        ...editingEmployee,
-                        position: e.target.value
-                      })}
-                      label="Role"
-                    >
-                      <MenuItem value="Staff">Staff</MenuItem>
-                      <MenuItem value="Supervisor">Supervisor</MenuItem>
-                      <MenuItem value="Manager">Manager</MenuItem>
-                      <MenuItem value="Director">Director</MenuItem>
-                      <MenuItem value="Admin">Admin</MenuItem>
-                      <MenuItem value="CEO">CEO</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    fullWidth
-                    label="Job Title"
-                    value={editingEmployee.preferredName || ''}
+                <TextField
+                  fullWidth
+                  label="Job Title"
+                  value={editingEmployee.position || ''}
+                  onChange={(e) => setEditingEmployee({
+                    ...editingEmployee,
+                    position: e.target.value
+                  })}
+                  placeholder="e.g., Senior Data Analyst, Outreach Worker, Regional Manager"
+                  helperText="Enter the employee's job title"
+                />
+                
+                {/* Login Role Field - Separate from Position/Job Title */}
+                <FormControl fullWidth>
+                  <InputLabel>Login Role (System Access)</InputLabel>
+                  <Select
+                    value={editingEmployee.role || 'employee'}
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
-                      preferredName: e.target.value
+                      role: e.target.value as 'employee' | 'supervisor' | 'admin' | 'finance'
                     })}
-                    placeholder="e.g., Outreach Worker, Regional Manager"
-                  />
-                </Box>
+                    label="Login Role (System Access)"
+                  >
+                    <MenuItem value="employee">
+                      <Box>
+                        <Typography variant="body2" fontWeight="bold">Employee</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Standard employee - can submit expense reports
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="supervisor">
+                      <Box>
+                        <Typography variant="body2" fontWeight="bold">Supervisor</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Can review and approve employee expense reports
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="finance">
+                      <Box>
+                        <Typography variant="body2" fontWeight="bold">Finance</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Finance team - can review reports and mark for revisions
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="admin">
+                      <Box>
+                        <Typography variant="body2" fontWeight="bold">Admin</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Full system access - manage all employees and settings
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Login role determines system access and permissions (separate from job title)
+                  </Typography>
+                </FormControl>
                 
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <TextField
@@ -1453,7 +1606,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Phone</Typography>
-                  <Typography variant="body1">{viewingEmployee.phoneNumber || 'Not provided'}</Typography>
+                  <Typography variant="body1">{formatPhoneNumber(viewingEmployee.phoneNumber) || 'Not provided'}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Supervisor</Typography>

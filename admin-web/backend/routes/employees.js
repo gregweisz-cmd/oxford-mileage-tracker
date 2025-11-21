@@ -350,8 +350,12 @@ router.post('/api/employees/bulk-create', async (req, res) => {
       return processEmployee(index + 1);
     }
     
+    // Validate and set role (defaults to 'employee' if not provided or invalid)
+    const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+    const userRole = allowedRoles.includes(employee.role) ? employee.role : 'employee';
+    
     db.run(
-      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id,
         employee.name,
@@ -360,6 +364,7 @@ router.post('/api/employees/bulk-create', async (req, res) => {
         hashedPassword,
         employee.oxfordHouseId || '',
         employee.position,
+        userRole, // Include role field
         employee.phoneNumber || '',
         employee.baseAddress || '',
         employee.baseAddress2 || '',
@@ -416,7 +421,7 @@ router.post('/api/employees',
   validateRequired(['name', 'email', 'position']),
   validateEmail('email'),
   asyncHandler(async (req, res) => {
-    const { name, email, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, preferredName, password } = req.body;
+    const { name, email, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, preferredName, password } = req.body;
     const db = dbService.getDb();
   
   // Generate ID based on employee name
@@ -435,10 +440,14 @@ router.post('/api/employees',
     return res.status(500).json({ error: 'Failed to hash password' });
   }
   
+  // Validate and set role (defaults to 'employee' if not provided or invalid)
+  const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+  const userRole = allowedRoles.includes(role) ? role : 'employee';
+  
   // Use Promise wrapper for callback-based database operations
   await new Promise((resolve, reject) => {
     db.run(
-      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id, 
         name, 
@@ -447,6 +456,7 @@ router.post('/api/employees',
         hashedPassword,
         oxfordHouseId || '', 
         position, 
+        userRole, // Include role field
         phoneNumber || '', 
         baseAddress || '', 
         baseAddress2 || '', 
@@ -529,6 +539,12 @@ router.put('/api/employees/:id', async (req, res) => {
     const email = updateData.email !== undefined ? (updateData.email || currentEmployee.email || '') : (currentEmployee.email || '');
     const oxfordHouseId = updateData.oxfordHouseId !== undefined ? (updateData.oxfordHouseId || '') : (currentEmployee.oxfordHouseId || '');
     const position = updateData.position !== undefined ? (updateData.position || currentEmployee.position || '') : (currentEmployee.position || '');
+    // Validate and set role (defaults to existing role or 'employee' if not provided or invalid)
+    const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+    const currentRole = currentEmployee.role || 'employee';
+    const role = updateData.role !== undefined 
+      ? (allowedRoles.includes(updateData.role) ? updateData.role : currentRole)
+      : currentRole;
     const phoneNumber = updateData.phoneNumber !== undefined ? (updateData.phoneNumber || '') : (currentEmployee.phoneNumber || '');
     const baseAddress = updateData.baseAddress !== undefined ? (updateData.baseAddress || '') : (currentEmployee.baseAddress || '');
     const baseAddress2 = updateData.baseAddress2 !== undefined ? (updateData.baseAddress2 || '') : (currentEmployee.baseAddress2 || '');
@@ -584,8 +600,8 @@ router.put('/api/employees/:id', async (req, res) => {
     }
 
     db.run(
-      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, updatedAt = ? WHERE id = ?',
-      [name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, now, id],
+      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, role = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, updatedAt = ? WHERE id = ?',
+      [name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, now, id],
       function(err) {
         if (err) {
           debugError('❌ Database error updating employee:', err.message);

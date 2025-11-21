@@ -40,9 +40,11 @@ import {
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
   UnfoldMore as UnfoldMoreIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { getEmployeeDisplayName } from '../utils/employeeUtils';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
+import DetailedReportView from './DetailedReportView';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -59,7 +61,7 @@ interface ExpenseReport {
   employeeEmail: string;
   month: number;
   year: number;
-  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision';
+  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision' | 'pending_supervisor' | 'pending_finance';
   totalMiles: number;
   totalMileageAmount: number;
   totalExpenses: number;
@@ -67,6 +69,8 @@ interface ExpenseReport {
   reportData?: any;
   state?: string;
   costCenters?: string[];
+  currentApprovalStage?: string;
+  currentApproverId?: string | null;
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, financeUserName }) => {
@@ -76,6 +80,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [activeTab, setActiveTab] = useState(0);
   const [selectedReport, setSelectedReport] = useState<ExpenseReport | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [detailedReportViewOpen, setDetailedReportViewOpen] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const [revisionComments, setRevisionComments] = useState('');
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
@@ -370,32 +376,61 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   const handleViewReport = (report: ExpenseReport) => {
     setSelectedReport(report);
-    setViewDialogOpen(true);
+    setSelectedReportId(report.id);
+    setDetailedReportViewOpen(true);
   };
 
   const handleRequestRevision = async () => {
-    if (!selectedReport) return;
+    if (!selectedReport || !revisionComments.trim()) {
+      alert('Please provide comments about what needs to be revised.');
+      return;
+    }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${selectedReport.id}/status`, {
+      // Use request_revision_to_supervisor action to send back to supervisor
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${selectedReport.id}/approval`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: 'needs_revision',
-          comments: revisionComments,
-          reviewedBy: financeUserName,
+          action: 'request_revision_to_supervisor',
+          approverId: financeUserId,
+          approverName: financeUserName,
+          comments: revisionComments.trim(),
         }),
       });
 
       if (!response.ok) throw new Error('Failed to request revision');
 
-      alert('Revision request sent to employee successfully!');
+      alert('Revision request sent to supervisor successfully!');
       setRevisionDialogOpen(false);
       setRevisionComments('');
       loadReports();
     } catch (error) {
       console.error('Error requesting revision:', error);
       alert('Failed to request revision');
+    }
+  };
+
+  const handleApproveReport = async (reportId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approve',
+          approverId: financeUserId,
+          approverName: financeUserName,
+          comments: 'Approved by Finance team',
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to approve report');
+
+      alert('Report approved successfully!');
+      loadReports();
+    } catch (error) {
+      console.error('Error approving report:', error);
+      alert('Failed to approve report');
     }
   };
 
@@ -920,6 +955,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                   <MenuItem value="all">All Statuses</MenuItem>
                   <MenuItem value="draft">Draft</MenuItem>
                   <MenuItem value="submitted">Submitted</MenuItem>
+                  <MenuItem value="pending_finance">Pending Finance</MenuItem>
+                  <MenuItem value="pending_supervisor">Pending Supervisor</MenuItem>
                   <MenuItem value="approved">Approved</MenuItem>
                   <MenuItem value="needs_revision">Needs Revision</MenuItem>
                 </Select>
@@ -1096,18 +1133,29 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                       >
                         <DownloadIcon />
                       </IconButton>
-                      {report.status === 'submitted' && (
-                        <IconButton
-                          size="small"
-                          color="warning"
-                          onClick={() => {
-                            setSelectedReport(report);
-                            setRevisionDialogOpen(true);
-                          }}
-                          title="Request Revision"
-                        >
-                          <SendIcon />
-                        </IconButton>
+                      {/* Show actions for pending finance reports */}
+                      {(report.status === 'pending_finance' || report.status === 'submitted') && (
+                        <>
+                          <IconButton
+                            size="small"
+                            color="success"
+                            onClick={() => handleApproveReport(report.id)}
+                            title="Approve Report"
+                          >
+                            <CheckCircleIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="warning"
+                            onClick={() => {
+                              setSelectedReport(report);
+                              setRevisionDialogOpen(true);
+                            }}
+                            title="Request Revision from Supervisor"
+                          >
+                            <SendIcon />
+                          </IconButton>
+                        </>
                       )}
                     </TableCell>
                   </TableRow>
@@ -1125,8 +1173,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
       {/* Pending Review Tab */}
       <TabPanel value={activeTab} index={1}>
-        {filteredReports.filter(r => r.status === 'submitted').length === 0 ? (
-          <Alert severity="info">No reports pending review.</Alert>
+        {filteredReports.filter(r => r.status === 'pending_finance' || r.status === 'submitted').length === 0 ? (
+          <Alert severity="info">No reports pending Finance review.</Alert>
         ) : (
           <TableContainer component={Paper}>
             <Table>
@@ -1265,97 +1313,39 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         )}
       </TabPanel>
 
-      {/* View Report Dialog */}
-      <Dialog
-        open={viewDialogOpen}
-        onClose={() => setViewDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          {selectedReport && getDisplayName(selectedReport)} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
-        </DialogTitle>
-        <DialogContent>
-          {selectedReport && (
-            <Box>
-              <Typography variant="h6" gutterBottom>Report Summary</Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
-                <Box>
-                  <Typography><strong>Status:</strong></Typography>
-                  <Chip
-                    label={selectedReport.status.replace('_', ' ').toUpperCase()}
-                    color={getStatusColor(selectedReport.status) as any}
-                    size="small"
-                    sx={{ mt: 1 }}
-                  />
-                </Box>
-                <Box>
-                  <Typography><strong>Submitted:</strong></Typography>
-                  <Typography>
-                    {selectedReport.submittedAt ? new Date(selectedReport.submittedAt).toLocaleDateString() : 'Not submitted'}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography><strong>Total Miles:</strong></Typography>
-                  <Typography>{selectedReport.totalMiles.toFixed(1)} miles</Typography>
-                </Box>
-                <Box>
-                  <Typography><strong>Mileage Amount:</strong></Typography>
-                  <Typography>${selectedReport.totalMileageAmount.toFixed(2)}</Typography>
-                </Box>
-                <Box>
-                  <Typography><strong>Total Expenses:</strong></Typography>
-                  <Typography variant="h6" color="primary">
-                    ${selectedReport.totalExpenses.toFixed(2)}
-                  </Typography>
-                </Box>
-              </Box>
-
-              {selectedReport.reportData?.dailyEntries && (
-                <Box>
-                  <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Daily Breakdown</Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    {selectedReport.reportData.dailyEntries.filter((e: any) => e.milesTraveled > 0 || e.hoursWorked > 0).length} days with activity
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewDialogOpen(false)}>Close</Button>
-          <Button
-            variant="contained"
-            startIcon={<PrintIcon />}
-            onClick={() => {
-              setViewDialogOpen(false);
-              handlePrintPreview(selectedReport!);
-            }}
-          >
-            Print Preview
-          </Button>
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<DownloadIcon />}
-            onClick={() => handleExportToExcel(selectedReport!)}
-          >
-            Export
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Detailed Report View - Replaces simple View dialog */}
+      {selectedReportId && (
+        <DetailedReportView
+          reportId={selectedReportId}
+          open={detailedReportViewOpen}
+          onClose={() => {
+            setDetailedReportViewOpen(false);
+            setSelectedReportId(null);
+          }}
+        />
+      )}
 
       {/* Request Revision Dialog */}
       <Dialog
         open={revisionDialogOpen}
-        onClose={() => setRevisionDialogOpen(false)}
+        onClose={() => {
+          setRevisionDialogOpen(false);
+          setRevisionComments('');
+        }}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Request Revision</DialogTitle>
+        <DialogTitle>Request Revision from Supervisor</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            Request revisions from {selectedReport && getDisplayName(selectedReport)} for {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
+            This will send the report back to the supervisor with your feedback. The supervisor can then:
+            <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+              <li>Make changes themselves and resubmit to Finance</li>
+              <li>Send it back to the employee for revision</li>
+            </ul>
+          </Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            Report: {selectedReport && getDisplayName(selectedReport)} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
           </Typography>
           <TextField
             fullWidth
@@ -1364,23 +1354,27 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
             label="Comments / Issues to Address"
             value={revisionComments}
             onChange={(e) => setRevisionComments(e.target.value)}
-            placeholder="Please specify what needs to be corrected..."
+            placeholder="Please specify what needs to be corrected (e.g., missing receipts, incorrect amounts, etc.)..."
+            required
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRevisionDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => {
+            setRevisionDialogOpen(false);
+            setRevisionComments('');
+          }}>Cancel</Button>
           <Button
             variant="contained"
             color="warning"
             onClick={handleRequestRevision}
             disabled={!revisionComments.trim()}
           >
-            Send Revision Request
+            Send Revision Request to Supervisor
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Print Preview Dialog */}
+      {/* Print Preview Dialog - Now uses PDF from backend export endpoint */}
       <Dialog
         open={printPreviewOpen}
         onClose={() => setPrintPreviewOpen(false)}
@@ -1388,7 +1382,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         fullWidth
       >
         <DialogTitle>
-          Print Preview - {selectedReport && getDisplayName(selectedReport)}
+          Print Preview - {selectedReport && getDisplayName(selectedReport)} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
           <IconButton
             onClick={() => setPrintPreviewOpen(false)}
             sx={{ position: 'absolute', right: 8, top: 8 }}
@@ -1397,283 +1391,39 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           </IconButton>
         </DialogTitle>
         <DialogContent>
-          {/* Print Style Customization */}
-          <Card sx={{ mb: 3, bgcolor: 'grey.50' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>🎨 Print Style Customization</Typography>
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <FormControl size="small" sx={{ minWidth: 150 }}>
-                  <InputLabel>Font Size</InputLabel>
-                  <Select
-                    value={printStyles.fontSize}
-                    label="Font Size"
-                    onChange={(e) => setPrintStyles({ ...printStyles, fontSize: e.target.value })}
-                  >
-                    <MenuItem value="10px">Small (10px)</MenuItem>
-                    <MenuItem value="12px">Normal (12px)</MenuItem>
-                    <MenuItem value="14px">Large (14px)</MenuItem>
-                  </Select>
-                </FormControl>
-                
-                <FormControl size="small" sx={{ minWidth: 150 }}>
-                  <InputLabel>Spacing</InputLabel>
-                  <Select
-                    value={printStyles.spacing}
-                    label="Spacing"
-                    onChange={(e) => setPrintStyles({ ...printStyles, spacing: e.target.value })}
-                  >
-                    <MenuItem value="compact">Compact</MenuItem>
-                    <MenuItem value="normal">Normal</MenuItem>
-                    <MenuItem value="relaxed">Relaxed</MenuItem>
-                  </Select>
-                </FormControl>
-                
-                <FormControl size="small" sx={{ minWidth: 150 }}>
-                  <InputLabel>Orientation</InputLabel>
-                  <Select
-                    value={printStyles.pageOrientation}
-                    label="Orientation"
-                    onChange={(e) => setPrintStyles({ ...printStyles, pageOrientation: e.target.value })}
-                  >
-                    <MenuItem value="portrait">Portrait</MenuItem>
-                    <MenuItem value="landscape">Landscape</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-            </CardContent>
-          </Card>
-
-          {/* Print Preview Content */}
-          <Paper
-            id="printable-report"
-            sx={{
-              p: 4,
-              fontSize: printStyles.fontSize,
-              '@media print': {
-                boxShadow: 'none',
-                padding: 0,
-                size: 'portrait', // Always portrait to match Staff Portal
-              },
-            }}
-          >
-            {/* Report Header */}
-            <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #000', pb: 2 }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-                OXFORD HOUSE, INC.
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
-                MONTHLY EXPENSE REPORT
-              </Typography>
-              <Typography variant="h6" color="textSecondary">
-                {selectedReport && getDisplayName(selectedReport)} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}
-              </Typography>
+          {selectedReport && (
+            <Box sx={{ width: '100%', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                This is the same report format as the Export button. Use your browser's print function (Ctrl+P / Cmd+P) to print.
+              </Alert>
+              <Box
+                component="iframe"
+                src={`${API_BASE_URL}/api/export/expense-report-pdf/${selectedReport.id}`}
+                sx={{
+                  width: '100%',
+                  flex: 1,
+                  border: '1px solid #ddd',
+                  borderRadius: 1,
+                  minHeight: '600px',
+                }}
+                title="Print Preview"
+              />
             </Box>
-
-            {/* Report Summary */}
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
-                Report Summary
-              </Typography>
-              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
-                <TableBody>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Status</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.status.replace('_', ' ').toUpperCase()}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Submitted Date</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>
-                      {selectedReport?.submittedAt ? new Date(selectedReport.submittedAt).toLocaleDateString() : 'Not submitted'}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Miles</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>{selectedReport?.totalMiles.toFixed(1)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Mileage Reimbursement</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Total Expenses</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em', border: '1px solid #000' }}>
-                      ${selectedReport?.totalExpenses.toFixed(2)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </Box>
-
-            {/* Daily Activity Breakdown */}
-            {selectedReport?.reportData?.dailyEntries && (
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
-                  Daily Activity Breakdown
-                </Typography>
-                <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: 'grey.100' }}>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Date</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Description of Activity</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Miles Traveled</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Hours Worked</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Mileage Amount</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {selectedReport.reportData.dailyEntries
-                      .filter((entry: any) => entry.milesTraveled > 0 || entry.hoursWorked > 0)
-                      .map((entry: any, idx: number) => (
-                        <TableRow key={idx}>
-                          <TableCell sx={{ border: '1px solid #000' }}>{entry.date}</TableCell>
-                          <TableCell sx={{ whiteSpace: 'pre-wrap', border: '1px solid #000' }}>{entry.description || ''}</TableCell>
-                          <TableCell sx={{ border: '1px solid #000' }} align="right">
-                            {entry.milesTraveled > 0 ? entry.milesTraveled.toFixed(1) : '-'}
-                          </TableCell>
-                          <TableCell sx={{ border: '1px solid #000' }} align="right">
-                            {entry.hoursWorked > 0 ? entry.hoursWorked : '-'}
-                          </TableCell>
-                          <TableCell sx={{ border: '1px solid #000' }} align="right">
-                            ${entry.mileageAmount ? entry.mileageAmount.toFixed(2) : '0.00'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </Box>
-            )}
-
-            {/* Receipt Summary */}
-            {selectedReport?.reportData?.receipts && selectedReport.reportData.receipts.length > 0 && (
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
-                  Receipt Summary
-                </Typography>
-                <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: 'grey.100' }}>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Date</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Vendor</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Description</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }}>Category</TableCell>
-                      <TableCell sx={{ border: '1px solid #000', fontWeight: 'bold' }} align="right">Amount</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {selectedReport.reportData.receipts.map((receipt: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell sx={{ border: '1px solid #000' }}>
-                          {new Date(receipt.date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.vendor || ''}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.description || ''}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }}>{receipt.category || ''}</TableCell>
-                        <TableCell sx={{ border: '1px solid #000' }} align="right">
-                          ${receipt.amount ? receipt.amount.toFixed(2) : '0.00'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Box>
-            )}
-
-            {/* Expense Categories Breakdown */}
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
-                Expense Categories Breakdown
-              </Typography>
-              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
-                <TableBody>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Mileage Reimbursement</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.totalMileageAmount.toFixed(2)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Phone/Internet/Fax</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.phoneInternetFax || 0}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Air/Rail/Bus</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.airRailBus || 0}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Vehicle Rental/Fuel</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.vehicleRentalFuel || 0}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Parking/Tolls</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.parkingTolls || 0}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Ground Transportation</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.groundTransportation || 0}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Hotels/Airbnb</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.hotelsAirbnb || 0}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Per Diem</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.perDiem || 0}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Other Expenses</TableCell>
-                    <TableCell sx={{ border: '1px solid #000' }}>${selectedReport?.reportData?.other || 0}</TableCell>
-                  </TableRow>
-                  <TableRow sx={{ borderTop: '2px solid #000' }}>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>
-                      <strong>Total Expenses</strong>
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em', border: '1px solid #000' }}>
-                      <strong>${selectedReport?.totalExpenses.toFixed(2)}</strong>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </Box>
-
-            {/* Approval Section */}
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="h6" gutterBottom sx={{ borderBottom: '1px solid #ccc', pb: 1 }}>
-                Approval Section
-              </Typography>
-              <Table size="small" sx={{ border: '1px solid #000', borderCollapse: 'collapse' }}>
-                <TableBody>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100', width: '30%' }}>Employee Signature</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>
-                      {selectedReport?.reportData?.employeeSignature ? '✓ Signed' : '_________________'}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Supervisor Signature</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>
-                      {selectedReport?.reportData?.supervisorSignature ? '✓ Signed' : '_________________'}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold', border: '1px solid #000', bgcolor: 'grey.100' }}>Finance Approval</TableCell>
-                    <TableCell sx={{ border: '1px solid #000', height: '50px' }}>_________________</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </Box>
-
-            {/* Footer */}
-            <Box sx={{ textAlign: 'center', mt: 4, fontSize: '10px', color: 'text.secondary' }}>
-              Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
-            </Box>
-          </Paper>
+          )}
         </DialogContent>
-        <DialogActions sx={{ '@media print': { display: 'none' } }}>
+        <DialogActions>
           <Button onClick={() => setPrintPreviewOpen(false)}>Close</Button>
           <Button
             variant="contained"
             startIcon={<PrintIcon />}
-            onClick={handlePrint}
+            onClick={() => {
+              // Open PDF in new window for printing
+              if (selectedReport) {
+                window.open(`${API_BASE_URL}/api/export/expense-report-pdf/${selectedReport.id}`, '_blank');
+              }
+            }}
           >
-            Print
+            Open in New Window to Print
           </Button>
         </DialogActions>
       </Dialog>

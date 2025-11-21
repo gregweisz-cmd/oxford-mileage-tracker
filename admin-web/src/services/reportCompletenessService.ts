@@ -2,7 +2,7 @@ import { MileageEntry, Receipt, TimeTracking, Employee } from '../types';
 
 export interface CompletenessIssue {
   id: string;
-  type: 'missing_odometer' | 'incomplete_hours' | 'missing_receipt' | 'gap_detection' | 'missing_purpose' | 'incomplete_route';
+  type: 'missing_odometer' | 'incomplete_hours' | 'missing_receipt' | 'gap_detection' | 'missing_purpose' | 'incomplete_route' | 'missing_receipt_image' | 'missing_employee_signature' | 'missing_supervisor_signature' | 'missing_employee_acknowledgment' | 'missing_supervisor_acknowledgment';
   severity: 'low' | 'medium' | 'high' | 'critical';
   title: string;
   description: string;
@@ -38,11 +38,12 @@ export class ReportCompletenessService {
       console.log('🔍 ReportCompleteness: Fetching data from APIs...');
       
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
-      const [mileageResponse, receiptsResponse, timeTrackingResponse, employeeResponse] = await Promise.all([
+      const [mileageResponse, receiptsResponse, timeTrackingResponse, employeeResponse, expenseReportResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${month}&year=${year}`),
         fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${month}&year=${year}`),
         fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${month}&year=${year}`),
-        fetch(`${API_BASE_URL}/api/employees/${employeeId}`)
+        fetch(`${API_BASE_URL}/api/employees/${employeeId}`),
+        fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}/${month}/${year}`).catch(() => null) // Get expense report if it exists
       ]);
 
       console.log('🔍 ReportCompleteness: API responses received:', {
@@ -70,11 +71,23 @@ export class ReportCompletenessService {
       const timeTracking: TimeTracking[] = await timeTrackingResponse.json();
       const employee: Employee = await employeeResponse.json();
       
+      // Get expense report data if it exists (for signatures and checkboxes)
+      let expenseReport: any = null;
+      if (expenseReportResponse && expenseReportResponse.ok) {
+        try {
+          expenseReport = await expenseReportResponse.json();
+        } catch (e) {
+          console.warn('Could not parse expense report:', e);
+        }
+      }
+      const reportData = expenseReport?.reportData || {};
+      
       console.log('🔍 ReportCompleteness: Data loaded:', {
         mileageCount: mileageEntries.length,
         receiptsCount: receipts.length,
         timeTrackingCount: timeTracking.length,
-        employeeName: employee?.name
+        employeeName: employee?.name,
+        hasExpenseReport: !!expenseReport
       });
       
       if (!employee) {
@@ -87,6 +100,9 @@ export class ReportCompletenessService {
       issues.push(...this.checkMissingOdometerReadings(mileageEntries));
       issues.push(...this.checkIncompleteCostCenterHours(timeTracking, employee));
       issues.push(...this.checkMissingReceipts(mileageEntries, receipts));
+      issues.push(...this.checkReceiptImages(receipts)); // NEW: Check that all receipts have images (mandatory)
+      issues.push(...this.checkEmployeeSignatureAndAcknowledgment(reportData)); // NEW: Check employee signature and checkbox (mandatory)
+      issues.push(...this.checkSupervisorSignatureAndAcknowledgment(reportData)); // NEW: Check supervisor signature and checkbox (mandatory)
       issues.push(...this.checkUnusualGaps(mileageEntries, timeTracking));
       issues.push(...this.checkMissingWorkDays(mileageEntries, timeTracking, month, year));
       issues.push(...this.checkBurnoutPrevention(timeTracking, month, year));
@@ -102,7 +118,16 @@ export class ReportCompletenessService {
       // Determine if ready for submission
       const criticalIssues = issues.filter(issue => issue.severity === 'critical');
       const highIssues = issues.filter(issue => issue.severity === 'high');
-      const isReadyForSubmission = criticalIssues.length === 0 && highIssues.length <= 1;
+      // Block submission if there are mandatory requirements missing
+      const missingReceiptImageIssues = issues.filter(issue => issue.type === 'missing_receipt_image');
+      const missingEmployeeSignatureIssues = issues.filter(issue => issue.type === 'missing_employee_signature' || issue.type === 'missing_employee_acknowledgment');
+      const missingSupervisorSignatureIssues = issues.filter(issue => issue.type === 'missing_supervisor_signature' || issue.type === 'missing_supervisor_acknowledgment');
+      // Block submission if any mandatory requirements are missing
+      const isReadyForSubmission = criticalIssues.length === 0 && 
+                                    highIssues.length <= 1 && 
+                                    missingReceiptImageIssues.length === 0 && 
+                                    missingEmployeeSignatureIssues.length === 0 && 
+                                    missingSupervisorSignatureIssues.length === 0;
       
       const report: CompletenessReport = {
         employeeId,
@@ -289,6 +314,145 @@ export class ReportCompletenessService {
         });
       }
     });
+    
+    return issues;
+  }
+  
+  /**
+   * Check that all receipts have images (mandatory requirement)
+   */
+  private static checkReceiptImages(receipts: Receipt[]): CompletenessIssue[] {
+    const issues: CompletenessIssue[] = [];
+    
+    if (receipts.length === 0) {
+      return issues; // No receipts to check
+    }
+    
+    // Find receipts without images
+    const receiptsWithoutImages = receipts.filter(receipt => 
+      !receipt.imageUri || receipt.imageUri.trim() === ''
+    );
+    
+    if (receiptsWithoutImages.length > 0) {
+      // Group by date for better reporting
+      const receiptsByDate = this.groupReceiptsByDate(receiptsWithoutImages);
+      
+      Object.entries(receiptsByDate).forEach(([dateStr, receipts]) => {
+        const date = new Date(dateStr);
+        const receiptCount = receipts.length;
+        const receiptList = receipts.map(r => {
+          const vendor = r.vendor || 'Unknown Vendor';
+          const amount = r.amount ? `$${r.amount.toFixed(2)}` : 'Amount unknown';
+          return `${vendor} (${amount})`;
+        }).join(', ');
+        
+        issues.push({
+          id: `missing-receipt-images-${dateStr}`,
+          type: 'missing_receipt_image',
+          severity: 'critical', // Critical - images are mandatory
+          title: 'Missing Receipt Images (Mandatory)',
+          description: `${receiptCount} receipt${receiptCount > 1 ? 's' : ''} on ${date.toLocaleDateString()} ${receiptCount > 1 ? 'do not have' : 'does not have'} images: ${receiptList}`,
+          suggestion: 'Upload images for all receipts. Receipt images are mandatory for submission.',
+          affectedEntries: receipts.map(r => r.id),
+          date: date,
+          category: 'Receipt Images'
+        });
+      });
+      
+      // Also add a summary issue if there are multiple dates affected
+      if (Object.keys(receiptsByDate).length > 1) {
+        issues.unshift({
+          id: 'missing-receipt-images-summary',
+          type: 'missing_receipt_image',
+          severity: 'critical',
+          title: 'Missing Receipt Images (Mandatory)',
+          description: `${receiptsWithoutImages.length} receipt${receiptsWithoutImages.length > 1 ? 's' : ''} across ${Object.keys(receiptsByDate).length} day${Object.keys(receiptsByDate).length > 1 ? 's' : ''} do not have images. Receipt images are mandatory.`,
+          suggestion: 'Upload images for all receipts before submitting your report. All receipts must have images.',
+          affectedEntries: receiptsWithoutImages.map(r => r.id),
+          category: 'Receipt Images'
+        });
+      }
+    }
+    
+    return issues;
+  }
+  
+  /**
+   * Check that employee has signed and acknowledged certification (mandatory requirement)
+   */
+  private static checkEmployeeSignatureAndAcknowledgment(reportData: any): CompletenessIssue[] {
+    const issues: CompletenessIssue[] = [];
+    
+    const employeeSignature = reportData.employeeSignature;
+    const employeeCertificationAcknowledged = reportData.employeeCertificationAcknowledged;
+    
+    // Employee signature is mandatory
+    if (!employeeSignature || employeeSignature.trim() === '') {
+      issues.push({
+        id: 'missing-employee-signature',
+        type: 'missing_employee_signature',
+        severity: 'critical', // Critical - mandatory requirement
+        title: 'Missing Employee Signature (Mandatory)',
+        description: 'Employee signature is required before submitting the report. Please upload your signature using the "Signature Capture" button on the Approval Cover Sheet.',
+        suggestion: 'Upload your employee signature using the "Signature Capture" button. This is mandatory for submission.',
+        category: 'Signatures'
+      });
+    }
+    
+    // Employee acknowledgment checkbox is mandatory
+    if (!employeeCertificationAcknowledged) {
+      issues.push({
+        id: 'missing-employee-acknowledgment',
+        type: 'missing_employee_acknowledgment',
+        severity: 'critical', // Critical - mandatory requirement
+        title: 'Missing Employee Certification Acknowledgment (Mandatory)',
+        description: 'You must check the employee acknowledgment box on the Approval Cover Sheet to certify the report.',
+        suggestion: 'Check the employee acknowledgment checkbox on the Approval Cover Sheet. This is mandatory for submission.',
+        category: 'Certification'
+      });
+    }
+    
+    return issues;
+  }
+  
+  /**
+   * Check that supervisor has signed and acknowledged certification (mandatory requirement if supervisor mode)
+   */
+  private static checkSupervisorSignatureAndAcknowledgment(reportData: any): CompletenessIssue[] {
+    const issues: CompletenessIssue[] = [];
+    
+    const supervisorSignature = reportData.supervisorSignature;
+    const supervisorCertificationAcknowledged = reportData.supervisorCertificationAcknowledged;
+    
+    // Note: Supervisor signature and acknowledgment are mandatory if the report requires supervisor approval
+    // For now, we'll check if supervisorCertificationAcknowledged exists - if it's set, then it's required
+    // This allows for reports that may not require supervisor approval yet
+    
+    // If supervisor acknowledgment is expected but missing
+    if (supervisorCertificationAcknowledged !== undefined && !supervisorCertificationAcknowledged) {
+      issues.push({
+        id: 'missing-supervisor-acknowledgment',
+        type: 'missing_supervisor_acknowledgment',
+        severity: 'critical', // Critical - mandatory requirement
+        title: 'Missing Supervisor Certification Acknowledgment (Mandatory)',
+        description: 'Supervisor must check the acknowledgment box on the Approval Cover Sheet to certify the report.',
+        suggestion: 'Supervisor must check the supervisor acknowledgment checkbox on the Approval Cover Sheet. This is mandatory for submission.',
+        category: 'Certification'
+      });
+    }
+    
+    // If supervisor signature is expected but missing
+    if ((supervisorCertificationAcknowledged === true || supervisorSignature) && (!supervisorSignature || supervisorSignature.trim() === '')) {
+      issues.push({
+        id: 'missing-supervisor-signature',
+        type: 'missing_supervisor_signature',
+        severity: 'critical', // Critical - mandatory requirement
+        title: 'Missing Supervisor Signature (Mandatory)',
+        description: 'Supervisor signature is required. Please upload supervisor signature using the supervisor signature capture on the Approval Cover Sheet.',
+        suggestion: 'Supervisor must upload their signature. This is mandatory for submission.',
+        category: 'Signatures'
+      });
+    }
     
     return issues;
   }
@@ -669,6 +833,21 @@ export class ReportCompletenessService {
     const missingReceipts = issues.filter(issue => issue.type === 'missing_receipt');
     if (missingReceipts.length > 0) {
       recommendations.push('🧾 Consider adding receipts for expenses');
+    }
+    
+    const missingReceiptImages = issues.filter(issue => issue.type === 'missing_receipt_image');
+    if (missingReceiptImages.length > 0) {
+      recommendations.push('📷 UPLOAD IMAGES FOR ALL RECEIPTS - This is mandatory for submission');
+    }
+    
+    const missingEmployeeSignature = issues.filter(issue => issue.type === 'missing_employee_signature' || issue.type === 'missing_employee_acknowledgment');
+    if (missingEmployeeSignature.length > 0) {
+      recommendations.push('✍️ COMPLETE EMPLOYEE SIGNATURE AND ACKNOWLEDGMENT - Check the employee acknowledgment box and upload your signature on the Approval Cover Sheet. This is mandatory for submission.');
+    }
+    
+    const missingSupervisorSignature = issues.filter(issue => issue.type === 'missing_supervisor_signature' || issue.type === 'missing_supervisor_acknowledgment');
+    if (missingSupervisorSignature.length > 0) {
+      recommendations.push('✍️ COMPLETE SUPERVISOR SIGNATURE AND ACKNOWLEDGMENT - Check the supervisor acknowledgment box and upload supervisor signature on the Approval Cover Sheet. This is mandatory for submission.');
     }
     
     const insufficientActivity = issues.filter(issue => issue.id === 'insufficient-activity');

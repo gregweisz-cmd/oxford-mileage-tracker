@@ -57,7 +57,8 @@ export interface Employee {
   email: string;
   password: string;
   oxfordHouseId: string;
-  position: string;
+  position: string; // Job title within the company
+  role?: 'employee' | 'supervisor' | 'admin' | 'finance'; // Login role (separate from position/job title)
   phoneNumber: string;
   baseAddress: string;
   baseAddress2?: string;

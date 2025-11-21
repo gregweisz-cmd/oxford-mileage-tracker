@@ -78,6 +78,7 @@ function ensureTablesExist() {
         password TEXT DEFAULT '',
         oxfordHouseId TEXT NOT NULL,
         position TEXT NOT NULL,
+        role TEXT DEFAULT 'employee',
         phoneNumber TEXT,
         baseAddress TEXT NOT NULL,
         baseAddress2 TEXT DEFAULT '',
@@ -97,19 +98,46 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
       
-      // Add lastLoginAt column if it doesn't exist (for existing databases)
-      // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check if column exists first
+      // Add lastLoginAt and role columns if they don't exist (for existing databases)
+      // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check if columns exist first
       db.all(`PRAGMA table_info(employees)`, [], (pragmaErr, columns) => {
         if (!pragmaErr && columns) {
-          // Check if lastLoginAt column exists
-          const hasLastLoginAt = columns.some((col) => col.name === 'lastLoginAt');
+          const columnNames = columns.map((col) => col.name);
           
-          if (!hasLastLoginAt) {
+          // Check if lastLoginAt column exists
+          if (!columnNames.includes('lastLoginAt')) {
             db.run(`ALTER TABLE employees ADD COLUMN lastLoginAt TEXT DEFAULT NULL`, (alterErr) => {
               if (alterErr) {
                 debugWarn('Note: Could not add lastLoginAt column:', alterErr.message);
               } else {
                 debugLog('✅ Added lastLoginAt column to existing employees table');
+              }
+            });
+          }
+          
+          // Check if role column exists
+          if (!columnNames.includes('role')) {
+            db.run(`ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee'`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add role column:', alterErr.message);
+              } else {
+                debugLog('✅ Added role column to existing employees table');
+                // Backfill roles based on position for existing employees
+                db.run(`UPDATE employees SET role = 'finance' WHERE LOWER(position) LIKE '%finance%' OR LOWER(position) LIKE '%accounting%' OR LOWER(position) LIKE '%accountant%' OR LOWER(position) LIKE '%controller%' OR LOWER(position) LIKE '%cfo%' OR LOWER(position) LIKE '%chief financial%'`, (backfillErr) => {
+                  if (!backfillErr) {
+                    debugLog('✅ Backfilled finance roles based on position');
+                  }
+                });
+                db.run(`UPDATE employees SET role = 'admin' WHERE LOWER(name) LIKE '%greg%' OR LOWER(name) LIKE '%goose%' OR LOWER(name) LIKE '%admin%' OR LOWER(email) LIKE '%greg.weisz%' OR LOWER(position) LIKE '%executive director%'`, (backfillErr) => {
+                  if (!backfillErr) {
+                    debugLog('✅ Backfilled admin roles based on name/position');
+                  }
+                });
+                db.run(`UPDATE employees SET role = 'supervisor' WHERE LOWER(position) LIKE '%director%' OR LOWER(position) LIKE '%program director%' OR LOWER(position) LIKE '%regional manager%' OR LOWER(position) LIKE '%house manager%' OR LOWER(position) LIKE '%supervisor%' OR LOWER(position) LIKE '%coordinator%' OR LOWER(position) LIKE '%administrative assistant%' AND LOWER(position) NOT LIKE '%case manager%' AND role = 'employee'`, (backfillErr) => {
+                  if (!backfillErr) {
+                    debugLog('✅ Backfilled supervisor roles based on position');
+                  }
+                });
               }
             });
           }
@@ -406,6 +434,26 @@ function ensureTablesExist() {
         comments TEXT,
         timestamp TEXT NOT NULL,
         createdAt TEXT NOT NULL
+      )`);
+
+      // Create table for revision notes (tracking specific items that need revision)
+      db.run(`CREATE TABLE IF NOT EXISTS report_revision_notes (
+        id TEXT PRIMARY KEY,
+        reportId TEXT NOT NULL,
+        employeeId TEXT NOT NULL,
+        requestedBy TEXT NOT NULL,
+        requestedByName TEXT NOT NULL,
+        requestedByRole TEXT NOT NULL,
+        targetRole TEXT NOT NULL,
+        category TEXT NOT NULL,
+        itemId TEXT,
+        itemType TEXT NOT NULL,
+        notes TEXT NOT NULL,
+        resolved INTEGER DEFAULT 0,
+        resolvedBy TEXT,
+        resolvedAt TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
       )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS supervisor_notifications (

@@ -58,7 +58,7 @@ import {
   // FilterList as FilterListIcon, // Currently unused
   Refresh as RefreshIcon,
   Download as DownloadIcon,
-  // Send as SendIcon, // Currently unused
+  Send as SendIcon,
   VerifiedUser as SupervisorIcon,
   PersonAdd as PersonAddIcon,
   // Warning as WarningIcon, // Currently unused
@@ -416,11 +416,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
     setSavingAction(true);
     try {
+      // Use request_revision_to_employee action to send back to employee
       const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'reject',
+          action: 'request_revision_to_employee',
           approverId: supervisorId,
           approverName: supervisorName,
           comments: reviewComment.trim(),
@@ -428,15 +429,51 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       });
 
       if (!response.ok) {
-        throw new Error('Failed to reject report');
+        throw new Error('Failed to request revision');
       }
 
       setReviewDialogOpen(false);
       setReviewComment('');
       await loadTeamReports();
+      alert('Report sent back to employee for revision.');
     } catch (error) {
-      console.error('Error rejecting report:', error);
-      alert('Failed to reject report. Please try again.');
+      console.error('Error requesting revision:', error);
+      alert('Failed to request revision. Please try again.');
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  const handleResubmitToFinance = async (reportId: string) => {
+    if (!reviewComment.trim()) {
+      alert('Please provide comments about the changes made (e.g., "Changes made per finance feedback").');
+      return;
+    }
+
+    setSavingAction(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resubmit_to_finance',
+          approverId: supervisorId,
+          approverName: supervisorName,
+          comments: reviewComment.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to resubmit to finance');
+      }
+
+      setReviewDialogOpen(false);
+      setReviewComment('');
+      await loadTeamReports();
+      alert('Report resubmitted to Finance team.');
+    } catch (error) {
+      console.error('Error resubmitting to finance:', error);
+      alert('Failed to resubmit to finance. Please try again.');
     } finally {
       setSavingAction(false);
     }
@@ -985,43 +1022,58 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                                 <VisibilityIcon />
                               </IconButton>
                             </Tooltip>
-                            {isAwaitingSupervisor && (
-                              <>
-                                <Tooltip title="Approve">
-                                  <IconButton
-                                    size="small"
-                                    color="success"
-                                    onClick={() => {
-                                      setSelectedReport(report);
-                                      handleApproveReport(report.id);
-                                    }}
-                                  >
-                                    <CheckIcon />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Request Changes">
-                                  <IconButton
-                                    size="small"
-                                    color="error"
-                                    onClick={() => {
-                                      setSelectedReport(report);
-                                      setReviewDialogOpen(true);
-                                    }}
-                                  >
-                                    <CloseIcon />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Delegate">
-                                  <IconButton
-                                    size="small"
-                                    color="info"
-                                    onClick={() => handleOpenDelegateDialog(report)}
-                                  >
-                                    <PersonAddIcon />
-                                  </IconButton>
-                                </Tooltip>
-                              </>
-                            )}
+                    {isAwaitingSupervisor && (
+                      <>
+                        <Tooltip title="Approve and Send to Finance">
+                          <IconButton
+                            size="small"
+                            color="success"
+                            onClick={() => {
+                              setSelectedReport(report);
+                              handleApproveReport(report.id);
+                            }}
+                          >
+                            <CheckIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Request Revision from Employee">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              setSelectedReport(report);
+                              setReviewDialogOpen(true);
+                            }}
+                          >
+                            <CloseIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delegate">
+                          <IconButton
+                            size="small"
+                            color="info"
+                            onClick={() => handleOpenDelegateDialog(report)}
+                          >
+                            <PersonAddIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </>
+                    )}
+                    {/* Show resubmit button if report is in needs_revision status from finance feedback */}
+                    {report.status === 'needs_revision' && report.currentApprovalStage === 'pending_supervisor' && (
+                      <Tooltip title="Resubmit to Finance After Making Changes">
+                        <IconButton
+                          size="small"
+                          color="success"
+                          onClick={() => {
+                            setSelectedReport(report);
+                            setReviewDialogOpen(true);
+                          }}
+                        >
+                          <SendIcon />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                             {isSupervisorStage && (
                               <Tooltip title="Send Reminder">
                                 <IconButton
@@ -1237,28 +1289,68 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                 rows={3}
                 value={reviewComment}
                 onChange={(e) => setReviewComment(e.target.value)}
-                placeholder="Add any feedback or notes about this report..."
+                placeholder={
+                  selectedReport?.status === 'needs_revision' && selectedReport?.currentApprovalStage === 'pending_supervisor'
+                    ? "Describe changes made (e.g., 'Fixed missing receipts, corrected mileage amounts per finance feedback')..."
+                    : "Add any feedback or notes about this report..."
+                }
               />
+              {selectedReport?.status === 'needs_revision' && selectedReport?.currentApprovalStage === 'pending_supervisor' && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  This report was returned from Finance for revision. You can either:
+                  <ul style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
+                    <li>Make changes and resubmit to Finance</li>
+                    <li>Send it back to the employee for revision</li>
+                  </ul>
+                </Alert>
+              )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setReviewDialogOpen(false)}>Cancel</Button>
-          <Button 
-            onClick={() => selectedReport && handleRejectReport(selectedReport.id)}
-            color="error"
-            disabled={savingAction || !reviewComment.trim()}
-          >
-            Reject Report
-          </Button>
-          <Button 
-            onClick={() => selectedReport && handleApproveReport(selectedReport.id)}
-            color="success"
-            variant="contained"
-            disabled={savingAction}
-          >
-            Approve Report
-          </Button>
+          <Button onClick={() => {
+            setReviewDialogOpen(false);
+            setReviewComment('');
+            setSupervisorCertificationAcknowledged(false);
+          }}>Cancel</Button>
+          {/* Show different actions based on report status */}
+          {selectedReport?.status === 'needs_revision' && selectedReport?.currentApprovalStage === 'pending_supervisor' ? (
+            <>
+              <Button 
+                onClick={() => selectedReport && handleRejectReport(selectedReport.id)}
+                color="error"
+                disabled={savingAction || !reviewComment.trim()}
+              >
+                Send Back to Employee
+              </Button>
+              <Button 
+                onClick={() => selectedReport && handleResubmitToFinance(selectedReport.id)}
+                color="success"
+                variant="contained"
+                disabled={savingAction || !reviewComment.trim()}
+              >
+                Resubmit to Finance
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button 
+                onClick={() => selectedReport && handleRejectReport(selectedReport.id)}
+                color="error"
+                disabled={savingAction || !reviewComment.trim()}
+              >
+                Request Revision from Employee
+              </Button>
+              <Button 
+                onClick={() => selectedReport && handleApproveReport(selectedReport.id)}
+                color="success"
+                variant="contained"
+                disabled={savingAction}
+              >
+                Approve and Send to Finance
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 

@@ -1238,16 +1238,18 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
         if (currentStep.role === 'finance' && (!currentStep.approverId || currentStep.approverId === 'finance-team')) {
           const approver = await dbService.getEmployeeById(approverId);
-          if (approver && helpers.isFinancePosition(approver.position)) {
+          // Check both role field and position (for backward compatibility)
+          if (approver && (helpers.isFinanceRole(approver) || helpers.isFinancePosition(approver.position))) {
             allowedApproverIds.add(approverId);
             currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
           }
         }
 
         if (allowedApproverIds.size === 0 && currentStep.role === 'finance') {
-          // If finance step without designated approver, allow provided approver if finance
+          // If finance step without designated approver, allow provided approver if finance role
           const approver = await dbService.getEmployeeById(approverId);
-          if (approver && helpers.isFinancePosition(approver.position)) {
+          // Check both role field and position (for backward compatibility)
+          if (approver && (helpers.isFinanceRole(approver) || helpers.isFinancePosition(approver.position))) {
             allowedApproverIds.add(approverId);
             currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
           }
@@ -1336,6 +1338,11 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           return;
         }
 
+        // Determine target role based on current step
+        // If supervisor rejects, goes back to employee
+        // If finance rejects, goes back to supervisor
+        const targetRole = currentStep.role === 'finance' ? 'supervisor' : 'employee';
+        
         currentStep.status = 'rejected';
         currentStep.actedAt = nowIso;
         currentStep.comments = comments;
@@ -1343,8 +1350,27 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
         updates.status = 'needs_revision';
         updates.currentApprovalStage = 'needs_revision';
-        updates.currentApproverId = null;
-        updates.currentApproverName = null;
+        
+        // Set the approver to the target role's approver (supervisor or employee)
+        if (targetRole === 'supervisor') {
+          // Finance rejected - goes back to supervisor
+          const employee = await dbService.getEmployeeById(report.employeeId);
+          if (employee && employee.supervisorId) {
+            const supervisor = await dbService.getEmployeeById(employee.supervisorId);
+            if (supervisor) {
+              updates.currentApproverId = supervisor.id;
+              updates.currentApproverName = supervisor.preferredName || supervisor.name || 'Supervisor';
+            }
+          }
+        } else {
+          // Supervisor rejected - goes back to employee
+          updates.currentApproverId = report.employeeId;
+          const employee = await dbService.getEmployeeById(report.employeeId);
+          if (employee) {
+            updates.currentApproverName = employee.preferredName || employee.name || 'Employee';
+          }
+        }
+        
         updates.escalationDueAt = null;
 
         logAction('rejected', approverId || currentStep.approverId, approverName || currentStep.approverName, comments);
@@ -1403,6 +1429,122 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         return;
       }
 
+      case 'request_revision_to_supervisor': {
+        // Finance requests revision - send back to supervisor
+        if (currentStep && currentStep.role !== 'finance') {
+          res.status(400).json({ error: 'This action is only available for finance approvers' });
+          return;
+        }
+        if (!comments) {
+          res.status(400).json({ error: 'Comments are required when requesting revision' });
+          return;
+        }
+
+        if (currentStep) {
+          currentStep.status = 'revision_requested';
+          currentStep.actedAt = nowIso;
+          currentStep.comments = comments;
+          workflow[currentStepIndex] = currentStep;
+        }
+
+        // Set status and send back to supervisor
+        updates.status = 'needs_revision';
+        updates.currentApprovalStage = 'pending_supervisor';
+        
+        // Get supervisor
+        const employee = await dbService.getEmployeeById(report.employeeId);
+        if (employee && employee.supervisorId) {
+          const supervisor = await dbService.getEmployeeById(employee.supervisorId);
+          if (supervisor) {
+            updates.currentApproverId = supervisor.id;
+            updates.currentApproverName = supervisor.preferredName || supervisor.name || 'Supervisor';
+          }
+        } else {
+          updates.currentApproverId = null;
+          updates.currentApproverName = null;
+        }
+        
+        updates.escalationDueAt = null;
+
+        logAction('request_revision_to_supervisor', approverId, approverName, comments);
+        await saveAndRespond();
+        return;
+      }
+
+      case 'request_revision_to_employee': {
+        // Supervisor requests revision - send back to employee
+        if (currentStep && currentStep.role !== 'supervisor') {
+          res.status(400).json({ error: 'This action is only available for supervisor approvers' });
+          return;
+        }
+        if (!comments) {
+          res.status(400).json({ error: 'Comments are required when requesting revision' });
+          return;
+        }
+
+        if (currentStep) {
+          currentStep.status = 'revision_requested';
+          currentStep.actedAt = nowIso;
+          currentStep.comments = comments;
+          workflow[currentStepIndex] = currentStep;
+        }
+
+        // Set status and send back to employee
+        updates.status = 'needs_revision';
+        updates.currentApprovalStage = 'needs_revision';
+        updates.currentApproverId = report.employeeId;
+        const employee = await dbService.getEmployeeById(report.employeeId);
+        if (employee) {
+          updates.currentApproverName = employee.preferredName || employee.name || 'Employee';
+        }
+        updates.escalationDueAt = null;
+
+        logAction('request_revision_to_employee', approverId, approverName, comments);
+        await saveAndRespond();
+        return;
+      }
+
+      case 'resubmit_to_finance': {
+        // Supervisor resubmits to finance after making changes
+        if (!currentStep || currentStep.role !== 'supervisor') {
+          res.status(400).json({ error: 'This action is only available when report is with supervisor' });
+          return;
+        }
+        if (!comments) {
+          res.status(400).json({ error: 'Comments are required when resubmitting (e.g., "Changes made per finance feedback")' });
+          return;
+        }
+
+        // Mark supervisor step as approved and move to finance
+        currentStep.status = 'approved';
+        currentStep.actedAt = nowIso;
+        currentStep.comments = comments || currentStep.comments || '';
+        workflow[currentStepIndex] = currentStep;
+
+        // Find finance step in workflow
+        const financeStepIndex = workflow.findIndex(step => step.role === 'finance');
+        if (financeStepIndex === -1) {
+          res.status(400).json({ error: 'No finance step found in workflow' });
+          return;
+        }
+
+        const financeStep = workflow[financeStepIndex];
+        financeStep.status = 'pending';
+        financeStep.dueAt = helpers.computeEscalationDueAt(constants.FINANCE_ESCALATION_HOURS);
+        workflow[financeStepIndex] = financeStep;
+
+        updates.status = 'pending_finance';
+        updates.currentApprovalStage = 'finance';
+        updates.currentApprovalStep = financeStepIndex;
+        updates.currentApproverId = financeStep.approverId || null;
+        updates.currentApproverName = financeStep.approverName || 'Finance Team';
+        updates.escalationDueAt = financeStep.dueAt;
+
+        logAction('resubmit_to_finance', approverId, approverName, comments);
+        await saveAndRespond();
+        return;
+      }
+
       case 'comment': {
         const commentText = typeof comments === 'string' ? comments.trim() : '';
         if (!commentText) {
@@ -1451,6 +1593,132 @@ router.delete('/api/expense-reports/:id', (req, res) => {
     }
     res.json({ message: 'Expense report deleted successfully' });
   });
+});
+
+/**
+ * Add revision note to a specific item in a report
+ * POST /api/expense-reports/:id/revision-notes
+ * Body: { category, itemId, itemType, notes, requestedBy, requestedByName, requestedByRole, targetRole }
+ */
+router.post('/api/expense-reports/:id/revision-notes', async (req, res) => {
+  const { id } = req.params;
+  const { category, itemId, itemType, notes, requestedBy, requestedByName, requestedByRole, targetRole } = req.body;
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+  const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+  if (!category || !itemType || !notes || !requestedBy || !requestedByName || !requestedByRole || !targetRole) {
+    res.status(400).json({ error: 'Missing required fields: category, itemType, notes, requestedBy, requestedByName, requestedByRole, targetRole' });
+    return;
+  }
+
+  try {
+    // Verify report exists
+    const report = await new Promise((resolve, reject) => {
+      db.get('SELECT employeeId FROM expense_reports WHERE id = ?', [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (!report) {
+      res.status(404).json({ error: 'Expense report not found' });
+      return;
+    }
+
+    // Insert revision note
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO report_revision_notes 
+         (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        [noteId, id, report.employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId || null, itemType, notes, now, now],
+        function(err) {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    debugLog(`✅ Added revision note ${noteId} for report ${id}`);
+    res.json({ 
+      id: noteId, 
+      message: 'Revision note added successfully',
+      noteId,
+      reportId: id
+    });
+
+  } catch (error) {
+    debugError('❌ Error adding revision note:', error);
+    res.status(500).json({ error: 'Failed to add revision note', details: error.message });
+  }
+});
+
+/**
+ * Get revision notes for a report
+ * GET /api/expense-reports/:id/revision-notes
+ */
+router.get('/api/expense-reports/:id/revision-notes', (req, res) => {
+  const { id } = req.params;
+  const { resolved } = req.query;
+  const db = dbService.getDb();
+
+  let query = 'SELECT * FROM report_revision_notes WHERE reportId = ?';
+  const params = [id];
+
+  if (resolved !== undefined) {
+    query += ' AND resolved = ?';
+    params.push(resolved === 'true' ? 1 : 0);
+  }
+
+  query += ' ORDER BY createdAt DESC';
+
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      debugError('❌ Error fetching revision notes:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows || []);
+  });
+});
+
+/**
+ * Resolve a revision note
+ * PUT /api/expense-reports/:id/revision-notes/:noteId/resolve
+ * Body: { resolvedBy }
+ */
+router.put('/api/expense-reports/:id/revision-notes/:noteId/resolve', async (req, res) => {
+  const { id, noteId } = req.params;
+  const { resolvedBy } = req.body;
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+
+  try {
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE report_revision_notes SET resolved = 1, resolvedBy = ?, resolvedAt = ?, updatedAt = ? WHERE id = ? AND reportId = ?',
+        [resolvedBy || 'system', now, now, noteId, id],
+        function(err) {
+          if (err) reject(err);
+          else {
+            if (this.changes === 0) {
+              reject(new Error('Revision note not found'));
+            } else {
+              resolve();
+            }
+          }
+        }
+      );
+    });
+
+    debugLog(`✅ Resolved revision note ${noteId} for report ${id}`);
+    res.json({ message: 'Revision note resolved successfully' });
+
+  } catch (error) {
+    debugError('❌ Error resolving revision note:', error);
+    res.status(500).json({ error: 'Failed to resolve revision note', details: error.message });
+  }
 });
 
 module.exports = router;

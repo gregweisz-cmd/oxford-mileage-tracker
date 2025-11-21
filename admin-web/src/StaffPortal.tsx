@@ -278,7 +278,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null); // Signature saved in Settings
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
-  const [supervisorSignatureState, setSupervisorSignature] = useState<string | null>(supervisorSignature || null);
+  const [supervisorSignatureDialogOpen, setSupervisorSignatureDialogOpen] = useState(false);
+  const [supervisorSignatureState, setSupervisorSignatureState] = useState<string | null>(supervisorSignature || null);
   const [employeeCertificationAcknowledged, setEmployeeCertificationAcknowledged] = useState<boolean>(false);
   const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
   const [editingTimesheetCell, setEditingTimesheetCell] = useState<{costCenter: number, day: number, type: string} | null>(null);
@@ -1548,6 +1549,55 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
+  // Handle supervisor signature upload
+  const handleSupervisorSignatureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'image/png') {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const result = e.target?.result as string;
+        // Supervisor signature uploaded successfully
+        setSupervisorSignatureState(result);
+        setSupervisorSignatureDialogOpen(false);
+        setSupervisorCertificationAcknowledged(true); // Auto-check the checkbox when signature is uploaded
+        
+        // Auto-save supervisor signature to expense report
+        if (employeeData) {
+          try {
+            const reportData = {
+              ...employeeData,
+              receipts: receipts,
+              employeeSignature: signatureImage,
+              supervisorSignature: result
+            };
+
+            await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                employeeId: employeeData.employeeId,
+                month: currentMonth,
+                year: currentYear,
+                reportData: reportData
+              }),
+            });
+            
+            debugLog('✅ Supervisor signature upload synced to expense report');
+            showSuccess('Supervisor signature saved and acknowledgment checked');
+          } catch (error) {
+            console.error('Error saving supervisor signature:', error);
+            showError('Failed to save supervisor signature');
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert('Please upload a PNG file only.');
+    }
+  };
+
   // Remove signature
   const handleRemoveSignature = async () => {
     setSignatureImage(null);
@@ -2790,7 +2840,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setEmployeeData(savedEmployeeData);
         setReceipts(savedReceipts || []);
         setSignatureImage(savedSignature || null);
-        setSupervisorSignature(savedSupervisorSignature || null);
+        setSupervisorSignatureState(savedSupervisorSignature || null);
         setEmployeeCertificationAcknowledged(savedEmployeeCert || false);
         setSupervisorCertificationAcknowledged(savedSupervisorCert || false);
         
@@ -2839,8 +2889,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
     // Check if employee has acknowledged the certification statement
     if (!employeeCertificationAcknowledged) {
-      alert('Please acknowledge the certification statement before submitting your report.');
+      alert('Please check the employee acknowledgment box and add your signature before submitting your report.');
       return;
+    }
+    
+    // Check if employee signature exists
+    if (!signatureImage) {
+      alert('Please add your employee signature before submitting your report. Click "Signature Capture" to upload your signature.');
+      return;
+    }
+    
+    // Check if supervisor has acknowledged and signed (if supervisor mode)
+    if (supervisorMode) {
+      if (!supervisorCertificationAcknowledged) {
+        alert('Please check the supervisor acknowledgment box before submitting your report.');
+        return;
+      }
+      if (!supervisorSignatureState) {
+        alert('Please add supervisor signature before submitting your report. Check the supervisor acknowledgment box to upload the signature.');
+        return;
+      }
     }
 
     // First, run completeness check automatically
@@ -3426,7 +3494,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Checkbox
                   checked={employeeCertificationAcknowledged}
-                  onChange={(e) => setEmployeeCertificationAcknowledged(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    // If checking the box and no employee signature exists, prompt user to add signature first
+                    if (checked && !signatureImage) {
+                      alert('Please upload your signature first before checking the acknowledgment box. Click "Signature Capture" to upload your signature.');
+                      setEmployeeCertificationAcknowledged(false);
+                    } else {
+                      setEmployeeCertificationAcknowledged(checked);
+                    }
+                  }}
                   size="small"
                 />
                 <Typography variant="body2" component="div">
@@ -3439,7 +3516,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Checkbox
                     checked={supervisorCertificationAcknowledged}
-                    onChange={(e) => setSupervisorCertificationAcknowledged(e.target.checked)}
+                    onChange={async (e) => {
+                      const checked = e.target.checked;
+                      setSupervisorCertificationAcknowledged(checked);
+                      
+                      // If checking the box and no supervisor signature exists, open signature dialog
+                      if (checked && !supervisorSignatureState) {
+                        setSupervisorSignatureDialogOpen(true);
+                      }
+                      // If unchecking, clear the signature requirement
+                      else if (!checked) {
+                        setSupervisorSignatureState(null);
+                      }
+                    }}
                     size="small"
                   />
                   <Typography variant="body2" component="div">
@@ -3563,21 +3652,114 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
                     <Typography variant="body1" component="div"><strong>Direct Supervisor</strong></Typography>
-                    <Box sx={{ mt: 2, mb: 2, minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {supervisorSignature ? (
-                        <img 
-                          src={supervisorSignature} 
-                          alt="Supervisor Signature" 
-                          style={{ 
-                            maxHeight: '40px', 
-                            maxWidth: '100%',
-                            objectFit: 'contain'
-                          }} 
-                        />
+                    <Box sx={{ 
+                      mt: 2, 
+                      mb: 2, 
+                      minHeight: 40, 
+                      border: '1px solid #ccc', 
+                      borderRadius: 1,
+                      bgcolor: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
+                      {supervisorSignatureState ? (
+                        <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+                          <img 
+                            src={supervisorSignatureState} 
+                            alt="Supervisor Signature" 
+                            style={{ 
+                              maxHeight: '100%', 
+                              maxWidth: '100%',
+                              objectFit: 'contain'
+                            }} 
+                          />
+                          {supervisorMode && (
+                            <IconButton
+                              size="small"
+                              onClick={() => setSupervisorSignatureDialogOpen(true)}
+                              sx={{ 
+                                position: 'absolute', 
+                                top: 4, 
+                                right: 4, 
+                                bgcolor: 'white',
+                                '&:hover': { bgcolor: 'grey.100' }
+                              }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
+                      ) : supervisorMode ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, p: 2 }}>
+                          <Typography variant="caption" color="textSecondary">
+                            No supervisor signature available
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => setSupervisorSignatureDialogOpen(true)}
+                            startIcon={<UploadIcon />}
+                          >
+                            Upload Supervisor Signature
+                          </Button>
+                        </Box>
                       ) : (
-                        <Box sx={{ borderBottom: '1px solid #333', width: '100%', height: 40 }} />
+                        <Typography variant="caption" color="textSecondary">
+                          Supervisor signature will appear here
+                        </Typography>
                       )}
                     </Box>
+                    {supervisorMode && supervisorSignatureState && (
+                      <Box sx={{ mt: 1 }}>
+                        <Button
+                          variant="text"
+                          size="small"
+                          color="error"
+                          onClick={async () => {
+                            setSupervisorSignatureState(null);
+                            setSupervisorCertificationAcknowledged(false);
+                            
+                            // Auto-save signature removal
+                            if (employeeData) {
+                              try {
+                                const reportData = {
+                                  ...employeeData,
+                                  receipts: receipts,
+                                  employeeSignature: signatureImage,
+                                  supervisorSignature: null
+                                };
+
+                                await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    employeeId: employeeData.employeeId,
+                                    month: currentMonth,
+                                    year: currentYear,
+                                    reportData: reportData
+                                  }),
+                                });
+                                
+                                debugLog('✅ Supervisor signature removal synced to expense report');
+                                showSuccess('Supervisor signature removed from this report');
+                              } catch (error) {
+                                console.error('Error removing supervisor signature:', error);
+                                showError('Failed to remove supervisor signature');
+                              }
+                            }
+                          }}
+                          startIcon={<DeleteIcon />}
+                          sx={{ fontSize: '0.8rem', textTransform: 'none' }}
+                        >
+                          Remove Supervisor Signature
+                        </Button>
+                      </Box>
+                    )}
                     <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
                   </Box>
                 </Box>
@@ -5482,6 +5664,112 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </DialogActions>
       </Dialog>
 
+      {/* Supervisor Signature Dialog */}
+      <Dialog open={supervisorSignatureDialogOpen} onClose={() => setSupervisorSignatureDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Supervisor Signature Capture</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <Typography variant="body1">
+              Upload a PNG file containing the supervisor signature. Please ensure the background is transparent or white for best results.
+            </Typography>
+            
+            {supervisorSignatureState && (
+              <Box sx={{ textAlign: 'center', mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>Current Supervisor Signature:</Typography>
+                <Box sx={{ 
+                  border: '1px solid #ccc', 
+                  borderRadius: 1, 
+                  p: 2, 
+                  bgcolor: 'white',
+                  display: 'inline-block'
+                }}>
+                  <img 
+                    src={supervisorSignatureState} 
+                    alt="Current Supervisor Signature" 
+                    style={{ 
+                      maxHeight: 100, 
+                      maxWidth: 200,
+                      objectFit: 'contain'
+                    }} 
+                  />
+                </Box>
+              </Box>
+            )}
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <input
+                type="file"
+                accept=".png"
+                onChange={handleSupervisorSignatureUpload}
+                style={{ display: 'none' }}
+                id="supervisor-signature-upload"
+              />
+              <label htmlFor="supervisor-signature-upload">
+                <Button
+                  variant="outlined"
+                  component="span"
+                  startIcon={<UploadIcon />}
+                  fullWidth
+                >
+                  Upload Supervisor Signature
+                </Button>
+              </label>
+              
+              {supervisorSignatureState && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={async () => {
+                    setSupervisorSignatureState(null);
+                    setSupervisorCertificationAcknowledged(false);
+                    
+                    // Auto-save signature removal
+                    if (employeeData) {
+                      try {
+                        const reportData = {
+                          ...employeeData,
+                          receipts: receipts,
+                          employeeSignature: signatureImage,
+                          supervisorSignature: null
+                        };
+
+                        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            employeeId: employeeData.employeeId,
+                            month: currentMonth,
+                            year: currentYear,
+                            reportData: reportData
+                          }),
+                        });
+                        
+                        debugLog('✅ Supervisor signature removal synced to expense report');
+                        showSuccess('Supervisor signature removed');
+                      } catch (error) {
+                        console.error('Error removing supervisor signature:', error);
+                        showError('Failed to remove supervisor signature');
+                      }
+                    }
+                    
+                    setSupervisorSignatureDialogOpen(false);
+                  }}
+                  fullWidth
+                >
+                  Remove Supervisor Signature
+                </Button>
+              )}
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSupervisorSignatureDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Receipt Dialog */}
       <Dialog open={receiptDialogOpen} onClose={() => setReceiptDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingReceipt ? 'Edit Receipt' : 'Add Receipt'}</DialogTitle>
@@ -5681,7 +5969,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   setEmployeeData(savedEmployeeData);
                                   setReceipts(savedReceipts || []);
                                   setSignatureImage(savedSignature || null);
-                                  setSupervisorSignature(savedSupervisorSignature || null);
+                                  setSupervisorSignatureState(savedSupervisorSignature || null);
                                   
                                   // Update the current month/year to match the loaded report
                                   // Note: This would require updating the parent component's state

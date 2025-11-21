@@ -14,10 +14,12 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 
 // Login endpoint
 router.post('/api/auth/login', async (req, res) => {
+  debugLog('🔐 Login attempt received for:', req.body.email || 'unknown email');
   const db = dbService.getDb();
   const { email, password } = req.body;
   
   if (!email || !password) {
+    debugLog('❌ Login failed: Missing email or password');
     return res.status(400).json({ 
       error: 'Email and password are required' 
     });
@@ -40,28 +42,42 @@ router.post('/api/auth/login', async (req, res) => {
       // Check password (using bcrypt comparison)
       const passwordMatch = await helpers.comparePassword(password, employee.password);
       if (!passwordMatch) {
+        debugLog(`❌ Password mismatch for ${email}`);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
+      debugLog(`✅ Password match for ${email}, updating lastLoginAt...`);
+      
       // Update lastLoginAt timestamp on successful login
       const now = new Date().toISOString();
+      let lastLoginUpdated = false;
       await new Promise((resolve) => {
         db.run(
           'UPDATE employees SET lastLoginAt = ? WHERE id = ?',
           [now, employee.id],
-          (updateErr) => {
+          function(updateErr) {
             if (updateErr) {
-              debugWarn('Warning: Failed to update lastLoginAt:', updateErr);
+              debugError('❌ Failed to update lastLoginAt:', updateErr);
+              debugError('❌ Update error details:', {
+                error: updateErr.message,
+                code: updateErr.code,
+                employeeId: employee.id,
+                email: employee.email
+              });
               // Continue with login even if update fails
             } else {
-              debugLog(`✅ Updated lastLoginAt for ${employee.email}`);
-              // Update the employee object to include new lastLoginAt in response
-              employee.lastLoginAt = now;
+              debugLog(`✅ Updated lastLoginAt for ${employee.email} (employeeId: ${employee.id}, affected rows: ${this.changes})`);
+              debugLog(`✅ Timestamp set to: ${now}`);
+              lastLoginUpdated = true;
             }
             resolve();
           }
         );
       });
+      
+      // Always update the employee object with the new lastLoginAt for the response
+      // This ensures the response includes the updated timestamp even if the DB update happened
+      employee.lastLoginAt = now;
       
       // Parse JSON fields
       let costCenters = [];
@@ -81,6 +97,14 @@ router.post('/api/auth/login', async (req, res) => {
       // Don't send password back to client
       const { password: _, ...employeeData } = employee;
       
+      // Get role from database (defaults to 'employee' if not set)
+      // Role is stored separately from position - it's the login role, not job title
+      const userRole = employee.role || 'employee';
+      
+      // Validate role is one of the allowed values
+      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+      const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+      
       // Create session token (simple for now - use JWT in production)
       const sessionToken = `session_${employee.id}_${Date.now()}`;
       
@@ -89,6 +113,8 @@ router.post('/api/auth/login', async (req, res) => {
         message: 'Login successful',
         employee: {
           ...employeeData,
+          lastLoginAt: now, // Explicitly include lastLoginAt in response
+          role: validRole, // Include role in response
           costCenters,
           selectedCostCenters
         },
@@ -103,7 +129,10 @@ router.get('/api/auth/verify', (req, res) => {
   const db = dbService.getDb();
   const token = req.headers.authorization?.replace('Bearer ', '');
   
+  debugLog('🔍 Session verification request received');
+  
   if (!token) {
+    debugLog('❌ No token provided for verification');
     return res.status(401).json({ error: 'No token provided' });
   }
   
@@ -111,6 +140,7 @@ router.get('/api/auth/verify', (req, res) => {
   const employeeId = token.split('_')[1];
   
   if (!employeeId) {
+    debugLog('❌ Invalid token format for verification');
     return res.status(401).json({ error: 'Invalid token' });
   }
   
@@ -118,9 +148,47 @@ router.get('/api/auth/verify', (req, res) => {
   db.get(
     'SELECT * FROM employees WHERE id = ?',
     [employeeId],
-    (err, employee) => {
+    async (err, employee) => {
       if (err || !employee) {
+        debugLog('❌ Employee not found for verification:', employeeId);
         return res.status(401).json({ error: 'Invalid session' });
+      }
+      
+      debugLog(`✅ Session verified for ${employee.email} (employeeId: ${employeeId})`);
+      
+      // Update lastLoginAt if it's been more than 5 minutes since last update
+      // This catches cases where users are already logged in but want their lastLoginAt tracked
+      const now = new Date().toISOString();
+      let shouldUpdateLastLogin = false;
+      
+      if (employee.lastLoginAt) {
+        const lastLoginTime = new Date(employee.lastLoginAt).getTime();
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        shouldUpdateLastLogin = lastLoginTime < fiveMinutesAgo;
+      } else {
+        // Never logged in before, update it
+        shouldUpdateLastLogin = true;
+      }
+      
+      if (shouldUpdateLastLogin) {
+        debugLog(`🔄 Updating lastLoginAt for ${employee.email} (verify endpoint)`);
+        await new Promise((resolve) => {
+          db.run(
+            'UPDATE employees SET lastLoginAt = ? WHERE id = ?',
+            [now, employee.id],
+            function(updateErr) {
+              if (updateErr) {
+                debugError('❌ Failed to update lastLoginAt in verify:', updateErr);
+              } else {
+                debugLog(`✅ Updated lastLoginAt for ${employee.email} via verify (affected rows: ${this.changes})`);
+                employee.lastLoginAt = now;
+              }
+              resolve();
+            }
+          );
+        });
+      } else {
+        debugLog(`⏭️ Skipping lastLoginAt update for ${employee.email} (updated less than 5 minutes ago)`);
       }
       
       // Parse JSON fields
@@ -144,6 +212,7 @@ router.get('/api/auth/verify', (req, res) => {
         valid: true,
         employee: {
           ...employeeData,
+          lastLoginAt: employee.lastLoginAt, // Ensure lastLoginAt is included
           costCenters,
           selectedCostCenters
         }

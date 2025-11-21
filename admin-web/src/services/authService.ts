@@ -96,8 +96,18 @@ export class AuthService {
       // For now, we'll skip password validation since passwords aren't fully implemented
       // In production, you'd hash and compare passwords properly
       
-      // Determine role based on position/hierarchy
-      const userRole = this.determineUserRole(employee.position, employee.name, employee.email);
+      // Get role from database (stored separately from position)
+      // Role is the login role (employee, supervisor, admin, finance), not the job title
+      // If role is not set in database, fall back to determining from position for backward compatibility
+      let userRole: UserRole = employee.role || 'employee';
+      
+      // Validate role is one of the allowed values
+      const allowedRoles: UserRole[] = ['employee', 'supervisor', 'admin', 'finance'];
+      if (!allowedRoles.includes(userRole)) {
+        // Fallback: determine from position if role is invalid or missing
+        console.warn(`Invalid or missing role for employee ${employee.email}, determining from position`);
+        userRole = this.determineUserRole(employee.position, employee.name, employee.email);
+      }
       
       const user: User = {
         id: employee.id,
