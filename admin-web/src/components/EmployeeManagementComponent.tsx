@@ -653,6 +653,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     <TableCell>Name</TableCell>
                     <TableCell>Email</TableCell>
                     <TableCell>Position</TableCell>
+                    <TableCell>Last Login</TableCell>
                     <TableCell>Phone</TableCell>
                     <TableCell>Supervisor</TableCell>
                     <TableCell>Cost Centers</TableCell>
@@ -685,6 +686,21 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </TableCell>
                       <TableCell>{employee.email}</TableCell>
                       <TableCell>{employee.position}</TableCell>
+                      <TableCell>
+                        {employee.lastLoginAt 
+                          ? new Date(employee.lastLoginAt).toLocaleString('en-US', {
+                              month: '2-digit',
+                              day: '2-digit',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true
+                            })
+                          : <Typography component="span" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                              Never
+                            </Typography>
+                        }
+                      </TableCell>
                       <TableCell>{employee.phoneNumber}</TableCell>
                       <TableCell>
                         {employee.supervisorId ? 

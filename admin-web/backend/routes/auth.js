@@ -43,6 +43,25 @@ router.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
+      // Update lastLoginAt timestamp on successful login
+      const now = new Date().toISOString();
+      await new Promise((resolve) => {
+        db.run(
+          'UPDATE employees SET lastLoginAt = ? WHERE id = ?',
+          [now, employee.id],
+          (updateErr) => {
+            if (updateErr) {
+              debugWarn('Warning: Failed to update lastLoginAt:', updateErr);
+              // Continue with login even if update fails
+            } else {
+              debugLog(`✅ Updated lastLoginAt for ${employee.email}`);
+              // Update the employee object to include new lastLoginAt in response
+              employee.lastLoginAt = now;
+            }
+            resolve();
+          }
+        );
+      });
       
       // Parse JSON fields
       let costCenters = [];

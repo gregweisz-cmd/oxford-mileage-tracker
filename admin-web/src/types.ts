@@ -70,6 +70,7 @@ export interface Employee {
   typicalWorkEndHour?: number; // Typical work end hour (0-23)
   hasCompletedOnboarding?: boolean; // Whether the employee has completed the onboarding flow
   hasCompletedSetupWizard?: boolean; // Whether the employee has completed the setup wizard
+  lastLoginAt?: string | null; // ISO 8601 timestamp of last login
   createdAt: Date;
   updatedAt: Date;
 }

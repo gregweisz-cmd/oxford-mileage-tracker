@@ -92,6 +92,7 @@ function ensureTablesExist() {
         typicalWorkEndHour INTEGER DEFAULT NULL,
         hasCompletedOnboarding INTEGER DEFAULT 0,
         hasCompletedSetupWizard INTEGER DEFAULT 0,
+        lastLoginAt TEXT DEFAULT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
