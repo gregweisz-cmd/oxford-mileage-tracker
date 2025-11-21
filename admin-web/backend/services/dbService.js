@@ -96,6 +96,25 @@ function ensureTablesExist() {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
+      
+      // Add lastLoginAt column if it doesn't exist (for existing databases)
+      // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check if column exists first
+      db.all(`PRAGMA table_info(employees)`, [], (pragmaErr, columns) => {
+        if (!pragmaErr && columns) {
+          // Check if lastLoginAt column exists
+          const hasLastLoginAt = columns.some((col) => col.name === 'lastLoginAt');
+          
+          if (!hasLastLoginAt) {
+            db.run(`ALTER TABLE employees ADD COLUMN lastLoginAt TEXT DEFAULT NULL`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add lastLoginAt column:', alterErr.message);
+              } else {
+                debugLog('✅ Added lastLoginAt column to existing employees table');
+              }
+            });
+          }
+        }
+      });
 
       db.run(`CREATE TABLE IF NOT EXISTS mileage_entries (
         id TEXT PRIMARY KEY,
