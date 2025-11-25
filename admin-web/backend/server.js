@@ -37,6 +37,7 @@ const approvalRoutes = require('./routes/approval');
 const notificationRoutes = require('./routes/notifications');
 const supervisorRoutes = require('./routes/supervisor');
 const adminRoutes = require('./routes/admin');
+const { startSundayReminderJob, stopSundayReminderJob } = require('./services/sundayReminderJob');
 
 const app = express();
 const server = http.createServer(app);
@@ -266,6 +267,9 @@ dbService.initDatabase().then(async () => {
   debugLog('⏰ Starting report schedule runner...');
   startReportScheduleRunner();
   
+  debugLog('🔔 Starting Sunday reminder job...');
+  startSundayReminderJob();
+  
   debugLog('🌐 Starting HTTP server...');
   
   // Listen on configured host/port
@@ -299,6 +303,7 @@ function shutdownServer() {
   isShuttingDown = true;
   debugLog('👋 Shutting down server...');
   stopReportScheduleRunner();
+  stopSundayReminderJob();
   server.close(() => {
     process.exit(0);
   });

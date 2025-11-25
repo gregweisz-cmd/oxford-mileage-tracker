@@ -73,3 +73,122 @@ export function extractNamePortion(formattedAddress: string): string {
   return match ? match[1].trim() : formattedAddress;
 }
 
+/**
+ * Check if a location matches an employee's base address(es)
+ * @param location - The location string to check
+ * @param baseAddress - Employee's primary base address
+ * @param baseAddress2 - Employee's secondary base address (optional)
+ * @returns "BA", "BA1", "BA2", or null if not a base address
+ */
+export function getBaseAddressLabel(
+  location: string,
+  baseAddress?: string,
+  baseAddress2?: string
+): string | null {
+  if (!location) return null;
+  
+  const locationLower = location.toLowerCase().trim();
+  
+  // Check for exact "BA" keywords (common shorthand)
+  if (
+    locationLower === 'ba' ||
+    locationLower === 'base address' ||
+    locationLower === 'base'
+  ) {
+    // If there are two base addresses, we can't determine which one, default to BA1
+    // But typically if someone uses "BA" they mean the primary
+    return baseAddress2 ? 'BA1' : 'BA';
+  }
+  
+  // Extract address portion from formatted location (inside parentheses)
+  const extractAddressPortion = (str: string): string => {
+    const match = str.match(/\(([^)]+)\)/);
+    if (match) return match[1].toLowerCase().trim();
+    return str.toLowerCase().trim();
+  };
+  
+  // Extract name portion (before parentheses)
+  const extractNamePortion = (str: string): string => {
+    const match = str.match(/^([^(]+?)\s*\(/);
+    if (match) return match[1].toLowerCase().trim();
+    return str.toLowerCase().trim();
+  };
+  
+  const locationAddress = extractAddressPortion(location);
+  const locationName = extractNamePortion(location);
+  
+  // Check against baseAddress
+  if (baseAddress) {
+    const base1Lower = baseAddress.toLowerCase().trim();
+    const base1Address = extractAddressPortion(baseAddress);
+    const base1Name = extractNamePortion(baseAddress);
+    
+    // Check if location matches baseAddress by comparing:
+    // 1. Full strings match
+    // 2. Address portions match (inside parentheses)
+    // 3. Name portions match and address is similar
+    if (
+      locationLower === base1Lower ||
+      locationAddress === base1Address ||
+      (locationName === base1Name && base1Address && locationAddress === base1Address) ||
+      (base1Address && locationAddress && (
+        locationAddress.includes(base1Address) || base1Address.includes(locationAddress)
+      ))
+    ) {
+      return baseAddress2 ? 'BA1' : 'BA';
+    }
+  }
+  
+  // Check against baseAddress2
+  if (baseAddress2) {
+    const base2Lower = baseAddress2.toLowerCase().trim();
+    const base2Address = extractAddressPortion(baseAddress2);
+    const base2Name = extractNamePortion(baseAddress2);
+    
+    if (
+      locationLower === base2Lower ||
+      locationAddress === base2Address ||
+      (locationName === base2Name && base2Address && locationAddress === base2Address) ||
+      (base2Address && locationAddress && (
+        locationAddress.includes(base2Address) || base2Address.includes(locationAddress)
+      ))
+    ) {
+      return 'BA2';
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Format a location for display in descriptions
+ * Base addresses show as "BA", "BA1", "BA2"
+ * Other locations show as "LocationName (Full Address)" format
+ * 
+ * @param location - The location string to format
+ * @param baseAddress - Employee's primary base address (optional)
+ * @param baseAddress2 - Employee's secondary base address (optional)
+ * @returns Formatted location string
+ */
+export function formatLocationForDescription(
+  location: string,
+  baseAddress?: string,
+  baseAddress2?: string
+): string {
+  if (!location) return '';
+  
+  // Check if it's a base address
+  const baLabel = getBaseAddressLabel(location, baseAddress, baseAddress2);
+  if (baLabel) {
+    return baLabel;
+  }
+  
+  // If already in format "LocationName (Address)", return as-is
+  if (location.includes('(') && location.includes(')')) {
+    return location;
+  }
+  
+  // Otherwise return as-is (should already be formatted from mobile app)
+  return location;
+}
+

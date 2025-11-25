@@ -334,33 +334,54 @@ export class SyncIntegrationService {
 
   /**
    * Force immediate sync of all pending changes
+   * Optionally sync all data for a specific employee
    */
-  static async forceSync(): Promise<boolean> {
+  static async forceSync(employeeId?: string): Promise<boolean> {
     try {
-      debugLog('🔄 SyncIntegration: Force sync requested');
+      debugLog('🔄 SyncIntegration: Force sync requested', employeeId ? `for employee ${employeeId}` : '');
       
       // Process queue immediately
       await this.processSyncQueue();
       
-      // If queue is empty, do a full sync
-      if (this.syncQueue.length === 0) {
-        debugLog('🔄 SyncIntegration: Queue empty, performing full sync');
+      // Get current employee if not provided
+      let currentEmployeeId = employeeId;
+      if (!currentEmployeeId) {
+        const currentEmployee = await DatabaseService.getCurrentEmployee();
+        if (currentEmployee) {
+          currentEmployeeId = currentEmployee.id;
+        }
+      }
+      
+      // Always do a full sync for the current employee (syncs all local data)
+      if (currentEmployeeId) {
+        debugLog(`🔄 SyncIntegration: Performing full sync for employee ${currentEmployeeId}`);
         
-        // Get all data and sync to backend
+        // Get all data for the current employee
         const employees = await DatabaseService.getEmployees();
-        const mileageEntries = await DatabaseService.getMileageEntries();
-        const receipts = await DatabaseService.getReceipts();
-        const timeTracking = await DatabaseService.getAllTimeTrackingEntries();
+        const currentEmployee = employees.find(e => e.id === currentEmployeeId);
+        
+        // Get all mileage entries for current employee
+        const mileageEntries = await DatabaseService.getMileageEntries(currentEmployeeId);
+        
+        // Get all receipts for current employee
+        const receipts = await DatabaseService.getReceipts(currentEmployeeId);
+        
+        // Get all time tracking for current employee
+        const allTimeTracking = await DatabaseService.getAllTimeTrackingEntries();
+        const timeTracking = allTimeTracking.filter(t => t.employeeId === currentEmployeeId);
+        
+        // Sync employee data (just the current employee)
+        const employeeData = currentEmployee ? [currentEmployee] : [];
         
         const result = await ApiSyncService.syncToBackend({
-          employees,
+          employees: employeeData,
           mileageEntries,
           receipts,
           timeTracking
         });
         
         if (result.success) {
-          debugLog('✅ SyncIntegration: Force sync completed successfully');
+          debugLog(`✅ SyncIntegration: Force sync completed successfully for employee ${currentEmployeeId}`);
           return true;
         } else {
           console.error('❌ SyncIntegration: Force sync failed:', result.error);
@@ -368,6 +389,7 @@ export class SyncIntegrationService {
         }
       }
       
+      // If no employee ID available, just return success (queue was processed)
       return true;
     } catch (error) {
       console.error('❌ SyncIntegration: Force sync error:', error);

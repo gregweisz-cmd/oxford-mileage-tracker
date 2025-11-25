@@ -456,6 +456,29 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
+      // Create unified notifications table (replaces supervisor_notifications and staff_notifications)
+      db.run(`CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        recipientId TEXT NOT NULL,
+        recipientRole TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        reportId TEXT,
+        employeeId TEXT,
+        employeeName TEXT,
+        actorId TEXT,
+        actorName TEXT,
+        actorRole TEXT,
+        isRead INTEGER DEFAULT 0,
+        isDismissible INTEGER DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        readAt TEXT,
+        metadata TEXT,
+        FOREIGN KEY (reportId) REFERENCES expense_reports(id) ON DELETE CASCADE
+      )`);
+
+      // Legacy tables - kept for backward compatibility, will be migrated gradually
       db.run(`CREATE TABLE IF NOT EXISTS supervisor_notifications (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
@@ -479,6 +502,21 @@ function ensureTablesExist() {
         isRead INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL
       )`);
+
+      // Add notification preferences to employees table (for Sunday reminder preferences)
+      db.all(`PRAGMA table_info(employees)`, [], (pragmaErr, columns) => {
+        if (!pragmaErr && columns) {
+          const columnNames = columns.map((col) => col.name);
+          
+          if (!columnNames.includes('sundayReminderEnabled')) {
+            db.run(`ALTER TABLE employees ADD COLUMN sundayReminderEnabled INTEGER DEFAULT 1`, (alterErr) => {
+              if (!alterErr) {
+                debugLog('✅ Added sundayReminderEnabled column to employees table');
+              }
+            });
+          }
+        }
+      });
 
       // Add missing columns to existing employees table if they don't exist
       // Check if columns exist before adding them
@@ -758,6 +796,13 @@ function ensureTablesExist() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_descriptions_employee_date ON daily_descriptions(employeeId, date)`);
       
       // Notifications indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recipientId ON notifications(recipientId)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recipientRole ON notifications(recipientRole)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_isRead ON notifications(isRead)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_createdAt ON notifications(createdAt)`);
+      
+      // Legacy notification indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_supervisor_notifications_supervisorId ON supervisor_notifications(supervisorId)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_staff_notifications_employeeId ON staff_notifications(employeeId)`);
       

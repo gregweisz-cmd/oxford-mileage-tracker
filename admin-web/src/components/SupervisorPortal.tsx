@@ -74,6 +74,7 @@ import StaffPortal from '../StaffPortal';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
 import { DashboardStatistics } from './DashboardStatistics';
+import { NotificationBell } from './NotificationBell';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -196,6 +197,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   // Employee report viewing
   const [viewingEmployeeReport, setViewingEmployeeReport] = useState<Employee | null>(null);
   const [showEmployeeReportView, setShowEmployeeReportView] = useState(false);
+  const [viewingReportMonth, setViewingReportMonth] = useState<number>(new Date().getMonth() + 1);
+  const [viewingReportYear, setViewingReportYear] = useState<number>(new Date().getFullYear());
 
   const [showDashboardWidgets, setShowDashboardWidgets] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
@@ -607,9 +610,89 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     }
   };
 
-  const handleViewEmployeeReport = (employee: Employee) => {
+  const handleViewEmployeeReport = (employee: Employee, month?: number, year?: number) => {
     setViewingEmployeeReport(employee);
+    if (month) setViewingReportMonth(month);
+    if (year) setViewingReportYear(year);
     setShowEmployeeReportView(true);
+  };
+
+  const handleReportClickFromNotification = async (
+    reportId: string,
+    employeeId?: string,
+    month?: number,
+    year?: number
+  ) => {
+    if (!employeeId) {
+      // Try to fetch the report to get employeeId
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
+        if (response.ok) {
+          const report = await response.json();
+          const targetEmployeeId = report.employeeId;
+          // Find the employee in team members or fetch it
+          const employee = teamMembers.find(m => m.id === targetEmployeeId);
+          if (employee) {
+            handleViewEmployeeReport(employee, report.month, report.year);
+            return;
+          }
+          // If not in team, fetch employee details
+          const empResponse = await fetch(`${API_BASE_URL}/api/employees/${targetEmployeeId}`);
+          if (empResponse.ok) {
+            const empData = await empResponse.json();
+            handleViewEmployeeReport(
+              {
+                id: empData.id,
+                name: empData.name,
+                preferredName: empData.preferredName,
+                email: empData.email,
+                position: empData.position,
+                supervisorId: empData.supervisorId,
+                costCenters: empData.costCenters || [],
+                isActive: !empData.archived,
+                joinDate: empData.joinDate,
+              },
+              report.month || month,
+              report.year || year
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching report for navigation:', error);
+      }
+      return;
+    }
+
+    // Find employee in team members
+    const employee = teamMembers.find(m => m.id === employeeId);
+    if (employee) {
+      handleViewEmployeeReport(employee, month, year);
+    } else {
+      // Fetch employee if not in team
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
+        if (response.ok) {
+          const empData = await response.json();
+          handleViewEmployeeReport(
+            {
+              id: empData.id,
+              name: empData.name,
+              preferredName: empData.preferredName,
+              email: empData.email,
+              position: empData.position,
+              supervisorId: empData.supervisorId,
+              costCenters: empData.costCenters || [],
+              isActive: !empData.archived,
+              joinDate: empData.joinDate,
+            },
+            month,
+            year
+          );
+        }
+      } catch (error) {
+        console.error('Error fetching employee for navigation:', error);
+      }
+    }
   };
 
   const filteredReports = teamReports.filter((report) => {
@@ -712,43 +795,52 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               </Typography>
             </Box>
           </Box>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={showDashboardWidgets}
-                  onChange={(_, checked) => setShowDashboardWidgets(checked)}
-                  color="primary"
-                />
-              }
-              label="Show widgets"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={showSupervisorDashboard}
-                  onChange={(_, checked) => setShowSupervisorDashboard(checked)}
-                  color="primary"
-                />
-              }
-              label="Show supervisor dashboard"
-            />
-          </Box>
-            <Button
-              startIcon={<RefreshIcon />}
-              onClick={loadSupervisorData}
-              variant="outlined"
-            >
-              Refresh
-            </Button>
-            <Button
-              startIcon={<DownloadIcon />}
-              variant="contained"
-              color="primary"
-            >
-              Export Reports
-            </Button>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showDashboardWidgets}
+                    onChange={(_, checked) => setShowDashboardWidgets(checked)}
+                    color="primary"
+                  />
+                }
+                label="Show widgets"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showSupervisorDashboard}
+                    onChange={(_, checked) => setShowSupervisorDashboard(checked)}
+                    color="primary"
+                  />
+                }
+                label="Show supervisor dashboard"
+              />
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              {/* Notification Bell */}
+              <NotificationBell 
+                employeeId={supervisorId} 
+                role="supervisor"
+                onReportClick={handleReportClickFromNotification}
+              />
+              
+              <Button
+                startIcon={<RefreshIcon />}
+                onClick={loadSupervisorData}
+                variant="outlined"
+              >
+                Refresh
+              </Button>
+              <Button
+                startIcon={<DownloadIcon />}
+                variant="contained"
+                color="primary"
+              >
+                Export Reports
+              </Button>
+            </Box>
           </Box>
         </Box>
       </Paper>
@@ -1464,8 +1556,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               </Alert>
               <StaffPortal
                 employeeId={viewingEmployeeReport.id}
-                reportMonth={new Date().getMonth() + 1}
-                reportYear={new Date().getFullYear()}
+                reportMonth={viewingReportMonth}
+                reportYear={viewingReportYear}
                 supervisorMode={true}
                 supervisorId={supervisorId}
                 supervisorName={supervisorName}

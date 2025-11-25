@@ -78,7 +78,7 @@ import UserSettings from './components/UserSettings';
 import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistoryEntry } from './components/EmployeeApprovalStatusCard';
 
 // Address formatting utility
-import { formatAddressForDisplay } from './utils/addressFormatter';
+import { formatAddressForDisplay, formatLocationForDescription } from './utils/addressFormatter';
 
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
@@ -210,6 +210,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [currentYear, setCurrentYear] = useState(reportYear);
   const [activeTab, setActiveTab] = useState(0);
   const [employeeData, setEmployeeData] = useState<EmployeeExpenseData | null>(null);
+  const [employeeRole, setEmployeeRole] = useState<'employee' | 'supervisor' | 'admin' | 'finance'>('employee');
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null);
   const [editingValue, setEditingValue] = useState('');
@@ -621,6 +622,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           debugLog('✅ Successfully loaded employee data for:', employee.name);
         }
         
+        // Set employee role for notifications
+        if (employee && employee.role) {
+          setEmployeeRole(employee.role as 'employee' | 'supervisor' | 'admin' | 'finance');
+        } else {
+          setEmployeeRole('employee'); // Default to employee
+        }
+        
         // Parse costCenters if it's a JSON string
         if (employee.costCenters) {
           debugLog('🔍 StaffPortal: costCenters type:', typeof employee.costCenters, 'value:', employee.costCenters);
@@ -737,43 +745,42 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             let drivingSummary = '';
             if (dayMileageEntries.length > 0) {
               const tripSegments: string[] = [];
+              const baseAddress = employee?.baseAddress;
+              const baseAddress2 = employee?.baseAddress2;
               
               dayMileageEntries.forEach((entry: any, index: number) => {
                 // For the first trip, include the starting location
                 if (index === 0) {
                   const startLocation = entry.startLocation || '';
-                  // Check if it's already formatted (contains parentheses)
-                  if (startLocation.includes('(') && startLocation.includes(')')) {
-                    tripSegments.push(startLocation);
-                  } else if (startLocation === 'BA' || startLocation.toLowerCase() === 'base address') {
-                    tripSegments.push('BA');
-                  } else if (startLocation) {
-                    // Try to format if we can detect it's a base address
-                    tripSegments.push(formatAddressForDisplay(startLocation, false));
-                  } else {
-                    tripSegments.push(startLocation);
+                  const formattedStart = formatLocationForDescription(startLocation, baseAddress, baseAddress2);
+                  if (formattedStart) {
+                    tripSegments.push(formattedStart);
                   }
                 }
                 
-                // Add the trip segment: "to [EndLocation] ([Address]) for [Purpose]"
+                // Add the trip segment: "to [EndLocation]" or "to BA"
                 const endLocation = entry.endLocation || '';
                 const purpose = entry.purpose || 'Travel';
+                const formattedEnd = formatLocationForDescription(endLocation, baseAddress, baseAddress2);
                 
                 // Check if endLocation is BA - don't add purpose for base address returns
-                if (endLocation === 'BA' || endLocation.toLowerCase() === 'base address') {
-                  tripSegments.push('to BA');
-                } else if (endLocation.includes('(') && endLocation.includes(')')) {
-                  // Already formatted
-                  tripSegments.push(`to ${endLocation} for ${purpose}`);
-                } else if (endLocation) {
-                  // Try to format if we can detect it's a base address
-                  tripSegments.push(`to ${formatAddressForDisplay(endLocation, false)} for ${purpose}`);
-                } else {
-                  tripSegments.push(`to ${endLocation} for ${purpose}`);
+                const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
+                
+                if (formattedEnd) {
+                  if (isBaseAddress) {
+                    tripSegments.push(`to ${formattedEnd}`);
+                  } else {
+                    // Only add purpose if it's not a generic "Travel"
+                    if (purpose && purpose.toLowerCase() !== 'travel' && purpose.trim() !== '') {
+                      tripSegments.push(`to ${formattedEnd} for ${purpose}`);
+                    } else {
+                      tripSegments.push(`to ${formattedEnd}`);
+                    }
+                  }
                 }
               });
               
-              // Format: "Start to End (Address) for Purpose"
+              // Format: "LocationName (Address) to BA" or "LocationName (Address) to LocationName (Address)"
               drivingSummary = tripSegments.join(' ');
             }
             
@@ -3305,6 +3312,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         title="MONTHLY EXPENSE REPORT - OXFORD HOUSE, INC."
         subtitle="Comprehensive expense tracking and reporting system"
         employeeName={employeeData?.preferredName || employeeData?.name}
+        employeeId={employeeId}
+        employeeRole={employeeRole}
         reportMonth={currentMonth}
         reportYear={currentYear}
         loading={loading}
@@ -3331,6 +3340,30 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onMonthYearChange={(month, year) => {
           setCurrentMonth(month);
           setCurrentYear(year);
+        }}
+        onReportClick={async (reportId: string, employeeId?: string, month?: number, year?: number) => {
+          // Navigate to the report's month/year if provided
+          if (month && year) {
+            setCurrentMonth(month);
+            setCurrentYear(year);
+            showSuccess(`Navigated to ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
+          } else {
+            // Fetch report details to get month/year
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
+              if (response.ok) {
+                const report = await response.json();
+                if (report.month && report.year) {
+                  setCurrentMonth(report.month);
+                  setCurrentYear(report.year);
+                  showSuccess(`Navigated to ${new Date(report.year, report.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching report for navigation:', error);
+              showError('Could not navigate to report');
+            }
+          }
         }}
         showRealTimeStatus={true}
       />

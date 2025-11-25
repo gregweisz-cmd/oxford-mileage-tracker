@@ -12,6 +12,7 @@ import Login from './components/Login';
 import PortalSwitcher from './components/PortalSwitcher';
 import OnboardingScreen from './components/OnboardingScreen';
 import SetupWizard from './components/SetupWizard';
+import { ToastProvider } from './contexts/ToastContext';
 // import AuthService from './services/authService'; // Currently unused
 
 // Create theme
@@ -293,15 +294,17 @@ const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box>
-        <PortalSwitcher
-          currentUser={currentUser}
-          currentPortal={currentPortal}
-          onPortalChange={handlePortalChange}
-          onLogout={handleLogout}
-        />
-        {renderPortal()}
-      </Box>
+      <ToastProvider>
+        <Box>
+          <PortalSwitcher
+            currentUser={currentUser}
+            currentPortal={currentPortal}
+            onPortalChange={handlePortalChange}
+            onLogout={handleLogout}
+          />
+          {renderPortal()}
+        </Box>
+      </ToastProvider>
     </ThemeProvider>
   );
 };

@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const websocketService = require('../services/websocketService');
+const notificationService = require('../services/notificationService');
 const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
 const constants = require('../utils/constants');
@@ -1065,6 +1066,16 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
       updateData.currentApproverId = workflowInit.currentApproverId;
       updateData.currentApproverName = workflowInit.currentApproverName;
       updateData.escalationDueAt = workflowInit.escalationDueAt;
+      
+      // Notify supervisor (if supervisor exists and is first approver)
+      if (workflowInit.currentApprovalStage === 'supervisor' && workflowInit.currentApproverId) {
+        const employee = await dbService.getEmployeeById(report.employeeId);
+        if (employee) {
+          notificationService.notifyReportSubmitted(id, report.employeeId, employee.preferredName || employee.name).catch(err => {
+            debugError('❌ Error sending notification for report submission:', err);
+          });
+        }
+      }
     } else if (status === 'approved') {
       updateData.status = 'approved';
       updateData.approvedAt = nowIso;
@@ -1288,6 +1299,13 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           escalationDueAt = nextStep.dueAt;
 
           updates.currentApprovalStep = nextStepIndex;
+          
+          // Notify next approver (e.g., supervisor approves -> notify finance)
+          if (nextStage === 'finance' && currentStep.role === 'supervisor') {
+            notificationService.notifyFinanceApprovalNeeded(id, approverId, approverName, report.employeeId).catch(err => {
+              debugError('❌ Error sending notification to finance:', err);
+            });
+          }
         } else {
           updates.approvedAt = nowIso;
           updates.approvedBy = approverName || currentStep.approverName || 'system';
@@ -1466,6 +1484,13 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         
         updates.escalationDueAt = null;
 
+        // Notify supervisor that finance requested revision
+        if (employee && employee.supervisorId) {
+          notificationService.notifyFinanceRevisionRequest(id, approverId, approverName, report.employeeId).catch(err => {
+            debugError('❌ Error sending notification to supervisor:', err);
+          });
+        }
+
         logAction('request_revision_to_supervisor', approverId, approverName, comments);
         await saveAndRespond();
         return;
@@ -1498,6 +1523,11 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           updates.currentApproverName = employee.preferredName || employee.name || 'Employee';
         }
         updates.escalationDueAt = null;
+
+        // Notify employee that supervisor requested revision
+        notificationService.notifySupervisorRevisionRequest(id, approverId || supervisorId || '', approverName || supervisorName || '', report.employeeId).catch(err => {
+          debugError('❌ Error sending notification to employee:', err);
+        });
 
         logAction('request_revision_to_employee', approverId, approverName, comments);
         await saveAndRespond();
@@ -1539,6 +1569,11 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         updates.currentApproverId = financeStep.approverId || null;
         updates.currentApproverName = financeStep.approverName || 'Finance Team';
         updates.escalationDueAt = financeStep.dueAt;
+
+        // Notify finance that supervisor resubmitted
+        notificationService.notifyFinanceApprovalNeeded(id, approverId || supervisorId || '', approverName || supervisorName || '', report.employeeId).catch(err => {
+          debugError('❌ Error sending notification to finance:', err);
+        });
 
         logAction('resubmit_to_finance', approverId, approverName, comments);
         await saveAndRespond();

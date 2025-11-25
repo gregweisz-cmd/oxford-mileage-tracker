@@ -17,6 +17,7 @@ import { EmployeeApiService } from '../services/employeeApiService';
 import { BulkImportResult } from '../services/bulkImportService';
 import { debugLog, debugError } from '../config/debug';
 import { Employee } from '../types';
+import { NotificationBell } from './NotificationBell';
 // import OxfordHouseLogo from './OxfordHouseLogo'; // Logo is in PortalSwitcher
 
 interface AdminPortalProps {
@@ -162,6 +163,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
   return (
     <Box sx={{ flexGrow: 1 }}>
       <Container maxWidth="xl" sx={{ mt: 3 }}>
+        {/* Header */}
+        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h4" gutterBottom>
+              👨‍💼 Admin Portal
+            </Typography>
+            <Typography variant="subtitle1" color="textSecondary">
+              Welcome, {adminName}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {/* Notification Bell */}
+            <NotificationBell employeeId={adminId} role="admin" />
+          </Box>
+        </Box>
+
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
             <Tab label="Employee Management" />

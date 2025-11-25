@@ -34,6 +34,7 @@ import {
   // Error as ErrorIcon // Currently unused
 } from '@mui/icons-material';
 import { RealtimeStatusIndicator } from './RealtimeStatusIndicator';
+import { NotificationBell } from './NotificationBell';
 import { useToast } from '../contexts/ToastContext';
 import OxfordHouseLogo from './OxfordHouseLogo';
 
@@ -41,6 +42,8 @@ interface EnhancedHeaderProps {
   title: string;
   subtitle?: string;
   employeeName?: string;
+  employeeId?: string;
+  employeeRole?: 'employee' | 'supervisor' | 'admin' | 'finance';
   reportMonth?: number;
   reportYear?: number;
   loading?: boolean;
@@ -55,12 +58,15 @@ interface EnhancedHeaderProps {
   onMonthYearChange?: (month: number, year: number) => void;
   notifications?: number;
   showRealTimeStatus?: boolean;
+  onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
 }
 
 export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   title,
   subtitle,
   employeeName,
+  employeeId,
+  employeeRole,
   reportMonth,
   reportYear,
   loading = false,
@@ -74,7 +80,8 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   onSettings,
   onMonthYearChange,
   notifications = 0,
-  showRealTimeStatus = true
+  showRealTimeStatus = true,
+  onReportClick,
 }) => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const { showSuccess, showInfo } = useToast();
@@ -321,6 +328,15 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
 
           {/* Settings and Refresh */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 0.5 }}>
+            {/* Notification Bell */}
+            {employeeId && (
+              <NotificationBell 
+                employeeId={employeeId} 
+                role={employeeRole}
+                onReportClick={onReportClick}
+              />
+            )}
+
             {/* Refresh Button */}
             <Tooltip title="Refresh Data">
               <IconButton

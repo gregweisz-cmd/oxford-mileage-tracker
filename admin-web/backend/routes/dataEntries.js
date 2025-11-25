@@ -22,6 +22,36 @@ const upload = multer({ dest: uploadsDir });
 // ===== MILEAGE ENTRIES ROUTES =====
 
 /**
+ * Debug endpoint - Get all mileage entries without date filtering (for troubleshooting)
+ */
+router.get('/api/mileage-entries/debug', (req, res) => {
+  const { employeeId } = req.query;
+  const db = dbService.getDb();
+  
+  let query = `
+    SELECT me.id, me.date, me.startLocation, me.endLocation, me.miles, me.createdAt, me.updatedAt
+    FROM mileage_entries me 
+  `;
+  const params = [];
+
+  if (employeeId) {
+    query += ' WHERE me.employeeId = ?';
+    params.push(employeeId);
+  }
+
+  query += ' ORDER BY me.date DESC LIMIT 50';
+
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      debugError('❌ Debug query error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    debugLog(`🔍 Debug query found ${rows.length} entries`);
+    res.json({ count: rows.length, entries: rows });
+  });
+});
+
+/**
  * Get all mileage entries
  */
 router.get('/api/mileage-entries', (req, res) => {
@@ -42,8 +72,13 @@ router.get('/api/mileage-entries', (req, res) => {
   }
 
   if (month && year) {
-    conditions.push('strftime("%m", me.date) = ? AND strftime("%Y", me.date) = ?');
-    params.push(month.toString().padStart(2, '0'), year.toString());
+    // Handle dates stored as YYYY-MM-DD or ISO format (YYYY-MM-DDTHH:MM:SS...)
+    // Extract year and month from first 7 characters (YYYY-MM) of the date string
+    // This works for both "2024-11-26" and "2024-11-26T14:00:00.000Z" formats
+    const monthPadded = month.toString().padStart(2, '0');
+    // Use LIKE pattern to match YYYY-MM part at the start of the date string
+    conditions.push(`me.date LIKE ?`);
+    params.push(`${year}-${monthPadded}-%`);
   }
 
   if (conditions.length > 0) {
@@ -52,10 +87,20 @@ router.get('/api/mileage-entries', (req, res) => {
 
   query += ' ORDER BY me.date DESC';
 
+  // Debug logging
+  debugLog('🔍 GET /api/mileage-entries - Query:', query);
+  debugLog('🔍 GET /api/mileage-entries - Params:', params);
+  debugLog('🔍 GET /api/mileage-entries - Request query:', req.query);
+
   db.all(query, params, (err, rows) => {
     if (err) {
+      debugError('❌ Database error in GET /api/mileage-entries:', err);
       res.status(500).json({ error: err.message });
       return;
+    }
+    debugLog(`✅ GET /api/mileage-entries - Found ${rows.length} entries`);
+    if (rows.length > 0 && rows.length <= 3) {
+      debugLog('🔍 Sample entries:', rows.map(r => ({ id: r.id, date: r.date, startLocation: r.startLocation })));
     }
     res.json(rows);
   });
@@ -72,12 +117,19 @@ router.post('/api/mileage-entries', (req, res) => {
   const entryId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
 
+  // Normalize date to YYYY-MM-DD format to avoid timezone issues with month/year filtering
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (!normalizedDate) {
+    debugError('❌ Invalid date provided:', date);
+    return res.status(400).json({ error: 'Invalid date format. Date is required.' });
+  }
+
   // Use miles as odometerReading if odometerReading is not provided
   const finalOdometerReading = odometerReading || miles || 0;
 
   db.run(
     'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
-    [entryId, employeeId, oxfordHouseId || '', date, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', entryId, now, now],
+    [entryId, employeeId, oxfordHouseId || '', normalizedDate, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', entryId, now, now],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);
@@ -99,12 +151,19 @@ router.put('/api/mileage-entries/:id', (req, res) => {
   const now = new Date().toISOString();
   const db = dbService.getDb();
   
+  // Normalize date to YYYY-MM-DD format to avoid timezone issues with month/year filtering
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (date && !normalizedDate) {
+    debugError('❌ Invalid date provided:', date);
+    return res.status(400).json({ error: 'Invalid date format.' });
+  }
+  
   // Use miles as odometerReading if odometerReading is not provided
   const finalOdometerReading = odometerReading || miles || 0;
 
   db.run(
     'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, oxfordHouseId || '', date, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', now, id],
+    [employeeId, oxfordHouseId || '', normalizedDate || date, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', now, id],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);

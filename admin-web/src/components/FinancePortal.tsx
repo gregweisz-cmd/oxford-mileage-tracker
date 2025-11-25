@@ -45,6 +45,7 @@ import {
 import { getEmployeeDisplayName } from '../utils/employeeUtils';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import DetailedReportView from './DetailedReportView';
+import { NotificationBell } from './NotificationBell';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -378,6 +379,64 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     setSelectedReport(report);
     setSelectedReportId(report.id);
     setDetailedReportViewOpen(true);
+  };
+
+  const handleReportClickFromNotification = async (
+    reportId: string,
+    employeeId?: string,
+    month?: number,
+    year?: number
+  ) => {
+    // Find the report in the current reports list
+    const report = reports.find(r => r.id === reportId);
+    if (report) {
+      handleViewReport(report);
+      // Switch to appropriate tab based on status
+      if (report.status === 'pending_finance' || report.status === 'submitted') {
+        setActiveTab(1); // Pending Review tab
+      } else if (report.status === 'approved') {
+        setActiveTab(2); // Approved Reports tab
+      } else if (report.status === 'needs_revision') {
+        setActiveTab(3); // Needs Revision tab
+      } else {
+        setActiveTab(0); // All Reports tab
+      }
+      return;
+    }
+
+    // If report not in current list, fetch it
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
+      if (response.ok) {
+        const fetchedReport = await response.json();
+        // Convert to ExpenseReport format
+        const reportData = fetchedReport.reportData || {};
+        const expenseReport: ExpenseReport = {
+          id: fetchedReport.id,
+          employeeId: fetchedReport.employeeId,
+          employeeName: fetchedReport.employeeName || 'Unknown',
+          employeeFullName: fetchedReport.employeeFullName,
+          employeeEmail: fetchedReport.employeeEmail || '',
+          month: fetchedReport.month,
+          year: fetchedReport.year,
+          status: fetchedReport.status,
+          totalMiles: reportData.totalMiles || 0,
+          totalMileageAmount: reportData.totalMileageAmount || 0,
+          totalExpenses: calculateTotalExpenses(reportData),
+          submittedAt: fetchedReport.submittedAt,
+          reportData: reportData,
+          state: fetchedReport.state,
+          costCenters: reportData.costCenters || [],
+          currentApprovalStage: fetchedReport.currentApprovalStage,
+          currentApproverId: fetchedReport.currentApproverId,
+        };
+        handleViewReport(expenseReport);
+        // Reload reports to include this one
+        loadReports();
+      }
+    } catch (error) {
+      console.error('Error fetching report for navigation:', error);
+    }
   };
 
   const handleRequestRevision = async () => {
@@ -855,13 +914,23 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          💰 Finance Portal
-        </Typography>
-        <Typography variant="subtitle1" color="textSecondary">
-          Welcome, {financeUserName}
-        </Typography>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            💰 Finance Portal
+          </Typography>
+          <Typography variant="subtitle1" color="textSecondary">
+            Welcome, {financeUserName}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Notification Bell */}
+          <NotificationBell 
+            employeeId={financeUserId} 
+            role="finance"
+            onReportClick={handleReportClickFromNotification}
+          />
+        </Box>
       </Box>
 
       {/* Tabs */}
