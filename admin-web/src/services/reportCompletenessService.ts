@@ -1,4 +1,5 @@
 import { MileageEntry, Receipt, TimeTracking, Employee } from '../types';
+import { debugLog, debugWarn } from '../config/debug';
 
 export interface CompletenessIssue {
   id: string;
@@ -31,11 +32,11 @@ export class ReportCompletenessService {
     month: number,
     year: number
   ): Promise<CompletenessReport> {
-    console.log('🔍 ReportCompleteness: Analyzing report for', { employeeId, month, year });
+    debugLog('🔍 ReportCompleteness: Analyzing report for', { employeeId, month, year });
     
     try {
       // Get all data for the month from the backend API
-      console.log('🔍 ReportCompleteness: Fetching data from APIs...');
+      debugLog('🔍 ReportCompleteness: Fetching data from APIs...');
       
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
       const [mileageResponse, receiptsResponse, timeTrackingResponse, employeeResponse, expenseReportResponse] = await Promise.all([
@@ -46,7 +47,7 @@ export class ReportCompletenessService {
         fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}/${month}/${year}`).catch(() => null) // Get expense report if it exists
       ]);
 
-      console.log('🔍 ReportCompleteness: API responses received:', {
+      debugLog('🔍 ReportCompleteness: API responses received:', {
         mileageStatus: mileageResponse.status,
         receiptsStatus: receiptsResponse.status,
         timeTrackingStatus: timeTrackingResponse.status,
@@ -77,12 +78,12 @@ export class ReportCompletenessService {
         try {
           expenseReport = await expenseReportResponse.json();
         } catch (e) {
-          console.warn('Could not parse expense report:', e);
+          debugWarn('Could not parse expense report:', e);
         }
       }
       const reportData = expenseReport?.reportData || {};
       
-      console.log('🔍 ReportCompleteness: Data loaded:', {
+      debugLog('🔍 ReportCompleteness: Data loaded:', {
         mileageCount: mileageEntries.length,
         receiptsCount: receipts.length,
         timeTrackingCount: timeTracking.length,

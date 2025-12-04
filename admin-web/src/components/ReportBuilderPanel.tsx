@@ -57,6 +57,7 @@ import {
   deleteReportSchedule,
   triggerReportSchedule,
 } from '../services/reportingAnalyticsService';
+import { debugError } from '../config/debug';
 
 interface ReportBuilderPanelProps {
   costCenterOptions: string[];
@@ -275,7 +276,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
         return data.length > 0 ? data[0].id : null;
       });
     } catch (err) {
-      console.error('Failed to load report schedules', err);
+      debugError('Failed to load report schedules', err);
       setScheduleError(
         err instanceof Error ? err.message : 'Failed to load scheduled deliveries'
       );
@@ -306,7 +307,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
       setPresets(presetList);
       await loadSchedules();
     } catch (err) {
-      console.error('Failed to load report builder metadata', err);
+      debugError('Failed to load report builder metadata', err);
       setMetadataError(
         err instanceof Error ? err.message : 'Failed to load report builder metadata'
       );
@@ -337,7 +338,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
       setQueryTruncated(response.truncated);
       setQueryGeneratedAt(response.generatedAt);
     } catch (err) {
-      console.error('Failed to run report builder query', err);
+      debugError('Failed to run report builder query', err);
       setError(err instanceof Error ? err.message : 'Failed to run report');
     } finally {
       setLoading(false);
@@ -429,7 +430,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
       }
       setPresetDialogOpen(false);
     } catch (err) {
-      console.error('Failed to save preset', err);
+      debugError('Failed to save preset', err);
       setError(err instanceof Error ? err.message : 'Failed to save preset');
     } finally {
       setPresetSubmitting(false);
@@ -450,7 +451,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
       setPresets((prev) => prev.filter((item) => item.id !== activePresetId));
       setActivePresetId(null);
     } catch (err) {
-      console.error('Failed to delete preset', err);
+      debugError('Failed to delete preset', err);
       setError(err instanceof Error ? err.message : 'Failed to delete preset');
     }
   };
@@ -546,7 +547,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
       setScheduleDialogOpen(false);
       await loadSchedules();
     } catch (err) {
-      console.error('Failed to save schedule', err);
+      debugError('Failed to save schedule', err);
       setScheduleError(err instanceof Error ? err.message : 'Failed to save schedule');
     } finally {
       setScheduleSubmitting(false);
@@ -568,7 +569,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
       await deleteReportSchedule(activeScheduleId);
       await loadSchedules();
     } catch (err) {
-      console.error('Failed to delete schedule', err);
+      debugError('Failed to delete schedule', err);
       setScheduleError(err instanceof Error ? err.message : 'Failed to delete schedule');
     } finally {
       setScheduleSubmitting(false);
@@ -582,7 +583,7 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
       await triggerReportSchedule(scheduleId);
       await loadSchedules();
     } catch (err) {
-      console.error('Failed to trigger schedule', err);
+      debugError('Failed to trigger schedule', err);
       setScheduleError(err instanceof Error ? err.message : 'Failed to trigger schedule');
     } finally {
       setScheduleSubmitting(false);

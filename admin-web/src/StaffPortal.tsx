@@ -1,7 +1,7 @@
 // Staff Portal - Expense Report Management Interface
 // Designed to mirror the uploaded spreadsheet layout for easy transition
 import React, { useState, useEffect, useCallback } from 'react';
-import { debugLog, debugError, debugWarn } from './config/debug';
+import { debugLog, debugError, debugWarn, debugVerbose } from './config/debug';
 
 // Material-UI components for spreadsheet-like interface
 import {
@@ -80,6 +80,10 @@ import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistor
 // Address formatting utility
 import { formatAddressForDisplay, formatLocationForDescription } from './utils/addressFormatter';
 
+// Keyboard shortcuts
+import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
+import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
+
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -93,6 +97,9 @@ interface StaffPortalProps {
   supervisorMode?: boolean; // Optional prop to indicate supervisor is viewing
   supervisorId?: string; // Supervisor ID for approval workflow
   supervisorName?: string; // Supervisor name for approval workflow
+  onSelectedItemsChange?: (selectedItems: { mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> }) => void; // Callback for selected items when in supervisor mode
+  onApproveReport?: () => void; // Callback for approving report in supervisor mode
+  onRequestRevision?: () => void; // Callback for requesting revision in supervisor mode
 }
 
 // Mock data interfaces matching spreadsheet structure
@@ -203,8 +210,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   supervisorSignature = null,
   supervisorMode = false,
   supervisorId,
-  supervisorName
+  supervisorName,
+  onSelectedItemsChange,
+  onApproveReport,
+  onRequestRevision,
 }) => {
+  // Debug: Log handlers when in supervisor mode
+  React.useEffect(() => {
+    if (supervisorMode) {
+      debugLog('🔍 StaffPortal received handlers:', { 
+        onApproveReport: !!onApproveReport, 
+        onRequestRevision: !!onRequestRevision,
+        supervisorMode 
+      });
+    }
+  }, [supervisorMode, onApproveReport, onRequestRevision]);
+
   // Use state for current month/year so users can change them
   const [currentMonth, setCurrentMonth] = useState(reportMonth);
   const [currentYear, setCurrentYear] = useState(reportYear);
@@ -216,6 +237,41 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingValue, setEditingValue] = useState('');
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [dailyDescriptions, setDailyDescriptions] = useState<any[]>([]);
+  
+  // Selected items for supervisor revision requests (only when supervisorMode is true)
+  const [selectedMileageItems, setSelectedMileageItems] = useState<Set<string>>(new Set());
+  const [selectedReceiptItems, setSelectedReceiptItems] = useState<Set<string>>(new Set());
+  const [selectedTimeTrackingItems, setSelectedTimeTrackingItems] = useState<Set<string>>(new Set());
+  
+  // Items that need revision (highlighted in light red for staff)
+  const [itemsNeedingRevision, setItemsNeedingRevision] = useState<Set<string>>(new Set());
+  const [daysNeedingRevision, setDaysNeedingRevision] = useState<Set<number>>(new Set()); // Days (1-31) that need revision for time tracking
+  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+  
+  // Notify parent component when selected items change
+  // Use useRef to track previous values and only call callback when values actually change
+  const prevSelectedItemsRef = React.useRef<string>('');
+  
+  useEffect(() => {
+    if (supervisorMode && onSelectedItemsChange) {
+      // Create a string representation of selected items for comparison
+      const currentItemsString = JSON.stringify({
+        mileage: Array.from(selectedMileageItems).sort(),
+        receipts: Array.from(selectedReceiptItems).sort(),
+        timeTracking: Array.from(selectedTimeTrackingItems).sort()
+      });
+      
+      // Only call callback if values actually changed
+      if (prevSelectedItemsRef.current !== currentItemsString) {
+        prevSelectedItemsRef.current = currentItemsString;
+        onSelectedItemsChange({
+          mileage: selectedMileageItems,
+          receipts: selectedReceiptItems,
+          timeTracking: selectedTimeTrackingItems
+        });
+      }
+    }
+  }, [selectedMileageItems, selectedReceiptItems, selectedTimeTrackingItems, supervisorMode]);
 
   // Helper function to normalize dates to YYYY-MM-DD format
   const normalizeDate = (dateValue: any): string => {
@@ -308,7 +364,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
   // Approval workflow data
-  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
   const [approvalWorkflow, setApprovalWorkflow] = useState<ApprovalWorkflowStepSummary[]>([]);
   const [approvalHistory, setApprovalHistory] = useState<ApprovalHistoryEntry[]>([]);
   const [approvalHistoryLoading, setApprovalHistoryLoading] = useState(false);
@@ -319,17 +374,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [approvalCommentDialogOpen, setApprovalCommentDialogOpen] = useState(false);
   const [approvalCommentText, setApprovalCommentText] = useState('');
 
+  // Keyboard shortcuts state
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+
   // Real-time sync
   useRealtimeStatus();
   useRealtimeSync({
     enabled: true,
     onUpdate: (update) => {
-      debugLog('🔄 StaffPortal: Received real-time update:', update);
+      debugVerbose('🔄 StaffPortal: Received real-time update:', update);
       // Refresh data when updates are received
       // Note: loadEmployeeData will be called via useEffect on employeeId/reportMonth/reportYear changes
     },
     onConnectionChange: (connected) => {
-      debugLog(`🔄 StaffPortal: Real-time sync ${connected ? 'connected' : 'disconnected'}`);
+      debugVerbose(`🔄 StaffPortal: Real-time sync ${connected ? 'connected' : 'disconnected'}`);
     }
   });
 
@@ -412,16 +470,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Function to refresh timesheet data after saving - NEW APPROACH: Daily Hours Distribution
   const refreshTimesheetData = useCallback(async (dataToUse?: any) => {
-    debugLog('🔄 refreshTimesheetData called');
+    debugVerbose('🔄 refreshTimesheetData called');
     const data = dataToUse || employeeData;
     if (!data) {
-      debugLog('❌ No employeeData, skipping refresh');
+      debugVerbose('❌ No employeeData, skipping refresh');
       return;
     }
     
     // Prevent multiple simultaneous calls
     if (isRefreshingTimesheet) {
-      debugLog('⏳ refreshTimesheetData already running, skipping');
+      debugVerbose('⏳ refreshTimesheetData already running, skipping');
       return;
     }
     setIsRefreshingTimesheet(true);
@@ -453,12 +511,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       // Process all time tracking entries and group by day
-      debugLog('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
+      debugVerbose('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
       currentMonthTimeTracking.forEach((tracking: any) => {
         const trackingDate = new Date(tracking.date);
         const day = trackingDate.getUTCDate();
-        
-        debugLog(`🔍 Processing entry: Day ${day}, CostCenter: "${tracking.costCenter}", Category: "${tracking.category}", Hours: ${tracking.hours}`);
         
         if (day >= 1 && day <= daysInMonth) {
           const dayData = dailyHourDistributions[day];
@@ -467,22 +523,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           if (tracking.costCenter && tracking.costCenter !== '') {
             // Cost center entry - use assignment since deterministic IDs should prevent duplicates
             const costCenterIndex = data.costCenters.findIndex((cc: string) => cc === tracking.costCenter);
-            debugLog(`🔍 Cost center entry: "${tracking.costCenter}" -> index ${costCenterIndex}`);
             if (costCenterIndex >= 0) {
               dayData.costCenterHours[costCenterIndex] = (tracking.hours || 0);
-              debugLog(`✅ Updated cost center ${costCenterIndex} for day ${day}: ${tracking.hours} hours`);
             }
           } else if (categoryTypes.includes(tracking.category)) {
             // Category entry - use assignment since deterministic IDs should prevent duplicates
             dayData.categoryHours[tracking.category] = (tracking.hours || 0);
-            debugLog(`✅ Updated category "${tracking.category}" for day ${day}: ${tracking.hours} hours`);
           } else if (tracking.category === 'Working Hours' || tracking.category === 'Regular Hours') {
             // Working hours entry - treat as cost center 0, use assignment since deterministic IDs should prevent duplicates
             dayData.costCenterHours[0] = (tracking.hours || 0);
-            debugLog(`✅ Updated working hours (cost center 0) for day ${day}: ${tracking.hours} hours`);
-          } else {
-            // Unknown entry type - log for debugging
-            debugLog(`⚠️ Unknown entry type: CostCenter="${tracking.costCenter}", Category="${tracking.category}"`);
           }
         }
       });
@@ -543,9 +592,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         // Add category hours
         (updatedEntry as any).categoryHours = dayData.categoryHours;
         
-        // Debug logging for this entry
+        // Verbose logging for this entry (disabled by default)
         if (dayData.totalHours > 0) {
-          debugLog(`🔍 Day ${entry.day} distribution:`, {
+          debugVerbose(`🔍 Day ${entry.day} distribution:`, {
             costCenterHours: dayData.costCenterHours,
             categoryHours: dayData.categoryHours,
             totalHours: dayData.totalHours,
@@ -566,13 +615,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         totalHours: totalHours
       } : null);
       
-      debugLog('✅ Timesheet data refreshed with new distribution approach');
+      debugVerbose('✅ Timesheet data refreshed with new distribution approach');
     } catch (error) {
-      console.error('❌ Error refreshing timesheet data:', error);
+      debugError('❌ Error refreshing timesheet data:', error);
     } finally {
       setIsRefreshingTimesheet(false);
     }
-    debugLog('🔄 refreshTimesheetData completed');
+    debugVerbose('🔄 refreshTimesheetData completed');
   }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
@@ -619,7 +668,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
         } else {
           employee = await employeeResponse.json();
-          debugLog('✅ Successfully loaded employee data for:', employee.name);
+          debugVerbose('✅ Successfully loaded employee data for:', employee.name);
         }
         
         // Set employee role for notifications
@@ -631,7 +680,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         
         // Parse costCenters if it's a JSON string
         if (employee.costCenters) {
-          debugLog('🔍 StaffPortal: costCenters type:', typeof employee.costCenters, 'value:', employee.costCenters);
+          debugVerbose('🔍 StaffPortal: costCenters type:', typeof employee.costCenters, 'value:', employee.costCenters);
           try {
             if (typeof employee.costCenters === 'string') {
               // Check if it's the string "[object Object]" which means it's not valid JSON
@@ -681,13 +730,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }));
           
           // Parse monthly report status
+          let currentReport: any = null;
           if (reportResponse.ok) {
             const reports = await reportResponse.json();
-            const currentReport = Array.isArray(reports) && reports.length > 0 
+            currentReport = Array.isArray(reports) && reports.length > 0 
               ? reports.filter((r: any) => r.month === currentMonth && r.year === currentYear)[0]
               : null;
-            if (currentReport?.status) {
-              setReportStatus(currentReport.status);
+            if (currentReport) {
+              if (currentReport.status) {
+                setReportStatus(currentReport.status);
+              }
+              if (currentReport.id) {
+                setCurrentReportId(currentReport.id);
+              }
             }
           }
           
@@ -855,7 +910,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 
                 if (qualifiesForPerDiem) {
                   calculatedPerDiem = perDiemResult.amount;
-                  debugLog(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
+                  debugVerbose(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
                     costCenter,
                     hours: dayTimeTracking?.hours || 0,
                     miles: totalDayMiles,
@@ -865,14 +920,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     rule: perDiemResult.rule
                   });
                 } else {
-                  debugLog(`💰 StaffPortal: Per Diem not qualified for ${employee.name} on ${dateStr}:`, {
+                  debugVerbose(`💰 StaffPortal: Per Diem not qualified for ${employee.name} on ${dateStr}:`, {
                     stayedOvernight,
                     distanceFromBase,
                     meetsRequirements: perDiemResult.meetsRequirements
                   });
                 }
               } catch (error) {
-                console.error('❌ StaffPortal: Error calculating Per Diem:', error);
+                debugError('❌ StaffPortal: Error calculating Per Diem:', error);
               }
             }
             
@@ -974,7 +1029,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Refresh timesheet data to load actual hours from database
           await refreshTimesheetData(expenseData);
       } catch (error) {
-        console.error('Error loading employee data:', error);
+        debugError('Error loading employee data:', error);
         // Create dynamic fallback data instead of using hardcoded mock data
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                           'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1101,7 +1156,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
           setRevisionItems(revisionCounts);
         } catch (error) {
-          console.error('Error checking revision items:', error);
+          debugError('Error checking revision items:', error);
         }
       } else {
         setRevisionItems({ mileage: 0, receipts: 0, time: 0 });
@@ -1112,6 +1167,58 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
     checkRevisionItems();
   }, [reportStatus, employeeId, currentMonth, currentYear]);
+
+  // Fetch revision notes and highlight items that need revision
+  useEffect(() => {
+    const fetchRevisionNotes = async () => {
+      if (currentReportId && reportStatus === 'needs_revision') {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}/revision-notes?resolved=false`);
+          if (response.ok) {
+            const notes = await response.json();
+            const itemsNeedingRev = new Set<string>();
+            const daysNeedingRev = new Set<number>();
+            
+            notes.forEach((note: any) => {
+              if (note.resolved === 0 || note.resolved === false) {
+                const category = note.category || note.itemType;
+                const itemId = note.itemId;
+                
+                if (category === 'mileage' && itemId !== null && itemId !== undefined) {
+                  const index = parseInt(itemId, 10);
+                  if (!isNaN(index)) {
+                    itemsNeedingRev.add(`mileage-${index}`);
+                    // Daily entry index corresponds to day number (index 0 = day 1, index 1 = day 2, etc.)
+                    const day = index + 1;
+                    daysNeedingRev.add(day);
+                  }
+                } else if (category === 'receipt' && itemId) {
+                  itemsNeedingRev.add(`receipt-${itemId}`);
+                } else if (category === 'time' && itemId !== null && itemId !== undefined) {
+                  const index = parseInt(itemId, 10);
+                  if (!isNaN(index)) {
+                    // Daily entry index corresponds to day number
+                    const day = index + 1;
+                    daysNeedingRev.add(day);
+                  }
+                }
+              }
+            });
+            
+            setItemsNeedingRevision(itemsNeedingRev);
+            setDaysNeedingRevision(daysNeedingRev);
+          }
+        } catch (error) {
+          debugError('Error fetching revision notes:', error);
+        }
+      } else {
+        setItemsNeedingRevision(new Set());
+        setDaysNeedingRevision(new Set());
+      }
+    };
+
+    fetchRevisionNotes();
+  }, [currentReportId, reportStatus]);
 
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -1131,7 +1238,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       alert('Report deleted successfully!');
     } catch (error) {
-      console.error('Error deleting report:', error);
+      debugError('Error deleting report:', error);
       alert('Error deleting report. Please try again.');
     }
   };
@@ -1291,9 +1398,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }),
       });
       
-      debugLog('✅ Changes auto-saved and synced to source tables');
+      debugVerbose('✅ Changes auto-saved and synced to source tables');
     } catch (error) {
-      console.error('Error auto-saving changes:', error);
+      debugError('Error auto-saving changes:', error);
       // Don't show alert for auto-save failures to avoid interrupting user workflow
     }
   };
@@ -1375,14 +1482,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
+        debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
         throw new Error(`Failed to save: ${response.status}`);
       }
       
       const result = await response.json();
       debugLog(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
     } catch (error) {
-      console.error('❌ Error saving to time tracking API:', error);
+      debugError('❌ Error saving to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return; // Don't continue if save failed
     }
@@ -1468,14 +1575,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
+        debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
         throw new Error(`Failed to save: ${response.status}`);
       }
       
       const result = await response.json();
       debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
     } catch (error) {
-      console.error('❌ Error saving category hours to time tracking API:', error);
+      debugError('❌ Error saving category hours to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return; // Don't continue if save failed
     }
@@ -1529,7 +1636,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               }),
             });
             
-            debugLog('✅ Signature upload synced to expense report');
+            debugVerbose('✅ Signature upload synced to expense report');
             
             // Also save to user settings in the backend
             await fetch(`${API_BASE_URL}/api/employees/${employeeData.employeeId}`, {
@@ -1545,7 +1652,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             debugLog('✅ Signature saved to user settings');
             showSuccess('Signature saved to Settings and applied to this report');
           } catch (error) {
-            console.error('Error saving signature:', error);
+            debugError('Error saving signature:', error);
             showError('Failed to save signature');
           }
         }
@@ -1591,10 +1698,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               }),
             });
             
-            debugLog('✅ Supervisor signature upload synced to expense report');
+            debugVerbose('✅ Supervisor signature upload synced to expense report');
             showSuccess('Supervisor signature saved and acknowledgment checked');
           } catch (error) {
-            console.error('Error saving supervisor signature:', error);
+            debugError('Error saving supervisor signature:', error);
             showError('Failed to save supervisor signature');
           }
         }
@@ -1633,11 +1740,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }),
         });
         
-        debugLog('✅ Signature removal synced to expense report');
+        debugVerbose('✅ Signature removal synced to expense report');
         setSignatureDialogOpen(false);
         showSuccess('Signature removed from this report');
       } catch (error) {
-        console.error('Error removing signature:', error);
+        debugError('Error removing signature:', error);
         showError('Failed to remove signature');
       }
     }
@@ -1679,7 +1786,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       setCompletenessReport(report);
     } catch (error) {
-      console.error('Error checking report completeness:', error);
+      debugError('Error checking report completeness:', error);
       // Show error state
       setCompletenessReport({
         employeeId: employeeData.employeeId,
@@ -2789,7 +2896,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('❌ Save error response:', errorData);
+        debugError('❌ Save error response:', errorData);
         throw new Error(`Failed to save expense report: ${errorData.error || errorData.message || 'Unknown error'}`);
       }
 
@@ -2803,7 +2910,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       setRefreshTrigger(prev => prev + 1);
       
     } catch (error) {
-      console.error('Error saving report:', error);
+      debugError('Error saving report:', error);
       showError(`Error saving report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       stopLoading();
@@ -2880,7 +2987,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
     } catch (error) {
-      console.error('Error loading report:', error);
+      debugError('Error loading report:', error);
       alert(`Error loading report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
@@ -2976,7 +3083,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       debugLog('✅ Report passed completeness check, proceeding with submission...');
       
     } catch (error) {
-      console.error('❌ Error running completeness check:', error);
+      debugError('❌ Error running completeness check:', error);
       alert('Error running completeness check. Please try again.');
       setLoading(false);
       return;
@@ -3085,7 +3192,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
     } catch (error) {
-      console.error('Error submitting report:', error);
+      debugError('Error submitting report:', error);
       alert(`Error submitting report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
@@ -3135,6 +3242,42 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
+  // Keyboard shortcuts setup (defined after all handler functions)
+  const shortcuts: KeyboardShortcut[] = [
+    {
+      key: 's',
+      ctrl: true,
+      action: () => {
+        if (employeeData && handleSaveReport) {
+          handleSaveReport();
+        }
+      },
+      description: 'Save current report',
+    },
+    {
+      key: 'Enter',
+      ctrl: true,
+      action: () => {
+        if (employeeData && reportStatus === 'draft' && handleSubmitReport) {
+          handleSubmitReport();
+        }
+      },
+      description: 'Submit report (when draft)',
+      disabled: reportStatus !== 'draft',
+    },
+    {
+      key: '/',
+      ctrl: true,
+      action: () => {
+        setShortcutsDialogOpen(true);
+      },
+      description: 'Show keyboard shortcuts',
+    },
+  ];
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts(shortcuts, true);
+
   // Fetch all reports for the employee
   const fetchAllReports = async () => {
     if (!employeeId) {
@@ -3172,7 +3315,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       setReportsDialogOpen(true);
       
     } catch (error) {
-      console.error('Error fetching reports:', error);
+      debugError('Error fetching reports:', error);
       alert(`Error fetching reports: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setReportsLoading(false);
@@ -3243,9 +3386,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         });
 
         if (!response.ok) {
-          console.error('❌ Export failed with status:', response.status);
+          debugError('❌ Export failed with status:', response.status);
           const errorText = await response.text();
-          console.error('❌ Export error response:', errorText);
+          debugError('❌ Export error response:', errorText);
           throw new Error(`Export failed: ${response.status} ${errorText}`);
         }
 
@@ -3271,7 +3414,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         
         debugLog('✅ PDF export completed successfully');
     } catch (error) {
-      console.error('Error generating PDF:', error);
+      debugError('Error generating PDF:', error);
       alert(`Error generating PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       // Setting loading to false
@@ -3318,13 +3461,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         reportYear={currentYear}
         loading={loading}
         isAdminView={isAdminView}
+        supervisorMode={supervisorMode}
         onExportPdf={handleExportPdf}
         onSaveReport={handleSaveReport}
         onSubmitReport={handleSubmitReport}
+        onApproveReport={onApproveReport}
+        onRequestRevision={onRequestRevision}
         onViewAllReports={fetchAllReports}
         onCheckCompleteness={handleCheckCompleteness}
         onRefresh={() => {
-          debugLog('🔄 StaffPortal: Refreshing data from backend...');
+          debugVerbose('🔄 StaffPortal: Refreshing data from backend...');
           startLoading('Refreshing data from backend...');
           
           // Increment the refresh trigger to force useEffect to re-run
@@ -3360,7 +3506,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 }
               }
             } catch (error) {
-              console.error('Error fetching report for navigation:', error);
+              debugError('Error fetching report for navigation:', error);
               showError('Could not navigate to report');
             }
           }
@@ -3666,7 +3812,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 debugLog('✅ Imported saved signature to report');
                                 showSuccess('Saved signature imported');
                               } catch (error) {
-                                console.error('Error importing signature:', error);
+                                debugError('Error importing signature:', error);
                                 showError('Failed to import signature');
                               }
                             }
@@ -3778,10 +3924,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   }),
                                 });
                                 
-                                debugLog('✅ Supervisor signature removal synced to expense report');
+                                debugVerbose('✅ Supervisor signature removal synced to expense report');
                                 showSuccess('Supervisor signature removed from this report');
                               } catch (error) {
-                                console.error('Error removing supervisor signature:', error);
+                                debugError('Error removing supervisor signature:', error);
                                 showError('Failed to remove supervisor signature');
                               }
                             }
@@ -4238,7 +4384,27 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '15%' }}><strong>Date</strong></TableCell>
+                    {supervisorMode && (
+                      <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1, width: '3%' }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                          Select for Revision
+                        </Typography>
+                        <Checkbox
+                          indeterminate={selectedTimeTrackingItems.size > 0 && selectedTimeTrackingItems.size < employeeData.dailyEntries.length}
+                          checked={employeeData.dailyEntries.length > 0 && selectedTimeTrackingItems.size === employeeData.dailyEntries.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const allIds = new Set(employeeData.dailyEntries.map((_, idx) => `time-${idx}`));
+                              setSelectedTimeTrackingItems(allIds);
+                            } else {
+                              setSelectedTimeTrackingItems(new Set());
+                            }
+                          }}
+                          size="small"
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: supervisorMode ? '13%' : '15%' }}><strong>Date</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Activity Description</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '140px' }}><strong>Stayed overnight</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '80px' }}><strong>Day Off</strong></TableCell>
@@ -4254,8 +4420,28 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       return entryDateStr === descDateStr;
                     });
                     
+                    const timeItemId = `time-${index}`;
+                    const isTimeSelected = selectedTimeTrackingItems.has(timeItemId);
+                    
                     return (
                       <TableRow key={index}>
+                        {supervisorMode && (
+                          <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
+                            <Checkbox
+                              checked={isTimeSelected}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedTimeTrackingItems);
+                                if (e.target.checked) {
+                                  newSet.add(timeItemId);
+                                } else {
+                                  newSet.delete(timeItemId);
+                                }
+                                setSelectedTimeTrackingItems(newSet);
+                              }}
+                              size="small"
+                            />
+                          </TableCell>
+                        )}
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{entry.date}</TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           <TextField
@@ -4272,11 +4458,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 
                                 let descToSave: any;
                                 
+                                const hasDescription = e.target.value.trim().length > 0;
+                                
                                 if (existingIndex >= 0) {
                                   // Update existing
                                   newDescriptions[existingIndex] = {
                                     ...newDescriptions[existingIndex],
-                                    description: e.target.value
+                                    description: e.target.value,
+                                    // Clear day off if description is entered
+                                    dayOff: hasDescription ? false : newDescriptions[existingIndex].dayOff,
+                                    dayOffType: hasDescription ? null : newDescriptions[existingIndex].dayOffType
                                   };
                                   descToSave = newDescriptions[existingIndex];
                                 } else {
@@ -4289,6 +4480,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                     costCenter: entry.costCenter || employeeData.costCenters[0] || '',
                                     stayedOvernight: false,
                                     dayOff: false,
+                                    dayOffType: null,
                                     createdAt: new Date().toISOString(),
                                     updatedAt: new Date().toISOString()
                                   };
@@ -4318,10 +4510,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 
                                 if (!response.ok) {
                                   const errorText = await response.text();
-                                  console.error('Error saving description:', response.status, errorText);
+                                  debugError('Error saving description:', response.status, errorText);
                                 }
                               } catch (error) {
-                                console.error('Error saving description:', error);
+                                debugError('Error saving description:', error);
                               }
                             }}
                             fullWidth
@@ -4393,10 +4585,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 
                                 if (!response.ok) {
                                   const errorText = await response.text();
-                                  console.error('Error saving stayed overnight status:', response.status, errorText);
+                                  debugError('Error saving stayed overnight status:', response.status, errorText);
                                 }
                               } catch (error) {
-                                console.error('Error saving stayed overnight status:', error);
+                                debugError('Error saving stayed overnight status:', error);
                               }
                             }}
                             disabled={isAdminView}
@@ -4406,6 +4598,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
                             <Checkbox
                               checked={dayDescription?.dayOff || false}
+                              disabled={isAdminView || (!dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0)}
                               onChange={async (e) => {
                                 try {
                                   // Update or create daily description
@@ -4421,17 +4614,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   
                                   if (existingIndex >= 0) {
                                     // Update existing
-                                    const dayOffType = e.target.checked ? (newDescriptions[existingIndex].dayOffType || 'PTO') : null;
+                                    const dayOffType = e.target.checked ? (newDescriptions[existingIndex].dayOffType || 'Day Off') : null;
+                                    // Check if the current description is a day off type
+                                    const currentDesc = newDescriptions[existingIndex].description || '';
+                                    const isDayOffType = currentDesc === 'Day Off' || currentDesc === 'PTO' || currentDesc === 'Sick Day' || currentDesc === 'Holiday' || currentDesc === 'Unpaid Leave';
+                                    
                                     newDescriptions[existingIndex] = {
                                       ...newDescriptions[existingIndex],
                                       dayOff: e.target.checked,
                                       dayOffType: dayOffType,
-                                      description: e.target.checked ? (dayOffType || 'Day Off') : newDescriptions[existingIndex].description
+                                      // Clear description if unchecking, or if it was a day off type
+                                      description: e.target.checked ? (dayOffType || 'Day Off') : (isDayOffType ? '' : newDescriptions[existingIndex].description)
                                     };
                                     descToSave = newDescriptions[existingIndex];
                                   } else {
                                     // Create new - use normalized date string (YYYY-MM-DD) instead of ISO string
-                                    const dayOffType = e.target.checked ? 'PTO' : null;
+                                    const dayOffType = e.target.checked ? 'Day Off' : null;
                                     descToSave = {
                                       id: `desc-${employeeId}-${entryDateStr}`,
                                       employeeId: employeeId,
@@ -4456,6 +4654,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   if (entryIndex >= 0) {
                                     if (e.target.checked) {
                                       updatedEntries[entryIndex].description = descToSave.dayOffType || 'Day Off';
+                                    } else {
+                                      // Clear entry description when unchecking day off
+                                      const currentEntryDesc = updatedEntries[entryIndex].description || '';
+                                      const isDayOffType = currentEntryDesc === 'Day Off' || currentEntryDesc === 'PTO' || currentEntryDesc === 'Sick Day' || currentEntryDesc === 'Holiday' || currentEntryDesc === 'Unpaid Leave';
+                                      if (isDayOffType) {
+                                        updatedEntries[entryIndex].description = '';
+                                      }
                                     }
                                   }
                                   setEmployeeData({ ...employeeData, dailyEntries: updatedEntries });
@@ -4484,18 +4689,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   
                                   if (!response.ok) {
                                     const errorText = await response.text();
-                                    console.error('Error saving day off status:', response.status, errorText);
+                                    debugError('Error saving day off status:', response.status, errorText);
                                   }
                                 } catch (error) {
-                                  console.error('Error saving day off status:', error);
+                                  debugError('Error saving day off status:', error);
                                 }
                               }}
-                              disabled={isAdminView}
                             />
                             {dayDescription?.dayOff && (
                               <FormControl size="small" sx={{ minWidth: 120 }}>
                                 <Select
-                                  value={dayDescription?.dayOffType || 'PTO'}
+                                  value={dayDescription?.dayOffType || 'Day Off'}
                                   onChange={async (e) => {
                                     try {
                                       const newDescriptions = [...dailyDescriptions];
@@ -4548,15 +4752,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                         
                                         if (!response.ok) {
                                           const errorText = await response.text();
-                                          console.error('Error saving day off type:', response.status, errorText);
+                                          debugError('Error saving day off type:', response.status, errorText);
                                         }
                                       }
                                     } catch (error) {
-                                      console.error('Error saving day off type:', error);
+                                      debugError('Error saving day off type:', error);
                                     }
                                   }}
                                   disabled={isAdminView}
                                 >
+                                  <MenuItem value="Day Off">Day Off</MenuItem>
                                   <MenuItem value="PTO">PTO</MenuItem>
                                   <MenuItem value="Sick Day">Sick Day</MenuItem>
                                   <MenuItem value="Holiday">Holiday</MenuItem>
@@ -4619,8 +4824,28 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: '100%' }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '10%' }}><strong>DATE</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '40%' }}><strong>Description of Activity</strong></TableCell>
+                    {supervisorMode && (
+                      <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1, width: '3%' }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                          Select for Revision
+                        </Typography>
+                        <Checkbox
+                          indeterminate={selectedMileageItems.size > 0 && selectedMileageItems.size < employeeData.dailyEntries.length}
+                          checked={employeeData.dailyEntries.length > 0 && selectedMileageItems.size === employeeData.dailyEntries.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const allIds = new Set(employeeData.dailyEntries.map((_, idx) => `mileage-${idx}`));
+                              setSelectedMileageItems(allIds);
+                            } else {
+                              setSelectedMileageItems(new Set());
+                            }
+                          }}
+                          size="small"
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: supervisorMode ? '9%' : '10%' }}><strong>DATE</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: supervisorMode ? '36%' : '40%' }}><strong>Description of Activity</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Hours Worked</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Odometer Start</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Odometer End</strong></TableCell>
@@ -4633,12 +4858,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   {employeeData.dailyEntries.map((entry, index) => {
                     // Check if any time entries for this date need revision
                     const entryDate = new Date(entry.date);
-                    const needsRevision = rawTimeEntries.some((t: any) => {
+                    const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
                       const tDate = new Date(t.date);
                       return tDate.getUTCDate() === entryDate.getUTCDate() && 
                              tDate.getUTCMonth() === entryDate.getUTCMonth() && 
                              t.needsRevision;
                     });
+                    
+                    // Check if this item needs revision from revision notes
+                    const itemId = `mileage-${index}`;
+                    const needsRevisionFromNotes = itemsNeedingRevision.has(itemId);
+                    const needsRevision = needsRevisionFromRaw || needsRevisionFromNotes;
+                    
+                    // Check if this day needs revision for time tracking
+                    const day = entryDate.getUTCDate();
+                    const dayNeedsRevision = daysNeedingRevision.has(day);
                     
                     // Check if this day is marked as day off
                     // Normalize dates to YYYY-MM-DD format for comparison
@@ -4649,12 +4883,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     });
                     const isDayOff = dayDescription?.dayOff === true || dayDescription?.dayOff === 1;
                     
+                    const isSelected = selectedMileageItems.has(itemId);
+                    
                     return (
                       <TableRow 
                         key={index} 
                         sx={{ 
-                          ...(needsRevision && { bgcolor: 'warning.light' }),
-                          ...(isDayOff && !needsRevision && { 
+                          ...((needsRevision || dayNeedsRevision) && { 
+                            bgcolor: '#ffcccc', // Light red background for items needing revision
+                            '& td': {
+                              bgcolor: '#ffcccc'
+                            }
+                          }),
+                          ...(isDayOff && !needsRevision && !dayNeedsRevision && { 
                             bgcolor: '#e0e0e0',
                             opacity: 0.6,
                             '& td': {
@@ -4664,6 +4905,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           })
                         }}
                       >
+                        {supervisorMode && (
+                          <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
+                            <Checkbox
+                              checked={isSelected}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedMileageItems);
+                                if (e.target.checked) {
+                                  newSet.add(itemId);
+                                } else {
+                                  newSet.delete(itemId);
+                                }
+                                setSelectedMileageItems(newSet);
+                              }}
+                              size="small"
+                            />
+                          </TableCell>
+                        )}
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           {entry.date}
                           {needsRevision && (
@@ -5052,17 +5310,60 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 120, minWidth: 120, maxWidth: 120 }}><strong>Cost Center</strong></TableCell>
-                    {Array.from({ length: daysInMonth }, (_, i) => (
-                      <TableCell key={i} align="center" sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
-                        {i + 1}
-                      </TableCell>
-                    ))}
+                    {Array.from({ length: daysInMonth }, (_, i) => {
+                      const day = i + 1;
+                      // Check if all cost centers for this day are selected
+                      const allCostCentersSelected = employeeData?.costCenters.every((_, costCenterIdx) => {
+                        const dayId = `time-${costCenterIdx}-${day}`;
+                        return selectedTimeTrackingItems.has(dayId);
+                      }) || false;
+                      const someCostCentersSelected = employeeData?.costCenters.some((_, costCenterIdx) => {
+                        const dayId = `time-${costCenterIdx}-${day}`;
+                        return selectedTimeTrackingItems.has(dayId);
+                      }) || false;
+                      
+                      return (
+                        <TableCell key={i} align="center" sx={{ width: supervisorMode ? 30 : 25, minWidth: supervisorMode ? 30 : 25, maxWidth: supervisorMode ? 30 : 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
+                          {supervisorMode ? (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+                              <Checkbox
+                                indeterminate={someCostCentersSelected && !allCostCentersSelected}
+                                checked={allCostCentersSelected && (employeeData?.costCenters.length || 0) > 0}
+                                onChange={(e) => {
+                                  const newSet = new Set(selectedTimeTrackingItems);
+                                  if (e.target.checked && employeeData) {
+                                    // Select all cost centers for this day
+                                    employeeData.costCenters.forEach((_, costCenterIdx) => {
+                                      newSet.add(`time-${costCenterIdx}-${day}`);
+                                    });
+                                  } else {
+                                    // Deselect all cost centers for this day
+                                    employeeData?.costCenters.forEach((_, costCenterIdx) => {
+                                      newSet.delete(`time-${costCenterIdx}-${day}`);
+                                    });
+                                  }
+                                  setSelectedTimeTrackingItems(newSet);
+                                }}
+                                size="small"
+                                sx={{ p: 0 }}
+                              />
+                              <Typography variant="caption" sx={{ fontSize: '0.65rem', lineHeight: 1 }}>
+                                {i + 1}
+                              </Typography>
+                            </Box>
+                          ) : (
+                            i + 1
+                          )}
+                        </TableCell>
+                      );
+                    })}
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }}><strong>TOTALS</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {/* Used Cost Centers */}
-                  {employeeData?.costCenters.map((center, index) => (
+                  {employeeData?.costCenters.map((center, index) => {
+                    return (
                     <TableRow key={index}>
                       <TableCell sx={{ fontWeight: 'bold', color: 'primary.main', border: '1px solid #ccc', p: 1 }}>
                         {center}
@@ -5082,15 +5383,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         
                         // Check if any time entries for this day need revision
                         const entryDate = new Date(reportYear, reportMonth - 1, day);
-                        const needsRevision = rawTimeEntries.some((t: any) => {
+                        const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
                           const tDate = new Date(t.date);
                           return tDate.getUTCDate() === entryDate.getUTCDate() && 
                                  tDate.getUTCMonth() === entryDate.getUTCMonth() && 
                                  t.needsRevision;
                         });
                         
+                        // Check if this day needs revision from revision notes
+                        const dayNeedsRevision = daysNeedingRevision.has(day);
+                        const needsRevision = needsRevisionFromRaw || dayNeedsRevision;
+                        
                         return (
-                          <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
+                          <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? '#ffcccc' : 'transparent' }}>
                             {isEditing ? (
                               <TextField
                                 value={editingTimesheetValue}
@@ -5151,7 +5456,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         }, 0) || 0).toFixed(1)} {center}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                   
                   {/* Billable Hours Row */}
                   <TableRow sx={{ bgcolor: 'grey.200' }}>
@@ -5412,6 +5718,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table sx={{ borderCollapse: 'collapse' }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
+                    {supervisorMode && (
+                      <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                          Select for Revision
+                        </Typography>
+                        <Checkbox
+                          indeterminate={selectedReceiptItems.size > 0 && selectedReceiptItems.size < receipts.length}
+                          checked={receipts.length > 0 && selectedReceiptItems.size === receipts.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const allIds = new Set(receipts.map(r => `receipt-${r.id}`));
+                              setSelectedReceiptItems(allIds);
+                            } else {
+                              setSelectedReceiptItems(new Set());
+                            }
+                          }}
+                          size="small"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Date</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Vendor</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Description</strong></TableCell>
@@ -5423,12 +5749,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 </TableHead>
                 <TableBody>
                   {receipts.map((receipt) => {
-                    const needsRevision = (receipt as any).needsRevision;
+                    const needsRevisionFromFlag = (receipt as any).needsRevision;
+                    const receiptId = `receipt-${receipt.id}`;
+                    const needsRevisionFromNotes = itemsNeedingRevision.has(receiptId);
+                    const needsRevision = needsRevisionFromFlag || needsRevisionFromNotes;
+                    const isSelected = selectedReceiptItems.has(receiptId);
                     return (
                       <TableRow 
                         key={receipt.id}
-                        sx={needsRevision ? { bgcolor: 'warning.light' } : {}}
+                        sx={needsRevision ? { 
+                          bgcolor: '#ffcccc', // Light red background for items needing revision
+                          '& td': {
+                            bgcolor: '#ffcccc'
+                          }
+                        } : {}}
                       >
+                        {supervisorMode && (
+                          <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
+                            <Checkbox
+                              checked={isSelected}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedReceiptItems);
+                                if (e.target.checked) {
+                                  newSet.add(receiptId);
+                                } else {
+                                  newSet.delete(receiptId);
+                                }
+                                setSelectedReceiptItems(newSet);
+                              }}
+                              size="small"
+                            />
+                          </TableCell>
+                        )}
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           {receipt.date}
                           {needsRevision && (
@@ -5639,9 +5991,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           }),
                         });
                         
-                        debugLog('✅ Saved signature synced to source tables');
+                        debugVerbose('✅ Saved signature synced to source tables');
                       } catch (error) {
-                        console.error('Error syncing saved signature:', error);
+                        debugError('Error syncing saved signature:', error);
                       }
                     }
                     
@@ -5780,10 +6132,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           }),
                         });
                         
-                        debugLog('✅ Supervisor signature removal synced to expense report');
+                        debugVerbose('✅ Supervisor signature removal synced to expense report');
                         showSuccess('Supervisor signature removed');
                       } catch (error) {
-                        console.error('Error removing supervisor signature:', error);
+                        debugError('Error removing supervisor signature:', error);
                         showError('Failed to remove supervisor signature');
                       }
                     }
@@ -6170,6 +6522,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </DialogActions>
       </Dialog>
 
+      {/* Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog
+        open={shortcutsDialogOpen}
+        onClose={() => setShortcutsDialogOpen(false)}
+        shortcuts={shortcuts}
+        title="Keyboard Shortcuts - Staff Portal"
+      />
+
       {/* Data Entry Tab */}
       <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 6 : 6}>
         {employeeData ? (
@@ -6218,6 +6578,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
 // Wrap StaffPortal with UI Enhancement providers
 const StaffPortalWithProviders: React.FC<StaffPortalProps> = (props) => {
+  React.useEffect(() => {
+    if (props.supervisorMode) {
+      console.log('🔍 StaffPortalWithProviders received props:', {
+        onApproveReport: typeof props.onApproveReport,
+        onRequestRevision: typeof props.onRequestRevision,
+        supervisorMode: props.supervisorMode,
+        onApproveReportValue: props.onApproveReport,
+        onRequestRevisionValue: props.onRequestRevision
+      });
+    }
+  }, [props.supervisorMode, props.onApproveReport, props.onRequestRevision]);
+  
   return (
     <UIEnhancementProvider>
       <ToastProvider>

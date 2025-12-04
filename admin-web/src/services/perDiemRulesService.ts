@@ -1,3 +1,5 @@
+import { debugLog, debugError, debugVerbose } from '../config/debug';
+
 export interface PerDiemRule {
   id: string;
   costCenter: string;
@@ -21,7 +23,7 @@ export class PerDiemRulesService {
    */
   static async fetchPerDiemRules(): Promise<PerDiemRule[]> {
     try {
-      console.log('📋 PerDiemRules: Fetching rules from backend...');
+      debugVerbose('📋 PerDiemRules: Fetching rules from backend...');
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
       const response = await fetch(`${apiUrl}/api/per-diem-rules`, {
@@ -36,7 +38,7 @@ export class PerDiemRulesService {
       }
 
       const rules = await response.json();
-      console.log(`✅ PerDiemRules: Fetched ${rules.length} rules from backend`);
+      debugVerbose(`✅ PerDiemRules: Fetched ${rules.length} rules from backend`);
       
       // Cache the rules
       this.rulesCache = rules;
@@ -44,7 +46,7 @@ export class PerDiemRulesService {
       
       return rules;
     } catch (error) {
-      console.error('❌ PerDiemRules: Error fetching rules from backend:', error);
+      debugError('❌ PerDiemRules: Error fetching rules from backend:', error);
       return [];
     }
   }
@@ -58,7 +60,7 @@ export class PerDiemRulesService {
       if (this.isCacheValid()) {
         const rule = this.rulesCache.find(r => r.costCenter === costCenter);
         if (rule) {
-          console.log(`📋 PerDiemRules: Found cached rule for ${costCenter}:`, rule);
+          debugVerbose(`📋 PerDiemRules: Found cached rule for ${costCenter}:`, rule);
           return rule;
         }
       }
@@ -68,14 +70,14 @@ export class PerDiemRulesService {
       const rule = this.rulesCache.find(r => r.costCenter === costCenter);
       
       if (rule) {
-        console.log(`📋 PerDiemRules: Found rule for ${costCenter}:`, rule);
+        debugVerbose(`📋 PerDiemRules: Found rule for ${costCenter}:`, rule);
         return rule;
       } else {
-        console.log(`📋 PerDiemRules: No specific rule found for ${costCenter}, using defaults`);
+        debugVerbose(`📋 PerDiemRules: No specific rule found for ${costCenter}, using defaults`);
         return null;
       }
     } catch (error) {
-      console.error('❌ PerDiemRules: Error getting rule for cost center:', error);
+      debugError('❌ PerDiemRules: Error getting rule for cost center:', error);
       return null;
     }
   }
@@ -91,7 +93,7 @@ export class PerDiemRulesService {
     actualExpenses: number = 0
   ): Promise<{ amount: number; rule: PerDiemRule | null; meetsRequirements: boolean }> {
     try {
-      console.log(`💰 PerDiemRules: Calculating Per Diem for ${costCenter}:`, {
+      debugVerbose(`💰 PerDiemRules: Calculating Per Diem for ${costCenter}:`, {
         hoursWorked,
         milesTraveled,
         distanceFromBase,
@@ -130,14 +132,14 @@ export class PerDiemRulesService {
         if (activeRule.useActualAmount) {
           // Use actual expenses up to the maximum
           amount = Math.min(actualExpenses, activeRule.maxAmount);
-          console.log(`💰 PerDiemRules: Using actual amount ${actualExpenses}, capped at ${activeRule.maxAmount} = ${amount}`);
+          debugVerbose(`💰 PerDiemRules: Using actual amount ${actualExpenses}, capped at ${activeRule.maxAmount} = ${amount}`);
         } else {
           // Use fixed maximum amount
           amount = activeRule.maxAmount;
-          console.log(`💰 PerDiemRules: Using fixed amount ${amount}`);
+          debugVerbose(`💰 PerDiemRules: Using fixed amount ${amount}`);
         }
       } else {
-        console.log(`💰 PerDiemRules: Requirements not met:`, {
+        debugVerbose(`💰 PerDiemRules: Requirements not met:`, {
           hoursWorked: `${hoursWorked} >= ${activeRule.minHours}`,
           milesTraveled: `${milesTraveled} >= ${activeRule.minMiles}`,
           distanceFromBase: `${distanceFromBase} >= ${activeRule.minDistanceFromBase}`
@@ -150,10 +152,10 @@ export class PerDiemRulesService {
         meetsRequirements
       };
 
-      console.log(`💰 PerDiemRules: Calculated Per Diem:`, result);
+      debugVerbose(`💰 PerDiemRules: Calculated Per Diem:`, result);
       return result;
     } catch (error) {
-      console.error('❌ PerDiemRules: Error calculating Per Diem:', error);
+      debugError('❌ PerDiemRules: Error calculating Per Diem:', error);
       return {
         amount: 0,
         rule: null,
@@ -181,7 +183,7 @@ export class PerDiemRulesService {
   static clearCache(): void {
     this.rulesCache = [];
     this.lastFetchTime = null;
-    console.log('🗑️ PerDiemRules: Cache cleared');
+    debugVerbose('🗑️ PerDiemRules: Cache cleared');
   }
 
   /**
@@ -196,7 +198,7 @@ export class PerDiemRulesService {
    */
   static async saveRules(rules: Partial<PerDiemRule> & { costCenter: string }): Promise<PerDiemRule> {
     try {
-      console.log('💾 PerDiemRules: Saving rules:', rules);
+      debugVerbose('💾 PerDiemRules: Saving rules:', rules);
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
       
@@ -222,14 +224,14 @@ export class PerDiemRulesService {
       }
 
       const savedRules = await response.json();
-      console.log('✅ PerDiemRules: Rules saved successfully:', savedRules);
+      debugVerbose('✅ PerDiemRules: Rules saved successfully:', savedRules);
       
       // Clear cache to force refresh
       this.clearCache();
       
       return savedRules;
     } catch (error) {
-      console.error('❌ PerDiemRules: Error saving rules:', error);
+      debugError('❌ PerDiemRules: Error saving rules:', error);
       throw error;
     }
   }
@@ -258,10 +260,10 @@ export class PerDiemRulesService {
         throw new Error(`Failed to delete Per Diem rules: ${response.status}`);
       }
 
-      console.log('✅ PerDiemRules: Rules deleted successfully');
+      debugVerbose('✅ PerDiemRules: Rules deleted successfully');
       this.clearCache();
     } catch (error) {
-      console.error('❌ PerDiemRules: Error deleting rules:', error);
+      debugError('❌ PerDiemRules: Error deleting rules:', error);
       throw error;
     }
   }

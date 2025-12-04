@@ -8,6 +8,7 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const notificationService = require('../services/notificationService');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { notificationPollingLimiter } = require('../middleware/rateLimiter');
 
 /**
  * Get all notifications for a user (unified endpoint)
@@ -56,8 +57,9 @@ router.get('/api/notifications/:recipientId', (req, res) => {
 /**
  * Get unread notification count for a user
  * GET /api/notifications/:recipientId/count
+ * Uses lenient rate limiter for frequent polling
  */
-router.get('/api/notifications/:recipientId/count', (req, res) => {
+router.get('/api/notifications/:recipientId/count', notificationPollingLimiter, (req, res) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
   

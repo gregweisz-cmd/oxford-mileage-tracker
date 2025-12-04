@@ -47,7 +47,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import DetailedReportView from './DetailedReportView';
+import StaffPortal from '../StaffPortal';
+import { debugError, debugLog } from '../config/debug';
 
 interface MonthlyReport {
   id: string;
@@ -122,6 +123,10 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
   const [error, setError] = useState<string | null>(null);
   const [showDetailedView, setShowDetailedView] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [viewingEmployeeReport, setViewingEmployeeReport] = useState<{id: string; name: string; email?: string} | null>(null);
+  const [viewingReportMonth, setViewingReportMonth] = useState<number | null>(null);
+  const [viewingReportYear, setViewingReportYear] = useState<number | null>(null);
+  const [selectedItemsForRevision, setSelectedItemsForRevision] = useState<{ mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> } | null>(null);
   const [kpis, setKpis] = useState<SupervisorKpiData | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
@@ -131,6 +136,14 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
   const handleCloseDetailedView = useCallback(() => {
     setShowDetailedView(false);
     setSelectedReportId(null);
+    setViewingEmployeeReport(null);
+    setViewingReportMonth(null);
+    setViewingReportYear(null);
+  }, []);
+
+  // Memoized callback for selected items change to prevent infinite loops
+  const handleSelectedItemsChange = useCallback((selectedItems: { mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> }) => {
+    setSelectedItemsForRevision(selectedItems);
   }, []);
 
   const loadKpis = useCallback(async () => {
@@ -149,7 +162,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
       const data = await response.json();
       setKpis(data);
     } catch (error: any) {
-      console.error('Error loading supervisor KPIs:', error);
+      debugError('Error loading supervisor KPIs:', error);
       setKpiError(error.message || 'Failed to load KPIs');
       setKpis(null);
     } finally {
@@ -203,7 +216,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
       
       setAcceptedReports(accepted);
     } catch (error: any) {
-      console.error('Error loading reports:', error);
+      debugError('Error loading reports:', error);
       setError(error.message || 'Failed to load reports');
     } finally {
       setLoading(false);
@@ -231,22 +244,41 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
       return;
     }
 
+    if (!currentEmployee?.id) {
+      alert('Unable to submit: Supervisor information not available');
+      return;
+    }
+
     try {
       setSubmitting(true);
 
-      const endpoint = {
-        approve: `/api/monthly-reports/${selectedReport.id}/approve`,
-        revision: `/api/monthly-reports/${selectedReport.id}/request-revision`,
-      }[reviewAction];
-
+      // Use the correct approval endpoint
+      const endpoint = `/api/expense-reports/${selectedReport.id}/approval`;
+      
       const body = {
-        [reviewAction === 'approve' ? 'approvedBy' : 'reviewedBy']:
-          currentEmployee.id,
-        ...(comments && { comments }),
+        action: reviewAction === 'approve' ? 'approve' : 'request_revision_to_employee',
+        approverId: currentEmployee.id,
+        approverName: currentEmployee.name || currentEmployee.preferredName || 'Supervisor',
+        ...(comments && comments.trim() && { comments: comments.trim() }),
+        ...(reviewAction === 'revision' && selectedItemsForRevision && {
+          selectedItems: {
+            mileage: Array.from(selectedItemsForRevision.mileage || []),
+            receipts: Array.from(selectedItemsForRevision.receipts || []),
+            timeTracking: Array.from(selectedItemsForRevision.timeTracking || [])
+          }
+        }),
       };
 
+      // Debug: Log request details
+      console.log('🔍 SupervisorDashboard: Submitting approval request:', {
+        endpoint,
+        body,
+        reportId: selectedReport.id,
+        currentEmployee: currentEmployee?.id
+      });
+
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -254,7 +286,9 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit review');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
       // Success!
@@ -273,7 +307,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
 
       alert(`Report ${actionText} successfully!`);
     } catch (error: any) {
-      console.error('Error submitting review:', error);
+      debugError('Error submitting review:', error);
       alert(`Failed to submit review: ${error.message}`);
     } finally {
       setSubmitting(false);
@@ -607,9 +641,25 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
                   <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
                     <Button
                       startIcon={<Visibility />}
-                      onClick={() => {
-                        setSelectedReportId(report.id);
-                        setShowDetailedView(true);
+                      onClick={async () => {
+                        try {
+                          // Fetch employee details
+                          const empResponse = await fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`);
+                          if (!empResponse.ok) throw new Error('Failed to load employee');
+                          const employeeData = await empResponse.json();
+                          
+                          setViewingEmployeeReport({
+                            id: employeeData.id,
+                            name: employeeData.name || report.employeeName || 'Unknown',
+                            email: employeeData.email || report.employeeEmail
+                          });
+                          setViewingReportMonth(report.month);
+                          setViewingReportYear(report.year);
+                          setShowDetailedView(true);
+                        } catch (err) {
+                          debugError('Error loading employee for report view:', err);
+                          alert('Failed to load employee details');
+                        }
                       }}
                     >
                       View Details
@@ -749,9 +799,25 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
                         <Button
                           size="small"
                           startIcon={<Visibility />}
-                          onClick={() => {
-                            setSelectedReportId(report.id);
-                            setShowDetailedView(true);
+                          onClick={async () => {
+                            try {
+                              // Fetch employee details
+                              const empResponse = await fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`);
+                              if (!empResponse.ok) throw new Error('Failed to load employee');
+                              const employeeData = await empResponse.json();
+                              
+                              setViewingEmployeeReport({
+                                id: employeeData.id,
+                                name: employeeData.name || report.employeeName || 'Unknown',
+                                email: employeeData.email || report.employeeEmail
+                              });
+                              setViewingReportMonth(report.month);
+                              setViewingReportYear(report.year);
+                              setShowDetailedView(true);
+                            } catch (err) {
+                              debugError('Error loading employee for report view:', err);
+                              alert('Failed to load employee details');
+                            }
                           }}
                         >
                           View Details
@@ -829,14 +895,45 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
         </DialogActions>
       </Dialog>
 
-      {/* Detailed Report View */}
-      {showDetailedView && selectedReportId && (
-        <DetailedReportView
-          key={selectedReportId}
-          reportId={selectedReportId}
-          open={true}
+      {/* Employee Report View Modal */}
+      {showDetailedView && viewingEmployeeReport && viewingReportMonth && viewingReportYear && (
+        <Dialog
+          open={showDetailedView}
           onClose={handleCloseDetailedView}
-        />
+          maxWidth="xl"
+          fullWidth
+          fullScreen
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h5" component="div">
+              {viewingEmployeeReport.name}'s Expense Report
+            </Typography>
+            <Button
+              onClick={handleCloseDetailedView}
+            >
+              Close
+            </Button>
+          </DialogTitle>
+          <DialogContent sx={{ p: 0 }}>
+            <Box sx={{ p: 2 }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  <strong>Supervisor View:</strong> You are viewing {viewingEmployeeReport.name}'s expense report in supervisor mode.
+                  Some features like direct editing may be limited.
+                </Typography>
+              </Alert>
+              <StaffPortal
+                employeeId={viewingEmployeeReport.id}
+                reportMonth={viewingReportMonth}
+                reportYear={viewingReportYear}
+                supervisorMode={true}
+                supervisorId={currentEmployee?.id}
+                supervisorName={currentEmployee?.name || currentEmployee?.preferredName || 'Supervisor'}
+                onSelectedItemsChange={handleSelectedItemsChange}
+              />
+            </Box>
+          </DialogContent>
+        </Dialog>
       )}
     </Box>
   );

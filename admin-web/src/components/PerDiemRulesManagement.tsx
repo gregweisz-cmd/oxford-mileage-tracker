@@ -43,6 +43,7 @@ import {
   Home
 } from '@mui/icons-material';
 import { CostCenter } from '../services/costCenterApiService';
+import { debugError } from '../config/debug';
 
 interface PerDiemRule {
   id: string;
@@ -90,7 +91,7 @@ export const PerDiemRulesManagement: React.FC<PerDiemRulesManagementProps> = ({ 
       setPerDiemRules(data);
       setError(null);
     } catch (error) {
-      console.error('Error loading per diem rules:', error);
+      debugError('Error loading per diem rules:', error);
       setError('Failed to load per diem rules');
     } finally {
       setLoading(false);
@@ -174,7 +175,7 @@ export const PerDiemRulesManagement: React.FC<PerDiemRulesManagementProps> = ({ 
       setShowDialog(false);
       await loadPerDiemRules();
     } catch (error) {
-      console.error('Error saving per diem rule:', error);
+      debugError('Error saving per diem rule:', error);
       setError(error instanceof Error ? error.message : 'Failed to save per diem rule');
     }
   };
@@ -198,7 +199,7 @@ export const PerDiemRulesManagement: React.FC<PerDiemRulesManagementProps> = ({ 
       setSuccess('Per diem rule deleted successfully');
       await loadPerDiemRules();
     } catch (error) {
-      console.error('Error deleting per diem rule:', error);
+      debugError('Error deleting per diem rule:', error);
       setError(error instanceof Error ? error.message : 'Failed to delete per diem rule');
     }
   };

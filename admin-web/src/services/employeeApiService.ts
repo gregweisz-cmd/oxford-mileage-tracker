@@ -1,4 +1,5 @@
 import { Employee } from '../types';
+import { debugLog, debugError } from '../config/debug';
 
 export interface BulkUpdateRequest {
   employeeIds: string[];
@@ -197,7 +198,7 @@ export class EmployeeApiService {
   }
 
   static async getArchivedEmployees(): Promise<Employee[]> {
-    console.log('🌐 API: Fetching archived employees from:', `${this.baseUrl}/employees/archived`);
+    debugLog('🌐 API: Fetching archived employees from:', `${this.baseUrl}/employees/archived`);
     
     const response = await fetch(`${this.baseUrl}/employees/archived`, {
       method: 'GET',
@@ -209,16 +210,16 @@ export class EmployeeApiService {
       credentials: 'include'
     });
 
-    console.log('🌐 API: Response status:', response.status, response.statusText);
+    debugLog('🌐 API: Response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ API: Error response:', errorText);
+      debugError('❌ API: Error response:', errorText);
       throw new Error(`Failed to fetch archived employees: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
-    console.log('🌐 API: Received archived employees:', Array.isArray(data) ? `${data.length} employees` : 'Invalid data format', data);
+    debugLog('🌐 API: Received archived employees:', Array.isArray(data) ? `${data.length} employees` : 'Invalid data format', data);
     
     return data;
   }

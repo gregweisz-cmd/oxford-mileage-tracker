@@ -1,5 +1,6 @@
 // Advanced Template Service - Handles advanced Excel template processing
 import * as XLSX from 'xlsx';
+import { debugError } from '../config/debug';
 
 export interface EmployeeExpenseData {
   employeeId: string;
@@ -30,7 +31,7 @@ export class AdvancedTemplateService {
       localStorage.setItem('advancedTemplate', JSON.stringify(Array.from(templateData)));
       localStorage.setItem('templateFileName', fileName);
     } catch (error) {
-      console.error('Error uploading template:', error);
+      debugError('Error uploading template:', error);
       throw new Error('Failed to parse advanced template');
     }
   }
@@ -73,7 +74,7 @@ export class AdvancedTemplateService {
       const excelBuffer = XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' });
       return excelBuffer;
     } catch (error) {
-      console.error('Error generating advanced report:', error);
+      debugError('Error generating advanced report:', error);
       throw error;
     }
   }
@@ -93,7 +94,7 @@ export class AdvancedTemplateService {
         return XLSX.read(arrayBuffer, { type: 'array' });
       }
     } catch (error) {
-      console.error('Error loading template from localStorage:', error);
+      debugError('Error loading template from localStorage:', error);
     }
 
     return null;

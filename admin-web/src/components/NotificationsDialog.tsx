@@ -34,6 +34,7 @@ import {
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useToast } from '../contexts/ToastContext';
+import { debugError } from '../config/debug';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -143,7 +144,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
       }
     } catch (error) {
       showError('Error loading notifications');
-      console.error('Error fetching notifications:', error);
+      debugError('Error fetching notifications:', error);
     } finally {
       setLoading(false);
     }
@@ -160,7 +161,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
         setSundayReminderEnabled(employee.sundayReminderEnabled !== 0);
       }
     } catch (error) {
-      console.error('Error fetching Sunday reminder preference:', error);
+      debugError('Error fetching Sunday reminder preference:', error);
     }
   };
 
@@ -282,7 +283,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
           onClose();
         }
       } catch (error) {
-        console.error('Error fetching report details:', error);
+        debugError('Error fetching report details:', error);
         // Still try to navigate with available data
         onReportClick(
           notification.reportId,

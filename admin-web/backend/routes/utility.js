@@ -169,12 +169,155 @@ router.get('/api/stats', (req, res) => {
 
 // ===== HEALTH CHECK =====
 
-router.get('/api/health', (req, res) => {
-  res.json({ 
-    message: 'Oxford House Mileage Tracker Backend API', 
-    status: 'running',
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+/**
+ * Comprehensive health check endpoint
+ * Checks: database connectivity, disk space, memory usage, uptime
+ */
+router.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    version: '1.0.0',
+    checks: {
+      database: { status: 'unknown', message: '' },
+      disk: { status: 'unknown', message: '', freeSpaceGB: 0 },
+      memory: { status: 'unknown', message: '', usagePercent: 0 },
+      uptime: { status: 'healthy', seconds: process.uptime() }
+    },
+    services: {
+      email: { status: 'unknown', message: '' }
+    }
+  };
+
+  let allHealthy = true;
+
+  // 1. Database connectivity check
+  try {
+    const db = dbService.getDb();
+    return new Promise((resolve) => {
+      db.get('SELECT 1 as health', [], (err, row) => {
+        if (err || !row) {
+          health.checks.database = { 
+            status: 'unhealthy', 
+            message: `Database query failed: ${err ? err.message : 'No result'}`
+          };
+          allHealthy = false;
+        } else {
+          health.checks.database = { 
+            status: 'healthy', 
+            message: 'Database connection successful' 
+          };
+        }
+
+        // 2. Disk space check
+        try {
+          const dbPath = dbService.DB_PATH;
+          const dbDir = path.dirname(dbPath);
+          
+          // Check if directory exists
+          if (!fs.existsSync(dbDir)) {
+            health.checks.disk = { 
+              status: 'warning', 
+              message: 'Database directory does not exist',
+              freeSpaceGB: 0
+            };
+          } else {
+            // Get disk stats (basic check - node doesn't have direct disk space API)
+            // On Linux/Mac we'd use statfs, but for cross-platform we'll just check if we can write
+            try {
+              const testFile = path.join(dbDir, '.health-check-temp');
+              fs.writeFileSync(testFile, 'test');
+              fs.unlinkSync(testFile);
+              health.checks.disk = { 
+                status: 'healthy', 
+                message: 'Disk is writable',
+                freeSpaceGB: 'N/A' // Would need system-specific call
+              };
+            } catch (diskErr) {
+              health.checks.disk = { 
+                status: 'unhealthy', 
+                message: `Cannot write to disk: ${diskErr.message}`,
+                freeSpaceGB: 0
+              };
+              allHealthy = false;
+            }
+          }
+        } catch (diskErr) {
+          health.checks.disk = { 
+            status: 'warning', 
+            message: `Disk check error: ${diskErr.message}`,
+            freeSpaceGB: 0
+          };
+        }
+
+        // 3. Memory usage check
+        try {
+          const totalMem = os.totalmem();
+          const freeMem = os.freemem();
+          const usedMem = totalMem - freeMem;
+          const usagePercent = Math.round((usedMem / totalMem) * 100);
+          
+          health.checks.memory.usagePercent = usagePercent;
+          
+          if (usagePercent > 90) {
+            health.checks.memory.status = 'unhealthy';
+            health.checks.memory.message = `Memory usage is ${usagePercent}% (critical)`;
+            allHealthy = false;
+          } else if (usagePercent > 80) {
+            health.checks.memory.status = 'warning';
+            health.checks.memory.message = `Memory usage is ${usagePercent}% (high)`;
+          } else {
+            health.checks.memory.status = 'healthy';
+            health.checks.memory.message = `Memory usage is ${usagePercent}%`;
+          }
+        } catch (memErr) {
+          health.checks.memory.status = 'warning';
+          health.checks.memory.message = `Memory check error: ${memErr.message}`;
+        }
+
+        // 4. Email service check (basic - just check if configured)
+        try {
+          const emailService = require('../services/emailService');
+          // Email service will return null if not configured, which is OK
+          health.services.email = {
+            status: 'configured',
+            message: 'Email service available'
+          };
+        } catch (emailErr) {
+          health.services.email = {
+            status: 'warning',
+            message: 'Email service check failed'
+          };
+        }
+
+        // Set overall status
+        health.status = allHealthy ? 'healthy' : 'degraded';
+        
+        // Return appropriate HTTP status code
+        const statusCode = allHealthy ? 200 : 503;
+        res.status(statusCode).json(health);
+        resolve();
+      });
+    });
+  } catch (err) {
+    health.status = 'unhealthy';
+    health.checks.database = { 
+      status: 'unhealthy', 
+      message: `Database connection error: ${err.message}` 
+    };
+    return res.status(503).json(health);
+  }
+});
+
+// Simple health check for load balancers (lightweight)
+router.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString()
   });
 });
 

@@ -1,4 +1,5 @@
 import { DatabaseService } from './database';
+import { debugLog, debugError } from '../config/debug';
 
 export interface ReportStatus {
   id: string;
@@ -59,7 +60,7 @@ export class ReportApprovalService {
     supervisorId: string
   ): Promise<ReportStatus> {
     try {
-      console.log('📋 ReportApproval: Submitting report for approval:', { reportId, employeeId, supervisorId });
+      debugLog('📋 ReportApproval: Submitting report for approval:', { reportId, employeeId, supervisorId });
 
       const reportStatus: ReportStatus = {
         id: `status-${Date.now()}`,
@@ -86,11 +87,11 @@ export class ReportApprovalService {
         isRead: false
       });
 
-      console.log('📋 ReportApproval: Report submitted successfully');
+      debugLog('📋 ReportApproval: Report submitted successfully');
       return reportStatus;
 
     } catch (error) {
-      console.error('❌ ReportApproval: Error submitting report:', error);
+      debugError('❌ ReportApproval: Error submitting report:', error);
       throw error;
     }
   }
@@ -105,7 +106,7 @@ export class ReportApprovalService {
     comments?: string
   ): Promise<ReportApproval> {
     try {
-      console.log('✅ ReportApproval: Approving report:', { reportId, supervisorId });
+      debugLog('✅ ReportApproval: Approving report:', { reportId, supervisorId });
 
       // Get report status
       const reportStatus = await DatabaseService.getReportStatus(reportId);
@@ -161,11 +162,11 @@ export class ReportApprovalService {
         isRead: false
       });
 
-      console.log('✅ ReportApproval: Report approved successfully');
+      debugLog('✅ ReportApproval: Report approved successfully');
       return approval;
 
     } catch (error) {
-      console.error('❌ ReportApproval: Error approving report:', error);
+      debugError('❌ ReportApproval: Error approving report:', error);
       throw error;
     }
   }
@@ -180,7 +181,7 @@ export class ReportApprovalService {
     comments: string
   ): Promise<ReportApproval> {
     try {
-      console.log('❌ ReportApproval: Rejecting report:', { reportId, supervisorId });
+      debugLog('❌ ReportApproval: Rejecting report:', { reportId, supervisorId });
 
       // Get report status
       const reportStatus = await DatabaseService.getReportStatus(reportId);
@@ -235,11 +236,11 @@ export class ReportApprovalService {
         isRead: false
       });
 
-      console.log('❌ ReportApproval: Report rejected successfully');
+      debugLog('❌ ReportApproval: Report rejected successfully');
       return approval;
 
     } catch (error) {
-      console.error('❌ ReportApproval: Error rejecting report:', error);
+      debugError('❌ ReportApproval: Error rejecting report:', error);
       throw error;
     }
   }
@@ -254,7 +255,7 @@ export class ReportApprovalService {
     comments: string
   ): Promise<ReportApproval> {
     try {
-      console.log('🔄 ReportApproval: Requesting revision:', { reportId, supervisorId });
+      debugLog('🔄 ReportApproval: Requesting revision:', { reportId, supervisorId });
 
       // Get report status
       const reportStatus = await DatabaseService.getReportStatus(reportId);
@@ -309,11 +310,11 @@ export class ReportApprovalService {
         isRead: false
       });
 
-      console.log('🔄 ReportApproval: Revision requested successfully');
+      debugLog('🔄 ReportApproval: Revision requested successfully');
       return approval;
 
     } catch (error) {
-      console.error('❌ ReportApproval: Error requesting revision:', error);
+      debugError('❌ ReportApproval: Error requesting revision:', error);
       throw error;
     }
   }
@@ -323,7 +324,7 @@ export class ReportApprovalService {
    */
   static async getPendingReports(supervisorId: string): Promise<ReportStatus[]> {
     try {
-      console.log('📋 ReportApproval: Getting pending reports for supervisor:', supervisorId);
+      debugLog('📋 ReportApproval: Getting pending reports for supervisor:', supervisorId);
 
       const reportStatuses = await DatabaseService.getReportStatuses();
       const pendingReports = reportStatuses.filter((status: ReportStatus) => 
@@ -333,11 +334,11 @@ export class ReportApprovalService {
       // Sort by submission date (oldest first)
       pendingReports.sort((a: ReportStatus, b: ReportStatus) => a.submittedAt.getTime() - b.submittedAt.getTime());
 
-      console.log('📋 ReportApproval: Found pending reports:', pendingReports.length);
+      debugLog('📋 ReportApproval: Found pending reports:', pendingReports.length);
       return pendingReports;
 
     } catch (error) {
-      console.error('❌ ReportApproval: Error getting pending reports:', error);
+      debugError('❌ ReportApproval: Error getting pending reports:', error);
       return [];
     }
   }
@@ -347,7 +348,7 @@ export class ReportApprovalService {
    */
   static async getReportHistory(supervisorId: string, limit: number = 50): Promise<ReportStatus[]> {
     try {
-      console.log('📋 ReportApproval: Getting report history for supervisor:', supervisorId);
+      debugLog('📋 ReportApproval: Getting report history for supervisor:', supervisorId);
 
       const reportStatuses = await DatabaseService.getReportStatuses();
       const supervisorReports = reportStatuses.filter((status: ReportStatus) => 
@@ -361,11 +362,11 @@ export class ReportApprovalService {
         return dateB.getTime() - dateA.getTime();
       });
 
-      console.log('📋 ReportApproval: Found report history:', supervisorReports.length);
+      debugLog('📋 ReportApproval: Found report history:', supervisorReports.length);
       return supervisorReports.slice(0, limit);
 
     } catch (error) {
-      console.error('❌ ReportApproval: Error getting report history:', error);
+      debugError('❌ ReportApproval: Error getting report history:', error);
       return [];
     }
   }
@@ -375,7 +376,7 @@ export class ReportApprovalService {
    */
   static async getEmployeeReports(employeeId: string): Promise<ReportStatus[]> {
     try {
-      console.log('📋 ReportApproval: Getting reports for employee:', employeeId);
+      debugLog('📋 ReportApproval: Getting reports for employee:', employeeId);
 
       const reportStatuses = await DatabaseService.getReportStatuses();
       const employeeReports = reportStatuses.filter((status: ReportStatus) => 
@@ -385,11 +386,11 @@ export class ReportApprovalService {
       // Sort by submission date (newest first)
       employeeReports.sort((a: ReportStatus, b: ReportStatus) => b.submittedAt.getTime() - a.submittedAt.getTime());
 
-      console.log('📋 ReportApproval: Found employee reports:', employeeReports.length);
+      debugLog('📋 ReportApproval: Found employee reports:', employeeReports.length);
       return employeeReports;
 
     } catch (error) {
-      console.error('❌ ReportApproval: Error getting employee reports:', error);
+      debugError('❌ ReportApproval: Error getting employee reports:', error);
       return [];
     }
   }
@@ -407,7 +408,7 @@ export class ReportApprovalService {
 
       await DatabaseService.createSupervisorNotification(fullNotification);
     } catch (error) {
-      console.error('❌ ReportApproval: Error creating supervisor notification:', error);
+      debugError('❌ ReportApproval: Error creating supervisor notification:', error);
     }
   }
 
@@ -424,7 +425,7 @@ export class ReportApprovalService {
 
       await DatabaseService.createStaffNotification(fullNotification);
     } catch (error) {
-      console.error('❌ ReportApproval: Error creating staff notification:', error);
+      debugError('❌ ReportApproval: Error creating staff notification:', error);
     }
   }
 
@@ -436,7 +437,7 @@ export class ReportApprovalService {
       const notifications = await DatabaseService.getSupervisorNotifications(supervisorId);
       return notifications.sort((a: SupervisorNotification, b: SupervisorNotification) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (error) {
-      console.error('❌ ReportApproval: Error getting supervisor notifications:', error);
+      debugError('❌ ReportApproval: Error getting supervisor notifications:', error);
       return [];
     }
   }
@@ -449,7 +450,7 @@ export class ReportApprovalService {
       const notifications = await DatabaseService.getStaffNotifications(employeeId);
       return notifications.sort((a: StaffNotification, b: StaffNotification) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (error) {
-      console.error('❌ ReportApproval: Error getting staff notifications:', error);
+      debugError('❌ ReportApproval: Error getting staff notifications:', error);
       return [];
     }
   }
@@ -465,7 +466,7 @@ export class ReportApprovalService {
         await DatabaseService.markStaffNotificationAsRead(notificationId);
       }
     } catch (error) {
-      console.error('❌ ReportApproval: Error marking notification as read:', error);
+      debugError('❌ ReportApproval: Error marking notification as read:', error);
     }
   }
 
@@ -479,7 +480,7 @@ export class ReportApprovalService {
     message: string
   ): Promise<void> {
     try {
-      console.log('💬 ReportApproval: Sending message to staff:', { employeeId, supervisorId });
+      debugLog('💬 ReportApproval: Sending message to staff:', { employeeId, supervisorId });
 
       await this.createStaffNotification({
         type: 'supervisor_message',
@@ -490,9 +491,9 @@ export class ReportApprovalService {
         isRead: false
       });
 
-      console.log('💬 ReportApproval: Message sent successfully');
+      debugLog('💬 ReportApproval: Message sent successfully');
     } catch (error) {
-      console.error('❌ ReportApproval: Error sending message:', error);
+      debugError('❌ ReportApproval: Error sending message:', error);
       throw error;
     }
   }
@@ -505,7 +506,7 @@ export class ReportApprovalService {
       const approvals = await DatabaseService.getReportApprovals(reportId);
       return approvals.sort((a: ReportApproval, b: ReportApproval) => b.timestamp.getTime() - a.timestamp.getTime());
     } catch (error) {
-      console.error('❌ ReportApproval: Error getting approval history:', error);
+      debugError('❌ ReportApproval: Error getting approval history:', error);
       return [];
     }
   }

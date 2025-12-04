@@ -39,6 +39,7 @@ import {
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import AddressSelector from './AddressSelector';
+import { debugLog, debugError } from '../config/debug';
 
 // Form interfaces
 export interface MileageEntryFormData {
@@ -186,7 +187,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       
       onClose();
     } catch (error) {
-      console.error('Error saving mileage entry:', error);
+      debugError('Error saving mileage entry:', error);
     }
   };
 
@@ -204,14 +205,14 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   };
 
   const handleSelectAddress = (address: string, locationData?: any) => {
-    console.log('📍 MileageEntryForm: Address selected:', address, 'Type:', addressSelectorType);
+    debugLog('📍 MileageEntryForm: Address selected:', address, 'Type:', addressSelectorType);
     
     // Update form data directly to ensure it persists
     setFormData(prev => {
       const updated = addressSelectorType === 'start'
         ? { ...prev, startLocation: address }
         : { ...prev, endLocation: address };
-      console.log('📍 MileageEntryForm: Updated form data:', updated);
+      debugLog('📍 MileageEntryForm: Updated form data:', updated);
       return updated;
     });
     
@@ -560,7 +561,7 @@ export const ReceiptForm: React.FC<BaseFormProps & {
       
       onClose();
     } catch (error) {
-      console.error('Error saving receipt:', error);
+      debugError('Error saving receipt:', error);
     }
   };
 

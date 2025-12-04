@@ -37,6 +37,7 @@ import {
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import { TwoFactorService, TwoFactorStatus } from '../services/twoFactorService';
+import { debugLog, debugError } from '../config/debug';
 
 // Cost center options from mobile app
 const COST_CENTERS = [
@@ -232,7 +233,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               ? JSON.parse(employeeData.costCenters) 
               : employeeData.costCenters;
           } catch (parseErr) {
-            console.log('Failed to parse costCenters:', employeeData.costCenters);
+            debugLog('Failed to parse costCenters:', employeeData.costCenters);
             costCenters = ['NC.F-SAPTBG'];
           }
         }
@@ -245,7 +246,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               ? JSON.parse(employeeData.selectedCostCenters) 
               : employeeData.selectedCostCenters;
           } catch (parseErr) {
-            console.log('Failed to parse selectedCostCenters:', employeeData.selectedCostCenters);
+            debugLog('Failed to parse selectedCostCenters:', employeeData.selectedCostCenters);
             selectedCostCenters = costCenters;
           }
         }
@@ -270,7 +271,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         throw new Error('Failed to load employee data');
       }
     } catch (error) {
-      console.error('Error loading user profile:', error);
+      debugError('Error loading user profile:', error);
       showMessage('error', 'Failed to load user profile.');
       
       // Fallback to default values
@@ -296,7 +297,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       const status = await TwoFactorService.getStatus(employeeId);
       setTwoFactorStatus(status);
     } catch (error) {
-      console.error('Error loading 2FA status:', error);
+      debugError('Error loading 2FA status:', error);
       // 2FA might not be configured, set default status
       setTwoFactorStatus({
         twoFactorEnabled: false,
@@ -409,11 +410,11 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         await loadUserProfile();
       } else {
         const errorData = await response.json();
-        console.error('Server error response:', errorData);
+        debugError('Server error response:', errorData);
         throw new Error(errorData.error || 'Failed to update profile');
       }
     } catch (error) {
-      console.error('Error saving profile:', error);
+      debugError('Error saving profile:', error);
       showMessage('error', 'Failed to save profile.');
     } finally {
       setLoading(false);

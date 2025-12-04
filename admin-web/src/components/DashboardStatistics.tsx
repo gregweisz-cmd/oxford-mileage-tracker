@@ -56,6 +56,8 @@ import { Responsive, WidthProvider, Layout, Layouts } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
+import { debugError } from '../config/debug';
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 interface Statistic {
@@ -436,7 +438,7 @@ export const DashboardStatistics: React.FC<DashboardStatisticsProps> = ({
 
       return true;
     } catch (error) {
-      console.error('Error saving dashboard preferences:', error);
+      debugError('Error saving dashboard preferences:', error);
       return false;
     }
   };
@@ -661,7 +663,7 @@ export const DashboardStatistics: React.FC<DashboardStatisticsProps> = ({
         setLayouts(ensureLayoutsForStats(defaults));
       }
     } catch (error) {
-      console.error('Error loading preferences:', error);
+      debugError('Error loading preferences:', error);
       const defaults = getDefaultStatistics();
       setSelectedStats(defaults);
       setCategoryPresets([]);
@@ -782,7 +784,7 @@ export const DashboardStatistics: React.FC<DashboardStatisticsProps> = ({
         }
       }
     } catch (error) {
-      console.error('Error loading statistics:', error);
+      debugError('Error loading statistics:', error);
     } finally {
       setLoading(false);
     }

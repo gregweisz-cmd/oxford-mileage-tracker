@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const dbService = require('../services/dbService');
 const { debugLog, debugError, debugWarn } = require('../debug');
 const { asyncHandler, createError } = require('../middleware/errorHandler');
+const { adminLimiter } = require('../middleware/rateLimiter');
 
 /**
  * Middleware to verify admin token
@@ -68,7 +69,7 @@ function generatePassword(firstName) {
  *   -H "X-Admin-Token: YOUR_ADMIN_TOKEN" \
  *   -H "Content-Type: application/json"
  */
-router.post('/api/admin/update-passwords', verifyAdminToken, asyncHandler(async (req, res) => {
+router.post('/api/admin/update-passwords', adminLimiter, verifyAdminToken, asyncHandler(async (req, res) => {
   debugLog('🚀 Starting password update for all employees...');
   
   const db = dbService.getDb();
@@ -168,7 +169,7 @@ router.post('/api/admin/update-passwords', verifyAdminToken, asyncHandler(async 
  * 
  * Requires: X-Admin-Token header with valid admin token
  */
-router.get('/api/admin/verify-passwords', verifyAdminToken, asyncHandler(async (req, res) => {
+router.get('/api/admin/verify-passwords', adminLimiter, verifyAdminToken, asyncHandler(async (req, res) => {
   const db = dbService.getDb();
   
   // Get all employees except Greg Weisz

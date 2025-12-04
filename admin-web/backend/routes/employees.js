@@ -10,6 +10,7 @@ const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { asyncHandler, createError } = require('../middleware/errorHandler');
 const { validateRequired, validateEmail } = require('../middleware/validation');
+const { passwordResetLimiter } = require('../middleware/rateLimiter');
 
 /**
  * Get all employees with optional filters
@@ -777,9 +778,9 @@ router.get('/api/current-employees', (req, res) => {
 });
 
 /**
- * Update employee password
+ * Update employee password (protected with rate limiting)
  */
-router.put('/api/employees/:id/password', async (req, res) => {
+router.put('/api/employees/:id/password', passwordResetLimiter, async (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
   const db = dbService.getDb();

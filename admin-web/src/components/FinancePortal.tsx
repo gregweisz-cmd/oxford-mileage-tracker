@@ -47,6 +47,13 @@ import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import DetailedReportView from './DetailedReportView';
 import { NotificationBell } from './NotificationBell';
 
+// Keyboard shortcuts
+import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
+import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
+
+// Debug logging
+import { debugLog, debugError, debugVerbose } from '../config/debug';
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 interface FinancePortalProps {
@@ -97,6 +104,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [filterState, setFilterState] = useState<string>('all');
   const [filterCostCenter, setFilterCostCenter] = useState<string>('all');
+  
+  // Keyboard shortcuts state
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
   
   // Sorting state
   const [sortField, setSortField] = useState<keyof ExpenseReport | ''>('');
@@ -202,13 +212,13 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       if (!response.ok) throw new Error('Failed to load reports');
       
       const data = await response.json();
-      console.log('📊 Loaded reports:', data.length, 'reports');
-      console.log('📊 First report structure:', data[0]);
+      debugVerbose('📊 Loaded reports:', data.length, 'reports');
+      debugVerbose('📊 First report structure:', data[0]);
       
       // Calculate totals from reportData and extract state/cost centers
       const reportsWithTotals = data.map((report: any) => {
         const reportData = report.reportData || {};
-        console.log(`📊 Report ${report.id} data:`, reportData);
+        debugVerbose(`📊 Report ${report.id} data:`, reportData);
         
         // Extract state from baseAddress (format: "City, ST ZIP" or "Address, City, ST ZIP")
         let state = '';
@@ -243,7 +253,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       
       setReports(reportsWithTotals);
     } catch (error) {
-      console.error('Error loading reports:', error);
+      debugError('Error loading reports:', error);
     } finally {
       setLoading(false);
     }
@@ -435,7 +445,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         loadReports();
       }
     } catch (error) {
-      console.error('Error fetching report for navigation:', error);
+        debugError('Error fetching report for navigation:', error);
     }
   };
 
@@ -465,7 +475,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       setRevisionComments('');
       loadReports();
     } catch (error) {
-      console.error('Error requesting revision:', error);
+      debugError('Error requesting revision:', error);
       alert('Failed to request revision');
     }
   };
@@ -488,22 +498,22 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       alert('Report approved successfully!');
       loadReports();
     } catch (error) {
-      console.error('Error approving report:', error);
+      debugError('Error approving report:', error);
       alert('Failed to approve report');
     }
   };
 
   const handleExportToExcel = async (report: ExpenseReport) => {
     try {
-      console.log('📊 Exporting report:', report.id, report.employeeName);
+      debugVerbose('📊 Exporting report:', report.id, report.employeeName);
       const response = await fetch(`${API_BASE_URL}/api/export/expense-report-pdf/${report.id}`, {
         method: 'GET',
       });
 
       if (!response.ok) {
-        console.error('❌ Export failed with status:', response.status);
+        debugError('❌ Export failed with status:', response.status);
         const errorText = await response.text();
-        console.error('❌ Export error response:', errorText);
+        debugError('❌ Export error response:', errorText);
         throw new Error(`Export failed: ${response.status} ${errorText}`);
       }
 
@@ -550,23 +560,18 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      console.log('✅ PDF export completed successfully');
-      
-      // Show helpful message about printing workaround for HP printers
-      // Note: jsPDF-generated PDFs sometimes have issues with HP printer drivers
-      // Only show warning for HP printers (Epson and most others work fine)
-      // Show a simpler success message since Epson printers work well
-      console.log('✅ PDF export completed - Ready to print!');
+      debugVerbose('✅ PDF export completed successfully');
+      debugVerbose('✅ PDF export completed - Ready to print!');
       // Note: No alert for printing since Epson printers work fine
     } catch (error) {
-      console.error('Error exporting to PDF:', error);
+      debugError('Error exporting to PDF:', error);
       alert(`Failed to export report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const handlePrintPreview = (report: ExpenseReport) => {
-    console.log('🔍 Print Preview - Report Data:', report);
-    console.log('🔍 Print Preview - Report Data Structure:', report.reportData);
+    debugVerbose('🔍 Print Preview - Report Data:', report);
+    debugVerbose('🔍 Print Preview - Report Data Structure:', report.reportData);
     setSelectedReport(report);
     setPrintPreviewOpen(true);
   };
@@ -911,6 +916,42 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
     </div>
   );
+
+  // Keyboard shortcuts setup (defined after all handler functions)
+  const shortcuts: KeyboardShortcut[] = [
+    {
+      key: 'r',
+      ctrl: true,
+      action: () => {
+        loadReports();
+      },
+      description: 'Refresh reports',
+    },
+    {
+      key: 'f',
+      ctrl: true,
+      action: () => {
+        // Focus filter field if available
+        const filterInput = document.querySelector('input[placeholder*="Filter"], input[type="text"]') as HTMLInputElement;
+        if (filterInput) {
+          filterInput.focus();
+          filterInput.select();
+        }
+      },
+      description: 'Focus filter field',
+    },
+    {
+      key: '/',
+      ctrl: true,
+      action: () => {
+        setShortcutsDialogOpen(true);
+      },
+      description: 'Show keyboard shortcuts',
+    },
+  ];
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts(shortcuts, true);
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -1496,6 +1537,14 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog
+        open={shortcutsDialogOpen}
+        onClose={() => setShortcutsDialogOpen(false)}
+        shortcuts={shortcuts}
+        title="Keyboard Shortcuts - Finance Portal"
+      />
     </Container>
   );
 };

@@ -42,6 +42,7 @@ import { CostCenterApiService, CostCenter } from '../services/costCenterApiServi
 import { PerDiemRulesManagement } from './PerDiemRulesManagement';
 
 import { PerDiemRulesService } from '../services/perDiemRulesService';
+import { debugError } from '../config/debug';
 
 interface CostCenterManagementProps {
   onCostCentersChange?: (costCenters: string[]) => void;
@@ -84,7 +85,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       }
       setError(null);
     } catch (error) {
-      console.error('Error loading cost centers:', error);
+      debugError('Error loading cost centers:', error);
       setError('Failed to load cost centers');
     } finally {
       // setLoading(false); // Loading state currently unused
@@ -124,7 +125,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       await loadCostCenters();
       setError(null);
     } catch (error) {
-      console.error('Error deleting cost center:', error);
+      debugError('Error deleting cost center:', error);
       setError('Failed to delete cost center');
     }
   };
@@ -146,7 +147,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       setShowDialog(false);
       setError(null);
     } catch (error) {
-      console.error('Error saving cost center:', error);
+      debugError('Error saving cost center:', error);
       setError(`Failed to ${editingCostCenter ? 'update' : 'create'} cost center`);
     }
   };
@@ -180,7 +181,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       setEditingPerDiemCostCenter(costCenter);
       setShowPerDiemDialog(true);
     } catch (error) {
-      console.error('Error loading Per Diem rules:', error);
+      debugError('Error loading Per Diem rules:', error);
       setError('Failed to load Per Diem rules');
     }
   };
@@ -196,7 +197,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       setPerDiemRules(null);
       alert('Per Diem rules saved successfully!');
     } catch (error) {
-      console.error('Error saving Per Diem rules:', error);
+      debugError('Error saving Per Diem rules:', error);
       setError('Failed to save Per Diem rules');
     }
   };
@@ -239,7 +240,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       setSelectedCostCenters([]);
       setError(null);
     } catch (error) {
-      console.error('Error bulk deleting cost centers:', error);
+      debugError('Error bulk deleting cost centers:', error);
       setError('Failed to delete some cost centers');
     }
   };
@@ -329,7 +330,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
           });
           successCount++;
         } catch (err) {
-          console.error(`Failed to import ${cc.name}:`, err);
+          debugError(`Failed to import ${cc.name}:`, err);
           failCount++;
         }
       }
@@ -341,7 +342,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      console.error('Error importing cost centers:', error);
+      debugError('Error importing cost centers:', error);
       setError('Failed to import cost centers');
     } finally {
       setIsImporting(false);

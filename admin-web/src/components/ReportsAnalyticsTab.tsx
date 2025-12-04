@@ -39,6 +39,7 @@ import {
   exportReportsAnalyticsToCsv,
 } from '../services/reportingAnalyticsService';
 import ReportBuilderPanel from './ReportBuilderPanel';
+import { debugError } from '../config/debug';
 
 const formatNumber = (value: number, fractionDigits = 0) =>
   Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: fractionDigits }) : '0';
@@ -165,7 +166,7 @@ export const ReportsAnalyticsTab: React.FC = () => {
       const data = await CostCenterApiService.getAllCostCenters();
       setCostCenters(data);
     } catch (err) {
-      console.error('Failed to load cost centers', err);
+      debugError('Failed to load cost centers', err);
       // Continue silently; the user can still type cost centers manually if needed
     }
   }, []);
@@ -182,7 +183,7 @@ export const ReportsAnalyticsTab: React.FC = () => {
       });
       setOverview(data);
     } catch (err) {
-      console.error('Failed to fetch reporting overview', err);
+      debugError('Failed to fetch reporting overview', err);
       setError(err instanceof Error ? err.message : 'Failed to load reporting data');
     } finally {
       setLoading(false);
@@ -200,7 +201,7 @@ export const ReportsAnalyticsTab: React.FC = () => {
       });
       setTrends(data);
     } catch (err) {
-      console.error('Failed to fetch reporting trends', err);
+      debugError('Failed to fetch reporting trends', err);
       setTrendsError(err instanceof Error ? err.message : 'Failed to load trend data');
     } finally {
       setTrendsLoading(false);
@@ -218,7 +219,7 @@ export const ReportsAnalyticsTab: React.FC = () => {
       });
       setMapData(data);
     } catch (err) {
-      console.error('Failed to fetch reporting map data', err);
+      debugError('Failed to fetch reporting map data', err);
       setMapError(err instanceof Error ? err.message : 'Failed to load map data');
     } finally {
       setMapLoading(false);
@@ -263,7 +264,7 @@ export const ReportsAnalyticsTab: React.FC = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to export CSV', err);
+      debugError('Failed to export CSV', err);
       setError('Failed to export CSV. Please try again.');
     } finally {
       setExporting(false);

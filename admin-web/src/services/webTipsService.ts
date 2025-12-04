@@ -5,6 +5,8 @@
  * Provides smart tip suggestions based on user behavior and app usage patterns.
  */
 
+import { debugError } from '../config/debug';
+
 export interface WebTip {
   id: string;
   title: string;
@@ -217,7 +219,7 @@ export class WebTipsService {
         const progress = JSON.parse(saved);
         this.userProgress = new Map(Object.entries(progress));
       } catch (error) {
-        console.error('Error loading tips progress:', error);
+        debugError('Error loading tips progress:', error);
       }
     }
   }

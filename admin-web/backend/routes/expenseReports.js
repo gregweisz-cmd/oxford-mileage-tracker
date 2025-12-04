@@ -129,30 +129,55 @@ function calculateTotalExpensesFromReportData(reportData) {
 /**
  * Create or update expense report
  */
-router.post('/api/expense-reports', (req, res) => {
+router.post('/api/expense-reports', async (req, res) => {
   const { employeeId, month, year, reportData, status } = req.body;
   const db = dbService.getDb();
   const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
   const now = new Date().toISOString();
 
-  // Check if report already exists for this employee/month/year
-  db.get('SELECT id FROM expense_reports WHERE employeeId = ? AND month = ? AND year = ?', 
-    [employeeId, month, year], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+  try {
+    // Check if report already exists for this employee/month/year
+    const existingReport = await new Promise((resolve, reject) => {
+      db.get('SELECT id, status FROM expense_reports WHERE employeeId = ? AND month = ? AND year = ?', 
+        [employeeId, month, year], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
 
-    if (row) {
+    if (existingReport) {
       // Update existing report
-      const updateData = {
+      let updateData = {
         reportData: JSON.stringify(reportData),
         status: status || 'draft',
         updatedAt: now
       };
 
+      // If submitting, initialize approval workflow
       if (status === 'submitted') {
+        const report = { id: existingReport.id, employeeId, month, year };
+        debugLog(`📝 Submitting report ${existingReport.id} for employee ${employeeId} via POST`);
+        const workflowInit = await initializeApprovalWorkflow(report);
+        debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}`);
+        
+        updateData.status = workflowInit.currentApprovalStage === 'finance' ? 'pending_finance' : 'pending_supervisor';
         updateData.submittedAt = now;
+        updateData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
+        updateData.currentApprovalStep = workflowInit.currentApprovalStep;
+        updateData.currentApprovalStage = workflowInit.currentApprovalStage;
+        updateData.currentApproverId = workflowInit.currentApproverId;
+        updateData.currentApproverName = workflowInit.currentApproverName;
+        updateData.escalationDueAt = workflowInit.escalationDueAt;
+        
+        // Notify supervisor if applicable
+        if (workflowInit.currentApprovalStage === 'supervisor' && workflowInit.currentApproverId) {
+          const employee = await dbService.getEmployeeById(employeeId);
+          if (employee) {
+            notificationService.notifyReportSubmitted(existingReport.id, employeeId, employee.preferredName || employee.name).catch(err => {
+              debugError('❌ Error sending notification:', err);
+            });
+          }
+        }
       } else if (status === 'approved') {
         updateData.approvedAt = now;
         updateData.approvedBy = req.body.approvedBy || 'system';
@@ -169,12 +194,12 @@ router.post('/api/expense-reports', (req, res) => {
             res.status(500).json({ error: err.message });
             return;
           }
-          res.json({ id: row.id, message: 'Expense report updated successfully' });
+          res.json({ id: existingReport.id, message: 'Expense report updated successfully' });
         }
       );
     } else {
       // Create new report
-      const insertData = {
+      let insertData = {
         id,
         employeeId,
         month,
@@ -185,8 +210,31 @@ router.post('/api/expense-reports', (req, res) => {
         updatedAt: now
       };
 
+      // If submitting, initialize approval workflow
       if (status === 'submitted') {
+        const report = { id, employeeId, month, year };
+        debugLog(`📝 Creating and submitting report ${id} for employee ${employeeId} via POST`);
+        const workflowInit = await initializeApprovalWorkflow(report);
+        debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}`);
+        
+        insertData.status = workflowInit.currentApprovalStage === 'finance' ? 'pending_finance' : 'pending_supervisor';
         insertData.submittedAt = now;
+        insertData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
+        insertData.currentApprovalStep = workflowInit.currentApprovalStep;
+        insertData.currentApprovalStage = workflowInit.currentApprovalStage;
+        insertData.currentApproverId = workflowInit.currentApproverId;
+        insertData.currentApproverName = workflowInit.currentApproverName;
+        insertData.escalationDueAt = workflowInit.escalationDueAt;
+        
+        // Notify supervisor if applicable
+        if (workflowInit.currentApprovalStage === 'supervisor' && workflowInit.currentApproverId) {
+          const employee = await dbService.getEmployeeById(employeeId);
+          if (employee) {
+            notificationService.notifyReportSubmitted(id, employeeId, employee.preferredName || employee.name).catch(err => {
+              debugError('❌ Error sending notification:', err);
+            });
+          }
+        }
       } else if (status === 'approved') {
         insertData.approvedAt = now;
         insertData.approvedBy = req.body.approvedBy || 'system';
@@ -208,12 +256,158 @@ router.post('/api/expense-reports', (req, res) => {
         }
       );
     }
-  });
+  } catch (error) {
+    debugError('❌ Error in POST /api/expense-reports:', error);
+    res.status(500).json({ error: error.message || 'Failed to create/update expense report' });
+  }
 });
 
 /**
  * Get expense report by employee, month, and year
  */
+// Alias endpoint for monthly-reports
+// Supports both:
+// 1. With query params (employeeId, month, year) - returns single report
+// 2. Without query params - returns all reports (for supervisor dashboard)
+router.get('/api/monthly-reports', (req, res) => {
+  const { employeeId, month, year, status, approverId, stage, teamSupervisorId } = req.query;
+  const db = dbService.getDb();
+  
+  debugLog(`🔍 GET /api/monthly-reports - Query params:`, { employeeId, month, year, status, approverId, stage, teamSupervisorId });
+  
+  // If query params are provided, return a single report
+  if (employeeId && month && year && !teamSupervisorId) {
+    db.get(
+      'SELECT * FROM expense_reports WHERE employeeId = ? AND month = ? AND year = ?',
+      [employeeId, month, year],
+      (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        if (!row) {
+          // Return null instead of 404 error - report doesn't exist yet (draft state)
+          res.json(null);
+          return;
+        }
+        
+        // Parse the report data JSON
+        try {
+          row.reportData = JSON.parse(row.reportData || '{}');
+          row.approvalWorkflow = helpers.parseJsonSafe(row.approvalWorkflow, []);
+          res.json(row);
+        } catch (parseErr) {
+          res.status(500).json({ error: 'Invalid report data format' });
+        }
+      }
+    );
+    return;
+  }
+  
+  // Otherwise, return filtered reports (similar to /api/expense-reports)
+  let query = `
+    SELECT er.*, 
+     COALESCE(NULLIF(e.preferredName, ''), e.name) as employeeName, 
+     e.name as employeeFullName, 
+     e.email as employeeEmail, 
+     e.supervisorId
+     FROM expense_reports er
+     LEFT JOIN employees e ON er.employeeId = e.id
+  `;
+  const params = [];
+  const conditions = [];
+
+  if (status) {
+    const statusValues = status.toString().split(',').map(s => s.trim()).filter(Boolean);
+    if (statusValues.length === 1) {
+      conditions.push('er.status = ?');
+      params.push(statusValues[0]);
+    } else if (statusValues.length > 1) {
+      const placeholders = statusValues.map(() => '?').join(',');
+      conditions.push(`er.status IN (${placeholders})`);
+      params.push(...statusValues);
+    }
+  }
+
+  if (approverId) {
+    conditions.push('er.currentApproverId = ?');
+    params.push(approverId);
+  }
+
+  if (stage) {
+    conditions.push('er.currentApprovalStage = ?');
+    params.push(stage);
+  }
+
+  if (teamSupervisorId) {
+    if (teamSupervisorId === 'unassigned') {
+      conditions.push('(e.supervisorId IS NULL OR e.supervisorId = "")');
+    } else {
+      conditions.push('e.supervisorId = ?');
+      params.push(teamSupervisorId);
+    }
+  }
+
+  if (employeeId) {
+    conditions.push('er.employeeId = ?');
+    params.push(employeeId);
+  }
+
+  if (month && year) {
+    conditions.push('er.month = ? AND er.year = ?');
+    params.push(parseInt(month, 10), parseInt(year, 10));
+  }
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  query += ' ORDER BY er.year DESC, er.month DESC, e.name';
+
+  debugLog(`🔍 GET /api/monthly-reports - Query: ${query.substring(0, 200)}...`);
+  debugLog(`🔍 GET /api/monthly-reports - Params:`, params);
+
+  db.all(
+    query,
+    params,
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      debugLog(`✅ GET /api/monthly-reports - Found ${rows ? rows.length : 0} raw reports`);
+      
+      // Parse the report data JSON for each row
+      const reports = (rows || []).map(row => {
+        try {
+          row.reportData = JSON.parse(row.reportData || '{}');
+          row.approvalWorkflow = helpers.parseJsonSafe(row.approvalWorkflow, []);
+          
+          // Calculate totalExpenses from reportData
+          row.totalExpenses = calculateTotalExpensesFromReportData(row.reportData);
+          row.totalMiles = row.reportData?.totalMiles || 0;
+          row.totalMileageAmount = row.reportData?.totalMileageAmount || 0;
+          
+          // Add compatibility fields for supervisor dashboard
+          row.reviewedBy = row.approvedBy; // For backward compatibility
+          
+        } catch (parseErr) {
+          debugError('Error parsing report data for row:', row.id);
+          row.reportData = {};
+          row.approvalWorkflow = [];
+          row.totalExpenses = 0;
+        }
+        
+        return row;
+      });
+      
+      debugLog(`✅ GET /api/monthly-reports - Returning ${reports.length} parsed reports`);
+      res.json(reports);
+    }
+  );
+});
+
 router.get('/api/expense-reports/:employeeId/:month/:year', (req, res) => {
   const { employeeId, month, year } = req.params;
   const db = dbService.getDb();
@@ -227,13 +421,15 @@ router.get('/api/expense-reports/:employeeId/:month/:year', (req, res) => {
         return;
       }
       if (!row) {
-        res.status(404).json({ error: 'Expense report not found' });
+        // Return null instead of 404 - report doesn't exist yet (expected for draft reports)
+        res.json(null);
         return;
       }
       
       // Parse the report data JSON
       try {
-        row.reportData = JSON.parse(row.reportData);
+        row.reportData = JSON.parse(row.reportData || '{}');
+        row.approvalWorkflow = helpers.parseJsonSafe(row.approvalWorkflow, []);
         res.json(row);
       } catch (parseErr) {
         res.status(500).json({ error: 'Invalid report data format' });
@@ -1057,7 +1253,10 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
     };
 
     if (status === 'submitted') {
+      debugLog(`📝 Submitting report ${id} for employee ${report.employeeId}`);
       const workflowInit = await initializeApprovalWorkflow(report);
+      debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}, approverName=${workflowInit.currentApproverName}`);
+      
       updateData.status = workflowInit.currentApprovalStage === 'finance' ? 'pending_finance' : 'pending_supervisor';
       updateData.submittedAt = nowIso;
       updateData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
@@ -1067,10 +1266,13 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
       updateData.currentApproverName = workflowInit.currentApproverName;
       updateData.escalationDueAt = workflowInit.escalationDueAt;
       
+      debugLog(`📝 Report ${id} status set to: ${updateData.status}, currentApproverId: ${updateData.currentApproverId}`);
+      
       // Notify supervisor (if supervisor exists and is first approver)
       if (workflowInit.currentApprovalStage === 'supervisor' && workflowInit.currentApproverId) {
         const employee = await dbService.getEmployeeById(report.employeeId);
         if (employee) {
+          debugLog(`📝 Sending notification to supervisor ${workflowInit.currentApproverId} for report ${id}`);
           notificationService.notifyReportSubmitted(id, report.employeeId, employee.preferredName || employee.name).catch(err => {
             debugError('❌ Error sending notification for report submission:', err);
           });
@@ -1167,19 +1369,72 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
     let workflow = helpers.parseJsonSafe(report.approvalWorkflow, []);
     if (!Array.isArray(workflow)) workflow = [];
 
+    // Initialize updates object early
+    let initialCurrentApprovalStage = report.currentApprovalStage || '';
+    let initialCurrentApproverId = report.currentApproverId || null;
+    let initialCurrentApproverName = report.currentApproverName || null;
+    let initialEscalationDueAt = report.escalationDueAt || null;
+
+    // Auto-initialize workflow if it's empty or missing
+    if (workflow.length === 0 || !workflow) {
+      debugLog(`⚠️  Workflow is empty for report ${id}, auto-initializing...`);
+      const workflowInit = await initializeApprovalWorkflow(report);
+      workflow = workflowInit.workflow;
+      initialCurrentApprovalStage = workflowInit.currentApprovalStage;
+      initialCurrentApproverId = workflowInit.currentApproverId;
+      initialCurrentApproverName = workflowInit.currentApproverName;
+      initialEscalationDueAt = workflowInit.escalationDueAt;
+      // Save the initialized workflow immediately
+      await new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE expense_reports SET approvalWorkflow = ?, currentApprovalStage = ?, currentApproverId = ?, currentApproverName = ?, escalationDueAt = ? WHERE id = ?',
+          [JSON.stringify(workflow), workflowInit.currentApprovalStage, workflowInit.currentApproverId, workflowInit.currentApproverName, workflowInit.escalationDueAt, id],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+      });
+    }
+
     const currentStepIndex = Number.isInteger(report.currentApprovalStep)
       ? report.currentApprovalStep
       : parseInt(report.currentApprovalStep || '0', 10) || 0;
 
-    const currentStep = workflow[currentStepIndex];
+    let currentStep = workflow[currentStepIndex];
+    let resolvedCurrentStepIndex = currentStepIndex;
+    
+    // If currentStep is missing, try to find the correct step based on currentApprovalStage
+    if (!currentStep && workflow.length > 0) {
+      const currentStage = initialCurrentApprovalStage || '';
+      if (currentStage.includes('supervisor')) {
+        currentStep = workflow.find(step => step.role === 'supervisor' && step.status === 'pending');
+        if (currentStep) {
+          resolvedCurrentStepIndex = workflow.indexOf(currentStep);
+        }
+      } else if (currentStage.includes('finance')) {
+        currentStep = workflow.find(step => step.role === 'finance' && step.status === 'pending');
+        if (currentStep) {
+          resolvedCurrentStepIndex = workflow.indexOf(currentStep);
+        }
+      }
+      
+      // If still no step found, use the first pending step
+      if (!currentStep) {
+        currentStep = workflow.find(step => step.status === 'pending');
+        if (currentStep) {
+          resolvedCurrentStepIndex = workflow.indexOf(currentStep);
+        }
+      }
+    }
 
     const updates = {
       status: report.status,
-      currentApprovalStep: currentStepIndex,
-      currentApprovalStage: report.currentApprovalStage || '',
-      currentApproverId: report.currentApproverId || null,
-      currentApproverName: report.currentApproverName || null,
-      escalationDueAt: report.escalationDueAt || null,
+      currentApprovalStep: resolvedCurrentStepIndex,
+      currentApprovalStage: initialCurrentApprovalStage,
+      currentApproverId: initialCurrentApproverId,
+      currentApproverName: initialCurrentApproverName,
+      escalationDueAt: initialEscalationDueAt,
       approvalWorkflow: report.approvalWorkflow,
       updatedAt: nowIso,
     };
@@ -1234,8 +1489,39 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
     switch (action) {
       case 'approve': {
+        // If no current step, try to find the correct one based on report status and approver
         if (!currentStep) {
-          res.status(400).json({ error: 'No active approval step' });
+          debugLog(`⚠️  No current step found for report ${id}, attempting to find correct step...`);
+          debugLog(`   Report status: ${report.status}, currentApprovalStage: ${report.currentApprovalStage}, currentApproverId: ${report.currentApproverId}`);
+          debugLog(`   Workflow length: ${workflow.length}, currentStepIndex: ${currentStepIndex}`);
+          
+          // Try to find a step matching the current approver or status
+          if (approverId) {
+            currentStep = workflow.find(step => 
+              (step.approverId === approverId || step.delegatedToId === approverId) && 
+              step.status === 'pending'
+            );
+            if (currentStep) {
+              const stepIndex = workflow.indexOf(currentStep);
+              updates.currentApprovalStep = stepIndex;
+              debugLog(`✅ Found step at index ${stepIndex} matching approver ${approverId}`);
+            }
+          }
+          
+          // If still not found, find any pending step
+          if (!currentStep) {
+            currentStep = workflow.find(step => step.status === 'pending');
+            if (currentStep) {
+              const stepIndex = workflow.indexOf(currentStep);
+              updates.currentApprovalStep = stepIndex;
+              debugLog(`✅ Found pending step at index ${stepIndex}`);
+            }
+          }
+        }
+        
+        if (!currentStep) {
+          debugError(`❌ Cannot find active approval step for report ${id}. Workflow:`, JSON.stringify(workflow, null, 2));
+          res.status(400).json({ error: 'No active approval step. The report may need to be resubmitted.' });
           return;
         }
         if (!approverId) {
@@ -1465,24 +1751,44 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           workflow[currentStepIndex] = currentStep;
         }
 
-        // Set status and send back to supervisor
-        updates.status = 'needs_revision';
-        updates.currentApprovalStage = 'pending_supervisor';
+        // Find supervisor step in workflow and reset it
+        const supervisorStepIndex = workflow.findIndex(step => step.role === 'supervisor');
+        let supervisorStep = null;
         
         // Get supervisor
         const employee = await dbService.getEmployeeById(report.employeeId);
         if (employee && employee.supervisorId) {
           const supervisor = await dbService.getEmployeeById(employee.supervisorId);
           if (supervisor) {
+            const supervisorName = supervisor.preferredName || supervisor.name || 'Supervisor';
+            
+            // If supervisor step exists, reset it to pending
+            if (supervisorStepIndex !== -1) {
+              supervisorStep = workflow[supervisorStepIndex];
+              supervisorStep.status = 'pending';
+              supervisorStep.comments = comments || supervisorStep.comments || '';
+              supervisorStep.dueAt = helpers.computeEscalationDueAt(constants.SUPERVISOR_ESCALATION_HOURS);
+              workflow[supervisorStepIndex] = supervisorStep;
+            }
+            
             updates.currentApproverId = supervisor.id;
-            updates.currentApproverName = supervisor.preferredName || supervisor.name || 'Supervisor';
+            updates.currentApproverName = supervisorName;
+            updates.currentApprovalStep = supervisorStepIndex !== -1 ? supervisorStepIndex : 0;
+          } else {
+            updates.currentApproverId = null;
+            updates.currentApproverName = null;
+            updates.currentApprovalStep = supervisorStepIndex !== -1 ? supervisorStepIndex : 0;
           }
         } else {
           updates.currentApproverId = null;
           updates.currentApproverName = null;
+          updates.currentApprovalStep = supervisorStepIndex !== -1 ? supervisorStepIndex : 0;
         }
-        
-        updates.escalationDueAt = null;
+
+        // Set status and send back to supervisor
+        updates.status = 'needs_revision';
+        updates.currentApprovalStage = 'pending_supervisor';
+        updates.escalationDueAt = (supervisorStep && supervisorStep.dueAt) || null;
 
         // Notify supervisor that finance requested revision
         if (employee && employee.supervisorId) {
@@ -1514,6 +1820,125 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           workflow[currentStepIndex] = currentStep;
         }
 
+        // Process selected items for item-specific revisions
+        const selectedItems = req.body.selectedItems || {};
+        const selectedMileage = selectedItems.mileage || [];
+        const selectedReceipts = selectedItems.receipts || [];
+        const selectedTimeTracking = selectedItems.timeTracking || [];
+
+        // Create revision notes for selected items
+        if (selectedMileage.length > 0 || selectedReceipts.length > 0 || selectedTimeTracking.length > 0) {
+          const employee = await dbService.getEmployeeById(report.employeeId);
+          const requestorId = approverId || supervisorId || '';
+          const requestorName = approverName || supervisorName || 'Supervisor';
+
+          // Process mileage entries (format: mileage-{index})
+          for (const itemId of selectedMileage) {
+            const index = parseInt(itemId.replace('mileage-', ''), 10);
+            if (!isNaN(index)) {
+              const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `INSERT INTO report_revision_notes 
+                   (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'mileage', index.toString(), 'mileage', comments, nowIso, nowIso],
+                  (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  }
+                );
+              });
+            }
+          }
+
+          // Process receipts (format: receipt-{receiptId})
+          for (const itemId of selectedReceipts) {
+            const receiptId = itemId.replace('receipt-', '');
+            if (receiptId) {
+              const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `INSERT INTO report_revision_notes 
+                   (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'receipt', receiptId, 'receipt', comments, nowIso, nowIso],
+                  (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  }
+                );
+              });
+
+              // Mark receipt as needing revision
+              await new Promise((resolve, reject) => {
+                db.run(
+                  'UPDATE receipts SET needsRevision = 1, revisionReason = ? WHERE id = ?',
+                  [comments, receiptId],
+                  (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  }
+                );
+              });
+            }
+          }
+
+          // Process time tracking entries (format: time-{index} or mileage-{index} since they share the same daily entry)
+          // Note: Time tracking entries are in the same daily entry row as mileage, so they share the same index
+          const processedTimeIndices = new Set();
+          for (const itemId of selectedTimeTracking) {
+            let timeIndex = null;
+            if (itemId.startsWith('time-')) {
+              timeIndex = itemId.replace('time-', '');
+            } else if (itemId.startsWith('mileage-')) {
+              // Time tracking may share the same index as mileage in the daily entries table
+              timeIndex = itemId.replace('mileage-', '');
+            }
+            
+            if (timeIndex && !processedTimeIndices.has(timeIndex)) {
+              processedTimeIndices.add(timeIndex);
+              const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `INSERT INTO report_revision_notes 
+                   (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', timeIndex, 'time', comments, nowIso, nowIso],
+                  (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  }
+                );
+              });
+            }
+          }
+          
+          // Also create time tracking revision notes for mileage entries that were selected
+          // (since daily entries contain both mileage and time tracking in the same row)
+          for (const itemId of selectedMileage) {
+            const index = itemId.replace('mileage-', '');
+            if (index && !processedTimeIndices.has(index)) {
+              // Create a revision note for time tracking on the same day
+              const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `INSERT INTO report_revision_notes 
+                   (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', index, 'time', comments, nowIso, nowIso],
+                  (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  }
+                );
+              });
+            }
+          }
+
+          debugLog(`✅ Created revision notes for ${selectedMileage.length} mileage entries, ${selectedReceipts.length} receipts, ${selectedTimeTracking.length} time entries`);
+        }
+
         // Set status and send back to employee
         updates.status = 'needs_revision';
         updates.currentApprovalStage = 'needs_revision';
@@ -1536,7 +1961,16 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
       case 'resubmit_to_finance': {
         // Supervisor resubmits to finance after making changes
-        if (!currentStep || currentStep.role !== 'supervisor') {
+        // Check if report is in needs_revision status with pending_supervisor stage
+        const isPendingSupervisor = report.status === 'needs_revision' && 
+          (report.currentApprovalStage === 'pending_supervisor' || 
+           (report.currentApprovalStage || '').toLowerCase().includes('supervisor'));
+        
+        // Find supervisor step in workflow
+        const supervisorStepIndex = workflow.findIndex(step => step.role === 'supervisor');
+        const supervisorStep = supervisorStepIndex !== -1 ? workflow[supervisorStepIndex] : null;
+        
+        if (!supervisorStep && !isPendingSupervisor) {
           res.status(400).json({ error: 'This action is only available when report is with supervisor' });
           return;
         }
@@ -1545,11 +1979,20 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           return;
         }
 
+        // Use supervisor step if found, otherwise use current step
+        const stepToApprove = supervisorStep || currentStep;
+        if (!stepToApprove) {
+          res.status(400).json({ error: 'Cannot find supervisor step in workflow' });
+          return;
+        }
+        
+        const stepIndexToUpdate = supervisorStepIndex !== -1 ? supervisorStepIndex : currentStepIndex;
+
         // Mark supervisor step as approved and move to finance
-        currentStep.status = 'approved';
-        currentStep.actedAt = nowIso;
-        currentStep.comments = comments || currentStep.comments || '';
-        workflow[currentStepIndex] = currentStep;
+        stepToApprove.status = 'approved';
+        stepToApprove.actedAt = nowIso;
+        stepToApprove.comments = comments || stepToApprove.comments || '';
+        workflow[stepIndexToUpdate] = stepToApprove;
 
         // Find finance step in workflow
         const financeStepIndex = workflow.findIndex(step => step.role === 'finance');

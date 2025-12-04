@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DataSyncService } from '../services/dataSyncService';
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
+import { debugError } from '../config/debug';
 
 export interface EmployeeExpenseData {
   employeeId: string;
@@ -250,7 +251,7 @@ export function useEmployeeData(
       setEmployeeData(expenseData);
       setReceipts(processedReceipts);
     } catch (err) {
-      console.error('Error loading employee data:', err);
+      debugError('Error loading employee data:', err);
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
 
       // Create fallback data

@@ -52,6 +52,7 @@ import { BulkImportService, BulkImportResult, EmployeeImportData } from '../serv
 import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
+import { debugLog, debugError } from '../config/debug';
 
 interface EmployeeManagementProps {
   onImportComplete: (result: BulkImportResult) => void;
@@ -178,19 +179,19 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
 
   const loadArchivedEmployees = async () => {
     try {
-      console.log('🔄 Loading archived employees...');
+      debugLog('🔄 Loading archived employees...');
       const archived = await EmployeeApiService.getArchivedEmployees();
-      console.log(`✅ Archived employees loaded: ${archived.length} employees`, archived);
+      debugLog(`✅ Archived employees loaded: ${archived.length} employees`, archived);
       
       if (archived.length === 0) {
-        console.log('ℹ️ No archived employees found in database');
+        debugLog('ℹ️ No archived employees found in database');
       }
       
       setArchivedEmployees(archived);
     } catch (error) {
-      console.error('❌ Error loading archived employees:', error);
+      debugError('❌ Error loading archived employees:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Error details:', errorMessage);
+      debugError('Error details:', errorMessage);
       alert(`Failed to load archived employees: ${errorMessage}`);
       // Set empty array on error to avoid stale data
       setArchivedEmployees([]);

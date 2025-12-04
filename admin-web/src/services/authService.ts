@@ -1,4 +1,6 @@
 // Authentication Service for Admin Web Portal
+import { debugError, debugWarn } from '../config/debug';
+
 export type UserRole = 'employee' | 'supervisor' | 'admin' | 'finance';
 
 export interface User {
@@ -105,7 +107,7 @@ export class AuthService {
       const allowedRoles: UserRole[] = ['employee', 'supervisor', 'admin', 'finance'];
       if (!allowedRoles.includes(userRole)) {
         // Fallback: determine from position if role is invalid or missing
-        console.warn(`Invalid or missing role for employee ${employee.email}, determining from position`);
+        debugWarn(`Invalid or missing role for employee ${employee.email}, determining from position`);
         userRole = this.determineUserRole(employee.position, employee.name, employee.email);
       }
       
@@ -224,7 +226,7 @@ export class AuthService {
         });
       }
     } catch (error) {
-      console.error('Error initializing auth:', error);
+      debugError('Error initializing auth:', error);
       this.setAuthState({
         user: null,
         isAuthenticated: false,

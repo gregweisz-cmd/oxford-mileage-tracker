@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { realtimeSyncService, RealtimeUpdate } from '../services/realtimeSyncService';
+import { debugLog, debugError, debugVerbose } from '../config/debug';
 
 export interface RealtimeSyncStatus {
   connected: boolean;
@@ -42,9 +43,9 @@ export function useRealtimeSync(options: UseRealtimeSyncOptions = {}) {
           ...connectionStatus
         }));
         
-        console.log('✅ useRealtimeSync: Real-time sync initialized');
+        debugVerbose('✅ useRealtimeSync: Real-time sync initialized');
       } catch (error) {
-        console.error('❌ useRealtimeSync: Failed to initialize:', error);
+        debugError('❌ useRealtimeSync: Failed to initialize:', error);
       }
     };
 

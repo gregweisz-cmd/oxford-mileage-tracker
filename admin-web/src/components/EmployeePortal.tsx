@@ -56,6 +56,7 @@ import { DataSyncService } from '../services/dataSyncService';
 import { Employee, MileageEntry, Receipt as ReceiptType, TimeTracking } from '../types';
 import { SimpleReportService } from '../services/simpleReportService';
 import { AdvancedTemplateService } from '../services/advancedTemplateService';
+import { debugLog, debugError } from '../config/debug';
 
 interface EmployeePortalProps {
   employee: any;
@@ -156,7 +157,7 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
         timeTracking: filteredTimeTracking
       });
     } catch (error) {
-      console.error('Error loading employee data:', error);
+      debugError('Error loading employee data:', error);
     }
   };
 
@@ -214,7 +215,7 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
       document.body.removeChild(link);
       
     } catch (error) {
-      console.error('Error generating report:', error);
+      debugError('Error generating report:', error);
       alert('Error generating report. Please try again.');
     } finally {
       setIsGeneratingReport(false);
@@ -275,7 +276,7 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
       document.body.removeChild(link);
       
     } catch (error) {
-      console.error('Error generating advanced report:', error);
+      debugError('Error generating advanced report:', error);
       alert('Failed to generate advanced report: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsGeneratingReport(false);
@@ -424,10 +425,10 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
                   <TableCell>{entry.purpose}</TableCell>
                   <TableCell>{entry.hoursWorked || 0}</TableCell>
                   <TableCell>
-                    <IconButton size="small" onClick={() => console.log('Edit entry:', entry.id)}>
+                    <IconButton size="small" onClick={() => debugLog('Edit entry:', entry.id)}>
                       <Edit />
                     </IconButton>
-                    <IconButton size="small" onClick={() => console.log('Delete entry:', entry.id)}>
+                    <IconButton size="small" onClick={() => debugLog('Delete entry:', entry.id)}>
                       <Delete />
                     </IconButton>
                   </TableCell>
@@ -468,10 +469,10 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
                   <TableCell>{receipt.category}</TableCell>
                   <TableCell>{receipt.purpose}</TableCell>
                   <TableCell>
-                    <IconButton size="small" onClick={() => console.log('Edit receipt:', receipt.id)}>
+                    <IconButton size="small" onClick={() => debugLog('Edit receipt:', receipt.id)}>
                       <Edit />
                     </IconButton>
-                    <IconButton size="small" onClick={() => console.log('Delete receipt:', receipt.id)}>
+                    <IconButton size="small" onClick={() => debugLog('Delete receipt:', receipt.id)}>
                       <Delete />
                     </IconButton>
                   </TableCell>
@@ -510,10 +511,10 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
                   <TableCell>{entry.hours}</TableCell>
                   <TableCell>{entry.description}</TableCell>
                   <TableCell>
-                    <IconButton size="small" onClick={() => console.log('Edit time entry:', entry.id)}>
+                    <IconButton size="small" onClick={() => debugLog('Edit time entry:', entry.id)}>
                       <Edit />
                     </IconButton>
-                    <IconButton size="small" onClick={() => console.log('Delete time entry:', entry.id)}>
+                    <IconButton size="small" onClick={() => debugLog('Delete time entry:', entry.id)}>
                       <Delete />
                     </IconButton>
                   </TableCell>
@@ -687,7 +688,7 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
             variant="contained"
             startIcon={<FileUpload />}
             sx={{ mt: 2 }}
-            onClick={() => console.log('File upload clicked')}
+            onClick={() => debugLog('File upload clicked')}
           >
             Select Template File
           </Button>

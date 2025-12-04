@@ -28,6 +28,7 @@ import {
   Business as BusinessIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
+import { debugLog, debugError } from '../config/debug';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
@@ -124,7 +125,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         loadFrequentAddresses()
       ]);
     } catch (error) {
-      console.error('Error loading employee data:', error);
+      debugError('Error loading employee data:', error);
     }
   }, [employeeId]);
 
@@ -144,7 +145,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         setSavedAddresses(saved);
       }
     } catch (error) {
-      console.error('Error loading saved addresses:', error);
+      debugError('Error loading saved addresses:', error);
     }
   };
 
@@ -205,7 +206,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         setFrequentAddresses(frequent);
       }
     } catch (error) {
-      console.error('Error loading employee addresses:', error);
+      debugError('Error loading employee addresses:', error);
     }
   };
 
@@ -236,7 +237,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
             setSelectedState(extractedState);
             const filtered = houses.filter((h: OxfordHouse) => h.state === extractedState);
             setFilteredOxfordHouses(filtered);
-            console.log(`🗺️ Filtered to ${extractedState}: ${filtered.length} houses`);
+            debugLog(`🗺️ Filtered to ${extractedState}: ${filtered.length} houses`);
           } else {
             setFilteredOxfordHouses(houses);
           }
@@ -245,7 +246,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         }
       }
     } catch (error) {
-      console.error('Error loading Oxford Houses:', error);
+      debugError('Error loading Oxford Houses:', error);
     }
   };
 
@@ -274,12 +275,12 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   };
   
   const handleStateFilterChange = (state: string) => {
-    console.log(`🗺️ Changing state filter to: ${state || 'All States'}`);
+    debugLog(`🗺️ Changing state filter to: ${state || 'All States'}`);
     setSelectedState(state);
     const filtered = state
       ? oxfordHouses.filter((h) => h.state === state)
       : oxfordHouses;
-    console.log(`🗺️ Filtered results: ${filtered.length} houses`);
+    debugLog(`🗺️ Filtered results: ${filtered.length} houses`);
     setFilteredOxfordHouses(filtered);
     setSearchQuery(''); // Clear search when changing state
   };

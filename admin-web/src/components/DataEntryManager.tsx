@@ -41,6 +41,7 @@ import { DataSyncService } from '../services/dataSyncService';
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 import { MileageEntryForm, ReceiptForm, TimeTrackingForm, MileageEntryFormData, ReceiptFormData, TimeTrackingFormData } from './DataEntryForms';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { debugError } from '../config/debug';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
@@ -115,7 +116,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
       setReceipts(receiptsData);
       setTimeTracking(timeTrackingData);
     } catch (error) {
-      console.error('Error loading data:', error);
+      debugError('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -175,7 +176,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
       setEditingMileage(null);
       setMileageFormOpen(false);
     } catch (error) {
-      console.error('Error saving mileage entry:', error);
+      debugError('Error saving mileage entry:', error);
       alert('Error saving mileage entry. Please try again.');
     } finally {
       setLoading(false);
@@ -222,7 +223,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
       setEditingReceipt(null);
       setReceiptFormOpen(false);
     } catch (error) {
-      console.error('Error saving receipt:', error);
+      debugError('Error saving receipt:', error);
       alert('Error saving receipt. Please try again.');
     } finally {
       setLoading(false);
@@ -269,7 +270,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
       setEditingTimeTracking(null);
       setTimeTrackingFormOpen(false);
     } catch (error) {
-      console.error('Error saving time tracking:', error);
+      debugError('Error saving time tracking:', error);
       alert('Error saving time tracking. Please try again.');
     } finally {
       setLoading(false);
@@ -310,7 +311,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
       });
       
     } catch (error) {
-      console.error(`Error deleting ${type}:`, error);
+      debugError(`Error deleting ${type}:`, error);
       alert(`Error deleting ${type}. Please try again.`);
     } finally {
       setLoading(false);
@@ -376,7 +377,7 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
         year: 'numeric'
       });
     } catch (error) {
-      console.error('Error formatting date:', dateString, error);
+      debugError('Error formatting date:', dateString, error);
       return 'Invalid Date';
     }
   };

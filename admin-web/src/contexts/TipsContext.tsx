@@ -7,6 +7,7 @@
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { WebTip, WebTipsService } from '../services/webTipsService';
+import { debugLog, debugError } from '../config/debug';
 
 interface TipsContextType {
   tips: WebTip[];
@@ -45,9 +46,9 @@ export const TipsProvider: React.FC<TipsProviderProps> = ({ children }) => {
     try {
       const screenTips = tipsService.getTipsForScreen(screen, currentUserId, trigger);
       setTips(screenTips);
-      console.log(`✅ WebTipsProvider: Loaded ${screenTips.length} tips for ${screen}`);
+      debugLog(`✅ WebTipsProvider: Loaded ${screenTips.length} tips for ${screen}`);
     } catch (error) {
-      console.error('❌ WebTipsProvider: Error loading tips:', error);
+      debugError('❌ WebTipsProvider: Error loading tips:', error);
       setTips([]);
     } finally {
       setIsLoading(false);
@@ -61,9 +62,9 @@ export const TipsProvider: React.FC<TipsProviderProps> = ({ children }) => {
     try {
       await tipsService.dismissTip(currentUserId, tipId);
       setTips(prevTips => prevTips.filter(tip => tip.id !== tipId));
-      console.log('✅ WebTipsProvider: Tip dismissed:', tipId);
+      debugLog('✅ WebTipsProvider: Tip dismissed:', tipId);
     } catch (error) {
-      console.error('❌ WebTipsProvider: Error dismissing tip:', error);
+      debugError('❌ WebTipsProvider: Error dismissing tip:', error);
     }
   };
 
@@ -73,9 +74,9 @@ export const TipsProvider: React.FC<TipsProviderProps> = ({ children }) => {
 
     try {
       await tipsService.markTipAsSeen(currentUserId, tipId);
-      console.log('✅ WebTipsProvider: Tip marked as seen:', tipId);
+      debugLog('✅ WebTipsProvider: Tip marked as seen:', tipId);
     } catch (error) {
-      console.error('❌ WebTipsProvider: Error marking tip as seen:', error);
+      debugError('❌ WebTipsProvider: Error marking tip as seen:', error);
     }
   };
 
@@ -86,9 +87,9 @@ export const TipsProvider: React.FC<TipsProviderProps> = ({ children }) => {
     try {
       await tipsService.resetUserTips(currentUserId);
       setTips([]);
-      console.log('✅ WebTipsProvider: All tips reset for user');
+      debugLog('✅ WebTipsProvider: All tips reset for user');
     } catch (error) {
-      console.error('❌ WebTipsProvider: Error resetting tips:', error);
+      debugError('❌ WebTipsProvider: Error resetting tips:', error);
     }
   };
 

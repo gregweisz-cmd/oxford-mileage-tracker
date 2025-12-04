@@ -48,9 +48,12 @@ interface EnhancedHeaderProps {
   reportYear?: number;
   loading?: boolean;
   isAdminView?: boolean;
+  supervisorMode?: boolean;
   onExportPdf?: () => void;
   onSaveReport?: () => void;
   onSubmitReport?: () => void;
+  onApproveReport?: () => void;
+  onRequestRevision?: () => void;
   onViewAllReports?: () => void;
   onCheckCompleteness?: () => void;
   onRefresh?: () => void;
@@ -71,9 +74,12 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   reportYear,
   loading = false,
   isAdminView = false,
+  supervisorMode = false,
   onExportPdf,
   onSaveReport,
   onSubmitReport,
+  onApproveReport,
+  onRequestRevision,
   onViewAllReports,
   onCheckCompleteness,
   onRefresh,
@@ -85,6 +91,19 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
 }) => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const { showSuccess, showInfo } = useToast();
+
+  // Debug: Log handlers when in supervisor mode
+  React.useEffect(() => {
+    if (supervisorMode) {
+      console.log('🔍 EnhancedHeader received handlers:', { 
+        onApproveReport: !!onApproveReport, 
+        onRequestRevision: !!onRequestRevision,
+        supervisorMode,
+        onApproveReportType: typeof onApproveReport,
+        onRequestRevisionType: typeof onRequestRevision
+      });
+    }
+  }, [supervisorMode, onApproveReport, onRequestRevision]);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -301,16 +320,53 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
               </Button>
             )}
 
-            {onSubmitReport && (
-              <Button
-                variant="contained"
-                startIcon={<SendIcon />}
-                onClick={onSubmitReport}
-                disabled={loading || isAdminView}
-                size="small"
-              >
-                Submit
-              </Button>
+            {supervisorMode ? (
+              <>
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={() => {
+                    if (onApproveReport) {
+                      onApproveReport();
+                    } else {
+                      console.warn('Approve handler not provided', { onApproveReport, supervisorMode });
+                    }
+                  }}
+                  disabled={loading}
+                  size="small"
+                >
+                  Approve
+                </Button>
+                <Button
+                  variant="contained"
+                  color="warning"
+                  startIcon={<WarningIcon />}
+                  onClick={() => {
+                    if (onRequestRevision) {
+                      onRequestRevision();
+                    } else {
+                      console.warn('Revision handler not provided', { onRequestRevision, supervisorMode });
+                    }
+                  }}
+                  disabled={loading}
+                  size="small"
+                >
+                  Revision Needed
+                </Button>
+              </>
+            ) : (
+              onSubmitReport && (
+                <Button
+                  variant="contained"
+                  startIcon={<SendIcon />}
+                  onClick={onSubmitReport}
+                  disabled={loading}
+                  size="small"
+                >
+                  Submit
+                </Button>
+              )
             )}
 
             {onExportPdf && (

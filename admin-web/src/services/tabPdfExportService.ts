@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { debugLog } from '../config/debug';
 
 // Helper function to safely add text to PDF
 function safeText(doc: jsPDF, text: any, x: number, y: number, options?: any) {
@@ -642,7 +643,7 @@ export class TabPdfExportService {
     // Save the complete PDF
     doc.save(this.generateFilename(employeeData));
     
-    console.log('Complete expense report PDF exported successfully!');
+    debugLog('Complete expense report PDF exported successfully!');
   }
 
   private static async addApprovalCoverSheetPage(

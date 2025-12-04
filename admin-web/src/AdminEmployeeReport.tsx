@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material';
 
 import StaffPortal from './StaffPortal';
+import { debugWarn, debugError } from './config/debug';
 
 // Employee data structure
 interface Employee {
@@ -85,7 +86,7 @@ const SupervisorEmployeeReport: React.FC = () => {
             costCenters = emp.costCenters || [];
           }
         } catch (e) {
-          console.warn(`Failed to parse cost centers for employee ${emp.name}:`, e);
+          debugWarn(`Failed to parse cost centers for employee ${emp.name}:`, e);
           costCenters = [];
         }
         return {
@@ -97,7 +98,7 @@ const SupervisorEmployeeReport: React.FC = () => {
       setEmployees(parsedEmployees);
       // Employees loaded successfully
     } catch (err) {
-      console.error('❌ Error loading employees:', err);
+      debugError('❌ Error loading employees:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(`Failed to load employees: ${errorMessage}`);
     } finally {

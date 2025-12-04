@@ -33,6 +33,7 @@ import {
   Settings as SettingsIcon,
   Storage as DatabaseIcon
 } from '@mui/icons-material';
+import { debugError } from '../config/debug';
 
 interface SystemSettings {
   // Email/SMTP Configuration
@@ -133,7 +134,7 @@ export const SystemSettings: React.FC = () => {
       const data = await response.json();
       setSettings({ ...DEFAULT_SETTINGS, ...data });
     } catch (err: any) {
-      console.error('Error loading settings:', err);
+      debugError('Error loading settings:', err);
       setError(err.message || 'Failed to load system settings');
       // Use defaults if API fails
     } finally {
@@ -155,7 +156,7 @@ export const SystemSettings: React.FC = () => {
       setSuccess('Settings saved successfully');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      console.error('Error saving settings:', err);
+      debugError('Error saving settings:', err);
       setError(err.message || 'Failed to save system settings');
     } finally {
       setSaving(false);
@@ -174,7 +175,7 @@ export const SystemSettings: React.FC = () => {
       setBackupDialogOpen(false);
       setTimeout(() => setSuccess(null), 5000);
     } catch (err: any) {
-      console.error('Error creating backup:', err);
+      debugError('Error creating backup:', err);
       setError(err.message || 'Failed to create backup');
     } finally {
       setBackupLoading(false);

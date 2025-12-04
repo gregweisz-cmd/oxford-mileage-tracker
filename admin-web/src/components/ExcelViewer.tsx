@@ -27,6 +27,7 @@ import {
   Upload as UploadIcon,
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
+import { debugError } from '../config/debug';
 
 interface ExcelViewerProps {
   open: boolean;
@@ -95,7 +96,7 @@ export const ExcelViewer: React.FC<ExcelViewerProps> = ({
       setSheets(processedSheets);
       setCurrentSheetIndex(0);
     } catch (err) {
-      console.error('Error processing Excel file:', err);
+      debugError('Error processing Excel file:', err);
       setError('Failed to process Excel file. Please check the file format.');
     } finally {
       setLoading(false);

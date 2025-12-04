@@ -25,6 +25,7 @@ import {
   TextField,
   Alert,
 } from '@mui/material';
+import { debugError } from '../config/debug';
 import {
   Close as CloseIcon,
   Receipt as ReceiptIcon,
@@ -141,7 +142,7 @@ const DetailedReportViewInner = ({ reportId, open, onClose }: DetailedReportView
       const data = await response.json();
       setReportData(data);
     } catch (err: any) {
-      console.error('Error loading detailed report:', err);
+      debugError('Error loading detailed report:', err);
       setError(err.message || 'Failed to load report details');
     } finally {
       setLoading(false);
@@ -282,7 +283,7 @@ const DetailedReportViewInner = ({ reportId, open, onClose }: DetailedReportView
       
       alert('Revision request submitted successfully');
     } catch (err: any) {
-      console.error('Error submitting revision request:', err);
+      debugError('Error submitting revision request:', err);
       alert(`Failed to submit revision request: ${err.message}`);
     } finally {
       setSubmittingRevision(false);

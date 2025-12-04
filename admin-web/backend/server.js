@@ -20,6 +20,7 @@ const websocketService = require('./services/websocketService');
 const seedService = require('./services/seedService');
 const { corsMiddleware, handlePreflight } = require('./middleware/cors');
 const { errorHandler } = require('./middleware/errorHandler');
+const { generalLimiter } = require('./middleware/rateLimiter');
 const config = require('./config');
 const costCentersRoutes = require('./routes/costCenters');
 const employeesRoutes = require('./routes/employees');
@@ -60,6 +61,10 @@ if (googleCredentialsPath) {
 app.use(corsMiddleware);
 app.use(express.json({ limit: config.upload.maxFileSize })); // Increase JSON payload limit for large base64 images
 app.use(express.static('public'));
+
+// Rate limiting - Apply general rate limiting to all API routes
+// Specific routes (auth, admin, uploads) have stricter limits applied in their route files
+app.use('/api', generalLimiter);
 
 // Handle favicon requests to prevent 404 errors
 app.get('/favicon.ico', (req, res) => {

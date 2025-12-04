@@ -15,7 +15,7 @@ import { SupervisorManagement } from './SupervisorManagement';
 import { SystemSettings } from './SystemSettings';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { BulkImportResult } from '../services/bulkImportService';
-import { debugLog, debugError } from '../config/debug';
+import { debugLog, debugError, debugVerbose } from '../config/debug';
 import { Employee } from '../types';
 import { NotificationBell } from './NotificationBell';
 // import OxfordHouseLogo from './OxfordHouseLogo'; // Logo is in PortalSwitcher
@@ -68,7 +68,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     try {
       setLoading(true);
       const employeeData = await EmployeeApiService.getAllEmployees(skipCache);
-      debugLog(`📊 Loaded ${employeeData.length} employees${skipCache ? ' (cache bypassed)' : ''}`);
+      debugVerbose(`📊 Loaded ${employeeData.length} employees${skipCache ? ' (cache bypassed)' : ''}`);
       setEmployees(employeeData);
     } catch (error) {
       debugError('Error loading employees:', error);

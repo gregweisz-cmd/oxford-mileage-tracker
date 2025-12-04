@@ -13,6 +13,7 @@ const multer = require('multer');
 const vision = require('@google-cloud/vision');
 const dbService = require('../services/dbService');
 const dateHelpers = require('../utils/dateHelpers');
+const { uploadLimiter } = require('../middleware/rateLimiter');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // Set up uploads directory and multer
@@ -279,9 +280,9 @@ router.put('/api/receipts/:id', (req, res) => {
 });
 
 /**
- * Upload receipt image - accepts both multipart/form-data and JSON with base64
+ * Upload receipt image - accepts both multipart/form-data and JSON with base64 (protected with rate limiting)
  */
-router.post('/api/receipts/upload-image', (req, res, next) => {
+router.post('/api/receipts/upload-image', uploadLimiter, (req, res, next) => {
   // Set a longer timeout for image uploads (60 seconds)
   req.setTimeout(60000);
   res.setTimeout(60000);

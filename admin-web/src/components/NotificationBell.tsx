@@ -20,10 +20,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
     if (employeeId) {
       fetchUnreadCount();
       
-      // Poll for unread count every 30 seconds
+      // Poll for unread count every 60 seconds (reduced frequency to avoid rate limiting)
       const interval = setInterval(() => {
         fetchUnreadCount();
-      }, 30000);
+      }, 60000);
       
       return () => clearInterval(interval);
     }
@@ -37,10 +37,13 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
       if (response.ok) {
         const data = await response.json();
         setUnreadCount(data.count || 0);
+      } else if (response.status === 429) {
+        // Rate limited - silently skip this poll, will retry on next interval
+        // Don't log or show error to user as this is expected with frequent polling
       }
     } catch (error) {
       // Silently fail - don't show errors for polling
-      console.error('Error fetching notification count:', error);
+      // Network errors will resolve when connection is restored
     }
   };
 

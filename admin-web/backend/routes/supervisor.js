@@ -11,6 +11,43 @@ const websocketService = require('../services/websocketService');
 const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
+/**
+ * Calculate total expenses from report data
+ */
+function calculateTotalExpensesFromReportData(reportData) {
+  if (!reportData || typeof reportData !== 'object') return 0;
+  
+  // Handle string JSON
+  if (typeof reportData === 'string') {
+    try {
+      reportData = JSON.parse(reportData);
+    } catch (e) {
+      return 0;
+    }
+  }
+  
+  const {
+    totalMileageAmount = 0,
+    airRailBus = 0,
+    vehicleRentalFuel = 0,
+    parkingTolls = 0,
+    groundTransportation = 0,
+    hotelsAirbnb = 0,
+    perDiem = 0,
+    phoneInternetFax = 0,
+    shippingPostage = 0,
+    printingCopying = 0,
+    officeSupplies = 0,
+    eesReceipt = 0,
+    meals = 0,
+    other = 0,
+  } = reportData;
+
+  return (totalMileageAmount || 0) + (airRailBus || 0) + (vehicleRentalFuel || 0) + (parkingTolls || 0) +
+         (groundTransportation || 0) + (hotelsAirbnb || 0) + (perDiem || 0) + (phoneInternetFax || 0) +
+         (shippingPostage || 0) + (printingCopying || 0) + (officeSupplies || 0) + (eesReceipt || 0) + (meals || 0) + (other || 0);
+}
+
 // ===== SUPERVISOR REASSIGNMENT API ENDPOINTS =====
 
 // Get all supervised employees for an RM or Admin to manage
@@ -177,12 +214,48 @@ router.get('/api/supervisors/:id/kpis', async (req, res) => {
   
   try {
     // Get all supervised employees (direct + indirect)
-    const supervisedEmployeeIds = await dbService.getAllSupervisedEmployees(supervisorId);
+    let supervisedEmployeeIds = [];
+    try {
+      supervisedEmployeeIds = await dbService.getAllSupervisedEmployees(supervisorId);
+      if (!Array.isArray(supervisedEmployeeIds)) {
+        supervisedEmployeeIds = [];
+      }
+    } catch (superviseError) {
+      debugError('❌ Error getting supervised employees for KPIs:', superviseError);
+      supervisedEmployeeIds = [];
+    }
+    
+    // Handle empty team case
+    if (supervisedEmployeeIds.length === 0) {
+      return res.json({
+        teamMembers: {
+          total: 0,
+          active: 0,
+          archived: 0
+        },
+        reportStats: {
+          pending: 0,
+          needsRevision: 0,
+          approvedTotal: 0
+        },
+        approvals: {
+          thisMonth: { count: 0, totalExpenses: 0 },
+          lastMonth: { count: 0, totalExpenses: 0 }
+        },
+        performance: {
+          avgApprovalTimeHours: null,
+          fastestApprovalHours: null,
+          approvalRate: null,
+          totalReviewed: 0
+        },
+        expenseTrend: []
+      });
+    }
     
     // Get team member stats
     const teamMembers = await new Promise((resolve, reject) => {
       db.all(
-        `SELECT id, name, isActive FROM employees WHERE id IN (${supervisedEmployeeIds.map(() => '?').join(',')})`,
+        `SELECT id, name, archived FROM employees WHERE id IN (${supervisedEmployeeIds.map(() => '?').join(',')})`,
         supervisedEmployeeIds,
         (err, rows) => {
           if (err) reject(err);
@@ -192,7 +265,7 @@ router.get('/api/supervisors/:id/kpis', async (req, res) => {
     });
 
     const totalTeamMembers = teamMembers.length;
-    const activeTeamMembers = teamMembers.filter(emp => emp.isActive !== 0).length;
+    const activeTeamMembers = teamMembers.filter(emp => !emp.archived || emp.archived === 0).length;
     const archivedTeamMembers = totalTeamMembers - activeTeamMembers;
 
     // Get report stats - pending and needs revision
@@ -230,26 +303,52 @@ router.get('/api/supervisors/:id/kpis', async (req, res) => {
         `SELECT 
           er.month,
           er.year,
-          COUNT(*) as count,
-          COALESCE(SUM(er.totalExpenses), 0) as totalExpenses
+          er.reportData
         FROM expense_reports er
         LEFT JOIN employees e ON er.employeeId = e.id
         WHERE e.id IN (${supervisedEmployeeIds.map(() => '?').join(',')})
           AND er.status = 'approved'
           AND er.approvedBy = ?
-          AND ((er.month = ? AND er.year = ?) OR (er.month = ? AND er.year = ?))
-        GROUP BY er.month, er.year`,
+          AND ((er.month = ? AND er.year = ?) OR (er.month = ? AND er.year = ?))`,
         [...supervisedEmployeeIds, supervisorId, currentMonth, currentYear, lastMonth, lastMonthYear],
         (err, rows) => {
-          if (err) reject(err);
-          else {
-            const thisMonthData = rows.find(r => r.month === currentMonth && r.year === currentYear) || { count: 0, totalExpenses: 0 };
-            const lastMonthData = rows.find(r => r.month === lastMonth && r.year === lastMonthYear) || { count: 0, totalExpenses: 0 };
-            resolve({
-              thisMonth: { count: thisMonthData.count || 0, totalExpenses: thisMonthData.totalExpenses || 0 },
-              lastMonth: { count: lastMonthData.count || 0, totalExpenses: lastMonthData.totalExpenses || 0 }
-            });
+          if (err) {
+            reject(err);
+            return;
           }
+          
+          // Calculate totals from reportData
+          let thisMonthCount = 0;
+          let thisMonthTotal = 0;
+          let lastMonthCount = 0;
+          let lastMonthTotal = 0;
+          
+          (rows || []).forEach(row => {
+            const isThisMonth = row.month === currentMonth && row.year === currentYear;
+            const isLastMonth = row.month === lastMonth && row.year === lastMonthYear;
+            
+            let reportData = {};
+            try {
+              reportData = JSON.parse(row.reportData || '{}');
+            } catch (e) {
+              reportData = {};
+            }
+            
+            const totalExpenses = calculateTotalExpensesFromReportData(reportData);
+            
+            if (isThisMonth) {
+              thisMonthCount++;
+              thisMonthTotal += totalExpenses;
+            } else if (isLastMonth) {
+              lastMonthCount++;
+              lastMonthTotal += totalExpenses;
+            }
+          });
+          
+          resolve({
+            thisMonth: { count: thisMonthCount, totalExpenses: thisMonthTotal },
+            lastMonth: { count: lastMonthCount, totalExpenses: lastMonthTotal }
+          });
         }
       );
     });
@@ -329,15 +428,13 @@ router.get('/api/supervisors/:id/kpis', async (req, res) => {
         `SELECT 
           er.month,
           er.year,
-          COUNT(CASE WHEN er.status = 'approved' THEN 1 END) as approved,
-          COUNT(CASE WHEN er.status IN ('submitted', 'pending_supervisor') THEN 1 END) as submitted,
-          COALESCE(SUM(CASE WHEN er.status = 'approved' THEN er.totalExpenses ELSE 0 END), 0) as totalExpenses
+          er.status,
+          er.reportData
         FROM expense_reports er
         LEFT JOIN employees e ON er.employeeId = e.id
         WHERE e.id IN (${supervisedEmployeeIds.map(() => '?').join(',')})
           AND (er.year > ? OR (er.year = ? AND er.month >= ?))
           AND er.status IN ('submitted', 'pending_supervisor', 'approved')
-        GROUP BY er.year, er.month
         ORDER BY er.year ASC, er.month ASC`,
         [...supervisedEmployeeIds, sixMonthsAgo.getFullYear(), sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth() + 1],
         (err, rows) => {
@@ -346,17 +443,43 @@ router.get('/api/supervisors/:id/kpis', async (req, res) => {
             return;
           }
 
-          const trend = (rows || []).map(row => {
-            const date = new Date(row.year, row.month - 1);
-            return {
-              month: `${row.year}-${String(row.month).padStart(2, '0')}`,
-              label: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-              submitted: row.submitted || 0,
-              approved: row.approved || 0,
-              totalExpenses: row.totalExpenses || 0
-            };
+          // Group by month/year and calculate totals
+          const trendMap = new Map();
+          
+          (rows || []).forEach(row => {
+            const monthKey = `${row.year}-${String(row.month).padStart(2, '0')}`;
+            
+            if (!trendMap.has(monthKey)) {
+              const date = new Date(row.year, row.month - 1);
+              trendMap.set(monthKey, {
+                month: monthKey,
+                label: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+                submitted: 0,
+                approved: 0,
+                totalExpenses: 0
+              });
+            }
+            
+            const trendEntry = trendMap.get(monthKey);
+            
+            if (row.status === 'approved') {
+              trendEntry.approved++;
+            } else if (row.status === 'submitted' || row.status === 'pending_supervisor') {
+              trendEntry.submitted++;
+            }
+            
+            if (row.status === 'approved') {
+              let reportData = {};
+              try {
+                reportData = JSON.parse(row.reportData || '{}');
+              } catch (e) {
+                reportData = {};
+              }
+              trendEntry.totalExpenses += calculateTotalExpensesFromReportData(reportData);
+            }
           });
 
+          const trend = Array.from(trendMap.values());
           resolve(trend);
         }
       );
@@ -389,6 +512,7 @@ router.get('/api/supervisors/:id/kpis', async (req, res) => {
 
   } catch (error) {
     debugError('❌ Error fetching supervisor KPIs:', error);
+    debugError('❌ Error stack:', error.stack);
     res.status(500).json({ error: error.message || 'Failed to fetch supervisor KPIs' });
   }
 });
@@ -405,7 +529,18 @@ router.get('/api/monthly-reports/supervisor/:id/pending', async (req, res) => {
   
   try {
     // Get all supervised employees (direct + indirect)
-    const supervisedEmployeeIds = await dbService.getAllSupervisedEmployees(supervisorId);
+    let supervisedEmployeeIds = [];
+    try {
+      supervisedEmployeeIds = await dbService.getAllSupervisedEmployees(supervisorId);
+      if (!Array.isArray(supervisedEmployeeIds)) {
+        supervisedEmployeeIds = [];
+      }
+    } catch (superviseError) {
+      debugError('❌ Error getting supervised employees:', superviseError);
+      supervisedEmployeeIds = [];
+    }
+    
+    debugLog(`🔍 Supervisor ${supervisorId} has ${supervisedEmployeeIds.length} supervised employees`);
     
     if (supervisedEmployeeIds.length === 0) {
       res.json([]);
@@ -413,36 +548,90 @@ router.get('/api/monthly-reports/supervisor/:id/pending', async (req, res) => {
     }
 
     // Get pending reports for supervised employees
-    db.all(
-      `SELECT 
+    // Simplified query - check status and approver, handle NULL columns safely
+    // Note: totalExpenses is calculated from reportData, not stored as a column
+    const query = `SELECT 
         er.id,
         er.employeeId,
         COALESCE(NULLIF(e.preferredName, ''), e.name) as employeeName,
         e.name as employeeFullName,
         e.email as employeeEmail,
+        e.supervisorId as employeeSupervisorId,
         er.month,
         er.year,
         er.status,
         er.submittedAt,
-        er.totalExpenses,
         er.reportData,
-        er.approvalWorkflow
+        er.approvalWorkflow,
+        er.currentApprovalStage,
+        er.currentApproverId
       FROM expense_reports er
       LEFT JOIN employees e ON er.employeeId = e.id
       WHERE e.id IN (${supervisedEmployeeIds.map(() => '?').join(',')})
-        AND er.status IN ('submitted', 'pending_supervisor')
-        AND er.currentApproverId = ?
-      ORDER BY er.submittedAt DESC, er.year DESC, er.month DESC`,
-      [...supervisedEmployeeIds, supervisorId],
+        AND (
+          er.status IN ('submitted', 'pending_supervisor', 'needs_revision')
+        )
+      ORDER BY er.submittedAt DESC, er.year DESC, er.month DESC`;
+    
+    debugLog(`🔍 Executing query for supervisor ${supervisorId} with ${supervisedEmployeeIds.length} employees`);
+    
+    db.all(
+      query,
+      supervisedEmployeeIds,
       (err, rows) => {
         if (err) {
           debugError('❌ Error fetching pending reports:', err);
-          res.status(500).json({ error: err.message });
+          debugError('❌ Query:', query);
+          debugError('❌ Parameters:', [...supervisedEmployeeIds, supervisorId, supervisorId]);
+          res.status(500).json({ error: err.message || 'Failed to fetch pending reports' });
           return;
         }
 
+        // Filter reports to only those assigned to this supervisor
+        // Also handle reports that need revision
+        debugLog(`🔍 Filtering ${rows.length} reports for supervisor ${supervisorId}`);
+        
+        const filteredRows = (rows || []).filter(row => {
+          const status = row.status || '';
+          const currentApproverId = row.currentApproverId || '';
+          const currentApprovalStage = row.currentApprovalStage || '';
+          const employeeSupervisorId = row.employeeSupervisorId || '';
+          
+          debugLog(`  📋 Report ${row.id}: status=${status}, approver=${currentApproverId}, stage=${currentApprovalStage}, employee=${row.employeeId}, empSupervisor=${employeeSupervisorId}`);
+          
+          // Include if status is pending and assigned to this supervisor
+          if ((status === 'submitted' || status === 'pending_supervisor')) {
+            // Check if directly assigned to this supervisor
+            if (currentApproverId === supervisorId) {
+              debugLog(`  ✅ Including report ${row.id} - pending supervisor approval (assigned)`);
+              return true;
+            }
+            // Fallback: if no currentApproverId but employee's supervisor matches, include it
+            if ((!currentApproverId || currentApproverId === '') && employeeSupervisorId === supervisorId) {
+              debugLog(`  ✅ Including report ${row.id} - pending supervisor approval (employee's supervisor matches)`);
+              return true;
+            }
+            if (!currentApproverId || currentApproverId === '') {
+              debugLog(`  ⚠️  Report ${row.id} has ${status} status but no currentApproverId and employee supervisor doesn't match`);
+            }
+          }
+          
+          // Include if needs revision and is in supervisor stage
+          if (status === 'needs_revision' && 
+              (currentApprovalStage === 'pending_supervisor' || currentApprovalStage.toLowerCase().includes('supervisor'))) {
+            if (currentApproverId === supervisorId || employeeSupervisorId === supervisorId) {
+              debugLog(`  ✅ Including report ${row.id} - needs revision from supervisor`);
+              return true;
+            }
+          }
+          
+          return false;
+        });
+        
+        debugLog(`🔍 Filtered to ${filteredRows.length} reports for supervisor ${supervisorId}`);
+        
         // Parse report data and calculate totals
-        const reports = (rows || []).map(row => {
+        const reports = filteredRows.map(row => {
           try {
             row.reportData = JSON.parse(row.reportData || '{}');
             row.approvalWorkflow = helpers.parseJsonSafe(row.approvalWorkflow, []);
@@ -458,17 +647,8 @@ router.get('/api/monthly-reports/supervisor/:id/pending', async (req, res) => {
           row.totalMileageAmount = reportData.totalMileageAmount || 0;
           row.totalHours = reportData.totalHours || 0;
           
-          // Ensure totalExpenses is calculated
-          if (!row.totalExpenses && reportData.dailyEntries) {
-            row.totalExpenses = 0;
-            reportData.dailyEntries.forEach(entry => {
-              if (entry.receipts) {
-                entry.receipts.forEach(receipt => {
-                  row.totalExpenses += parseFloat(receipt.amount || 0);
-                });
-              }
-            });
-          }
+          // Calculate totalExpenses from reportData
+          row.totalExpenses = calculateTotalExpensesFromReportData(reportData);
 
           return row;
         });
@@ -478,6 +658,7 @@ router.get('/api/monthly-reports/supervisor/:id/pending', async (req, res) => {
     );
   } catch (error) {
     debugError('❌ Error fetching pending reports:', error);
+    debugError('❌ Error stack:', error.stack);
     res.status(500).json({ error: error.message || 'Failed to fetch pending reports' });
   }
 });

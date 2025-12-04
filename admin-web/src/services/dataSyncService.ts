@@ -12,6 +12,7 @@
 
 // Import types from main types file
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
+import { debugLog, debugError, debugWarn, debugVerbose } from '../config/debug';
 
 // Types are now imported from ../types
 
@@ -88,9 +89,9 @@ class DataSyncServiceClass {
       });
       
       realtimeInitialized = true;
-      console.log('✅ DataSyncService: Real-time sync initialized');
+      debugVerbose('✅ DataSyncService: Real-time sync initialized');
     } catch (error) {
-      console.warn('⚠️ DataSyncService: Failed to initialize real-time sync:', error);
+      debugWarn('⚠️ DataSyncService: Failed to initialize real-time sync:', error);
     }
   }
 
@@ -98,7 +99,7 @@ class DataSyncServiceClass {
    * Handle real-time updates
    */
   private handleRealtimeUpdate(type: string, update: any): void {
-    console.log(`🔄 DataSyncService: Handling ${type} update:`, update);
+    debugVerbose(`🔄 DataSyncService: Handling ${type} update:`, update);
     
     // Clear relevant cache entries
     const cacheKeysToClear = Array.from(this.cache.keys()).filter(key => 
@@ -107,7 +108,7 @@ class DataSyncServiceClass {
     
     cacheKeysToClear.forEach(key => {
       this.cache.delete(key);
-      console.log(`🗑️ DataSyncService: Cleared cache for ${key}`);
+      debugVerbose(`🗑️ DataSyncService: Cleared cache for ${key}`);
     });
     
     // Trigger cache refresh for affected data
@@ -147,7 +148,7 @@ class DataSyncServiceClass {
           break;
       }
     } catch (error) {
-      console.error('❌ DataSyncService: Error refreshing data:', error);
+      debugError('❌ DataSyncService: Error refreshing data:', error);
     }
   }
 
@@ -233,7 +234,7 @@ class DataSyncServiceClass {
         skipCache
       );
     } catch (error) {
-      console.error('Error fetching employee:', error);
+      debugError('Error fetching employee:', error);
       return null;
     }
   }
@@ -250,7 +251,7 @@ class DataSyncServiceClass {
         skipCache
       );
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      debugError('Error fetching employees:', error);
       return [];
     }
   }
@@ -289,7 +290,7 @@ class DataSyncServiceClass {
         skipCache
       );
     } catch (error) {
-      console.error('Error fetching mileage entries:', error);
+      debugError('Error fetching mileage entries:', error);
       return [];
     }
   }
@@ -321,7 +322,7 @@ class DataSyncServiceClass {
         skipCache
       );
     } catch (error) {
-      console.error('Error fetching receipts:', error);
+      debugError('Error fetching receipts:', error);
       return [];
     }
   }
@@ -353,7 +354,7 @@ class DataSyncServiceClass {
         skipCache
       );
     } catch (error) {
-      console.error('Error fetching time tracking:', error);
+      debugError('Error fetching time tracking:', error);
       return [];
     }
   }
@@ -388,7 +389,7 @@ class DataSyncServiceClass {
         timeTracking,
       };
     } catch (error) {
-      console.error('Error fetching employee data:', error);
+      debugError('Error fetching employee data:', error);
       return {
         employee: null,
         mileage: [],
@@ -410,7 +411,7 @@ class DataSyncServiceClass {
         skipCache
       );
     } catch (error) {
-      console.error('Error fetching expense reports:', error);
+      debugError('Error fetching expense reports:', error);
       return [];
     }
   }
@@ -442,7 +443,7 @@ class DataSyncServiceClass {
 
       return result;
     } catch (error) {
-      console.error('Error saving expense report:', error);
+      debugError('Error saving expense report:', error);
       return null;
     }
   }
@@ -473,7 +474,7 @@ class DataSyncServiceClass {
 
       return true;
     } catch (error) {
-      console.error('Error deleting expense report:', error);
+      debugError('Error deleting expense report:', error);
       return false;
     }
   }
@@ -494,7 +495,7 @@ class DataSyncServiceClass {
 
       return result;
     } catch (error) {
-      console.error('Error updating employee:', error);
+      debugError('Error updating employee:', error);
       return null;
     }
   }
@@ -515,7 +516,7 @@ class DataSyncServiceClass {
 
       return result;
     } catch (error) {
-      console.error('Error creating mileage entry:', error);
+      debugError('Error creating mileage entry:', error);
       return null;
     }
   }
@@ -536,7 +537,7 @@ class DataSyncServiceClass {
 
       return result;
     } catch (error) {
-      console.error('Error creating receipt:', error);
+      debugError('Error creating receipt:', error);
       return null;
     }
   }
@@ -557,7 +558,7 @@ class DataSyncServiceClass {
 
       return result;
     } catch (error) {
-      console.error('Error creating time tracking entry:', error);
+      debugError('Error creating time tracking entry:', error);
       return null;
     }
   }

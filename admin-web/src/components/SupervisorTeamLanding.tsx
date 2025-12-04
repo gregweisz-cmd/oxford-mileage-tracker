@@ -34,6 +34,7 @@ import {
   Group
 } from '@mui/icons-material';
 import { ReportApprovalService, ReportStatus } from '../services/reportApprovalService';
+import { debugError } from '../config/debug';
 
 interface TeamMember {
   id: string;
@@ -153,7 +154,7 @@ export const SupervisorTeamLanding: React.FC<SupervisorTeamLandingProps> = ({
           });
 
         } catch (err) {
-          console.error(`Error loading data for employee ${member.id}:`, err);
+          debugError(`Error loading data for employee ${member.id}:`, err);
           statuses.push({
             employeeId: member.id,
             employeeName: member.name,
@@ -166,7 +167,7 @@ export const SupervisorTeamLanding: React.FC<SupervisorTeamLandingProps> = ({
       setReportStatuses(statuses);
 
     } catch (err) {
-      console.error('Error loading team data:', err);
+      debugError('Error loading team data:', err);
       setError('Failed to load team data. Please try again.');
     } finally {
       setLoading(false);
@@ -189,7 +190,7 @@ export const SupervisorTeamLanding: React.FC<SupervisorTeamLandingProps> = ({
 
       return mileageEntries.length > 0 || receipts.length > 0 || timeTracking.length > 0;
     } catch (err) {
-      console.error('Error checking employee data:', err);
+      debugError('Error checking employee data:', err);
       return false;
     }
   };
@@ -214,7 +215,7 @@ export const SupervisorTeamLanding: React.FC<SupervisorTeamLandingProps> = ({
       await loadTeamData();
 
     } catch (err) {
-      console.error('Error submitting report for review:', err);
+      debugError('Error submitting report for review:', err);
       setError('Failed to submit report for review. Please try again.');
     }
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box,
   Card,
@@ -75,6 +75,14 @@ import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
 import { DashboardStatistics } from './DashboardStatistics';
 import { NotificationBell } from './NotificationBell';
+import DetailedReportView from './DetailedReportView';
+
+// Keyboard shortcuts
+import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
+import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
+
+// Debug logging
+import { debugError, debugLog } from '../config/debug';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -185,7 +193,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   // Filters and search
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [monthFilter, setMonthFilter] = useState<string>('current');
+  const [monthFilter, setMonthFilter] = useState<string>('all'); // Changed from 'current' to 'all' to show all reports by default
 
   // Selected report for review
   const [selectedReport, setSelectedReport] = useState<TeamReport | null>(null);
@@ -193,12 +201,18 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
   const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
+  const [detailedReportViewOpen, setDetailedReportViewOpen] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [selectedItemsForRevision, setSelectedItemsForRevision] = useState<{ mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> } | null>(null);
+  
+  // Keyboard shortcuts state
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
 
   // Employee report viewing
   const [viewingEmployeeReport, setViewingEmployeeReport] = useState<Employee | null>(null);
+  const [viewingReportMonth, setViewingReportMonth] = useState<number | null>(new Date().getMonth() + 1);
+  const [viewingReportYear, setViewingReportYear] = useState<number | null>(new Date().getFullYear());
   const [showEmployeeReportView, setShowEmployeeReportView] = useState(false);
-  const [viewingReportMonth, setViewingReportMonth] = useState<number>(new Date().getMonth() + 1);
-  const [viewingReportYear, setViewingReportYear] = useState<number>(new Date().getFullYear());
 
   const [showDashboardWidgets, setShowDashboardWidgets] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
@@ -264,14 +278,15 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       }));
       setTeamMembers(mapped);
     } catch (error) {
-      console.error('Error loading team members:', error);
+      debugError('Error loading team members:', error);
       setTeamMembers([]);
     }
   }, [supervisorId]);
 
   const loadTeamReports = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports?teamSupervisorId=${supervisorId}`);
+      // Use /api/monthly-reports endpoint which supports teamSupervisorId filtering
+      const response = await fetch(`${API_BASE_URL}/api/monthly-reports?teamSupervisorId=${supervisorId}`);
       if (!response.ok) throw new Error('Failed to load reports');
       const data = await response.json();
       const mapped: TeamReport[] = data.map((report: any) => {
@@ -317,9 +332,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         };
       });
 
+      debugLog(`📊 Loaded ${mapped.length} team reports for supervisor ${supervisorId}`);
       setTeamReports(mapped);
     } catch (error) {
-      console.error('Error loading team reports:', error);
+      debugError('Error loading team reports:', error);
       setTeamReports([]);
     }
   }, [supervisorId]);
@@ -362,7 +378,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         loadTeamReports(),
       ]);
     } catch (error) {
-      console.error('Error loading supervisor data:', error);
+      debugError('Error loading supervisor data:', error);
     } finally {
       setLoading(false);
     }
@@ -404,7 +420,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       setSupervisorCertificationAcknowledged(false);
       await loadTeamReports();
     } catch (error) {
-      console.error('Error approving report:', error);
+      debugError('Error approving report:', error);
       alert('Failed to approve report. Please try again.');
     } finally {
       setSavingAction(false);
@@ -420,15 +436,26 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     setSavingAction(true);
     try {
       // Use request_revision_to_employee action to send back to employee
+      const body: any = {
+        action: 'request_revision_to_employee',
+        approverId: supervisorId,
+        approverName: supervisorName,
+        comments: reviewComment.trim(),
+      };
+      
+      // Include selected items if any were selected
+      if (selectedItemsForRevision) {
+        body.selectedItems = {
+          mileage: Array.from(selectedItemsForRevision.mileage),
+          receipts: Array.from(selectedItemsForRevision.receipts),
+          timeTracking: Array.from(selectedItemsForRevision.timeTracking),
+        };
+      }
+      
       const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'request_revision_to_employee',
-          approverId: supervisorId,
-          approverName: supervisorName,
-          comments: reviewComment.trim(),
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -440,12 +467,177 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       await loadTeamReports();
       alert('Report sent back to employee for revision.');
     } catch (error) {
-      console.error('Error requesting revision:', error);
+      debugError('Error requesting revision:', error);
       alert('Failed to request revision. Please try again.');
     } finally {
       setSavingAction(false);
     }
   };
+
+  // Memoized callback for selected items change to prevent infinite loops
+  const handleSelectedItemsChange = useCallback((selectedItems: { mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> }) => {
+    setSelectedItemsForRevision(selectedItems);
+  }, []);
+
+  // Handler for approving report from StaffPortal - sends to finance
+  const handleApproveFromPortal = useCallback(async () => {
+    if (!viewingEmployeeReport || !viewingReportMonth || !viewingReportYear) {
+      alert('Unable to approve: Missing report information');
+      return;
+    }
+    
+    // Find the report ID from teamReports
+    const report = teamReports.find(r => 
+      r.employeeId === viewingEmployeeReport.id && 
+      r.month === viewingReportMonth && 
+      r.year === viewingReportYear
+    );
+    
+    if (!report || !report.id) {
+      alert('Unable to approve: Report not found');
+      return;
+    }
+    
+    // Check if supervisor certification is acknowledged
+    if (!supervisorCertificationAcknowledged) {
+      const shouldAcknowledge = window.confirm('Please acknowledge the certification statement before approving. Would you like to acknowledge now?');
+      if (shouldAcknowledge) {
+        setSupervisorCertificationAcknowledged(true);
+      } else {
+        return;
+      }
+    }
+    
+    const confirmApprove = window.confirm(`Are you sure you want to approve this report and send it to the finance team?`);
+    if (!confirmApprove) {
+      return;
+    }
+    
+    setSavingAction(true);
+    try {
+      // Use 'approve' action which sends to finance
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${report.id}/approval`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approve',
+          approverId: supervisorId,
+          approverName: supervisorName,
+          supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to approve report: ${errorText}`);
+      }
+
+      setSupervisorCertificationAcknowledged(false);
+      await loadTeamReports();
+      setShowEmployeeReportView(false);
+      alert('Report approved and sent to finance team successfully!');
+    } catch (error) {
+      debugError('Error approving report:', error);
+      alert(`Failed to approve report. Please try again. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSavingAction(false);
+    }
+  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports, supervisorId, supervisorName, supervisorCertificationAcknowledged, loadTeamReports]);
+
+  // Handler for requesting revision from StaffPortal - sends back to employee with notes
+  const handleRequestRevisionFromPortal = useCallback(async () => {
+    if (!viewingEmployeeReport || !viewingReportMonth || !viewingReportYear) {
+      alert('Unable to request revision: Missing report information');
+      return;
+    }
+    
+    // Find the report ID from teamReports
+    const report = teamReports.find(r => 
+      r.employeeId === viewingEmployeeReport.id && 
+      r.month === viewingReportMonth && 
+      r.year === viewingReportYear
+    );
+    
+    if (!report || !report.id) {
+      alert('Unable to request revision: Report not found');
+      return;
+    }
+    
+    // Open the review dialog with the report selected
+    setSelectedReport(report);
+    setReviewDialogOpen(true);
+  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports]);
+
+  // Store handlers in refs to ensure they're always available
+  const approveHandlerRef = useRef(handleApproveFromPortal);
+  const revisionHandlerRef = useRef(handleRequestRevisionFromPortal);
+  
+  // Update refs when handlers change
+  useEffect(() => {
+    approveHandlerRef.current = handleApproveFromPortal;
+    revisionHandlerRef.current = handleRequestRevisionFromPortal;
+  }, [handleApproveFromPortal, handleRequestRevisionFromPortal]);
+  
+  // Create stable handler references that are ALWAYS functions
+  const stableApproveHandler = useCallback(() => {
+    if (typeof approveHandlerRef.current === 'function') {
+      approveHandlerRef.current();
+    } else {
+      console.error('❌ Approve handler is not a function!', approveHandlerRef.current);
+    }
+  }, []); // Empty deps - ref never changes
+
+  const stableRevisionHandler = useCallback(() => {
+    if (typeof revisionHandlerRef.current === 'function') {
+      revisionHandlerRef.current();
+    } else {
+      console.error('❌ Revision handler is not a function!', revisionHandlerRef.current);
+    }
+  }, []); // Empty deps - ref never changes
+
+  // Debug: Log handlers immediately after creation (only in development)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 SupervisorPortal: Handlers created/updated:', {
+        handleApproveFromPortal: typeof handleApproveFromPortal,
+        handleRequestRevisionFromPortal: typeof handleRequestRevisionFromPortal,
+        stableApproveHandler: typeof stableApproveHandler,
+        stableRevisionHandler: typeof stableRevisionHandler,
+      });
+    }
+  }, [handleApproveFromPortal, handleRequestRevisionFromPortal, stableApproveHandler, stableRevisionHandler]);
+
+  // Debug: Log handlers when dialog opens
+  useEffect(() => {
+    if (showEmployeeReportView && viewingEmployeeReport) {
+      console.log('🔍 SupervisorPortal: Dialog opened, checking handlers:', {
+        hasApprove: typeof handleApproveFromPortal === 'function',
+        hasRevision: typeof handleRequestRevisionFromPortal === 'function',
+        handleApproveFromPortal,
+        handleRequestRevisionFromPortal,
+        viewingEmployeeReport: !!viewingEmployeeReport,
+        viewingReportMonth,
+        viewingReportYear,
+        supervisorId,
+        supervisorName
+      });
+      debugLog('🔍 SupervisorPortal: Dialog opened, checking handlers:', {
+        hasApprove: typeof handleApproveFromPortal === 'function',
+        hasRevision: typeof handleRequestRevisionFromPortal === 'function',
+        viewingEmployeeReport: !!viewingEmployeeReport,
+        viewingReportMonth,
+        viewingReportYear,
+        supervisorId,
+        supervisorName
+      });
+      if (typeof handleApproveFromPortal !== 'function') {
+        console.error('❌ handleApproveFromPortal is not a function!', handleApproveFromPortal);
+      }
+      if (typeof handleRequestRevisionFromPortal !== 'function') {
+        console.error('❌ handleRequestRevisionFromPortal is not a function!', handleRequestRevisionFromPortal);
+      }
+    }
+  }, [showEmployeeReportView, viewingEmployeeReport, handleApproveFromPortal, handleRequestRevisionFromPortal, viewingReportMonth, viewingReportYear, supervisorId, supervisorName]);
 
   const handleResubmitToFinance = async (reportId: string) => {
     if (!reviewComment.trim()) {
@@ -475,7 +667,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       await loadTeamReports();
       alert('Report resubmitted to Finance team.');
     } catch (error) {
-      console.error('Error resubmitting to finance:', error);
+      debugError('Error resubmitting to finance:', error);
       alert('Failed to resubmit to finance. Please try again.');
     } finally {
       setSavingAction(false);
@@ -501,7 +693,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         }));
       setAvailableDelegates(mapped);
     } catch (error) {
-      console.error('Error loading delegates:', error);
+      debugError('Error loading delegates:', error);
       setAvailableDelegates([]);
     } finally {
       setLoadingDelegates(false);
@@ -549,7 +741,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       await loadTeamReports();
       handleCloseDelegateDialog();
     } catch (error) {
-      console.error('Error delegating report:', error);
+      debugError('Error delegating report:', error);
       alert('Failed to delegate report. Please try again.');
     } finally {
       setSavingAction(false);
@@ -574,7 +766,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
       await loadTeamReports();
     } catch (error) {
-      console.error('Error sending reminder:', error);
+      debugError('Error sending reminder:', error);
       alert('Failed to send reminder. Please try again.');
     }
   };
@@ -603,7 +795,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       setReviewComment('');
       await loadTeamReports();
     } catch (error) {
-      console.error('Error adding comment:', error);
+      debugError('Error adding comment:', error);
       alert('Failed to add comment. Please try again.');
     } finally {
       setSavingAction(false);
@@ -612,6 +804,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
   const handleViewEmployeeReport = (employee: Employee, month?: number, year?: number) => {
     setViewingEmployeeReport(employee);
+    if (month) setViewingReportMonth(month);
+    if (year) setViewingReportYear(year);
     if (month) setViewingReportMonth(month);
     if (year) setViewingReportYear(year);
     setShowEmployeeReportView(true);
@@ -658,7 +852,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           }
         }
       } catch (error) {
-        console.error('Error fetching report for navigation:', error);
+        debugError('Error fetching report for navigation:', error);
       }
       return;
     }
@@ -690,40 +884,43 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           );
         }
       } catch (error) {
-        console.error('Error fetching employee for navigation:', error);
+        debugError('Error fetching employee for navigation:', error);
       }
     }
   };
 
-  const filteredReports = teamReports.filter((report) => {
-    const matchesSearch = report.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
+  // Memoize filteredReports to prevent unnecessary recalculations and infinite loops
+  const filteredReports = useMemo(() => {
+    return teamReports.filter((report) => {
+      const matchesSearch = report.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesStatus = (() => {
-      if (statusFilter === 'all') return true;
-      if (statusFilter === 'pending_supervisor') {
-        return report.status === 'pending_supervisor' || report.status === 'submitted';
-      }
-      if (statusFilter === 'pending_finance') {
-        return report.status === 'pending_finance' || report.status === 'under_review';
-      }
-      return report.status === statusFilter;
-    })();
+      const matchesStatus = (() => {
+        if (statusFilter === 'all') return true;
+        if (statusFilter === 'pending_supervisor') {
+          return report.status === 'pending_supervisor' || report.status === 'submitted';
+        }
+        if (statusFilter === 'pending_finance') {
+          return report.status === 'pending_finance' || report.status === 'under_review';
+        }
+        return report.status === statusFilter;
+      })();
 
-    const matchesMonth = (() => {
-      const currentDate = new Date();
-      if (monthFilter === 'current') {
-        return report.month === currentDate.getMonth() + 1 && report.year === currentDate.getFullYear();
-      }
-      if (monthFilter === 'all') return true;
-      const monthNumber = parseInt(monthFilter, 10);
-      if (!Number.isNaN(monthNumber)) {
-        return report.month === monthNumber;
-      }
-      return true;
-    })();
+      const matchesMonth = (() => {
+        const currentDate = new Date();
+        if (monthFilter === 'current') {
+          return report.month === currentDate.getMonth() + 1 && report.year === currentDate.getFullYear();
+        }
+        if (monthFilter === 'all') return true;
+        const monthNumber = parseInt(monthFilter, 10);
+        if (!Number.isNaN(monthNumber)) {
+          return report.month === monthNumber;
+        }
+        return true;
+      })();
 
-    return matchesSearch && matchesStatus && matchesMonth;
-  });
+      return matchesSearch && matchesStatus && matchesMonth;
+    });
+  }, [teamReports, searchTerm, statusFilter, monthFilter]);
 
   const getStatusColor = (status: TeamReport['status']) => {
     switch (status) {
@@ -769,6 +966,42 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     }
     return { label: `Due in ${hours}h`, color: 'default' as const };
   };
+
+  // Keyboard shortcuts setup (defined after all handler functions)
+  const shortcuts: KeyboardShortcut[] = [
+    {
+      key: 'r',
+      ctrl: true,
+      action: () => {
+        loadTeamReports();
+      },
+      description: 'Refresh team reports',
+    },
+    {
+      key: 'f',
+      ctrl: true,
+      action: () => {
+        // Focus search field if available
+        const searchInput = document.querySelector('input[placeholder*="Search"], input[type="search"]') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      },
+      description: 'Focus search field',
+    },
+    {
+      key: '/',
+      ctrl: true,
+      action: () => {
+        setShortcutsDialogOpen(true);
+      },
+      description: 'Show keyboard shortcuts',
+    },
+  ];
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts(shortcuts, true);
 
   if (loading) {
     return (
@@ -1102,13 +1335,36 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                                 label={`Delegated to ${currentStep.delegatedToName}`}
                               />
                             )}
-                            <Tooltip title="View Report">
+                            <Tooltip title="View Full Report Details">
                               <IconButton
                                 size="small"
                                 onClick={() => {
-                                  setSelectedReport(report);
-                                  setReviewComment('');
-                                  setReviewDialogOpen(true);
+                                  const employee = teamMembers.find(m => m.id === report.employeeId || m.name === report.employeeName);
+                                  if (employee) {
+                                    handleViewEmployeeReport(employee, report.month, report.year);
+                                  } else {
+                                    // If employee not in team list, fetch it
+                                    fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`)
+                                      .then(res => res.json())
+                                      .then(empData => {
+                                        handleViewEmployeeReport(
+                                          {
+                                            id: empData.id,
+                                            name: empData.name || report.employeeName,
+                                            email: empData.email || '',
+                                            position: empData.position || '',
+                                            supervisorId: empData.supervisorId,
+                                            costCenters: empData.costCenters || [],
+                                          },
+                                          report.month,
+                                          report.year
+                                        );
+                                      })
+                                      .catch(err => {
+                                        debugError('Error loading employee for report view:', err);
+                                        alert('Failed to load employee details');
+                                      });
+                                  }
                                 }}
                               >
                                 <VisibilityIcon />
@@ -1256,16 +1512,16 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                         </Box>
                       }
                       secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
+                        <>
+                          <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                             {member.position} • {member.email}
                           </Typography>
-                          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                          <Box component="span" sx={{ display: 'inline-flex', gap: 1, flexWrap: 'wrap' }}>
                             {(member.costCenters || []).map((cc) => (
                               <Chip key={cc} label={cc} size="small" variant="outlined" />
                             ))}
                           </Box>
-                        </Box>
+                        </>
                       }
                     />
                     <ListItemSecondaryAction>
@@ -1370,6 +1626,21 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                     Supervisor: I have read and agree to the certification statement above
                   </Typography>
                 </Box>
+              </Box>
+
+              <Box sx={{ mt: 3, mb: 2 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<VisibilityIcon />}
+                  onClick={() => {
+                    if (selectedReport) {
+                      setDetailedReportViewOpen(true);
+                      setSelectedReportId(selectedReport.id);
+                    }
+                  }}
+                >
+                  View Full Report Details
+                </Button>
               </Box>
 
               <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
@@ -1526,6 +1797,14 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         </DialogActions>
       </Dialog>
 
+      {/* Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog
+        open={shortcutsDialogOpen}
+        onClose={() => setShortcutsDialogOpen(false)}
+        shortcuts={shortcuts}
+        title="Keyboard Shortcuts - Supervisor Portal"
+      />
+
       {/* Employee Report View Modal */}
       <Dialog 
         open={showEmployeeReportView} 
@@ -1556,16 +1835,20 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               </Alert>
               <StaffPortal
                 employeeId={viewingEmployeeReport.id}
-                reportMonth={viewingReportMonth}
-                reportYear={viewingReportYear}
+                reportMonth={viewingReportMonth ?? new Date().getMonth() + 1}
+                reportYear={viewingReportYear ?? new Date().getFullYear()}
                 supervisorMode={true}
                 supervisorId={supervisorId}
                 supervisorName={supervisorName}
+                onSelectedItemsChange={handleSelectedItemsChange}
+                onApproveReport={stableApproveHandler}
+                onRequestRevision={stableRevisionHandler}
               />
             </Box>
           )}
         </DialogContent>
       </Dialog>
+
     </Box>
   );
 };

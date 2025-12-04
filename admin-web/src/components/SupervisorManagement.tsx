@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { Tabs, Tab } from '@mui/material';
 import { Employee } from '../types';
+import { debugLog, debugError } from '../config/debug';
 
 interface SupervisorManagementProps {
   employees: Employee[];
@@ -105,14 +106,14 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       // Check for Senior Staff designation
       if (positionLower.includes('senior staff')) {
         type = 'senior-staff';
-        console.log('👥 Found senior staff:', emp.name, emp.position);
+        debugLog('👥 Found senior staff:', emp.name, emp.position);
       }
       // Check for Supervisor, Manager, or Director
       else if (positionLower.includes('supervisor') || 
                positionLower.includes('manager') ||
                positionLower.includes('director')) {
         type = 'supervisor';
-        console.log('👔 Found supervisor:', emp.name, emp.position);
+        debugLog('👔 Found supervisor:', emp.name, emp.position);
       }
       
       if (type && !supervisorMap.has(emp.id)) {
@@ -154,7 +155,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   }, [employees, excludedFromSupervisorList]);
 
   useEffect(() => {
-    console.log('🔄 SupervisorManagement: Reorganizing supervisors, employee count:', employees.length);
+    debugLog('🔄 SupervisorManagement: Reorganizing supervisors, employee count:', employees.length);
     organizeSupervisors();
   }, [employees, organizeSupervisors]);
 
@@ -193,7 +194,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       // Refresh the employee list
       await onRefresh();
     } catch (error) {
-      console.error('Error assigning staff:', error);
+      debugError('Error assigning staff:', error);
     }
   };
 
@@ -204,7 +205,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       // Refresh the employee list
       await onRefresh();
     } catch (error) {
-      console.error('Error removing staff:', error);
+      debugError('Error removing staff:', error);
     }
   };
 
@@ -254,7 +255,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       // Refresh the employee list
       await onRefresh();
     } catch (error) {
-      console.error('Error promoting employee:', error);
+      debugError('Error promoting employee:', error);
     }
   };
 
@@ -288,7 +289,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       setEmployeeToEdit(null);
       await onRefresh();
     } catch (error) {
-      console.error('Error updating employee:', error);
+      debugError('Error updating employee:', error);
     }
   };
 
@@ -296,8 +297,8 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     if (!supervisorToDelete) return;
 
     try {
-      console.log('🗑️ Removing from supervisor list:', supervisorToDelete.name);
-      console.log('📝 Position (unchanged):', supervisorToDelete.position);
+      debugLog('🗑️ Removing from supervisor list:', supervisorToDelete.name);
+      debugLog('📝 Position (unchanged):', supervisorToDelete.position);
       
       // Add to excluded list (keeps their title but removes from supervisor view)
       setExcludedFromSupervisorList(prev => new Set(prev).add(supervisorToDelete.id));
@@ -314,9 +315,9 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       setDeleteConfirmOpen(false);
       setSupervisorToDelete(null);
       
-      console.log('✅ Removed from supervisor list (title unchanged)');
+      debugLog('✅ Removed from supervisor list (title unchanged)');
     } catch (error) {
-      console.error('Error demoting supervisor:', error);
+      debugError('Error demoting supervisor:', error);
       setDeleteConfirmOpen(false);
       setSupervisorToDelete(null);
     }
@@ -371,7 +372,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       setBulkImportResult(results);
       await onRefresh();
     } catch (error) {
-      console.error('Error during bulk import:', error);
+      debugError('Error during bulk import:', error);
       alert('Failed to bulk import: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };

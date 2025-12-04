@@ -1,175 +1,273 @@
 # Oxford House Expense Tracker
 
-A cross-platform mobile and web application for Oxford House employees to track mileage, receipts, hours worked, and manage expense reporting.
+A comprehensive cross-platform expense tracking system for Oxford House employees, featuring mobile apps, web portals, real-time synchronization, and automated approval workflows.
 
-## Features
+## 🎯 Overview
 
-### 🚗 Mileage Tracking
-- Add, edit, and delete mileage entries
-- Track start/end locations, purpose, miles, and vehicle used
-- Date picker for easy entry management
-- Notes field for additional details
+The Oxford House Expense Tracker is a full-stack application that enables employees to track mileage, receipts, and work hours, with automated workflows for supervisor and finance approvals. The system consists of:
 
-### 📊 Monthly Reports
-- Generate monthly mileage reports
-- View total miles and entry counts
-- Export reports to CSV format
-- Share reports locally or export to Slack
+- **Mobile App** (React Native/Expo) - iOS and Android
+- **Web Portal** (React) - Staff, Supervisor, Finance, and Admin portals
+- **Backend API** (Node.js/Express) - RESTful API with WebSocket real-time sync
+- **Database** (SQLite) - Local and cloud database
 
-### 📱 Cross-Platform Support
-- **Mobile**: Native iOS and Android apps via Expo
-- **Web**: Responsive web application
-- **Offline**: Local SQLite database for offline functionality
+## ✨ Key Features
 
-### 🔗 Slack Integration
-- Export monthly reports directly to Slack channels
-- Configurable webhook URLs and bot tokens
-- Automatic CSV file generation and upload
+### 📱 Mobile App (Expo)
+- **Mileage Tracking** - Log trips with GPS location, purpose, and distance
+- **Receipt Capture** - Photo capture and OCR for receipt processing
+- **Time Tracking** - Track work hours with cost center categorization
+- **Offline Support** - Local SQLite database with automatic sync
+- **Real-time Sync** - WebSocket-based bidirectional data synchronization
+- **PDF Export** - Generate monthly expense reports with receipts
 
-## Technology Stack
+### 🌐 Web Portal
+- **Staff Portal** - Employees can view/edit entries, submit reports, view notifications
+- **Supervisor Portal** - Approve/reject reports, view team KPIs, manage revisions
+- **Finance Portal** - Final approval, detailed reporting, analytics
+- **Admin Portal** - Employee management, system configuration, oversight
 
-- **Frontend**: React Native with Expo
-- **Navigation**: React Navigation
-- **Database**: SQLite (expo-sqlite)
-- **UI Components**: Material Icons, Custom Components
-- **File Handling**: Expo File System
-- **Sharing**: Expo Sharing
-- **Date Picking**: React Native Community DateTimePicker
+### 🔔 Notifications System
+- **In-App Notifications** - Real-time notification bell with unread counts
+- **Email Notifications** - Automatic emails for:
+  - Report submissions
+  - Approval requests
+  - Revision requests
+  - Sunday expense reminders (editable preference)
+- **Clickable Notifications** - Direct navigation to relevant reports
 
-## Getting Started
+### 📊 Approval Workflow
+- **Multi-Level Approval** - Employee → Supervisor → Finance
+- **Revision System** - Request changes at any level with comments
+- **Status Tracking** - Draft, Submitted, Needs Revision, Approved
+- **History & Audit Trail** - Complete approval history with timestamps
+
+### 📈 Reporting & Analytics
+- **Grid Timesheet** - 30-day layout with cost center breakdown
+- **Monthly Reports** - Comprehensive expense reports with totals
+- **PDF Export** - Professional PDFs with receipts, timesheets, and summaries
+- **Supervisor KPIs** - Team performance metrics and approval rates
+- **Cost Center Analysis** - Detailed breakdown by cost center and category
+
+### 🔐 Security & Infrastructure
+- **Password Security** - bcrypt hashing with password audit tools
+- **Rate Limiting** - API protection against abuse
+- **Health Checks** - Comprehensive system health monitoring
+- **Automated Backups** - Database backup scripts with compression
+- **Error Tracking** - Structured error logging and monitoring
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
+│   Mobile App    │◄───────►│  Backend API     │◄───────►│  Web Portal     │
+│    (Expo)       │         │   (Render.com)   │         │    (Vercel)     │
+│                 │         │                  │         │                 │
+│ • React Native  │         │ • Node.js        │         │ • React         │
+│ • SQLite (local)│         │ • Express        │         │ • Material-UI   │
+│ • WebSocket     │         │ • SQLite (cloud) │         │ • Real-time UI  │
+│ • Offline-first │         │ • WebSocket      │         │                 │
+└─────────────────┘         └──────────────────┘         └─────────────────┘
+```
+
+### Technology Stack
+
+**Mobile:**
+- React Native with Expo
+- SQLite (expo-sqlite)
+- React Navigation
+- WebSocket client
+
+**Web:**
+- React 18
+- TypeScript
+- Material-UI (MUI)
+- React Router
+
+**Backend:**
+- Node.js
+- Express.js
+- SQLite3
+- WebSocket (ws)
+- Nodemailer (email)
+- bcryptjs (password hashing)
+
+**Deployment:**
+- Mobile: Expo OTA Updates + App Store/Play Store
+- Backend: Render.com
+- Frontend: Vercel
+
+## 🚀 Getting Started
 
 ### Prerequisites
+
 - Node.js (v16 or higher)
 - npm or yarn
 - Expo CLI (`npm install -g @expo/cli`)
+- Git
 
-### Installation
+### Quick Start
 
-1. Clone the repository:
+1. **Clone the repository:**
 ```bash
 git clone <repository-url>
 cd oxford-mileage-tracker
 ```
 
-2. Install dependencies:
+2. **Install dependencies:**
+
 ```bash
+# Root dependencies (for mobile app)
+npm install
+
+# Web portal dependencies
+cd admin-web
+npm install
+
+# Backend dependencies
+cd backend
 npm install
 ```
 
-3. Start the development server:
+3. **Start development servers:**
+
+**Terminal 1 - Backend:**
 ```bash
+cd admin-web/backend
 npm start
 ```
 
-### Running the App
-
-#### Web
+**Terminal 2 - Web Portal:**
 ```bash
-npm run web
+cd admin-web
+npm start
 ```
 
-#### Mobile (iOS)
+**Terminal 3 - Mobile App:**
 ```bash
-npm run ios
+cd oxford-mileage-tracker
+npm start
 ```
 
-#### Mobile (Android)
+### Environment Setup
+
+Create `.env` files as needed:
+
+**Backend** (`admin-web/backend/.env`):
+```
+NODE_ENV=development
+PORT=3002
+DATABASE_PATH=./expense_tracker.db
+```
+
+**Frontend** (`admin-web/.env`):
+```
+REACT_APP_API_URL=http://localhost:3002
+```
+
+## 📖 Documentation
+
+Comprehensive documentation is organized in the `docs/` folder:
+
+- **[Developer Guides](docs/developer/)** - Architecture, database, API, setup guides
+- **[Admin Guides](docs/admin-guides/)** - Supervisor management, user administration
+- **[Deployment Guides](docs/deployment/)** - Production deployment instructions
+- **[User Guides](docs/user-guides/)** - End-user documentation (coming soon)
+
+### Key Documentation Files
+
+- [Startup Guide](docs/developer/STARTUP_GUIDE.md) - How to start all services
+- [Database Quick Start](docs/developer/DATABASE_QUICK_START.md) - Database setup
+- [Deployment Guide](docs/deployment/DEPLOY.md) - Production deployment
+- [Architecture Overview](docs/developer/ARCHITECTURE.md) - System architecture
+
+## 🔧 Development
+
+### Project Structure
+
+```
+oxford-mileage-tracker/
+├── src/                    # Mobile app source
+│   ├── components/         # React Native components
+│   ├── screens/            # App screens
+│   ├── services/           # API and database services
+│   └── config/             # Configuration
+├── admin-web/              # Web portal
+│   ├── src/                # React source
+│   │   ├── components/     # Portal components
+│   │   └── services/       # API services
+│   └── backend/            # Backend API
+│       ├── routes/         # API routes
+│       ├── services/       # Business logic
+│       └── scripts/        # Utility scripts
+└── docs/                   # Documentation
+```
+
+### Database Schema
+
+Key tables:
+- `employees` - User accounts and profiles
+- `mileage_entries` - Mileage tracking records
+- `receipts` - Receipt records with images
+- `time_tracking` - Work hour entries
+- `expense_reports` - Monthly reports with approval workflow
+- `notifications` - Unified notification system
+- `report_approvals` - Approval history
+
+See [Database Management Guide](docs/developer/DATABASE_MANAGEMENT_GUIDE.md) for details.
+
+## 🧪 Testing
+
+### Local Testing
+
+1. Start all services (see Quick Start)
+2. Use test credentials (see admin portal)
+3. Test mobile app with Expo Go or development build
+4. Verify real-time sync between mobile and web
+
+### Production Testing
+
+- Backend: https://oxford-mileage-backend.onrender.com
+- Frontend: Deployed on Vercel
+- Mobile: Production build via Expo
+
+## 📦 Deployment
+
+See [Deployment Guide](docs/deployment/DEPLOY.md) for detailed instructions.
+
+### Quick Deploy
+
 ```bash
-npm run android
+# Deploy backend and frontend
+cd admin-web/backend
+npm run deploy
 ```
 
-## Usage
+This will:
+1. Commit all changes
+2. Push to GitHub
+3. Trigger Render and Vercel auto-deployment
 
-### Adding Mileage Entries
-1. Open the app and tap "Add Mileage Entry"
-2. Fill in the required fields:
-   - Date of travel
-   - Start location
-   - End location
-   - Purpose of travel
-   - Miles traveled
-   - Vehicle used
-   - Optional notes
-3. Tap "Save Entry"
+### Mobile App Deployment
 
-### Generating Reports
-1. Navigate to the "Reports" screen
-2. Tap "Generate Current Month Report"
-3. View your monthly summary
-4. Export to Slack or share locally
+```bash
+# Publish OTA update
+eas update --branch production --message "Your update message"
 
-### Slack Configuration
-1. Go to Reports screen
-2. Tap the settings icon
-3. Enter your Slack webhook URL and channel
-4. Optionally add a bot token for enhanced functionality
-5. Save configuration
-
-## Project Structure
-
-```
-src/
-├── components/          # Reusable UI components
-├── screens/            # Main app screens
-│   ├── HomeScreen.tsx
-│   ├── MileageEntryScreen.tsx
-│   └── ReportsScreen.tsx
-├── services/           # Business logic and API services
-│   ├── database.ts     # SQLite database operations
-│   └── slackService.ts # Slack integration
-├── types/              # TypeScript type definitions
-│   └── index.ts
-└── utils/              # Utility functions
+# Build new native version (if needed)
+eas build --platform all --profile production
 ```
 
-## Database Schema
+## 🔒 Security Features
 
-### Employees Table
-- `id`: Primary key
-- `name`: Employee name
-- `email`: Email address
-- `oxfordHouseId`: Associated Oxford House
-- `position`: Job title
-- `phoneNumber`: Contact number
-- `createdAt`, `updatedAt`: Timestamps
+- Password hashing with bcryptjs
+- API rate limiting
+- Input sanitization
+- CORS protection
+- Health check endpoints
+- Automated password audits
 
-### Mileage Entries Table
-- `id`: Primary key
-- `employeeId`: Foreign key to employees
-- `oxfordHouseId`: Associated Oxford House
-- `date`: Date of travel
-- `startLocation`, `endLocation`: Travel locations
-- `purpose`: Reason for travel
-- `miles`: Distance traveled
-- `vehicleUsed`: Vehicle information
-- `notes`: Additional notes
-- `createdAt`, `updatedAt`: Timestamps
-
-### Monthly Reports Table
-- `id`: Primary key
-- `employeeId`: Foreign key to employees
-- `month`, `year`: Report period
-- `totalMiles`: Sum of miles for the month
-- `status`: Report status (draft, submitted, approved)
-- `submittedAt`, `approvedAt`: Status timestamps
-- `createdAt`, `updatedAt`: Timestamps
-
-## Slack Integration Setup
-
-### Webhook Method
-1. Create a Slack app in your workspace
-2. Enable Incoming Webhooks
-3. Create a webhook URL
-4. Configure the channel in the app
-
-### Bot Token Method (Recommended)
-1. Create a Slack app
-2. Add OAuth scopes: `files:write`, `chat:write`
-3. Install the app to your workspace
-4. Copy the bot token
-5. Configure in the app
-
-## Contributing
+## 📝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -177,10 +275,37 @@ src/
 4. Test thoroughly
 5. Submit a pull request
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License.
+This project is proprietary software for Oxford House.
 
-## Support
+## 🔗 Production URLs
 
-For support or questions, please contact the development team or create an issue in the repository.
+- **Backend API**: https://oxford-mileage-backend.onrender.com
+- **Web Portal**: [Your Vercel URL]
+- **Mobile App**: Available via Expo Updates
+
+## 📞 Support
+
+For support or questions:
+- Check documentation in `docs/` folder
+- Review [Known Issues](admin-web/backend/KNOWN_ISSUES.md)
+- Contact development team
+
+## 🎉 Recent Updates
+
+- ✅ Unified notification system with email support
+- ✅ Clickable notifications with direct navigation
+- ✅ Supervisor KPIs and analytics dashboard
+- ✅ Comprehensive health checks and monitoring
+- ✅ Automated database backups
+- ✅ Password security audit tools
+- ✅ API rate limiting
+- ✅ Documentation organization
+
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
+
+---
+
+**Version**: 1.0.0  
+**Last Updated**: December 2024

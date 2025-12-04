@@ -59,6 +59,7 @@ import {
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+import { debugError } from '../config/debug';
 
 interface Employee {
   id: string;
@@ -292,7 +293,7 @@ const EmployeeManagement: React.FC = () => {
       
       setEmployees(parsedEmployees);
     } catch (err: any) {
-      console.error('Error loading employees:', err);
+      debugError('Error loading employees:', err);
       setError(err.message || 'Failed to load employees');
     } finally {
       setLoading(false);
@@ -318,7 +319,7 @@ const EmployeeManagement: React.FC = () => {
       
       setArchivedEmployees(parsedEmployees);
     } catch (err: any) {
-      console.error('Error loading archived employees:', err);
+      debugError('Error loading archived employees:', err);
       setError(err.message || 'Failed to load archived employees');
     } finally {
       setLoading(false);
@@ -462,7 +463,7 @@ const EmployeeManagement: React.FC = () => {
       closeDialog();
       
     } catch (err: any) {
-      console.error('Error saving employee:', err);
+      debugError('Error saving employee:', err);
       setError(err.message || 'Failed to save employee');
     } finally {
       setLoading(false);
@@ -493,7 +494,7 @@ const EmployeeManagement: React.FC = () => {
         await loadArchivedEmployees();
       }
     } catch (err: any) {
-      console.error('Error archiving employee:', err);
+      debugError('Error archiving employee:', err);
       setError(err.message || 'Failed to archive employee');
     } finally {
       setLoading(false);
@@ -518,7 +519,7 @@ const EmployeeManagement: React.FC = () => {
       await loadArchivedEmployees();
       await loadEmployees();
     } catch (err: any) {
-      console.error('Error restoring employee:', err);
+      debugError('Error restoring employee:', err);
       setError(err.message || 'Failed to restore employee');
     } finally {
       setLoading(false);
@@ -558,7 +559,7 @@ const EmployeeManagement: React.FC = () => {
       setEmployeeToDelete(null);
       setDeleteConfirmText('');
     } catch (err: any) {
-      console.error('Error deleting employee:', err);
+      debugError('Error deleting employee:', err);
       setError(err.message || 'Failed to delete employee');
     } finally {
       setLoading(false);
