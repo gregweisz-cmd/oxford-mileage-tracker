@@ -85,9 +85,7 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
           }}
           onLoad={(e) => {
             const target = e.target as HTMLImageElement;
-            debugLog('Oxford House logo loaded successfully from /oxford-house-logo.png');
-            debugLog('Image dimensions:', target.naturalWidth, 'x', target.naturalHeight);
-            debugLog('Image element:', target);
+            // Logo loaded successfully - no logging needed
           }}
         />
       </Box>

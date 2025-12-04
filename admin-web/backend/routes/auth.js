@@ -9,11 +9,47 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { authLimiter } = require('../middleware/rateLimiter');
+
+// Google OAuth support
+let OAuth2Client = null;
+let googleClient = null;
+let ALLOWED_EMAIL_DOMAINS = [];
+
+try {
+  const { OAuth2Client: GoogleOAuth2Client } = require('google-auth-library');
+  OAuth2Client = GoogleOAuth2Client;
+  
+  // Initialize Google OAuth client if credentials are available
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 
+      `${process.env.API_BASE_URL || 'http://localhost:3002'}/api/auth/google/callback`;
+    
+    googleClient = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      redirectUri
+    );
+    
+    // Parse allowed email domains
+    if (process.env.ALLOWED_EMAIL_DOMAINS) {
+      ALLOWED_EMAIL_DOMAINS = process.env.ALLOWED_EMAIL_DOMAINS.split(',')
+        .map(d => d.trim())
+        .filter(Boolean);
+    }
+    
+    debugLog('✅ Google OAuth client initialized');
+  } else {
+    debugWarn('⚠️  Google OAuth not configured - missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET');
+  }
+} catch (err) {
+  debugWarn('⚠️  google-auth-library not available:', err.message);
+}
 
 // ===== AUTHENTICATION ENDPOINTS =====
 
-// Login endpoint
-router.post('/api/auth/login', async (req, res) => {
+// Login endpoint (protected with strict rate limiting)
+router.post('/api/auth/login', authLimiter, async (req, res) => {
   debugLog('🔐 Login attempt received for:', req.body.email || 'unknown email');
   const db = dbService.getDb();
   const { email, password } = req.body;
@@ -288,6 +324,290 @@ router.post('/api/employee-login', async (req, res) => {
       });
     }
   );
+});
+
+// ===== GOOGLE OAUTH ENDPOINTS =====
+
+// Google OAuth login - redirects to Google
+router.get('/api/auth/google', (req, res) => {
+  if (!googleClient) {
+    debugError('❌ Google OAuth not configured - missing credentials');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Google login not available')}`);
+  }
+
+  try {
+    const returnUrl = req.query.returnUrl || '/';
+    const authUrl = googleClient.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['openid', 'profile', 'email'],
+      prompt: 'consent',
+      state: returnUrl // Store return URL for after callback
+    });
+
+    debugLog('🔐 Redirecting to Google OAuth:', authUrl);
+    res.redirect(authUrl);
+  } catch (error) {
+    debugError('❌ Error generating Google OAuth URL:', error);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Failed to initiate Google login')}`);
+  }
+});
+
+// Google OAuth callback - handles response from Google
+router.get('/api/auth/google/callback', async (req, res) => {
+  const { code, error, state } = req.query;
+  const db = dbService.getDb();
+
+  if (error) {
+    debugError('❌ Google OAuth error:', error);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error)}`);
+  }
+
+  if (!code) {
+    debugError('❌ No authorization code received from Google');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${frontendUrl}/login?error=no_code`);
+  }
+
+  if (!googleClient) {
+    debugError('❌ Google OAuth client not initialized');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Google login not configured')}`);
+  }
+
+  try {
+    debugLog('🔐 Exchanging Google authorization code for tokens...');
+
+    // Exchange code for tokens
+    const { tokens } = await googleClient.getToken(code);
+    googleClient.setCredentials(tokens);
+
+    debugLog('✅ Received tokens from Google, verifying ID token...');
+
+    // Verify and get user info
+    const ticket = await googleClient.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    
+    const googleUser = ticket.getPayload();
+    const email = googleUser.email;
+    const googleId = googleUser.sub;
+    const name = googleUser.name || googleUser.given_name || 'User';
+    const emailVerified = googleUser.email_verified === true;
+
+    debugLog(`✅ Google user verified: ${email} (${googleId})`);
+
+    // Check email domain restriction
+    if (ALLOWED_EMAIL_DOMAINS.length > 0) {
+      const emailDomain = email.split('@')[1];
+      if (!ALLOWED_EMAIL_DOMAINS.includes(emailDomain)) {
+        debugWarn(`⚠️  Access denied for ${email} - not in allowed domains`);
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Access restricted to organization email addresses only')}`);
+      }
+      debugLog(`✅ Email domain ${emailDomain} is allowed`);
+    }
+
+    // Find or create user
+    db.get(
+      'SELECT * FROM employees WHERE email = ? OR googleId = ?',
+      [email, googleId],
+      async (err, employee) => {
+        if (err) {
+          debugError('❌ Database error during Google OAuth:', err);
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          return res.redirect(`${frontendUrl}/login?error=database_error`);
+        }
+
+        let userToReturn = null;
+        const now = new Date().toISOString();
+        const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
+
+        if (employee) {
+          // User exists - link Google account or update
+          debugLog(`✅ Found existing user: ${employee.email}`);
+
+          const updateFields = [];
+          const updateValues = [];
+          const updateSet = [];
+
+          // Link Google account if not already linked
+          if (!employee.googleId) {
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          } else if (employee.googleId !== googleId) {
+            // Google ID mismatch - update it
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          }
+
+          // Update auth provider
+          const currentAuthProvider = employee.authProvider || 'local';
+          if (currentAuthProvider === 'local') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          } else if (currentAuthProvider === 'google') {
+            // Already using Google, no change needed
+          } else if (currentAuthProvider !== 'both') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          }
+
+          // Update email verification status
+          if (emailVerified) {
+            updateSet.push('emailVerified = ?');
+            updateValues.push(1);
+          }
+
+          // Update last login
+          updateSet.push('lastLoginAt = ?');
+          updateValues.push(now);
+
+          // Update timestamp
+          updateSet.push('updatedAt = ?');
+          updateValues.push(now);
+
+          updateValues.push(employee.id);
+
+          if (updateSet.length > 0) {
+            const updateQuery = `UPDATE employees SET ${updateSet.join(', ')} WHERE id = ?`;
+            
+            await new Promise((resolve, reject) => {
+              db.run(updateQuery, updateValues, (updateErr) => {
+                if (updateErr) {
+                  debugError('❌ Error updating user with Google info:', updateErr);
+                  reject(updateErr);
+                } else {
+                  debugLog(`✅ Updated user ${employee.email} with Google OAuth info`);
+                  resolve();
+                }
+              });
+            });
+
+            // Fetch updated employee
+            db.get(
+              'SELECT * FROM employees WHERE id = ?',
+              [employee.id],
+              (fetchErr, updatedEmployee) => {
+                if (!fetchErr && updatedEmployee) {
+                  userToReturn = updatedEmployee;
+                } else {
+                  userToReturn = { ...employee, googleId, emailVerified: emailVerified ? 1 : 0 };
+                }
+                completeLogin();
+              }
+            );
+          } else {
+            userToReturn = employee;
+            completeLogin();
+          }
+        } else if (AUTO_CREATE_ACCOUNTS) {
+          // New user - auto-create account
+          debugLog(`🆕 Creating new user account for ${email}`);
+          
+          const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+          
+          await new Promise((resolve, reject) => {
+            db.run(
+              `INSERT INTO employees (
+                id, name, email, password, googleId, authProvider, emailVerified,
+                oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
+              ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
+              [
+                newEmployeeId,
+                name,
+                email,
+                googleId,
+                emailVerified ? 1 : 0,
+                '', // oxfordHouseId - will need to be set by admin
+                '', // position - will need to be set by admin
+                '', // baseAddress - will need to be set by admin
+                now,
+                now,
+                now
+              ],
+              (insertErr) => {
+                if (insertErr) {
+                  debugError('❌ Error creating new user:', insertErr);
+                  reject(insertErr);
+                } else {
+                  debugLog(`✅ Created new user account for ${email}`);
+                  resolve();
+                }
+              }
+            );
+          });
+
+          // Fetch the new user
+          db.get(
+            'SELECT * FROM employees WHERE id = ?',
+            [newEmployeeId],
+            (fetchErr, newEmployee) => {
+              if (!fetchErr && newEmployee) {
+                userToReturn = newEmployee;
+              }
+              completeLogin();
+            }
+          );
+        } else {
+          // Don't auto-create - redirect to error page
+          debugWarn(`⚠️  Google login attempted for non-existent user: ${email}`);
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`);
+        }
+
+        function completeLogin() {
+          if (!userToReturn) {
+            debugError('❌ Failed to get user after Google OAuth');
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            return res.redirect(`${frontendUrl}/login?error=user_not_found`);
+          }
+
+          // Parse JSON fields
+          let costCenters = [];
+          let selectedCostCenters = [];
+
+          try {
+            if (userToReturn.costCenters) {
+              costCenters = JSON.parse(userToReturn.costCenters);
+            }
+            if (userToReturn.selectedCostCenters) {
+              selectedCostCenters = JSON.parse(userToReturn.selectedCostCenters);
+            }
+          } catch (parseErr) {
+            debugError('Error parsing cost centers:', parseErr);
+          }
+
+          // Create session token
+          const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
+
+          // Don't send password back
+          const { password: _, ...employeeData } = userToReturn;
+
+          const userRole = userToReturn.role || 'employee';
+          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+          const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+
+          debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
+
+          // Redirect to frontend with token in URL
+          // Frontend will extract token and complete login
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          const returnUrl = state || '/';
+          const redirectUrl = `${frontendUrl}/auth/callback?token=${sessionToken}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+
+          res.redirect(redirectUrl);
+        }
+      }
+    );
+  } catch (error) {
+    debugError('❌ Google OAuth callback error:', error);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
+  }
 });
 
 module.exports = router;

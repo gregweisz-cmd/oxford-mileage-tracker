@@ -13,9 +13,11 @@ import {
 } from '@mui/material';
 import {
   Visibility,
-  VisibilityOff
+  VisibilityOff,
+  Google as GoogleIcon
 } from '@mui/icons-material';
 import OxfordHouseLogo from './OxfordHouseLogo';
+import { useEffect } from 'react';
 
 interface LoginProps {
   onLoginSuccess: (employee: any, token: string) => void;
@@ -30,6 +32,17 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [loading, setLoading] = useState(false);
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [phoneNumberLast4, setPhoneNumberLast4] = useState('');
+
+  // Check for error in URL (from OAuth redirect)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const errorParam = urlParams.get('error');
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam));
+      // Clear the error from URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +96,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleLogin = () => {
+    const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+    window.location.href = `${API_BASE_URL}/api/auth/google`;
   };
 
   return (
@@ -192,6 +210,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               disabled={loading || !email || !password || (requiresTwoFactor && !twoFactorCode)}
             >
               {loading ? 'Signing In...' : requiresTwoFactor ? 'Verify & Sign In' : 'Sign In'}
+            </Button>
+
+            {/* Divider */}
+            <Box sx={{ display: 'flex', alignItems: 'center', my: 3 }}>
+              <Box sx={{ flex: 1, height: '1px', bgcolor: 'grey.300' }} />
+              <Typography variant="body2" sx={{ mx: 2, color: 'text.secondary' }}>
+                OR
+              </Typography>
+              <Box sx={{ flex: 1, height: '1px', bgcolor: 'grey.300' }} />
+            </Box>
+
+            {/* Google Sign-In Button */}
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={handleGoogleLogin}
+              startIcon={<GoogleIcon />}
+              sx={{ mb: 2, py: 1.5 }}
+              disabled={loading}
+            >
+              Sign in with Google
             </Button>
           </Box>
         </Paper>

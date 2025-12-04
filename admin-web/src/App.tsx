@@ -13,7 +13,12 @@ import PortalSwitcher from './components/PortalSwitcher';
 import OnboardingScreen from './components/OnboardingScreen';
 import SetupWizard from './components/SetupWizard';
 import { ToastProvider } from './contexts/ToastContext';
+import ErrorBoundary from './components/ErrorBoundary';
+import AuthCallback from './components/AuthCallback';
 // import AuthService from './services/authService'; // Currently unused
+
+// Debug logging
+import { debugLog, debugError, debugVerbose } from './config/debug';
 
 // Create theme
 const theme = createTheme({
@@ -93,14 +98,14 @@ const App: React.FC = () => {
               setCurrentPortal('staff');
             }
           } catch (error) {
-            console.error('Error verifying token:', error);
+            debugError('Error verifying token:', error);
             // Clear localStorage on error
             localStorage.clear();
             setCurrentUser(null);
           }
         }
       } catch (error) {
-        console.error('Error checking auth status:', error);
+        debugError('Error checking auth status:', error);
       } finally {
         setLoading(false);
       }
@@ -123,7 +128,7 @@ const App: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      debugError('Logout error:', error);
     } finally {
       // Clear state and localStorage regardless of API call success
       setCurrentUser(null);
@@ -142,25 +147,14 @@ const App: React.FC = () => {
     localStorage.setItem('currentEmployeeId', employee.id);
     localStorage.setItem('employeeData', JSON.stringify(employee));
     
-    // Debug logging
-    console.log('Login success - employee data:', {
-      id: employee.id,
-      name: employee.name,
-      hasCompletedOnboarding: employee?.hasCompletedOnboarding,
-      hasCompletedSetupWizard: employee?.hasCompletedSetupWizard,
-      onboardingType: typeof employee?.hasCompletedOnboarding,
-      wizardType: typeof employee?.hasCompletedSetupWizard
-    });
-    
     // Check if user has completed onboarding (from backend employee data, not localStorage)
     // Handle both boolean and integer values, and treat null/undefined as false
     const hasCompletedOnboarding = employee?.hasCompletedOnboarding === true || 
                                    employee?.hasCompletedOnboarding === 1 || 
                                    employee?.hasCompletedOnboarding === '1';
-    console.log('hasCompletedOnboarding check:', hasCompletedOnboarding);
     
     if (!hasCompletedOnboarding) {
-      console.log('Showing onboarding screen');
+      debugVerbose('Showing onboarding screen');
       setShowOnboarding(true);
     } else {
       // Check if user has completed setup wizard (from backend employee data, not localStorage)
@@ -168,13 +162,10 @@ const App: React.FC = () => {
       const hasCompletedSetupWizard = employee?.hasCompletedSetupWizard === true || 
                                        employee?.hasCompletedSetupWizard === 1 || 
                                        employee?.hasCompletedSetupWizard === '1';
-      console.log('hasCompletedSetupWizard check:', hasCompletedSetupWizard);
       
       if (!hasCompletedSetupWizard) {
-        console.log('Showing setup wizard');
+        debugVerbose('Showing setup wizard');
         setShowSetupWizard(true);
-      } else {
-        console.log('Both onboarding and setup wizard completed - showing portal');
       }
     }
     
@@ -198,6 +189,20 @@ const App: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
           Loading...
         </Box>
+      </ThemeProvider>
+    );
+  }
+
+  // Check if we're on the OAuth callback route
+  const isOAuthCallback = window.location.pathname === '/auth/callback' || 
+                          window.location.search.includes('token=');
+
+  // OAuth Callback Screen
+  if (isOAuthCallback && !currentUser) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AuthCallback onLoginSuccess={handleLoginSuccess} />
       </ThemeProvider>
     );
   }
@@ -234,7 +239,7 @@ const App: React.FC = () => {
             // Update local state
             setCurrentUser({ ...currentUser, hasCompletedOnboarding: true });
           } catch (error) {
-            console.error('Error updating onboarding status:', error);
+            debugError('Error updating onboarding status:', error);
           }
           
           setShowOnboarding(false);
@@ -274,19 +279,33 @@ const App: React.FC = () => {
   const renderPortal = () => {
     switch (currentPortal) {
       case 'admin':
-        return <AdminPortal adminId={currentUser.id} adminName={currentUser.name} />;
+        return (
+          <ErrorBoundary>
+            <AdminPortal adminId={currentUser.id} adminName={currentUser.name} />
+          </ErrorBoundary>
+        );
       case 'finance':
-        return <FinancePortal financeUserId={currentUser.id} financeUserName={currentUser.name} />;
+        return (
+          <ErrorBoundary>
+            <FinancePortal financeUserId={currentUser.id} financeUserName={currentUser.name} />
+          </ErrorBoundary>
+        );
       case 'supervisor':
-        return <SupervisorPortal supervisorId={currentUser.id} supervisorName={currentUser.name} />;
+        return (
+          <ErrorBoundary>
+            <SupervisorPortal supervisorId={currentUser.id} supervisorName={currentUser.name} />
+          </ErrorBoundary>
+        );
       case 'staff':
       default:
         return (
-          <StaffPortal
-            employeeId={currentUser.id}
-            reportMonth={new Date().getMonth() + 1}
-            reportYear={new Date().getFullYear()}
-          />
+          <ErrorBoundary>
+            <StaffPortal
+              employeeId={currentUser.id}
+              reportMonth={new Date().getMonth() + 1}
+              reportYear={new Date().getFullYear()}
+            />
+          </ErrorBoundary>
         );
     }
   };
