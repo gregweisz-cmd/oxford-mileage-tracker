@@ -134,6 +134,9 @@ const App: React.FC = () => {
       setCurrentUser(null);
       setCurrentPortal('staff');
       localStorage.clear();
+      
+      // Clear any URL parameters to prevent error messages from showing
+      window.history.replaceState({}, document.title, '/login');
     }
   };
 

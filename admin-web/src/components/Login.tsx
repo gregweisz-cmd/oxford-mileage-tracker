@@ -38,9 +38,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     const urlParams = new URLSearchParams(window.location.search);
     const errorParam = urlParams.get('error');
     if (errorParam) {
-      setError(decodeURIComponent(errorParam));
+      // Don't show "missing_token" error - it's not user-facing
+      if (errorParam !== 'missing_token') {
+        setError(decodeURIComponent(errorParam));
+      }
       // Clear the error from URL
-      window.history.replaceState({}, document.title, window.location.pathname);
+      window.history.replaceState({}, document.title, '/login');
     }
   }, []);
 
