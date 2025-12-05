@@ -42,6 +42,11 @@ const { startSundayReminderJob, stopSundayReminderJob } = require('./services/su
 
 const app = express();
 const server = http.createServer(app);
+
+// Trust proxy - Required when running behind a reverse proxy (e.g., Render.com load balancer)
+// This allows Express to correctly identify client IPs from X-Forwarded-For headers
+app.set('trust proxy', true);
+
 // Set server timeout to 60 seconds for large file uploads
 server.timeout = 60000;
 server.keepAliveTimeout = 60000;
