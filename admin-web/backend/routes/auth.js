@@ -635,7 +635,10 @@ router.post('/api/auth/google/mobile', async (req, res) => {
 
     // Create a new OAuth client with the mobile redirect URI
     // The redirect URI must match what was used in the authorization request
+    // Default to Expo proxy URI (fallback if not provided)
     const mobileRedirectUri = redirectUri || 'https://auth.expo.io/@goosew27/oh-staff-tracker';
+    
+    debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     
     const mobileGoogleClient = new OAuth2Client(
       process.env.GOOGLE_CLIENT_ID,
