@@ -610,7 +610,245 @@ router.get('/api/auth/google/callback', async (req, res) => {
   }
 });
 
-// Mobile Google OAuth callback (receives code, exchanges for tokens)
+// Mobile Google OAuth callback (GET) - Google redirects here with code in query params
+router.get('/api/auth/google/mobile/callback', async (req, res) => {
+  const { code, error, state } = req.query;
+  const db = dbService.getDb();
+
+  if (error) {
+    debugError('❌ Mobile: Google OAuth error in callback:', error);
+    // Redirect to mobile app with error
+    const errorParam = encodeURIComponent(error);
+    return res.redirect(`ohstafftracker://oauth/callback?error=${errorParam}`);
+  }
+
+  if (!code) {
+    debugError('❌ Mobile: No authorization code received from Google');
+    return res.redirect('ohstafftracker://oauth/callback?error=no_code');
+  }
+
+  if (!OAuth2Client) {
+    debugError('❌ Mobile: Google OAuth client library not available');
+    return res.redirect('ohstafftracker://oauth/callback?error=oauth_not_configured');
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    debugError('❌ Mobile: Google OAuth credentials not configured');
+    return res.redirect('ohstafftracker://oauth/callback?error=oauth_not_configured');
+  }
+
+  try {
+    debugLog('🔐 Mobile: Exchanging Google authorization code for tokens...');
+    
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3002';
+    const mobileRedirectUri = `${baseUrl}/api/auth/google/mobile/callback`;
+    
+    debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
+    
+    const mobileGoogleClient = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      mobileRedirectUri
+    );
+
+    // Exchange code for tokens
+    const { tokens } = await mobileGoogleClient.getToken(code);
+    mobileGoogleClient.setCredentials(tokens);
+
+    debugLog('✅ Mobile: Received tokens from Google, verifying ID token...');
+
+    const ticket = await mobileGoogleClient.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    
+    const googleUser = ticket.getPayload();
+    const email = googleUser.email;
+    const googleId = googleUser.sub;
+    const name = googleUser.name || googleUser.given_name || 'User';
+    const emailVerified = googleUser.email_verified === true;
+
+    debugLog(`✅ Mobile: Google user verified: ${email} (${googleId})`);
+
+    // Check domain restriction
+    if (ALLOWED_EMAIL_DOMAINS.length > 0) {
+      const emailDomain = email.split('@')[1];
+      if (!ALLOWED_EMAIL_DOMAINS.includes(emailDomain)) {
+        debugWarn(`⚠️  Mobile: Access denied for ${email} - not in allowed domains`);
+        return res.redirect(`ohstafftracker://oauth/callback?error=${encodeURIComponent('Access restricted to organization email addresses only')}`);
+      }
+      debugLog(`✅ Mobile: Email domain ${emailDomain} is allowed`);
+    }
+
+    // Find or create user
+    db.get(
+      'SELECT * FROM employees WHERE email = ? OR googleId = ?',
+      [email, googleId],
+      async (err, employee) => {
+        if (err) {
+          debugError('❌ Mobile: Database error during Google OAuth:', err);
+          return res.redirect(`ohstafftracker://oauth/callback?error=${encodeURIComponent('Database error')}`);
+        }
+
+        let userToReturn = null;
+        const now = new Date().toISOString();
+        const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
+
+        if (employee) {
+          debugLog(`✅ Mobile: Found existing user: ${employee.email}`);
+
+          const updateSet = [];
+          const updateValues = [];
+
+          if (!employee.googleId || employee.googleId !== googleId) {
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          }
+
+          const currentAuthProvider = employee.authProvider || 'local';
+          if (currentAuthProvider === 'local') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          } else if (currentAuthProvider !== 'both' && currentAuthProvider !== 'google') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          }
+
+          if (emailVerified) {
+            updateSet.push('emailVerified = ?');
+            updateValues.push(1);
+          }
+
+          updateSet.push('lastLoginAt = ?');
+          updateValues.push(now);
+          updateSet.push('updatedAt = ?');
+          updateValues.push(now);
+          updateValues.push(employee.id);
+
+          if (updateSet.length > 0) {
+            const updateQuery = `UPDATE employees SET ${updateSet.join(', ')} WHERE id = ?`;
+            
+            await new Promise((resolve) => {
+              db.run(updateQuery, updateValues, (updateErr) => {
+                if (updateErr) {
+                  debugError('❌ Error updating user:', updateErr);
+                } else {
+                  debugLog(`✅ Mobile: Updated user ${employee.email}`);
+                }
+                resolve();
+              });
+            });
+
+            db.get(
+              'SELECT * FROM employees WHERE id = ?',
+              [employee.id],
+              (fetchErr, updatedEmployee) => {
+                if (!fetchErr && updatedEmployee) {
+                  userToReturn = updatedEmployee;
+                } else {
+                  userToReturn = employee;
+                }
+                completeMobileCallbackLogin();
+              }
+            );
+          } else {
+            userToReturn = employee;
+            completeMobileCallbackLogin();
+          }
+        } else if (AUTO_CREATE_ACCOUNTS) {
+          debugLog(`🆕 Mobile: Creating new user account for ${email}`);
+          
+          const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+          
+          await new Promise((resolve, reject) => {
+            db.run(
+              `INSERT INTO employees (
+                id, name, email, password, googleId, authProvider, emailVerified,
+                oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
+              ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
+              [
+                newEmployeeId,
+                name,
+                email,
+                googleId,
+                emailVerified ? 1 : 0,
+                '',
+                '',
+                '',
+                now,
+                now,
+                now
+              ],
+              (insertErr) => {
+                if (insertErr) {
+                  debugError('❌ Error creating new user:', insertErr);
+                  reject(insertErr);
+                } else {
+                  debugLog(`✅ Mobile: Created new user account for ${email}`);
+                  resolve();
+                }
+              }
+            );
+          });
+
+          db.get(
+            'SELECT * FROM employees WHERE id = ?',
+            [newEmployeeId],
+            (fetchErr, newEmployee) => {
+              if (!fetchErr && newEmployee) {
+                userToReturn = newEmployee;
+              }
+              completeMobileCallbackLogin();
+            }
+          );
+        } else {
+          debugWarn(`⚠️  Mobile: Google login attempted for non-existent user: ${email}`);
+          return res.redirect(`ohstafftracker://oauth/callback?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`);
+        }
+
+        function completeMobileCallbackLogin() {
+          if (!userToReturn) {
+            debugError('❌ Mobile: Failed to get user after Google OAuth');
+            return res.redirect('ohstafftracker://oauth/callback?error=user_not_found');
+          }
+
+          // Parse JSON fields
+          let costCenters = [];
+          let selectedCostCenters = [];
+
+          try {
+            if (userToReturn.costCenters) {
+              costCenters = JSON.parse(userToReturn.costCenters);
+            }
+            if (userToReturn.selectedCostCenters) {
+              selectedCostCenters = JSON.parse(userToReturn.selectedCostCenters);
+            }
+          } catch (parseErr) {
+            debugError('Error parsing cost centers:', parseErr);
+          }
+
+          const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
+          const userRole = userToReturn.role || 'employee';
+          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+          const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+
+          debugLog(`✅ Mobile: Google OAuth login successful for ${email}, redirecting to app...`);
+
+          // Redirect to mobile app with success data in URL
+          // Note: URL has length limits, so we'll pass token and let app fetch user data
+          const redirectUrl = `ohstafftracker://oauth/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}`;
+          res.redirect(redirectUrl);
+        }
+      }
+    );
+  } catch (error) {
+    debugError('❌ Mobile: Google OAuth callback error:', error);
+    const errorMessage = error?.message || 'Authentication failed';
+    return res.redirect(`ohstafftracker://oauth/callback?error=${encodeURIComponent(errorMessage)}`);
+  }
+});
+
+// Mobile Google OAuth callback (POST) - Legacy endpoint, kept for backward compatibility
 router.post('/api/auth/google/mobile', async (req, res) => {
   const { code, redirectUri } = req.body;
   const db = dbService.getDb();
@@ -635,8 +873,9 @@ router.post('/api/auth/google/mobile', async (req, res) => {
 
     // Create a new OAuth client with the mobile redirect URI
     // The redirect URI must match what was used in the authorization request
-    // Default to Expo proxy URI (fallback if not provided)
-    const mobileRedirectUri = redirectUri || 'https://auth.expo.io/@goosew27/oh-staff-tracker';
+    // For Internal apps, we use custom URL scheme instead of Expo proxy
+    // Default to custom scheme (fallback if not provided)
+    const mobileRedirectUri = redirectUri || 'ohstafftracker://oauth/callback';
     
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     

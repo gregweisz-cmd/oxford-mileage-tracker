@@ -1,6 +1,7 @@
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
+import { API_BASE_URL } from '../config/api';
 
 // Complete the auth session (required for web)
 if (Platform.OS === 'web') {
@@ -13,41 +14,160 @@ export interface GoogleUserInfo {
   name: string;
   picture?: string;
   idToken?: string;
+  authorizationCode?: string; // For mobile flow
 }
 
 export class GoogleAuthService {
-  private static baseUrl = __DEV__
-    ? 'http://192.168.86.101:3002'
-    : 'https://oxford-mileage-backend.onrender.com';
+  // Use the same API configuration as the rest of the app
+  private static getBaseUrl(): string {
+    // Remove /api suffix since we'll add it back in the endpoint
+    const baseUrl = API_BASE_URL?.replace('/api', '') || '';
+    return baseUrl || (__DEV__ 
+      ? 'http://192.168.86.101:3002' 
+      : 'https://oxford-mileage-backend.onrender.com');
+  }
+  
+  private static baseUrl = GoogleAuthService.getBaseUrl();
 
-  // Google OAuth configuration
-  // These will need to be configured in Google Cloud Console
-  // For now, we'll get these from environment or config
+  // Google OAuth Client ID (from Google Cloud Console)
+  // This is the Web Client ID that works for mobile apps
+  private static GOOGLE_CLIENT_ID = '893722301667-bqc8ir7q35omj6s84l7ackvqoqrhtrv6.apps.googleusercontent.com';
+
   private static getGoogleClientId(): string {
-    // TODO: Get from environment variable or config
-    // For now, return placeholder - this needs to be configured
-    return 'YOUR_GOOGLE_CLIENT_ID';
+    return this.GOOGLE_CLIENT_ID;
   }
 
   private static getGoogleRedirectUri(): string {
-    return AuthSession.makeRedirectUri({
-      useProxy: true,
-    });
+    // For Internal Google apps, we can't use custom URL schemes directly in Google Console
+    // Solution: Use backend as proxy - redirect to backend, backend redirects to app
+    // Backend callback URL is already registered in Google Cloud Console
+    const baseUrl = this.baseUrl;
+    const redirectUri = `${baseUrl}/api/auth/google/mobile/callback`;
+    
+    console.log('🔍 Google OAuth Redirect URI (backend proxy):', redirectUri);
+    
+    return redirectUri;
   }
 
   /**
    * Initiate Google Sign-In
+   * Returns null if user cancels, GoogleUserInfo on success, throws on error
    */
-  static async signInWithGoogle(): Promise<GoogleUserInfo> {
+  static async signInWithGoogle(): Promise<GoogleUserInfo | null> {
     try {
       const clientId = this.getGoogleClientId();
       const redirectUri = this.getGoogleRedirectUri();
+
+      console.log('🔍 Google OAuth Config:', {
+        clientId: clientId.substring(0, 20) + '...',
+        redirectUri: redirectUri
+      });
 
       if (clientId === 'YOUR_GOOGLE_CLIENT_ID') {
         throw new Error('Google OAuth Client ID not configured. Please set up Google OAuth in Google Cloud Console.');
       }
 
-      // Request authorization code from Google
+      // For backend proxy flow, we need to:
+      // 1. Open OAuth URL directly in browser using AuthRequest
+      // 2. Listen for deep link callback from backend
+      // AuthSession.promptAsync() won't work well with backend redirects
+      
+      console.log('🔍 Starting OAuth with backend proxy flow...');
+      console.log('🔍 Full redirect URI:', redirectUri);
+      console.log('🔍 Full client ID:', clientId);
+      
+      // Build OAuth authorization URL
+      // For backend proxy, we send user to Google, Google redirects to backend, backend redirects to app
+      const discovery = {
+        authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+        tokenEndpoint: 'https://oauth2.googleapis.com/token',
+        revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
+      };
+      
+      // Build authorization URL with required parameters
+      const authUrlParams = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: 'openid profile email',
+        access_type: 'offline',
+        prompt: 'consent',
+      });
+      
+      const authUrl = `${discovery.authorizationEndpoint}?${authUrlParams.toString()}`;
+      console.log('🔍 Generated OAuth URL:', authUrl.substring(0, 100) + '...');
+      
+      // Set up deep link listener BEFORE opening browser
+      const deepLinkPromise = new Promise<GoogleUserInfo | null>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          Linking.removeAllListeners('url');
+          reject(new Error('OAuth timeout - no response received from backend'));
+        }, 300000); // 5 minute timeout
+        
+        const handleDeepLink = (event: { url: string }) => {
+          const url = event.url;
+          console.log('🔍 Deep link received:', url);
+          
+          if (url.startsWith('ohstafftracker://oauth/callback')) {
+            clearTimeout(timeout);
+            Linking.removeAllListeners('url');
+            
+            try {
+              const urlObj = new URL(url);
+              const success = urlObj.searchParams.get('success');
+              const token = urlObj.searchParams.get('token');
+              const email = urlObj.searchParams.get('email');
+              const error = urlObj.searchParams.get('error');
+              
+              if (error) {
+                reject(new Error(decodeURIComponent(error)));
+                return;
+              }
+              
+              if (success === 'true' && token && email) {
+                console.log('✅ Successfully received token from backend via deep link');
+                resolve({
+                  id: '',
+                  email: decodeURIComponent(email),
+                  name: '',
+                  token: decodeURIComponent(token),
+                } as any);
+              } else {
+                reject(new Error('Invalid deep link response - missing success, token, or email'));
+              }
+            } catch (err: any) {
+              reject(new Error(`Failed to parse deep link: ${err?.message || err}`));
+            }
+          }
+        };
+        
+        // Listen for deep links
+        const subscription = Linking.addEventListener('url', handleDeepLink);
+        
+        // Also check for initial URL (in case app was opened via deep link)
+        Linking.getInitialURL().then((initialUrl) => {
+          if (initialUrl && initialUrl.startsWith('ohstafftracker://oauth/callback')) {
+            handleDeepLink({ url: initialUrl });
+          }
+        });
+      });
+      
+      // Open browser
+      console.log('🔍 Opening OAuth URL in browser...');
+      await WebBrowser.openBrowserAsync(authUrl);
+      
+      // Wait for deep link callback from backend
+      console.log('⏳ Waiting for deep link callback from backend...');
+      const userInfo = await deepLinkPromise;
+      
+      if (!userInfo) {
+        return null;
+      }
+      
+      return userInfo;
+      
+      // Old AuthSession flow (commented out - doesn't work well with backend proxy)
+      /*
       const request = new AuthSession.AuthRequest({
         clientId: clientId,
         scopes: ['openid', 'profile', 'email'],
@@ -61,85 +181,177 @@ export class GoogleAuthService {
         tokenEndpoint: 'https://oauth2.googleapis.com/token',
         revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
       };
-
-      const result = await request.promptAsync(discovery, {
-        useProxy: true,
-      });
-
-      if (result.type === 'success') {
-        // Exchange authorization code for tokens
-        const tokenResponse = await AuthSession.exchangeCodeAsync(
-          {
-            clientId: clientId,
-            code: result.params.code,
-            redirectUri: redirectUri,
-            extraParams: {},
-          },
-          discovery
-        );
-
-        // Store ID token for backend verification
-        const idToken = tokenResponse.idToken;
-        if (!idToken) {
-          throw new Error('No ID token received from Google');
-        }
-
-        // Get user info from Google
-        const userInfoResponse = await fetch(
-          'https://www.googleapis.com/oauth2/v2/userinfo',
-          {
-            headers: {
-              Authorization: `Bearer ${tokenResponse.accessToken}`,
-            },
+      
+      let result;
+      try {
+        result = await request.promptAsync(discovery);
+      } catch (promptError: any) {
+        console.error('❌ Error during promptAsync:', promptError);
+        throw new Error(`OAuth prompt failed: ${promptError?.message || 'Unknown error'}`);
+      }
+      */
+      
+      // OLD CODE CONTINUES...
+      if (false) { // Never executed, keeping for reference
+      } else if (false) {
+        // Cancel could mean user cancelled OR Google rejected the request
+        // Check if there's an error URL that might indicate why it was cancelled
+        const resultAny = result as any;
+        const url = resultAny.url || resultAny.errorUrl;
+        
+        console.log('⚠️ OAuth cancelled');
+        console.log('⚠️ Result URL (if any):', url);
+        
+        // If there's a URL, check if it contains error info
+        if (url && typeof url === 'string') {
+          try {
+            const urlObj = new URL(url);
+            const errorParam = urlObj.searchParams.get('error');
+            const errorDescription = urlObj.searchParams.get('error_description');
+            
+            if (errorParam) {
+              console.error('❌ Google OAuth Error in redirect URL:', {
+                error: errorParam,
+                description: errorDescription,
+                fullUrl: url
+              });
+              
+              // Provide helpful error message
+              if (errorParam === 'redirect_uri_mismatch') {
+                const backendUrl = this.baseUrl;
+                throw new Error(`Redirect URI mismatch. Please add ${backendUrl}/api/auth/google/mobile/callback to Google Cloud Console Authorized redirect URIs.`);
+              } else if (errorParam === 'access_denied') {
+                throw new Error('Access denied. You may need to be added as a test user in Google Cloud Console.');
+              } else {
+                throw new Error(`OAuth error: ${errorParam}${errorDescription ? ` - ${errorDescription}` : ''}`);
+              }
+            }
+          } catch (urlError) {
+            // URL parsing failed, might not be a URL
+            console.log('⚠️ Could not parse URL from cancel result');
           }
-        );
-
-        const userInfo = await userInfoResponse.json();
-
-        return {
-          id: userInfo.id,
-          email: userInfo.email,
-          name: userInfo.name,
-          picture: userInfo.picture,
-          idToken: idToken, // Include ID token for backend verification
-        };
+        }
+        
+        // If no error detected, assume user cancelled
+        console.log('ℹ️ User cancelled OAuth (no error detected)');
+        return null;
       } else {
-        throw new Error('Google Sign-In was cancelled');
+        // Other result types (dismiss, error, etc.)
+        const resultAny = result as any;
+        console.error('❌ OAuth result type:', result.type);
+        console.error('❌ Full result object:', JSON.stringify(resultAny, null, 2));
+        
+        // Check if there's an error in params
+        const errorFromParams = resultAny.params?.error || resultAny.error || 'Unknown error';
+        const errorDescription = resultAny.params?.error_description || resultAny.error_description || '';
+        
+        console.error('❌ OAuth error details:', {
+          type: result.type,
+          error: errorFromParams,
+          errorDescription: errorDescription,
+          allParams: resultAny.params
+        });
+        
+        const errorMsg = errorDescription 
+          ? `${errorFromParams}: ${errorDescription}`
+          : `OAuth flow failed: ${result.type} - ${errorFromParams}`;
+        throw new Error(errorMsg);
       }
     } catch (error: any) {
-      console.error('Google Sign-In error:', error);
-      throw new Error(error.message || 'Failed to sign in with Google');
+      // Log and throw actual errors (network issues, configuration problems, etc.)
+      // Cancellations are handled above and won't reach here
+      const errorMessage = error?.message || 'Failed to sign in with Google';
+      
+      // Don't log cancellation messages as errors
+      if (!errorMessage.toLowerCase().includes('cancel')) {
+        console.error('Google Sign-In error:', error);
+      }
+      
+      throw error;
     }
   }
 
   /**
-   * Verify Google token with backend and get employee data
+   * Verify Google authorization code with backend and get employee data
+   * Backend will exchange the code for tokens (more secure - client secret stays on backend)
+   * OR handle token received via deep link from backend
    */
   static async verifyWithBackend(userInfo: GoogleUserInfo): Promise<any> {
-    if (!userInfo.idToken) {
-      throw new Error('ID token is required for backend verification');
+    // If we already have a token from deep link (backend proxy flow)
+    const userInfoAny = userInfo as any;
+    if (userInfoAny.token) {
+      console.log('✅ Using token from deep link, fetching employee data...');
+      // Token is already received, just need to fetch employee data
+      const response = await fetch(`${this.baseUrl}/api/auth/verify`, {
+        headers: {
+          'Authorization': `Bearer ${userInfoAny.token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to verify token with backend');
+      }
+      
+      const result = await response.json();
+      return result.employee || result;
+    }
+    
+    // Original flow: send authorization code to backend
+    if (!userInfo.authorizationCode) {
+      throw new Error('Authorization code is required for backend verification');
     }
 
-    const response = await fetch(`${this.baseUrl}/api/auth/google-signin`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        idToken: userInfo.idToken,
-        email: userInfo.email,
-        name: userInfo.name,
-        googleId: userInfo.id,
-        picture: userInfo.picture,
-      }),
+    // Include the redirect URI so backend can use it for token exchange
+    const redirectUri = this.getGoogleRedirectUri();
+    const backendUrl = `${this.baseUrl}/api/auth/google/mobile`;
+
+    console.log('🔍 Sending authorization code to backend:', {
+      backendUrl: backendUrl,
+      hasCode: !!userInfo.authorizationCode,
+      redirectUri: redirectUri
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to authenticate with backend');
-    }
+    try {
+      const response = await fetch(backendUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: userInfo.authorizationCode,
+          redirectUri: redirectUri, // Pass redirect URI to backend
+        }),
+      });
 
-    return response.json();
+      console.log('🔍 Backend response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Failed to authenticate with backend' };
+        }
+        
+        console.error('❌ Backend OAuth error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData.error,
+          fullResponse: errorText
+        });
+        
+        throw new Error(errorData.error || `Backend error (${response.status}): ${errorText.substring(0, 100)}`);
+      }
+
+      const result = await response.json();
+      
+      // Return employee data (backend already handled token exchange)
+      return result.employee;
+    } catch (error: any) {
+      console.error('❌ Error in verifyWithBackend:', error);
+      throw error;
+    }
   }
 }
 
