@@ -46,7 +46,8 @@ const server = http.createServer(app);
 
 // Trust proxy - Required when running behind a reverse proxy (e.g., Render.com load balancer)
 // This allows Express to correctly identify client IPs from X-Forwarded-For headers
-app.set('trust proxy', true);
+// Use '1' to only trust the first proxy (Render's load balancer) to maintain rate limiting security
+app.set('trust proxy', 1);
 
 // Set server timeout to 60 seconds for large file uploads
 server.timeout = 60000;
