@@ -617,24 +617,220 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
 
   if (error) {
     debugError('❌ Mobile: Google OAuth error in callback:', error);
-    // Redirect to mobile app with error
+    // Serve HTML page with error (Safari blocks automatic redirects)
     const errorParam = encodeURIComponent(error);
-    return res.redirect(`ohstafftracker://oauth/callback?error=${errorParam}`);
+    const redirectUrl = `ohstafftracker://oauth/callback?error=${errorParam}`;
+    return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In Error</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Sign In Error</h1>
+    <p>An error occurred during sign in. Please try again.</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+    `);
   }
 
   if (!code) {
     debugError('❌ Mobile: No authorization code received from Google');
-    return res.redirect('ohstafftracker://oauth/callback?error=no_code');
+    const redirectUrl = 'ohstafftracker://oauth/callback?error=no_code';
+    return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In Error</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Sign In Error</h1>
+    <p>No authorization code received. Please try again.</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+    `);
   }
 
   if (!OAuth2Client) {
     debugError('❌ Mobile: Google OAuth client library not available');
-    return res.redirect('ohstafftracker://oauth/callback?error=oauth_not_configured');
+    const redirectUrl = 'ohstafftracker://oauth/callback?error=oauth_not_configured';
+    return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuration Error</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Configuration Error</h1>
+    <p>OAuth is not properly configured. Please contact support.</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+    `);
   }
 
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     debugError('❌ Mobile: Google OAuth credentials not configured');
-    return res.redirect('ohstafftracker://oauth/callback?error=oauth_not_configured');
+    const redirectUrl = 'ohstafftracker://oauth/callback?error=oauth_not_configured';
+    return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuration Error</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Configuration Error</h1>
+    <p>OAuth credentials not configured. Please contact support.</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+    `);
   }
 
   try {
@@ -805,13 +1001,111 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
           );
         } else {
           debugWarn(`⚠️  Mobile: Google login attempted for non-existent user: ${email}`);
-          return res.redirect(`ohstafftracker://oauth/callback?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`);
+          const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`;
+          return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account Not Found</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Account Not Found</h1>
+    <p>Your account was not found. Please contact your administrator.</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+          `);
         }
 
         function completeMobileCallbackLogin() {
           if (!userToReturn) {
             debugError('❌ Mobile: Failed to get user after Google OAuth');
-            return res.redirect('ohstafftracker://oauth/callback?error=user_not_found');
+            const redirectUrl = 'ohstafftracker://oauth/callback?error=user_not_found';
+            return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In Error</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Sign In Error</h1>
+    <p>User not found. Please try again.</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+            `);
           }
 
           // Parse JSON fields
@@ -834,19 +1128,140 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
           const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
           const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
 
-          debugLog(`✅ Mobile: Google OAuth login successful for ${email}, redirecting to app...`);
+          debugLog(`✅ Mobile: Google OAuth login successful for ${email}, serving redirect page...`);
 
-          // Redirect to mobile app with success data in URL
-          // Note: URL has length limits, so we'll pass token and let app fetch user data
+          // Serve HTML page with button to redirect to app (Safari blocks automatic redirects)
+          // User must click button to trigger redirect (user-initiated action)
           const redirectUrl = `ohstafftracker://oauth/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}`;
-          res.redirect(redirectUrl);
+          
+          res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In Successful</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 1rem;
+    }
+    p {
+      color: #666;
+      margin-bottom: 2rem;
+      line-height: 1.6;
+    }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #5568d3;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>✅ Sign In Successful!</h1>
+    <p>You have successfully signed in with your Google account.</p>
+    <button onclick="redirectToApp()">Return to App</button>
+  </div>
+  <script>
+    function redirectToApp() {
+      window.location.href = '${redirectUrl}';
+    }
+    // Auto-redirect after 2 seconds (optional - can remove if you want button-only)
+    setTimeout(function() {
+      redirectToApp();
+    }, 2000);
+  </script>
+</body>
+</html>
+          `);
         }
       }
     );
   } catch (error) {
     debugError('❌ Mobile: Google OAuth callback error:', error);
     const errorMessage = error?.message || 'Authentication failed';
-    return res.redirect(`ohstafftracker://oauth/callback?error=${encodeURIComponent(errorMessage)}`);
+    const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent(errorMessage)}`;
+    return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In Error</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Sign In Error</h1>
+    <p>${errorMessage}</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+    `);
   }
 });
 
