@@ -78,6 +78,40 @@ app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
 
+// Serve Apple App Site Association (AASA) file for Universal Links
+// This must be served at /.well-known/apple-app-site-association with no file extension
+// Note: appID format is TEAM_ID.BUNDLE_ID - you'll need to replace TEAM_ID with your Apple Developer Team ID
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  // For now, using wildcard team ID - replace with actual Team ID after app is built
+  // You can find your Team ID in Apple Developer account or Xcode
+  const aasa = {
+    applinks: {
+      apps: [],
+      details: [
+        {
+          // Format: TEAM_ID.BUNDLE_ID
+          // Replace '*' with your actual Apple Developer Team ID
+          // Example: 'ABC123XYZ.com.oxfordhouse.ohstafftracker'
+          appID: '*.com.oxfordhouse.ohstafftracker',
+          paths: [
+            '/api/auth/google/mobile/callback*',
+            '/oauth/callback*'
+          ]
+        }
+      ]
+    },
+    webcredentials: {
+      apps: ['*.com.oxfordhouse.ohstafftracker']
+    }
+  };
+  
+  // Must be served with application/json content type (not text/plain)
+  // Content-Type header is critical for iOS to recognize the file
+  res.setHeader('Content-Type', 'application/json');
+  res.json(aasa);
+  debugLog('✅ Served Apple App Site Association file');
+});
+
 // Handle preflight OPTIONS requests (extracted to middleware/cors.js)
 app.options('*', handlePreflight);
 

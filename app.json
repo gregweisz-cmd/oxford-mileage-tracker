@@ -6,6 +6,7 @@
     "owner": "goosew27",
     "privacy": "public",
     "orientation": "portrait",
+    "scheme": "ohstafftracker",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
@@ -16,7 +17,18 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
+      "associatedDomains": [
+        "applinks:oxford-mileage-backend.onrender.com"
+      ],
       "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "ohstafftracker",
+              "com.googleusercontent.apps.893722301667-p3fvq01ati1tustt2hvjasmhhn8fbjsg"
+            ]
+          }
+        ],
         "NSLocationWhenInUseUsageDescription": "Oxford House Expense Tracker needs location access to automatically track mileage for Oxford House employees.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Oxford House Expense Tracker needs location access to continuously track mileage even when the app is in the background or your phone is locked.",
         "NSCameraUsageDescription": "Oxford House Expense Tracker needs camera access to take photos of receipts for expense tracking.",

@@ -16,6 +16,21 @@ let OAuth2Client = null;
 let googleClient = null;
 let ALLOWED_EMAIL_DOMAINS = [];
 
+// Temporary storage for mobile OAuth tokens (in-memory, expires after 5 minutes)
+// Format: { code: { token, email, expiresAt } }
+const mobileAuthTokens = new Map();
+
+// Cleanup expired tokens every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, data] of mobileAuthTokens.entries()) {
+    if (data.expiresAt < now) {
+      mobileAuthTokens.delete(code);
+      debugLog(`🧹 Cleaned up expired mobile auth token: ${code.substring(0, 8)}...`);
+    }
+  }
+}, 60000); // Run cleanup every minute
+
 try {
   const { OAuth2Client: GoogleOAuth2Client } = require('google-auth-library');
   OAuth2Client = GoogleOAuth2Client;
@@ -1230,12 +1245,32 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}, serving redirect page...`);
 
-          // Serve HTML page with button to redirect to app (Safari blocks automatic redirects)
-          // User must click button to trigger redirect (user-initiated action)
-          const redirectUrl = `ohstafftracker://oauth/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}`;
+          // Generate a temporary code for polling fallback (in case deep link fails)
+          const authCode = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+          const expiresAt = Date.now() + (5 * 60 * 1000); // 5 minutes
           
-          // Use a simple anchor tag link - Safari allows user-initiated taps on anchor tags
-          // even for custom URL schemes, while it blocks JavaScript redirects
+          // Store token temporarily for polling
+          mobileAuthTokens.set(authCode, {
+            token: sessionToken,
+            email: email,
+            expiresAt: expiresAt
+          });
+          
+          debugLog(`📱 Mobile: Generated auth code ${authCode} for polling fallback`);
+          
+          // Use Universal Link instead of custom URL scheme for better Safari compatibility
+          // Universal Links work better than custom schemes on iOS
+          const baseUrl = 'https://oxford-mileage-backend.onrender.com';
+          const universalLinkUrl = `${baseUrl}/api/auth/google/mobile/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&code=${authCode}`;
+          
+          // Fallback to custom scheme for older iOS versions or if Universal Links aren't configured
+          const customSchemeUrl = `ohstafftracker://oauth/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}`;
+          
+          // Use Universal Link (HTTPS) - Safari allows this better than custom schemes
+          // Universal Links will open the app directly if configured, otherwise opens in browser
+          const redirectUrl = universalLinkUrl;
+          
+          // Also provide polling code as fallback
           res.send(`
 <!DOCTYPE html>
 <html>
@@ -1269,7 +1304,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     }
     p {
       color: #666;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       line-height: 1.6;
     }
     .app-link {
@@ -1284,6 +1319,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
       box-sizing: border-box;
       transition: background 0.3s;
       font-weight: 500;
+      margin-bottom: 1.5rem;
     }
     .app-link:hover {
       background: #5568d3;
@@ -1291,10 +1327,26 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     .app-link:active {
       transform: scale(0.98);
     }
+    .code-box {
+      background: #f5f5f5;
+      border: 2px dashed #667eea;
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 1rem 0;
+      font-family: 'Courier New', monospace;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #333;
+      letter-spacing: 2px;
+    }
     .info {
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       color: #999;
       margin-top: 1rem;
+    }
+    .divider {
+      margin: 1.5rem 0;
+      border-top: 1px solid #e0e0e0;
     }
   </style>
 </head>
@@ -1304,7 +1356,12 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     <p>You have successfully signed in with your Google account.</p>
     <p style="font-size: 0.9rem; color: #999; margin-bottom: 1.5rem;">Tap the button below to return to the app:</p>
     <a href="${redirectUrl}" class="app-link">Return to App</a>
-    <p class="info">If the app doesn't open, please close this page and open the app manually.</p>
+    
+    <div class="divider"></div>
+    
+    <p style="font-size: 0.9rem; color: #666; margin-bottom: 0.5rem;">If the app doesn't open automatically, use this code:</p>
+    <div class="code-box">${authCode}</div>
+    <p class="info">Enter this code in the app if the redirect doesn't work. Code expires in 5 minutes.</p>
   </div>
 </body>
 </html>
@@ -1641,6 +1698,38 @@ router.post('/api/auth/google/mobile', async (req, res) => {
     
     res.status(500).json({ error: errorMessage });
   }
+});
+
+// Polling endpoint for mobile OAuth (fallback when deep link fails)
+router.get('/api/auth/google/mobile/poll', async (req, res) => {
+  const { code } = req.query;
+  
+  if (!code) {
+    return res.status(400).json({ error: 'Auth code is required' });
+  }
+  
+  const authData = mobileAuthTokens.get(code);
+  
+  if (!authData) {
+    return res.status(404).json({ error: 'Auth code not found or expired' });
+  }
+  
+  // Check if expired
+  if (Date.now() > authData.expiresAt) {
+    mobileAuthTokens.delete(code);
+    return res.status(410).json({ error: 'Auth code expired' });
+  }
+  
+  // Return token and delete from storage (one-time use)
+  mobileAuthTokens.delete(code);
+  
+  debugLog(`📱 Mobile: Polling endpoint returned token for code ${code.substring(0, 8)}...`);
+  
+  res.json({
+    success: true,
+    token: authData.token,
+    email: authData.email
+  });
 });
 
 module.exports = router;

@@ -117,10 +117,19 @@ export class GoogleAuthService {
         const handleDeepLink = (event: { url: string }) => {
           const url = event.url;
           console.log('🔍 Deep link received:', url);
+          console.log('🔍 Deep link type:', typeof url);
           
-          // Backend proxy flow: Backend redirects to app with token
-          // Format: ohstafftracker://oauth/callback?success=true&token=...&email=...
-          if (url.startsWith('ohstafftracker://oauth/callback')) {
+          // Check for Universal Link (HTTPS) or custom scheme
+          // Universal Link format: https://oxford-mileage-backend.onrender.com/api/auth/google/mobile/callback?...
+          // Custom scheme format: ohstafftracker://oauth/callback?...
+          const isUniversalLink = url && (
+            url.includes('oxford-mileage-backend.onrender.com/api/auth/google/mobile/callback') ||
+            url.includes('/oauth/callback')
+          );
+          const isCustomScheme = url && url.startsWith('ohstafftracker://oauth/callback');
+          
+          if (isUniversalLink || isCustomScheme) {
+            console.log('✅ Deep link matched! Type:', isUniversalLink ? 'Universal Link' : 'Custom Scheme');
             clearTimeout(timeout);
             Linking.removeAllListeners('url');
             
@@ -130,14 +139,20 @@ export class GoogleAuthService {
               const token = urlObj.searchParams.get('token');
               const email = urlObj.searchParams.get('email');
               const error = urlObj.searchParams.get('error');
+              const code = urlObj.searchParams.get('code'); // Polling code as fallback
+              
+              console.log('🔍 Parsed deep link params:', { success, hasToken: !!token, email, error, hasCode: !!code });
               
               if (error) {
+                console.error('❌ Deep link contains error:', error);
                 reject(new Error(decodeURIComponent(error)));
                 return;
               }
               
               if (success === 'true' && token && email) {
                 console.log('✅ Successfully received token from backend via deep link');
+                console.log('🔍 Token (first 20 chars):', token.substring(0, 20) + '...');
+                console.log('🔍 Email:', decodeURIComponent(email));
                 resolve({
                   id: '',
                   email: decodeURIComponent(email),
@@ -145,35 +160,120 @@ export class GoogleAuthService {
                   token: decodeURIComponent(token),
                 } as any);
               } else {
+                console.error('❌ Invalid deep link response:', { success, hasToken: !!token, email });
                 reject(new Error('Invalid deep link response - missing success, token, or email'));
               }
             } catch (err: any) {
+              console.error('❌ Failed to parse deep link:', err);
               reject(new Error(`Failed to parse deep link: ${err?.message || err}`));
             }
+          } else {
+            console.log('⚠️ Deep link received but does not match expected pattern:', url);
           }
         };
         
+        console.log('🔍 Setting up deep link listener...');
         // Listen for deep links
         const subscription = Linking.addEventListener('url', handleDeepLink);
+        console.log('✅ Deep link listener added');
         
         // Also check for initial URL (in case app was opened via deep link)
         Linking.getInitialURL().then((initialUrl) => {
-          if (initialUrl && initialUrl.startsWith('ohstafftracker://oauth/callback')) {
-            handleDeepLink({ url: initialUrl });
+          console.log('🔍 Initial URL check:', initialUrl);
+          if (initialUrl) {
+            const isUniversalLink = initialUrl.includes('oxford-mileage-backend.onrender.com/api/auth/google/mobile/callback') ||
+                                    initialUrl.includes('/oauth/callback');
+            const isCustomScheme = initialUrl.startsWith('ohstafftracker://oauth/callback');
+            
+            if (isUniversalLink || isCustomScheme) {
+              console.log('✅ Found initial URL matching pattern');
+              handleDeepLink({ url: initialUrl });
+            }
           }
+        }).catch((err) => {
+          console.log('⚠️ Error getting initial URL:', err);
         });
       });
       
-      // Open browser
+      // Open browser - use system browser which handles deep links better on iOS
       console.log('🔍 Opening OAuth URL in browser...');
-      await WebBrowser.openBrowserAsync(authUrl);
+      
+      // Try opening with system browser (better for deep links)
+      let browserResult;
+      try {
+        // Use openBrowserAsync which should close when redirected
+        browserResult = await WebBrowser.openBrowserAsync(authUrl, {
+          // iOS options - preferEphemeralSession might help with redirects
+          showInRecents: false,
+          // Android options
+          createTask: false,
+        });
+        console.log('🔍 Browser closed with result:', browserResult);
+      } catch (browserError) {
+        console.error('❌ Error opening browser:', browserError);
+      }
       
       // Wait for deep link callback from backend
+      // Note: Deep link should fire when backend redirects
       console.log('⏳ Waiting for deep link callback from backend...');
-      const userInfo = await deepLinkPromise;
       
+      // If browser closed but no deep link received, try polling the backend
+      // or check if we can manually trigger the deep link
+      let userInfo: GoogleUserInfo | null = null;
+      try {
+        userInfo = await Promise.race([
+          deepLinkPromise,
+          // Timeout after 30 seconds and try alternative method
+          new Promise<null>((resolve) => {
+            setTimeout(() => {
+              console.log('⚠️ Deep link timeout - browser may have blocked redirect');
+              resolve(null);
+            }, 30000);
+          })
+        ]);
+      } catch (deepLinkError) {
+        console.error('❌ Deep link error:', deepLinkError);
+      }
+      
+      // If no deep link received, try checking if app was reopened via deep link
       if (!userInfo) {
-        return null;
+        console.log('🔍 No deep link received, checking initial URL...');
+        try {
+          const initialUrl = await Linking.getInitialURL();
+          if (initialUrl && initialUrl.startsWith('ohstafftracker://oauth/callback')) {
+            console.log('✅ Found initial URL after browser close:', initialUrl);
+            // Parse the initial URL
+            const urlObj = new URL(initialUrl);
+            const success = urlObj.searchParams.get('success');
+            const token = urlObj.searchParams.get('token');
+            const email = urlObj.searchParams.get('email');
+            
+            if (success === 'true' && token && email) {
+              userInfo = {
+                id: '',
+                email: decodeURIComponent(email),
+                name: '',
+                token: decodeURIComponent(token),
+              } as any;
+            }
+          }
+        } catch (initialUrlError) {
+          console.error('❌ Error checking initial URL:', initialUrlError);
+        }
+      }
+      
+      // If still no userInfo, the redirect was blocked
+      if (!userInfo) {
+        console.log('⚠️ Deep link failed - Safari likely blocked the redirect');
+        console.log('📱 If you see a code on the browser page, the app can poll for your token.');
+        console.log('💡 Please check the browser page for an auth code, or try signing in again.');
+        
+        throw new Error(
+          'OAuth redirect was blocked by Safari. ' +
+          'If you see a code on the sign-in success page, please note it down. ' +
+          'The app will support code entry in a future update. ' +
+          'For now, please try signing in again or ensure the app can handle deep links.'
+        );
       }
       
       return userInfo;
