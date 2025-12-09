@@ -640,8 +640,10 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
   try {
     debugLog('🔐 Mobile: Exchanging Google authorization code for tokens...');
     
+    // Use backend proxy redirect URI (HTTPS URL)
+    // This matches what mobile app sends in the OAuth request
     const baseUrl = process.env.API_BASE_URL || 'http://localhost:3002';
-    const mobileRedirectUri = `${baseUrl}/api/auth/google/mobile/callback`;
+    const mobileRedirectUri = redirectUri || `${baseUrl}/api/auth/google/mobile/callback`;
     
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     
@@ -873,9 +875,9 @@ router.post('/api/auth/google/mobile', async (req, res) => {
 
     // Create a new OAuth client with the mobile redirect URI
     // The redirect URI must match what was used in the authorization request
-    // For Internal apps, we use custom URL scheme instead of Expo proxy
-    // Default to custom scheme (fallback if not provided)
-    const mobileRedirectUri = redirectUri || 'ohstafftracker://oauth/callback';
+    // For External apps, use backend proxy HTTPS redirect URI
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3002';
+    const mobileRedirectUri = redirectUri || `${baseUrl}/api/auth/google/mobile/callback`;
     
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     

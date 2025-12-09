@@ -30,7 +30,8 @@ export class GoogleAuthService {
   private static baseUrl = GoogleAuthService.getBaseUrl();
 
   // Google OAuth Client ID (from Google Cloud Console)
-  // This is the Web Client ID that works for mobile apps
+  // Using Web client ID - matches backend configuration
+  // External apps allow this to work for mobile too
   private static GOOGLE_CLIENT_ID = '893722301667-bqc8ir7q35omj6s84l7ackvqoqrhtrv6.apps.googleusercontent.com';
 
   private static getGoogleClientId(): string {
@@ -38,9 +39,8 @@ export class GoogleAuthService {
   }
 
   private static getGoogleRedirectUri(): string {
-    // For Internal Google apps, we can't use custom URL schemes directly in Google Console
-    // Solution: Use backend as proxy - redirect to backend, backend redirects to app
-    // Backend callback URL is already registered in Google Cloud Console
+    // For External apps, we can use backend proxy flow with HTTPS redirect URI
+    // Backend handles OAuth callback and redirects to app via deep link
     const baseUrl = this.baseUrl;
     const redirectUri = `${baseUrl}/api/auth/google/mobile/callback`;
     
@@ -76,26 +76,36 @@ export class GoogleAuthService {
       console.log('🔍 Full redirect URI:', redirectUri);
       console.log('🔍 Full client ID:', clientId);
       
-      // Build OAuth authorization URL
-      // For backend proxy, we send user to Google, Google redirects to backend, backend redirects to app
+      // Generate state for security (CSRF protection)
+      const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      
+      // Build OAuth authorization URL with all required parameters
+      // Note: For Internal apps, Google may not require PKCE, but including state is recommended
       const discovery = {
         authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
         tokenEndpoint: 'https://oauth2.googleapis.com/token',
         revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
       };
       
-      // Build authorization URL with required parameters
+      // Build authorization URL with required parameters only
+      // For Internal apps, keep it minimal - only required params
       const authUrlParams = new URLSearchParams({
         client_id: clientId,
         redirect_uri: redirectUri,
         response_type: 'code',
         scope: 'openid profile email',
-        access_type: 'offline',
-        prompt: 'consent',
+        state: state, // CSRF protection (required for security)
       });
       
       const authUrl = `${discovery.authorizationEndpoint}?${authUrlParams.toString()}`;
-      console.log('🔍 Generated OAuth URL:', authUrl.substring(0, 100) + '...');
+      console.log('🔍 Generated OAuth URL (first 200 chars):', authUrl.substring(0, 200) + '...');
+      console.log('🔍 Full OAuth URL:', authUrl);
+      console.log('🔍 Redirect URI being sent:', redirectUri);
+      console.log('🔍 Redirect URI length:', redirectUri.length);
+      console.log('🔍 Redirect URI (exact, no encoding):', JSON.stringify(redirectUri));
+      console.log('🔍 Client ID being sent:', clientId);
+      console.log('🔍 State parameter:', state);
+      console.log('🔍 All URL parameters:', Object.fromEntries(authUrlParams));
       
       // Set up deep link listener BEFORE opening browser
       const deepLinkPromise = new Promise<GoogleUserInfo | null>((resolve, reject) => {
@@ -108,6 +118,8 @@ export class GoogleAuthService {
           const url = event.url;
           console.log('🔍 Deep link received:', url);
           
+          // Backend proxy flow: Backend redirects to app with token
+          // Format: ohstafftracker://oauth/callback?success=true&token=...&email=...
           if (url.startsWith('ohstafftracker://oauth/callback')) {
             clearTimeout(timeout);
             Linking.removeAllListeners('url');
