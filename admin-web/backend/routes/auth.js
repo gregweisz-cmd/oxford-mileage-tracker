@@ -838,8 +838,15 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     
     // Use backend proxy redirect URI (HTTPS URL)
     // This matches what mobile app sends in the OAuth request
-    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3002';
-    const mobileRedirectUri = redirectUri || `${baseUrl}/api/auth/google/mobile/callback`;
+    // For GET callback, construct from current request URL or environment
+    let baseUrl = process.env.API_BASE_URL;
+    if (!baseUrl) {
+      // Try to construct from request (works if behind proxy)
+      const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+      const host = req.get('host') || 'oxford-mileage-backend.onrender.com';
+      baseUrl = `${protocol}://${host}`;
+    }
+    const mobileRedirectUri = `${baseUrl}/api/auth/google/mobile/callback`;
     
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     
@@ -873,7 +880,56 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
       const emailDomain = email.split('@')[1];
       if (!ALLOWED_EMAIL_DOMAINS.includes(emailDomain)) {
         debugWarn(`⚠️  Mobile: Access denied for ${email} - not in allowed domains`);
-        return res.redirect(`ohstafftracker://oauth/callback?error=${encodeURIComponent('Access restricted to organization email addresses only')}`);
+        const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent('Access restricted to organization email addresses only')}`;
+        return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Access Denied</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      margin: 1rem;
+    }
+    h1 { color: #d32f2f; margin-bottom: 1rem; }
+    p { color: #666; margin-bottom: 2rem; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>❌ Access Denied</h1>
+    <p>Access is restricted to organization email addresses only.</p>
+    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
+  </div>
+</body>
+</html>
+        `);
       }
       debugLog(`✅ Mobile: Email domain ${emailDomain} is allowed`);
     }
