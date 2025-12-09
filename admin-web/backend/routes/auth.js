@@ -1234,6 +1234,8 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
           // User must click button to trigger redirect (user-initiated action)
           const redirectUrl = `ohstafftracker://oauth/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}`;
           
+          // Use meta refresh and form submission as fallback
+          // This approach works better with Safari's security restrictions
           res.send(`
 <!DOCTYPE html>
 <html>
@@ -1241,6 +1243,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign In Successful</title>
+  <meta http-equiv="refresh" content="2;url=${redirectUrl}">
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1279,6 +1282,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
       cursor: pointer;
       width: 100%;
       transition: background 0.3s;
+      margin-top: 1rem;
     }
     button:hover {
       background: #5568d3;
@@ -1286,22 +1290,58 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     button:active {
       transform: scale(0.98);
     }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>✅ Sign In Successful!</h1>
     <p>You have successfully signed in with your Google account.</p>
-    <button onclick="redirectToApp()">Return to App</button>
+    <div class="spinner"></div>
+    <p style="font-size: 0.9rem; color: #999;">Redirecting to app...</p>
+    <form id="redirectForm" action="${redirectUrl}" method="get" style="display: none;">
+      <button type="submit">Return to App</button>
+    </form>
+    <button onclick="redirectToApp()">Return to App Now</button>
   </div>
   <script>
     function redirectToApp() {
-      window.location.href = '${redirectUrl}';
+      const url = '${redirectUrl}';
+      
+      // Try multiple methods
+      // Method 1: Direct href (works on most browsers)
+      window.location.href = url;
+      
+      // Method 2: Form submission (Safari sometimes allows this)
+      setTimeout(function() {
+        document.getElementById('redirectForm').submit();
+      }, 100);
+      
+      // Method 3: Hidden iframe (fallback)
+      setTimeout(function() {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = url;
+        document.body.appendChild(iframe);
+      }, 200);
     }
-    // Auto-redirect after 2 seconds (optional - can remove if you want button-only)
-    setTimeout(function() {
+    
+    // Try redirect immediately on page load
+    window.addEventListener('load', function() {
       redirectToApp();
-    }, 2000);
+    });
   </script>
 </body>
 </html>
