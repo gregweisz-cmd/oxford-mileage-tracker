@@ -336,8 +336,9 @@ router.post('/api/test-email', async (req, res) => {
   const isConfigured = await emailService.verifyEmailConfig();
   if (!isConfigured) {
     return res.status(500).json({ 
-      error: 'Email not configured. Please set SMTP_USER and SMTP_PASSWORD environment variables.',
-      configured: false
+      error: 'Email not configured. Please set EMAIL_USER (or SMTP_USER) and EMAIL_PASS (or SMTP_PASSWORD) environment variables.',
+      configured: false,
+      hint: 'Also check EMAIL_ENABLED is not set to "false"'
     });
   }
 
@@ -345,6 +346,7 @@ router.post('/api/test-email', async (req, res) => {
   const result = await emailService.sendEmail({
     to: to,
     subject: 'Test Email - Oxford House Expense Tracker',
+    text: 'This is a test email from Oxford House Expense Tracker. If you receive this, your email configuration is working correctly!',
     html: `
       <!DOCTYPE html>
       <html>
@@ -381,16 +383,17 @@ router.post('/api/test-email', async (req, res) => {
     `,
   });
 
-  if (result.success) {
+  // sendEmail returns boolean, not object with success field
+  if (result === true) {
     res.json({ 
       success: true, 
-      message: 'Test email sent successfully',
-      messageId: result.messageId 
+      message: 'Test email sent successfully. Please check your inbox.'
     });
   } else {
     res.status(500).json({ 
       success: false, 
-      error: result.error || 'Failed to send test email' 
+      error: 'Failed to send test email. Check backend logs for details.',
+      configured: isConfigured
     });
   }
 });

@@ -7,11 +7,13 @@ const nodemailer = require('nodemailer');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // Email configuration from environment variables
-const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
-const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '587', 10);
-const EMAIL_USER = process.env.EMAIL_USER || '';
-const EMAIL_PASS = process.env.EMAIL_PASS || '';
+// Support both EMAIL_* and SMTP_* naming conventions
+const EMAIL_HOST = process.env.EMAIL_HOST || process.env.SMTP_HOST || 'smtp.gmail.com';
+const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || '587', 10);
+const EMAIL_USER = process.env.EMAIL_USER || process.env.SMTP_USER || '';
+const EMAIL_PASS = process.env.EMAIL_PASS || process.env.SMTP_PASSWORD || process.env.SMTP_APP_PASSWORD || '';
 const EMAIL_FROM = process.env.EMAIL_FROM || EMAIL_USER || 'noreply@oxfordhouse.org';
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tracker';
 const EMAIL_ENABLED = process.env.EMAIL_ENABLED !== 'false'; // Default to true unless explicitly disabled
 
 // Create reusable transporter (will be initialized lazily)
@@ -31,7 +33,8 @@ function initTransporter() {
 
     if (!EMAIL_USER || !EMAIL_PASS) {
       debugWarn('⚠️ Email credentials not configured. Email notifications will be skipped.');
-      debugWarn('   Set EMAIL_USER, EMAIL_PASS, and optionally EMAIL_HOST, EMAIL_PORT, EMAIL_FROM environment variables.');
+      debugWarn('   Set EMAIL_USER (or SMTP_USER) and EMAIL_PASS (or SMTP_PASSWORD) environment variables.');
+      debugWarn('   Optionally set EMAIL_HOST, EMAIL_PORT, EMAIL_FROM, EMAIL_FROM_NAME');
       resolve(null);
       return;
     }
@@ -99,7 +102,7 @@ async function sendEmail({ to, subject, text, html }) {
     }
 
     const mailOptions = {
-      from: EMAIL_FROM,
+      from: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>`,
       to,
       subject,
       text,
@@ -171,9 +174,277 @@ async function sendNotificationEmail({ recipient, type, title, message, report, 
   });
 }
 
+/**
+ * Verify email configuration
+ * @returns {Promise<boolean>} True if email is configured and working
+ */
+async function verifyEmailConfig() {
+  if (!EMAIL_ENABLED) {
+    return false;
+  }
+
+  if (!EMAIL_USER || !EMAIL_PASS) {
+    return false;
+  }
+
+  try {
+    const emailTransporter = await initTransporter();
+    return emailTransporter !== null;
+  } catch (error) {
+    debugError('❌ Email config verification failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Send email notification when report is submitted for approval
+ */
+async function sendReportSubmittedNotification({
+  supervisorEmail,
+  supervisorName,
+  employeeName,
+  employeeEmail,
+  reportId,
+  reportPeriod,
+}) {
+  const subject = `New Expense Report Pending Approval - ${employeeName}`;
+  
+  const text = `Hello ${supervisorName},\n\n${employeeName} has submitted an expense report for your approval.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nPlease review and approve or request revisions as needed.`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #2196F3; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .button { display: inline-block; padding: 12px 24px; background-color: #2196F3; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Expense Report Pending Approval</h1>
+        </div>
+        <div class="content">
+          <p>Hello ${supervisorName},</p>
+          <p><strong>${employeeName}</strong> has submitted an expense report for your approval.</p>
+          <p><strong>Report Period:</strong> ${reportPeriod}</p>
+          <p><strong>Report ID:</strong> ${reportId}</p>
+          <p>Please review and approve or request revisions as needed.</p>
+          <p style="text-align: center;">
+            <a href="${process.env.ADMIN_PORTAL_URL || process.env.REACT_APP_API_URL?.replace('/api', '') || 'https://oxford-mileage-backend.onrender.com'}/reports/pending" class="button">Review Report</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>This is an automated notification from Oxford House Expense Tracker.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return await sendEmail({
+    to: supervisorEmail,
+    subject: subject,
+    text: text,
+    html: html,
+  });
+}
+
+/**
+ * Send email notification when report is approved
+ */
+async function sendReportApprovedNotification({
+  employeeEmail,
+  employeeName,
+  supervisorName,
+  reportId,
+  reportPeriod,
+  comments,
+}) {
+  const subject = `Expense Report Approved - ${reportPeriod}`;
+  
+  const text = `Hello ${employeeName},\n\nYour expense report has been approved by ${supervisorName}.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}${comments ? `\n\nComments: ${comments}` : ''}\n\nYour report will now be processed by Finance.`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .approved-badge { background-color: #4CAF50; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block; margin: 10px 0; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Report Approved ✓</h1>
+        </div>
+        <div class="content">
+          <p>Hello ${employeeName},</p>
+          <p>Your expense report has been <strong>approved</strong> by ${supervisorName}.</p>
+          <div class="approved-badge">✓ APPROVED</div>
+          <p><strong>Report Period:</strong> ${reportPeriod}</p>
+          <p><strong>Report ID:</strong> ${reportId}</p>
+          ${comments ? `<p><strong>Comments:</strong> ${comments}</p>` : ''}
+          <p>Your report will now be processed by Finance.</p>
+        </div>
+        <div class="footer">
+          <p>This is an automated notification from Oxford House Expense Tracker.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return await sendEmail({
+    to: employeeEmail,
+    subject: subject,
+    text: text,
+    html: html,
+  });
+}
+
+/**
+ * Send email notification when report is rejected
+ */
+async function sendReportRejectedNotification({
+  employeeEmail,
+  employeeName,
+  supervisorName,
+  reportId,
+  reportPeriod,
+  comments,
+}) {
+  const subject = `Expense Report Requires Attention - ${reportPeriod}`;
+  
+  const text = `Hello ${employeeName},\n\nYour expense report has been rejected by ${supervisorName}.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nComments: ${comments || 'No comments provided'}\n\nPlease review the comments and resubmit your report with the necessary corrections.`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #f44336; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .comments-box { background-color: #fff; border-left: 4px solid #f44336; padding: 15px; margin: 15px 0; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Report Rejected</h1>
+        </div>
+        <div class="content">
+          <p>Hello ${employeeName},</p>
+          <p>Your expense report has been <strong>rejected</strong> by ${supervisorName}.</p>
+          <p><strong>Report Period:</strong> ${reportPeriod}</p>
+          <p><strong>Report ID:</strong> ${reportId}</p>
+          ${comments ? `
+            <div class="comments-box">
+              <p><strong>Comments from ${supervisorName}:</strong></p>
+              <p>${comments}</p>
+            </div>
+          ` : ''}
+          <p>Please review the comments above and resubmit your report with the necessary corrections.</p>
+        </div>
+        <div class="footer">
+          <p>This is an automated notification from Oxford House Expense Tracker.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return await sendEmail({
+    to: employeeEmail,
+    subject: subject,
+    text: text,
+    html: html,
+  });
+}
+
+/**
+ * Send email notification when revision is requested
+ */
+async function sendRevisionRequestedNotification({
+  employeeEmail,
+  employeeName,
+  supervisorName,
+  reportId,
+  reportPeriod,
+  comments,
+}) {
+  const subject = `Expense Report Revision Requested - ${reportPeriod}`;
+  
+  const text = `Hello ${employeeName},\n\n${supervisorName} has requested revisions to your expense report.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nRevision Request: ${comments || 'No comments provided'}\n\nPlease make the requested changes and resubmit your report.`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #FF9800; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .comments-box { background-color: #fff; border-left: 4px solid #FF9800; padding: 15px; margin: 15px 0; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Revision Requested</h1>
+        </div>
+        <div class="content">
+          <p>Hello ${employeeName},</p>
+          <p>${supervisorName} has requested revisions to your expense report.</p>
+          <p><strong>Report Period:</strong> ${reportPeriod}</p>
+          <p><strong>Report ID:</strong> ${reportId}</p>
+          ${comments ? `
+            <div class="comments-box">
+              <p><strong>Revision Request from ${supervisorName}:</strong></p>
+              <p>${comments}</p>
+            </div>
+          ` : ''}
+          <p>Please make the requested changes and resubmit your report.</p>
+        </div>
+        <div class="footer">
+          <p>This is an automated notification from Oxford House Expense Tracker.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return await sendEmail({
+    to: employeeEmail,
+    subject: subject,
+    text: text,
+    html: html,
+  });
+}
+
 module.exports = {
   sendEmail,
   sendNotificationEmail,
+  sendReportSubmittedNotification,
+  sendReportApprovedNotification,
+  sendReportRejectedNotification,
+  sendRevisionRequestedNotification,
+  verifyEmailConfig,
   initTransporter,
 };
 
