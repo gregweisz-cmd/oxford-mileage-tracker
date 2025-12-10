@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const websocketService = require('../services/websocketService');
+const emailService = require('../services/emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // ===== REPORT APPROVAL SYSTEM API ENDPOINTS =====
@@ -79,6 +80,38 @@ router.post('/api/reports/submit', (req, res) => {
             res.status(500).json({ error: insertErr.message });
             return;
           }
+          // Send email notification to supervisor (async, don't wait)
+          db.all(
+            'SELECT id, email, name FROM employees WHERE id IN (?, ?)',
+            [employeeId, supervisorId],
+            async (emailErr, employees) => {
+              if (!emailErr && employees && employees.length >= 1) {
+                const employee = employees.find(e => e.id === employeeId);
+                const supervisor = employees.find(e => e.id === supervisorId);
+                
+                if (employee && supervisor && supervisor.email) {
+                  // Get report period for email
+                  db.get(
+                    'SELECT period FROM monthly_reports WHERE id = ?',
+                    [reportId],
+                    async (periodErr, report) => {
+                      const reportPeriod = report?.period || 'Unknown Period';
+                      
+                      await emailService.sendReportSubmittedNotification({
+                        supervisorEmail: supervisor.email,
+                        supervisorName: supervisor.name || 'Supervisor',
+                        employeeName: employee.name || 'Employee',
+                        employeeEmail: employee.email || '',
+                        reportId: reportId,
+                        reportPeriod: reportPeriod,
+                      });
+                    }
+                  );
+                }
+              }
+            }
+          );
+
           res.json({ id, message: 'Report submitted for approval successfully' });
         }
       );
@@ -174,29 +207,72 @@ router.get('/api/reports/employee/:employeeId', (req, res) => {
 // Approve report
 router.post('/api/reports/approve', (req, res) => {
   const db = dbService.getDb();
-  const { reportId, supervisorId, supervisorName, comments } = req.body;
+  const { reportId, supervisorId, supervisorName, comments, employeeId } = req.body;
   const now = new Date().toISOString();
 
-  // Update report status
-  db.run(
-    'UPDATE report_status SET status = ?, supervisorId = ?, supervisorName = ?, comments = ?, reviewedAt = ?, approvedAt = ?, updatedAt = ? WHERE reportId = ?',
-    ['approved', supervisorId, supervisorName, comments, now, now, now, reportId],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
+  // First get employee info from report_status
+  db.get(
+    'SELECT employeeId FROM report_status WHERE reportId = ?',
+    [reportId],
+    (statusErr, status) => {
+      if (statusErr || !status) {
+        res.status(500).json({ error: 'Report not found' });
         return;
       }
 
-      // Create approval record
-      const approvalId = `approval-${Date.now()}`;
+      const finalEmployeeId = employeeId || status.employeeId;
+
+      // Update report status
       db.run(
-        'INSERT INTO report_approvals (id, reportId, employeeId, supervisorId, supervisorName, action, comments, timestamp, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [approvalId, reportId, req.body.employeeId, supervisorId, supervisorName, 'approve', comments, now, now],
-        function(approvalErr) {
-          if (approvalErr) {
-            debugError('Error creating approval record:', approvalErr.message);
+        'UPDATE report_status SET status = ?, supervisorId = ?, supervisorName = ?, comments = ?, reviewedAt = ?, approvedAt = ?, updatedAt = ? WHERE reportId = ?',
+        ['approved', supervisorId, supervisorName, comments, now, now, now, reportId],
+        function(err) {
+          if (err) {
+            res.status(500).json({ error: err.message });
+            return;
           }
-          res.json({ message: 'Report approved successfully' });
+
+          // Create approval record
+          const approvalId = `approval-${Date.now()}`;
+          db.run(
+            'INSERT INTO report_approvals (id, reportId, employeeId, supervisorId, supervisorName, action, comments, timestamp, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [approvalId, reportId, finalEmployeeId, supervisorId, supervisorName, 'approve', comments, now, now],
+            function(approvalErr) {
+              if (approvalErr) {
+                debugError('Error creating approval record:', approvalErr.message);
+              }
+
+              // Send email notification to employee (async, don't wait)
+              if (finalEmployeeId) {
+                db.get(
+                  'SELECT email, name FROM employees WHERE id = ?',
+                  [finalEmployeeId],
+                  async (empErr, employee) => {
+                    if (!empErr && employee && employee.email) {
+                      db.get(
+                        'SELECT period FROM monthly_reports WHERE id = ?',
+                        [reportId],
+                        async (periodErr, report) => {
+                          const reportPeriod = report?.period || 'Unknown Period';
+                          
+                          await emailService.sendReportApprovedNotification({
+                            employeeEmail: employee.email,
+                            employeeName: employee.name || 'Employee',
+                            supervisorName: supervisorName,
+                            reportId: reportId,
+                            reportPeriod: reportPeriod,
+                            comments: comments,
+                          });
+                        }
+                      );
+                    }
+                  }
+                );
+              }
+
+              res.json({ message: 'Report approved successfully' });
+            }
+          );
         }
       );
     }
@@ -206,29 +282,72 @@ router.post('/api/reports/approve', (req, res) => {
 // Reject report
 router.post('/api/reports/reject', (req, res) => {
   const db = dbService.getDb();
-  const { reportId, supervisorId, supervisorName, comments } = req.body;
+  const { reportId, supervisorId, supervisorName, comments, employeeId } = req.body;
   const now = new Date().toISOString();
 
-  // Update report status
-  db.run(
-    'UPDATE report_status SET status = ?, supervisorId = ?, supervisorName = ?, comments = ?, reviewedAt = ?, updatedAt = ? WHERE reportId = ?',
-    ['rejected', supervisorId, supervisorName, comments, now, now, reportId],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
+  // First get employee info from report_status
+  db.get(
+    'SELECT employeeId FROM report_status WHERE reportId = ?',
+    [reportId],
+    (statusErr, status) => {
+      if (statusErr || !status) {
+        res.status(500).json({ error: 'Report not found' });
         return;
       }
 
-      // Create rejection record
-      const approvalId = `approval-${Date.now()}`;
+      const finalEmployeeId = employeeId || status.employeeId;
+
+      // Update report status
       db.run(
-        'INSERT INTO report_approvals (id, reportId, employeeId, supervisorId, supervisorName, action, comments, timestamp, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [approvalId, reportId, req.body.employeeId, supervisorId, supervisorName, 'reject', comments, now, now],
-        function(approvalErr) {
-          if (approvalErr) {
-            debugError('Error creating rejection record:', approvalErr.message);
+        'UPDATE report_status SET status = ?, supervisorId = ?, supervisorName = ?, comments = ?, reviewedAt = ?, updatedAt = ? WHERE reportId = ?',
+        ['rejected', supervisorId, supervisorName, comments, now, now, reportId],
+        function(err) {
+          if (err) {
+            res.status(500).json({ error: err.message });
+            return;
           }
-          res.json({ message: 'Report rejected successfully' });
+
+          // Create rejection record
+          const approvalId = `approval-${Date.now()}`;
+          db.run(
+            'INSERT INTO report_approvals (id, reportId, employeeId, supervisorId, supervisorName, action, comments, timestamp, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [approvalId, reportId, finalEmployeeId, supervisorId, supervisorName, 'reject', comments, now, now],
+            function(approvalErr) {
+              if (approvalErr) {
+                debugError('Error creating rejection record:', approvalErr.message);
+              }
+
+              // Send email notification to employee (async, don't wait)
+              if (finalEmployeeId) {
+                db.get(
+                  'SELECT email, name FROM employees WHERE id = ?',
+                  [finalEmployeeId],
+                  async (empErr, employee) => {
+                    if (!empErr && employee && employee.email) {
+                      db.get(
+                        'SELECT period FROM monthly_reports WHERE id = ?',
+                        [reportId],
+                        async (periodErr, report) => {
+                          const reportPeriod = report?.period || 'Unknown Period';
+                          
+                          await emailService.sendReportRejectedNotification({
+                            employeeEmail: employee.email,
+                            employeeName: employee.name || 'Employee',
+                            supervisorName: supervisorName,
+                            reportId: reportId,
+                            reportPeriod: reportPeriod,
+                            comments: comments || 'No comments provided',
+                          });
+                        }
+                      );
+                    }
+                  }
+                );
+              }
+
+              res.json({ message: 'Report rejected successfully' });
+            }
+          );
         }
       );
     }
@@ -238,29 +357,72 @@ router.post('/api/reports/reject', (req, res) => {
 // Request revision
 router.post('/api/reports/request-revision', (req, res) => {
   const db = dbService.getDb();
-  const { reportId, supervisorId, supervisorName, comments } = req.body;
+  const { reportId, supervisorId, supervisorName, comments, employeeId } = req.body;
   const now = new Date().toISOString();
 
-  // Update report status
-  db.run(
-    'UPDATE report_status SET status = ?, supervisorId = ?, supervisorName = ?, comments = ?, reviewedAt = ?, updatedAt = ? WHERE reportId = ?',
-    ['needs_revision', supervisorId, supervisorName, comments, now, now, reportId],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
+  // First get employee info from report_status
+  db.get(
+    'SELECT employeeId FROM report_status WHERE reportId = ?',
+    [reportId],
+    (statusErr, status) => {
+      if (statusErr || !status) {
+        res.status(500).json({ error: 'Report not found' });
         return;
       }
 
-      // Create revision request record
-      const approvalId = `approval-${Date.now()}`;
+      const finalEmployeeId = employeeId || status.employeeId;
+
+      // Update report status
       db.run(
-        'INSERT INTO report_approvals (id, reportId, employeeId, supervisorId, supervisorName, action, comments, timestamp, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [approvalId, reportId, req.body.employeeId, supervisorId, supervisorName, 'request_revision', comments, now, now],
-        function(approvalErr) {
-          if (approvalErr) {
-            debugError('Error creating revision request record:', approvalErr.message);
+        'UPDATE report_status SET status = ?, supervisorId = ?, supervisorName = ?, comments = ?, reviewedAt = ?, updatedAt = ? WHERE reportId = ?',
+        ['needs_revision', supervisorId, supervisorName, comments, now, now, reportId],
+        function(err) {
+          if (err) {
+            res.status(500).json({ error: err.message });
+            return;
           }
-          res.json({ message: 'Revision requested successfully' });
+
+          // Create revision request record
+          const approvalId = `approval-${Date.now()}`;
+          db.run(
+            'INSERT INTO report_approvals (id, reportId, employeeId, supervisorId, supervisorName, action, comments, timestamp, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [approvalId, reportId, finalEmployeeId, supervisorId, supervisorName, 'request_revision', comments, now, now],
+            function(approvalErr) {
+              if (approvalErr) {
+                debugError('Error creating revision request record:', approvalErr.message);
+              }
+
+              // Send email notification to employee (async, don't wait)
+              if (finalEmployeeId) {
+                db.get(
+                  'SELECT email, name FROM employees WHERE id = ?',
+                  [finalEmployeeId],
+                  async (empErr, employee) => {
+                    if (!empErr && employee && employee.email) {
+                      db.get(
+                        'SELECT period FROM monthly_reports WHERE id = ?',
+                        [reportId],
+                        async (periodErr, report) => {
+                          const reportPeriod = report?.period || 'Unknown Period';
+                          
+                          await emailService.sendRevisionRequestedNotification({
+                            employeeEmail: employee.email,
+                            employeeName: employee.name || 'Employee',
+                            supervisorName: supervisorName,
+                            reportId: reportId,
+                            reportPeriod: reportPeriod,
+                            comments: comments || 'No comments provided',
+                          });
+                        }
+                      );
+                    }
+                  }
+                );
+              }
+
+              res.json({ message: 'Revision requested successfully' });
+            }
+          );
         }
       );
     }

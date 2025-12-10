@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
+const emailService = require('../services/emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // ===== SAVED ADDRESSES =====
@@ -319,6 +320,79 @@ router.get('/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString()
   });
+});
+
+// ===== EMAIL TEST ENDPOINT =====
+
+// Test email configuration
+router.post('/api/test-email', async (req, res) => {
+  const { to } = req.body;
+  
+  if (!to) {
+    return res.status(400).json({ error: 'Email address required (to field)' });
+  }
+
+  // Verify email configuration first
+  const isConfigured = await emailService.verifyEmailConfig();
+  if (!isConfigured) {
+    return res.status(500).json({ 
+      error: 'Email not configured. Please set SMTP_USER and SMTP_PASSWORD environment variables.',
+      configured: false
+    });
+  }
+
+  // Send test email
+  const result = await emailService.sendEmail({
+    to: to,
+    subject: 'Test Email - Oxford House Expense Tracker',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #2196F3; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background-color: #f9f9f9; }
+          .success { background-color: #4CAF50; color: white; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✓ Email Configuration Test</h1>
+          </div>
+          <div class="content">
+            <div class="success">
+              <strong>Success!</strong> Your email configuration is working correctly.
+            </div>
+            <p>If you're reading this email, it means:</p>
+            <ul>
+              <li>SMTP settings are configured correctly</li>
+              <li>Authentication is working</li>
+              <li>Emails can be sent successfully</li>
+            </ul>
+            <p><strong>Test sent at:</strong> ${new Date().toLocaleString()}</p>
+            <p>You can now use email notifications in the approval workflow!</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  });
+
+  if (result.success) {
+    res.json({ 
+      success: true, 
+      message: 'Test email sent successfully',
+      messageId: result.messageId 
+    });
+  } else {
+    res.status(500).json({ 
+      success: false, 
+      error: result.error || 'Failed to send test email' 
+    });
+  }
 });
 
 module.exports = router;
