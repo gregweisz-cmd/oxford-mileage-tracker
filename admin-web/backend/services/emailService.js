@@ -53,22 +53,33 @@ function initTransporter() {
           user: EMAIL_USER,
           pass: EMAIL_PASS,
         },
-        // Add timeout to prevent hanging
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 10000,
+        // Increased timeouts for cloud platforms like Render
+        connectionTimeout: 30000, // 30 seconds
+        greetingTimeout: 30000,
+        socketTimeout: 30000,
+        // TLS options for better compatibility
+        tls: {
+          // Don't reject unauthorized certificates (some SMTP servers use self-signed)
+          rejectUnauthorized: false,
+          // Allow older TLS versions if needed
+          minVersion: 'TLSv1.2',
+        },
+        // Pool connections for better performance
+        pool: true,
+        maxConnections: 1,
+        maxMessages: 3,
       });
 
-      // Verify connection
+      // Verify connection (but don't block if it fails - will retry on actual send)
       transporter.verify((error, success) => {
         if (error) {
-          debugError('❌ Email transporter verification failed:', error.message);
-          transporter = null;
-          resolve(null);
+          debugWarn('⚠️ Email transporter verification failed (will retry on send):', error.message);
+          // Don't set transporter to null - allow retry on actual send
+          // Some cloud platforms have network restrictions that block verify() but allow sendMail()
         } else {
           debugLog('✅ Email transporter configured and verified successfully');
-          resolve(transporter);
         }
+        resolve(transporter);
       });
     } catch (error) {
       debugError('❌ Error creating email transporter:', error);
