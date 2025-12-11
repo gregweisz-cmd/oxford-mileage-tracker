@@ -26,6 +26,7 @@
     "firebase-admin": "^13.0.1",
     "google-auth-library": "^9.0.0",
     "jspdf": "^2.5.1",
+    "@aws-sdk/client-ses": "^3.654.0",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.13",
     "pdf-lib": "^1.17.1",

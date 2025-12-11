@@ -383,16 +383,17 @@ router.post('/api/test-email', async (req, res) => {
     `,
   });
 
-  // sendEmail returns boolean, not object with success field
-  if (result === true) {
+  // sendEmail returns object with success field
+  if (result && result.success) {
     res.json({ 
       success: true, 
-      message: 'Test email sent successfully. Please check your inbox.'
+      message: 'Test email sent successfully. Please check your inbox.',
+      messageId: result.messageId
     });
   } else {
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to send test email. Check backend logs for details.',
+      error: result?.error || 'Failed to send test email. Check backend logs for details.',
       configured: isConfigured
     });
   }
