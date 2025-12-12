@@ -71,11 +71,18 @@ function initTransporter() {
       });
 
       // Verify connection (but don't block if it fails - will retry on actual send)
+      // Use a timeout to prevent hanging, and resolve immediately with transporter
+      // Some cloud platforms have network restrictions that block verify() but allow sendMail()
+      const verifyTimeout = setTimeout(() => {
+        debugWarn('⚠️ Email transporter verification timed out (will try send anyway)');
+        resolve(transporter);
+      }, 5000); // 5 second timeout for verify
+      
       transporter.verify((error, success) => {
+        clearTimeout(verifyTimeout);
         if (error) {
           debugWarn('⚠️ Email transporter verification failed (will retry on send):', error.message);
           // Don't set transporter to null - allow retry on actual send
-          // Some cloud platforms have network restrictions that block verify() but allow sendMail()
         } else {
           debugLog('✅ Email transporter configured and verified successfully');
         }

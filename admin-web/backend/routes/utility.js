@@ -395,7 +395,7 @@ router.post('/api/test-email', async (req, res) => {
           </html>
         `,
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Send email timeout')), 20000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Send email timeout')), 60000))
     ]);
   } catch (err) {
     debugError('Email send timed out or failed:', err.message);
