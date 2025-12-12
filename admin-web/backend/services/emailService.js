@@ -104,12 +104,12 @@ async function sendEmail({ to, subject, text, html }) {
     
     if (!emailTransporter) {
       debugWarn('⚠️ Email transporter not available. Skipping email send.');
-      return false;
+      return { success: false, error: 'Email transporter not available' };
     }
 
     if (!to || !subject || !text) {
       debugError('❌ Missing required email fields: to, subject, or text');
-      return false;
+      return { success: false, error: 'Missing required email fields: to, subject, or text' };
     }
 
     const mailOptions = {
@@ -122,10 +122,10 @@ async function sendEmail({ to, subject, text, html }) {
 
     const info = await emailTransporter.sendMail(mailOptions);
     debugLog(`✅ Email sent successfully to ${to}: ${info.messageId}`);
-    return true;
+    return { success: true, messageId: info.messageId };
   } catch (error) {
     debugError('❌ Error sending email:', error.message);
-    return false;
+    return { success: false, error: error.message };
   }
 }
 
