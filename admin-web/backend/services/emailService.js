@@ -1,26 +1,75 @@
 /**
  * Email Service
- * Handles sending email notifications via nodemailer
+ * Handles sending email notifications via AWS SES SDK (HTTPS) or SMTP fallback
+ * Uses AWS SES SDK by default (works on Render free tier), falls back to SMTP if SDK not configured
  */
 
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const nodemailer = require('nodemailer');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // Email configuration from environment variables
-// Support both EMAIL_* and SMTP_* naming conventions
+// AWS SES SDK configuration (preferred - works on Render free tier)
+const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || '';
+const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || '';
+const AWS_REGION = process.env.AWS_REGION || process.env.AWS_SES_REGION || 'us-east-2';
+
+// SMTP configuration (fallback - requires paid Render plan)
 const EMAIL_HOST = process.env.EMAIL_HOST || process.env.SMTP_HOST || 'smtp.gmail.com';
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || '587', 10);
 const EMAIL_USER = process.env.EMAIL_USER || process.env.SMTP_USER || '';
 const EMAIL_PASS = process.env.EMAIL_PASS || process.env.SMTP_PASSWORD || process.env.SMTP_APP_PASSWORD || '';
-const EMAIL_FROM = process.env.EMAIL_FROM || EMAIL_USER || 'noreply@oxfordhouse.org';
+
+const EMAIL_FROM = process.env.EMAIL_FROM || 'greg.weisz@oxfordhouse.org';
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tracker';
 const EMAIL_ENABLED = process.env.EMAIL_ENABLED !== 'false'; // Default to true unless explicitly disabled
 
-// Create reusable transporter (will be initialized lazily)
-let transporter = null;
+// Create AWS SES client (will be initialized lazily)
+let sesClient = null;
+let transporter = null; // SMTP transporter (fallback)
 
 /**
- * Initialize email transporter
+ * Initialize AWS SES client
+ * @returns {SESClient|null} SES client instance or null if not configured
+ */
+function initSESClient() {
+  if (!EMAIL_ENABLED) {
+    return null;
+  }
+
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+    return null;
+  }
+
+  if (sesClient) {
+    return sesClient;
+  }
+
+  try {
+    sesClient = new SESClient({
+      region: AWS_REGION,
+      credentials: {
+        accessKeyId: AWS_ACCESS_KEY_ID,
+        secretAccessKey: AWS_SECRET_ACCESS_KEY,
+      },
+      requestHandler: {
+        requestTimeout: 10000, // 10 second timeout
+        httpsAgent: {
+          timeout: 10000,
+        },
+      },
+      maxAttempts: 2, // Retry once, then fail
+    });
+    debugLog('✅ AWS SES client initialized');
+    return sesClient;
+  } catch (error) {
+    debugError('❌ Error creating AWS SES client:', error);
+    return null;
+  }
+}
+
+/**
+ * Initialize SMTP transporter (fallback)
  * @returns {Promise<nodemailer.Transporter|null>} Transporter instance or null if email is disabled/misconfigured
  */
 function initTransporter() {
@@ -32,9 +81,7 @@ function initTransporter() {
     }
 
     if (!EMAIL_USER || !EMAIL_PASS) {
-      debugWarn('⚠️ Email credentials not configured. Email notifications will be skipped.');
-      debugWarn('   Set EMAIL_USER (or SMTP_USER) and EMAIL_PASS (or SMTP_PASSWORD) environment variables.');
-      debugWarn('   Optionally set EMAIL_HOST, EMAIL_PORT, EMAIL_FROM, EMAIL_FROM_NAME');
+      debugWarn('⚠️ SMTP credentials not configured. Will use AWS SES SDK if available.');
       resolve(null);
       return;
     }
@@ -53,43 +100,32 @@ function initTransporter() {
           user: EMAIL_USER,
           pass: EMAIL_PASS,
         },
-        // Increased timeouts for cloud platforms like Render
-        connectionTimeout: 30000, // 30 seconds
+        connectionTimeout: 30000,
         greetingTimeout: 30000,
         socketTimeout: 30000,
-        // TLS options for better compatibility
         tls: {
-          // Don't reject unauthorized certificates (some SMTP servers use self-signed)
           rejectUnauthorized: false,
-          // Allow older TLS versions if needed
           minVersion: 'TLSv1.2',
         },
-        // Pool connections for better performance
-        pool: true,
-        maxConnections: 1,
-        maxMessages: 3,
       });
 
-      // Verify connection (but don't block if it fails - will retry on actual send)
-      // Use a timeout to prevent hanging, and resolve immediately with transporter
-      // Some cloud platforms have network restrictions that block verify() but allow sendMail()
+      // Verify connection with timeout
       const verifyTimeout = setTimeout(() => {
-        debugWarn('⚠️ Email transporter verification timed out (will try send anyway)');
+        debugWarn('⚠️ SMTP verification timed out (will try send anyway)');
         resolve(transporter);
-      }, 5000); // 5 second timeout for verify
-      
+      }, 5000);
+
       transporter.verify((error, success) => {
         clearTimeout(verifyTimeout);
         if (error) {
-          debugWarn('⚠️ Email transporter verification failed (will retry on send):', error.message);
-          // Don't set transporter to null - allow retry on actual send
+          debugWarn('⚠️ SMTP verification failed (will retry on send):', error.message);
         } else {
-          debugLog('✅ Email transporter configured and verified successfully');
+          debugLog('✅ SMTP transporter configured and verified successfully');
         }
         resolve(transporter);
       });
     } catch (error) {
-      debugError('❌ Error creating email transporter:', error);
+      debugError('❌ Error creating SMTP transporter:', error);
       transporter = null;
       resolve(null);
     }
@@ -97,43 +133,145 @@ function initTransporter() {
 }
 
 /**
- * Send an email notification
+ * Send email using AWS SES SDK (preferred method)
  * @param {Object} options - Email options
  * @param {string} options.to - Recipient email address
  * @param {string} options.subject - Email subject
  * @param {string} options.text - Plain text email body
  * @param {string} [options.html] - HTML email body (optional)
- * @returns {Promise<boolean>} True if email was sent successfully, false otherwise
+ * @returns {Promise<Object>} Result object with success and messageId/error
  */
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmailViaSES({ to, subject, text, html }) {
+  const client = initSESClient();
+  if (!client) {
+    return { success: false, error: 'AWS SES client not configured' };
+  }
+
   try {
-    const emailTransporter = await initTransporter();
+    const command = new SendEmailCommand({
+      Source: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>`,
+      Destination: {
+        ToAddresses: [to],
+      },
+      Message: {
+        Subject: {
+          Data: subject,
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Text: {
+            Data: text,
+            Charset: 'UTF-8',
+          },
+          ...(html && {
+            Html: {
+              Data: html,
+              Charset: 'UTF-8',
+            },
+          }),
+        },
+      },
+    });
+
+    // Add timeout wrapper
+    const sendPromise = client.send(command);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('AWS SES request timeout after 15 seconds')), 15000);
+    });
+
+    const response = await Promise.race([sendPromise, timeoutPromise]);
+    debugLog(`✅ Email sent via AWS SES to ${to}: ${response.MessageId}`);
+    return { success: true, messageId: response.MessageId };
+  } catch (error) {
+    debugError('❌ Error sending email via AWS SES:', error.message);
     
-    if (!emailTransporter) {
-      debugWarn('⚠️ Email transporter not available. Skipping email send.');
-      return { success: false, error: 'Email transporter not available' };
+    // Provide more helpful error messages
+    let errorMessage = error.message;
+    if (error.name === 'InvalidParameterValueException') {
+      errorMessage = `Invalid email configuration: ${error.message}. Check EMAIL_FROM address is verified in AWS SES.`;
+    } else if (error.name === 'MessageRejected') {
+      errorMessage = `Email rejected by AWS SES: ${error.message}. Check recipient email is verified (if in sandbox mode).`;
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Connection to AWS SES timed out. Check network connectivity and AWS region.';
+    } else if (error.name === 'InvalidClientTokenId' || error.name === 'SignatureDoesNotMatch') {
+      errorMessage = 'Invalid AWS credentials. Check AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.';
     }
+    
+    return { success: false, error: errorMessage };
+  }
+}
 
-    if (!to || !subject || !text) {
-      debugError('❌ Missing required email fields: to, subject, or text');
-      return { success: false, error: 'Missing required email fields: to, subject, or text' };
-    }
+/**
+ * Send email using SMTP (fallback method)
+ * @param {Object} options - Email options
+ * @param {string} options.to - Recipient email address
+ * @param {string} options.subject - Email subject
+ * @param {string} options.text - Plain text email body
+ * @param {string} [options.html] - HTML email body (optional)
+ * @returns {Promise<Object>} Result object with success and messageId/error
+ */
+async function sendEmailViaSMTP({ to, subject, text, html }) {
+  const emailTransporter = await initTransporter();
 
+  if (!emailTransporter) {
+    return { success: false, error: 'SMTP transporter not available' };
+  }
+
+  if (!to || !subject || !text) {
+    return { success: false, error: 'Missing required email fields: to, subject, or text' };
+  }
+
+  try {
     const mailOptions = {
       from: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>`,
       to,
       subject,
       text,
-      html: html || text.replace(/\n/g, '<br>'), // Convert newlines to <br> if no HTML provided
+      html: html || text.replace(/\n/g, '<br>'),
     };
 
     const info = await emailTransporter.sendMail(mailOptions);
-    debugLog(`✅ Email sent successfully to ${to}: ${info.messageId}`);
+    debugLog(`✅ Email sent via SMTP to ${to}: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    debugError('❌ Error sending email:', error.message);
+    debugError('❌ Error sending email via SMTP:', error.message);
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * Send an email notification
+ * Tries AWS SES SDK first (works on Render free tier), falls back to SMTP
+ * @param {Object} options - Email options
+ * @param {string} options.to - Recipient email address
+ * @param {string} options.subject - Email subject
+ * @param {string} options.text - Plain text email body
+ * @param {string} [options.html] - HTML email body (optional)
+ * @returns {Promise<Object>} Result object with success and messageId/error
+ */
+async function sendEmail({ to, subject, text, html }) {
+  if (!EMAIL_ENABLED) {
+    return { success: false, error: 'Email is disabled' };
+  }
+
+  if (!to || !subject || !text) {
+    return { success: false, error: 'Missing required email fields: to, subject, or text' };
+  }
+
+  // Try AWS SES SDK first (works on Render free tier)
+  const sesClient = initSESClient();
+  if (sesClient) {
+    debugLog('📧 Attempting to send email via AWS SES SDK...');
+    const result = await sendEmailViaSES({ to, subject, text, html });
+    if (result.success) {
+      return result;
+    }
+    debugWarn('⚠️ AWS SES SDK failed, trying SMTP fallback...');
+  }
+
+  // Fallback to SMTP
+  debugLog('📧 Attempting to send email via SMTP...');
+  return await sendEmailViaSMTP({ to, subject, text, html });
 }
 
 /**
@@ -157,14 +295,14 @@ async function sendNotificationEmail({ recipient, type, title, message, report, 
   const actorInfo = actor ? ` from ${actor.preferredName || actor.name || 'Team'}` : '';
 
   const emailSubject = title || `Oxford House Expense Tracker${reportInfo}${actorInfo}`;
-  
+
   let emailBody = message;
   if (report) {
     emailBody += `\n\nReport Period: ${new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
   }
-  
+
   emailBody += '\n\nPlease log in to the Oxford House Expense Tracker portal to review and take action.';
-  
+
   const htmlBody = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #1976d2;">${emailSubject}</h2>
@@ -184,12 +322,14 @@ async function sendNotificationEmail({ recipient, type, title, message, report, 
     </div>
   `;
 
-  return await sendEmail({
+  const result = await sendEmail({
     to: recipient.email,
     subject: emailSubject,
     text: emailBody,
     html: htmlBody,
   });
+
+  return result.success;
 }
 
 /**
@@ -201,17 +341,26 @@ async function verifyEmailConfig() {
     return false;
   }
 
-  if (!EMAIL_USER || !EMAIL_PASS) {
-    return false;
+  // Check if AWS SES SDK is configured
+  if (AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
+    const client = initSESClient();
+    if (client) {
+      return true;
+    }
   }
 
-  try {
-    const emailTransporter = await initTransporter();
-    return emailTransporter !== null;
-  } catch (error) {
-    debugError('❌ Email config verification failed:', error);
-    return false;
+  // Check if SMTP is configured
+  if (EMAIL_USER && EMAIL_PASS) {
+    try {
+      const emailTransporter = await initTransporter();
+      return emailTransporter !== null;
+    } catch (error) {
+      debugError('❌ Email config verification failed:', error);
+      return false;
+    }
   }
+
+  return false;
 }
 
 /**
@@ -226,9 +375,9 @@ async function sendReportSubmittedNotification({
   reportPeriod,
 }) {
   const subject = `New Expense Report Pending Approval - ${employeeName}`;
-  
+
   const text = `Hello ${supervisorName},\n\n${employeeName} has submitted an expense report for your approval.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nPlease review and approve or request revisions as needed.`;
-  
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -285,9 +434,9 @@ async function sendReportApprovedNotification({
   comments,
 }) {
   const subject = `Expense Report Approved - ${reportPeriod}`;
-  
+
   const text = `Hello ${employeeName},\n\nYour expense report has been approved by ${supervisorName}.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}${comments ? `\n\nComments: ${comments}` : ''}\n\nYour report will now be processed by Finance.`;
-  
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -343,9 +492,9 @@ async function sendReportRejectedNotification({
   comments,
 }) {
   const subject = `Expense Report Requires Attention - ${reportPeriod}`;
-  
+
   const text = `Hello ${employeeName},\n\nYour expense report has been rejected by ${supervisorName}.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nComments: ${comments || 'No comments provided'}\n\nPlease review the comments and resubmit your report with the necessary corrections.`;
-  
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -405,9 +554,9 @@ async function sendRevisionRequestedNotification({
   comments,
 }) {
   const subject = `Expense Report Revision Requested - ${reportPeriod}`;
-  
+
   const text = `Hello ${employeeName},\n\n${supervisorName} has requested revisions to your expense report.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nRevision Request: ${comments || 'No comments provided'}\n\nPlease make the requested changes and resubmit your report.`;
-  
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -465,4 +614,3 @@ module.exports = {
   verifyEmailConfig,
   initTransporter,
 };
-
