@@ -74,6 +74,9 @@ import { ReportCompletenessService, CompletenessReport, CompletenessIssue } from
 // User settings component
 import UserSettings from './components/UserSettings';
 
+// Dashboard notifications component
+import { DashboardNotifications } from './components/DashboardNotifications';
+
 // Approval status card
 import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistoryEntry } from './components/EmployeeApprovalStatusCard';
 
@@ -3512,6 +3515,36 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
         }}
         showRealTimeStatus={true}
+      />
+
+      {/* Dashboard Notifications */}
+      <DashboardNotifications
+        employeeId={employeeId}
+        role={employeeRole}
+        onReportClick={async (reportId: string, employeeId?: string, month?: number, year?: number) => {
+          // Navigate to the report's month/year if provided
+          if (month && year) {
+            setCurrentMonth(month);
+            setCurrentYear(year);
+            showSuccess(`Navigated to ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
+          } else {
+            // Fetch report details to get month/year
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
+              if (response.ok) {
+                const report = await response.json();
+                if (report.month && report.year) {
+                  setCurrentMonth(report.month);
+                  setCurrentYear(report.year);
+                  showSuccess(`Navigated to ${new Date(report.year, report.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
+                }
+              }
+            } catch (error) {
+              debugError('Error fetching report for navigation:', error);
+              showError('Could not navigate to report');
+            }
+          }
+        }}
       />
 
       {/* Tips Display */}
