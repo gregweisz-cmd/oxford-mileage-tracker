@@ -52,12 +52,6 @@ function initSESClient() {
         accessKeyId: AWS_ACCESS_KEY_ID,
         secretAccessKey: AWS_SECRET_ACCESS_KEY,
       },
-      requestHandler: {
-        requestTimeout: 10000, // 10 second timeout
-        httpsAgent: {
-          timeout: 10000,
-        },
-      },
       maxAttempts: 2, // Retry once, then fail
     });
     debugLog('✅ AWS SES client initialized');
