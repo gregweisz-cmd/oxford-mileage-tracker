@@ -1,5 +1,6 @@
 import { OxfordHouse } from '../types';
 import { DatabaseService } from './database';
+import { API_BASE_URL } from '../config/api';
 
 export class OxfordHouseService {
   // Comprehensive Oxford House data - realistic addresses and phone numbers
@@ -316,10 +317,7 @@ export class OxfordHouseService {
 
   private static async fetchFromBackend(): Promise<void> {
     try {
-      const API_BASE_URL = __DEV__ 
-        ? 'http://192.168.86.101:3002/api' 
-        : 'https://oxford-mileage-backend.onrender.com/api';
-      
+      // Use centralized API config (respects USE_PRODUCTION_FOR_TESTING setting)
       const response = await fetch(`${API_BASE_URL}/oxford-houses`);
       
       if (!response.ok) {

@@ -311,14 +311,14 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
                       </Box>
                     }
                     secondary={
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">
+                      <>
+                        <Typography variant="caption" color="text.secondary" component="span" display="block">
                           {notification.message}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary" component="span" display="block" sx={{ mt: 0.5 }}>
                           {formatTimeAgo(notification.createdAt)}
                         </Typography>
-                      </Box>
+                      </>
                     }
                   />
                   {!notification.isRead && (

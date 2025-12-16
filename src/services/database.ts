@@ -2725,12 +2725,8 @@ export class DatabaseService {
       
       debugLog(`🧹 Database: Cleaned up ${result.changes} old demo receipts`);
       
-      // Also clean up any receipts without proper cost center assignments
-      const result2 = await database.runAsync(
-        'DELETE FROM receipts WHERE costCenter IS NULL OR costCenter = ""'
-      );
-      
-      debugLog(`🧹 Database: Cleaned up ${result2.changes} receipts without cost centers`);
+      // Note: Removed costCenter cleanup query - column doesn't exist in receipts table
+      // Cost centers are stored in expenseReports, not individual receipts
       
     } catch (error) {
       console.error('❌ Database: Error cleaning up old receipts:', error);

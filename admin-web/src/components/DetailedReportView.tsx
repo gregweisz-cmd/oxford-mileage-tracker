@@ -33,6 +33,8 @@ import {
   AccessTime as TimeIcon,
   Assessment as ChartIcon,
   Download as DownloadIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 
 // API configuration - use environment variable or default to localhost for development
@@ -113,9 +115,12 @@ interface DetailedReportViewProps {
   reportId: string;
   open: boolean;
   onClose: () => void;
+  onApproveReport?: () => void;
+  onRequestRevision?: () => void;
+  supervisorMode?: boolean;
 }
 
-const DetailedReportViewInner = ({ reportId, open, onClose }: DetailedReportViewProps) => {
+const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onRequestRevision, supervisorMode = false }: DetailedReportViewProps) => {
   const [reportData, setReportData] = useState<DetailedReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -494,9 +499,33 @@ const DetailedReportViewInner = ({ reportId, open, onClose }: DetailedReportView
         <Typography variant="h5" fontWeight="bold">
           {report.employeeName}'s Expense Report
         </Typography>
-        <IconButton onClick={onClose}>
-          <CloseIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {supervisorMode && onApproveReport && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<CheckCircleIcon />}
+              onClick={onApproveReport}
+              size="small"
+            >
+              Approve
+            </Button>
+          )}
+          {supervisorMode && onRequestRevision && (
+            <Button
+              variant="contained"
+              color="warning"
+              startIcon={<WarningIcon />}
+              onClick={onRequestRevision}
+              size="small"
+            >
+              Revision Needed
+            </Button>
+          )}
+          <IconButton onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
       </Box>
 
       {/* Supervisor View Banner */}

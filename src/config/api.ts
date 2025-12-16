@@ -15,7 +15,8 @@ const LOCAL_API_URL = 'http://192.168.86.101:3002/api';
 // TEMPORARY: Force production for mobile testing from anywhere
 // This allows testing while driving without localhost connectivity
 // Set to true to sync with Vercel web portal (production backend)
-const USE_PRODUCTION_FOR_TESTING = true;
+// Set to false to use local backend (requires backend running locally)
+const USE_PRODUCTION_FOR_TESTING = true; // Set to false to use local backend
 
 // Determine which API URL to use
 export const API_BASE_URL = USE_PRODUCTION_FOR_TESTING

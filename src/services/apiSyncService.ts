@@ -59,52 +59,95 @@ export class ApiSyncService {
   }
 
   /**
-   * Initialize the API sync service
+   * Initialize the API sync service (non-blocking)
    */
   static async initialize(): Promise<void> {
     try {
       debugLog('🔄 ApiSync: Initializing API sync service...');
       
-      // Test connection to backend
-      const isConnected = await this.testConnection();
-      if (isConnected) {
-        debugLog('✅ ApiSync: Connected to backend API');
-      } else {
-        debugLog('⚠️ ApiSync: Backend API not available');
-      }
-      
-      // Load last sync time from storage
+      // Load last sync time from storage (quick, non-blocking)
       this.lastSyncTime = await this.getLastSyncTime();
       
-      debugLog('🔄 ApiSync: Initialization completed');
+      // Skip connection test on startup to avoid blocking app load
+      // Connection will be tested when sync is actually needed
+      debugLog('🔄 ApiSync: Initialization completed immediately (connection test skipped on startup)');
     } catch (error) {
       console.error('❌ ApiSync: Initialization failed:', error);
+      // Don't throw - allow app to continue even if initialization fails
     }
   }
 
   /**
-   * Test connection to the backend API
+   * Test connection to the backend API with timeout
    */
   static async testConnection(): Promise<boolean> {
     try {
       debugLog('🔄 ApiSync: Testing connection to cloud backend...');
       
-      const response = await fetch(`${this.config.baseUrl}/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 3000); // 3 second timeout - don't wait too long
       
-      if (response.ok) {
-        debugLog('✅ ApiSync: Successfully connected to cloud backend');
-        return true;
-      } else {
-        debugLog('⚠️ ApiSync: Cloud backend responded with status:', response.status);
-        return false;
+      try {
+        // Try /api/health first, fallback to root if that doesn't exist
+        const healthUrl = `${this.config.baseUrl}/health`;
+        const response = await fetch(healthUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          debugLog('✅ ApiSync: Successfully connected to cloud backend');
+          return true;
+        } else {
+          debugLog('⚠️ ApiSync: Cloud backend responded with status:', response.status);
+          return false;
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        
+        // If timeout or abort, try root endpoint as fallback
+        if (fetchError.name === 'AbortError' || fetchError.message?.includes('aborted')) {
+          debugLog('⏱️ ApiSync: Health check timed out, trying root endpoint...');
+          
+          const rootController = new AbortController();
+          const rootTimeoutId = setTimeout(() => {
+            rootController.abort();
+          }, 3000); // Shorter timeout for fallback
+          
+          try {
+            // Try root endpoint as fallback
+            const rootUrl = this.config.baseUrl.replace('/api', '') || this.config.baseUrl;
+            const rootResponse = await fetch(rootUrl, {
+              method: 'GET',
+              signal: rootController.signal
+            });
+            
+            clearTimeout(rootTimeoutId);
+            
+            if (rootResponse.ok || rootResponse.status < 500) {
+              debugLog('✅ ApiSync: Backend is reachable (via root endpoint)');
+              return true;
+            }
+          } catch (rootError) {
+            clearTimeout(rootTimeoutId);
+            debugLog('⚠️ ApiSync: Backend connection test failed (timeout)');
+            return false;
+          }
+        }
+        
+        throw fetchError;
       }
     } catch (error) {
-      console.error('❌ ApiSync: Connection test failed:', error);
+      // Connection failed - this is expected if backend is offline
+      debugLog('⚠️ ApiSync: Backend not reachable (will work offline)');
       return false;
     }
   }

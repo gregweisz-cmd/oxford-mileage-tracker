@@ -259,11 +259,17 @@ router.get('/api/auth/verify', (req, res) => {
       
       const { password: _, ...employeeData } = employee;
       
+      // Get role from database (defaults to 'employee' if not set)
+      const userRole = employee.role || 'employee';
+      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+      const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+      
       res.json({
         valid: true,
         employee: {
           ...employeeData,
           lastLoginAt: employee.lastLoginAt, // Ensure lastLoginAt is included
+          role: validRole, // Explicitly include role in response
           costCenters,
           selectedCostCenters
         }
@@ -1258,17 +1264,22 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
           
           debugLog(`📱 Mobile: Generated auth code ${authCode} for polling fallback`);
           
-          // Use Universal Link instead of custom URL scheme for better Safari compatibility
-          // Universal Links work better than custom schemes on iOS
+          // Try both Universal Link and custom scheme for maximum compatibility
+          // Note: Universal Links require Apple Developer account, so custom scheme is primary for now
           const baseUrl = 'https://oxford-mileage-backend.onrender.com';
           const universalLinkUrl = `${baseUrl}/api/auth/google/mobile/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&code=${authCode}`;
           
-          // Fallback to custom scheme for older iOS versions or if Universal Links aren't configured
+          // Primary: Custom scheme (works without Apple Developer account)
           const customSchemeUrl = `ohstafftracker://oauth/callback?success=true&token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}`;
           
-          // Use Universal Link (HTTPS) - Safari allows this better than custom schemes
-          // Universal Links will open the app directly if configured, otherwise opens in browser
-          const redirectUrl = universalLinkUrl;
+          // Use custom scheme as primary until Apple Developer account is set up
+          // Once Universal Links are configured with Team ID, switch to universalLinkUrl
+          const redirectUrl = customSchemeUrl;
+          
+          // Universal Links are configured in app.json but won't work until:
+          // 1. Apple Developer account is obtained
+          // 2. Team ID is added to AASA file in server.js
+          // 3. App is built with Apple Developer certificate
           
           // Also provide polling code as fallback
           res.send(`

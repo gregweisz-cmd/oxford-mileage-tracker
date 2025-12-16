@@ -1088,6 +1088,128 @@ router.get('/api/expense-reports', (req, res) => {
 });
 
 /**
+ * Get detailed expense report data (for DetailedReportView)
+ * Returns full report with mileage, receipts, time tracking, and cost center breakdown
+ */
+router.get('/api/monthly-reports/:id/detailed', async (req, res) => {
+  const { id } = req.params;
+  const db = dbService.getDb();
+
+  try {
+    // Get the report
+    const report = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (!report) {
+      res.status(404).json({ error: 'Expense report not found' });
+      return;
+    }
+
+    // Get employee info
+    const employee = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT id, name, preferredName, email FROM employees WHERE id = ?',
+        [report.employeeId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row || null);
+        }
+      );
+    });
+
+    // Parse report data
+    const reportData = helpers.parseJsonSafe(report.reportData, {});
+    const mileageEntries = Array.isArray(reportData.mileageEntries) ? reportData.mileageEntries : [];
+    const receipts = Array.isArray(reportData.receipts) ? reportData.receipts : [];
+    const timeTracking = Array.isArray(reportData.timeTracking) ? reportData.timeTracking : [];
+    const costCenters = reportData.costCenters || [];
+
+    // Calculate totals
+    const totalMiles = mileageEntries.reduce((sum, entry) => sum + (entry.miles || 0), 0);
+    const totalExpenses = receipts.reduce((sum, receipt) => sum + (receipt.amount || 0), 0) +
+      mileageEntries.reduce((sum, entry) => sum + (entry.mileageAmount || 0), 0);
+    const totalHours = timeTracking.reduce((sum, entry) => sum + (entry.hours || 0), 0);
+
+    // Build cost center breakdown
+    const costCenterMap = new Map();
+    
+    // Add receipts to cost centers
+    receipts.forEach(receipt => {
+      const costCenter = receipt.costCenter || 'Unassigned';
+      if (!costCenterMap.has(costCenter)) {
+        costCenterMap.set(costCenter, { costCenter, receipts: 0, mileage: 0, time: 0, total: 0 });
+      }
+      const breakdown = costCenterMap.get(costCenter);
+      breakdown.receipts += receipt.amount || 0;
+      breakdown.total += receipt.amount || 0;
+    });
+
+    // Add mileage to cost centers
+    mileageEntries.forEach(entry => {
+      const costCenter = entry.costCenter || 'Unassigned';
+      if (!costCenterMap.has(costCenter)) {
+        costCenterMap.set(costCenter, { costCenter, receipts: 0, mileage: 0, time: 0, total: 0 });
+      }
+      const breakdown = costCenterMap.get(costCenter);
+      breakdown.mileage += entry.mileageAmount || 0;
+      breakdown.total += entry.mileageAmount || 0;
+    });
+
+    // Add time tracking to cost centers
+    timeTracking.forEach(entry => {
+      const costCenter = entry.costCenter || 'Unassigned';
+      if (!costCenterMap.has(costCenter)) {
+        costCenterMap.set(costCenter, { costCenter, receipts: 0, mileage: 0, time: 0, total: 0 });
+      }
+      // Time tracking doesn't have a dollar amount, just hours
+      const breakdown = costCenterMap.get(costCenter);
+      breakdown.time += entry.hours || 0;
+    });
+
+    const costCenterBreakdown = Array.from(costCenterMap.values());
+
+    // Build response
+    const response = {
+      report: {
+        id: report.id,
+        employeeId: report.employeeId,
+        employeeName: employee?.preferredName || employee?.name || 'Unknown',
+        employeeEmail: employee?.email || '',
+        month: report.month,
+        year: report.year,
+        totalMiles,
+        totalExpenses,
+        status: report.status,
+        submittedAt: report.submittedAt || null,
+        reviewedAt: report.reviewedAt || null,
+      },
+      mileageEntries,
+      receipts,
+      timeTracking,
+      costCenterBreakdown,
+      summary: {
+        totalEntries: mileageEntries.length + receipts.length + timeTracking.length,
+        totalMiles,
+        totalExpenses,
+        totalHours,
+        receiptCount: receipts.length,
+        mileageCount: mileageEntries.length,
+        timeCount: timeTracking.length,
+      },
+    };
+
+    res.json(response);
+  } catch (error) {
+    debugError('❌ Error fetching detailed report:', error);
+    res.status(500).json({ error: 'Failed to load detailed report' });
+  }
+});
+
+/**
  * Get expense report history
  */
 router.get('/api/expense-reports/:id/history', async (req, res) => {

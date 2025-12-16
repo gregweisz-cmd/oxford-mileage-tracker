@@ -1,0 +1,33 @@
+🚀 DEPLOY BACKEND OAUTH FIX - COPY AND PASTE THESE COMMANDS
+
+Step 1: Navigate to project
+cd c:\Users\GooseWeisz\oxford-mileage-tracker
+
+Step 2: Stage backend file
+git add admin-web/backend/routes/auth.js
+
+Step 3: Commit changes
+git commit -m "Fix mobile Google OAuth: handle redirect URI correctly for token exchange"
+
+Step 4: Push to GitHub (triggers Render.com auto-deploy)
+git push origin main
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After pushing:
+1. Wait 2-5 minutes for Render.com to deploy
+2. Check: https://dashboard.render.com
+3. Select: oxford-mileage-backend service
+4. Check deployment status in "Events" tab
+5. Test OAuth on mobile app again
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+What changed:
+✅ Backend now accepts redirectUri from mobile app
+✅ Creates OAuth client with correct redirect URI
+✅ Uses Expo proxy redirect URI when exchanging tokens
+✅ Better error handling and logging
+
+Ready to deploy! 🎉
+

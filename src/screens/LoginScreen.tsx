@@ -221,8 +221,15 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       // Sign in with Google
       const googleUserInfo = await GoogleAuthService.signInWithGoogle();
       
+      // Check if user cancelled (null means cancellation)
+      if (!googleUserInfo || !googleUserInfo.authorizationCode) {
+        // User cancelled - just stop loading, don't show error
+        setGoogleLoading(false);
+        return;
+      }
+      
       // Verify with backend and get employee data
-      const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
+      // GoogleAuthService uses the same API config as the rest of the app
       const employeeData = await GoogleAuthService.verifyWithBackend(googleUserInfo);
       
       // Create or update employee in local database
@@ -276,11 +283,20 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         onLogin(employeeData);
       }
     } catch (error) {
+      // Only show error for actual failures, not cancellations
+      const errorMessage = error instanceof Error ? error.message : 'Failed to sign in with Google. Please try again.';
+      
+      // Don't show error if it's a cancellation
+      if (errorMessage.toLowerCase().includes('cancel')) {
+        // User cancelled - just stop loading silently
+        setGoogleLoading(false);
+        return;
+      }
+      
+      // Log and show error for actual failures
       console.error('Google Sign-In error:', error);
-      Alert.alert(
-        'Sign-In Failed',
-        error instanceof Error ? error.message : 'Failed to sign in with Google. Please try again.'
-      );
+      Alert.alert('Sign-In Failed', errorMessage);
+      setGoogleLoading(false);
     } finally {
       setGoogleLoading(false);
     }
@@ -391,7 +407,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             onPress={handleGoogleSignIn}
             disabled={googleLoading}
           >
-            <MaterialIcons name="google" size={24} color="#fff" />
+            <MaterialIcons name="login" size={24} color="#fff" />
             <Text style={styles.googleButtonText}>
               {googleLoading ? 'Signing In...' : 'Sign in with Google'}
             </Text>

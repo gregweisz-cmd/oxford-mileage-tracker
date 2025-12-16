@@ -1,0 +1,25 @@
+================================================================================
+  DEPLOY GOOGLE OAUTH TO VERCEL - COPY AND PASTE THESE COMMANDS
+================================================================================
+
+Open PowerShell and run these commands one by one:
+
+cd C:\Users\GooseWeisz\oxford-mileage-tracker
+
+git add admin-web/src/components/Login.tsx
+git add admin-web/src/components/AuthCallback.tsx
+git add admin-web/src/App.tsx
+git add admin-web/backend/routes/auth.js
+git add admin-web/backend/package.json
+
+git commit -m "Add Google OAuth login functionality"
+
+git push origin main
+
+================================================================================
+After pushing:
+- Wait 2-3 minutes
+- Check: https://vercel.com/dashboard
+- Visit your site and check login page for "Sign in with Google" button
+================================================================================
+

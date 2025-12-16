@@ -73,7 +73,6 @@ import {
 import StaffPortal from '../StaffPortal';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
-import { DashboardStatistics } from './DashboardStatistics';
 import { NotificationBell } from './NotificationBell';
 import DetailedReportView from './DetailedReportView';
 
@@ -214,13 +213,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [viewingReportYear, setViewingReportYear] = useState<number | null>(new Date().getFullYear());
   const [showEmployeeReportView, setShowEmployeeReportView] = useState(false);
 
-  const [showDashboardWidgets, setShowDashboardWidgets] = useState<boolean>(() => {
-    if (typeof window === 'undefined') {
-      return true;
-    }
-    const stored = window.localStorage.getItem('supervisorPortal.showDashboardWidgets');
-    return stored !== 'false';
-  });
+  // Widgets removed - only show in Finance portal
   const [showSupervisorDashboard, setShowSupervisorDashboard] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
       return true;
@@ -241,14 +234,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   // Memoize the employee object to prevent SupervisorDashboard from re-rendering unnecessarily
   const currentEmployee = useMemo(() => ({ id: supervisorId, name: supervisorName }), [supervisorId, supervisorName]);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(
-        'supervisorPortal.showDashboardWidgets',
-        showDashboardWidgets ? 'true' : 'false'
-      );
-    }
-  }, [showDashboardWidgets]);
+  // Widget toggle removed
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1033,16 +1019,6 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               <FormControlLabel
                 control={
                   <Switch
-                    checked={showDashboardWidgets}
-                    onChange={(_, checked) => setShowDashboardWidgets(checked)}
-                    color="primary"
-                  />
-                }
-                label="Show widgets"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
                     checked={showSupervisorDashboard}
                     onChange={(_, checked) => setShowSupervisorDashboard(checked)}
                     color="primary"
@@ -1079,61 +1055,6 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       </Paper>
 
       <Box sx={{ px: 3 }}>
-        {/* Dashboard Stats */}
-        {showDashboardWidgets && (
-          <Box sx={{ display: 'flex', gap: 3, mb: 4, flexWrap: 'wrap' }}>
-            <Card sx={{ minWidth: 200, flex: 1 }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <PeopleIcon color="primary" sx={{ mr: 2 }} />
-                  <Box>
-                    <Typography variant="h4">{dashboardStats.totalTeamMembers}</Typography>
-                    <Typography color="text.secondary">Team Members</Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-            <Card sx={{ minWidth: 200, flex: 1 }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <AssignmentIcon color="warning" sx={{ mr: 2 }} />
-                  <Box sx={{ position: 'relative' }}>
-                    <Typography variant="h4">{dashboardStats.activeReports}</Typography>
-                    <Typography color="text.secondary">Active Reports</Typography>
-                    <Badge 
-                      badgeContent={dashboardStats.pendingReviews} 
-                      color="error"
-                      sx={{ position: 'absolute', top: -8, right: -8 }}
-                    />
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-            <Card sx={{ minWidth: 200, flex: 1 }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <AssessmentIcon color="success" sx={{ mr: 2 }} />
-                  <Box>
-                    <Typography variant="h4">${dashboardStats.monthlyTotal.toFixed(2)}</Typography>
-                    <Typography color="text.secondary">Monthly Total</Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-            <Card sx={{ minWidth: 200, flex: 1 }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <CheckCircleIcon color="info" sx={{ mr: 2 }} />
-                  <Box>
-                    <Typography variant="h4">{dashboardStats.approvalRate}%</Typography>
-                    <Typography color="text.secondary">Approval Rate</Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Box>
-        )}
-
         {/* Main Content */}
         <Paper sx={{ mb: 3 }}>
           <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -1164,17 +1085,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           {/* Approvals Tab */}
           {activeTab === 0 && (
             <Box sx={{ p: 3 }}>
-              {/* Dashboard Statistics */}
-              {showDashboardWidgets && (
-                <Box sx={{ mb: 3 }}>
-                  <DashboardStatistics 
-                    userId={supervisorId} 
-                    userRole="supervisor"
-                  />
-                </Box>
-              )}
               {showSupervisorDashboard && (
-                <SupervisorDashboard currentEmployee={currentEmployee} showKpiCards={showDashboardWidgets} />
+                <SupervisorDashboard currentEmployee={currentEmployee} showKpiCards={false} />
               )}
             </Box>
           )}
@@ -1228,14 +1140,6 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               </Box>
 
               {/* Dashboard Statistics */}
-              {showDashboardWidgets && (
-                <Box sx={{ mb: 3 }}>
-                  <DashboardStatistics 
-                    userId={supervisorId} 
-                    userRole="supervisor"
-                  />
-                </Box>
-              )}
 
               {/* Reports Table */}
               <TableContainer sx={{ mt: 2 }}>
@@ -1660,11 +1564,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               />
               {selectedReport?.status === 'needs_revision' && selectedReport?.currentApprovalStage === 'pending_supervisor' && (
                 <Alert severity="info" sx={{ mt: 2 }}>
-                  This report was returned from Finance for revision. You can either:
-                  <ul style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
-                    <li>Make changes and resubmit to Finance</li>
-                    <li>Send it back to the employee for revision</li>
-                  </ul>
+                  <Typography component="div" variant="body2">
+                    This report was returned from Finance for revision. You can either:
+                    <Box component="ul" sx={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
+                      <li>Make changes and resubmit to Finance</li>
+                      <li>Send it back to the employee for revision</li>
+                    </Box>
+                  </Typography>
                 </Alert>
               )}
             </Box>

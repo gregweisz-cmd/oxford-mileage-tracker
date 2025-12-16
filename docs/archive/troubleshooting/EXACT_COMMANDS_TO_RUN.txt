@@ -1,0 +1,27 @@
+================================================================================
+  EXACT COMMANDS TO FIX BOTH ERRORS
+================================================================================
+
+Copy and paste these commands ONE BY ONE into PowerShell:
+
+cd C:\Users\GooseWeisz\oxford-mileage-tracker
+
+git add admin-web/backend/routes/auth.js
+git add admin-web/backend/package.json
+git add admin-web/src/components/Login.tsx
+git add admin-web/src/App.tsx
+git add admin-web/src/config/debug.ts
+git add admin-web/src/components/AuthCallback.tsx
+git add admin-web/src/components/ErrorBoundary.tsx
+
+git commit -m "Add Google OAuth login functionality (frontend + backend)"
+
+git push origin main
+
+================================================================================
+  This will:
+  1. Fix the 404 error (deploy backend routes to Render)
+  2. Fix the debugVerbose error (deploy debug.ts to Vercel)
+  3. Deploy all Google OAuth frontend code
+================================================================================
+

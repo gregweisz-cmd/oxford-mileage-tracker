@@ -1,0 +1,29 @@
+================================================================================
+  COPY AND PASTE THESE COMMANDS TO DEPLOY GOOGLE OAUTH
+================================================================================
+
+cd C:\Users\GooseWeisz\oxford-mileage-tracker
+
+# Add new files (if they exist)
+git add admin-web/src/components/AuthCallback.tsx
+git add admin-web/src/components/ErrorBoundary.tsx
+
+# Add all modified files that are needed
+git add admin-web/src/components/Login.tsx
+git add admin-web/src/App.tsx
+git add admin-web/src/config/debug.ts
+git add admin-web/backend/routes/auth.js
+git add admin-web/backend/package.json
+
+# Commit
+git commit -m "Add Google OAuth login functionality (frontend + backend)"
+
+# Push to GitHub
+git push origin main
+
+================================================================================
+  After pushing, wait 3-5 minutes and check:
+  - Vercel dashboard: https://vercel.com/dashboard
+  - Render dashboard: https://dashboard.render.com
+================================================================================
+

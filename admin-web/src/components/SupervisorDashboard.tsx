@@ -235,6 +235,55 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
     setShowReviewDialog(true);
   };
 
+  // Handlers for StaffPortal when viewing employee reports
+  const handleApproveFromStaffPortal = useCallback(async () => {
+    if (!viewingEmployeeReport || !viewingReportMonth || !viewingReportYear) {
+      alert('Unable to approve: Report information not available');
+      return;
+    }
+
+    // Find the report for this employee/month/year
+    const report = pendingReports.find(
+      r => r.employeeId === viewingEmployeeReport.id &&
+           r.month === viewingReportMonth &&
+           r.year === viewingReportYear
+    ) || reviewedReports.find(
+      r => r.employeeId === viewingEmployeeReport.id &&
+           r.month === viewingReportMonth &&
+           r.year === viewingReportYear
+    );
+
+    if (report) {
+      handleReview(report, 'approve');
+    } else {
+      alert('Report not found in pending or reviewed reports');
+    }
+  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, pendingReports, reviewedReports]);
+
+  const handleRevisionFromStaffPortal = useCallback(async () => {
+    if (!viewingEmployeeReport || !viewingReportMonth || !viewingReportYear) {
+      alert('Unable to request revision: Report information not available');
+      return;
+    }
+
+    // Find the report for this employee/month/year
+    const report = pendingReports.find(
+      r => r.employeeId === viewingEmployeeReport.id &&
+           r.month === viewingReportMonth &&
+           r.year === viewingReportYear
+    ) || reviewedReports.find(
+      r => r.employeeId === viewingEmployeeReport.id &&
+           r.month === viewingReportMonth &&
+           r.year === viewingReportYear
+    );
+
+    if (report) {
+      handleReview(report, 'revision');
+    } else {
+      alert('Report not found in pending or reviewed reports');
+    }
+  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, pendingReports, reviewedReports]);
+
   const submitReview = async () => {
     if (!selectedReport || !reviewAction) return;
 
@@ -577,7 +626,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
               <Typography variant="h6" color="text.secondary">
                 No Pending Reports
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 All reports have been reviewed!
               </Typography>
             </Paper>
@@ -930,6 +979,8 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
                 supervisorId={currentEmployee?.id}
                 supervisorName={currentEmployee?.name || currentEmployee?.preferredName || 'Supervisor'}
                 onSelectedItemsChange={handleSelectedItemsChange}
+                onApproveReport={handleApproveFromStaffPortal}
+                onRequestRevision={handleRevisionFromStaffPortal}
               />
             </Box>
           </DialogContent>

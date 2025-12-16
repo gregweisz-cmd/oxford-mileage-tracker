@@ -1432,6 +1432,21 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
             setDetailedReportViewOpen(false);
             setSelectedReportId(null);
           }}
+          supervisorMode={true}
+          onApproveReport={() => {
+            if (selectedReportId) {
+              handleApproveReport(selectedReportId);
+              setDetailedReportViewOpen(false);
+              setSelectedReportId(null);
+            }
+          }}
+          onRequestRevision={() => {
+            const report = reports.find(r => r.id === selectedReportId);
+            if (report) {
+              setSelectedReport(report);
+              setRevisionDialogOpen(true);
+            }
+          }}
         />
       )}
 

@@ -32,6 +32,9 @@ import {
   OutlinedInput,
   ListItemText,
   InputAdornment,
+  Menu,
+  Popover,
+  ClickAwayListener,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -46,7 +49,11 @@ import {
   ExpandLess,
   Archive,
   Restore,
-  FolderDelete
+  FolderDelete,
+  ArrowUpward,
+  ArrowDownward,
+  FilterList,
+  FilterListOff
 } from '@mui/icons-material';
 import { BulkImportService, BulkImportResult, EmployeeImportData } from '../services/bulkImportService';
 import { EmployeeApiService } from '../services/employeeApiService';
@@ -112,6 +119,25 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [searchText, setSearchText] = useState<string>('');
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  // Column filter state
+  const [columnFilters, setColumnFilters] = useState<{
+    name?: string;
+    email?: string;
+    position?: string;
+    role?: string;
+    lastLogin?: string;
+    phone?: string;
+    supervisor?: string;
+    costCenters?: string;
+  }>({});
+  
+  // Filter menu state
+  const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ [key: string]: HTMLElement | null }>({});
   // const [isEditMode, setIsEditMode] = useState(false); // Currently unused
   const [showQuickCostCenterEdit, setShowQuickCostCenterEdit] = useState(false);
   const [quickEditEmployee, setQuickEditEmployee] = useState<Employee | null>(null);
@@ -198,17 +224,173 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     }
   };
 
-  // Filter employees based on search text
-  const filteredEmployees = (showArchived ? archivedEmployees : existingEmployees).filter(employee => {
-    if (!searchText) return true;
-    const searchLower = searchText.toLowerCase();
-    return (
-      employee.name?.toLowerCase().includes(searchLower) ||
-      employee.email?.toLowerCase().includes(searchLower) ||
-      employee.position?.toLowerCase().includes(searchLower) ||
-      employee.phoneNumber?.toLowerCase().includes(searchLower)
-    );
-  });
+  // Handle column sorting
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      // Toggle direction if clicking same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new column and default to ascending
+      setSortBy(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Handle column filter change
+  const handleColumnFilterChange = (column: string, value: string) => {
+    setColumnFilters(prev => ({
+      ...prev,
+      [column]: value || undefined
+    }));
+  };
+
+  // Clear column filter
+  const clearColumnFilter = (column: string) => {
+    setColumnFilters(prev => {
+      const newFilters = { ...prev };
+      delete newFilters[column as keyof typeof newFilters];
+      return newFilters;
+    });
+  };
+
+  // Open filter menu
+  const openFilterMenu = (column: string, event: React.MouseEvent<HTMLElement>) => {
+    setFilterMenuAnchor(prev => ({
+      ...prev,
+      [column]: event.currentTarget
+    }));
+  };
+
+  // Close filter menu
+  const closeFilterMenu = (column: string) => {
+    setFilterMenuAnchor(prev => ({
+      ...prev,
+      [column]: null
+    }));
+  };
+
+  // Get unique values for a column (for filter dropdowns)
+  const getUniqueColumnValues = (column: string): string[] => {
+    const employees = showArchived ? archivedEmployees : existingEmployees;
+    const values = new Set<string>();
+    
+    employees.forEach(employee => {
+      let value: string | null | undefined;
+      
+      switch (column) {
+        case 'position':
+          value = employee.position;
+          break;
+        case 'role':
+          value = employee.role || 'employee';
+          break;
+        case 'supervisor':
+          value = employee.supervisorId ? 'Has Supervisor' : 'No Supervisor';
+          break;
+        default:
+          return;
+      }
+      
+      if (value) {
+        values.add(value);
+      }
+    });
+    
+    return Array.from(values).sort();
+  };
+
+  // Filter and sort employees
+  const filteredEmployees = React.useMemo(() => {
+    let employees = (showArchived ? archivedEmployees : existingEmployees);
+    
+    // Apply global search text filter
+    if (searchText) {
+      const searchLower = searchText.toLowerCase();
+      employees = employees.filter(employee =>
+        employee.name?.toLowerCase().includes(searchLower) ||
+        employee.email?.toLowerCase().includes(searchLower) ||
+        employee.position?.toLowerCase().includes(searchLower) ||
+        employee.phoneNumber?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    // Apply column-specific filters
+    if (columnFilters.name) {
+      const filterLower = columnFilters.name.toLowerCase();
+      employees = employees.filter(emp => emp.name?.toLowerCase().includes(filterLower));
+    }
+    if (columnFilters.email) {
+      const filterLower = columnFilters.email.toLowerCase();
+      employees = employees.filter(emp => emp.email?.toLowerCase().includes(filterLower));
+    }
+    if (columnFilters.position) {
+      employees = employees.filter(emp => emp.position === columnFilters.position);
+    }
+    if (columnFilters.role) {
+      employees = employees.filter(emp => (emp.role || 'employee') === columnFilters.role);
+    }
+    if (columnFilters.phone) {
+      const filterLower = columnFilters.phone.toLowerCase();
+      employees = employees.filter(emp => 
+        emp.phoneNumber?.toLowerCase().includes(filterLower) ||
+        formatPhoneNumber(emp.phoneNumber)?.toLowerCase().includes(filterLower)
+      );
+    }
+    if (columnFilters.supervisor) {
+      if (columnFilters.supervisor === 'Has Supervisor') {
+        employees = employees.filter(emp => emp.supervisorId);
+      } else if (columnFilters.supervisor === 'No Supervisor') {
+        employees = employees.filter(emp => !emp.supervisorId);
+      }
+    }
+    
+    // Apply sorting
+    if (sortBy) {
+      employees = [...employees].sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+        
+        switch (sortBy) {
+          case 'name':
+            aValue = a.name?.toLowerCase() || '';
+            bValue = b.name?.toLowerCase() || '';
+            break;
+          case 'email':
+            aValue = a.email?.toLowerCase() || '';
+            bValue = b.email?.toLowerCase() || '';
+            break;
+          case 'position':
+            aValue = a.position?.toLowerCase() || '';
+            bValue = b.position?.toLowerCase() || '';
+            break;
+          case 'role':
+            aValue = (a.role || 'employee').toLowerCase();
+            bValue = (b.role || 'employee').toLowerCase();
+            break;
+          case 'lastLogin':
+            aValue = a.lastLoginAt ? new Date(a.lastLoginAt).getTime() : 0;
+            bValue = b.lastLoginAt ? new Date(b.lastLoginAt).getTime() : 0;
+            break;
+          case 'phone':
+            aValue = a.phoneNumber?.toLowerCase() || '';
+            bValue = b.phoneNumber?.toLowerCase() || '';
+            break;
+          case 'supervisor':
+            aValue = a.supervisorId ? '1' : '0';
+            bValue = b.supervisorId ? '1' : '0';
+            break;
+          default:
+            return 0;
+        }
+        
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    
+    return employees;
+  }, [showArchived, archivedEmployees, existingEmployees, searchText, columnFilters, sortBy, sortDirection]);
 
   // Helper function to safely parse costCenters
   const parseCostCenters = (costCenters: any): string[] => {
@@ -685,13 +867,162 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         size="small"
                       />
                     </TableCell>
-                    <TableCell sx={{ width: '14%', minWidth: 140 }}>Name</TableCell>
-                    <TableCell sx={{ width: '18%', minWidth: 180 }}>Email</TableCell>
-                    <TableCell sx={{ width: '14%', minWidth: 140 }}>Position</TableCell>
-                    <TableCell sx={{ width: '10%', minWidth: 90 }}>Login Role</TableCell>
-                    <TableCell sx={{ width: '12%', minWidth: 120 }}>Last Login</TableCell>
-                    <TableCell sx={{ width: '10%', minWidth: 100 }}>Phone</TableCell>
-                    <TableCell sx={{ width: '12%', minWidth: 120 }}>Supervisor</TableCell>
+                    {/* Name Column Header */}
+                    <TableCell sx={{ width: '14%', minWidth: 140 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box 
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
+                          onClick={() => handleSort('name')}
+                        >
+                          <Typography variant="subtitle2" fontWeight="bold">Name</Typography>
+                          {sortBy === 'name' && (
+                            sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />
+                          )}
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFilterMenu('name', e);
+                          }}
+                          sx={{ p: 0.5 }}
+                        >
+                          {columnFilters.name ? <FilterList fontSize="small" color="primary" /> : <FilterList fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                    {/* Email Column Header */}
+                    <TableCell sx={{ width: '18%', minWidth: 180 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box 
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
+                          onClick={() => handleSort('email')}
+                        >
+                          <Typography variant="subtitle2" fontWeight="bold">Email</Typography>
+                          {sortBy === 'email' && (
+                            sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />
+                          )}
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFilterMenu('email', e);
+                          }}
+                          sx={{ p: 0.5 }}
+                        >
+                          {columnFilters.email ? <FilterList fontSize="small" color="primary" /> : <FilterList fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                    {/* Position Column Header */}
+                    <TableCell sx={{ width: '14%', minWidth: 140 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box 
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
+                          onClick={() => handleSort('position')}
+                        >
+                          <Typography variant="subtitle2" fontWeight="bold">Position</Typography>
+                          {sortBy === 'position' && (
+                            sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />
+                          )}
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFilterMenu('position', e);
+                          }}
+                          sx={{ p: 0.5 }}
+                        >
+                          {columnFilters.position ? <FilterList fontSize="small" color="primary" /> : <FilterList fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                    {/* Login Role Column Header */}
+                    <TableCell sx={{ width: '10%', minWidth: 90 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box 
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
+                          onClick={() => handleSort('role')}
+                        >
+                          <Typography variant="subtitle2" fontWeight="bold">Login Role</Typography>
+                          {sortBy === 'role' && (
+                            sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />
+                          )}
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFilterMenu('role', e);
+                          }}
+                          sx={{ p: 0.5 }}
+                        >
+                          {columnFilters.role ? <FilterList fontSize="small" color="primary" /> : <FilterList fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                    {/* Last Login Column Header */}
+                    <TableCell sx={{ width: '12%', minWidth: 120 }}>
+                      <Box 
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => handleSort('lastLogin')}
+                      >
+                        <Typography variant="subtitle2" fontWeight="bold">Last Login</Typography>
+                        {sortBy === 'lastLogin' && (
+                          sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />
+                        )}
+                      </Box>
+                    </TableCell>
+                    {/* Phone Column Header */}
+                    <TableCell sx={{ width: '10%', minWidth: 100 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box 
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
+                          onClick={() => handleSort('phone')}
+                        >
+                          <Typography variant="subtitle2" fontWeight="bold">Phone</Typography>
+                          {sortBy === 'phone' && (
+                            sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />
+                          )}
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFilterMenu('phone', e);
+                          }}
+                          sx={{ p: 0.5 }}
+                        >
+                          {columnFilters.phone ? <FilterList fontSize="small" color="primary" /> : <FilterList fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                    {/* Supervisor Column Header */}
+                    <TableCell sx={{ width: '12%', minWidth: 120 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box 
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
+                          onClick={() => handleSort('supervisor')}
+                        >
+                          <Typography variant="subtitle2" fontWeight="bold">Supervisor</Typography>
+                          {sortBy === 'supervisor' && (
+                            sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />
+                          )}
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFilterMenu('supervisor', e);
+                          }}
+                          sx={{ p: 0.5 }}
+                        >
+                          {columnFilters.supervisor ? <FilterList fontSize="small" color="primary" /> : <FilterList fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    </TableCell>
                     <TableCell sx={{ width: '10%', minWidth: 100 }}>Cost Centers</TableCell>
                     <TableCell sx={{ width: '8%', minWidth: 80 }}>Actions</TableCell>
                   </TableRow>
@@ -933,6 +1264,79 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 </TableBody>
               </Table>
             </TableContainer>
+            
+            {/* Filter Menus for each column */}
+            {(['name', 'email', 'position', 'role', 'phone', 'supervisor'] as const).map((column) => (
+              <Popover
+                key={column}
+                open={Boolean(filterMenuAnchor[column])}
+                anchorEl={filterMenuAnchor[column]}
+                onClose={() => closeFilterMenu(column)}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'left',
+                }}
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'left',
+                }}
+              >
+                <Box sx={{ p: 2, minWidth: 250 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                    Filter {column.charAt(0).toUpperCase() + column.slice(1)}
+                  </Typography>
+                  {column === 'position' || column === 'role' || column === 'supervisor' ? (
+                    // Dropdown for position, role, and supervisor
+                    <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+                      <InputLabel>Select {column}</InputLabel>
+                      <Select
+                        value={columnFilters[column] || ''}
+                        onChange={(e) => handleColumnFilterChange(column, e.target.value)}
+                        label={`Select ${column}`}
+                      >
+                        <MenuItem value="">
+                          <em>All</em>
+                        </MenuItem>
+                        {getUniqueColumnValues(column).map((value) => (
+                          <MenuItem key={value} value={value}>
+                            {value}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    // Text input for name, email, phone
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={`Filter ${column}`}
+                      value={columnFilters[column] || ''}
+                      onChange={(e) => handleColumnFilterChange(column, e.target.value)}
+                      placeholder={`Enter ${column} to filter...`}
+                      sx={{ mb: 1 }}
+                    />
+                  )}
+                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                    {columnFilters[column] && (
+                      <Button
+                        size="small"
+                        onClick={() => clearColumnFilter(column)}
+                        startIcon={<Clear />}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => closeFilterMenu(column)}
+                    >
+                      Done
+                    </Button>
+                  </Box>
+                </Box>
+              </Popover>
+            ))}
           </CardContent>
         </Card>
       </TabPanel>

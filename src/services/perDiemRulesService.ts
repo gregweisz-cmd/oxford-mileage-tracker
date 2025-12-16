@@ -154,13 +154,10 @@ export class PerDiemRulesService {
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
 
-      // Clear existing rules
-      await database.runAsync('DELETE FROM per_diem_rules');
-
-      // Insert new rules
+      // Use INSERT OR REPLACE to handle duplicates gracefully
       for (const rule of rules) {
         await database.runAsync(
-          `INSERT INTO per_diem_rules (
+          `INSERT OR REPLACE INTO per_diem_rules (
             id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
             description, useActualAmount, createdAt, updatedAt
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -176,6 +173,16 @@ export class PerDiemRulesService {
             rule.createdAt,
             rule.updatedAt
           ]
+        );
+      }
+
+      // Clean up any rules that are no longer in the backend (optional)
+      const ruleIds = rules.map(r => r.id);
+      if (ruleIds.length > 0) {
+        const placeholders = ruleIds.map(() => '?').join(',');
+        await database.runAsync(
+          `DELETE FROM per_diem_rules WHERE id NOT IN (${placeholders})`,
+          ruleIds
         );
       }
     } catch (error) {

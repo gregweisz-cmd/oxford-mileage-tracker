@@ -12,6 +12,12 @@ import {
   Divider,
   ListItemIcon,
   ListItemText,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   AdminPanelSettings,
@@ -38,6 +44,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   onLogout,
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const open = Boolean(anchorEl);
 
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -48,13 +55,62 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     setAnchorEl(null);
   };
 
-  const handlePortalSelect = (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => {
+  const handlePortalSelect = async (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => {
     onPortalChange(portal);
     handleClose();
+    
+    // Save as default portal preference
+    if (currentUser?.id) {
+      try {
+        const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+        const prefsResponse = await fetch(`${API_BASE_URL}/api/dashboard-preferences/${currentUser.id}`);
+        let preferences: any = {};
+        
+        if (prefsResponse.ok) {
+          preferences = await prefsResponse.json();
+        }
+        
+        // Update preferences with default portal
+        preferences.defaultPortal = portal;
+        
+        console.log('💾 Saving default portal preference:', { userId: currentUser.id, portal, preferences });
+        
+        const saveResponse = await fetch(`${API_BASE_URL}/api/dashboard-preferences/${currentUser.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(preferences),
+        });
+        
+        if (saveResponse.ok) {
+          console.log('✅ Default portal preference saved successfully');
+        } else {
+          console.error('❌ Failed to save default portal preference:', await saveResponse.text());
+        }
+      } catch (error) {
+        console.error('Error saving default portal preference:', error);
+      }
+    }
+  };
+
+  const handleLogoutClick = () => {
+    setLogoutDialogOpen(true);
+  };
+
+  const handleLogoutConfirm = () => {
+    setLogoutDialogOpen(false);
+    onLogout();
+  };
+
+  const handleLogoutCancel = () => {
+    setLogoutDialogOpen(false);
   };
 
   // Determine which portals the user has access to based on their role
+  // IMPORTANT: Role field takes priority over position field
   const getAvailablePortals = () => {
+    const role = currentUser?.role?.toLowerCase() || '';
     const position = currentUser?.position?.toLowerCase() || '';
     const availablePortals: Array<{
       id: 'admin' | 'supervisor' | 'staff' | 'finance';
@@ -64,7 +120,8 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     }> = [];
 
     // Admin/CEO users can access all portals
-    if (position.includes('admin') || position.includes('ceo')) {
+    // Check role first (explicit role assignment takes priority)
+    if (role === 'admin') {
       availablePortals.push(
         {
           id: 'admin',
@@ -93,7 +150,8 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
       );
     }
     // Finance users can access finance and staff portals
-    else if (position.includes('finance') || position.includes('accounting')) {
+    // Check role first (explicit role assignment takes priority)
+    else if (role === 'finance') {
       availablePortals.push(
         {
           id: 'finance',
@@ -109,8 +167,9 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         }
       );
     }
-    // Supervisor/Director users can access supervisor and staff portals
-    else if (position.includes('supervisor') || position.includes('director')) {
+    // Supervisor/Director/Manager users can access supervisor and staff portals
+    // Check role first (explicit role assignment takes priority)
+    else if (role === 'supervisor') {
       availablePortals.push(
         {
           id: 'supervisor',
@@ -125,6 +184,69 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           description: 'Manage your own expense reports and mileage'
         }
       );
+    }
+    // Fallback: If role is not set or is 'employee', check position
+    else if (!role || role === 'employee') {
+      // Check position for role detection (fallback)
+      if (position.includes('admin') || position.includes('ceo')) {
+        availablePortals.push(
+          {
+            id: 'admin',
+            name: 'Admin Portal',
+            icon: <AdminPanelSettings />,
+            description: 'Manage employees, cost centers, and system settings'
+          },
+          {
+            id: 'finance',
+            name: 'Finance Portal',
+            icon: <AccountBalance />,
+            description: 'Review, export, and print expense reports'
+          },
+          {
+            id: 'supervisor',
+            name: 'Supervisor Portal',
+            icon: <SupervisorAccount />,
+            description: 'Review team reports and approve expenses'
+          },
+          {
+            id: 'staff',
+            name: 'Staff Portal',
+            icon: <Person />,
+            description: 'Manage your own expense reports and mileage'
+          }
+        );
+      } else if (position.includes('finance') || position.includes('accounting')) {
+        availablePortals.push(
+          {
+            id: 'finance',
+            name: 'Finance Portal',
+            icon: <AccountBalance />,
+            description: 'Review, export, and print expense reports'
+          },
+          {
+            id: 'staff',
+            name: 'Staff Portal',
+            icon: <Person />,
+            description: 'Manage your own expense reports and mileage'
+          }
+        );
+      } else if (position.includes('supervisor') || position.includes('director') || position.includes('regional manager') || position.includes('manager')) {
+        availablePortals.push(
+          {
+            id: 'supervisor',
+            name: 'Supervisor Portal',
+            icon: <SupervisorAccount />,
+            description: 'Review team reports and approve expenses'
+          },
+          {
+            id: 'staff',
+            name: 'Staff Portal',
+            icon: <Person />,
+            description: 'Manage your own expense reports and mileage'
+          }
+        );
+      }
+      // If no position match, return empty (staff only, no dropdown)
     }
     // Staff users only see staff portal (no dropdown)
     else {
@@ -153,11 +275,37 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
               variant="outlined"
               sx={{ color: 'white', borderColor: 'white' }}
             />
-            <IconButton color="inherit" onClick={onLogout}>
-              <Logout />
-            </IconButton>
+            <Button
+              color="inherit"
+              onClick={handleLogoutClick}
+              startIcon={<Logout />}
+              sx={{ color: 'white', textTransform: 'none' }}
+            >
+              Log out
+            </Button>
           </Box>
         </Toolbar>
+        <Dialog
+          open={logoutDialogOpen}
+          onClose={handleLogoutCancel}
+          aria-labelledby="logout-dialog-title"
+          aria-describedby="logout-dialog-description"
+        >
+          <DialogTitle id="logout-dialog-title">Log Out</DialogTitle>
+          <DialogContent>
+            <DialogContentText id="logout-dialog-description">
+              Are you sure you want to log out?
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleLogoutCancel} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={handleLogoutConfirm} color="primary" variant="contained" autoFocus>
+              Log Out
+            </Button>
+          </DialogActions>
+        </Dialog>
       </AppBar>
     );
   }
@@ -202,10 +350,38 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           />
           
           {/* Logout Button */}
-          <IconButton color="inherit" onClick={onLogout}>
-            <Logout />
-          </IconButton>
+          <Button
+            color="inherit"
+            onClick={handleLogoutClick}
+            startIcon={<Logout />}
+            sx={{ color: 'white', textTransform: 'none' }}
+          >
+            Log out
+          </Button>
         </Box>
+
+        {/* Logout Confirmation Dialog */}
+        <Dialog
+          open={logoutDialogOpen}
+          onClose={handleLogoutCancel}
+          aria-labelledby="logout-dialog-title"
+          aria-describedby="logout-dialog-description"
+        >
+          <DialogTitle id="logout-dialog-title">Log Out</DialogTitle>
+          <DialogContent>
+            <DialogContentText id="logout-dialog-description">
+              Are you sure you want to log out?
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleLogoutCancel} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={handleLogoutConfirm} color="primary" variant="contained" autoFocus>
+              Log Out
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Portal Selection Menu */}
         <Menu

@@ -50,50 +50,85 @@ router.get('/api/dashboard-preferences/:userId', (req, res) => {
 router.put('/api/dashboard-preferences/:userId', (req, res) => {
   const db = dbService.getDb();
   const { userId } = req.params;
-  const { enabledStatistics, categoryPresets, widgetLayouts } = req.body;
+  const { enabledStatistics, categoryPresets, widgetLayouts, defaultPortal } = req.body;
   const now = new Date().toISOString();
 
-  const sanitizedEnabledStats = Array.isArray(enabledStatistics)
-    ? enabledStatistics.filter(statId => typeof statId === 'string')
-    : [];
-
-  const sanitizedCategoryPresets = Array.isArray(categoryPresets)
-    ? categoryPresets
-        .map((preset) => {
-          if (!preset || typeof preset !== 'object') return null;
-          const id = typeof preset.id === 'string' && preset.id.trim() ? preset.id.trim() : `preset-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const name = typeof preset.name === 'string' && preset.name.trim() ? preset.name.trim() : 'Preset';
-          const states = Array.isArray(preset.states) ? preset.states.filter(state => typeof state === 'string') : [];
-          const costCenters = Array.isArray(preset.costCenters) ? preset.costCenters.filter(cc => typeof cc === 'string') : [];
-          const chartType = preset.chartType === 'bar' ? 'bar' : 'donut';
-          return { id, name, states, costCenters, chartType };
-        })
-        .filter(Boolean)
-    : [];
-
-  const sanitizedWidgetLayouts = widgetLayouts && typeof widgetLayouts === 'object'
-    ? widgetLayouts
-    : {};
-
-  const preferencesObject = {
-    enabledStatistics: sanitizedEnabledStats,
-    categoryPresets: sanitizedCategoryPresets,
-    widgetLayouts: sanitizedWidgetLayouts,
-  };
-
-  const preferences = JSON.stringify(preferencesObject);
-
-  db.run(
-    `INSERT OR REPLACE INTO dashboard_preferences (userId, preferences, createdAt, updatedAt)
-     VALUES (?, ?, COALESCE((SELECT createdAt FROM dashboard_preferences WHERE userId = ?), ?), ?)`,
-    [userId, preferences, userId, now, now],
-    function(err) {
+  // First, get existing preferences to preserve them
+  db.get(
+    'SELECT preferences FROM dashboard_preferences WHERE userId = ?',
+    [userId],
+    (err, row) => {
       if (err) {
-        debugError('❌ Error saving dashboard preferences:', err);
+        debugError('❌ Error fetching existing preferences:', err);
         res.status(500).json({ error: err.message });
         return;
       }
-      res.json({ message: 'Dashboard preferences saved successfully' });
+
+      // Start with existing preferences or empty object
+      let existingPreferences = {};
+      if (row && row.preferences) {
+        try {
+          existingPreferences = JSON.parse(row.preferences);
+        } catch (parseErr) {
+          debugWarn('⚠️ Could not parse existing preferences, starting fresh');
+          existingPreferences = {};
+        }
+      }
+
+      // Sanitize and merge new values with existing preferences
+      const sanitizedEnabledStats = Array.isArray(enabledStatistics)
+        ? enabledStatistics.filter(statId => typeof statId === 'string')
+        : (existingPreferences.enabledStatistics || []);
+
+      const sanitizedCategoryPresets = Array.isArray(categoryPresets)
+        ? categoryPresets
+            .map((preset) => {
+              if (!preset || typeof preset !== 'object') return null;
+              const id = typeof preset.id === 'string' && preset.id.trim() ? preset.id.trim() : `preset-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+              const name = typeof preset.name === 'string' && preset.name.trim() ? preset.name.trim() : 'Preset';
+              const states = Array.isArray(preset.states) ? preset.states.filter(state => typeof state === 'string') : [];
+              const costCenters = Array.isArray(preset.costCenters) ? preset.costCenters.filter(cc => typeof cc === 'string') : [];
+              const chartType = preset.chartType === 'bar' ? 'bar' : 'donut';
+              return { id, name, states, costCenters, chartType };
+            })
+            .filter(Boolean)
+        : (existingPreferences.categoryPresets || []);
+
+      const sanitizedWidgetLayouts = widgetLayouts && typeof widgetLayouts === 'object'
+        ? widgetLayouts
+        : (existingPreferences.widgetLayouts || {});
+
+      // Validate defaultPortal if provided
+      const validPortals = ['admin', 'supervisor', 'staff', 'finance'];
+      const sanitizedDefaultPortal = defaultPortal && validPortals.includes(defaultPortal) 
+        ? defaultPortal 
+        : (existingPreferences.defaultPortal || null);
+
+      const preferencesObject = {
+        enabledStatistics: sanitizedEnabledStats,
+        categoryPresets: sanitizedCategoryPresets,
+        widgetLayouts: sanitizedWidgetLayouts,
+        ...(sanitizedDefaultPortal && { defaultPortal: sanitizedDefaultPortal }),
+      };
+
+      debugLog('💾 Saving preferences:', { userId, preferencesObject });
+
+      const preferences = JSON.stringify(preferencesObject);
+
+      db.run(
+        `INSERT OR REPLACE INTO dashboard_preferences (userId, preferences, createdAt, updatedAt)
+         VALUES (?, ?, COALESCE((SELECT createdAt FROM dashboard_preferences WHERE userId = ?), ?), ?)`,
+        [userId, preferences, userId, now, now],
+        function(err) {
+          if (err) {
+            debugError('❌ Error saving dashboard preferences:', err);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          debugLog('✅ Dashboard preferences saved successfully');
+          res.json({ message: 'Dashboard preferences saved successfully' });
+        }
+      );
     }
   );
 });

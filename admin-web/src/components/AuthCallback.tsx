@@ -15,32 +15,46 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
       const error = urlParams.get('error');
       const returnUrl = urlParams.get('returnUrl') || '/';
 
-      // Clear URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname);
+      debugLog('🔍 OAuth callback - URL params:', { token: token ? 'present' : 'missing', email, error, returnUrl });
 
       if (error) {
         debugError('OAuth callback error:', error);
-        // Error will be handled by redirecting back to login
-        // which will read the error from URL params
+        window.history.replaceState({}, document.title, '/login');
+        window.location.href = `/login?error=${encodeURIComponent(error)}`;
         return;
       }
 
       if (!token || !email) {
-        debugError('OAuth callback missing token or email');
-        // Redirect to login with error
+        debugError('OAuth callback missing token or email', { token: !!token, email: !!email });
+        debugError('Full URL:', window.location.href);
+        debugError('URL search params:', window.location.search);
+        window.history.replaceState({}, document.title, '/login');
         window.location.href = '/login?error=missing_token';
         return;
       }
 
+      // Clear URL parameters AFTER we've read them
+      window.history.replaceState({}, document.title, window.location.pathname);
+
       try {
-        debugLog('🔐 Verifying OAuth session token...');
+        debugLog('🔐 Processing OAuth callback...');
         
-        // Store token temporarily
+        // Store token
         localStorage.setItem('authToken', token);
 
-        // Verify session and get user info
+        // Get employee data from token (token format: session_${employeeId}_${timestamp})
+        // Extract employee ID from token
+        const tokenParts = token.split('_');
+        if (tokenParts.length < 2) {
+          throw new Error('Invalid token format');
+        }
+        const employeeId = tokenParts[1];
+
+        debugLog('🔍 Fetching employee data for:', employeeId);
+
+        // Fetch employee data from backend
         const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
-        const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
+        const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -50,16 +64,16 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
         });
 
         if (!response.ok) {
-          throw new Error('Session verification failed');
+          throw new Error(`Failed to fetch employee data: ${response.status}`);
         }
 
-        const { employee } = await response.json();
+        const employee = await response.json();
         
-        if (!employee) {
+        if (!employee || !employee.id) {
           throw new Error('Employee data not found');
         }
 
-        debugLog('✅ OAuth session verified, completing login...');
+        debugLog('✅ Employee data fetched, completing login...');
 
         // Store employee data
         localStorage.setItem('currentEmployeeId', employee.id);
