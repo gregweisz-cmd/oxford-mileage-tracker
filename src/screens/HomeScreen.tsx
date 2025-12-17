@@ -34,7 +34,6 @@ import LogoutService from '../services/logoutService';
 import { useTheme } from '../contexts/ThemeContext';
 import { BaseAddressDetectionService } from '../services/baseAddressDetectionService';
 import { CostCenterImportService } from '../services/costCenterImportService';
-import { COST_CENTERS } from '../constants/costCenters';
 import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
 
 interface HomeScreenProps {
@@ -840,40 +839,47 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   const handleEditCostCenters = async () => {
     if (currentEmployee) {
-      setSelectedCostCenters(currentEmployee.selectedCostCenters || []);
-      setDefaultCostCenter(currentEmployee.defaultCostCenter || '');
+      // Only show cost centers assigned by admin
+      const assignedCostCenters = currentEmployee.costCenters || [];
+      setSelectedCostCenters(assignedCostCenters);
+      // Set default to current default, or first cost center if only one
+      const currentDefault = currentEmployee.defaultCostCenter || '';
+      setDefaultCostCenter(
+        assignedCostCenters.includes(currentDefault) 
+          ? currentDefault 
+          : (assignedCostCenters.length === 1 ? assignedCostCenters[0] : '')
+      );
       setShowCostCentersModal(true);
     }
-  };
-
-  const handleCostCenterToggle = (costCenter: string) => {
-    setSelectedCostCenters(prev => 
-      prev.includes(costCenter) 
-        ? prev.filter(cc => cc !== costCenter)
-        : [...prev, costCenter]
-    );
   };
 
   const handleSaveCostCenters = async () => {
     if (!currentEmployee) return;
 
     try {
+      // Only update defaultCostCenter - costCenters are assigned by admin and cannot be changed
+      const assignedCostCenters = currentEmployee.costCenters || [];
+      const newDefault = assignedCostCenters.length === 1 
+        ? assignedCostCenters[0] 
+        : (defaultCostCenter || '');
+      
       await DatabaseService.updateEmployee(currentEmployee.id, {
-        selectedCostCenters,
-        defaultCostCenter: defaultCostCenter || (selectedCostCenters.length === 1 ? selectedCostCenters[0] : '')
+        defaultCostCenter: newDefault,
+        // Keep selectedCostCenters in sync with costCenters (assigned by admin)
+        selectedCostCenters: assignedCostCenters
       });
       
       setCurrentEmployee(prev => prev ? { 
         ...prev, 
-        selectedCostCenters, 
-        defaultCostCenter: defaultCostCenter || (selectedCostCenters.length === 1 ? selectedCostCenters[0] : '')
+        defaultCostCenter: newDefault,
+        selectedCostCenters: assignedCostCenters
       } : null);
       
       setShowCostCentersModal(false);
-      Alert.alert('Success', 'Cost centers updated successfully');
+      Alert.alert('Success', 'Default cost center updated successfully');
     } catch (error) {
       console.error('Error updating cost centers:', error);
-      Alert.alert('Error', 'Failed to update cost centers');
+      Alert.alert('Error', 'Failed to update default cost center');
     }
   };
 
@@ -1568,32 +1574,17 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         <View style={styles.costCentersModalOverlay}>
           <View style={dynamicStyles.modalContent}>
             <View style={styles.costCentersModalHeader}>
-              <Text style={dynamicStyles.modalTitle}>Select Cost Centers</Text>
+              <Text style={dynamicStyles.modalTitle}>Cost Centers</Text>
               <TouchableOpacity onPress={() => setShowCostCentersModal(false)}>
                 <MaterialIcons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
             
             <Text style={styles.costCentersModalSubtitle}>
-              Select all cost centers you can bill to. You can choose a default for new entries.
+              {currentEmployee && currentEmployee.costCenters && currentEmployee.costCenters.length > 1
+                ? 'Your assigned cost centers. Select a default for new entries.'
+                : 'Your assigned cost center. Contact an administrator to change your cost centers.'}
             </Text>
-            
-            {/* Search Bar */}
-            <View style={styles.costCenterSearchContainer}>
-              <MaterialIcons name="search" size={20} color="#999" />
-              <TextInput
-                style={styles.costCenterSearchInput}
-                placeholder="Search cost centers..."
-                value={costCenterSearchText}
-                onChangeText={setCostCenterSearchText}
-                placeholderTextColor="#999"
-              />
-              {costCenterSearchText.length > 0 && (
-                <TouchableOpacity onPress={() => setCostCenterSearchText('')}>
-                  <MaterialIcons name="close" size={20} color="#999" />
-                </TouchableOpacity>
-              )}
-            </View>
             
             <ScrollView 
               style={styles.costCentersList} 
@@ -1602,77 +1593,53 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               scrollEventThrottle={16}
               nestedScrollEnabled={true}
             >
-              {/* Selected Cost Centers Section */}
-              {selectedCostCenters.filter(cc => 
-                cc.toLowerCase().includes(costCenterSearchText.toLowerCase())
-              ).length > 0 && (
+              {/* Assigned Cost Centers - Only show what admin assigned */}
+              {selectedCostCenters.length > 0 ? (
                 <View style={styles.costCentersSection}>
-                  <Text style={styles.costCentersSectionTitle}>Selected Cost Centers</Text>
-                  {selectedCostCenters
-                    .filter(cc => cc.toLowerCase().includes(costCenterSearchText.toLowerCase()))
-                    .map((costCenter) => (
+                  <Text style={styles.costCentersSectionTitle}>Assigned Cost Centers</Text>
+                  {selectedCostCenters.map((costCenter) => (
                     <View key={costCenter} style={[styles.costCenterItem, styles.selectedCostCenterItem]}>
-                      <TouchableOpacity
-                        style={styles.costCenterCheckbox}
-                        onPress={() => handleCostCenterToggle(costCenter)}
-                      >
+                      <View style={styles.costCenterCheckbox}>
                         <MaterialIcons
-                          name="check-box"
+                          name="check-circle"
                           size={24}
                           color={colors.primary}
                         />
                         <Text style={[styles.costCenterItemText, styles.selectedCostCenterText]}>{costCenter}</Text>
-                      </TouchableOpacity>
+                      </View>
                       
-                      <TouchableOpacity
-                        style={styles.defaultButton}
-                        onPress={() => setDefaultCostCenter(
-                          defaultCostCenter === costCenter ? '' : costCenter
-                        )}
-                      >
-                        <MaterialIcons
-                          name={defaultCostCenter === costCenter ? "star" : "star-border"}
-                          size={20}
-                          color={defaultCostCenter === costCenter ? "#FFD700" : "#ccc"}
-                        />
-                        <Text style={[
-                          styles.defaultButtonText,
-                          { color: defaultCostCenter === costCenter ? "#FFD700" : "#666" }
-                        ]}>
-                          Default
-                        </Text>
-                      </TouchableOpacity>
+                      {/* Only show default selector if more than one cost center */}
+                      {selectedCostCenters.length > 1 && (
+                        <TouchableOpacity
+                          style={styles.defaultButton}
+                          onPress={() => setDefaultCostCenter(
+                            defaultCostCenter === costCenter ? '' : costCenter
+                          )}
+                        >
+                          <MaterialIcons
+                            name={defaultCostCenter === costCenter ? "star" : "star-border"}
+                            size={20}
+                            color={defaultCostCenter === costCenter ? "#FFD700" : "#ccc"}
+                          />
+                          <Text style={[
+                            styles.defaultButtonText,
+                            { color: defaultCostCenter === costCenter ? "#FFD700" : "#666" }
+                          ]}>
+                            Default
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ))}
                 </View>
+              ) : (
+                <View style={styles.costCentersSection}>
+                  <Text style={styles.costCentersSectionTitle}>No Cost Centers Assigned</Text>
+                  <Text style={[styles.costCenterItemText, { color: '#999', fontStyle: 'italic' }]}>
+                    Contact an administrator to assign cost centers to your account.
+                  </Text>
+                </View>
               )}
-
-              {/* Available Cost Centers Section */}
-              <View style={styles.costCentersSection}>
-                <Text style={styles.costCentersSectionTitle}>
-                  {selectedCostCenters.length > 0 ? 'Available Cost Centers' : 'All Cost Centers'}
-                </Text>
-                {COST_CENTERS
-                  .filter(costCenter => 
-                    !selectedCostCenters.includes(costCenter) &&
-                    costCenter.toLowerCase().includes(costCenterSearchText.toLowerCase())
-                  )
-                  .map((costCenter) => (
-                    <View key={costCenter} style={styles.costCenterItem}>
-                      <TouchableOpacity
-                        style={styles.costCenterCheckbox}
-                        onPress={() => handleCostCenterToggle(costCenter)}
-                      >
-                        <MaterialIcons
-                          name="check-box-outline-blank"
-                          size={24}
-                          color="#ccc"
-                        />
-                        <Text style={styles.costCenterItemText}>{costCenter}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-              </View>
             </ScrollView>
             
             <View style={styles.costCentersModalButtons}>
@@ -1680,15 +1647,16 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 style={styles.costCentersModalCancelButton} 
                 onPress={() => setShowCostCentersModal(false)}
               >
-                <Text style={styles.costCentersModalCancelButtonText}>Cancel</Text>
+                <Text style={styles.costCentersModalCancelButtonText}>Close</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.costCentersModalConfirmButton} 
-                onPress={handleSaveCostCenters}
-                disabled={selectedCostCenters.length === 0}
-              >
-                <Text style={styles.costCentersModalConfirmButtonText}>Save</Text>
-              </TouchableOpacity>
+              {selectedCostCenters.length > 1 && (
+                <TouchableOpacity 
+                  style={styles.costCentersModalConfirmButton} 
+                  onPress={handleSaveCostCenters}
+                >
+                  <Text style={styles.costCentersModalConfirmButtonText}>Save Default</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>

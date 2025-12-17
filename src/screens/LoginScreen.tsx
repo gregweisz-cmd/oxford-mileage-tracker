@@ -302,6 +302,11 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     }
   };
 
+  const WrapperComponent = Platform.OS === 'web' ? View : TouchableWithoutFeedback;
+  const wrapperProps = Platform.OS === 'web' 
+    ? {} 
+    : { onPress: Keyboard.dismiss };
+
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
@@ -309,7 +314,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     >
       <StatusBar style="light" />
       
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <WrapperComponent {...wrapperProps}>
         <ScrollView contentContainerStyle={styles.scrollContainer}>
         {/* Header */}
         <View style={styles.header}>
@@ -336,9 +341,6 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               onSubmitEditing={() => {
                 // Focus password input
                 passwordInputRef.current?.focus();
-              }}
-              ref={(input) => {
-                // Store ref for potential future use
               }}
             />
           </View>
@@ -455,7 +457,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         )}
 
         </ScrollView>
-      </TouchableWithoutFeedback>
+      </WrapperComponent>
     </KeyboardAvoidingView>
   );
 }
