@@ -6390,10 +6390,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   setSupervisorSignatureState(savedSupervisorSignature || null);
                                   
                                   // Update the current month/year to match the loaded report
-                                  // Note: This would require updating the parent component's state
+                                  setCurrentMonth(report.month);
+                                  setCurrentYear(report.year);
                                   
                                   setReportsDialogOpen(false);
-                                  alert(`Report for ${monthNames[report.month - 1]} ${report.year} loaded successfully!`);
+                                  showSuccess(`Report for ${monthNames[report.month - 1]} ${report.year} loaded successfully!`);
                                 }
                               }}
                               disabled={report.status === 'draft'}

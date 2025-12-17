@@ -31,6 +31,7 @@ import {
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
+  Today as TodayIcon,
   // Error as ErrorIcon // Currently unused
 } from '@mui/icons-material';
 import { RealtimeStatusIndicator } from './RealtimeStatusIndicator';
@@ -155,45 +156,38 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         color: 'text.primary',
         borderBottom: '1px solid',
         borderColor: 'divider',
-        // Prevent shrinking on scroll
         transform: 'none !important',
         transition: 'none !important',
-        // More compact height
-        height: '60px !important',
-        minHeight: '60px !important',
-        maxHeight: '60px !important',
-        // Override any potential CSS that might cause shrinking
+        // Increased height for better spacing
+        height: 'auto !important',
+        minHeight: '72px !important',
         '&.MuiAppBar-root': {
-          height: '60px !important',
-          minHeight: '60px !important',
-          maxHeight: '60px !important',
+          height: 'auto !important',
+          minHeight: '72px !important',
           transform: 'none !important',
           transition: 'none !important'
         }
       }}
     >
       <Toolbar sx={{ 
-        minHeight: '60px !important',
-        height: '60px !important',
-        maxHeight: '60px !important',
-        // Prevent any scaling or transformation
+        minHeight: '72px !important',
+        height: '72px !important',
+        maxHeight: '72px !important',
         transform: 'none !important',
         transition: 'none !important',
-        // Ensure padding is consistent
-        paddingTop: '4px !important',
-        paddingBottom: '4px !important',
-        // Override any potential CSS that might cause shrinking
+        paddingX: 2,
+        paddingY: 1,
         '&.MuiToolbar-root': {
-          minHeight: '60px !important',
-          height: '60px !important',
-          maxHeight: '60px !important',
+          minHeight: '72px !important',
+          height: '72px !important',
+          maxHeight: '72px !important',
           transform: 'none !important',
           transition: 'none !important'
         }
       }}>
         {/* Left Section - Logo and Title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 300 }}>
-          <OxfordHouseLogo size={36} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 280, flexShrink: 0 }}>
+          <OxfordHouseLogo size={32} />
           <Box sx={{ lineHeight: 1.2 }}>
             <Typography variant="h6" component="h1" sx={{ fontWeight: 'bold', fontSize: '0.95rem', lineHeight: 1.2 }}>
               {title}
@@ -207,53 +201,19 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         </Box>
 
         {/* Center Section - Employee Info, Date Selectors, and Status */}
-        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2.5 }}>
+        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
           {/* Employee Info with Date Selectors */}
           {employeeName && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Avatar sx={{ width: 28, height: 28, bgcolor: 'primary.main' }}>
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
                 {employeeName.charAt(0).toUpperCase()}
               </Avatar>
               <Box>
                 <Typography variant="body2" fontWeight="medium" sx={{ fontSize: '0.85rem' }}>
                   {employeeName}
                 </Typography>
-                {reportMonth && reportYear && onMonthYearChange && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <FormControl size="small" sx={{ minWidth: 70 }}>
-                      <Select
-                        value={reportMonth}
-                        onChange={(e) => onMonthYearChange(Number(e.target.value), reportYear)}
-                        variant="standard"
-                        disableUnderline
-                        sx={{ fontSize: '0.7rem', fontWeight: 400 }}
-                      >
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
-                          <MenuItem key={m} value={m} sx={{ fontSize: '0.75rem' }}>
-                            {getMonthName(m)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ minWidth: 55 }}>
-                      <Select
-                        value={reportYear}
-                        onChange={(e) => onMonthYearChange(reportMonth, Number(e.target.value))}
-                        variant="standard"
-                        disableUnderline
-                        sx={{ fontSize: '0.7rem', fontWeight: 400 }}
-                      >
-                        {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                          <MenuItem key={y} value={y} sx={{ fontSize: '0.75rem' }}>
-                            {y}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
                 {reportMonth && reportYear && !onMonthYearChange && (
-                  <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
+                  <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.75rem' }}>
                     {getMonthName(reportMonth)} {reportYear}
                   </Typography>
                 )}
@@ -261,65 +221,79 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
             </Box>
           )}
 
-          {/* Status Indicator */}
-          <Chip
-            icon={getStatusIcon()}
-            label={getStatusText()}
-            color={getStatusColor()}
-            size="small"
-            variant="outlined"
-            sx={{ height: 24 }}
-          />
-
-          {/* Real-time Status */}
-          {showRealTimeStatus && (
-            <Box sx={{ display: 'flex', alignItems: 'center', ml: -1.25 }}>
+          {/* Status Indicators - Grouped together */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Chip
+              icon={getStatusIcon()}
+              label={getStatusText()}
+              color={getStatusColor()}
+              size="small"
+              variant="outlined"
+              sx={{ height: 26, fontSize: '0.75rem' }}
+            />
+            {showRealTimeStatus && (
               <RealtimeStatusIndicator compact onRefresh={handleRefresh} />
-            </Box>
-          )}
+            )}
+          </Box>
         </Box>
 
         {/* Right Section - Actions */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 'auto' }}>
-          {/* Action Buttons */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 'auto', flexShrink: 0 }}>
+          {/* Action Buttons - Less used actions as icon-only */}
           <Box sx={{ display: 'flex', gap: 0.5 }}>
             {onViewAllReports && (
-              <Button
-                variant="outlined"
-                startIcon={<ListIcon />}
-                onClick={onViewAllReports}
-                disabled={loading}
-                size="small"
-              >
-                All Reports
-              </Button>
+              <Tooltip title="All Reports">
+                <IconButton
+                  onClick={onViewAllReports}
+                  disabled={loading}
+                  size="small"
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    '&:hover': { bgcolor: 'action.hover' }
+                  }}
+                >
+                  <ListIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             )}
 
             {onCheckCompleteness && (
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={onCheckCompleteness}
-                disabled={loading}
-                color="secondary"
-                size="small"
-              >
-                Check
-              </Button>
+              <Tooltip title="Check Completeness">
+                <IconButton
+                  onClick={onCheckCompleteness}
+                  disabled={loading}
+                  size="small"
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    color: 'error.main',
+                    '&:hover': { bgcolor: 'error.light', color: 'error.dark' }
+                  }}
+                >
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             )}
 
             {onSaveReport && (
-              <Button
-                variant="outlined"
-                startIcon={<SaveIcon />}
-                onClick={onSaveReport}
-                disabled={loading || isAdminView}
-                size="small"
-              >
-                Save
-              </Button>
+              <Tooltip title="Save Report">
+                <IconButton
+                  onClick={onSaveReport}
+                  disabled={loading || isAdminView}
+                  size="small"
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    '&:hover': { bgcolor: 'action.hover' }
+                  }}
+                >
+                  <SaveIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             )}
 
+            {/* Primary action buttons keep text labels */}
             {supervisorMode ? (
               <>
                 <Button
@@ -335,6 +309,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   }}
                   disabled={loading}
                   size="small"
+                  sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
                 >
                   Approve
                 </Button>
@@ -351,8 +326,9 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   }}
                   disabled={loading}
                   size="small"
+                  sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
                 >
-                  Revision Needed
+                  Revision
                 </Button>
               </>
             ) : (
@@ -363,6 +339,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   onClick={onSubmitReport}
                   disabled={loading}
                   size="small"
+                  sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
                 >
                   Submit
                 </Button>
@@ -370,76 +347,165 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
             )}
 
             {onExportPdf && (
-              <Button
-                variant="outlined"
-                startIcon={<DownloadIcon />}
-                onClick={onExportPdf}
-                disabled={loading}
-                size="small"
-              >
-                Export PDF
-              </Button>
+              <Tooltip title="Export PDF">
+                <IconButton
+                  onClick={onExportPdf}
+                  disabled={loading}
+                  size="small"
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    '&:hover': { bgcolor: 'action.hover' }
+                  }}
+                >
+                  <DownloadIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             )}
           </Box>
-
-          {/* Settings and Refresh */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 0.5 }}>
-            {/* Notification Bell */}
-            {employeeId && (
-              <NotificationBell 
-                employeeId={employeeId} 
-                role={employeeRole}
-                onReportClick={onReportClick}
-              />
-            )}
-
-            {/* Refresh Button */}
-            <Tooltip title="Refresh Data">
-              <IconButton
-                onClick={handleRefresh}
-                disabled={loading}
-                size="small"
-              >
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
-
-            {/* Settings Menu */}
-            <Tooltip title="Settings">
-              <IconButton
-                onClick={handleMenuOpen}
-                size="small"
-              >
-                <AccountIcon />
-              </IconButton>
-            </Tooltip>
-          </Box>
-
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={handleMenuClose}
-            anchorOrigin={{
-              vertical: 'bottom',
-              horizontal: 'right',
-            }}
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-          >
-            <MenuItem onClick={() => { onSettings?.(); handleMenuClose(); }}>
-              <SettingsIcon sx={{ mr: 1 }} />
-              Settings
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={() => { showInfo('Profile management coming soon'); handleMenuClose(); }}>
-              <AccountIcon sx={{ mr: 1 }} />
-              Profile
-            </MenuItem>
-          </Menu>
         </Box>
       </Toolbar>
+
+      {/* Utility Icons Row */}
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        gap: 1,
+        paddingX: 2,
+        paddingY: 0.5,
+        borderTop: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.default'
+      }}>
+        {/* Left Side - Month/Year Selectors */}
+        {reportMonth && reportYear && onMonthYearChange && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <FormControl size="small" sx={{ minWidth: 110 }}>
+              <Select
+                value={reportMonth}
+                onChange={(e) => onMonthYearChange(Number(e.target.value), reportYear)}
+                variant="standard"
+                disableUnderline
+                sx={{ fontSize: '0.75rem', fontWeight: 400 }}
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                  <MenuItem key={m} value={m} sx={{ fontSize: '0.8rem' }}>
+                    {getMonthName(m)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 60 }}>
+              <Select
+                value={reportYear}
+                onChange={(e) => onMonthYearChange(reportMonth, Number(e.target.value))}
+                variant="standard"
+                disableUnderline
+                sx={{ fontSize: '0.75rem', fontWeight: 400 }}
+              >
+                {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                  <MenuItem key={y} value={y} sx={{ fontSize: '0.8rem' }}>
+                    {y}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {/* Go To Current Month Button */}
+            {(() => {
+              const now = new Date();
+              const currentMonth = now.getMonth() + 1;
+              const currentYear = now.getFullYear();
+              const isCurrentMonth = reportMonth === currentMonth && reportYear === currentYear;
+              
+              return (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<TodayIcon />}
+                  onClick={() => {
+                    if (!isCurrentMonth && onMonthYearChange) {
+                      onMonthYearChange(currentMonth, currentYear);
+                      showSuccess(`Navigated to ${getMonthName(currentMonth)} ${currentYear}`);
+                    }
+                  }}
+                  disabled={isCurrentMonth || loading}
+                  sx={{ 
+                    fontSize: '0.7rem',
+                    minWidth: 'auto',
+                    padding: '4px 8px',
+                    textTransform: 'none',
+                    opacity: isCurrentMonth ? 0.5 : 1,
+                    '& .MuiButton-startIcon': {
+                      marginRight: '4px',
+                      marginLeft: 0
+                    }
+                  }}
+                >
+                  Current Month
+                </Button>
+              );
+            })()}
+          </Box>
+        )}
+
+        {/* Right Side - Utility Icons */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Notification Bell */}
+          {employeeId && (
+            <NotificationBell 
+              employeeId={employeeId} 
+              role={employeeRole}
+              onReportClick={onReportClick}
+            />
+          )}
+
+          {/* Refresh Button */}
+          <Tooltip title="Refresh Data">
+            <IconButton
+              onClick={handleRefresh}
+              disabled={loading}
+              size="small"
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          {/* Settings Menu */}
+          <Tooltip title="Settings">
+            <IconButton
+              onClick={handleMenuOpen}
+              size="small"
+            >
+              <AccountIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+      >
+        <MenuItem onClick={() => { onSettings?.(); handleMenuClose(); }}>
+          <SettingsIcon sx={{ mr: 1 }} />
+          Settings
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => { showInfo('Profile management coming soon'); handleMenuClose(); }}>
+          <AccountIcon sx={{ mr: 1 }} />
+          Profile
+        </MenuItem>
+      </Menu>
     </AppBar>
   );
 };
