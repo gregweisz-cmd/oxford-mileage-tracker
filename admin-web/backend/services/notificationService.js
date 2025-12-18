@@ -236,6 +236,53 @@ async function notifyFinanceRevisionRequest(reportId, financeId, financeName, em
 }
 
 /**
+ * Create persistent notification for 50+ hours alert to supervisor
+ * This notification stays until the supervisor marks it as reviewed
+ */
+async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours, supervisorId) {
+  try {
+    if (!supervisorId) {
+      debugLog('⚠️ Employee has no supervisor, skipping 50+ hours notification');
+      return null;
+    }
+
+    const supervisor = await dbService.getEmployeeById(supervisorId);
+    if (!supervisor) {
+      debugWarn('⚠️ Supervisor not found for 50+ hours notification');
+      return null;
+    }
+
+    const weekStartDate = new Date(weekStart);
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+
+    return await createNotification({
+      recipientId: supervisorId,
+      recipientRole: supervisor.role || 'supervisor',
+      type: '50_plus_hours_alert',
+      title: `⚠️ Employee Working 50+ Hours - ${employeeName}`,
+      message: `${employeeName} has logged ${totalHours.toFixed(1)} hours for the week of ${weekStartDate.toLocaleDateString()}. Please check in with them to ensure they are not overworking.`,
+      employeeId,
+      employeeName,
+      actorId: employeeId,
+      actorName: employeeName,
+      actorRole: 'employee',
+      sendEmail: true,
+      isDismissible: false, // Persistent - cannot be auto-dismissed
+      metadata: JSON.stringify({
+        weekStart: weekStartDate.toISOString(),
+        weekEnd: weekEndDate.toISOString(),
+        totalHours: totalHours,
+        alertType: '50_plus_hours'
+      }),
+    });
+  } catch (error) {
+    debugError('❌ Error notifying 50+ hours alert:', error);
+    return null;
+  }
+}
+
+/**
  * Create notification when Supervisor requests revision from Employee
  */
 async function notifySupervisorRevisionRequest(reportId, supervisorId, supervisorName, employeeId) {
@@ -333,6 +380,67 @@ async function notifyFinanceApprovalNeeded(reportId, supervisorId, supervisorNam
 }
 
 /**
+ * Check if employee has 50+ hours in a week and notify supervisor
+ * @param {string} employeeId - Employee ID
+ * @param {string} date - Date string (YYYY-MM-DD) to check the week for
+ * @returns {Promise<void>}
+ */
+async function checkAndNotify50PlusHours(employeeId, date) {
+  try {
+    const db = dbService.getDb();
+    const employee = await dbService.getEmployeeById(employeeId);
+    
+    if (!employee) {
+      debugWarn('⚠️ Employee not found for 50+ hours check');
+      return;
+    }
+
+    // Calculate week start (Sunday) for the given date
+    const checkDate = new Date(date);
+    const dayOfWeek = checkDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const weekStart = new Date(checkDate);
+    weekStart.setDate(checkDate.getDate() - dayOfWeek); // Go back to Sunday
+    weekStart.setHours(0, 0, 0, 0);
+    
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6); // Saturday
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+    // Get all time tracking entries for this week
+    const timeEntries = await new Promise((resolve, reject) => {
+      db.all(
+        'SELECT hours FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?',
+        [employeeId, weekStartStr, weekEndStr],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+
+    // Calculate total hours for the week
+    const totalHours = timeEntries.reduce((sum, entry) => sum + (entry.hours || 0), 0);
+
+    // Check if 50+ hours and notify supervisor
+    if (totalHours >= 50) {
+      debugLog(`⚠️ Employee ${employee.preferredName || employee.name} has ${totalHours.toFixed(1)} hours for week of ${weekStartStr}`);
+      await notify50PlusHours(
+        employeeId,
+        employee.preferredName || employee.name,
+        weekStartStr,
+        totalHours,
+        employee.supervisorId
+      );
+    }
+  } catch (error) {
+    debugError('❌ Error checking 50+ hours:', error);
+  }
+}
+
+/**
  * Create Sunday reminder notification for employees
  */
 async function notifySundayReminder(employeeId) {
@@ -380,5 +488,7 @@ module.exports = {
   notifySupervisorRevisionRequest,
   notifyFinanceApprovalNeeded,
   notifySundayReminder,
+  notify50PlusHours,
+  checkAndNotify50PlusHours,
 };
 

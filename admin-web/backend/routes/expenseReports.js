@@ -887,7 +887,7 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
     });
     
     res.json({ 
-      success: true, 
+      success: true,
       message: 'Report data synced successfully to source tables' 
     });
     
@@ -924,6 +924,81 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
         year
       }
     });
+  }
+});
+
+/**
+ * Update summary sheet amounts for an expense report
+ */
+router.put('/api/expense-reports/:employeeId/:month/:year/summary', async (req, res) => {
+  const { employeeId, month, year } = req.params;
+  const { reportData } = req.body;
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+
+  if (!reportData) {
+    return res.status(400).json({ error: 'reportData is required' });
+  }
+
+  debugLog(`📝 Updating summary sheet for employee ${employeeId}, ${month}/${year}`);
+
+  try {
+    // Check if report exists
+    const existingReport = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT id, reportData FROM expense_reports WHERE employeeId = ? AND month = ? AND year = ?',
+        [employeeId, month, year],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!existingReport) {
+      return res.status(404).json({ error: 'Expense report not found' });
+    }
+
+    // Parse existing report data
+    let existingReportData = {};
+    try {
+      existingReportData = JSON.parse(existingReport.reportData || '{}');
+    } catch (parseErr) {
+      debugError('Error parsing existing report data:', parseErr);
+      existingReportData = {};
+    }
+
+    // Merge new summary data with existing report data
+    const updatedReportData = {
+      ...existingReportData,
+      ...reportData,
+      // Preserve other fields that shouldn't be overwritten
+      receipts: existingReportData.receipts,
+      signatureImage: existingReportData.signatureImage,
+      supervisorSignature: existingReportData.supervisorSignature,
+      dailyEntries: existingReportData.dailyEntries,
+    };
+
+    // Update the report
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE expense_reports SET reportData = ?, updatedAt = ? WHERE employeeId = ? AND month = ? AND year = ?',
+        [JSON.stringify(updatedReportData), now, employeeId, month, year],
+        function(err) {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    debugLog(`✅ Summary sheet updated successfully for employee ${employeeId}, ${month}/${year}`);
+    res.json({ 
+      success: true,
+      message: 'Summary sheet updated successfully'
+    });
+  } catch (error) {
+    debugError('❌ Error updating summary sheet:', error);
+    res.status(500).json({ error: error.message || 'Failed to update summary sheet' });
   }
 });
 

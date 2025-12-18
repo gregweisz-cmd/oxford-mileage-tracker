@@ -1,4 +1,5 @@
 import { debugLog, debugError, debugVerbose } from '../config/debug';
+import { apiGet, apiPost, apiPut, apiDelete } from './rateLimitedApi';
 
 export interface PerDiemRule {
   id: string;
@@ -17,36 +18,53 @@ export class PerDiemRulesService {
   private static rulesCache: PerDiemRule[] = [];
   private static lastFetchTime: Date | null = null;
   private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private static fetchPromise: Promise<PerDiemRule[]> | null = null; // Prevent parallel fetches
 
   /**
    * Fetch Per Diem rules from backend
    */
   static async fetchPerDiemRules(): Promise<PerDiemRule[]> {
+    // If there's already a fetch in progress, wait for it
+    if (this.fetchPromise) {
+      debugVerbose('📋 PerDiemRules: Fetch already in progress, waiting...');
+      return this.fetchPromise;
+    }
+
+    // Check cache first
+    if (this.isCacheValid()) {
+      debugVerbose('📋 PerDiemRules: Using cached rules');
+      return this.rulesCache;
+    }
+
     try {
       debugVerbose('📋 PerDiemRules: Fetching rules from backend...');
       
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
-      const response = await fetch(`${apiUrl}/api/per-diem-rules`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
+      // Create a promise that will be shared by all callers
+      this.fetchPromise = (async () => {
+        try {
+          const rules = await apiGet<PerDiemRule[]>('/api/per-diem-rules');
+          debugVerbose(`✅ PerDiemRules: Fetched ${rules.length} rules from backend`);
+          
+          // Cache the rules
+          this.rulesCache = rules;
+          this.lastFetchTime = new Date();
+          
+          return rules;
+        } finally {
+          // Clear the promise so future calls can fetch again
+          this.fetchPromise = null;
         }
-      });
+      })();
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch per diem rules: ${response.status} ${response.statusText}`);
-      }
-
-      const rules = await response.json();
-      debugVerbose(`✅ PerDiemRules: Fetched ${rules.length} rules from backend`);
-      
-      // Cache the rules
-      this.rulesCache = rules;
-      this.lastFetchTime = new Date();
-      
-      return rules;
+      return await this.fetchPromise;
     } catch (error) {
+      this.fetchPromise = null; // Clear on error
       debugError('❌ PerDiemRules: Error fetching rules from backend:', error);
+      // Return cached rules if available, even if expired
+      if (this.rulesCache.length > 0) {
+        debugVerbose('📋 PerDiemRules: Returning stale cache due to fetch error');
+        return this.rulesCache;
+      }
       return [];
     }
   }
@@ -200,30 +218,12 @@ export class PerDiemRulesService {
     try {
       debugVerbose('💾 PerDiemRules: Saving rules:', rules);
       
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
-      
       // Check if rules already exist for this cost center
       const existingRules = await this.getRulesByCostCenter(rules.costCenter);
       
-      const endpoint = existingRules 
-        ? `${apiUrl}/api/per-diem-rules/${existingRules.id}`
-        : `${apiUrl}/api/per-diem-rules`;
-      
-      const method = existingRules ? 'PUT' : 'POST';
-      
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(rules)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to save Per Diem rules: ${response.status} ${response.statusText}`);
-      }
-
-      const savedRules = await response.json();
+      const savedRules = existingRules
+        ? await apiPut<PerDiemRule>(`/api/per-diem-rules/${existingRules.id}`, rules)
+        : await apiPost<PerDiemRule>(`/api/per-diem-rules`, rules);
       debugVerbose('✅ PerDiemRules: Rules saved successfully:', savedRules);
       
       // Clear cache to force refresh
@@ -251,15 +251,7 @@ export class PerDiemRulesService {
    */
   static async deleteRules(id: string): Promise<void> {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
-      const response = await fetch(`${apiUrl}/api/per-diem-rules/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete Per Diem rules: ${response.status}`);
-      }
-
+      await apiDelete(`/api/per-diem-rules/${id}`);
       debugVerbose('✅ PerDiemRules: Rules deleted successfully');
       this.clearCache();
     } catch (error) {

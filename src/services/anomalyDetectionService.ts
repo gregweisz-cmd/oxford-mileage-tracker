@@ -760,17 +760,17 @@ export class AnomalyDetectionService {
       // Calculate total hours for the week
       const totalWeeklyHours = weekEntries.reduce((sum, entry) => sum + entry.hours, 0);
       
-      // Check if this week exceeds 40 hours
-      if (totalWeeklyHours > 40) {
+      // Check if this week exceeds 50 hours (updated threshold)
+      if (totalWeeklyHours >= 50) {
         const weekNumber = this.getWeekNumber(newTimeTracking.date);
         const weekStart = this.getWeekStartDate(newTimeTracking.date);
         
         return {
           isAnomaly: true,
-          confidence: 0.8,
-          reason: `⚠️ Weekly Hours Alert: Week ${weekNumber} (${weekStart.toLocaleDateString()}): ${totalWeeklyHours.toFixed(1)} hours logged - exceeds 40 hour threshold`,
-          severity: 'medium',
-          suggestedAction: 'Weekly hours nearing 40 hours'
+          confidence: 0.9,
+          reason: `⚠️ Weekly Hours Alert: Week ${weekNumber} (${weekStart.toLocaleDateString()}): ${totalWeeklyHours.toFixed(1)} hours logged - exceeds 50 hour threshold. Employee may be overworking.`,
+          severity: 'high',
+          suggestedAction: 'Please check in with this employee to ensure they are not overworking'
         };
       }
       

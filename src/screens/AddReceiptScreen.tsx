@@ -625,6 +625,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       Alert.alert('Validation Error', 'Vendor is required');
       return false;
     }
+    // Description is required for "Other" category
+    if (formData.category === 'Other' && !formData.description.trim()) {
+      Alert.alert('Validation Error', 'Description is required for Other Expenses so Finance knows what the money was spent on');
+      return false;
+    }
     if (!formData.amount.trim() || isNaN(Number(formData.amount)) || Number(formData.amount) <= 0) {
       Alert.alert('Validation Error', 'Please enter a valid amount');
       return false;
@@ -1010,7 +1015,14 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           
           {imageUri ? (
             <View style={styles.imageContainer}>
-              <Image source={{ uri: imageUri }} style={styles.receiptImage} />
+              <Image 
+                source={{ uri: imageUri || '' }} 
+                style={styles.receiptImage}
+                onError={(error) => {
+                  console.error('❌ Error loading receipt image:', error.nativeEvent.error);
+                  Alert.alert('Image Error', 'Failed to load receipt image. Please try selecting a new image.');
+                }}
+              />
               
               {/* Photo Quality Warning - Only show for significant issues (score < 70) */}
               {photoQualityResult && !dismissedQualityWarning && photoQualityResult.score < 70 && (
@@ -1275,13 +1287,20 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
         {/* Description/Notes */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Description (Optional)</Text>
+          <Text style={styles.label}>
+            Description {formData.category === 'Other' ? '*' : '(Optional)'}
+          </Text>
+          {formData.category === 'Other' && (
+            <Text style={[styles.label, { fontSize: 12, color: '#666', marginTop: -5, marginBottom: 5 }]}>
+              Required for Other Expenses so Finance knows what the money was spent on
+            </Text>
+          )}
           <TextInput
             ref={descriptionInputRef}
             style={[styles.input, styles.textArea]}
             value={formData.description}
             onChangeText={(value) => handleInputChange('description', value)}
-            placeholder="Add notes about this receipt..."
+            placeholder={formData.category === 'Other' ? 'Describe what this expense was for...' : 'Add notes about this receipt...'}
             placeholderTextColor="#999"
             multiline
             numberOfLines={3}

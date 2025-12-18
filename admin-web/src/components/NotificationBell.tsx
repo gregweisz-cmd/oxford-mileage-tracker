@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { IconButton, Badge, Tooltip } from '@mui/material';
 import { Notifications as NotificationsIcon } from '@mui/icons-material';
 import { NotificationsDialog } from './NotificationsDialog';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+import { apiGet } from '../services/rateLimitedApi';
 
 interface NotificationBellProps {
   employeeId: string;
@@ -33,17 +32,11 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
     if (!employeeId) return;
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/count`);
-      if (response.ok) {
-        const data = await response.json();
-        setUnreadCount(data.count || 0);
-      } else if (response.status === 429) {
-        // Rate limited - silently skip this poll, will retry on next interval
-        // Don't log or show error to user as this is expected with frequent polling
-      }
+      const data = await apiGet<{ count: number }>(`/api/notifications/${employeeId}/count`);
+      setUnreadCount(data.count || 0);
     } catch (error) {
       // Silently fail - don't show errors for polling
-      // Network errors will resolve when connection is restored
+      // Rate limiting and network errors will resolve when connection is restored
     }
   };
 

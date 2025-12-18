@@ -1558,6 +1558,19 @@ export class DatabaseService {
       fields.push('description = ?');
       values.push(receipt.description);
     }
+    // Get existing receipt to check if imageUri is being updated
+    let existingReceipt: Receipt | undefined;
+    try {
+      const allReceipts = await this.getReceipts();
+      existingReceipt = allReceipts.find(r => r.id === id);
+    } catch (error) {
+      debugWarn('Could not fetch existing receipt:', error);
+    }
+    
+    const isImageBeingUpdated = receipt.imageUri !== undefined && 
+                                receipt.imageUri !== existingReceipt?.imageUri &&
+                                receipt.imageUri.trim() !== '';
+    
     if (receipt.imageUri !== undefined) {
       fields.push('imageUri = ?');
       values.push(receipt.imageUri);
@@ -1571,6 +1584,28 @@ export class DatabaseService {
       `UPDATE receipts SET ${fields.join(', ')} WHERE id = ?`,
       values
     );
+    
+    // If a new image was added, clear any missing image notification
+    if (isImageBeingUpdated && existingReceipt) {
+      try {
+        const { SmartNotificationService } = await import('./smartNotificationService');
+        SmartNotificationService.clearMissingImageNotification(existingReceipt.employeeId, id);
+        debugLog(`✅ Database: Cleared missing image notification for receipt ${id}`);
+      } catch (error) {
+        debugWarn('Could not clear missing image notification:', error);
+      }
+    }
+    
+    // If a new image was added, clear any missing image notification
+    if (isImageBeingUpdated && existingReceipt) {
+      try {
+        const { SmartNotificationService } = await import('./smartNotificationService');
+        SmartNotificationService.clearMissingImageNotification(existingReceipt.employeeId, id);
+        debugLog(`✅ Database: Cleared missing image notification for receipt ${id}`);
+      } catch (error) {
+        debugWarn('Could not clear missing image notification:', error);
+      }
+    }
   }
 
   static async deleteReceipt(id: string): Promise<void> {

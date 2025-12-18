@@ -96,6 +96,8 @@ const getNotificationIcon = (type: string) => {
     case 'report_rejected':
     case 'revision_requested':
       return <WarningIcon color="warning" />;
+    case '50_plus_hours_alert':
+      return <WarningIcon color="error" />;
     case 'error':
       return <ErrorIcon color="error" />;
     default:
@@ -152,10 +154,12 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     setLoading(true);
     try {
       // Fetch unread count
-      const countResponse = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/count`);
-      if (countResponse.ok) {
-        const countData = await countResponse.json();
+      const { apiGet } = await import('../services/rateLimitedApi');
+      try {
+        const countData = await apiGet<{ count: number }>(`/api/notifications/${employeeId}/count`);
         setUnreadCount(countData.count || 0);
+      } catch (error) {
+        // Silently handle rate limiting
       }
 
       // Fetch recent notifications (unread first, then recent)

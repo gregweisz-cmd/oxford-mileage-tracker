@@ -130,6 +130,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
   const [kpis, setKpis] = useState<SupervisorKpiData | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
+  const [hoursAlerts, setHoursAlerts] = useState<any[]>([]);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -155,11 +156,8 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
     try {
       setKpiLoading(true);
       setKpiError(null);
-      const response = await fetch(`${API_BASE_URL}/api/supervisors/${currentEmployee.id}/kpis`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch supervisor KPIs');
-      }
-      const data = await response.json();
+      const { apiGet } = await import('../services/rateLimitedApi');
+      const data = await apiGet(`/api/supervisors/${currentEmployee.id}/kpis`);
       setKpis(data);
     } catch (error: any) {
       debugError('Error loading supervisor KPIs:', error);
@@ -177,26 +175,16 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
       setLoading(true);
       setError(null);
 
+      const { apiGet } = await import('../services/rateLimitedApi');
+      
       // Load pending reports for this supervisor
-      const pendingResponse = await fetch(
-        `${API_BASE_URL}/api/monthly-reports/supervisor/${currentEmployee.id}/pending`
+      const pending = await apiGet<any[]>(
+        `/api/monthly-reports/supervisor/${currentEmployee.id}/pending`
       );
-
-      if (!pendingResponse.ok) {
-        throw new Error('Failed to fetch pending reports');
-      }
-
-      const pending = await pendingResponse.json();
       setPendingReports(pending);
 
       // Load all reports to filter for reviewed ones
-      const allResponse = await fetch(`${API_BASE_URL}/api/monthly-reports`);
-      
-      if (!allResponse.ok) {
-        throw new Error('Failed to fetch reports');
-      }
-
-      const all = await allResponse.json();
+      const all = await apiGet<any[]>(`/api/monthly-reports`);
       
       // Filter for reports reviewed by this supervisor (needs revision)
       const reviewed = all.filter(
@@ -457,6 +445,33 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
       {kpiError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setKpiError(null)}>
           {kpiError}
+        </Alert>
+      )}
+
+      {/* 50+ Hours Alerts */}
+      {hoursAlerts.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            ⚠️ Employees Working 50+ Hours
+          </Typography>
+          {hoursAlerts.map((alert, index) => (
+            <Box key={alert.id} sx={{ mt: index > 0 ? 2 : 0, p: 1, bgcolor: 'rgba(255, 152, 0, 0.1)', borderRadius: 1 }}>
+              <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                {alert.employeeName || 'Employee'}
+              </Typography>
+              <Typography variant="body2">
+                {alert.message}
+              </Typography>
+              {alert.metadata && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Week: {new Date(alert.metadata.weekStart).toLocaleDateString()} - {new Date(alert.metadata.weekEnd).toLocaleDateString()}
+                </Typography>
+              )}
+            </Box>
+          ))}
+          <Typography variant="body2" sx={{ mt: 2, fontStyle: 'italic' }}>
+            Please check in with these employees to ensure they are not overworking.
+          </Typography>
         </Alert>
       )}
 

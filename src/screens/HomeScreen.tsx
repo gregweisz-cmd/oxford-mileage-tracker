@@ -59,7 +59,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [totalExpensesThisMonth, setTotalExpensesThisMonth] = useState(0);
   const [totalHoursThisMonth, setTotalHoursThisMonth] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [showBaseAddressModal, setShowBaseAddressModal] = useState(false);
   const [baseAddressInput, setBaseAddressInput] = useState('');
   const [showCostCenterSelector, setShowCostCenterSelector] = useState(false);
@@ -276,38 +275,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
-  const handleManualSync = async () => {
-    if (isSyncing) {
-      Alert.alert('Sync in Progress', 'A sync operation is already running. Please wait...');
-      return;
-    }
-
-    try {
-      setIsSyncing(true);
-      console.log('🔄 HomeScreen: Manual sync triggered');
-      
-      // Force immediate sync of pending changes
-      const { SyncIntegrationService } = await import('../services/syncIntegrationService');
-      const success = await SyncIntegrationService.forceSync();
-      
-      if (success) {
-        setLastSyncTime(new Date());
-        Alert.alert('Sync Complete', 'All data has been synced to the backend successfully!');
-        console.log('✅ HomeScreen: Manual sync completed successfully');
-        
-        // Reload data to show any updates from backend
-        await loadData();
-      } else {
-        Alert.alert('Sync Failed', 'Failed to sync data to backend. Please check your connection and try again.');
-        console.error('❌ HomeScreen: Manual sync failed');
-      }
-    } catch (error) {
-      console.error('❌ HomeScreen: Error during manual sync:', error);
-      Alert.alert('Sync Error', 'An error occurred during sync: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   // Initialize dashboard tiles
   const initializeTiles = async (): Promise<TileConfig[]> => {
@@ -1376,14 +1343,25 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
 
         {/* Sync Status Indicator */}
-        {lastSyncTime && (
-          <View style={styles.syncStatusContainer}>
-            <MaterialIcons name="cloud-done" size={16} color="#4CAF50" />
-            <Text style={styles.syncStatusText}>
-              Last synced: {lastSyncTime.toLocaleTimeString()}
-            </Text>
-          </View>
-        )}
+        <View 
+          style={[styles.syncStatusContainer, isSyncing && styles.syncStatusContainerSyncing]}
+        >
+          <MaterialIcons 
+            name={isSyncing ? "sync" : (lastSyncTime ? "cloud-done" : "cloud-off")} 
+            size={18} 
+            color={isSyncing ? "#2196F3" : (lastSyncTime ? "#4CAF50" : "#999")} 
+          />
+          <Text style={[styles.syncStatusText, isSyncing && styles.syncStatusTextSyncing]}>
+            {isSyncing 
+              ? "Syncing..." 
+              : lastSyncTime 
+                ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` 
+                : "Never synced"}
+          </Text>
+          {!isSyncing && (
+            <MaterialIcons name="sync" size={18} color="#2196F3" style={{ marginLeft: 8 }} />
+          )}
+        </View>
 
         {/* Quick Actions */}
         <View style={styles.actionsHeader}>
@@ -2587,12 +2565,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     backgroundColor: '#e8f5e9',
     borderRadius: 8,
     marginHorizontal: 20,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
+  },
+  syncStatusContainerSyncing: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#90caf9',
+  },
+  syncStatusTextSyncing: {
+    color: '#1976d2',
+    fontWeight: '600',
   },
   // Draggable Tiles Styles
   actionsHeader: {

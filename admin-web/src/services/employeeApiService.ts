@@ -1,5 +1,6 @@
 import { Employee } from '../types';
 import { debugLog, debugError } from '../config/debug';
+import { apiGet, apiPost, apiPut, apiDelete } from './rateLimitedApi';
 
 export interface BulkUpdateRequest {
   employeeIds: string[];
@@ -33,194 +34,77 @@ export class EmployeeApiService {
 
   static async getAllEmployees(skipCache: boolean = false): Promise<Employee[]> {
     const url = skipCache 
-      ? `${this.baseUrl}/employees?_t=${Date.now()}` 
-      : `${this.baseUrl}/employees`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include'
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch employees');
-    }
-    return response.json();
+      ? `/api/employees?_t=${Date.now()}` 
+      : `/api/employees`;
+    return apiGet<Employee[]>(url);
   }
 
   static async createEmployee(employee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>): Promise<Employee> {
-    const response = await fetch(`${this.baseUrl}/employees`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(employee),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to create employee');
-    }
-
-    return response.json();
+    return apiPost<Employee>('/api/employees', employee);
   }
 
   static async updateEmployee(id: string, employee: Partial<Employee>): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/employees/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(employee),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      let errorMessage = 'Failed to update employee';
-      try {
-        const errorData = await response.json();
-        if (errorData.error) {
-          errorMessage = `Failed to update employee: ${errorData.error}`;
-          if (errorData.details) {
-            errorMessage += ` (${errorData.details})`;
-          }
-        }
-      } catch (e) {
-        // If we can't parse the error response, use the default message
-      }
+    try {
+      await apiPut(`/api/employees/${id}`, employee);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update employee';
       throw new Error(errorMessage);
     }
   }
 
   static async deleteEmployee(id: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/employees/${id}`, {
-      method: 'DELETE',
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to delete employee');
-    }
+    await apiDelete(`/api/employees/${id}`);
   }
 
   static async bulkUpdateEmployees(request: BulkUpdateRequest): Promise<BulkOperationResult> {
-    const response = await fetch(`${this.baseUrl}/employees/bulk-update`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to bulk update employees');
-    }
-
-    return response.json();
+    return apiPut<BulkOperationResult>('/api/employees/bulk-update', request);
   }
 
   static async bulkDeleteEmployees(request: BulkDeleteRequest): Promise<BulkOperationResult> {
-    const response = await fetch(`${this.baseUrl}/employees/bulk-delete`, {
+    const { apiFetch } = await import('./rateLimitedApi');
+    const response = await apiFetch('/api/employees/bulk-delete', {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(request),
-      credentials: 'include'
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to bulk delete employees');
-    }
-
     return response.json();
   }
 
   static async bulkCreateEmployees(request: BulkCreateRequest): Promise<BulkOperationResult> {
-    const response = await fetch(`${this.baseUrl}/employees/bulk-create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to bulk create employees');
-    }
-
-    return response.json();
+    return apiPost<BulkOperationResult>('/api/employees/bulk-create', request);
   }
 
   static async resetEmployeePassword(id: string, password: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/employees/${id}/password`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ password }),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to reset password');
-    }
-
-    return response.json();
+    await apiPut(`/api/employees/${id}/password`, { password });
   }
 
   static async archiveEmployee(id: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/employees/${id}/archive`, {
-      method: 'POST',
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to archive employee');
+    try {
+      await apiPost(`/api/employees/${id}/archive`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to archive employee';
+      throw new Error(errorMessage);
     }
   }
 
   static async restoreEmployee(id: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/employees/${id}/restore`, {
-      method: 'POST',
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to restore employee');
+    try {
+      await apiPost(`/api/employees/${id}/restore`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to restore employee';
+      throw new Error(errorMessage);
     }
   }
 
   static async getArchivedEmployees(): Promise<Employee[]> {
-    debugLog('🌐 API: Fetching archived employees from:', `${this.baseUrl}/employees/archived`);
+    debugLog('🌐 API: Fetching archived employees');
     
-    const response = await fetch(`${this.baseUrl}/employees/archived`, {
-      method: 'GET',
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include'
-    });
-
-    debugLog('🌐 API: Response status:', response.status, response.statusText);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      debugError('❌ API: Error response:', errorText);
-      throw new Error(`Failed to fetch archived employees: ${response.status} ${response.statusText}`);
+    try {
+      const data = await apiGet<Employee[]>('/api/employees/archived');
+      debugLog('🌐 API: Received archived employees:', Array.isArray(data) ? `${data.length} employees` : 'Invalid data format', data);
+      return data;
+    } catch (error) {
+      debugError('❌ API: Error fetching archived employees:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    debugLog('🌐 API: Received archived employees:', Array.isArray(data) ? `${data.length} employees` : 'Invalid data format', data);
-    
-    return data;
   }
 }

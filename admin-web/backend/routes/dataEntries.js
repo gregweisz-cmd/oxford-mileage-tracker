@@ -15,6 +15,7 @@ const dbService = require('../services/dbService');
 const dateHelpers = require('../utils/dateHelpers');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { checkAndNotify50PlusHours } = require('../services/notificationService');
 
 // Set up uploads directory and multer
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -236,6 +237,12 @@ router.get('/api/receipts', (req, res) => {
  * Create new receipt
  */
 router.post('/api/receipts', (req, res) => {
+  // Validate that "Other" category receipts have descriptions
+  if (req.body.category === 'Other' && (!req.body.description || !req.body.description.trim())) {
+    return res.status(400).json({ 
+      error: 'Description is required for Other Expenses so Finance knows what the money was spent on' 
+    });
+  }
   const { id, employeeId, date, amount, vendor, description, category, imageUri } = req.body;
   const receiptId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
@@ -260,6 +267,13 @@ router.post('/api/receipts', (req, res) => {
  * Update receipt
  */
 router.put('/api/receipts/:id', (req, res) => {
+  // Validate that "Other" category receipts have descriptions
+  if (req.body.category === 'Other' && (!req.body.description || !req.body.description.trim())) {
+    return res.status(400).json({ 
+      error: 'Description is required for Other Expenses so Finance knows what the money was spent on' 
+    });
+  }
+
   const { id } = req.params;
   const { employeeId, date, amount, vendor, description, category, imageUri } = req.body;
   const now = new Date().toISOString();
@@ -795,7 +809,7 @@ router.get('/api/time-tracking', (req, res) => {
 /**
  * Create new time tracking entry
  */
-router.post('/api/time-tracking', (req, res) => {
+router.post('/api/time-tracking', async (req, res) => {
   debugLog('📥 POST /api/time-tracking - Request body:', req.body);
   const db = dbService.getDb();
   
@@ -810,12 +824,21 @@ router.post('/api/time-tracking', (req, res) => {
   db.run(
     'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
     [trackingId, employeeId, date, category || '', hours, description || '', costCenter || '', trackingId, now, now],
-    function(err) {
+    async function(err) {
       if (err) {
         debugError('❌ Database error:', err.message);
         res.status(500).json({ error: err.message });
         return;
       }
+      
+      // Check for 50+ hours alert after saving
+      try {
+        await checkAndNotify50PlusHours(employeeId, date);
+      } catch (alertError) {
+        debugError('❌ Error checking 50+ hours alert:', alertError);
+        // Don't fail the request if alert check fails
+      }
+      
       res.json({ id: trackingId, message: 'Time tracking entry created successfully' });
     }
   );
@@ -824,7 +847,7 @@ router.post('/api/time-tracking', (req, res) => {
 /**
  * Update time tracking entry
  */
-router.put('/api/time-tracking/:id', (req, res) => {
+router.put('/api/time-tracking/:id', async (req, res) => {
   const { id } = req.params;
   const { employeeId, date, category, hours, description, costCenter } = req.body;
   const now = new Date().toISOString();
@@ -833,12 +856,21 @@ router.put('/api/time-tracking/:id', (req, res) => {
   db.run(
     'UPDATE time_tracking SET employeeId = ?, date = ?, category = ?, hours = ?, description = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
     [employeeId, date, category || '', hours, description || '', costCenter || '', now, id],
-    function(err) {
+    async function(err) {
       if (err) {
         debugError('Database error:', err.message);
         res.status(500).json({ error: err.message });
         return;
       }
+      
+      // Check for 50+ hours alert after updating
+      try {
+        await checkAndNotify50PlusHours(employeeId, date);
+      } catch (alertError) {
+        debugError('❌ Error checking 50+ hours alert:', alertError);
+        // Don't fail the request if alert check fails
+      }
+      
       res.json({ message: 'Time tracking entry updated successfully' });
     }
   );

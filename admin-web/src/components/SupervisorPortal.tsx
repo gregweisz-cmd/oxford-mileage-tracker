@@ -271,10 +271,9 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
   const loadTeamReports = useCallback(async () => {
     try {
+      const { apiGet } = await import('../services/rateLimitedApi');
       // Use /api/monthly-reports endpoint which supports teamSupervisorId filtering
-      const response = await fetch(`${API_BASE_URL}/api/monthly-reports?teamSupervisorId=${supervisorId}`);
-      if (!response.ok) throw new Error('Failed to load reports');
-      const data = await response.json();
+      const data = await apiGet<any[]>(`/api/monthly-reports?teamSupervisorId=${supervisorId}`);
       const mapped: TeamReport[] = data.map((report: any) => {
         const reportData = report.reportData || {};
         const approvalWorkflow = Array.isArray(report.approvalWorkflow) ? report.approvalWorkflow : [];

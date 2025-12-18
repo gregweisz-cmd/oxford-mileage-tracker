@@ -26,14 +26,15 @@ import {
   ArrowDropDown,
   Logout,
   AccountBalance,
+  Description,
   // Settings, // Currently unused
 } from '@mui/icons-material';
 import OxfordHouseLogo from './OxfordHouseLogo';
 
 interface PortalSwitcherProps {
   currentUser: any;
-  currentPortal: 'admin' | 'supervisor' | 'staff' | 'finance';
-  onPortalChange: (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => void;
+  currentPortal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts';
+  onPortalChange: (portal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts') => void;
   onLogout: () => void;
 }
 
@@ -55,19 +56,21 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     setAnchorEl(null);
   };
 
-  const handlePortalSelect = async (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => {
+  const handlePortalSelect = async (portal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts') => {
     onPortalChange(portal);
     handleClose();
     
     // Save as default portal preference
     if (currentUser?.id) {
       try {
-        const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
-        const prefsResponse = await fetch(`${API_BASE_URL}/api/dashboard-preferences/${currentUser.id}`);
+        const { apiGet, apiPut } = await import('../services/rateLimitedApi');
         let preferences: any = {};
         
-        if (prefsResponse.ok) {
-          preferences = await prefsResponse.json();
+        try {
+          preferences = await apiGet(`/api/dashboard-preferences/${currentUser.id}`);
+        } catch (error) {
+          // If preferences don't exist, start with empty object
+          preferences = {};
         }
         
         // Update preferences with default portal
@@ -75,18 +78,17 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         
         console.log('💾 Saving default portal preference:', { userId: currentUser.id, portal, preferences });
         
-        const saveResponse = await fetch(`${API_BASE_URL}/api/dashboard-preferences/${currentUser.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(preferences),
-        });
-        
-        if (saveResponse.ok) {
+        try {
+          await apiPut(`/api/dashboard-preferences/${currentUser.id}`, preferences);
           console.log('✅ Default portal preference saved successfully');
-        } else {
-          console.error('❌ Failed to save default portal preference:', await saveResponse.text());
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.error('❌ Failed to save default portal preference:', errorMessage);
+          
+          // Show user-friendly error for rate limiting
+          if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+            console.warn('Rate limited - preference will be saved on next attempt');
+          }
         }
       } catch (error) {
         console.error('Error saving default portal preference:', error);
@@ -113,7 +115,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     const role = currentUser?.role?.toLowerCase() || '';
     const position = currentUser?.position?.toLowerCase() || '';
     const availablePortals: Array<{
-      id: 'admin' | 'supervisor' | 'staff' | 'finance';
+      id: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts';
       name: string;
       icon: React.ReactNode;
       description: string;
@@ -134,6 +136,12 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           name: 'Finance Portal',
           icon: <AccountBalance />,
           description: 'Review, export, and print expense reports'
+        },
+        {
+          id: 'contracts',
+          name: 'Contracts Portal',
+          icon: <Description />,
+          description: 'Review expense reports for quarterly audit'
         },
         {
           id: 'supervisor',

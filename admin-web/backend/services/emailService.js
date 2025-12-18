@@ -205,15 +205,15 @@ async function sendEmailViaSES({ to, subject, text, html }) {
  * @returns {Promise<Object>} Result object with success and messageId/error
  */
 async function sendEmailViaSMTP({ to, subject, text, html }) {
-  const emailTransporter = await initTransporter();
-
-  if (!emailTransporter) {
+    const emailTransporter = await initTransporter();
+    
+    if (!emailTransporter) {
     return { success: false, error: 'SMTP transporter not available' };
-  }
+    }
 
-  if (!to || !subject || !text) {
+    if (!to || !subject || !text) {
     return { success: false, error: 'Missing required email fields: to, subject, or text' };
-  }
+    }
 
   try {
     const mailOptions = {
@@ -289,14 +289,14 @@ async function sendNotificationEmail({ recipient, type, title, message, report, 
   const actorInfo = actor ? ` from ${actor.preferredName || actor.name || 'Team'}` : '';
 
   const emailSubject = title || `Oxford House Expense Tracker${reportInfo}${actorInfo}`;
-
+  
   let emailBody = message;
   if (report) {
     emailBody += `\n\nReport Period: ${new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
   }
-
+  
   emailBody += '\n\nPlease log in to the Oxford House Expense Tracker portal to review and take action.';
-
+  
   const htmlBody = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #1976d2;">${emailSubject}</h2>
@@ -345,13 +345,13 @@ async function verifyEmailConfig() {
 
   // Check if SMTP is configured
   if (EMAIL_USER && EMAIL_PASS) {
-    try {
-      const emailTransporter = await initTransporter();
-      return emailTransporter !== null;
-    } catch (error) {
-      debugError('❌ Email config verification failed:', error);
-      return false;
-    }
+  try {
+    const emailTransporter = await initTransporter();
+    return emailTransporter !== null;
+  } catch (error) {
+    debugError('❌ Email config verification failed:', error);
+    return false;
+  }
   }
 
   return false;
@@ -369,9 +369,9 @@ async function sendReportSubmittedNotification({
   reportPeriod,
 }) {
   const subject = `New Expense Report Pending Approval - ${employeeName}`;
-
+  
   const text = `Hello ${supervisorName},\n\n${employeeName} has submitted an expense report for your approval.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nPlease review and approve or request revisions as needed.`;
-
+  
   const html = `
     <!DOCTYPE html>
     <html>
@@ -428,9 +428,9 @@ async function sendReportApprovedNotification({
   comments,
 }) {
   const subject = `Expense Report Approved - ${reportPeriod}`;
-
+  
   const text = `Hello ${employeeName},\n\nYour expense report has been approved by ${supervisorName}.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}${comments ? `\n\nComments: ${comments}` : ''}\n\nYour report will now be processed by Finance.`;
-
+  
   const html = `
     <!DOCTYPE html>
     <html>
@@ -486,9 +486,9 @@ async function sendReportRejectedNotification({
   comments,
 }) {
   const subject = `Expense Report Requires Attention - ${reportPeriod}`;
-
+  
   const text = `Hello ${employeeName},\n\nYour expense report has been rejected by ${supervisorName}.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nComments: ${comments || 'No comments provided'}\n\nPlease review the comments and resubmit your report with the necessary corrections.`;
-
+  
   const html = `
     <!DOCTYPE html>
     <html>
@@ -548,9 +548,9 @@ async function sendRevisionRequestedNotification({
   comments,
 }) {
   const subject = `Expense Report Revision Requested - ${reportPeriod}`;
-
+  
   const text = `Hello ${employeeName},\n\n${supervisorName} has requested revisions to your expense report.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nRevision Request: ${comments || 'No comments provided'}\n\nPlease make the requested changes and resubmit your report.`;
-
+  
   const html = `
     <!DOCTYPE html>
     <html>

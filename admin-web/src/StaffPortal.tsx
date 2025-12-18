@@ -351,6 +351,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [reportsLoading, setReportsLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Used to force data reload
   
+  // Summary Sheet editing state
+  const [editingSummaryItem, setEditingSummaryItem] = useState<{field: string, label: string} | null>(null);
+  const [editingSummaryValue, setEditingSummaryValue] = useState('');
+  const [summaryEditDialogOpen, setSummaryEditDialogOpen] = useState(false);
+  
   // Report completeness checker state
   const [completenessReport, setCompletenessReport] = useState<CompletenessReport | null>(null);
   const [completenessDialogOpen, setCompletenessDialogOpen] = useState(false);
@@ -713,13 +718,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const monthName = monthNames[currentMonth - 1];
           const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
           
-          // Fetch real data from backend APIs
+          // Fetch real data from backend APIs using rate-limited API
+          const { apiFetch } = await import('./services/rateLimitedApi');
           const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, reportResponse] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`${API_BASE_URL}/api/daily-descriptions?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`${API_BASE_URL}/api/monthly-reports?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
+            apiFetch(`/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/daily-descriptions?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/monthly-reports?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
@@ -1136,10 +1142,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (reportStatus === 'needs_revision' && employeeId) {
         try {
           // Fetch receipts, mileage entries, and time entries to check for revision flags
+          const { apiFetch } = await import('./services/rateLimitedApi');
           const [receiptsRes, mileageRes, timeRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
+            apiFetch(`/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
           ]);
 
           const receipts = await receiptsRes.json();
@@ -3434,8 +3441,159 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     employeeData.parkingTolls + 
     employeeData.groundTransportation + 
     employeeData.hotelsAirbnb + 
-    employeeData.perDiem
+    employeeData.perDiem +
+    (employeeData.other || 0)
   ) : 0;
+
+  // Handle Summary Sheet editing
+  const handleEditSummaryItem = (field: string, label: string) => {
+    if (!employeeData) return;
+    
+    let currentValue = 0;
+    switch (field) {
+      case 'totalMileageAmount':
+        currentValue = employeeData.totalMileageAmount;
+        break;
+      case 'airRailBus':
+        currentValue = employeeData.airRailBus;
+        break;
+      case 'vehicleRentalFuel':
+        currentValue = employeeData.vehicleRentalFuel;
+        break;
+      case 'parkingTolls':
+        currentValue = employeeData.parkingTolls;
+        break;
+      case 'groundTransportation':
+        currentValue = employeeData.groundTransportation;
+        break;
+      case 'hotelsAirbnb':
+        currentValue = employeeData.hotelsAirbnb;
+        break;
+      case 'perDiem':
+        currentValue = employeeData.perDiem;
+        break;
+      case 'phoneInternetFax':
+        currentValue = employeeData.phoneInternetFax;
+        break;
+      case 'shippingPostage':
+        currentValue = employeeData.shippingPostage || 0;
+        break;
+      case 'printingCopying':
+        currentValue = employeeData.printingCopying || 0;
+        break;
+      case 'officeSupplies':
+        currentValue = employeeData.officeSupplies || 0;
+        break;
+      case 'eesReceipt':
+        currentValue = employeeData.eesReceipt || 0;
+        break;
+      case 'meals':
+        currentValue = employeeData.meals || 0;
+        break;
+      case 'other':
+        currentValue = employeeData.other || 0;
+        break;
+    }
+    
+    setEditingSummaryItem({ field, label });
+    setEditingSummaryValue(currentValue.toFixed(2));
+    setSummaryEditDialogOpen(true);
+  };
+
+  const handleSaveSummaryEdit = async () => {
+    if (!employeeData || !editingSummaryItem) return;
+    
+    const newValue = parseFloat(editingSummaryValue) || 0;
+    if (newValue < 0) {
+      alert('Amount cannot be negative');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Update local state
+      const updatedData = { ...employeeData };
+      switch (editingSummaryItem.field) {
+        case 'totalMileageAmount':
+          updatedData.totalMileageAmount = newValue;
+          break;
+        case 'airRailBus':
+          updatedData.airRailBus = newValue;
+          break;
+        case 'vehicleRentalFuel':
+          updatedData.vehicleRentalFuel = newValue;
+          break;
+        case 'parkingTolls':
+          updatedData.parkingTolls = newValue;
+          break;
+        case 'groundTransportation':
+          updatedData.groundTransportation = newValue;
+          break;
+        case 'hotelsAirbnb':
+          updatedData.hotelsAirbnb = newValue;
+          break;
+        case 'perDiem':
+          updatedData.perDiem = newValue;
+          break;
+        case 'phoneInternetFax':
+          updatedData.phoneInternetFax = newValue;
+          break;
+        case 'shippingPostage':
+          updatedData.shippingPostage = newValue;
+          break;
+        case 'printingCopying':
+          updatedData.printingCopying = newValue;
+          break;
+        case 'officeSupplies':
+          updatedData.officeSupplies = newValue;
+          break;
+        case 'eesReceipt':
+          updatedData.eesReceipt = newValue;
+          break;
+        case 'meals':
+          updatedData.meals = newValue;
+          break;
+        case 'other':
+          updatedData.other = newValue;
+          break;
+      }
+      setEmployeeData(updatedData);
+
+      // Update backend
+      const reportData = {
+        totalMileageAmount: updatedData.totalMileageAmount,
+        airRailBus: updatedData.airRailBus,
+        vehicleRentalFuel: updatedData.vehicleRentalFuel,
+        parkingTolls: updatedData.parkingTolls,
+        groundTransportation: updatedData.groundTransportation,
+        hotelsAirbnb: updatedData.hotelsAirbnb,
+        perDiem: updatedData.perDiem,
+        phoneInternetFax: updatedData.phoneInternetFax,
+        shippingPostage: updatedData.shippingPostage || 0,
+        printingCopying: updatedData.printingCopying || 0,
+        officeSupplies: updatedData.officeSupplies || 0,
+        eesReceipt: updatedData.eesReceipt || 0,
+        meals: updatedData.meals || 0,
+        other: updatedData.other || 0,
+      };
+
+      const { apiPut } = await import('./services/rateLimitedApi');
+      await apiPut(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, { reportData });
+
+      setSummaryEditDialogOpen(false);
+      setEditingSummaryItem(null);
+      setEditingSummaryValue('');
+      debugLog('✅ Summary sheet updated successfully');
+    } catch (error) {
+      debugError('Error updating summary sheet:', error);
+      alert(`Error updating summary sheet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Revert local state on error - reload data by triggering useEffect
+      window.location.reload();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Debug logging removed for production
 
@@ -4081,7 +4239,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8 }}>Mileage</TableCell>
+                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Mileage
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('totalMileageAmount', 'Mileage')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Mileage Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="right">
                       ${employeeData.totalMileageAmount.toFixed(2)}
                     </TableCell>
@@ -4097,7 +4265,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right"><strong>${employeeData.totalMileageAmount.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8 }}>Air / Rail / Bus</TableCell>
+                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Air / Rail / Bus
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('airRailBus', 'Air / Rail / Bus')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Air / Rail / Bus Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="center">$0.00</TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
@@ -4109,7 +4287,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8 }}>Vehicle Rental / Fuel</TableCell>
+                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Vehicle Rental / Fuel
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('vehicleRentalFuel', 'Vehicle Rental / Fuel')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Vehicle Rental / Fuel Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="center">$0.00</TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
@@ -4121,7 +4309,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8 }}>Parking / Tolls</TableCell>
+                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Parking / Tolls
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('parkingTolls', 'Parking / Tolls')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Parking / Tolls Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="center">$0.00</TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
@@ -4133,7 +4331,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8 }}>Ground Transportation</TableCell>
+                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Ground Transportation
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('groundTransportation', 'Ground Transportation')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Ground Transportation Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="center">$0.00</TableCell>
                     {employeeData.costCenters.slice(1).map((center, index) => (
                       <TableCell key={index} align="center">$0.00</TableCell>
@@ -4141,7 +4349,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, fontWeight: 'bold' }}>LODGING</TableCell>
+                    <TableCell sx={{ pl: 4, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      LODGING
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('hotelsAirbnb', 'Lodging')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Lodging Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="center">$0.00</TableCell>
                     {employeeData.costCenters.slice(1).map((center, index) => (
                       <TableCell key={index} align="center">$0.00</TableCell>
@@ -4149,7 +4367,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8 }}>PER DIEM</TableCell>
+                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      PER DIEM
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('perDiem', 'Per Diem')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Per Diem Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="right">${employeeData.perDiem.toFixed(2)}</TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
@@ -4168,7 +4396,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4 }}>Phone / Internet / Fax</TableCell>
+                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Phone / Internet / Fax
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('phoneInternetFax', 'Phone / Internet / Fax')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Phone / Internet / Fax Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                     <TableCell align="right">
                       ${employeeData.phoneInternetFax.toFixed(2)}
                     </TableCell>
@@ -4184,20 +4422,52 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right"><strong>${employeeData.phoneInternetFax.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, fontWeight: 'bold' }}>Shipping / Postage</TableCell>
-                    <TableCell align="center">$0.00</TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
-                    ))}
-                    <TableCell align="right">$0.00</TableCell>
+                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Shipping / Postage
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('shippingPostage', 'Shipping / Postage')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Shipping / Postage Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                    <TableCell align="right">
+                      ${(employeeData.shippingPostage || 0).toFixed(2)}
+                    </TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
+                    <TableCell align="right"><strong>${(employeeData.shippingPostage || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4 }}>Printing / Copying</TableCell>
-                    <TableCell align="center">$0.00</TableCell>
-                    {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
-                    ))}
-                    <TableCell align="right">$0.00</TableCell>
+                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Printing / Copying
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('printingCopying', 'Printing / Copying')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Printing / Copying Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                    <TableCell align="right">
+                      ${(employeeData.printingCopying || 0).toFixed(2)}
+                    </TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
+                    <TableCell align="right"><strong>${(employeeData.printingCopying || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
                   
                   {/* SUPPLIES Section */}
@@ -4207,10 +4477,52 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={employeeData.costCenters.length + 2} sx={{ pl: 4 }}>All Suppliers categories: $0.00</TableCell>
+                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Office Supplies
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('officeSupplies', 'Office Supplies')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Office Supplies Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                    <TableCell align="right">
+                      ${(employeeData.officeSupplies || 0).toFixed(2)}
+                    </TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
+                    <TableCell align="right"><strong>${(employeeData.officeSupplies || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={employeeData.costCenters.length + 2} sx={{ pl: 4 }}>All Suppliers categories: $0.00</TableCell>
+                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Oxford House E.E.S.
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('eesReceipt', 'Oxford House E.E.S.')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Oxford House E.E.S. Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                    <TableCell align="right">
+                      ${(employeeData.eesReceipt || 0).toFixed(2)}
+                    </TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
+                    <TableCell align="right"><strong>${(employeeData.eesReceipt || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
                   
                   {/* OTHER EXPENSES Section */}
@@ -4220,7 +4532,52 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={employeeData.costCenters.length + 2} sx={{ pl: 4 }}>All Other Expenses categories: $0.00</TableCell>
+                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Meals
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('meals', 'Meals')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Meals Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                    <TableCell align="right">
+                      ${(employeeData.meals || 0).toFixed(2)}
+                    </TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
+                    <TableCell align="right"><strong>${(employeeData.meals || 0).toFixed(2)}</strong></TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      Other Expenses
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleEditSummaryItem('other', 'Other Expenses')}
+                        sx={{ p: 0.5 }}
+                        title="Edit Other Expenses Amount"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                    <TableCell align="right">
+                      ${(employeeData.other || 0).toFixed(2)}
+                    </TableCell>
+                    {employeeData.costCenters.length > 1 && (
+                      <>
+                        {employeeData.costCenters.slice(1).map((center, index) => (
+                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                        ))}
+                      </>
+                    )}
+                    <TableCell align="right"><strong>${(employeeData.other || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -6279,6 +6636,48 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             variant="contained"
           >
             {editingReceipt?.id ? 'Update' : 'Add'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Summary Sheet Edit Dialog */}
+      <Dialog open={summaryEditDialogOpen} onClose={() => {
+        setSummaryEditDialogOpen(false);
+        setEditingSummaryItem(null);
+        setEditingSummaryValue('');
+      }} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit {editingSummaryItem?.label || 'Expense Amount'}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Amount"
+              type="number"
+              value={editingSummaryValue}
+              onChange={(e) => setEditingSummaryValue(e.target.value)}
+              inputProps={{ 
+                step: "0.01",
+                min: "0"
+              }}
+              helperText="Enter the amount in dollars (e.g., 125.50)"
+              autoFocus
+            />
+            <Alert severity="info" sx={{ mt: 2 }}>
+              This will update the {editingSummaryItem?.label || 'expense'} amount in your summary sheet. 
+              The change will be saved to your expense report.
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setSummaryEditDialogOpen(false);
+            setEditingSummaryItem(null);
+            setEditingSummaryValue('');
+          }}>
+            Cancel
+          </Button>
+          <Button onClick={handleSaveSummaryEdit} variant="contained" color="primary">
+            Save
           </Button>
         </DialogActions>
       </Dialog>

@@ -18,6 +18,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { PdfService } from '../services/pdfService';
 import { Receipt, Employee } from '../types';
+import { API_BASE_URL } from '../config/api';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -292,6 +293,27 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
         },
       ]
     );
+  };
+
+  // Helper function to resolve image URI (handles both local files and backend URLs)
+  const resolveImageUri = (imageUri: string): string => {
+    if (!imageUri) return '';
+    
+    // If it's already a full URL (http/https), return as-is
+    if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+      return imageUri;
+    }
+    
+    // If it's a file:// URI, return as-is
+    if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
+      return imageUri;
+    }
+    
+    // If it's just a filename (from backend), construct the full URL
+    // Backend serves images from /uploads/ directory
+    // Remove leading slash if present
+    const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
+    return `${API_BASE_URL}/uploads/${filename}`;
   };
 
   const viewReceiptImage = (receipt: Receipt) => {
@@ -815,7 +837,13 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                   style={styles.receiptImageContainer}
                   onPress={() => multiSelectMode ? toggleReceiptSelection(receipt.id) : viewReceiptImage(receipt)}
                 >
-                  <Image source={{ uri: receipt.imageUri }} style={styles.receiptThumbnail} />
+                  <Image 
+                    source={{ uri: resolveImageUri(receipt.imageUri) }} 
+                    style={styles.receiptThumbnail}
+                    onError={(error) => {
+                      console.error('❌ Error loading receipt image:', error.nativeEvent.error);
+                    }}
+                  />
                   <View style={styles.imageOverlay}>
                     <MaterialIcons name="zoom-in" size={20} color="#fff" />
                   </View>
@@ -882,9 +910,13 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
             {selectedReceipt && (
               <>
                 <Image
-                  source={{ uri: selectedReceipt.imageUri }}
+                  source={{ uri: resolveImageUri(selectedReceipt.imageUri) }}
                   style={styles.fullImage}
                   resizeMode="contain"
+                  onError={(error) => {
+                    console.error('❌ Error loading receipt image:', error.nativeEvent.error);
+                    Alert.alert('Image Error', 'Failed to load receipt image. The image may have been deleted or moved.');
+                  }}
                 />
                 <View style={styles.imageInfo}>
                   <Text style={styles.imageVendor}>{selectedReceipt.vendor}</Text>
@@ -1055,6 +1087,17 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                 >
                   <MaterialIcons name="image" size={20} color="#fff" />
                   <Text style={styles.viewImageButtonText}>View Receipt Image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.viewImageButton, { backgroundColor: '#2196F3', marginTop: 10 }]}
+                  onPress={() => {
+                    // Navigate to edit receipt screen with the selected receipt
+                    navigation.navigate('AddReceipt', { receipt: selectedReceipt, mode: 'edit' });
+                    setShowDetailsModal(false);
+                  }}
+                >
+                  <MaterialIcons name="edit" size={20} color="#fff" />
+                  <Text style={styles.viewImageButtonText}>Edit Receipt</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}

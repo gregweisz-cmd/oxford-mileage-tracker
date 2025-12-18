@@ -13,6 +13,46 @@ export interface SmartNotification {
 }
 
 export class SmartNotificationService {
+  private static missingImageReceipts: Map<string, Set<string>> = new Map(); // employeeId -> Set<receiptId>
+
+  /**
+   * Create a notification for a receipt with missing image
+   */
+  static createMissingImageNotification(
+    employeeId: string,
+    receiptId: string,
+    receiptVendor: string,
+    receiptAmount: number,
+    receiptDate: Date
+  ): SmartNotification {
+    // Track this receipt as having a missing image
+    if (!this.missingImageReceipts.has(employeeId)) {
+      this.missingImageReceipts.set(employeeId, new Set());
+    }
+    this.missingImageReceipts.get(employeeId)!.add(receiptId);
+
+    return {
+      id: `missing_image_${receiptId}`,
+      type: 'receipt',
+      priority: 'high',
+      title: 'Receipt image missing',
+      message: `The image for your ${receiptVendor} receipt ($${receiptAmount.toFixed(2)} on ${receiptDate.toLocaleDateString()}) could not be found. Please re-add the receipt image.`,
+      actionLabel: 'View Receipt',
+      actionRoute: 'Receipts',
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Clear missing image notification for a receipt
+   */
+  static clearMissingImageNotification(employeeId: string, receiptId: string): void {
+    const receipts = this.missingImageReceipts.get(employeeId);
+    if (receipts) {
+      receipts.delete(receiptId);
+    }
+  }
+
   /**
    * Check for contextual notifications based on current data
    */
@@ -27,6 +67,33 @@ export class SmartNotificationService {
       const receiptNotification = await this.checkMissingReceipts(employeeId, currentDate);
       if (receiptNotification) {
         notifications.push(receiptNotification);
+      }
+
+      // Check for receipts with missing image files
+      const missingImageReceipts = this.missingImageReceipts.get(employeeId);
+      if (missingImageReceipts && missingImageReceipts.size > 0) {
+        // Get receipt details for notifications
+        const { DatabaseService } = await import('./database');
+        for (const receiptId of missingImageReceipts) {
+          try {
+            const receipts = await DatabaseService.getReceipts(employeeId);
+            const receipt = receipts.find(r => r.id === receiptId);
+            if (receipt) {
+              notifications.push({
+                id: `missing_image_${receiptId}`,
+                type: 'receipt',
+                priority: 'high',
+                title: 'Receipt image missing',
+                message: `The image for your ${receipt.vendor} receipt ($${receipt.amount.toFixed(2)} on ${new Date(receipt.date).toLocaleDateString()}) could not be found. Please re-add the receipt image.`,
+                actionLabel: 'View Receipt',
+                actionRoute: 'Receipts',
+                timestamp: new Date(receipt.date),
+              });
+            }
+          } catch (error) {
+            debugWarn(`Error loading receipt ${receiptId} for notification:`, error);
+          }
+        }
       }
 
       // Check for month-end report reminder
@@ -380,4 +447,5 @@ export class SmartNotificationService {
       return null;
     }
   }
+
 }

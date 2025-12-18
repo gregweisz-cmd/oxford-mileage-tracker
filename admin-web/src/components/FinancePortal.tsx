@@ -46,6 +46,8 @@ import { getEmployeeDisplayName } from '../utils/employeeUtils';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import DetailedReportView from './DetailedReportView';
 import { NotificationBell } from './NotificationBell';
+import { PerDiemRulesManagement } from './PerDiemRulesManagement';
+import { CostCenter, CostCenterApiService } from '../services/costCenterApiService';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
@@ -93,6 +95,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const [revisionComments, setRevisionComments] = useState('');
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   
   // Filter states
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -124,7 +127,17 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   useEffect(() => {
     loadReports();
+    loadCostCenters();
   }, []);
+
+  const loadCostCenters = async () => {
+    try {
+      const data = await CostCenterApiService.getAllCostCenters();
+      setCostCenters(data);
+    } catch (error) {
+      debugError('Error loading cost centers:', error);
+    }
+  };
 
   useEffect(() => {
     applyFilters();
@@ -1279,6 +1292,11 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       {/* Reports & Analytics */}
       <TabPanel value={activeTab} index={4}>
         <ReportsAnalyticsTab />
+      </TabPanel>
+
+      {/* Per Diem Rules */}
+      <TabPanel value={activeTab} index={5}>
+        <PerDiemRulesManagement costCenters={costCenters} />
       </TabPanel>
 
       {/* Pending Review Tab */}

@@ -527,8 +527,13 @@ export const ReceiptForm: React.FC<BaseFormProps & {
     if (!formData.vendor.trim()) {
       newErrors.vendor = 'Vendor is required';
     }
+    // Description is always required, but especially for "Other" category
     if (!formData.description.trim()) {
-      newErrors.description = 'Description is required';
+      if (formData.category === 'Other') {
+        newErrors.description = 'Description is required for Other Expenses so Finance knows what the money was spent on';
+      } else {
+        newErrors.description = 'Description is required';
+      }
     }
     if (!formData.category) {
       newErrors.category = 'Category is required';

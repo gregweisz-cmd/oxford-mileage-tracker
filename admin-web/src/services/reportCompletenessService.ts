@@ -610,19 +610,19 @@ export class ReportCompletenessService {
       weeklyHours[weekKey] = (weeklyHours[weekKey] || 0) + entry.hours;
     });
     
-    // Check each week for excessive hours
+    // Check each week for excessive hours (50+ hours threshold)
     Object.entries(weeklyHours).forEach(([weekKey, totalHours]) => {
-      if (totalHours > 40) {
+      if (totalHours >= 50) {
         const weekNumber = weekKey.split('-')[1];
         const weekStart = this.getWeekStartDate(weekKey);
         
         issues.push({
           id: `burnout-week-${weekKey}`,
           type: 'gap_detection',
-          severity: 'medium',
-          title: '⚠️ Weekly Hours Alert',
-          description: `Week ${weekNumber} (${weekStart.toLocaleDateString()}): ${totalHours.toFixed(1)} hours logged - exceeds 40 hour threshold`,
-          suggestion: 'Weekly hours nearing 40 hours',
+          severity: 'high',
+          title: '⚠️ Weekly Hours Alert - 50+ Hours',
+          description: `Week ${weekNumber} (${weekStart.toLocaleDateString()}): ${totalHours.toFixed(1)} hours logged - exceeds 50 hour threshold. Employee may be overworking.`,
+          suggestion: 'Please check in with this employee to ensure they are not overworking',
           date: weekStart,
           category: 'Work-Life Balance'
         });

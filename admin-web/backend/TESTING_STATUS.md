@@ -1,8 +1,35 @@
-# Testing Status - December 15, 2025
+# Testing Status
 
-**Last Updated**: December 15, 2025  
-**Session Duration**: ~2.5 hours  
+**Last Updated**: Current Session  
+**Session Duration**: ~2.5 hours (previous session)  
 **Overall Status**: ✅ **Excellent Progress**
+
+## Next Testing Session Plan
+
+### New Features to Test (Priority 1)
+1. **Summary Sheet Editing**
+   - Test editing all expense categories
+   - Verify persistence and validation
+   - Test backend integration
+
+2. **Persistent Mileage Tracking Notification**
+   - Test 5-minute stationary detection
+   - Verify modal persistence
+   - Test dismissal and movement detection
+
+3. **Persistent 50+ Hours Alerts**
+   - Test alert creation for 50+ hours
+   - Verify supervisor dashboard display
+   - Test notification persistence
+
+4. **Contracts Portal**
+   - Test portal access and routing
+   - Verify review-only functionality
+   - Test Per Diem Rules management
+
+---
+
+## Previous Testing Session - December 15, 2025
 
 ---
 

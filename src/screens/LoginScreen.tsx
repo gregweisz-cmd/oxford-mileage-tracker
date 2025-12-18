@@ -16,7 +16,6 @@ import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
-import { GoogleAuthService } from '../services/googleAuthService';
 
 interface LoginScreenProps {
   navigation?: any;
@@ -27,7 +26,6 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -214,94 +212,6 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     return emailRegex.test(email);
   };
 
-  // Handle Google Sign-In
-  const handleGoogleSignIn = async () => {
-    setGoogleLoading(true);
-    try {
-      // Sign in with Google
-      const googleUserInfo = await GoogleAuthService.signInWithGoogle();
-      
-      // Check if user cancelled (null means cancellation)
-      if (!googleUserInfo || !googleUserInfo.authorizationCode) {
-        // User cancelled - just stop loading, don't show error
-        setGoogleLoading(false);
-        return;
-      }
-      
-      // Verify with backend and get employee data
-      // GoogleAuthService uses the same API config as the rest of the app
-      const employeeData = await GoogleAuthService.verifyWithBackend(googleUserInfo);
-      
-      // Create or update employee in local database
-      const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
-      
-      if (existingEmployee) {
-        // Update existing employee
-        await DatabaseService.updateEmployee(existingEmployee.id, {
-          name: employeeData.name,
-          email: employeeData.email,
-          password: '', // No password for Google sign-in
-          oxfordHouseId: employeeData.oxfordHouseId || existingEmployee.oxfordHouseId || '',
-          position: employeeData.position || existingEmployee.position || '',
-          phoneNumber: employeeData.phoneNumber || existingEmployee.phoneNumber || '',
-          baseAddress: employeeData.baseAddress || existingEmployee.baseAddress || '',
-          costCenters: employeeData.costCenters || existingEmployee.costCenters || [],
-          selectedCostCenters: (employeeData.selectedCostCenters && employeeData.selectedCostCenters.length > 0)
-            ? employeeData.selectedCostCenters
-            : (existingEmployee.selectedCostCenters || employeeData.costCenters || []),
-          defaultCostCenter: employeeData.defaultCostCenter
-            || existingEmployee.defaultCostCenter
-            || employeeData.costCenters?.[0]
-            || ''
-        });
-        
-        const updatedEmployee = await DatabaseService.getEmployeeById(existingEmployee.id);
-        if (!updatedEmployee) {
-          Alert.alert('Error', 'Failed to load updated employee data');
-          return;
-        }
-        
-        await DatabaseService.setCurrentEmployee(existingEmployee.id, stayLoggedIn);
-        onLogin(updatedEmployee);
-      } else {
-        // Create new employee
-        await DatabaseService.createEmployee({
-          id: employeeData.id,
-          name: employeeData.name,
-          email: employeeData.email,
-          password: '', // No password for Google sign-in
-          oxfordHouseId: employeeData.oxfordHouseId || '',
-          position: employeeData.position || '',
-          phoneNumber: employeeData.phoneNumber || '',
-          baseAddress: employeeData.baseAddress || '',
-          costCenters: employeeData.costCenters || [],
-          selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
-          defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
-        });
-        
-        await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
-        onLogin(employeeData);
-      }
-    } catch (error) {
-      // Only show error for actual failures, not cancellations
-      const errorMessage = error instanceof Error ? error.message : 'Failed to sign in with Google. Please try again.';
-      
-      // Don't show error if it's a cancellation
-      if (errorMessage.toLowerCase().includes('cancel')) {
-        // User cancelled - just stop loading silently
-        setGoogleLoading(false);
-        return;
-      }
-      
-      // Log and show error for actual failures
-      console.error('Google Sign-In error:', error);
-      Alert.alert('Sign-In Failed', errorMessage);
-      setGoogleLoading(false);
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
-
   const WrapperComponent = Platform.OS === 'web' ? View : TouchableWithoutFeedback;
   const wrapperProps = Platform.OS === 'web' 
     ? {} 
@@ -397,24 +307,6 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
           </TouchableOpacity>
 
           {/* Divider */}
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google Sign-In Button */}
-          <TouchableOpacity
-            style={[styles.googleButton, googleLoading && styles.googleButtonDisabled]}
-            onPress={handleGoogleSignIn}
-            disabled={googleLoading}
-          >
-            <MaterialIcons name="login" size={24} color="#fff" />
-            <Text style={styles.googleButtonText}>
-              {googleLoading ? 'Signing In...' : 'Sign in with Google'}
-            </Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
             style={styles.helpButton}
             onPress={() => setShowEmployeeList(true)}
@@ -635,44 +527,5 @@ const styles = StyleSheet.create({
   employeePosition: {
     fontSize: 12,
     color: '#999',
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#ddd',
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
-    paddingVertical: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  googleButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  googleButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 12,
   },
 });

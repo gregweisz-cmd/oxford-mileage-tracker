@@ -7,6 +7,7 @@ import StaffPortal from './StaffPortal';
 import SupervisorPortal from './components/SupervisorPortal';
 import { AdminPortal } from './components/AdminPortal';
 import FinancePortal from './components/FinancePortal';
+import ContractsPortal from './components/ContractsPortal';
 import Login from './components/Login';
 // import LoginForm from './components/LoginForm'; // Currently unused
 import PortalSwitcher from './components/PortalSwitcher';
@@ -21,21 +22,25 @@ import AuthCallback from './components/AuthCallback';
 import { debugLog, debugError, debugVerbose } from './config/debug';
 
 // Helper function to get available portals for a user (used before user state is set)
-const getAvailablePortalsForUser = (role: string, position: string): Array<'admin' | 'supervisor' | 'staff' | 'finance'> => {
-  const availablePortals: Array<'admin' | 'supervisor' | 'staff' | 'finance'> = [];
+const getAvailablePortalsForUser = (role: string, position: string): Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> => {
+  const availablePortals: Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> = [];
   
   if (role === 'admin') {
-    return ['admin', 'finance', 'supervisor', 'staff'];
+    return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
   } else if (role === 'finance') {
     return ['finance', 'staff'];
+  } else if (role === 'contracts') {
+    return ['contracts', 'staff'];
   } else if (role === 'supervisor') {
     return ['supervisor', 'staff'];
   } else if (!role || role === 'employee') {
     // Fallback to position-based detection
     if (position.includes('admin') || position.includes('ceo')) {
-      return ['admin', 'finance', 'supervisor', 'staff'];
+      return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
     } else if (position.includes('finance') || position.includes('accounting')) {
       return ['finance', 'staff'];
+    } else if (position.includes('contracts')) {
+      return ['contracts', 'staff'];
     } else if (position.includes('supervisor') || position.includes('director') || position.includes('regional manager') || position.includes('manager')) {
       return ['supervisor', 'staff'];
     }
@@ -58,7 +63,7 @@ const theme = createTheme({
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentPortal, setCurrentPortal] = useState<'admin' | 'supervisor' | 'staff' | 'finance'>('staff');
+  const [currentPortal, setCurrentPortal] = useState<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'>('staff');
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -71,13 +76,13 @@ const App: React.FC = () => {
         if (authToken) {
           // Verify token with backend
           try {
-            const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/auth/verify`, {
+            const { apiFetch } = await import('./services/rateLimitedApi');
+            const response = await apiFetch('/api/auth/verify', {
               method: 'GET',
               headers: {
                 'Authorization': `Bearer ${authToken}`,
                 'Content-Type': 'application/json'
-              },
-              credentials: 'include'
+              }
             });
             
             if (!response.ok) {
@@ -116,26 +121,24 @@ const App: React.FC = () => {
             
             // First, check if user has a saved default portal preference
             try {
-              const prefsResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/dashboard-preferences/${employee.id}`);
-              if (prefsResponse.ok) {
-                const preferences = await prefsResponse.json();
-                debugLog('🔍 Loaded user preferences (checkAuthStatus):', preferences);
-                if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance'].includes(preferences.defaultPortal)) {
-                  // Verify user has access to this portal
-                  const availablePortals = getAvailablePortalsForUser(role, position);
-                  debugLog('🔍 Available portals for user (checkAuthStatus):', availablePortals);
-                  debugLog('🔍 Preferred portal (checkAuthStatus):', preferences.defaultPortal);
-                  if (availablePortals.includes(preferences.defaultPortal)) {
-                    debugLog('✅ Using saved default portal (checkAuthStatus):', preferences.defaultPortal);
-                    setCurrentPortal(preferences.defaultPortal);
-                    setLoading(false);
-                    return;
-                  } else {
-                    debugLog('⚠️ Saved portal not available (checkAuthStatus), falling back to role/position');
-                  }
+              const { apiGet } = await import('./services/rateLimitedApi');
+              const preferences = await apiGet(`/api/dashboard-preferences/${employee.id}`).catch(() => ({}));
+              debugLog('🔍 Loaded user preferences (checkAuthStatus):', preferences);
+              if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
+                // Verify user has access to this portal
+                const availablePortals = getAvailablePortalsForUser(role, position);
+                debugLog('🔍 Available portals for user (checkAuthStatus):', availablePortals);
+                debugLog('🔍 Preferred portal (checkAuthStatus):', preferences.defaultPortal);
+                if (availablePortals.includes(preferences.defaultPortal)) {
+                  debugLog('✅ Using saved default portal (checkAuthStatus):', preferences.defaultPortal);
+                  setCurrentPortal(preferences.defaultPortal);
+                  setLoading(false);
+                  return;
                 } else {
-                  debugLog('⚠️ No default portal preference found (checkAuthStatus)');
+                  debugLog('⚠️ Saved portal not available (checkAuthStatus), falling back to role/position');
                 }
+              } else {
+                debugLog('⚠️ No default portal preference found (checkAuthStatus)');
               }
             } catch (error) {
               debugError('Error fetching user preferences:', error);
@@ -205,7 +208,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePortalChange = (portal: 'admin' | 'supervisor' | 'staff' | 'finance') => {
+  const handlePortalChange = (portal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts') => {
     setCurrentPortal(portal);
   };
 
@@ -244,25 +247,23 @@ const App: React.FC = () => {
     
     // First, check if user has a saved default portal preference
     try {
-      const prefsResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/dashboard-preferences/${employee.id}`);
-      if (prefsResponse.ok) {
-        const preferences = await prefsResponse.json();
-        debugLog('🔍 Loaded user preferences:', preferences);
-        if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance'].includes(preferences.defaultPortal)) {
-          // Verify user has access to this portal
-          const availablePortals = getAvailablePortalsForUser(role, position);
-          debugLog('🔍 Available portals for user:', availablePortals);
-          debugLog('🔍 Preferred portal:', preferences.defaultPortal);
-          if (availablePortals.includes(preferences.defaultPortal)) {
-            debugLog('✅ Using saved default portal:', preferences.defaultPortal);
-            setCurrentPortal(preferences.defaultPortal);
-            return;
-          } else {
-            debugLog('⚠️ Saved portal not available, falling back to role/position');
-          }
+      const { apiGet } = await import('./services/rateLimitedApi');
+      const preferences = await apiGet(`/api/dashboard-preferences/${employee.id}`).catch(() => ({}));
+      debugLog('🔍 Loaded user preferences:', preferences);
+      if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
+        // Verify user has access to this portal
+        const availablePortals = getAvailablePortalsForUser(role, position);
+        debugLog('🔍 Available portals for user:', availablePortals);
+        debugLog('🔍 Preferred portal:', preferences.defaultPortal);
+        if (availablePortals.includes(preferences.defaultPortal)) {
+          debugLog('✅ Using saved default portal:', preferences.defaultPortal);
+          setCurrentPortal(preferences.defaultPortal);
+          return;
         } else {
-          debugLog('⚠️ No default portal preference found');
+          debugLog('⚠️ Saved portal not available, falling back to role/position');
         }
+      } else {
+        debugLog('⚠️ No default portal preference found');
       }
     } catch (error) {
       debugError('Error fetching user preferences:', error);
@@ -274,6 +275,8 @@ const App: React.FC = () => {
       setCurrentPortal('admin');
     } else if (role === 'finance') {
       setCurrentPortal('finance');
+    } else if (role === 'contracts') {
+      setCurrentPortal('contracts');
     } else if (role === 'supervisor') {
       setCurrentPortal('supervisor');
     } else if (role === 'employee' || !role) {
@@ -399,6 +402,12 @@ const App: React.FC = () => {
         return (
           <ErrorBoundary>
             <FinancePortal financeUserId={currentUser.id} financeUserName={currentUser.name} />
+          </ErrorBoundary>
+        );
+      case 'contracts':
+        return (
+          <ErrorBoundary>
+            <ContractsPortal contractsUserId={currentUser.id} contractsUserName={currentUser.name} />
           </ErrorBoundary>
         );
       case 'supervisor':

@@ -1,4 +1,5 @@
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
 import { debugLog, debugError, debugWarn } from '../config/debug';
@@ -480,6 +481,46 @@ export class ApiSyncService {
       
       debugLog(`📤 ApiSync: Upload URL will be: ${this.config.baseUrl}/receipts/upload-image`);
       
+      // Check if file exists before attempting to upload (only for file:// URIs)
+      let fileExists = true;
+      if (imageUri.startsWith('file://')) {
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(imageUri);
+          if (!fileInfo.exists) {
+            fileExists = false;
+            debugWarn(`⚠️ ApiSync: Image file does not exist: ${imageUri}`);
+            // Create notification for missing image
+            await this.createMissingImageNotification(imageUri);
+            return { 
+              success: false, 
+              error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+            };
+          }
+          debugLog(`✅ ApiSync: Image file exists, size: ${fileInfo.size} bytes`);
+        } catch (fileCheckError) {
+          // If file check fails, try to read the file to verify it exists
+          try {
+            // Use string 'base64' instead of EncodingType.Base64 for newer Expo versions
+            await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' as any });
+            debugLog(`✅ ApiSync: File is readable`);
+          } catch (readError) {
+            fileExists = false;
+            const errorMsg = readError instanceof Error ? readError.message : String(readError);
+            if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("NSCocoaErrorDomain")) {
+              debugWarn(`⚠️ ApiSync: File cannot be read (likely doesn't exist): ${imageUri}`);
+              // Create notification for missing image
+              await this.createMissingImageNotification(imageUri);
+              return { 
+                success: false, 
+                error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+              };
+            }
+            // Re-throw if it's a different error
+            throw readError;
+          }
+        }
+      }
+      
       // Create FormData for file upload
       let formData: FormData;
       try {
@@ -494,18 +535,36 @@ export class ApiSyncService {
         
         // Add the image file to FormData
         const fileName = `receipt_${Date.now()}${fileExtension}`;
-        formData.append('image', {
-          uri: imageUri,
-          type: 'image/jpeg',
-          name: fileName,
-        } as any);
         
-        debugLog(`📤 ApiSync: FormData created successfully`);
+        // Try to append the file - this may throw if file doesn't exist
+        try {
+          formData.append('image', {
+            uri: imageUri,
+            type: 'image/jpeg',
+            name: fileName,
+          } as any);
+          debugLog(`📤 ApiSync: FormData created successfully`);
+        } catch (appendError) {
+          // If append fails, the file likely doesn't exist
+          const errorMsg = appendError instanceof Error ? appendError.message : String(appendError);
+          if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("NSCocoaErrorDomain")) {
+            debugWarn(`⚠️ ApiSync: Cannot append file to FormData (file doesn't exist): ${imageUri}`);
+            // Create notification for missing image
+            await this.createMissingImageNotification(imageUri);
+            return { 
+              success: false, 
+              error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+            };
+          }
+          throw appendError;
+        }
       } catch (formDataError) {
-        // Catch errors when creating FormData (e.g., file doesn't exist)
+        // Catch any other errors when creating FormData
         const errorMsg = formDataError instanceof Error ? formDataError.message : String(formDataError);
-        if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260")) {
+        if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("NSCocoaErrorDomain")) {
           debugWarn(`⚠️ ApiSync: File not found or cannot be opened: ${imageUri}`);
+          // Create notification for missing image
+          await this.createMissingImageNotification(imageUri);
           return { 
             success: false, 
             error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
@@ -527,16 +586,31 @@ export class ApiSyncService {
       }, timeoutMs);
       
       try {
-        // Upload to backend
-        const response = await fetch(`${this.config.baseUrl}/receipts/upload-image`, {
-          method: 'POST',
-          // Do not set Content-Type manually; let fetch add the multipart boundary
-          body: formData,
-          signal: controller.signal,
-        });
+        // Upload to backend - wrap in try-catch to catch file access errors during fetch
+        let response: Response;
+        try {
+          response = await fetch(`${this.config.baseUrl}/receipts/upload-image`, {
+            method: 'POST',
+            // Do not set Content-Type manually; let fetch add the multipart boundary
+            body: formData,
+            signal: controller.signal,
+          });
+        } catch (fetchInitError) {
+          // Catch errors that occur when React Native tries to process the FormData body
+          const errorMsg = fetchInitError instanceof Error ? fetchInitError.message : String(fetchInitError);
+          if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("NSCocoaErrorDomain") || errorMsg.includes("Error processing request body")) {
+            clearTimeout(timeoutId);
+            debugWarn(`⚠️ ApiSync: File access error during fetch initialization: ${imageUri}`);
+            return { 
+              success: false, 
+              error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+            };
+          }
+          throw fetchInitError;
+        }
         
         clearTimeout(timeoutId);
-        debugLog(`📤 ApiSync: Response received, status:`, response.status);
+        debugLog(`📤 ApiSync: Response received, status:`, response?.status);
         
         if (!response.ok) {
           const errorText = await response.text();
@@ -556,15 +630,26 @@ export class ApiSyncService {
         return { success: true, uri: normalizedUri };
       } catch (fetchError) {
         clearTimeout(timeoutId);
+        
+        // Check if this is a file access error (happens when React Native tries to process FormData)
+        const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+        if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("NSCocoaErrorDomain") || errorMsg.includes("Error processing request body")) {
+          debugWarn(`⚠️ ApiSync: File access error during fetch (file doesn't exist): ${imageUri}`);
+          return { 
+            success: false, 
+            error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+          };
+        }
+        
         // For timeout errors, use debugLog since they're expected and non-blocking
         // For other errors, use debugWarn
         let errorMessage = 'Unknown upload error';
         if (fetchError instanceof Error) {
-          if (fetchError.name === 'AbortError' || fetchError.message.includes('Aborted')) {
+          if (fetchError.name === 'AbortError' || errorMsg.includes('Aborted')) {
             errorMessage = `Upload timed out after ${timeoutMs / 1000} seconds. The image may be too large or the connection is slow. Please try again.`;
             debugLog(`⏱️ ApiSync: Upload timeout (expected for large images/slow connections): ${errorMessage}`);
           } else {
-            errorMessage = fetchError.message;
+            errorMessage = errorMsg;
             debugWarn(`⚠️ ApiSync: Upload request error:`, fetchError);
           }
         } else {
@@ -580,7 +665,7 @@ export class ApiSyncService {
       let errorMessage = 'Unknown upload error';
       if (error instanceof Error) {
         const errorMsg = error.message;
-        if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260")) {
+        if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("Error processing request body")) {
           errorMessage = `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.`;
         } else if (errorMsg.includes("NSCocoaErrorDomain")) {
           errorMessage = `File system error: The image file cannot be accessed. Please check the file path.`;
@@ -594,6 +679,15 @@ export class ApiSyncService {
         error: errorMessage
       };
     }
+  }
+
+  /**
+   * Helper to create missing image notification (needs receipt context)
+   */
+  private static async createMissingImageNotification(imageUri: string): Promise<void> {
+    // This will be called from syncReceipts with proper receipt context
+    // For now, just log - the actual notification is created in syncReceipts
+    debugWarn(`⚠️ ApiSync: Missing image notification will be created in syncReceipts`);
   }
 
   /**
@@ -628,7 +722,65 @@ export class ApiSyncService {
               if (uploadResult.success && uploadResult.uri) {
                 backendImageUri = uploadResult.uri;
                 debugLog(`✅ ApiSync: Image uploaded successfully: ${backendImageUri}`);
+                
+                // Clear any missing image notification for this receipt
+                try {
+                  const { SmartNotificationService } = await import('./smartNotificationService');
+                  SmartNotificationService.clearMissingImageNotification(receipt.employeeId, receipt.id);
+                } catch (notifError) {
+                  debugWarn('Could not clear missing image notification:', notifError);
+                }
               } else {
+                // Check if error is due to missing file - check multiple error message patterns
+                const errorMsg = uploadResult.error || '';
+                const isFileNotFound = errorMsg.includes('file not found') || 
+                                      errorMsg.includes("couldn't be opened") || 
+                                      errorMsg.includes('no such file') ||
+                                      errorMsg.includes('code=260') ||
+                                      errorMsg.includes('NSCocoaErrorDomain') ||
+                                      errorMsg.includes('Error processing request body') ||
+                                      errorMsg.includes("The file couldn't be opened") ||
+                                      errorMsg.includes("couldn't be opened because there is no such file");
+                
+                if (isFileNotFound) {
+                  // Create notification for missing receipt image
+                  try {
+                    const { SmartNotificationService } = await import('./smartNotificationService');
+                    const notification = SmartNotificationService.createMissingImageNotification(
+                      receipt.employeeId,
+                      receipt.id,
+                      receipt.vendor || 'Unknown',
+                      receipt.amount,
+                      receipt.date instanceof Date ? receipt.date : new Date(receipt.date)
+                    );
+                    console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
+                    debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
+                    
+                    // Show immediate alert (only on mobile, not web)
+                    if (Platform.OS !== 'web') {
+                      Alert.alert(
+                        notification.title,
+                        notification.message,
+                        [
+                          { text: 'OK', style: 'default' },
+                          {
+                            text: 'View Receipt',
+                            onPress: () => {
+                              // Navigation would be handled by the notification action in HomeScreen
+                            }
+                          }
+                        ]
+                      );
+                    }
+                  } catch (notifError) {
+                    console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
+                    debugWarn('Could not create missing image notification:', notifError);
+                  }
+                } else {
+                  // Log other upload errors for debugging
+                  debugWarn(`⚠️ ApiSync: Image upload failed for receipt ${receipt.id}, but not due to missing file. Error: ${errorMsg}`);
+                }
+                
                 // Silently continue with original URI - don't fail the entire sync
                 // Use debugLog instead of debugWarn since this is expected behavior for large images/slow connections
                 if (uploadResult.error?.includes('timed out') || uploadResult.error?.includes('timeout')) {
@@ -638,9 +790,51 @@ export class ApiSyncService {
                 }
               }
             } catch (uploadError) {
-              // Silently continue - don't fail the entire sync for image upload issues
-              const errorMsg = uploadError instanceof Error ? uploadError.message : 'Unknown error';
-              if (errorMsg.includes('timeout') || errorMsg.includes('Aborted')) {
+              // Check if this is a file not found error
+              const errorMsg = uploadError instanceof Error ? uploadError.message : String(uploadError);
+              const isFileNotFound = errorMsg.includes("couldn't be opened") || 
+                                    errorMsg.includes("no such file") || 
+                                    errorMsg.includes("code=260") ||
+                                    errorMsg.includes("NSCocoaErrorDomain") ||
+                                    errorMsg.includes("Error processing request body") ||
+                                    errorMsg.includes("The file couldn't be opened") ||
+                                    errorMsg.includes("couldn't be opened because there is no such file");
+              
+              if (isFileNotFound) {
+                // Create notification for missing receipt image
+                try {
+                  const { SmartNotificationService } = await import('./smartNotificationService');
+                  const notification = SmartNotificationService.createMissingImageNotification(
+                    receipt.employeeId,
+                    receipt.id,
+                    receipt.vendor || 'Unknown',
+                    receipt.amount,
+                    receipt.date instanceof Date ? receipt.date : new Date(receipt.date)
+                  );
+                  console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
+                  debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
+                  
+                  // Show immediate alert (only on mobile, not web)
+                  if (Platform.OS !== 'web') {
+                    Alert.alert(
+                      notification.title,
+                      notification.message,
+                      [
+                        { text: 'OK', style: 'default' },
+                        {
+                          text: 'View Receipt',
+                          onPress: () => {
+                            // Navigation would be handled by the notification action in HomeScreen
+                          }
+                        }
+                      ]
+                    );
+                  }
+                } catch (notifError) {
+                  console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
+                  debugWarn('Could not create missing image notification:', notifError);
+                }
+              } else if (errorMsg.includes('timeout') || errorMsg.includes('Aborted')) {
                 debugLog(`⏱️ ApiSync: Image upload timed out for receipt ${receipt.id}, continuing with local URI (expected behavior)`);
               } else {
                 debugWarn(`⚠️ ApiSync: Image upload error for receipt ${receipt.id}, continuing with local URI:`, errorMsg);
@@ -744,7 +938,31 @@ export class ApiSyncService {
           });
           
           if (!response.ok) {
-            throw new Error(`Failed to sync time tracking: ${response.statusText}`);
+            // Try to get error message from response body
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+              const errorText = await response.text();
+              if (errorText) {
+                try {
+                  const errorJson = JSON.parse(errorText);
+                  errorMessage = errorJson.error || errorJson.message || errorText;
+                } catch {
+                  errorMessage = errorText;
+                }
+              } else if (response.statusText) {
+                errorMessage = response.statusText;
+              }
+            } catch (parseError) {
+              // If we can't read the response, use status code
+              errorMessage = `HTTP ${response.status}${response.statusText ? ': ' + response.statusText : ''}`;
+            }
+            
+            // Handle rate limiting specifically
+            if (response.status === 429) {
+              errorMessage = `Rate limit exceeded. Please try again in a moment.`;
+            }
+            
+            throw new Error(`Failed to sync time tracking: ${errorMessage}`);
           }
           
           results.push({ success: true, id: entry.id });
@@ -779,10 +997,36 @@ export class ApiSyncService {
       const url = `${this.config.baseUrl}/employees`;
       
       const response = await fetch(url);
+      
+      // Handle rate limiting specifically
+      if (response.status === 429) {
+        const errorMessage = 'Rate limit exceeded. The server is receiving too many requests. Please wait a moment and try again.';
+        console.error(`❌ ApiSync: Failed to fetch employees: HTTP 429 (Rate Limited)`);
+        throw new Error(errorMessage);
+      }
+      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ ApiSync: Failed to fetch employees: HTTP ${response.status}`);
-        throw new Error(`Failed to fetch employees: ${response.statusText}`);
+        // Try to get error message from response body
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            try {
+              const errorJson = JSON.parse(errorText);
+              errorMessage = errorJson.error || errorJson.message || errorText;
+            } catch {
+              errorMessage = errorText;
+            }
+          } else if (response.statusText) {
+            errorMessage = response.statusText;
+          }
+        } catch (parseError) {
+          // If we can't read the response, use status code
+          errorMessage = `HTTP ${response.status}${response.statusText ? ': ' + response.statusText : ''}`;
+        }
+        
+        console.error(`❌ ApiSync: Failed to fetch employees: ${errorMessage}`);
+        throw new Error(`Failed to fetch employees: ${errorMessage}`);
       }
       
       const responseText = await response.text();
