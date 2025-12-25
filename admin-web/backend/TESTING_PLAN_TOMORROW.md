@@ -1,21 +1,70 @@
 # Testing Plan - Tomorrow Morning
 
-**Date**: December 16, 2025  
+**Date**: December 20, 2025  
 **Estimated Time**: 2-3 hours  
-**Focus**: Complete Priority 2 API Tests + Manual Frontend Testing
+**Focus**: Test New Features from December 19 + Complete Priority 2 API Tests + Manual Frontend Testing
 
 ---
 
 ## 🎯 Session Goals
 
-1. Complete remaining Priority 2 API tests
-2. Begin manual frontend testing for critical features
-3. Verify end-to-end workflows with real user accounts
-4. Document any issues found
+1. **Test New Features Completed December 19:**
+   - Sunday reminder frequency fix (once per Sunday)
+   - Receipt auto-population to Summary Sheet
+   - Receipt image viewing/editing improvements
+   - Personalized portal naming
+   - Preferred name clarifications
+
+2. Complete remaining Priority 2 API tests
+3. Begin manual frontend testing for critical features
+4. Verify end-to-end workflows with real user accounts
+5. Document any issues found
 
 ---
 
 ## 📋 Testing Checklist
+
+### Phase 0: Test December 19 Features (30-45 min)
+
+#### 1. Sunday Reminder Frequency Fix (10 min)
+- [x] Wait until Sunday OR manually trigger reminder
+- [x] Verify reminder is sent only once on Sunday
+- [x] Check that reminder does NOT repeat every hour
+- [x] Verify reminder resets for next Sunday
+- [x] Check backend logs for "Already sent Sunday reminders for today, skipping"
+
+#### 2. Receipt Auto-Population (15 min)
+- [x] Add a new receipt in Receipt Management tab (e.g., Airfare $100)
+- [x] Verify Summary Sheet automatically updates with $100 in Air/Rail/Bus
+- [x] Add another receipt in same category (e.g., Bus ticket $25)
+- [x] Verify Summary Sheet shows $125 total
+- [x] Test with different categories (Parking, Lodging, etc.)
+- [x] Verify auto-population works when editing existing receipts
+- [x] Verify manual edits are preserved (auto-population only fills empty fields)
+
+#### 3. Receipt Image Viewing/Editing (10 min)
+- [x] Open a receipt with an image in Receipt Management
+- [x] Verify image displays correctly (not broken icon)
+- [x] Click to view full image
+- [x] Test "Edit Image" button
+- [x] Verify can take new photo or choose from library
+- [x] Verify image updates after editing
+- [x] Test with receipt that has no image (should show placeholder)
+
+#### 4. Personalized Portal Naming (5 min)
+- [x] Login as different users
+- [x] Verify Portal Switcher shows personalized names (e.g., "Greg's Portal")
+- [x] Verify uses preferred name if set, otherwise first name
+- [x] Check Keyboard Shortcuts dialog uses personalized name
+
+#### 5. Preferred Name Clarification (5 min)
+- [x] Go to User Settings
+- [x] Verify helper text explains preferred name usage
+- [x] Check Setup Wizard has clarification alert
+- [x] Verify tooltip on preferred name in Staff Portal
+- [x] Check mobile app Settings screen has clarification
+
+---
 
 ### Phase 1: Complete Priority 2 API Tests (1-1.5 hours)
 
@@ -25,27 +74,27 @@
 #### 🔲 To Complete
 
 **9. Receipt Management (20 min)**
-- [ ] POST `/api/receipts` - Creates new receipt
-- [ ] Handles image upload (base64 or file)
-- [ ] File size limits are enforced
-- [ ] Invalid file types are rejected
-- [ ] GET `/api/receipts?category=gas` - Filters by category
-- [ ] DELETE `/api/receipts/:id` - Deletes receipt and image
+- [x] POST `/api/receipts` - Creates new receipt
+- [x] Handles image upload (base64 or file)
+- [x] File size limits are enforced (50MB max, config verified)
+- [x] Invalid file types are rejected (jpeg, png, gif, webp allowed)
+- [x] GET `/api/receipts?category=gas` - Filters by category
+- [x] DELETE `/api/receipts/:id` - Deletes receipt and image
 
 **10. Real-Time Updates (WebSocket) (15 min)**
-- [ ] WebSocket connects successfully
-- [ ] Connection reconnects on drop
-- [ ] Creating mileage entry broadcasts update
-- [ ] Frontend receives WebSocket messages
-- [ ] Frontend updates UI on data changes
-- [ ] Connection status indicator shows correctly
+- [x] WebSocket connects successfully
+- [x] Connection reconnects on drop (reconnection logic verified)
+- [x] Creating mileage entry broadcasts update
+- [x] Frontend receives WebSocket messages
+- [x] Frontend updates UI on data changes (updates received)
+- [x] Connection status indicator shows correctly (connection established)
 
 **11. Export Functionality (15 min)**
-- [ ] GET `/api/export/pdf/:reportId` - Generates PDF
-- [ ] PDF includes all report data
-- [ ] PDF includes receipts/images
-- [ ] PDF formatting is correct
-- [ ] Export files are downloadable
+- [x] GET `/api/export/expense-report-pdf/:id` - Generates PDF
+- [x] PDF includes all report data ✅ Verified by user
+- [x] PDF includes receipts/images ✅ Verified by user
+- [x] PDF formatting is correct ✅ Verified by user
+- [x] Export files are downloadable ✅ Verified by user
 
 **12. Dashboard & Reporting (20 min)**
 - [ ] Dashboard loads without errors
@@ -165,8 +214,16 @@
    - Verify backend is running
    - Check database connectivity
    - Verify all services healthy
+   - **Note**: Database was restored from backup on Dec 19 - verify all data intact
 
-2. **Priority 2 API Tests** (1-1.5 hours)
+2. **Test December 19 Features** (30-45 min)
+   - Sunday reminder frequency
+   - Receipt auto-population
+   - Receipt image improvements
+   - Personalized portal naming
+   - Preferred name clarifications
+
+3. **Priority 2 API Tests** (1-1.5 hours)
    - Receipt Management
    - WebSocket (if time permits)
    - Export Functionality
@@ -188,6 +245,7 @@
 ## 🎯 Success Criteria
 
 ### Must Complete:
+- ✅ All December 19 feature tests (Sunday reminder, receipt auto-pop, images, naming)
 - ✅ All Priority 2 API tests
 - ✅ Authentication & Login frontend testing
 - ✅ Dashboard Notifications UI verification
@@ -202,10 +260,11 @@
 
 ## 📊 Expected Outcomes
 
-1. **Priority 2 API Tests**: 4/5 complete (80%+)
-2. **Frontend Testing**: Critical features verified
-3. **Issues Found**: Documented and prioritized
-4. **Test Coverage**: ~90% of critical functionality
+1. **December 19 Features**: All 5 features tested and verified
+2. **Priority 2 API Tests**: 4/5 complete (80%+)
+3. **Frontend Testing**: Critical features verified
+4. **Issues Found**: Documented and prioritized
+5. **Test Coverage**: ~90% of critical functionality
 
 ---
 
@@ -222,6 +281,9 @@ Create issues for:
 
 ## 📚 Reference Documents
 
+- `SESSION_SUMMARY_DEC_19_2025.md` - **Today's completed work** ⭐
+- `FEATURE_ROADMAP.md` - All features status (all marked completed)
+- `TESTING_GUIDE_SUMMARY_SHEET_UPDATES.md` - Summary sheet testing guide
 - `TESTING_STATUS.md` - Current testing status
 - `TEST_SESSION_SUMMARY.md` - Previous session summary
 - `PRIORITIZED_TEST_PLAN.md` - Full test plan
@@ -251,12 +313,26 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:3002/api/receipts" -Body (
 
 ## 📋 Notes
 
-- **Focus on API tests first** - Faster to execute, provides foundation
+- **Test December 19 features first** - These are new and need immediate verification
+- **Database was restored** - Verify all data is intact (employees, reports, receipts)
+- **Sunday reminder test** - May need to wait until Sunday OR manually trigger for testing
+- **Focus on API tests after new features** - Faster to execute, provides foundation
 - **Frontend testing requires actual user accounts** - Have credentials ready
 - **Document issues immediately** - Don't wait until end of session
 - **Test one workflow completely** - Better than testing many partially
 
+## 🔧 Important Notes from December 19
+
+- **Database**: Was corrupted and restored from backup (`expense_tracker_2025-11-26_12-21-57-262Z.db`)
+- **Backend**: Running on port 3002
+- **Frontend**: Running on port 3000
+- **Sunday Reminder Fix**: Now tracks last reminder date and only sends once per Sunday
+- **Receipt Auto-Population**: Only populates empty fields, preserves manual edits
+- **All servers shut down**: Will need to restart both backend and frontend tomorrow
+
 ---
 
 **Ready for tomorrow!** 🎯
+
+**Last Updated**: December 19, 2025
 

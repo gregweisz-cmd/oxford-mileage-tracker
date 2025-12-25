@@ -292,7 +292,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     
     Alert.prompt(
       'Edit Preferred Name',
-      'Enter your preferred name',
+      'Enter your preferred name.\n\nNote: This name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents.',
       [
         {
           text: 'Cancel',
@@ -329,7 +329,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     <View style={styles.sectionContent}>
       {renderSettingRow(
         'Preferred Name',
-        'Your preferred name for display',
+        'For app and web portal only. Legal name used on reports.',
         currentEmployee?.preferredName || currentEmployee?.name?.split(' ')[0] || 'Not set',
         handleEditPreferredName
       )}

@@ -435,7 +435,7 @@ export class TabPdfExportService {
     // Other Expenses
     if ((employeeData.otherExpenses || []).length > 0) {
       doc.setFontSize(12);
-      safeText(doc,'OTHER EXPENSES:', 50, yPos);
+      safeText(doc,'Other Expenses:', 50, yPos);
       yPos += 25;
       
       doc.setFontSize(10);
@@ -792,29 +792,26 @@ export class TabPdfExportService {
     // Create the main expense table data with section titles
     const expenseData = [
       // Travel Expenses section
-      ['TRAVEL EXPENSES', '', '', '', '', '', ''], // Section title row
-      ['MILEAGE', employeeData.totalMileageAmount.toFixed(2), '0.00', '0.00', '0.00', '0.00', employeeData.totalMileageAmount.toFixed(2)],
-      ['AIR / RAIL / BUS', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
-      ['VEHICLE RENTAL / FUEL', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
-      ['PARKING / TOLLS', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
-      ['GROUND', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
-      ['LODGING', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
-      ['PER DIEM', employeeData.perDiem.toFixed(2), '0.00', '0.00', '0.00', '0.00', employeeData.perDiem.toFixed(2)],
+      ['Transportation', '', '', '', '', '', ''], // Section title row
+      ['Mileage', employeeData.totalMileageAmount.toFixed(2), '0.00', '0.00', '0.00', '0.00', employeeData.totalMileageAmount.toFixed(2)],
+      ['Air / Rail / Bus', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
+      ['Vehicle Rental / Fuel', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
+      ['Parking / Tolls', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
+      ['Ground Transportation', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
+      ['Lodging', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
+      ['Per Diem', employeeData.perDiem.toFixed(2), '0.00', '0.00', '0.00', '0.00', employeeData.perDiem.toFixed(2)],
       
       // Other Expenses section
-      ['OTHER EXPENSES', '', '', '', '', '', ''], // Section title row
-      ['OXFORD HOUSE E.E.S.', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
-      ['', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
-      ['', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
+      ['Other Expenses', '', '', '', '', '', ''], // Section title row
       
       // Communications section
-      ['COMMUNICATIONS', '', '', '', '', '', ''], // Section title row
+      ['Communications', '', '', '', '', '', ''], // Section title row
       ['Phone / Internet / Fax', employeeData.phoneInternetFax.toFixed(2), '0.00', '0.00', '0.00', '0.00', employeeData.phoneInternetFax.toFixed(2)],
       ['Postage / Shipping', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
       ['Printing / Copying', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
       
       // Supplies section
-      ['SUPPLIES', '', '', '', '', '', ''], // Section title row
+      ['Supplies', '', '', '', '', '', ''], // Section title row
       ['Outreach Supplies', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
       ['', '0.00', '0.00', '0.00', '0.00', '0.00', '0.00'],
       
@@ -824,6 +821,22 @@ export class TabPdfExportService {
        '0.00', '0.00', '0.00', '0.00', 
        (employeeData.totalMileageAmount + employeeData.perDiem + employeeData.phoneInternetFax).toFixed(2)]
     ];
+    
+    // Add Other Expenses entries to the table
+    const otherExpenses = employeeData.otherExpenses || [];
+    if (otherExpenses.length > 0) {
+      otherExpenses.forEach((expense, index) => {
+        expenseData.push([
+          `Other Expenses ${index + 1}`,
+          expense.amount.toFixed(2),
+          '0.00',
+          '0.00',
+          '0.00',
+          '0.00',
+          expense.amount.toFixed(2)
+        ]);
+      });
+    }
     
     const finalY = addSimpleTable(doc, {
       head: [costCenterHeaders],
@@ -835,26 +848,46 @@ export class TabPdfExportService {
       sectionTitleStyles: { fillColor: [173, 216, 230] }, // Light blue background for section titles
     }) + 20;
     
-    // Add totals below the table
+    // Add Other Expenses descriptions below the table
+    let descY = finalY;
+    if (otherExpenses.length > 0) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'italic');
+      otherExpenses.forEach((expense, index) => {
+        if (expense.description) {
+          safeText(doc, `Other Expenses ${index + 1}: ${expense.description}`, 60, descY);
+          descY += 15;
+        }
+      });
+    }
+    
+    // Add totals below the table (or below descriptions)
+    const totalsY = otherExpenses.length > 0 && otherExpenses.some(e => e.description) ? descY + 10 : finalY;
     doc.setFontSize(10);
-    safeText(doc, 'Less Cash Advance:', 400, finalY);
-    safeText(doc, '$0.00', 500, finalY);
+    doc.setFont('helvetica', 'normal');
+    safeText(doc, 'Less Cash Advance:', 400, totalsY);
+    safeText(doc, '$0.00', 500, totalsY);
+    
+    // Calculate grand total including other expenses
+    const totalOtherExpenses = (employeeData.otherExpenses || []).reduce((sum, e) => sum + e.amount, 0);
+    const grandTotal = employeeData.totalMileageAmount + employeeData.perDiem + employeeData.phoneInternetFax + totalOtherExpenses;
     
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    safeText(doc, 'GRAND TOTAL REQUESTED:', 400, finalY + 20);
-    safeText(doc, `$${(employeeData.totalMileageAmount + employeeData.perDiem + employeeData.phoneInternetFax).toFixed(2)}`, 500, finalY + 20);
+    safeText(doc, 'GRAND TOTAL REQUESTED:', 400, totalsY + 20);
+    safeText(doc, `$${grandTotal.toFixed(2)}`, 500, totalsY + 20);
     
     // Footer information
+    const footerY = totalsY + 50;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    safeText(doc, `Payable to: ${employeeData.name}`, 50, finalY + 50);
-    safeText(doc, 'Base Address #1:', 50, finalY + 70);
-    safeText(doc, 'City, State Zip:', 50, finalY + 90);
-    safeText(doc, 'Signature:', 50, finalY + 110);
-    safeText(doc, 'Date Signed:', 50, finalY + 130);
-    safeText(doc, 'Base Address #2:', 50, finalY + 150);
-    safeText(doc, 'City, State Zip:', 50, finalY + 170);
+    safeText(doc, `Payable to: ${employeeData.name}`, 50, footerY);
+    safeText(doc, 'Base Address #1:', 50, footerY + 20);
+    safeText(doc, 'City, State Zip:', 50, footerY + 40);
+    safeText(doc, 'Signature:', 50, footerY + 60);
+    safeText(doc, 'Date Signed:', 50, footerY + 80);
+    safeText(doc, 'Base Address #2:', 50, footerY + 100);
+    safeText(doc, 'City, State Zip:', 50, footerY + 120);
   }
 
   private static async addCostCenterTravelPage(

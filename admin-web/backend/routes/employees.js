@@ -536,7 +536,10 @@ router.put('/api/employees/:id', async (req, res) => {
     // Merge current data with updates (only update fields that are provided)
     // Ensure required fields are never null/undefined
     const name = updateData.name !== undefined ? (updateData.name || currentEmployee.name || '') : (currentEmployee.name || '');
-    const preferredName = updateData.preferredName !== undefined ? (updateData.preferredName || '') : (currentEmployee.preferredName || '');
+    // Handle preferredName: allow empty string to clear it, but preserve current if not provided
+    const preferredName = updateData.preferredName !== undefined 
+      ? (updateData.preferredName === null ? '' : (updateData.preferredName || ''))
+      : (currentEmployee.preferredName || '');
     const email = updateData.email !== undefined ? (updateData.email || currentEmployee.email || '') : (currentEmployee.email || '');
     const oxfordHouseId = updateData.oxfordHouseId !== undefined ? (updateData.oxfordHouseId || '') : (currentEmployee.oxfordHouseId || '');
     const position = updateData.position !== undefined ? (updateData.position || currentEmployee.position || '') : (currentEmployee.position || '');
@@ -562,6 +565,9 @@ router.put('/api/employees/:id', async (req, res) => {
     const typicalWorkEndHour = updateData.typicalWorkEndHour !== undefined ? (updateData.typicalWorkEndHour !== null && updateData.typicalWorkEndHour !== undefined ? updateData.typicalWorkEndHour : null) : (currentEmployee.typicalWorkEndHour !== null && currentEmployee.typicalWorkEndHour !== undefined ? currentEmployee.typicalWorkEndHour : null);
     const hasCompletedOnboarding = updateData.hasCompletedOnboarding !== undefined ? (updateData.hasCompletedOnboarding === true || updateData.hasCompletedOnboarding === 1 ? 1 : 0) : (currentEmployee.hasCompletedOnboarding === 1 ? 1 : 0);
     const hasCompletedSetupWizard = updateData.hasCompletedSetupWizard !== undefined ? (updateData.hasCompletedSetupWizard === true || updateData.hasCompletedSetupWizard === 1 ? 1 : 0) : (currentEmployee.hasCompletedSetupWizard === 1 ? 1 : 0);
+    const preferences = updateData.preferences !== undefined
+      ? (typeof updateData.preferences === 'string' ? updateData.preferences : JSON.stringify(updateData.preferences || {}))
+      : (currentEmployee.preferences || '{}');
 
     // Handle password update: only hash if password is provided and is plain text (not already hashed)
     let password = currentEmployee.password || '';
@@ -601,8 +607,8 @@ router.put('/api/employees/:id', async (req, res) => {
     }
 
     db.run(
-      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, role = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, updatedAt = ? WHERE id = ?',
-      [name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, now, id],
+      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, role = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, preferences = ?, updatedAt = ? WHERE id = ?',
+      [name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, preferences, now, id],
       function(err) {
         if (err) {
           debugError('❌ Database error updating employee:', err.message);

@@ -599,6 +599,13 @@ function ensureTablesExist() {
             });
           }
           
+          if (!columnNames.includes('preferences')) {
+            db.run(`ALTER TABLE employees ADD COLUMN preferences TEXT DEFAULT '{}'`, (err) => {
+              if (err) debugLog('Note: preferences column may already exist');
+              else debugLog('✅ Added preferences column to employees table');
+            });
+          }
+          
         }
       });
 

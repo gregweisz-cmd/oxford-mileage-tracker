@@ -35,6 +35,10 @@ import {
   Schedule as ScheduleIcon,
   AttachMoney as MoneyIcon
 } from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs, { Dayjs } from 'dayjs';
 // import { DataSyncService } from '../services/dataSyncService'; // Currently unused
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
@@ -482,24 +486,24 @@ export const ReceiptForm: React.FC<BaseFormProps & {
   const { notifyDataChange } = useRealtimeSync();
 
   const receiptCategories = [
+    'Airfare/Bus/Train',
+    'Communication',
     'EES',
-    'Rental Car',
-    'Rental Car Fuel',
-    'Office Supplies',
+    'Equipment',
     'Ground Transportation',
+    'Hotels/AirBnB',
+    'Meals',
+    'Office Supplies',
+    'Other',
+    'Parking/Tolls',
+    'Per Diem',
     'Phone/Internet/Fax',
     'Postage/Shipping',
     'Printing',
-    'Airfare/Bus/Train',
-    'Parking/Tolls',
-    'Hotels/AirBnB',
-    'Per Diem',
-    'Meals',
-    'Travel',
-    'Communication',
-    'Equipment',
+    'Rental Car',
+    'Rental Car Fuel',
     'Training',
-    'Other'
+    'Travel'
   ];
 
   // Initialize form data
@@ -599,20 +603,29 @@ export const ReceiptForm: React.FC<BaseFormProps & {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Date */}
             <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Date"
-                type="date"
-                value={formData.date}
-                onChange={(e) => handleInputChange('date', e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CalendarIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <DatePicker
+                  label="Date"
+                  value={formData.date ? dayjs(formData.date) : null}
+                  onChange={(newValue: Dayjs | null) => {
+                    if (newValue) {
+                      handleInputChange('date', newValue.format('YYYY-MM-DD'));
+                    }
+                  }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      InputProps: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <CalendarIcon />
+                          </InputAdornment>
+                        ),
+                      },
+                    },
+                  }}
+                />
+              </LocalizationProvider>
             </Box>
 
             {/* Cost Center */}

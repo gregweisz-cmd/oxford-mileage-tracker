@@ -19,6 +19,7 @@ import { DatabaseService } from '../services/database';
 import { PdfService } from '../services/pdfService';
 import { Receipt, Employee } from '../types';
 import { API_BASE_URL } from '../config/api';
+import * as ImagePicker from 'expo-image-picker';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -296,8 +297,8 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   };
 
   // Helper function to resolve image URI (handles both local files and backend URLs)
-  const resolveImageUri = (imageUri: string): string => {
-    if (!imageUri) return '';
+  const resolveImageUri = (imageUri: string | undefined | null): string => {
+    if (!imageUri || imageUri.trim() === '') return '';
     
     // If it's already a full URL (http/https), return as-is
     if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
@@ -315,6 +316,21 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
     return `${API_BASE_URL}/uploads/${filename}`;
   };
+  
+  // State for image loading errors
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  
+  const handleImageError = (receiptId: string) => {
+    setImageErrors(prev => new Set(prev).add(receiptId));
+  };
+  
+  const handleImageLoad = (receiptId: string) => {
+    setImageErrors(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(receiptId);
+      return newSet;
+    });
+  };
 
   const viewReceiptImage = (receipt: Receipt) => {
     setSelectedReceipt(receipt);
@@ -324,6 +340,100 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   const viewReceiptDetails = (receipt: Receipt) => {
     setSelectedReceipt(receipt);
     setShowDetailsModal(true);
+  };
+  
+  const handleEditReceiptImage = async (receipt: Receipt) => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photo library.');
+        return;
+      }
+      
+      // Show options: Take Photo, Choose from Library, Cancel
+      Alert.alert(
+        'Edit Receipt Image',
+        'Choose an option',
+        [
+          {
+            text: 'Take Photo',
+            onPress: async () => {
+              const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+              if (cameraStatus.status !== 'granted') {
+                Alert.alert('Permission Required', 'Please grant camera permission.');
+                return;
+              }
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8,
+                aspect: [4, 3],
+              });
+              
+              if (!result.canceled && result.assets[0]) {
+                await updateReceiptImage(receipt, result.assets[0].uri);
+              }
+            },
+          },
+          {
+            text: 'Choose from Library',
+            onPress: async () => {
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8,
+                aspect: [4, 3],
+              });
+              
+              if (!result.canceled && result.assets[0]) {
+                await updateReceiptImage(receipt, result.assets[0].uri);
+              }
+            },
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error editing receipt image:', error);
+      Alert.alert('Error', 'Failed to edit receipt image.');
+    }
+  };
+  
+  const updateReceiptImage = async (receipt: Receipt, newImageUri: string) => {
+    try {
+      setLoading(true);
+      
+      // Update receipt in database
+      await DatabaseService.updateReceipt(receipt.id, {
+        ...receipt,
+        imageUri: newImageUri,
+      });
+      
+      // Refresh receipts list
+      await loadData();
+      
+      // Update selected receipt if it's the one being edited
+      if (selectedReceipt && selectedReceipt.id === receipt.id) {
+        setSelectedReceipt({ ...selectedReceipt, imageUri: newImageUri });
+        // Clear error state for this receipt
+        setImageErrors(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(receipt.id);
+          return newSet;
+        });
+      }
+      
+      Alert.alert('Success', 'Receipt image updated successfully.');
+    } catch (error) {
+      console.error('Error updating receipt image:', error);
+      Alert.alert('Error', 'Failed to update receipt image.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatDate = (date: Date) => {
@@ -837,13 +947,18 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                   style={styles.receiptImageContainer}
                   onPress={() => multiSelectMode ? toggleReceiptSelection(receipt.id) : viewReceiptImage(receipt)}
                 >
-                  <Image 
-                    source={{ uri: resolveImageUri(receipt.imageUri) }} 
-                    style={styles.receiptThumbnail}
-                    onError={(error) => {
-                      console.error('❌ Error loading receipt image:', error.nativeEvent.error);
-                    }}
-                  />
+                  {imageErrors.has(receipt.id) || !receipt.imageUri ? (
+                    <View style={[styles.receiptThumbnail, styles.imagePlaceholder]}>
+                      <MaterialIcons name="receipt" size={30} color="#999" />
+                    </View>
+                  ) : (
+                    <Image 
+                      source={{ uri: resolveImageUri(receipt.imageUri) }} 
+                      style={styles.receiptThumbnail}
+                      onError={() => handleImageError(receipt.id)}
+                      onLoad={() => handleImageLoad(receipt.id)}
+                    />
+                  )}
                   <View style={styles.imageOverlay}>
                     <MaterialIcons name="zoom-in" size={20} color="#fff" />
                   </View>
@@ -909,19 +1024,35 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
             
             {selectedReceipt && (
               <>
-                <Image
-                  source={{ uri: resolveImageUri(selectedReceipt.imageUri) }}
-                  style={styles.fullImage}
-                  resizeMode="contain"
-                  onError={(error) => {
-                    console.error('❌ Error loading receipt image:', error.nativeEvent.error);
-                    Alert.alert('Image Error', 'Failed to load receipt image. The image may have been deleted or moved.');
-                  }}
-                />
+                {imageErrors.has(selectedReceipt.id) || !selectedReceipt.imageUri ? (
+                  <View style={styles.imageErrorContainer}>
+                    <MaterialIcons name="broken-image" size={64} color="#999" />
+                    <Text style={styles.imageErrorText}>Image not available</Text>
+                    <Text style={styles.imageErrorSubtext}>The receipt image may have been deleted or moved.</Text>
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: resolveImageUri(selectedReceipt.imageUri) }}
+                    style={styles.fullImage}
+                    resizeMode="contain"
+                    onError={() => {
+                      handleImageError(selectedReceipt.id);
+                      Alert.alert('Image Error', 'Failed to load receipt image. The image may have been deleted or moved.');
+                    }}
+                    onLoad={() => handleImageLoad(selectedReceipt.id)}
+                  />
+                )}
                 <View style={styles.imageInfo}>
                   <Text style={styles.imageVendor}>{selectedReceipt.vendor}</Text>
                   <Text style={styles.imageAmount}>${selectedReceipt.amount.toFixed(2)}</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.editImageButton}
+                  onPress={() => handleEditReceiptImage(selectedReceipt)}
+                >
+                  <MaterialIcons name="edit" size={20} color="#fff" />
+                  <Text style={styles.editImageButtonText}>Edit Image</Text>
+                </TouchableOpacity>
               </>
             )}
           </View>
@@ -1430,6 +1561,49 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  imagePlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+  },
+  imageErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 20,
+  },
+  imageErrorText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#666',
+    marginTop: 16,
+  },
+  imageErrorSubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  editImageButton: {
+    position: 'absolute',
+    bottom: 80,
+    left: 20,
+    right: 20,
+    backgroundColor: '#2196F3',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editImageButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   
   // Multi-select styles

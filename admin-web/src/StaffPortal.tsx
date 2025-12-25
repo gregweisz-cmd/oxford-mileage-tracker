@@ -33,6 +33,7 @@ import {
   Alert,
   AlertTitle,
   Checkbox,
+  Tooltip,
 } from '@mui/material';
 
 import {
@@ -87,6 +88,12 @@ import { formatAddressForDisplay, formatLocationForDescription } from './utils/a
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 
+// Date picker imports
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs, { Dayjs } from 'dayjs';
+
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
@@ -124,7 +131,7 @@ interface EmployeeExpenseData {
   // Daily travel data
   dailyEntries: DailyExpenseEntry[];
   
-  // Receipt categories 
+  // Receipt categories (totals)
   airRailBus: number;
   vehicleRentalFuel: number;
   parkingTolls: number;
@@ -141,9 +148,15 @@ interface EmployeeExpenseData {
   officeSupplies: number;
   eesReceipt: number;
   
-  // Other expenses
-  meals: number;
-  other: number;
+  // Other expenses (array of entries with amount and description)
+  otherExpenses?: Array<{ amount: number; description: string; id?: string; costCenterIndex?: number }>;
+  // Legacy support - keep 'other' for backward compatibility
+  other?: number;
+  
+  // Cost center breakdowns for each category (optional - for per-cost-center editing)
+  costCenterBreakdowns?: {
+    [category: string]: number[]; // Array indexed by cost center index
+  };
   
   baseAddress: string;
   baseAddress2?: string;
@@ -175,6 +188,7 @@ interface ReceiptData {
   description: string;
   category: string;
   imageUri?: string;
+  costCenter?: string;
 }
 
 
@@ -352,9 +366,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Used to force data reload
   
   // Summary Sheet editing state
-  const [editingSummaryItem, setEditingSummaryItem] = useState<{field: string, label: string} | null>(null);
+  const [editingSummaryItem, setEditingSummaryItem] = useState<{field: string, label: string, index?: number} | null>(null);
   const [editingSummaryValue, setEditingSummaryValue] = useState('');
+  const [editingSummaryDescription, setEditingSummaryDescription] = useState('');
+  const [editingCostCenterIndex, setEditingCostCenterIndex] = useState<number>(0);
   const [summaryEditDialogOpen, setSummaryEditDialogOpen] = useState(false);
+  const [receiptTotalsByCategory, setReceiptTotalsByCategory] = useState<{[key: string]: number}>({});
   
   // Report completeness checker state
   const [completenessReport, setCompletenessReport] = useState<CompletenessReport | null>(null);
@@ -478,24 +495,34 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Function to refresh timesheet data after saving - NEW APPROACH: Daily Hours Distribution
   const refreshTimesheetData = useCallback(async (dataToUse?: any) => {
-    debugVerbose('🔄 refreshTimesheetData called');
-    const data = dataToUse || employeeData;
+    debugLog('🔄 refreshTimesheetData called');
+    debugLog('🔍 Current employeeData state:', employeeData ? 'exists' : 'null');
+    // Prefer current employeeData from state, but use dataToUse if state is not available
+    // This is needed during initial load when state hasn't been set yet
+    const data = employeeData || dataToUse;
     if (!data) {
-      debugVerbose('❌ No employeeData, skipping refresh');
+      debugWarn('❌ No employeeData available (neither state nor parameter), skipping refresh');
       return;
+    }
+    
+    if (!employeeData && dataToUse) {
+      debugLog('⚠️ Using dataToUse parameter because employeeData state is not yet available');
     }
     
     // Prevent multiple simultaneous calls
     if (isRefreshingTimesheet) {
-      debugVerbose('⏳ refreshTimesheetData already running, skipping');
+      debugWarn('⏳ refreshTimesheetData already running, skipping');
       return;
     }
     setIsRefreshingTimesheet(true);
+    debugLog('🔄 Starting refresh process...');
     
     try {
-      // Fetch updated time tracking data
+      // Fetch updated time tracking data - no delay needed
       const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
       const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
+      
+      debugLog(`🔍 Fetched ${timeTracking.length} total time tracking entries from API`);
       
       // Filter for current month
       const currentMonthTimeTracking = timeTracking.filter((tracking: any) => {
@@ -504,6 +531,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const trackingYear = trackingDate.getUTCFullYear();
         return trackingMonth === currentMonth && trackingYear === currentYear;
       });
+      
+      debugLog(`🔍 Filtered to ${currentMonthTimeTracking.length} entries for month ${currentMonth}/${currentYear}`);
+      
+      // Log all category entries to verify they're all present
+      const categoryEntries = currentMonthTimeTracking.filter((t: any) => {
+        const categoryTypes = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'];
+        return categoryTypes.includes(t.category) && (!t.costCenter || t.costCenter === '');
+      });
+      debugVerbose(`🔍 Category entries found (${categoryEntries.length}):`, categoryEntries.map((t: any) => ({
+        day: new Date(t.date).getUTCDate(),
+        category: t.category,
+        hours: t.hours,
+        id: t.id
+      })));
       
       // NEW APPROACH: Group by day and create daily hour distributions
       const dailyHourDistributions: { [day: number]: any } = {};
@@ -519,7 +560,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       // Process all time tracking entries and group by day
-      debugVerbose('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
+      debugLog('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
+      debugLog('🔍 All entries before processing:', currentMonthTimeTracking.map((t: any) => ({
+        date: t.date,
+        day: new Date(t.date).getUTCDate(),
+        category: t.category,
+        hours: t.hours,
+        costCenter: t.costCenter || '(empty)',
+        id: t.id
+      })));
+      debugLog('🔍 Current dailyEntries count:', data.dailyEntries?.length || 0);
+      debugLog('🔍 Days in dailyEntries:', data.dailyEntries?.map((e: any) => e.day).sort((a: number, b: number) => a - b) || []);
+      
       currentMonthTimeTracking.forEach((tracking: any) => {
         const trackingDate = new Date(tracking.date);
         const day = trackingDate.getUTCDate();
@@ -536,13 +588,34 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             }
           } else if (categoryTypes.includes(tracking.category)) {
             // Category entry - use assignment since deterministic IDs should prevent duplicates
+            // If multiple entries exist (shouldn't happen but handle it), use the latest one
+            const existingHours = dayData.categoryHours[tracking.category] || 0;
             dayData.categoryHours[tracking.category] = (tracking.hours || 0);
+            if (existingHours > 0 && existingHours !== tracking.hours) {
+              debugWarn(`⚠️ Multiple entries found for ${tracking.category} on day ${day}. Using latest: ${tracking.hours} (was ${existingHours})`);
+            }
+            debugLog(`✅ Processed ${tracking.category} for day ${day}: ${tracking.hours} hours (ID: ${tracking.id})`);
           } else if (tracking.category === 'Working Hours' || tracking.category === 'Regular Hours') {
             // Working hours entry - treat as cost center 0, use assignment since deterministic IDs should prevent duplicates
             dayData.costCenterHours[0] = (tracking.hours || 0);
           }
+        } else {
+          debugWarn(`⚠️ Entry with day ${day} is outside valid range (1-${daysInMonth})`);
         }
       });
+      
+      // Debug: Log the final distributions to verify all days are preserved
+      const daysWithHours = Object.keys(dailyHourDistributions)
+        .map(day => parseInt(day))
+        .filter(day => {
+          const dayData = dailyHourDistributions[day];
+          return dayData.totalHours > 0 || Object.keys(dayData.categoryHours).length > 0;
+        });
+      debugLog('🔍 Days with hours after processing:', daysWithHours.map(day => ({
+        day,
+        categoryHours: dailyHourDistributions[day].categoryHours,
+        totalHours: dailyHourDistributions[day].totalHours
+      })));
       
       // Calculate totals AFTER processing all entries to avoid accumulation
       for (let day = 1; day <= daysInMonth; day++) {
@@ -563,8 +636,40 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         });
       }
       
+      // Ensure we have entries for all days - create missing ones if needed
+      const allDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+      const existingDays = new Set(data.dailyEntries.map((e: any) => e.day));
+      const missingDays = allDays.filter(day => !existingDays.has(day));
+      
+      if (missingDays.length > 0) {
+        debugLog(`🔍 Creating entries for missing days: ${missingDays.join(', ')}`);
+      }
+      
+      // Create entries for missing days
+      const entriesForMissingDays = missingDays.map((day: number) => {
+        const date = new Date(currentYear, currentMonth - 1, day);
+        const dateStr = date.toISOString().split('T')[0];
+        return {
+          day,
+          date: dateStr,
+          hoursWorked: 0,
+          workingHours: 0,
+          description: '',
+          costCenter0Hours: 0,
+          costCenter1Hours: 0,
+          costCenter2Hours: 0,
+          costCenter3Hours: 0,
+          categoryHours: {}
+        };
+      });
+      
+      // Combine existing entries with missing day entries
+      const allDailyEntries = [...data.dailyEntries, ...entriesForMissingDays].sort((a: any, b: any) => a.day - b.day);
+      
+      debugLog(`🔍 Total daily entries to process: ${allDailyEntries.length} (${data.dailyEntries.length} existing + ${entriesForMissingDays.length} new)`);
+      
       // Update daily entries with the new distribution approach
-      const updatedDailyEntries = data.dailyEntries.map((entry: any) => {
+      const updatedDailyEntries = allDailyEntries.map((entry: any) => {
         const dayData = dailyHourDistributions[entry.day] || {
           costCenterHours: {},
           categoryHours: {},
@@ -616,20 +721,95 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Calculate total hours for the month
       const totalHours = Object.values(dailyHourDistributions).reduce((sum: number, dayData: any) => sum + dayData.totalHours, 0);
       
-      // Update employee data
-      setEmployeeData(prev => prev ? {
-        ...prev,
-        dailyEntries: updatedDailyEntries,
-        totalHours: totalHours
-      } : null);
+      // Verify all days with category hours are preserved before updating state
+      const daysWithCategoryHours = updatedDailyEntries
+        .filter((entry: any) => {
+          const categoryHours = (entry as any).categoryHours || {};
+          return Object.keys(categoryHours).length > 0 || entry.hoursWorked > 0;
+        })
+        .map((entry: any) => ({
+          day: entry.day,
+          categoryHours: (entry as any).categoryHours || {},
+          totalHours: entry.hoursWorked
+        }));
       
-      debugVerbose('✅ Timesheet data refreshed with new distribution approach');
+      debugLog(`🔍 Days with category hours before state update (${daysWithCategoryHours.length}):`, daysWithCategoryHours);
+      
+      // Log specific entries for debugging - show ALL holiday entries
+      const holidayEntries = updatedDailyEntries
+        .filter((entry: any) => (entry as any).categoryHours?.Holiday)
+        .map((entry: any) => ({
+          day: entry.day,
+          holidayHours: (entry as any).categoryHours.Holiday
+        }));
+      debugLog(`🔍 Holiday entries in updatedDailyEntries (${holidayEntries.length}):`, holidayEntries);
+      
+      // Also log what's in dailyHourDistributions for holiday
+      const holidayInDistributions = Object.keys(dailyHourDistributions)
+        .filter(day => dailyHourDistributions[parseInt(day)].categoryHours?.Holiday)
+        .map(day => ({
+          day: parseInt(day),
+          holidayHours: dailyHourDistributions[parseInt(day)].categoryHours.Holiday
+        }));
+      debugLog(`🔍 Holiday entries in dailyHourDistributions (${holidayInDistributions.length}):`, holidayInDistributions);
+      
+      // Update employee data - use functional update to ensure we're working with latest state
+      // If employeeData is null, we need to merge with the data we used for processing
+      setEmployeeData(prev => {
+        // If prev is null, use the data parameter we processed with
+        const baseData = prev || data;
+        if (!baseData) {
+          debugWarn('⚠️ No base data available for state update');
+          return null;
+        }
+        
+        debugLog(`🔄 Updating state with ${updatedDailyEntries.length} daily entries`);
+        
+        // Merge category hours from previous state to preserve any that might not be in database yet
+        // This is a safety measure in case of race conditions
+        const mergedDailyEntries = updatedDailyEntries.map((updatedEntry: any) => {
+          if (prev && prev.dailyEntries) {
+            const prevEntry = prev.dailyEntries.find((e: any) => e.day === updatedEntry.day);
+            if (prevEntry && (prevEntry as any).categoryHours) {
+              // Merge previous category hours with updated ones (updated takes precedence)
+              const mergedCategoryHours = {
+                ...(prevEntry as any).categoryHours,
+                ...(updatedEntry as any).categoryHours
+              };
+              // Only keep merged if updated has actual hours (not just empty object)
+              if (Object.keys((updatedEntry as any).categoryHours || {}).length > 0) {
+                (updatedEntry as any).categoryHours = mergedCategoryHours;
+              }
+            }
+          }
+          return updatedEntry;
+        });
+        
+        const newData = {
+          ...baseData,
+          dailyEntries: mergedDailyEntries,
+          totalHours: totalHours
+        };
+        
+        // Verify the update
+        const holidayInNewData = newData.dailyEntries
+          .filter((entry: any) => (entry as any).categoryHours?.Holiday)
+          .map((entry: any) => ({
+            day: entry.day,
+            holidayHours: (entry as any).categoryHours.Holiday
+          }));
+        debugLog(`🔍 Holiday entries in new state (${holidayInNewData.length}):`, holidayInNewData);
+        
+        return newData;
+      });
+      
+      debugLog('✅ Timesheet data refreshed with new distribution approach');
     } catch (error) {
       debugError('❌ Error refreshing timesheet data:', error);
     } finally {
       setIsRefreshingTimesheet(false);
     }
-    debugVerbose('🔄 refreshTimesheetData completed');
+    debugLog('🔄 refreshTimesheetData completed');
   }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
@@ -1006,12 +1186,108 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             printingCopying: 0,
             officeSupplies: 0,
             eesReceipt: 0,
-            meals: 0,
             other: 0,
+            otherExpenses: [],
+            costCenterBreakdowns: {},
             
             baseAddress: employee.baseAddress || '230 Wagner St, Troutman, NC 28166',
             baseAddress2: employee.baseAddress2
           };
+          
+          // Initialize cost center breakdowns from existing report data if available
+          if (currentReport?.reportData?.costCenterBreakdowns) {
+            expenseData.costCenterBreakdowns = currentReport.reportData.costCenterBreakdowns;
+          }
+          
+          // Calculate receipt totals by category for validation
+          const categoryTotals: {[key: string]: number} = {};
+          debugLog(`🔍 Calculating receipt totals from ${currentMonthReceipts.length} receipts`);
+          currentMonthReceipts.forEach((receipt: any) => {
+            const category = receipt.category?.toLowerCase() || '';
+            const amount = receipt.amount || 0;
+            debugLog(`🔍 Processing receipt: category="${receipt.category}" (lowercase: "${category}"), amount=$${amount}`);
+            
+            // Map receipt categories to summary sheet categories
+            if (category.includes('air') || category.includes('rail') || category.includes('bus') || category.includes('flight')) {
+              categoryTotals['airRailBus'] = (categoryTotals['airRailBus'] || 0) + amount;
+              debugLog(`✅ Matched to airRailBus: total now = $${categoryTotals['airRailBus']}`);
+            } else if (category.includes('vehicle') || category.includes('rental') || category.includes('fuel')) {
+              categoryTotals['vehicleRentalFuel'] = (categoryTotals['vehicleRentalFuel'] || 0) + amount;
+            } else if (category.includes('parking') || category.includes('toll')) {
+              categoryTotals['parkingTolls'] = (categoryTotals['parkingTolls'] || 0) + amount;
+            } else if (category.includes('ground') || category.includes('transportation') || category.includes('taxi') || category.includes('uber') || category.includes('lyft')) {
+              categoryTotals['groundTransportation'] = (categoryTotals['groundTransportation'] || 0) + amount;
+            } else if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) {
+              categoryTotals['hotelsAirbnb'] = (categoryTotals['hotelsAirbnb'] || 0) + amount;
+            } else if (category.includes('phone') || category.includes('internet') || category.includes('fax')) {
+              categoryTotals['phoneInternetFax'] = (categoryTotals['phoneInternetFax'] || 0) + amount;
+            } else if (category.includes('shipping') || category.includes('postage')) {
+              categoryTotals['shippingPostage'] = (categoryTotals['shippingPostage'] || 0) + amount;
+            } else if (category.includes('printing') || category.includes('copying')) {
+              categoryTotals['printingCopying'] = (categoryTotals['printingCopying'] || 0) + amount;
+            } else if (category.includes('supplies') || category.includes('office')) {
+              categoryTotals['officeSupplies'] = (categoryTotals['officeSupplies'] || 0) + amount;
+            } else if (category.includes('ees')) {
+              categoryTotals['eesReceipt'] = (categoryTotals['eesReceipt'] || 0) + amount;
+            } else if (category.includes('other') && category !== 'per diem') {
+              categoryTotals['other'] = (categoryTotals['other'] || 0) + amount;
+            }
+          });
+          debugLog(`🔍 Final receipt totals by category:`, categoryTotals);
+          setReceiptTotalsByCategory(categoryTotals);
+          
+          // Auto-populate summary sheet from receipt totals (only if value is 0 or undefined)
+          const autoPopulatedData = { ...expenseData };
+          let needsUpdate = false;
+          
+          // Helper function to auto-populate a category
+          const autoPopulateCategory = (categoryKey: string, receiptTotal: number, currentValue: number) => {
+            if (receiptTotal > 0 && (currentValue === 0 || currentValue === undefined || currentValue === null)) {
+              (autoPopulatedData as any)[categoryKey] = receiptTotal;
+              if (!autoPopulatedData.costCenterBreakdowns) autoPopulatedData.costCenterBreakdowns = {};
+              if (!autoPopulatedData.costCenterBreakdowns[categoryKey]) (autoPopulatedData.costCenterBreakdowns as any)[categoryKey] = [];
+              (autoPopulatedData.costCenterBreakdowns as any)[categoryKey][0] = receiptTotal;
+              needsUpdate = true;
+            }
+          };
+          
+          autoPopulateCategory('airRailBus', categoryTotals['airRailBus'] || 0, expenseData.airRailBus || 0);
+          autoPopulateCategory('vehicleRentalFuel', categoryTotals['vehicleRentalFuel'] || 0, expenseData.vehicleRentalFuel || 0);
+          autoPopulateCategory('parkingTolls', categoryTotals['parkingTolls'] || 0, expenseData.parkingTolls || 0);
+          autoPopulateCategory('groundTransportation', categoryTotals['groundTransportation'] || 0, expenseData.groundTransportation || 0);
+          autoPopulateCategory('hotelsAirbnb', categoryTotals['hotelsAirbnb'] || 0, expenseData.hotelsAirbnb || 0);
+          autoPopulateCategory('phoneInternetFax', categoryTotals['phoneInternetFax'] || 0, expenseData.phoneInternetFax || 0);
+          autoPopulateCategory('shippingPostage', categoryTotals['shippingPostage'] || 0, expenseData.shippingPostage || 0);
+          autoPopulateCategory('printingCopying', categoryTotals['printingCopying'] || 0, expenseData.printingCopying || 0);
+          autoPopulateCategory('officeSupplies', categoryTotals['officeSupplies'] || 0, expenseData.officeSupplies || 0);
+          autoPopulateCategory('eesReceipt', categoryTotals['eesReceipt'] || 0, expenseData.eesReceipt || 0);
+          
+          // Save auto-populated data to backend if it changed
+          if (needsUpdate) {
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  reportData: autoPopulatedData
+                })
+              });
+              if (response.ok) {
+                debugLog('✅ Auto-populated summary sheet from receipt totals on load');
+                // Update expenseData with auto-populated values
+                Object.assign(expenseData, autoPopulatedData);
+              }
+            } catch (error) {
+              debugError('Error auto-populating summary sheet on load:', error);
+            }
+          }
+          
+          // Initialize otherExpenses array if not present
+          if (!expenseData.otherExpenses) {
+            expenseData.otherExpenses = expenseData.other && expenseData.other > 0 
+              ? [{ amount: expenseData.other, description: '', id: Date.now().toString() }]
+              : [];
+          }
           
           setEmployeeData(expenseData);
           setReceipts(currentMonthReceipts.map((receipt: any) => ({
@@ -1035,8 +1311,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             setSignatureImage(employee.signature); // Also set as current for this report
           }
           
-          // Refresh timesheet data to load actual hours from database
-          await refreshTimesheetData(expenseData);
+          // Wait for state to be set, then refresh timesheet data to load actual hours from database
+          // Use a small delay to ensure setEmployeeData has completed
+          await new Promise(resolve => setTimeout(resolve, 50));
+          // Call refresh without parameters so it uses the current state (which should now be set)
+          await refreshTimesheetData();
       } catch (error) {
         debugError('Error loading employee data:', error);
         // Create dynamic fallback data instead of using hardcoded mock data
@@ -1107,8 +1386,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           printingCopying: 0,
           officeSupplies: 0,
           eesReceipt: 0,
-          meals: 0,
           other: 0,
+          otherExpenses: [],
           
           baseAddress: employee?.baseAddress || '230 Wagner St, Troutman, NC 28166',
           baseAddress2: employee?.baseAddress2
@@ -1117,8 +1396,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setEmployeeData(fallbackData);
         setReceipts([]); // Start with empty receipts
         
-        // Refresh timesheet data to load actual hours from database
-        await refreshTimesheetData(fallbackData);
+        // Wait for state to be set, then refresh timesheet data to load actual hours from database
+        await new Promise(resolve => setTimeout(resolve, 50));
+        // Call refresh without parameters so it uses the current state (which should now be set)
+        await refreshTimesheetData();
       } finally {
         setLoading(false);
       }
@@ -1537,6 +1818,33 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCategoryCell(null);
     setEditingCategoryValue('');
     
+    // Optimistically update the UI immediately - show the value right away
+    setEmployeeData(prev => {
+      if (!prev) return null;
+      const updatedEntries = prev.dailyEntries.map((entry: any) => {
+        if (entry.day === day) {
+          const currentCategoryHours = (entry as any).categoryHours || {};
+          const oldValue = currentCategoryHours[category] || 0;
+          const updatedCategoryHours = {
+            ...currentCategoryHours,
+            [category]: value
+          };
+          // Recalculate total hours for the day
+          const newTotalHours = (entry.hoursWorked || 0) - oldValue + value;
+          return {
+            ...entry,
+            categoryHours: updatedCategoryHours,
+            hoursWorked: newTotalHours
+          };
+        }
+        return entry;
+      });
+      return {
+        ...prev,
+        dailyEntries: updatedEntries
+      };
+    });
+    
     // Validate daily hours limit
     if (value > 24) {
       alert('Cannot enter more than 24 hours in a single day');
@@ -1563,6 +1871,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
+      // First, check if an entry already exists for this day and category
+      const checkResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`);
+      let existingEntry = null;
+      
+      if (checkResponse.ok) {
+        const allEntries = await checkResponse.json();
+        // Find entry for this specific day and category
+        existingEntry = allEntries.find((entry: any) => {
+          const entryDate = new Date(entry.date);
+          const entryDay = entryDate.getUTCDate();
+          const entryMonth = entryDate.getUTCMonth() + 1;
+          const entryYear = entryDate.getUTCFullYear();
+          return entryDay === day && 
+                 entryMonth === currentMonth && 
+                 entryYear === currentYear &&
+                 entry.category === mappedCategory &&
+                 (!entry.costCenter || entry.costCenter === '');
+        });
+      }
+      
       const requestBody = {
           employeeId: employeeData.employeeId,
           date: dateStr,
@@ -1573,15 +1901,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
       
       debugLog(`📤 Saving to time tracking API:`, requestBody);
+      debugLog(`🔍 Existing entry found:`, existingEntry);
       
-      // Save to time tracking table
-      const response = await fetch(`${API_BASE_URL}/api/time-tracking`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
+      // Use PUT if entry exists, POST if it doesn't (POST will use INSERT OR REPLACE with deterministic ID)
+      const response = existingEntry 
+        ? await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          })
+        : await fetch(`${API_BASE_URL}/api/time-tracking`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          });
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -1591,6 +1928,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       const result = await response.json();
       debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+      
+      // Verification happens in background via refresh - no need to wait, optimistic update already shown
     } catch (error) {
       debugError('❌ Error saving category hours to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1601,8 +1940,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCategoryCell(null);
     setEditingCategoryValue('');
     
-    // Refresh timesheet data to show updated values
-    await refreshTimesheetData(employeeData);
+    // Refresh in background - no need to wait, optimistic update already shown
+    // Don't await - let it run in background while user continues working
+    debugLog('🔄 About to call refreshTimesheetData (background)...');
+    debugLog('🔍 employeeData available:', employeeData ? 'yes' : 'no');
+    refreshTimesheetData(employeeData).catch((error) => {
+      debugError('❌ Error calling refreshTimesheetData:', error);
+      // If refresh fails, the optimistic update is still shown, which is fine
+    });
   };
 
   // Cancel category cell edit
@@ -2108,12 +2453,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Travel expense rows (7 rows total)
     const travelExpenses = [
       { label: 'MILEAGE', value: data.totalMileageAmount },
-      { label: 'AIR / RAIL / BUS', value: data.airRailBus },
-      { label: 'VEHICLE RENTAL / FUEL', value: data.vehicleRentalFuel },
-      { label: 'PARKING / TOLLS', value: data.parkingTolls },
-      { label: 'GROUND', value: data.groundTransportation },
-      { label: 'LODGING', value: data.hotelsAirbnb },
-      { label: 'PER DIEM', value: data.perDiem }
+      { label: 'Air / Rail / Bus', value: data.airRailBus },
+      { label: 'Vehicle Rental / Fuel', value: data.vehicleRentalFuel },
+      { label: 'Parking / Tolls', value: data.parkingTolls },
+      { label: 'Ground Transportation', value: data.groundTransportation },
+      { label: 'Lodging', value: data.hotelsAirbnb },
+      { label: 'Per Diem', value: data.perDiem }
     ];
     
     travelExpenses.forEach(expense => {
@@ -2129,7 +2474,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     pdf.rect(tableStartX, yPos, totalTableWidth, rowHeight, 'F');
     pdf.setFontSize(7); // Made smaller to fit more content
     pdf.setFont('helvetica', 'bold');
-    pdf.text('OTHER EXPENSES', tableStartX + 2, yPos + 3);
+    pdf.text('Other Expenses', tableStartX + 2, yPos + 3);
     
     yPos += rowHeight;
     
@@ -2153,7 +2498,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     pdf.rect(tableStartX, yPos, totalTableWidth, rowHeight, 'F');
     pdf.setFontSize(7); // Made smaller to fit more content
     pdf.setFont('helvetica', 'bold');
-    pdf.text('COMMUNICATIONS', tableStartX + 2, yPos + 3);
+    pdf.text('Communications', tableStartX + 2, yPos + 3);
     
     yPos += rowHeight;
     
@@ -2177,7 +2522,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     pdf.rect(tableStartX, yPos, totalTableWidth, rowHeight, 'F');
     pdf.setFontSize(7); // Made smaller to fit more content
     pdf.setFont('helvetica', 'bold');
-    pdf.text('SUPPLIES', tableStartX + 2, yPos + 3);
+    pdf.text('Supplies', tableStartX + 2, yPos + 3);
     
     yPos += rowHeight;
     
@@ -2194,11 +2539,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     });
     
     // Calculate totals
+    const totalOtherExpenses = (data.otherExpenses || []).reduce((sum, e) => sum + e.amount, 0);
     const totalExpenses = data.totalMileageAmount + data.airRailBus + data.vehicleRentalFuel + 
                          data.parkingTolls + data.groundTransportation + data.hotelsAirbnb + 
                          data.perDiem + data.phoneInternetFax + data.shippingPostage + 
                          data.printingCopying + data.officeSupplies + data.eesReceipt + 
-                         data.meals + data.other;
+                         totalOtherExpenses;
     
     // Summary section
     yPos += 5;
@@ -3446,57 +3792,83 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   ) : 0;
 
   // Handle Summary Sheet editing
-  const handleEditSummaryItem = (field: string, label: string) => {
+  // Helper function to get cost center amount for a category
+  const getCostCenterAmount = (category: string, costCenterIndex: number): number => {
+    if (!employeeData) return 0;
+    const breakdown = employeeData.costCenterBreakdowns?.[category];
+    if (breakdown && breakdown[costCenterIndex] !== undefined) {
+      return breakdown[costCenterIndex];
+    }
+    // If no breakdown exists, return 0 (will be populated when user edits)
+    return 0;
+  };
+
+  const handleEditSummaryItem = (field: string, label: string, index?: number) => {
     if (!employeeData) return;
     
     let currentValue = 0;
-    switch (field) {
-      case 'totalMileageAmount':
-        currentValue = employeeData.totalMileageAmount;
-        break;
-      case 'airRailBus':
-        currentValue = employeeData.airRailBus;
-        break;
-      case 'vehicleRentalFuel':
-        currentValue = employeeData.vehicleRentalFuel;
-        break;
-      case 'parkingTolls':
-        currentValue = employeeData.parkingTolls;
-        break;
-      case 'groundTransportation':
-        currentValue = employeeData.groundTransportation;
-        break;
-      case 'hotelsAirbnb':
-        currentValue = employeeData.hotelsAirbnb;
-        break;
-      case 'perDiem':
-        currentValue = employeeData.perDiem;
-        break;
-      case 'phoneInternetFax':
-        currentValue = employeeData.phoneInternetFax;
-        break;
-      case 'shippingPostage':
-        currentValue = employeeData.shippingPostage || 0;
-        break;
-      case 'printingCopying':
-        currentValue = employeeData.printingCopying || 0;
-        break;
-      case 'officeSupplies':
-        currentValue = employeeData.officeSupplies || 0;
-        break;
-      case 'eesReceipt':
-        currentValue = employeeData.eesReceipt || 0;
-        break;
-      case 'meals':
-        currentValue = employeeData.meals || 0;
-        break;
-      case 'other':
-        currentValue = employeeData.other || 0;
-        break;
+    let currentDescription = '';
+    
+    if (field === 'other' && index !== undefined) {
+      // Editing specific Other Expenses entry
+      const otherExpenses = employeeData.otherExpenses || [];
+      if (otherExpenses[index]) {
+        currentValue = otherExpenses[index].amount;
+        currentDescription = otherExpenses[index].description || '';
+      }
+    } else if (field === 'other' && index === undefined) {
+      // Adding new Other Expenses entry
+      currentValue = 0;
+      currentDescription = '';
+    } else {
+      // Regular category editing - get value for selected cost center (default to first)
+      const breakdown = employeeData.costCenterBreakdowns?.[field];
+      if (breakdown && breakdown.length > 0) {
+        // Use cost center breakdown if available, default to first cost center
+        currentValue = breakdown[0] || 0;
+      } else {
+        // Fall back to total divided by number of cost centers
+        let total = 0;
+        switch (field) {
+          case 'airRailBus':
+            total = employeeData.airRailBus;
+            break;
+          case 'vehicleRentalFuel':
+            total = employeeData.vehicleRentalFuel;
+            break;
+          case 'parkingTolls':
+            total = employeeData.parkingTolls;
+            break;
+          case 'groundTransportation':
+            total = employeeData.groundTransportation;
+            break;
+          case 'hotelsAirbnb':
+            total = employeeData.hotelsAirbnb;
+            break;
+          case 'phoneInternetFax':
+            total = employeeData.phoneInternetFax;
+            break;
+          case 'shippingPostage':
+            total = employeeData.shippingPostage || 0;
+            break;
+          case 'printingCopying':
+            total = employeeData.printingCopying || 0;
+            break;
+          case 'officeSupplies':
+            total = employeeData.officeSupplies || 0;
+            break;
+          case 'eesReceipt':
+            total = employeeData.eesReceipt || 0;
+            break;
+        }
+        currentValue = total / employeeData.costCenters.length;
+      }
     }
     
-    setEditingSummaryItem({ field, label });
+    setEditingSummaryItem({ field, label, index });
     setEditingSummaryValue(currentValue.toFixed(2));
+    setEditingSummaryDescription(currentDescription);
+    setEditingCostCenterIndex(0); // Default to first cost center
     setSummaryEditDialogOpen(true);
   };
 
@@ -3509,74 +3881,127 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       return;
     }
 
+    // Validate against receipt totals (except for Other Expenses)
+    if (editingSummaryItem.field !== 'other') {
+      const receiptTotal = receiptTotalsByCategory[editingSummaryItem.field] || 0;
+      if (receiptTotal > 0 && Math.abs(newValue - receiptTotal) > 0.01) {
+        const proceed = window.confirm(
+          `Warning: The amount you entered ($${newValue.toFixed(2)}) does not match your receipt total for this category ($${receiptTotal.toFixed(2)}). ` +
+          `Do you want to proceed anyway?`
+        );
+        if (!proceed) {
+          return;
+        }
+      }
+    }
+
     try {
       setLoading(true);
       
       // Update local state
       const updatedData = { ...employeeData };
-      switch (editingSummaryItem.field) {
-        case 'totalMileageAmount':
-          updatedData.totalMileageAmount = newValue;
-          break;
-        case 'airRailBus':
-          updatedData.airRailBus = newValue;
-          break;
-        case 'vehicleRentalFuel':
-          updatedData.vehicleRentalFuel = newValue;
-          break;
-        case 'parkingTolls':
-          updatedData.parkingTolls = newValue;
-          break;
-        case 'groundTransportation':
-          updatedData.groundTransportation = newValue;
-          break;
-        case 'hotelsAirbnb':
-          updatedData.hotelsAirbnb = newValue;
-          break;
-        case 'perDiem':
-          updatedData.perDiem = newValue;
-          break;
-        case 'phoneInternetFax':
-          updatedData.phoneInternetFax = newValue;
-          break;
-        case 'shippingPostage':
-          updatedData.shippingPostage = newValue;
-          break;
-        case 'printingCopying':
-          updatedData.printingCopying = newValue;
-          break;
-        case 'officeSupplies':
-          updatedData.officeSupplies = newValue;
-          break;
-        case 'eesReceipt':
-          updatedData.eesReceipt = newValue;
-          break;
-        case 'meals':
-          updatedData.meals = newValue;
-          break;
-        case 'other':
-          updatedData.other = newValue;
-          break;
+      
+      if (editingSummaryItem.field === 'other') {
+        // Handle Other Expenses array
+        if (!updatedData.otherExpenses) {
+          updatedData.otherExpenses = [];
+        }
+        
+        if (editingSummaryItem.index !== undefined) {
+          // Update existing entry
+          updatedData.otherExpenses[editingSummaryItem.index] = {
+            amount: newValue,
+            description: editingSummaryDescription,
+            id: updatedData.otherExpenses[editingSummaryItem.index]?.id || Date.now().toString()
+          };
+        } else {
+          // Add new entry
+          updatedData.otherExpenses.push({
+            amount: newValue,
+            description: editingSummaryDescription,
+            id: Date.now().toString()
+          });
+        }
+        // Update legacy 'other' field for backward compatibility
+        updatedData.other = updatedData.otherExpenses.reduce((sum, entry) => sum + entry.amount, 0);
+      } else {
+        // Regular category editing - update cost center breakdown
+        if (!updatedData.costCenterBreakdowns) {
+          updatedData.costCenterBreakdowns = {};
+        }
+        if (!updatedData.costCenterBreakdowns[editingSummaryItem.field]) {
+          updatedData.costCenterBreakdowns[editingSummaryItem.field] = new Array(employeeData.costCenters.length).fill(0);
+        }
+        
+        // Update the specific cost center amount
+        updatedData.costCenterBreakdowns[editingSummaryItem.field][editingCostCenterIndex] = newValue;
+        
+        // Recalculate total for this category
+        const total = updatedData.costCenterBreakdowns[editingSummaryItem.field].reduce((sum, val) => sum + val, 0);
+        
+        // Update the category total
+        switch (editingSummaryItem.field) {
+          case 'airRailBus':
+            updatedData.airRailBus = total;
+            break;
+          case 'vehicleRentalFuel':
+            updatedData.vehicleRentalFuel = total;
+            break;
+          case 'parkingTolls':
+            updatedData.parkingTolls = total;
+            break;
+          case 'groundTransportation':
+            updatedData.groundTransportation = total;
+            break;
+          case 'hotelsAirbnb':
+            updatedData.hotelsAirbnb = total;
+            break;
+          case 'phoneInternetFax':
+            updatedData.phoneInternetFax = total;
+            break;
+          case 'shippingPostage':
+            updatedData.shippingPostage = total;
+            break;
+          case 'printingCopying':
+            updatedData.printingCopying = total;
+            break;
+          case 'officeSupplies':
+            updatedData.officeSupplies = total;
+            break;
+          case 'eesReceipt':
+            updatedData.eesReceipt = total;
+            break;
+        }
       }
+      
       setEmployeeData(updatedData);
 
       // Update backend
-      const reportData = {
-        totalMileageAmount: updatedData.totalMileageAmount,
+      const reportData: any = {
         airRailBus: updatedData.airRailBus,
         vehicleRentalFuel: updatedData.vehicleRentalFuel,
         parkingTolls: updatedData.parkingTolls,
         groundTransportation: updatedData.groundTransportation,
         hotelsAirbnb: updatedData.hotelsAirbnb,
-        perDiem: updatedData.perDiem,
         phoneInternetFax: updatedData.phoneInternetFax,
         shippingPostage: updatedData.shippingPostage || 0,
         printingCopying: updatedData.printingCopying || 0,
         officeSupplies: updatedData.officeSupplies || 0,
         eesReceipt: updatedData.eesReceipt || 0,
-        meals: updatedData.meals || 0,
-        other: updatedData.other || 0,
       };
+      
+      // Include cost center breakdowns if they exist
+      if (updatedData.costCenterBreakdowns) {
+        reportData.costCenterBreakdowns = updatedData.costCenterBreakdowns;
+      }
+      
+      // Include otherExpenses array if it exists
+      if (updatedData.otherExpenses && updatedData.otherExpenses.length > 0) {
+        reportData.otherExpenses = updatedData.otherExpenses;
+        reportData.other = updatedData.other; // Legacy support
+      } else {
+        reportData.other = 0;
+      }
 
       const { apiPut } = await import('./services/rateLimitedApi');
       await apiPut(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, { reportData });
@@ -3584,6 +4009,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       setSummaryEditDialogOpen(false);
       setEditingSummaryItem(null);
       setEditingSummaryValue('');
+      setEditingSummaryDescription('');
+      setEditingCostCenterIndex(0);
       debugLog('✅ Summary sheet updated successfully');
     } catch (error) {
       debugError('Error updating summary sheet:', error);
@@ -3824,7 +4251,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body1" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
                   {employeeData.preferredName && employeeData.preferredName !== employeeData.name && (
-                    <Typography variant="body2" color="textSecondary" component="div"><strong>Preferred Name:</strong> {employeeData.preferredName}</Typography>
+                    <Tooltip title="Your preferred name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents." arrow>
+                      <Typography variant="body2" color="textSecondary" component="div" sx={{ cursor: 'help' }}>
+                        <strong>Preferred Name:</strong> {employeeData.preferredName}
+                      </Typography>
+                    </Tooltip>
                   )}
                   <Typography variant="body1" component="div"><strong>Month:</strong> {monthName}, {reportYear}</Typography>
                   <Typography variant="body1" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
@@ -4235,20 +4666,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   {/* TRAVEL Section */}
                   <TableRow>
                     <TableCell colSpan={employeeData.costCenters.length + 2} align="center" sx={{ fontWeight: 'bold', bgcolor: 'grey.100' }}>
-                      TRANSPORTATION
+                      Transportation
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center">
                       Mileage
-                      <IconButton 
-                        size="small" 
-                        onClick={() => handleEditSummaryItem('totalMileageAmount', 'Mileage')}
-                        sx={{ p: 0.5 }}
-                        title="Edit Mileage Amount"
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
                     </TableCell>
                     <TableCell align="right">
                       ${employeeData.totalMileageAmount.toFixed(2)}
@@ -4265,7 +4688,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right"><strong>${employeeData.totalMileageAmount.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Air / Rail / Bus
                       <IconButton 
                         size="small" 
@@ -4276,18 +4699,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
-                    <TableCell align="center">$0.00</TableCell>
+                    <TableCell align="right">
+                      ${((employeeData.costCenterBreakdowns?.airRailBus?.[0]) || 0).toFixed(2)}
+                    </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                          <TableCell key={index + 1} align="center">
+                            ${((employeeData.costCenterBreakdowns?.airRailBus?.[index + 1]) || 0).toFixed(2)}
+                          </TableCell>
                         ))}
                       </>
                     )}
-                    <TableCell align="right">$0.00</TableCell>
+                    <TableCell align="right"><strong>${employeeData.airRailBus.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Vehicle Rental / Fuel
                       <IconButton 
                         size="small" 
@@ -4298,18 +4725,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
-                    <TableCell align="center">$0.00</TableCell>
+                    <TableCell align="right">
+                      ${getCostCenterAmount('parkingTolls', 0).toFixed(2)}
+                    </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                          <TableCell key={index + 1} align="center">
+                            ${getCostCenterAmount('parkingTolls', index + 1).toFixed(2)}
+                          </TableCell>
                         ))}
                       </>
                     )}
-                    <TableCell align="right">$0.00</TableCell>
+                    <TableCell align="right"><strong>${employeeData.parkingTolls.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Parking / Tolls
                       <IconButton 
                         size="small" 
@@ -4331,7 +4762,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right">$0.00</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Ground Transportation
                       <IconButton 
                         size="small" 
@@ -4342,15 +4773,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
-                    <TableCell align="center">$0.00</TableCell>
+                    <TableCell align="right">
+                      ${getCostCenterAmount('groundTransportation', 0).toFixed(2)}
+                    </TableCell>
                     {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
+                      <TableCell key={index} align="center">
+                        ${getCostCenterAmount('groundTransportation', index + 1).toFixed(2)}
+                      </TableCell>
                     ))}
-                    <TableCell align="right">$0.00</TableCell>
+                    <TableCell align="right"><strong>${employeeData.groundTransportation.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
-                      LODGING
+                    <TableCell align="center" sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                      Lodging
                       <IconButton 
                         size="small" 
                         onClick={() => handleEditSummaryItem('hotelsAirbnb', 'Lodging')}
@@ -4360,23 +4795,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
-                    <TableCell align="center">$0.00</TableCell>
+                    <TableCell align="right">
+                      ${getCostCenterAmount('hotelsAirbnb', 0).toFixed(2)}
+                    </TableCell>
                     {employeeData.costCenters.slice(1).map((center, index) => (
-                      <TableCell key={index} align="center">$0.00</TableCell>
+                      <TableCell key={index} align="center">
+                        ${getCostCenterAmount('hotelsAirbnb', index + 1).toFixed(2)}
+                      </TableCell>
                     ))}
-                    <TableCell align="right">$0.00</TableCell>
+                    <TableCell align="right"><strong>${employeeData.hotelsAirbnb.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      PER DIEM
-                      <IconButton 
-                        size="small" 
-                        onClick={() => handleEditSummaryItem('perDiem', 'Per Diem')}
-                        sx={{ p: 0.5 }}
-                        title="Edit Per Diem Amount"
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
+                    <TableCell align="center">
+                      Per Diem
                     </TableCell>
                     <TableCell align="right">${employeeData.perDiem.toFixed(2)}</TableCell>
                     {employeeData.costCenters.length > 1 && (
@@ -4392,11 +4823,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   {/* COMMUNICATIONS Section */}
                   <TableRow>
                     <TableCell colSpan={employeeData.costCenters.length + 2} align="center" sx={{ fontWeight: 'bold', bgcolor: 'grey.100' }}>
-                      COMMUNICATIONS
+                      Communications
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Phone / Internet / Fax
                       <IconButton 
                         size="small" 
@@ -4408,13 +4839,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       </IconButton>
                     </TableCell>
                     <TableCell align="right">
-                      ${employeeData.phoneInternetFax.toFixed(2)}
+                      ${getCostCenterAmount('phoneInternetFax', 0).toFixed(2)}
                     </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
                           <TableCell key={index + 1} align="center">
-                            $0.00
+                            ${getCostCenterAmount('phoneInternetFax', index + 1).toFixed(2)}
                           </TableCell>
                         ))}
                       </>
@@ -4422,7 +4853,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right"><strong>${employeeData.phoneInternetFax.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Shipping / Postage
                       <IconButton 
                         size="small" 
@@ -4434,19 +4865,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       </IconButton>
                     </TableCell>
                     <TableCell align="right">
-                      ${(employeeData.shippingPostage || 0).toFixed(2)}
+                      ${getCostCenterAmount('shippingPostage', 0).toFixed(2)}
                     </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                          <TableCell key={index + 1} align="center">
+                            ${getCostCenterAmount('shippingPostage', index + 1).toFixed(2)}
+                          </TableCell>
                         ))}
                       </>
                     )}
                     <TableCell align="right"><strong>${(employeeData.shippingPostage || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Printing / Copying
                       <IconButton 
                         size="small" 
@@ -4458,12 +4891,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       </IconButton>
                     </TableCell>
                     <TableCell align="right">
-                      ${(employeeData.printingCopying || 0).toFixed(2)}
+                      ${getCostCenterAmount('printingCopying', 0).toFixed(2)}
                     </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                          <TableCell key={index + 1} align="center">
+                            ${getCostCenterAmount('printingCopying', index + 1).toFixed(2)}
+                          </TableCell>
                         ))}
                       </>
                     )}
@@ -4473,11 +4908,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   {/* SUPPLIES Section */}
                   <TableRow>
                     <TableCell colSpan={employeeData.costCenters.length + 2} align="center" sx={{ fontWeight: 'bold', bgcolor: 'grey.100' }}>
-                      SUPPLIES
+                      Supplies
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Office Supplies
                       <IconButton 
                         size="small" 
@@ -4501,7 +4936,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="right"><strong>${(employeeData.officeSupplies || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       Oxford House E.E.S.
                       <IconButton 
                         size="small" 
@@ -4528,57 +4963,109 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   {/* OTHER EXPENSES Section */}
                   <TableRow>
                     <TableCell colSpan={employeeData.costCenters.length + 2} align="center" sx={{ fontWeight: 'bold', bgcolor: 'grey.100' }}>
-                      OTHER EXPENSES
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      Meals
-                      <IconButton 
-                        size="small" 
-                        onClick={() => handleEditSummaryItem('meals', 'Meals')}
-                        sx={{ p: 0.5 }}
-                        title="Edit Meals Amount"
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                    <TableCell align="right">
-                      ${(employeeData.meals || 0).toFixed(2)}
-                    </TableCell>
-                    {employeeData.costCenters.length > 1 && (
-                      <>
-                        {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
-                        ))}
-                      </>
-                    )}
-                    <TableCell align="right"><strong>${(employeeData.meals || 0).toFixed(2)}</strong></TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ pl: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
                       Other Expenses
-                      <IconButton 
-                        size="small" 
-                        onClick={() => handleEditSummaryItem('other', 'Other Expenses')}
-                        sx={{ p: 0.5 }}
-                        title="Edit Other Expenses Amount"
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
                     </TableCell>
-                    <TableCell align="right">
-                      ${(employeeData.other || 0).toFixed(2)}
-                    </TableCell>
-                    {employeeData.costCenters.length > 1 && (
-                      <>
-                        {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
-                        ))}
-                      </>
-                    )}
-                    <TableCell align="right"><strong>${(employeeData.other || 0).toFixed(2)}</strong></TableCell>
                   </TableRow>
+                  {(employeeData.otherExpenses && employeeData.otherExpenses.length > 0) ? (
+                    employeeData.otherExpenses.map((entry, index) => {
+                      return (
+                        <TableRow key={entry.id || index}>
+                          <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                            <Tooltip title={entry.description || 'No description'} arrow>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                Other Expenses {index + 1}
+                                {entry.description && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                    ({entry.description.length > 30 ? entry.description.substring(0, 30) + '...' : entry.description})
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Tooltip>
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleEditSummaryItem('other', 'Other Expenses', index)}
+                              sx={{ p: 0.5 }}
+                              title="Edit Other Expenses Entry"
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton 
+                              size="small" 
+                              onClick={async () => {
+                                if (window.confirm('Are you sure you want to delete this Other Expenses entry?')) {
+                                  const updatedData = { ...employeeData };
+                                  if (updatedData.otherExpenses) {
+                                    updatedData.otherExpenses = updatedData.otherExpenses.filter((_, i) => i !== index);
+                                    updatedData.other = updatedData.otherExpenses.reduce((sum, e) => sum + e.amount, 0);
+                                    setEmployeeData(updatedData);
+                                    
+                                    const reportData: any = {
+                                      ...updatedData,
+                                      otherExpenses: updatedData.otherExpenses,
+                                      other: updatedData.other
+                                    };
+                                    const { apiPut } = await import('./services/rateLimitedApi');
+                                    await apiPut(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, { reportData });
+                                    window.location.reload();
+                                  }
+                                }
+                              }}
+                              sx={{ p: 0.5 }}
+                              title="Delete Other Expenses Entry"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                          <TableCell align="right">
+                            ${entry.amount.toFixed(2)}
+                          </TableCell>
+                          {employeeData.costCenters.length > 1 && (
+                            <>
+                              {employeeData.costCenters.slice(1).map((center, idx) => (
+                                <TableCell key={idx + 1} align="center">$0.00</TableCell>
+                              ))}
+                            </>
+                          )}
+                          <TableCell align="right">
+                            <strong>${entry.amount.toFixed(2)}</strong>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell align="center" colSpan={employeeData.costCenters.length + 2}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body2" color="text.secondary">No other expenses added</Typography>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<AddIcon />}
+                            onClick={() => handleEditSummaryItem('other', 'Other Expenses')}
+                          >
+                            Add Other Expense
+                          </Button>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {(employeeData.otherExpenses && employeeData.otherExpenses.length > 0) && (
+                    <TableRow>
+                      <TableCell align="center" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<AddIcon />}
+                          onClick={() => handleEditSummaryItem('other', 'Other Expenses')}
+                        >
+                          Add Other Expense
+                        </Button>
+                      </TableCell>
+                      <TableCell align="right" colSpan={employeeData.costCenters.length + 1}>
+                        <strong>Total: ${((employeeData.otherExpenses?.reduce((sum, e) => sum + e.amount, 0)) || 0).toFixed(2)}</strong>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -4628,7 +5115,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
             {/* Footer section with base address */}
             <Box sx={{ mt: 6 }}>
-              <Typography variant="h6" gutterBottom><strong>GRAND TOTAL REQUESTED</strong></Typography>
               <Box sx={{ display: 'flex', gap: 4 }}>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body1"><strong>Payable to:</strong> {employeeData.name}</Typography>
@@ -6194,72 +6680,104 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${receipt.amount.toFixed(2)}</TableCell>
                       <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.category}</TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {receipt.imageUri ? (
-                          <Box sx={{ 
-                            width: 40, 
-                            height: 40, 
-                            borderRadius: 1, 
-                            overflow: 'hidden',
-                            border: '1px solid #ddd',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            bgcolor: 'grey.50'
-                          }}>
-                            <img 
-                              src={receipt.imageUri} 
-                              alt="Receipt" 
-                              style={{ 
-                                maxWidth: '100%', 
-                                maxHeight: '100%',
-                                objectFit: 'cover'
-                              }} 
-                            />
-                          </Box>
-                        ) : (
-                          <Box sx={{ 
-                            width: 40, 
-                            height: 40, 
-                            borderRadius: 1, 
-                            border: '1px solid #ddd',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            bgcolor: 'grey.100',
-                            cursor: 'pointer',
-                            '&:hover': {
-                              bgcolor: 'grey.200'
-                            }
-                          }}>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              style={{ display: 'none' }}
-                              id={`receipt-upload-${receipt.id}`}
-                              onChange={(e) => handleReceiptImageUpload(receipt.id, e)}
-                            />
-                            <label htmlFor={`receipt-upload-${receipt.id}`} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
-                              <div style={{ 
-                                width: '20px', 
-                                height: '20px', 
-                                border: '2px solid #1976d2', 
-                                borderRadius: '4px',
+                        {(() => {
+                          const raw = receipt.imageUri || '';
+                          // Only render if it's a backend-served path, not a local file URI
+                          if (!raw || raw.startsWith('file://')) {
+                            return (
+                              <Box sx={{ 
+                                width: 40, 
+                                height: 40, 
+                                borderRadius: 1, 
+                                border: '1px solid #ddd',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                marginBottom: '4px',
-                                fontSize: '12px',
-                                fontWeight: 'bold',
-                                color: '#1976d2'
+                                bgcolor: 'grey.100',
+                                cursor: 'pointer',
+                                '&:hover': {
+                                  bgcolor: 'grey.200'
+                                }
                               }}>
-                                +
-                              </div>
-                              <Typography variant="caption" sx={{ fontSize: 8, color: 'primary.main', textAlign: 'center' }}>
-                                Upload
-                              </Typography>
-                            </label>
-                          </Box>
-                        )}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  style={{ display: 'none' }}
+                                  id={`receipt-upload-${receipt.id}`}
+                                  onChange={(e) => handleReceiptImageUpload(receipt.id, e)}
+                                />
+                                <label htmlFor={`receipt-upload-${receipt.id}`} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                                  <div style={{ 
+                                    width: '20px', 
+                                    height: '20px', 
+                                    borderRadius: '50%',
+                                    border: '2px dashed #999',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '12px',
+                                    color: '#999'
+                                  }}>
+                                    +
+                                  </div>
+                                </label>
+                              </Box>
+                            );
+                          }
+                          // Construct proper backend URL for the image
+                          const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+                          const path = raw.startsWith('/uploads')
+                            ? raw
+                            : (raw.startsWith('uploads')
+                              ? `/${raw}`
+                              : (`/uploads/${raw}`));
+                          const imageSrc = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+                          
+                          return (
+                            <Box 
+                              component="a"
+                              href={imageSrc}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              sx={{ 
+                                width: 40, 
+                                height: 40, 
+                                borderRadius: 1, 
+                                overflow: 'hidden',
+                                border: '1px solid #ddd',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                bgcolor: 'grey.50',
+                                cursor: 'pointer',
+                                textDecoration: 'none',
+                                '&:hover': {
+                                  borderColor: 'primary.main',
+                                  boxShadow: 1
+                                }
+                              }}
+                            >
+                              <img 
+                                src={imageSrc} 
+                                alt="Receipt - Click to view full size" 
+                                style={{ 
+                                  maxWidth: '100%', 
+                                  maxHeight: '100%',
+                                  objectFit: 'cover'
+                                }}
+                                onError={(e) => {
+                                  // If image fails to load, show placeholder
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                  const parent = target.parentElement;
+                                  if (parent) {
+                                    parent.innerHTML = '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">No image</div>';
+                                  }
+                                }}
+                              />
+                            </Box>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
                         <IconButton
@@ -6550,12 +7068,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <DialogTitle>{editingReceipt ? 'Edit Receipt' : 'Add Receipt'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField
-              label="Date"
-              value={editingReceipt?.date || ''}
-              onChange={(e) => setEditingReceipt({...editingReceipt!, date: e.target.value})}
-              placeholder="MM/DD/YY"
-            />
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <DatePicker
+                label="Date"
+                value={editingReceipt?.date ? dayjs(editingReceipt.date) : null}
+                onChange={(newValue: Dayjs | null) => {
+                  if (newValue && editingReceipt) {
+                    setEditingReceipt({...editingReceipt, date: newValue.format('YYYY-MM-DD')});
+                  }
+                }}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                  },
+                }}
+              />
+            </LocalizationProvider>
             <TextField
               label="Vendor"
               value={editingReceipt?.vendor || ''}
@@ -6583,24 +7111,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 value={editingReceipt?.category || ''}
                 onChange={(e) => setEditingReceipt({...editingReceipt!, category: e.target.value})}
               >
+                <MenuItem value="Airfare/Bus/Train">Airfare/Bus/Train</MenuItem>
+                <MenuItem value="Communication">Communication</MenuItem>
                 <MenuItem value="EES">EES</MenuItem>
-                <MenuItem value="Rental Car">Rental Car</MenuItem>
-                <MenuItem value="Rental Car Fuel">Rental Car Fuel</MenuItem>
-                <MenuItem value="Office Supplies">Office Supplies</MenuItem>
+                <MenuItem value="Equipment">Equipment</MenuItem>
                 <MenuItem value="Ground Transportation">Ground Transportation</MenuItem>
+                <MenuItem value="Hotels/AirBnB">Hotels/AirBnB</MenuItem>
+                <MenuItem value="Meals">Meals</MenuItem>
+                <MenuItem value="Office Supplies">Office Supplies</MenuItem>
+                <MenuItem value="Other">Other</MenuItem>
+                <MenuItem value="Parking/Tolls">Parking/Tolls</MenuItem>
+                <MenuItem value="Per Diem">Per Diem</MenuItem>
                 <MenuItem value="Phone/Internet/Fax">Phone/Internet/Fax</MenuItem>
                 <MenuItem value="Postage/Shipping">Postage/Shipping</MenuItem>
                 <MenuItem value="Printing">Printing</MenuItem>
-                <MenuItem value="Airfare/Bus/Train">Airfare/Bus/Train</MenuItem>
-                <MenuItem value="Parking/Tolls">Parking/Tolls</MenuItem>
-                <MenuItem value="Hotels/AirBnB">Hotels/AirBnB</MenuItem>
-                <MenuItem value="Per Diem">Per Diem</MenuItem>
-                <MenuItem value="Meals">Meals</MenuItem>
-                <MenuItem value="Travel">Travel</MenuItem>
-                <MenuItem value="Communication">Communication</MenuItem>
-                <MenuItem value="Equipment">Equipment</MenuItem>
+                <MenuItem value="Rental Car">Rental Car</MenuItem>
+                <MenuItem value="Rental Car Fuel">Rental Car Fuel</MenuItem>
                 <MenuItem value="Training">Training</MenuItem>
-                <MenuItem value="Other">Other</MenuItem>
+                <MenuItem value="Travel">Travel</MenuItem>
               </Select>
             </FormControl>
           </Box>
@@ -6608,28 +7136,147 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <DialogActions>
           <Button onClick={() => setReceiptDialogOpen(false)}>Cancel</Button>
           <Button 
-            onClick={() => {
-              if (editingReceipt) {
+            onClick={async () => {
+              if (editingReceipt && employeeData) {
+                let updatedReceipts: ReceiptData[];
                 if (editingReceipt.id) {
                   // Update existing receipt
-                  setReceipts(receipts.map(r => r.id === editingReceipt.id ? editingReceipt : r));
+                  updatedReceipts = receipts.map(r => r.id === editingReceipt.id ? editingReceipt : r);
                 } else {
                   // Add new receipt
                   const newReceipt = {
                     ...editingReceipt,
                     id: `receipt-${Date.now()}`
                   };
-                  setReceipts([...receipts, newReceipt]);
+                  updatedReceipts = [...receipts, newReceipt];
                 }
-                // Update phone/internet/fax total
-                const updatedReceipts = editingReceipt.id 
-                  ? receipts.map(r => r.id === editingReceipt.id ? editingReceipt : r)
-                  : [...receipts, {...editingReceipt, id: `receipt-${Date.now()}`}];
-                const updatedData = {
-                  ...employeeData,
-                  phoneInternetFax: updatedReceipts.reduce((sum, r) => sum + r.amount, 0)
+                setReceipts(updatedReceipts);
+                
+                // Save receipt to backend
+                try {
+                  // Normalize date to YYYY-MM-DD format for backend
+                  const normalizedDate = normalizeDate(editingReceipt.date);
+                  if (!normalizedDate) {
+                    alert('Invalid date format. Please use MM/DD/YY format.');
+                    return;
+                  }
+                  
+                  const receiptToSave = {
+                    employeeId: employeeData.employeeId,
+                    date: normalizedDate,
+                    amount: editingReceipt.amount,
+                    vendor: editingReceipt.vendor,
+                    description: editingReceipt.description || '',
+                    category: editingReceipt.category,
+                    costCenter: (editingReceipt as any).costCenter || employeeData.costCenters[0] || ''
+                  };
+                  
+                  if (editingReceipt.id && !editingReceipt.id.startsWith('receipt-')) {
+                    // Update existing receipt (has real backend ID)
+                    const response = await fetch(`${API_BASE_URL}/api/receipts/${editingReceipt.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(receiptToSave)
+                    });
+                    if (!response.ok) throw new Error('Failed to update receipt');
+                  } else {
+                    // Create new receipt
+                    const response = await fetch(`${API_BASE_URL}/api/receipts`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(receiptToSave)
+                    });
+                    if (!response.ok) throw new Error('Failed to create receipt');
+                    const savedReceipt = await response.json();
+                    // Update the receipt ID with the one from backend
+                    updatedReceipts = updatedReceipts.map(r => 
+                      (!r.id || r.id.startsWith('receipt-')) && r.vendor === editingReceipt.vendor && r.date === editingReceipt.date
+                        ? { ...r, id: savedReceipt.id } 
+                        : r
+                    );
+                    setReceipts(updatedReceipts);
+                  }
+                } catch (error) {
+                  debugError('Error saving receipt:', error);
+                  alert('Error saving receipt. Please try again.');
+                  return;
+                }
+                
+                // Auto-populate summary sheet from receipt totals
+                const categoryTotals: {[key: string]: number} = {};
+                updatedReceipts.forEach((receipt: any) => {
+                  const category = receipt.category?.toLowerCase() || '';
+                  const amount = receipt.amount || 0;
+                  
+                  // Map receipt categories to summary sheet categories
+                  if (category.includes('air') || category.includes('rail') || category.includes('bus') || category.includes('flight')) {
+                    categoryTotals['airRailBus'] = (categoryTotals['airRailBus'] || 0) + amount;
+                  } else if (category.includes('vehicle') || category.includes('rental') || category.includes('fuel')) {
+                    categoryTotals['vehicleRentalFuel'] = (categoryTotals['vehicleRentalFuel'] || 0) + amount;
+                  } else if (category.includes('parking') || category.includes('toll')) {
+                    categoryTotals['parkingTolls'] = (categoryTotals['parkingTolls'] || 0) + amount;
+                  } else if (category.includes('ground') || category.includes('transportation') || category.includes('taxi') || category.includes('uber') || category.includes('lyft')) {
+                    categoryTotals['groundTransportation'] = (categoryTotals['groundTransportation'] || 0) + amount;
+                  } else if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) {
+                    categoryTotals['hotelsAirbnb'] = (categoryTotals['hotelsAirbnb'] || 0) + amount;
+                  } else if (category.includes('phone') || category.includes('internet') || category.includes('fax')) {
+                    categoryTotals['phoneInternetFax'] = (categoryTotals['phoneInternetFax'] || 0) + amount;
+                  } else if (category.includes('shipping') || category.includes('postage')) {
+                    categoryTotals['shippingPostage'] = (categoryTotals['shippingPostage'] || 0) + amount;
+                  } else if (category.includes('printing') || category.includes('copying')) {
+                    categoryTotals['printingCopying'] = (categoryTotals['printingCopying'] || 0) + amount;
+                  } else if (category.includes('supplies') || category.includes('office')) {
+                    categoryTotals['officeSupplies'] = (categoryTotals['officeSupplies'] || 0) + amount;
+                  } else if (category.includes('ees')) {
+                    categoryTotals['eesReceipt'] = (categoryTotals['eesReceipt'] || 0) + amount;
+                  } else if (category.includes('other') && category !== 'per diem') {
+                    categoryTotals['other'] = (categoryTotals['other'] || 0) + amount;
+                  }
+                });
+                
+                // Update summary sheet amounts from receipt totals (always update when receipt is saved)
+                const updatedData = { ...employeeData };
+                const updateCategory = (categoryKey: string, receiptTotal: number) => {
+                  if (receiptTotal > 0) {
+                    (updatedData as any)[categoryKey] = receiptTotal;
+                    if (!updatedData.costCenterBreakdowns) updatedData.costCenterBreakdowns = {};
+                    if (!updatedData.costCenterBreakdowns[categoryKey]) (updatedData.costCenterBreakdowns as any)[categoryKey] = [];
+                    (updatedData.costCenterBreakdowns as any)[categoryKey][0] = receiptTotal;
+                  }
                 };
-                setEmployeeData(updatedData);
+                
+                updateCategory('airRailBus', categoryTotals['airRailBus'] || 0);
+                updateCategory('vehicleRentalFuel', categoryTotals['vehicleRentalFuel'] || 0);
+                updateCategory('parkingTolls', categoryTotals['parkingTolls'] || 0);
+                updateCategory('groundTransportation', categoryTotals['groundTransportation'] || 0);
+                updateCategory('hotelsAirbnb', categoryTotals['hotelsAirbnb'] || 0);
+                updateCategory('phoneInternetFax', categoryTotals['phoneInternetFax'] || 0);
+                updateCategory('shippingPostage', categoryTotals['shippingPostage'] || 0);
+                updateCategory('printingCopying', categoryTotals['printingCopying'] || 0);
+                updateCategory('officeSupplies', categoryTotals['officeSupplies'] || 0);
+                updateCategory('eesReceipt', categoryTotals['eesReceipt'] || 0);
+                
+                // Save updated summary sheet to backend
+                try {
+                  const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}/summary`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      reportData: {
+                        ...updatedData,
+                        receipts: updatedReceipts
+                      }
+                    })
+                  });
+                  if (!response.ok) throw new Error('Failed to update summary sheet');
+                  
+                  setEmployeeData(updatedData);
+                  debugLog('✅ Auto-populated summary sheet from receipt totals');
+                } catch (error) {
+                  debugError('Error auto-populating summary sheet:', error);
+                  // Still update local state even if backend save fails
+                  setEmployeeData(updatedData);
+                }
               }
               setReceiptDialogOpen(false);
             }} 
@@ -6645,10 +7292,56 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setSummaryEditDialogOpen(false);
         setEditingSummaryItem(null);
         setEditingSummaryValue('');
+        setEditingSummaryDescription('');
+        setEditingCostCenterIndex(0);
       }} maxWidth="sm" fullWidth>
         <DialogTitle>Edit {editingSummaryItem?.label || 'Expense Amount'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ mt: 2 }}>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {editingSummaryItem?.field !== 'other' && (
+              <FormControl fullWidth>
+                <InputLabel>Cost Center</InputLabel>
+                <Select
+                  value={editingCostCenterIndex}
+                  label="Cost Center"
+                  onChange={(e) => {
+                    const selectedIndex = e.target.value as number;
+                    setEditingCostCenterIndex(selectedIndex);
+                    // Update the displayed value based on selected cost center
+                    if (employeeData && editingSummaryItem) {
+                      const breakdown = employeeData.costCenterBreakdowns?.[editingSummaryItem.field];
+                      if (breakdown && breakdown[selectedIndex] !== undefined) {
+                        setEditingSummaryValue(breakdown[selectedIndex].toFixed(2));
+                      } else {
+                        // If no breakdown exists, show 0 or divide total
+                        const total = (() => {
+                          switch (editingSummaryItem.field) {
+                            case 'airRailBus': return employeeData.airRailBus;
+                            case 'vehicleRentalFuel': return employeeData.vehicleRentalFuel;
+                            case 'parkingTolls': return employeeData.parkingTolls;
+                            case 'groundTransportation': return employeeData.groundTransportation;
+                            case 'hotelsAirbnb': return employeeData.hotelsAirbnb;
+                            case 'phoneInternetFax': return employeeData.phoneInternetFax;
+                            case 'shippingPostage': return employeeData.shippingPostage || 0;
+                            case 'printingCopying': return employeeData.printingCopying || 0;
+                            case 'officeSupplies': return employeeData.officeSupplies || 0;
+                            case 'eesReceipt': return employeeData.eesReceipt || 0;
+                            default: return 0;
+                          }
+                        })();
+                        setEditingSummaryValue((total / employeeData.costCenters.length).toFixed(2));
+                      }
+                    }
+                  }}
+                >
+                  {employeeData?.costCenters.map((center, index) => (
+                    <MenuItem key={index} value={index}>
+                      Cost Center #{index + 1}: {center}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
             <TextField
               fullWidth
               label="Amount"
@@ -6660,11 +7353,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 min: "0"
               }}
               helperText="Enter the amount in dollars (e.g., 125.50)"
-              autoFocus
+              autoFocus={editingSummaryItem?.field === 'other'}
             />
-            <Alert severity="info" sx={{ mt: 2 }}>
-              This will update the {editingSummaryItem?.label || 'expense'} amount in your summary sheet. 
-              The change will be saved to your expense report.
+            {editingSummaryItem?.field === 'other' && (
+              <TextField
+                fullWidth
+                label="Description"
+                value={editingSummaryDescription}
+                onChange={(e) => setEditingSummaryDescription(e.target.value)}
+                multiline
+                rows={3}
+                helperText="Enter a description for this expense. This will appear as a tooltip on the page and below the entry when exporting/printing."
+                placeholder="e.g., Conference registration fee, Equipment purchase, etc."
+              />
+            )}
+            {editingSummaryItem?.field !== 'other' && receiptTotalsByCategory[editingSummaryItem?.field || ''] !== undefined && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                Receipt total for this category: ${(receiptTotalsByCategory[editingSummaryItem?.field || ''] || 0).toFixed(2)}
+              </Alert>
+            )}
+            <Alert severity="info" sx={{ mt: 1 }}>
+              {editingSummaryItem?.field === 'other' 
+                ? 'This will add/update an Other Expenses entry in your summary sheet. The description will appear as a tooltip and in exports.'
+                : `This will update the ${editingSummaryItem?.label || 'expense'} amount in your summary sheet. The change will be saved to your expense report.`}
             </Alert>
           </Box>
         </DialogContent>
@@ -6673,11 +7384,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             setSummaryEditDialogOpen(false);
             setEditingSummaryItem(null);
             setEditingSummaryValue('');
+            setEditingSummaryDescription('');
           }}>
             Cancel
           </Button>
           <Button onClick={handleSaveSummaryEdit} variant="contained" color="primary">
-            Save
+            {editingSummaryItem?.field === 'other' && editingSummaryItem?.index === undefined ? 'Add' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -6960,7 +7672,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         open={shortcutsDialogOpen}
         onClose={() => setShortcutsDialogOpen(false)}
         shortcuts={shortcuts}
-        title="Keyboard Shortcuts - Staff Portal"
+        title={`Keyboard Shortcuts - ${employeeData?.preferredName ? `${employeeData.preferredName.split(' ')[0]}'s Portal` : employeeData?.name ? `${employeeData.name.split(' ')[0]}'s Portal` : 'Staff Portal'}`}
       />
 
       {/* Data Entry Tab */}

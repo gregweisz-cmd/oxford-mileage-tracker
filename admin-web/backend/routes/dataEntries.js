@@ -9,6 +9,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const crypto = require('crypto');
 const multer = require('multer');
 const vision = require('@google-cloud/vision');
 const dbService = require('../services/dbService');
@@ -16,6 +17,7 @@ const dateHelpers = require('../utils/dateHelpers');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { checkAndNotify50PlusHours } = require('../services/notificationService');
+const websocketService = require('../services/websocketService');
 
 // Set up uploads directory and multer
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -139,6 +141,10 @@ router.post('/api/mileage-entries', (req, res) => {
         return;
       }
       debugLog('✅ Mileage entry created successfully:', entryId);
+      
+      // Broadcast WebSocket update
+      websocketService.broadcastDataChange('mileage_entry', 'create', { id: entryId, employeeId, date: normalizedDate }, employeeId);
+      
       res.json({ id: entryId, message: 'Mileage entry created successfully' });
     }
   );
@@ -172,6 +178,9 @@ router.put('/api/mileage-entries/:id', (req, res) => {
         res.status(500).json({ error: err.message });
         return;
       }
+      // Broadcast WebSocket update
+      websocketService.broadcastDataChange('mileage_entry', 'update', { id, employeeId, date: normalizedDate || date }, employeeId);
+      
       res.json({ message: 'Mileage entry updated successfully' });
     }
   );
@@ -183,12 +192,27 @@ router.put('/api/mileage-entries/:id', (req, res) => {
 router.delete('/api/mileage-entries/:id', (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
-  db.run('DELETE FROM mileage_entries WHERE id = ?', [id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
+  
+  // Get mileage entry info before deleting for WebSocket broadcast
+  db.get('SELECT employeeId FROM mileage_entries WHERE id = ?', [id], (getErr, entry) => {
+    if (getErr) {
+      res.status(500).json({ error: getErr.message });
       return;
     }
-    res.json({ message: 'Mileage entry deleted successfully' });
+    
+    db.run('DELETE FROM mileage_entries WHERE id = ?', [id], function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      // Broadcast WebSocket update
+      if (entry && entry.employeeId) {
+        websocketService.broadcastDataChange('mileage_entry', 'delete', { id }, entry.employeeId);
+      }
+      
+      res.json({ message: 'Mileage entry deleted successfully' });
+    });
   });
 });
 
@@ -248,9 +272,17 @@ router.post('/api/receipts', (req, res) => {
   const now = new Date().toISOString();
   const db = dbService.getDb();
 
+  // Normalize date to YYYY-MM-DD format to avoid timezone issues with month/year filtering
+  const dateHelpers = require('../utils/dateHelpers');
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (!normalizedDate) {
+    debugError('❌ Invalid date provided:', date);
+    return res.status(400).json({ error: 'Invalid date format. Date is required.' });
+  }
+
   db.run(
     'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
-    [receiptId, employeeId, date, amount, vendor || '', description || '', category || '', imageUri || '', receiptId, now, now],
+    [receiptId, employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', receiptId, now, now],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);
@@ -258,6 +290,10 @@ router.post('/api/receipts', (req, res) => {
         return;
       }
       debugLog(`✅ Receipt ${receiptId} saved with amount: ${amount}`);
+      
+      // Broadcast WebSocket update
+      websocketService.broadcastDataChange('receipt', 'create', { id: receiptId, employeeId, date: normalizedDate, amount, category }, employeeId);
+      
       res.json({ id: receiptId, message: 'Receipt created successfully' });
     }
   );
@@ -279,15 +315,25 @@ router.put('/api/receipts/:id', (req, res) => {
   const now = new Date().toISOString();
   const db = dbService.getDb();
 
+  // Normalize date to YYYY-MM-DD format to avoid timezone issues with month/year filtering
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (!normalizedDate) {
+    debugError('❌ Invalid date provided:', date);
+    return res.status(400).json({ error: 'Invalid date format. Date is required.' });
+  }
+
   db.run(
     'UPDATE receipts SET employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, date, amount, vendor || '', description || '', category || '', imageUri || '', now, id],
+    [employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', now, id],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);
         res.status(500).json({ error: err.message });
         return;
       }
+      // Broadcast WebSocket update
+      websocketService.broadcastDataChange('receipt', 'update', { id, employeeId, date: normalizedDate, amount, category }, employeeId);
+      
       res.json({ message: 'Receipt updated successfully' });
     }
   );
@@ -756,12 +802,27 @@ router.post('/api/receipts/ocr', async (req, res) => {
 router.delete('/api/receipts/:id', (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
-  db.run('DELETE FROM receipts WHERE id = ?', [id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
+  
+  // Get receipt info before deleting for WebSocket broadcast
+  db.get('SELECT employeeId FROM receipts WHERE id = ?', [id], (getErr, receipt) => {
+    if (getErr) {
+      res.status(500).json({ error: getErr.message });
       return;
     }
-    res.json({ message: 'Receipt deleted successfully' });
+    
+    db.run('DELETE FROM receipts WHERE id = ?', [id], function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      // Broadcast WebSocket update
+      if (receipt && receipt.employeeId) {
+        websocketService.broadcastDataChange('receipt', 'delete', { id }, receipt.employeeId);
+      }
+      
+      res.json({ message: 'Receipt deleted successfully' });
+    });
   });
 });
 
@@ -818,7 +879,9 @@ router.post('/api/time-tracking', async (req, res) => {
   // ALWAYS create a deterministic ID based on the unique combination to ensure proper replacement
   // Ignore any ID sent from frontend to prevent duplicates
   const uniqueKey = `${employeeId}-${date}-${category || ''}-${costCenter || ''}`;
-  const trackingId = Buffer.from(uniqueKey).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+  // Use crypto hash to ensure unique IDs even for similar keys
+  const hash = crypto.createHash('sha256').update(uniqueKey).digest('hex');
+  const trackingId = hash.substring(0, 32); // Use first 32 chars of hash for uniqueness
   const now = new Date().toISOString();
   
   db.run(

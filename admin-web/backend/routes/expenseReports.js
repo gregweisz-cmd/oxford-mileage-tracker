@@ -955,8 +955,40 @@ router.put('/api/expense-reports/:employeeId/:month/:year/summary', async (req, 
       );
     });
 
+    // If report doesn't exist, create it
     if (!existingReport) {
-      return res.status(404).json({ error: 'Expense report not found' });
+      debugLog(`📝 Creating new expense report for employee ${employeeId}, ${month}/${year}`);
+      const reportId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+      
+      // Create a proper report data structure with the summary data
+      const newReportData = {
+        employeeId: employeeId,
+        month: parseInt(month),
+        year: parseInt(year),
+        ...reportData, // Include the summary fields from reportData
+        receipts: [],
+        dailyEntries: [],
+        dailyDescriptions: []
+      };
+      
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO expense_reports (id, employeeId, month, year, reportData, status, createdAt, updatedAt) 
+           VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)`,
+          [reportId, employeeId, month, year, JSON.stringify(newReportData), now, now],
+          (err) => {
+            if (err) {
+              debugError('❌ Error creating new expense report:', err);
+              reject(err);
+            } else {
+              debugLog(`✅ Created new expense report ${reportId}`);
+              resolve();
+            }
+          }
+        );
+      });
+      
+      return res.json({ id: reportId, message: 'Expense report created and summary updated' });
     }
 
     // Parse existing report data

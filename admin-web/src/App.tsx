@@ -49,17 +49,73 @@ const getAvailablePortalsForUser = (role: string, position: string): Array<'admi
   return ['staff'];
 };
 
-// Create theme
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-});
+// Create theme function
+const createAppTheme = (mode: 'light' | 'dark') => {
+  if (mode === 'dark') {
+    return createTheme({
+      palette: {
+        mode: 'dark',
+        primary: {
+          main: '#64b5f6', // Lighter blue for dark theme
+        },
+        secondary: {
+          main: '#f48fb1', // Lighter pink for dark theme
+        },
+        background: {
+          default: '#1e1e1e', // Dark grey background
+          paper: '#2d2d2d', // Slightly lighter grey for cards/paper
+        },
+        text: {
+          primary: '#e0e0e0', // Light grey text
+          secondary: '#b0b0b0', // Medium grey text
+        },
+        divider: '#404040', // Dark grey divider
+      },
+      components: {
+        MuiCard: {
+          styleOverrides: {
+            root: {
+              backgroundColor: '#2d2d2d',
+            },
+          },
+        },
+        MuiPaper: {
+          styleOverrides: {
+            root: {
+              backgroundColor: '#2d2d2d',
+            },
+          },
+        },
+        MuiAppBar: {
+          styleOverrides: {
+            root: {
+              backgroundColor: '#2d2d2d',
+            },
+          },
+        },
+        MuiDrawer: {
+          styleOverrides: {
+            paper: {
+              backgroundColor: '#2d2d2d',
+            },
+          },
+        },
+      },
+    });
+  } else {
+    return createTheme({
+      palette: {
+        mode: 'light',
+        primary: {
+          main: '#1976d2',
+        },
+        secondary: {
+          main: '#dc004e',
+        },
+      },
+    });
+  }
+};
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -67,6 +123,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
     // Check if user is already logged in
@@ -96,6 +153,20 @@ const App: React.FC = () => {
             // Valid token, get employee data
             const { employee } = await response.json();
             setCurrentUser(employee);
+            
+            // Load theme preference from user profile
+            if (employee?.preferences) {
+              try {
+                const prefs = typeof employee.preferences === 'string' 
+                  ? JSON.parse(employee.preferences) 
+                  : employee.preferences;
+                if (prefs?.theme === 'dark' || prefs?.theme === 'light') {
+                  setThemeMode(prefs.theme);
+                }
+              } catch (e) {
+                debugError('Error parsing preferences:', e);
+              }
+            }
             
             // Check if user has completed onboarding (from backend employee data, not localStorage)
             // Handle both boolean and integer values, and treat null/undefined as false
@@ -181,6 +252,70 @@ const App: React.FC = () => {
 
     checkAuthStatus();
   }, []);
+  
+  // Listen for user profile updates to refresh currentUser and theme
+  useEffect(() => {
+    const handleUserProfileUpdate = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ employeeId: string }>;
+      const { employeeId } = customEvent.detail;
+      if (currentUser?.id === employeeId) {
+        // Reload employee data from backend
+        try {
+          const { apiFetch } = await import('./services/rateLimitedApi');
+          const response = await apiFetch(`/api/employees/${employeeId}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          if (response.ok) {
+            const updatedEmployee = await response.json();
+            setCurrentUser(updatedEmployee);
+            
+            // Update theme if preferences changed
+            if (updatedEmployee?.preferences) {
+              try {
+                const prefs = typeof updatedEmployee.preferences === 'string' 
+                  ? JSON.parse(updatedEmployee.preferences) 
+                  : updatedEmployee.preferences;
+                if (prefs?.theme === 'dark' || prefs?.theme === 'light') {
+                  setThemeMode(prefs.theme);
+                }
+              } catch (e) {
+                debugError('Error parsing preferences:', e);
+              }
+            }
+            
+            debugLog('✅ Refreshed currentUser after profile update');
+          }
+        } catch (error) {
+          debugError('Error refreshing currentUser:', error);
+        }
+      }
+    };
+    
+    window.addEventListener('userProfileUpdated', handleUserProfileUpdate);
+    
+    return () => {
+      window.removeEventListener('userProfileUpdated', handleUserProfileUpdate);
+    };
+  }, [currentUser?.id]);
+  
+  // Listen for theme changes
+  useEffect(() => {
+    const handleThemeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ theme: 'light' | 'dark' }>;
+      if (customEvent.detail?.theme) {
+        setThemeMode(customEvent.detail.theme);
+      }
+    };
+    
+    window.addEventListener('themeChanged', handleThemeChange);
+    
+    return () => {
+      window.removeEventListener('themeChanged', handleThemeChange);
+    };
+  }, []);
 
 
   const handleLogout = async () => {
@@ -217,6 +352,20 @@ const App: React.FC = () => {
     localStorage.setItem('authToken', token);
     localStorage.setItem('currentEmployeeId', employee.id);
     localStorage.setItem('employeeData', JSON.stringify(employee));
+    
+    // Load theme preference from user profile
+    if (employee?.preferences) {
+      try {
+        const prefs = typeof employee.preferences === 'string' 
+          ? JSON.parse(employee.preferences) 
+          : employee.preferences;
+        if (prefs?.theme === 'dark' || prefs?.theme === 'light') {
+          setThemeMode(prefs.theme);
+        }
+      } catch (e) {
+        debugError('Error parsing preferences:', e);
+      }
+    }
     
     // Check if user has completed onboarding (from backend employee data, not localStorage)
     // Handle both boolean and integer values, and treat null/undefined as false
@@ -295,6 +444,9 @@ const App: React.FC = () => {
       setCurrentPortal('staff');
     }
   };
+
+  // Create theme based on current mode
+  const theme = createAppTheme(themeMode);
 
   if (loading) {
     return (

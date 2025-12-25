@@ -989,11 +989,27 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
                               }
                               const src = `${API_BASE_URL}${path}`;
                               return (
-                                <img
-                                  src={src}
-                                  alt={receipt.vendor || 'Receipt'}
-                                  style={{ maxWidth: 80, maxHeight: 80, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }}
-                                />
+                                <Box
+                                  component="a"
+                                  href={src}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  sx={{
+                                    display: 'inline-block',
+                                    cursor: 'pointer',
+                                    textDecoration: 'none',
+                                    '&:hover': {
+                                      opacity: 0.8,
+                                      boxShadow: 2
+                                    }
+                                  }}
+                                >
+                                  <img
+                                    src={src}
+                                    alt={receipt.vendor || 'Receipt - Click to view full size'}
+                                    style={{ maxWidth: 80, maxHeight: 80, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }}
+                                  />
+                                </Box>
                               );
                             })()}
                           </TableCell>

@@ -1,5 +1,5 @@
 import { Platform, Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
 import { debugLog, debugError, debugWarn } from '../config/debug';
@@ -702,18 +702,18 @@ export class ApiSyncService {
           let backendImageUri = receipt.imageUri || '';
           
           // Upload image to backend if we have a local image URI
-          // Make this non-blocking - if upload fails, continue with sync using original URI
+          // IMPORTANT: We need to upload the image so it's accessible on the web portal
           if (receipt.imageUri && receipt.imageUri.startsWith('file://')) {
             debugLog(`📤 ApiSync: Uploading image for receipt ${receipt.id}...`);
             
             try {
               debugLog(`📤 ApiSync: Calling uploadReceiptImage for receipt ${receipt.id}...`);
-              // Use Promise.race to ensure we don't wait forever
+              // Use Promise.race to ensure we don't wait forever, but give it enough time
               const uploadPromise = this.uploadReceiptImage(receipt.imageUri);
               const timeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
                 setTimeout(() => {
-                  resolve({ success: false, error: 'Upload timeout - continuing with local image' });
-                }, 65000); // Slightly longer than the upload timeout
+                  resolve({ success: false, error: 'Upload timeout - will retry on next sync' });
+                }, 90000); // 90 seconds - give it more time for large images
               });
               
               const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
@@ -781,13 +781,15 @@ export class ApiSyncService {
                   debugWarn(`⚠️ ApiSync: Image upload failed for receipt ${receipt.id}, but not due to missing file. Error: ${errorMsg}`);
                 }
                 
-                // Silently continue with original URI - don't fail the entire sync
-                // Use debugLog instead of debugWarn since this is expected behavior for large images/slow connections
+                // Log the error but continue - we'll sync the receipt without the image for now
+                // The image will be uploaded on the next sync attempt
                 if (uploadResult.error?.includes('timed out') || uploadResult.error?.includes('timeout')) {
-                  debugLog(`⏱️ ApiSync: Image upload timed out for receipt ${receipt.id}, continuing with local URI (expected behavior)`);
+                  debugWarn(`⏱️ ApiSync: Image upload timed out for receipt ${receipt.id}. Receipt will sync without image - image will be uploaded on next sync.`);
                 } else {
-                  debugWarn(`⚠️ ApiSync: Image upload failed for receipt ${receipt.id}, continuing with local URI. Error: ${uploadResult.error || 'Unknown'}`);
+                  debugWarn(`⚠️ ApiSync: Image upload failed for receipt ${receipt.id}. Receipt will sync without image - image will be uploaded on next sync. Error: ${uploadResult.error || 'Unknown'}`);
                 }
+                // Keep the original file:// URI so we know to retry the upload next time
+                // Don't set backendImageUri to empty - we'll try again on next sync
               }
             } catch (uploadError) {
               // Check if this is a file not found error
@@ -844,6 +846,7 @@ export class ApiSyncService {
           }
           
           // Validate and prepare receipt data
+          // Only include imageUri if we successfully uploaded it (not a file:// path)
           const receiptData = {
             id: receipt.id, // Include ID to prevent duplicates on backend
             employeeId: receipt.employeeId,
@@ -852,7 +855,9 @@ export class ApiSyncService {
             vendor: receipt.vendor || '',
             description: receipt.description || '',
             category: receipt.category || '',
-            imageUri: backendImageUri
+            // Only include imageUri if it's a backend path, not a local file path
+            // This ensures the web portal can access the image
+            imageUri: backendImageUri && !backendImageUri.startsWith('file://') ? backendImageUri : undefined
           };
           
           const response = await fetch(`${this.config.baseUrl}/receipts`, {

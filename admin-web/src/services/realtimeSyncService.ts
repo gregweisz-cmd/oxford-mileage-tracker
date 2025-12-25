@@ -46,7 +46,7 @@ export class RealtimeSyncService {
    */
   async initialize(): Promise<void> {
     try {
-      debugVerbose('🔄 RealtimeSync: Initializing real-time sync service...');
+      debugLog('🔄 RealtimeSync: Initializing real-time sync service...');
       
       // Check if WebSocket is supported
       if (typeof WebSocket === 'undefined') {
@@ -60,7 +60,7 @@ export class RealtimeSyncService {
       // Connect to WebSocket server
       await this.connect();
       
-      debugVerbose('✅ RealtimeSync: Real-time sync service initialized');
+      debugLog('✅ RealtimeSync: Real-time sync service initialized');
     } catch (error) {
       debugError('❌ RealtimeSync: Failed to initialize:', error);
     }
@@ -73,12 +73,12 @@ export class RealtimeSyncService {
     return new Promise((resolve, reject) => {
       try {
         const wsUrl = this.getWebSocketUrl();
-        debugVerbose(`🔄 RealtimeSync: Connecting to ${wsUrl}`);
+        debugLog(`🔄 RealtimeSync: Connecting to ${wsUrl}`);
         
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
-          debugVerbose('✅ RealtimeSync: Connected to WebSocket server');
+          debugLog('✅ RealtimeSync: Connected to WebSocket server');
           this.isConnected = true;
           this.reconnectAttempts = 0;
           this.startHeartbeat();
@@ -141,6 +141,7 @@ export class RealtimeSyncService {
           
         case 'heartbeat_response':
         case 'connection_established':
+          debugLog('✅ RealtimeSync: Connection established by server');
           // Server acknowledgments - no action needed
           break;
           
@@ -152,7 +153,7 @@ export class RealtimeSyncService {
           } else {
             // This is a notification-style message without data payload
             // It's just telling us something changed, not what changed
-            debugVerbose('🔄 RealtimeSync: Received change notification:', message);
+            debugLog('🔄 RealtimeSync: Received change notification:', message);
             // Could trigger a refresh here if needed
           }
           break;
@@ -173,7 +174,7 @@ export class RealtimeSyncService {
    * Handle data updates from server
    */
   private handleDataUpdate(update: RealtimeUpdate): void {
-    debugVerbose('🔄 RealtimeSync: Received data update:', update);
+    debugLog('🔄 RealtimeSync: Received data update:', update);
     
     // Skip if update is undefined or missing type
     if (!update || !update.type) {

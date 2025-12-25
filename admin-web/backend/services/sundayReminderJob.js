@@ -9,6 +9,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 
 let reminderInterval = null;
 let isRunning = false;
+let lastReminderDate = null; // Track the last Sunday we sent reminders for
 
 /**
  * Check if today is Sunday
@@ -48,12 +49,33 @@ async function getEmployeesForSundayReminders() {
 }
 
 /**
+ * Get the date string for today (YYYY-MM-DD format)
+ * Used to track which Sunday we've already sent reminders for
+ * @returns {string} Date string in YYYY-MM-DD format
+ */
+function getTodayDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Send Sunday reminders to all eligible employees
+ * Only sends once per Sunday
  * @returns {Promise<{sent: number, failed: number}>} Statistics about sent reminders
  */
 async function sendSundayReminders() {
   if (!isSunday()) {
     debugLog('📅 Today is not Sunday, skipping reminder job');
+    return { sent: 0, failed: 0 };
+  }
+
+  // Check if we've already sent reminders for this Sunday
+  const todayDateString = getTodayDateString();
+  if (lastReminderDate === todayDateString) {
+    debugLog('📅 Already sent Sunday reminders for today, skipping');
     return { sent: 0, failed: 0 };
   }
 
@@ -82,6 +104,9 @@ async function sendSundayReminders() {
       }
     }
 
+    // Mark that we've sent reminders for this Sunday
+    lastReminderDate = todayDateString;
+    
     debugLog(`✅ Sunday reminder job completed. Sent: ${sent}, Failed: ${failed}`);
     return { sent, failed };
   } catch (error) {
@@ -112,15 +137,23 @@ function startSundayReminderJob() {
 
   // Check every hour (3600000 ms) if it's Sunday and send reminders
   // We check hourly to ensure we catch Sunday at the right time
+  // Note: Reminders are only sent once per Sunday (tracked by date)
   reminderInterval = setInterval(() => {
     if (isSunday()) {
       sendSundayReminders().catch(err => {
         debugError('❌ Error in scheduled Sunday reminder run:', err);
       });
+    } else {
+      // Reset the last reminder date when it's no longer Sunday
+      // This ensures we send reminders again next Sunday
+      if (lastReminderDate !== null) {
+        lastReminderDate = null;
+        debugLog('📅 Reset reminder date tracker (no longer Sunday)');
+      }
     }
   }, 60 * 60 * 1000); // 1 hour
 
-  debugLog('✅ Sunday reminder job scheduler started (checks every hour)');
+  debugLog('✅ Sunday reminder job scheduler started (checks every hour, sends once per Sunday)');
 }
 
 /**

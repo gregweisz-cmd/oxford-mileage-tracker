@@ -16,7 +16,7 @@ const LOCAL_API_URL = 'http://192.168.86.101:3002/api';
 // This allows testing while driving without localhost connectivity
 // Set to true to sync with Vercel web portal (production backend)
 // Set to false to use local backend (requires backend running locally)
-const USE_PRODUCTION_FOR_TESTING = true; // Set to false to use local backend
+const USE_PRODUCTION_FOR_TESTING = false; // Set to false to use local backend
 
 // Determine which API URL to use
 export const API_BASE_URL = USE_PRODUCTION_FOR_TESTING

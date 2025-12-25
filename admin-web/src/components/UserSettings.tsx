@@ -36,7 +36,6 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
-import { TwoFactorService, TwoFactorStatus } from '../services/twoFactorService';
 import { debugLog, debugError } from '../config/debug';
 
 // Cost center options from mobile app
@@ -194,22 +193,10 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
   // Dialog states
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [passwordDialogPurpose, setPasswordDialogPurpose] = useState<'password' | 'disable2fa'>('password');
   
   // Form states
   const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
   const [showPassword, setShowPassword] = useState(false);
-  
-  // 2FA states
-  const [twoFactorStatus, setTwoFactorStatus] = useState<TwoFactorStatus>({
-    twoFactorEnabled: false,
-    phoneNumberVerified: false,
-    phoneNumber: null
-  });
-  const [twoFactorPhoneNumber, setTwoFactorPhoneNumber] = useState('');
-  const [twoFactorVerificationCode, setTwoFactorVerificationCode] = useState('');
-  const [showTwoFactorSetup, setShowTwoFactorSetup] = useState(false);
-  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
   
   // Status
   const [loading, setLoading] = useState(false);
@@ -251,6 +238,29 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           }
         }
         
+        // Parse preferences if they exist
+        let preferences = {
+          autoSaveInterval: 30,
+          notificationsEnabled: true,
+          defaultCurrency: 'USD',
+          theme: 'light' as 'light' | 'dark',
+          emailNotifications: true,
+          smsNotifications: false,
+        };
+        if (employeeData.preferences) {
+          try {
+            const parsedPrefs = typeof employeeData.preferences === 'string' 
+              ? JSON.parse(employeeData.preferences) 
+              : employeeData.preferences;
+            preferences = {
+              ...preferences,
+              ...parsedPrefs,
+            };
+          } catch (parseErr) {
+            debugLog('Failed to parse preferences:', employeeData.preferences);
+          }
+        }
+        
         setProfile(prev => ({
           ...prev,
           id: employeeData.id,
@@ -266,6 +276,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           },
           signature: employeeData.signature || '',
           oxfordHouseId: employeeData.oxfordHouseId || '',
+          preferences: preferences,
         }));
       } else {
         throw new Error('Failed to load employee data');
@@ -289,105 +300,82 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
   useEffect(() => {
     loadUserProfile();
-    loadTwoFactorStatus();
   }, [loadUserProfile]);
-
-  const loadTwoFactorStatus = async () => {
-    try {
-      const status = await TwoFactorService.getStatus(employeeId);
-      setTwoFactorStatus(status);
-    } catch (error) {
-      debugError('Error loading 2FA status:', error);
-      // 2FA might not be configured, set default status
-      setTwoFactorStatus({
-        twoFactorEnabled: false,
-        phoneNumberVerified: false,
-        phoneNumber: null
-      });
-    }
-  };
-
-  const handleSendTwoFactorCode = async () => {
-    if (!twoFactorPhoneNumber.trim()) {
-      showMessage('error', 'Please enter your phone number');
-      return;
-    }
-
-    setTwoFactorLoading(true);
-    try {
-      await TwoFactorService.sendCode(employeeId, twoFactorPhoneNumber);
-      showMessage('success', 'Verification code sent to your phone');
-      setShowTwoFactorSetup(true);
-    } catch (error) {
-      showMessage('error', error instanceof Error ? error.message : 'Failed to send verification code');
-    } finally {
-      setTwoFactorLoading(false);
-    }
-  };
-
-  const handleVerifyTwoFactorCode = async () => {
-    if (!twoFactorVerificationCode.trim() || twoFactorVerificationCode.length !== 6) {
-      showMessage('error', 'Please enter a valid 6-digit verification code');
-      return;
-    }
-
-    setTwoFactorLoading(true);
-    try {
-      await TwoFactorService.verifyPhone(employeeId, twoFactorPhoneNumber, twoFactorVerificationCode);
-      showMessage('success', 'Two-factor authentication enabled successfully');
-      setShowTwoFactorSetup(false);
-      setTwoFactorPhoneNumber('');
-      setTwoFactorVerificationCode('');
-      await loadTwoFactorStatus();
-    } catch (error) {
-      showMessage('error', error instanceof Error ? error.message : 'Failed to verify code');
-    } finally {
-      setTwoFactorLoading(false);
-    }
-  };
-
-  const handleDisableTwoFactor = async () => {
-    if (!passwordData.current) {
-      showMessage('error', 'Please enter your password to disable 2FA');
-      return;
-    }
-
-    setTwoFactorLoading(true);
-    try {
-      await TwoFactorService.disable(employeeId, passwordData.current);
-      showMessage('success', 'Two-factor authentication disabled successfully');
-      setPasswordData({ current: '', new: '', confirm: '' });
-      setPasswordDialogOpen(false);
-      await loadTwoFactorStatus();
-    } catch (error) {
-      showMessage('error', error instanceof Error ? error.message : 'Failed to disable 2FA');
-    } finally {
-      setTwoFactorLoading(false);
-    }
-  };
 
   const showMessage = (type: 'success' | 'error' | 'info', text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage({ type: '' as any, text: '' }), 5000);
   };
 
+  /**
+   * Validates that a phone number contains exactly 10 digits (or is empty)
+   * @param phoneNumber - The phone number string (can contain digits, spaces, dashes, parentheses, etc.)
+   * @returns true if the phone number is empty or has exactly 10 digits, false otherwise
+   */
+  const validatePhoneNumber = (phoneNumber: string): boolean => {
+    // Allow empty phone numbers (optional field)
+    if (!phoneNumber || !phoneNumber.trim()) {
+      return true;
+    }
+    
+    // Remove all non-digit characters and count digits
+    const digits = phoneNumber.replace(/\D/g, '');
+    return digits.length === 10;
+  };
+
+  /**
+   * Formats a phone number to (###) ###-#### format
+   * @param phoneNumber - The phone number string (can contain digits, spaces, dashes, parentheses, etc.)
+   * @returns Formatted phone number in (###) ###-#### format, or empty string if invalid
+   */
+  const formatPhoneNumber = (phoneNumber: string): string => {
+    if (!phoneNumber || !phoneNumber.trim()) {
+      return '';
+    }
+    
+    // Remove all non-digit characters
+    const digits = phoneNumber.replace(/\D/g, '');
+    
+    // If we don't have exactly 10 digits, return empty string (validation will catch this)
+    if (digits.length !== 10) {
+      return '';
+    }
+    
+    // Format as (###) ###-####
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  };
+
   const handleSaveProfile = async () => {
     setLoading(true);
     try {
+      // Validate phone number has exactly 10 digits (if provided)
+      if (profile.phoneNumber && profile.phoneNumber.trim() && !validatePhoneNumber(profile.phoneNumber)) {
+        showMessage('error', 'Phone number must contain exactly 10 digits. Please enter a valid phone number (e.g., 1234567890, (123) 456-7890, or 123-456-7890), or leave it empty.');
+        setLoading(false);
+        return;
+      }
+      
+      // Format phone number before saving
+      const formattedPhoneNumber = formatPhoneNumber(profile.phoneNumber);
+      
+      // Update local state to show formatted phone number immediately
+      setProfile(prev => ({ ...prev, phoneNumber: formattedPhoneNumber }));
+      
       // Prepare data for API update
       const updateData = {
         name: profile.name,
-        preferredName: profile.preferredName,
+        preferredName: profile.preferredName || '', // Ensure empty string is sent, not undefined
         email: profile.email,
         oxfordHouseId: profile.oxfordHouseId || '',
         position: profile.position,
-        phoneNumber: profile.phoneNumber,
+        phoneNumber: formattedPhoneNumber,
         baseAddress: profile.baseAddresses.address1,
         baseAddress2: profile.baseAddresses.address2,
         costCenters: JSON.stringify(profile.costCenters),
         selectedCostCenters: JSON.stringify(profile.costCenters),
         defaultCostCenter: profile.costCenters[0] || '',
         signature: profile.signature,
+        preferences: JSON.stringify(profile.preferences), // Save preferences including theme
       };
       
       // Update via API
@@ -408,6 +396,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         }
         // Reload the profile to confirm changes were saved
         await loadUserProfile();
+        // Dispatch event to refresh currentUser in App.tsx
+        window.dispatchEvent(new CustomEvent('userProfileUpdated', { detail: { employeeId } }));
       } else {
         const errorData = await response.json();
         debugError('Server error response:', errorData);
@@ -528,7 +518,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                 value={profile.preferredName}
                 onChange={(e) => setProfile(prev => ({ ...prev, preferredName: e.target.value }))}
                 sx={{ minWidth: 250 }}
-                helperText="Display name for app and web portal"
+                helperText="Display name for app and web portal only. Your legal name will always be used on expense reports and official documents."
                 placeholder="Leave empty to use legal name"
               />
               <TextField
@@ -549,6 +539,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                 value={profile.phoneNumber}
                 onChange={(e) => setProfile(prev => ({ ...prev, phoneNumber: e.target.value }))}
                 sx={{ minWidth: 200 }}
+                helperText="Enter 10 digits (e.g., 1234567890, (123) 456-7890, or 123-456-7890). Will be formatted as (###) ###-#### on save."
+                placeholder="(123) 456-7890"
               />
             </Box>
           </CardContent>
@@ -740,7 +732,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <Button
                 variant="outlined"
                 onClick={() => {
-                  setPasswordDialogPurpose('password');
                   setPasswordDialogOpen(true);
                   setPasswordData({ current: '', new: '', confirm: '' });
                 }}
@@ -748,107 +739,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               >
                 Change Password
               </Button>
-
-              <Divider sx={{ my: 1 }} />
-
-              {/* Two-Factor Authentication */}
-              <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Box>
-                    <Typography variant="body1" fontWeight="medium">
-                      Two-Factor Authentication (2FA)
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {twoFactorStatus.twoFactorEnabled 
-                        ? `Enabled for phone ending in ${twoFactorStatus.phoneNumber || '****'}`
-                        : 'Add an extra layer of security to your account'}
-                    </Typography>
-                  </Box>
-                  <Switch
-                    checked={twoFactorStatus.twoFactorEnabled}
-                    disabled={twoFactorLoading}
-                    onChange={(e) => {
-                      if (!e.target.checked && twoFactorStatus.twoFactorEnabled) {
-                        // Disable 2FA - require password
-                        setPasswordDialogPurpose('disable2fa');
-                        setPasswordDialogOpen(true);
-                        setPasswordData({ current: '', new: '', confirm: '' });
-                      } else if (e.target.checked && !twoFactorStatus.twoFactorEnabled) {
-                        // Enable 2FA - show setup
-                        setShowTwoFactorSetup(true);
-                        setTwoFactorPhoneNumber('');
-                        setTwoFactorVerificationCode('');
-                      }
-                    }}
-                  />
-                </Box>
-
-                {!twoFactorStatus.twoFactorEnabled && (
-                  <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                    {!showTwoFactorSetup ? (
-                      <>
-                        <TextField
-                          fullWidth
-                          label="Phone Number"
-                          type="tel"
-                          value={twoFactorPhoneNumber}
-                          onChange={(e) => setTwoFactorPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
-                          placeholder="(123) 456-7890"
-                          margin="normal"
-                          helperText="Enter your phone number to receive verification codes"
-                        />
-                        <Button
-                          variant="contained"
-                          onClick={handleSendTwoFactorCode}
-                          disabled={twoFactorLoading || !twoFactorPhoneNumber.trim()}
-                          sx={{ mt: 1 }}
-                        >
-                          {twoFactorLoading ? 'Sending...' : 'Send Verification Code'}
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Alert severity="info" sx={{ mb: 2 }}>
-                          Verification code sent to {twoFactorPhoneNumber}
-                        </Alert>
-                        <TextField
-                          fullWidth
-                          label="Verification Code"
-                          type="text"
-                          value={twoFactorVerificationCode}
-                          onChange={(e) => setTwoFactorVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                          placeholder="Enter 6-digit code"
-                          margin="normal"
-                          inputProps={{
-                            maxLength: 6,
-                            pattern: '[0-9]*',
-                            inputMode: 'numeric'
-                          }}
-                        />
-                        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                          <Button
-                            variant="contained"
-                            onClick={handleVerifyTwoFactorCode}
-                            disabled={twoFactorLoading || twoFactorVerificationCode.length !== 6}
-                          >
-                            {twoFactorLoading ? 'Verifying...' : 'Verify & Enable'}
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            onClick={() => {
-                              setShowTwoFactorSetup(false);
-                              setTwoFactorVerificationCode('');
-                            }}
-                            disabled={twoFactorLoading}
-                          >
-                            Cancel
-                          </Button>
-                        </Box>
-                      </>
-                    )}
-                  </Box>
-                )}
-              </Box>
 
               <Divider sx={{ my: 1 }} />
 
@@ -924,10 +814,15 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                 <InputLabel>Theme</InputLabel>
                 <Select
                   value={profile.preferences.theme || 'light'}
-                  onChange={(e) => setProfile(prev => ({
-                    ...prev,
-                    preferences: { ...prev.preferences, theme: e.target.value as 'light' | 'dark' }
-                  }))}
+                  onChange={(e) => {
+                    const newTheme = e.target.value as 'light' | 'dark';
+                    setProfile(prev => ({
+                      ...prev,
+                      preferences: { ...prev.preferences, theme: newTheme }
+                    }));
+                    // Dispatch event to update theme immediately
+                    window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme: newTheme } }));
+                  }}
                 >
                   <MenuItem value="light">Light</MenuItem>
                   <MenuItem value="dark">Dark</MenuItem>
@@ -964,89 +859,57 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         </Box>
       </Box>
 
-      {/* Password Change / Disable 2FA Dialog */}
+      {/* Password Change Dialog */}
       <Dialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)}>
-        <DialogTitle>
-          {passwordDialogPurpose === 'disable2fa' ? 'Disable Two-Factor Authentication' : 'Change Password'}
-        </DialogTitle>
+        <DialogTitle>Change Password</DialogTitle>
         <DialogContent>
-          {passwordDialogPurpose === 'disable2fa' ? (
-            <>
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                Please enter your password to disable two-factor authentication.
-              </Alert>
-              <TextField
-                autoFocus
-                margin="dense"
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                fullWidth
-                variant="outlined"
-                value={passwordData.current}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, current: e.target.value }))}
-                InputProps={{
-                  endAdornment: (
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                    >
-                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </IconButton>
-                  ),
-                }}
-              />
-            </>
-          ) : (
-            <>
-              <TextField
-                autoFocus
-                margin="dense"
-                label="Current Password"
-                type={showPassword ? 'text' : 'password'}
-                fullWidth
-                variant="outlined"
-                value={passwordData.current}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, current: e.target.value }))}
-                InputProps={{
-                  endAdornment: (
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                    >
-                      {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </IconButton>
-                  ),
-                }}
-              />
-              <TextField
-                margin="dense"
-                label="New Password"
-                type={showPassword ? 'text' : 'password'}
-                fullWidth
-                variant="outlined"
-                value={passwordData.new}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, new: e.target.value }))}
-              />
-              <TextField
-                margin="dense"
-                label="Confirm New Password"
-                type={showPassword ? 'text' : 'password'}
-                fullWidth
-                variant="outlined"
-                value={passwordData.confirm}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, confirm: e.target.value }))}
-              />
-            </>
-          )}
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Current Password"
+            type={showPassword ? 'text' : 'password'}
+            fullWidth
+            variant="outlined"
+            value={passwordData.current}
+            onChange={(e) => setPasswordData(prev => ({ ...prev, current: e.target.value }))}
+            InputProps={{
+              endAdornment: (
+                <IconButton
+                  onClick={() => setShowPassword(!showPassword)}
+                  edge="end"
+                >
+                  {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                </IconButton>
+              ),
+            }}
+          />
+          <TextField
+            margin="dense"
+            label="New Password"
+            type={showPassword ? 'text' : 'password'}
+            fullWidth
+            variant="outlined"
+            value={passwordData.new}
+            onChange={(e) => setPasswordData(prev => ({ ...prev, new: e.target.value }))}
+          />
+          <TextField
+            margin="dense"
+            label="Confirm New Password"
+            type={showPassword ? 'text' : 'password'}
+            fullWidth
+            variant="outlined"
+            value={passwordData.confirm}
+            onChange={(e) => setPasswordData(prev => ({ ...prev, confirm: e.target.value }))}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPasswordDialogOpen(false)}>Cancel</Button>
           <Button 
-            onClick={passwordDialogPurpose === 'disable2fa' ? handleDisableTwoFactor : handlePasswordChange} 
+            onClick={handlePasswordChange} 
             variant="contained"
-            disabled={!passwordData.current || (passwordDialogPurpose === 'password' && (!passwordData.new || passwordData.new !== passwordData.confirm))}
+            disabled={!passwordData.current || !passwordData.new || passwordData.new !== passwordData.confirm}
           >
-            {passwordDialogPurpose === 'disable2fa' ? 'Disable 2FA' : 'Change Password'}
+            Change Password
           </Button>
         </DialogActions>
       </Dialog>

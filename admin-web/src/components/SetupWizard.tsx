@@ -339,6 +339,12 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
               {steps[3].description}
             </Typography>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                <strong>Note:</strong> Your preferred name is only used for addressing you in the app and web portal. 
+                Your legal name will always be used on expense reports and official documents.
+              </Typography>
+            </Alert>
             <TextField
               fullWidth
               label="Preferred Name"
@@ -346,6 +352,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
               onChange={(e) => setPreferredName(e.target.value)}
               placeholder="e.g., John, Johnny, J."
               required
+              helperText="This name appears in the app and web portal only"
             />
           </Box>
         );

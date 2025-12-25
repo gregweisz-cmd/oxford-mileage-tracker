@@ -30,6 +30,7 @@ import {
   // Settings, // Currently unused
 } from '@mui/icons-material';
 import OxfordHouseLogo from './OxfordHouseLogo';
+import { getEmployeeDisplayName } from '../utils/employeeUtils';
 
 interface PortalSwitcherProps {
   currentUser: any;
@@ -109,11 +110,34 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     setLogoutDialogOpen(false);
   };
 
+  // Helper function to get personalized Staff Portal name
+  const getPersonalizedStaffPortalName = (): string => {
+    if (!currentUser) return 'Staff Portal';
+    
+    const displayName = getEmployeeDisplayName(currentUser);
+    
+    // If we have a preferred name or can extract first name, use it
+    if (displayName && displayName !== currentUser.name) {
+      // Use preferred name directly
+      const firstName = displayName.split(' ')[0];
+      return `${firstName}'s Portal`;
+    }
+    
+    // Fall back to first name from full name
+    if (currentUser.name) {
+      const firstName = currentUser.name.split(' ')[0];
+      return `${firstName}'s Portal`;
+    }
+    
+    return 'Staff Portal';
+  };
+
   // Determine which portals the user has access to based on their role
   // IMPORTANT: Role field takes priority over position field
   const getAvailablePortals = () => {
     const role = currentUser?.role?.toLowerCase() || '';
     const position = currentUser?.position?.toLowerCase() || '';
+    const personalizedStaffName = getPersonalizedStaffPortalName();
     const availablePortals: Array<{
       id: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts';
       name: string;
@@ -151,7 +175,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         },
         {
           id: 'staff',
-          name: 'Staff Portal',
+          name: personalizedStaffName,
           icon: <Person />,
           description: 'Manage your own expense reports and mileage'
         }
@@ -169,7 +193,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         },
         {
           id: 'staff',
-          name: 'Staff Portal',
+          name: personalizedStaffName,
           icon: <Person />,
           description: 'Manage your own expense reports and mileage'
         }
@@ -187,7 +211,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         },
         {
           id: 'staff',
-          name: 'Staff Portal',
+          name: personalizedStaffName,
           icon: <Person />,
           description: 'Manage your own expense reports and mileage'
         }
