@@ -131,10 +131,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
         }
         break;
       case 3: // Preferred Name
-        if (!preferredName.trim()) {
-          setError('Please enter your preferred name.');
-          return false;
-        }
+        // Preferred name is optional - will default to first name if blank
         break;
       case 4: // Contact Info
         if (!email.trim() || !email.includes('@')) {
@@ -226,12 +223,21 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
         finalSignature = signatureRef.current.toDataURL('image/png');
       }
 
+      // Extract first name from full name if preferred name is blank
+      let finalPreferredName = preferredName.trim();
+      if (!finalPreferredName && employee?.name) {
+        const nameParts = employee.name.trim().split(/\s+/).filter((p: string) => p.length > 0);
+        if (nameParts.length > 0) {
+          finalPreferredName = nameParts[0]; // Use first name as default
+        }
+      }
+
       await EmployeeApiService.updateEmployee(employee.id, {
         baseAddress: baseAddress.trim(),
         defaultCostCenter: defaultCostCenter.trim() || undefined,
         typicalWorkStartHour: parseInt(typicalWorkStartHour, 10),
         typicalWorkEndHour: parseInt(typicalWorkEndHour, 10),
-        preferredName: preferredName.trim(),
+        preferredName: finalPreferredName || undefined,
         email: email.trim(),
         phoneNumber: phoneNumber.trim(),
         signature: finalSignature || undefined,
@@ -350,9 +356,8 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
               label="Preferred Name"
               value={preferredName}
               onChange={(e) => setPreferredName(e.target.value)}
-              placeholder="e.g., John, Johnny, J."
-              required
-              helperText="This name appears in the app and web portal only"
+              placeholder={`Leave blank to use "${employee?.name ? employee.name.trim().split(/\s+/)[0] : 'your first name'}"`}
+              helperText="Leave blank to use your legal first name. This name appears in the app and web portal only."
             />
           </Box>
         );

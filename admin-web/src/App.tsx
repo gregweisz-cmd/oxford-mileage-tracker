@@ -154,7 +154,7 @@ const App: React.FC = () => {
             const { employee } = await response.json();
             setCurrentUser(employee);
             
-            // Load theme preference from user profile
+            // Load theme preference from user profile (default to 'light' if not set)
             if (employee?.preferences) {
               try {
                 const prefs = typeof employee.preferences === 'string' 
@@ -162,10 +162,15 @@ const App: React.FC = () => {
                   : employee.preferences;
                 if (prefs?.theme === 'dark' || prefs?.theme === 'light') {
                   setThemeMode(prefs.theme);
+                } else {
+                  setThemeMode('light'); // Default to light if theme not set
                 }
               } catch (e) {
                 debugError('Error parsing preferences:', e);
+                setThemeMode('light'); // Default to light on parse error
               }
+            } else {
+              setThemeMode('light'); // Default to light if no preferences
             }
             
             // Check if user has completed onboarding (from backend employee data, not localStorage)
@@ -272,7 +277,7 @@ const App: React.FC = () => {
             const updatedEmployee = await response.json();
             setCurrentUser(updatedEmployee);
             
-            // Update theme if preferences changed
+            // Update theme if preferences changed (default to 'light' if not set)
             if (updatedEmployee?.preferences) {
               try {
                 const prefs = typeof updatedEmployee.preferences === 'string' 
@@ -280,10 +285,15 @@ const App: React.FC = () => {
                   : updatedEmployee.preferences;
                 if (prefs?.theme === 'dark' || prefs?.theme === 'light') {
                   setThemeMode(prefs.theme);
+                } else {
+                  setThemeMode('light'); // Default to light if theme not set
                 }
               } catch (e) {
                 debugError('Error parsing preferences:', e);
+                setThemeMode('light'); // Default to light on parse error
               }
+            } else {
+              setThemeMode('light'); // Default to light if no preferences
             }
             
             debugLog('✅ Refreshed currentUser after profile update');
@@ -336,6 +346,7 @@ const App: React.FC = () => {
       // Clear state and localStorage regardless of API call success
       setCurrentUser(null);
       setCurrentPortal('staff');
+      setThemeMode('light'); // Reset theme to light on logout
       localStorage.clear();
       
       // Clear any URL parameters to prevent error messages from showing
@@ -353,7 +364,7 @@ const App: React.FC = () => {
     localStorage.setItem('currentEmployeeId', employee.id);
     localStorage.setItem('employeeData', JSON.stringify(employee));
     
-    // Load theme preference from user profile
+    // Load theme preference from user profile (default to 'light' if not set)
     if (employee?.preferences) {
       try {
         const prefs = typeof employee.preferences === 'string' 
@@ -361,10 +372,15 @@ const App: React.FC = () => {
           : employee.preferences;
         if (prefs?.theme === 'dark' || prefs?.theme === 'light') {
           setThemeMode(prefs.theme);
+        } else {
+          setThemeMode('light'); // Default to light if theme not set
         }
       } catch (e) {
         debugError('Error parsing preferences:', e);
+        setThemeMode('light'); // Default to light on parse error
       }
+    } else {
+      setThemeMode('light'); // Default to light if no preferences
     }
     
     // Check if user has completed onboarding (from backend employee data, not localStorage)

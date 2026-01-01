@@ -134,7 +134,29 @@ router.put('/api/dashboard-preferences/:userId', (req, res) => {
 });
 
 // Helper function to calculate total expenses from reportData
-// calculateTotalExpensesFromReportData is now in routes/expenseReports.js
+function calculateTotalExpensesFromReportData(reportData) {
+  if (!reportData) return 0;
+  const {
+    totalMileageAmount = 0,
+    airRailBus = 0,
+    vehicleRentalFuel = 0,
+    parkingTolls = 0,
+    groundTransportation = 0,
+    hotelsAirbnb = 0,
+    perDiem = 0,
+    phoneInternetFax = 0,
+    shippingPostage = 0,
+    printingCopying = 0,
+    officeSupplies = 0,
+    eesReceipt = 0,
+    meals = 0,
+    other = 0,
+  } = reportData;
+
+  return totalMileageAmount + airRailBus + vehicleRentalFuel + parkingTolls +
+         groundTransportation + hotelsAirbnb + perDiem + phoneInternetFax +
+         shippingPostage + printingCopying + officeSupplies + eesReceipt + meals + other;
+}
 
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 

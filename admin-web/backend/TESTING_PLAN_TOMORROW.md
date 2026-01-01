@@ -97,11 +97,12 @@
 - [x] Export files are downloadable ✅ Verified by user
 
 **12. Dashboard & Reporting (20 min)**
-- [ ] Dashboard loads without errors
-- [ ] Dashboard shows correct data for user role
-- [ ] Dashboard totals are accurate
-- [ ] GET `/api/dashboard/overview` - Returns overview statistics
-- [ ] Report Builder filters work (date range, employee, cost center)
+- [x] Dashboard loads without errors
+- [x] Dashboard shows correct data for user role
+- [x] Dashboard totals are accurate
+- [x] GET `/api/dashboard-statistics` - Returns statistics (tested)
+- [x] GET `/api/admin/reporting/overview` - Returns overview statistics (tested)
+- [x] POST `/api/admin/reporting/report-builder/query` - Report Builder query works (tested, fixed missing function)
 
 ---
 
