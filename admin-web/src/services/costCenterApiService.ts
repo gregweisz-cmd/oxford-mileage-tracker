@@ -4,6 +4,7 @@ interface CostCenter {
   name: string;
   description?: string;
   isActive: boolean;
+  enableGoogleMaps?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -13,6 +14,7 @@ interface CostCenterCreateData {
   name: string;
   description?: string;
   isActive?: boolean;
+  enableGoogleMaps?: boolean;
 }
 
 export class CostCenterApiService {

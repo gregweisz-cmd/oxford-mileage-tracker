@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile App How-To Guide - Oxford House Expense Tracker</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 0.75in;
+            @top-center {
+                content: "Mobile App How-To Guide";
+                font-size: 10pt;
+                color: #666;
+            }
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 10pt;
+                color: #666;
+            }
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 0;
+        }
+        
+        .cover-page {
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 9in;
+            text-align: center;
+        }
+        
+        .cover-page h1 {
+            font-size: 36pt;
+            margin-bottom: 20pt;
+            color: #1976d2;
+        }
+        
+        .cover-page .subtitle {
+            font-size: 18pt;
+            color: #666;
+            margin-bottom: 40pt;
+        }
+        
+        .cover-page .version {
+            font-size: 12pt;
+            color: #999;
+            margin-top: 40pt;
+        }
+        
+        h1 {
+            font-size: 24pt;
+            color: #1976d2;
+            margin-top: 30pt;
+            margin-bottom: 15pt;
+            page-break-after: avoid;
+        }
+        
+        h2 {
+            font-size: 18pt;
+            color: #1976d2;
+            margin-top: 25pt;
+            margin-bottom: 12pt;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: 14pt;
+            color: #333;
+            margin-top: 20pt;
+            margin-bottom: 10pt;
+            page-break-after: avoid;
+        }
+        
+        h4 {
+            font-size: 12pt;
+            color: #555;
+            margin-top: 15pt;
+            margin-bottom: 8pt;
+            font-weight: bold;
+        }
+        
+        p {
+            margin-bottom: 10pt;
+            text-align: justify;
+        }
+        
+        ul, ol {
+            margin-bottom: 10pt;
+            padding-left: 25pt;
+        }
+        
+        li {
+            margin-bottom: 5pt;
+        }
+        
+        .quick-start {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 15pt;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        .quick-start h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        
+        .tip-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15pt;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        .tip-box h4 {
+            margin-top: 0;
+            color: #856404;
+        }
+        
+        .warning-box {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15pt;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        .warning-box h4 {
+            margin-top: 0;
+            color: #721c24;
+        }
+        
+        .screenshot-placeholder {
+            border: 2px dashed #ccc;
+            background-color: #f5f5f5;
+            padding: 40pt;
+            text-align: center;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        .screenshot-placeholder::before {
+            content: "[SCREENSHOT: " attr(data-screenshot-name) "]";
+            color: #999;
+            font-style: italic;
+        }
+        
+        .step-number {
+            display: inline-block;
+            background-color: #1976d2;
+            color: white;
+            width: 24pt;
+            height: 24pt;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 24pt;
+            font-weight: bold;
+            margin-right: 10pt;
+            vertical-align: middle;
+        }
+        
+        .step {
+            margin-bottom: 15pt;
+            page-break-inside: avoid;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8pt;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #1976d2;
+            color: white;
+            font-weight: bold;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .toc {
+            page-break-after: always;
+        }
+        
+        .toc h2 {
+            margin-top: 0;
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .toc li {
+            margin-bottom: 8pt;
+        }
+        
+        .toc a {
+            color: #1976d2;
+            text-decoration: none;
+        }
+        
+        code {
+            background-color: #f4f4f4;
+            padding: 2pt 6pt;
+            border-radius: 3pt;
+            font-family: 'Courier New', monospace;
+            font-size: 10pt;
+        }
+        
+        .feature-list {
+            columns: 2;
+            column-gap: 20pt;
+            margin: 15pt 0;
+        }
+        
+        .feature-list li {
+            break-inside: avoid;
+            margin-bottom: 8pt;
+        }
+        
+        .section-divider {
+            border-top: 2px solid #1976d2;
+            margin: 30pt 0;
+            page-break-before: always;
+        }
+    </style>
+</head>
+<body>
+    <!-- Cover Page -->
+    <div class="cover-page">
+        <h1>Mobile App How-To Guide</h1>
+        <div class="subtitle">Oxford House Expense Tracker</div>
+        <div class="version">Version 1.0 | January 2026</div>
+    </div>
+    
+    <!-- Table of Contents -->
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ul>
+            <li><a href="#quick-start">Quick Start Guide</a>
+                <ul>
+                    <li><a href="#installation">Installation and First Login</a></li>
+                    <li><a href="#basic-navigation">Basic Navigation</a></li>
+                    <li><a href="#essential-features">Essential Features Overview</a></li>
+                </ul>
+            </li>
+            <li><a href="#comprehensive-reference">Comprehensive Reference</a>
+                <ul>
+                    <li><a href="#login-auth">Login and Authentication</a></li>
+                    <li><a href="#home-dashboard">Home Screen Dashboard</a></li>
+                    <li><a href="#gps-tracking">GPS Tracking</a></li>
+                    <li><a href="#manual-mileage">Manual Mileage Entry</a></li>
+                    <li><a href="#receipts">Receipt Capture and Management</a></li>
+                    <li><a href="#hours-tracking">Hours Worked Tracking</a></li>
+                    <li><a href="#daily-descriptions">Daily Descriptions</a></li>
+                    <li><a href="#monthly-reports">Monthly Reports</a></li>
+                    <li><a href="#settings">Settings and Preferences</a></li>
+                    <li><a href="#data-sync">Data Sync and Offline Mode</a></li>
+                    <li><a href="#saved-addresses">Saved Addresses</a></li>
+                </ul>
+            </li>
+            <li><a href="#tips-best-practices">Tips & Best Practices</a></li>
+            <li><a href="#troubleshooting">Troubleshooting</a></li>
+        </ul>
+    </div>
+    
+    <!-- Quick Start Guide -->
+    <div id="quick-start">
+        <h1>Quick Start Guide</h1>
+        
+        <div class="quick-start">
+            <h3>Get Started in 5 Minutes</h3>
+            <p>This quick start guide will help you get up and running with the Oxford House Expense Tracker mobile app in just a few minutes.</p>
+        </div>
+        
+        <h2 id="installation">Installation and First Login</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="app-store-download"></div>
+        
+        <h3>Installing the App</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Download the App</strong>
+            <p>Install the Oxford House Expense Tracker app from the Apple App Store (iOS) or Google Play Store (Android).</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Open the App</strong>
+            <p>Tap the app icon on your device to launch the application.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Login Screen</strong>
+            <p>You'll see the login screen. Enter your email address and password provided by your administrator.</p>
+        </div>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="login-screen"></div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>First Login</strong>
+            <p>On your first login, you may be prompted to complete a setup wizard to configure your preferences.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Tip: Save Your Credentials</h4>
+            <p>If your device supports it, you can save your login credentials for faster access. However, always ensure your device is secure with a passcode or biometric lock.</p>
+        </div>
+        
+        <h2 id="basic-navigation">Basic Navigation</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="home-screen"></div>
+        
+        <h3>Home Screen Overview</h3>
+        <p>The home screen is your main dashboard. Here's what you'll see:</p>
+        <ul>
+            <li><strong>Dashboard Tiles</strong> - Quick access to main features</li>
+            <li><strong>Monthly Summary</strong> - Overview of your current month's expenses</li>
+            <li><strong>Quick Actions</strong> - Common tasks like GPS tracking and adding receipts</li>
+        </ul>
+        
+        <h3>Navigation Menu</h3>
+        <p>The app uses a simple navigation structure:</p>
+        <ul>
+            <li><strong>Home</strong> - Return to the main dashboard</li>
+            <li><strong>Mileage</strong> - View and manage mileage entries</li>
+            <li><strong>Receipts</strong> - View and manage receipts</li>
+            <li><strong>Hours</strong> - Track hours worked</li>
+            <li><strong>Reports</strong> - View monthly expense reports</li>
+            <li><strong>Settings</strong> - Configure app preferences</li>
+        </ul>
+        
+        <h2 id="essential-features">Essential Features Overview</h2>
+        
+        <h3>Core Functions</h3>
+        <div class="feature-list">
+            <ul>
+                <li><strong>GPS Tracking</strong> - Automatically track your trips</li>
+                <li><strong>Manual Entry</strong> - Add mileage manually</li>
+                <li><strong>Receipt Capture</strong> - Take photos of receipts</li>
+                <li><strong>Hours Tracking</strong> - Log work hours</li>
+                <li><strong>Daily Descriptions</strong> - Add notes for each day</li>
+                <li><strong>Monthly Reports</strong> - View and export reports</li>
+            </ul>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Quick Tip</h4>
+            <p>Start with GPS tracking for your first trip - it's the easiest way to log mileage automatically!</p>
+        </div>
+    </div>
+    
+    <!-- Comprehensive Reference -->
+    <div class="section-divider" id="comprehensive-reference">
+        <h1>Comprehensive Reference</h1>
+        
+        <h2 id="login-auth">Login and Authentication</h2>
+        
+        <h3>Logging In</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Enter Email</strong>
+            <p>Enter your work email address in the email field.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Enter Password</strong>
+            <p>Enter your password. Passwords are case-sensitive.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Tap Sign In</strong>
+            <p>Tap the "Sign In" button to authenticate.</p>
+        </div>
+        
+        <div class="warning-box">
+            <h4>Security Reminder</h4>
+            <p>Never share your login credentials with anyone. If you forget your password, contact your administrator to reset it.</p>
+        </div>
+        
+        <h3>Staying Logged In</h3>
+        <p>The app will keep you logged in until you explicitly log out. This allows for quick access to the app throughout your workday.</p>
+        
+        <h3>Logging Out</h3>
+        <p>To log out, navigate to Settings and tap the "Log Out" button. This is recommended if you're using a shared device.</p>
+        
+        <h2 id="home-dashboard">Home Screen Dashboard</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="home-dashboard-full"></div>
+        
+        <h3>Dashboard Layout</h3>
+        <p>The home screen provides a comprehensive overview of your expense tracking activities:</p>
+        
+        <h4>Monthly Summary Card</h4>
+        <p>At the top of the screen, you'll see a summary of your current month's activity:</p>
+        <ul>
+            <li><strong>Total Miles</strong> - Sum of all mileage entries for the month</li>
+            <li><strong>Total Receipts</strong> - Number of receipts captured</li>
+            <li><strong>Total Hours</strong> - Hours worked this month</li>
+        </ul>
+        
+        <h4>Quick Action Tiles</h4>
+        <p>The main area contains tiles for quick access to common functions:</p>
+        <ul>
+            <li><strong>Start GPS Tracking</strong> - Begin automatic trip tracking (green tile)</li>
+            <li><strong>Add Receipt</strong> - Capture a new receipt photo</li>
+            <li><strong>Manual Entry</strong> - Add mileage manually</li>
+            <li><strong>View Receipts</strong> - See all captured receipts</li>
+            <li><strong>Hours Worked</strong> - Track work hours</li>
+            <li><strong>Daily Description</strong> - Add daily notes</li>
+        </ul>
+        
+        <div class="tip-box">
+            <h4>Customizing Your Dashboard</h4>
+            <p>You can reorder the dashboard tiles by long-pressing and dragging them. Your preferred order will be saved automatically.</p>
+        </div>
+        
+        <h2 id="gps-tracking">GPS Tracking</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="gps-tracking-screen"></div>
+        
+        <h3>Starting GPS Tracking</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Start GPS Tracking"</strong>
+            <p>From the home screen, tap the green "Start GPS Tracking" tile.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Grant Location Permission</strong>
+            <p>If this is your first time, the app will request location permissions. Tap "Allow" to enable GPS tracking.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Tracking Begins</strong>
+            <p>The app will start tracking your location. You'll see a map with your current location and a "Stop Tracking" button.</p>
+        </div>
+        
+        <h3>During Tracking</h3>
+        <p>While GPS tracking is active:</p>
+        <ul>
+            <li>The app continuously records your location</li>
+            <li>Your route is displayed on the map in real-time</li>
+            <li>Distance is calculated automatically</li>
+            <li>The app continues tracking even if you switch to another app</li>
+        </ul>
+        
+        <h3>Stopping GPS Tracking</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Stop Tracking"</strong>
+            <p>When you reach your destination, tap the "Stop Tracking" button.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Review Trip Details</strong>
+            <p>The app will show you the trip summary including start location, end location, distance, and duration.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Add Trip Details</strong>
+            <p>You'll be prompted to:</p>
+            <ul>
+                <li>Select a cost center</li>
+                <li>Add a purpose/description for the trip</li>
+                <li>Review and confirm the mileage</li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Save Entry</strong>
+            <p>Tap "Save" to save the mileage entry. It will be automatically synced to the server.</p>
+        </div>
+        
+        <div class="warning-box">
+            <h4>Battery Usage</h4>
+            <p>GPS tracking uses more battery than normal app usage. If you're on a long trip, consider keeping your device plugged into a car charger.</p>
+        </div>
+        
+        <h3>Viewing GPS Route</h3>
+        <p>After stopping tracking, you can view the complete route on a map. The route shows:</p>
+        <ul>
+            <li>Start point (green marker)</li>
+            <li>End point (red marker)</li>
+            <li>Complete route path</li>
+            <li>Total distance traveled</li>
+        </ul>
+        
+        <h2 id="manual-mileage">Manual Mileage Entry</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="manual-entry-screen"></div>
+        
+        <h3>When to Use Manual Entry</h3>
+        <p>Use manual entry when:</p>
+        <ul>
+            <li>GPS tracking isn't available or accurate</li>
+            <li>You forgot to start GPS tracking</li>
+            <li>You need to enter historical mileage</li>
+            <li>You prefer to enter mileage yourself</li>
+        </ul>
+        
+        <h3>Adding a Manual Entry</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Manual Entry"</strong>
+            <p>From the home screen, tap the "Manual Entry" tile.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Select Date</strong>
+            <p>Choose the date for this mileage entry. Defaults to today.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Enter Start Location</strong>
+            <p>Enter the starting address or location name. You can use saved addresses for faster entry.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Enter End Location</strong>
+            <p>Enter the destination address or location name.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">5</span>
+            <strong>Enter Miles</strong>
+            <p>Enter the number of miles traveled. You can use your odometer reading or a mapping service to calculate distance.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">6</span>
+            <strong>Select Cost Center</strong>
+            <p>Choose the appropriate cost center for this trip.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">7</span>
+            <strong>Add Purpose</strong>
+            <p>Optionally add a description or purpose for the trip.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">8</span>
+            <strong>Save Entry</strong>
+            <p>Tap "Save" to save the mileage entry.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Using Saved Addresses</h4>
+            <p>If you frequently travel to the same locations, save them as addresses. This makes manual entry much faster - just select from your saved addresses instead of typing each time.</p>
+        </div>
+        
+        <h2 id="receipts">Receipt Capture and Management</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="receipt-capture-screen"></div>
+        
+        <h3>Capturing a Receipt</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Add Receipt"</strong>
+            <p>From the home screen, tap the "Add Receipt" tile.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Grant Camera Permission</strong>
+            <p>If this is your first time, allow camera access when prompted.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Position Receipt</strong>
+            <p>Hold your device over the receipt, ensuring:</p>
+            <ul>
+                <li>The entire receipt is visible</li>
+                <li>Good lighting (avoid shadows)</li>
+                <li>The receipt is flat and not wrinkled</li>
+                <li>The text is clear and readable</li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Capture Photo</strong>
+            <p>Tap the capture button to take the photo. You can retake if needed.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">5</span>
+            <strong>Enter Receipt Details</strong>
+            <p>Fill in the receipt information:</p>
+            <ul>
+                <li><strong>Date</strong> - Receipt date (defaults to today)</li>
+                <li><strong>Amount</strong> - Total amount on receipt</li>
+                <li><strong>Category</strong> - Select appropriate category</li>
+                <li><strong>Cost Center</strong> - Choose cost center</li>
+                <li><strong>Description</strong> - Optional notes</li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">6</span>
+            <strong>Save Receipt</strong>
+            <p>Tap "Save" to save the receipt. The photo and details will be stored and synced.</p>
+        </div>
+        
+        <h3>Receipt Categories</h3>
+        <p>The app supports various receipt categories:</p>
+        <ul>
+            <li><strong>Air/Rail/Bus</strong> - Transportation tickets</li>
+            <li><strong>Vehicle Rental/Fuel</strong> - Car rentals and gas</li>
+            <li><strong>Parking/Tolls</strong> - Parking fees and tolls</li>
+            <li><strong>Ground Transportation</strong> - Taxis, rideshare, etc.</li>
+            <li><strong>Hotels/Airbnb</strong> - Lodging expenses</li>
+            <li><strong>Per Diem</strong> - Meal allowances</li>
+            <li><strong>Phone/Internet/Fax</strong> - Communication expenses</li>
+            <li><strong>Shipping/Postage</strong> - Mailing costs</li>
+            <li><strong>Printing/Copying</strong> - Office supplies</li>
+            <li><strong>Office Supplies</strong> - General supplies</li>
+            <li><strong>EES Receipt</strong> - Other expenses</li>
+        </ul>
+        
+        <h3>Viewing Receipts</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "View Receipts"</strong>
+            <p>From the home screen, tap the "View Receipts" tile.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Browse Receipts</strong>
+            <p>You'll see a list of all your receipts, organized by date. Tap any receipt to view details and the photo.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Edit or Delete</strong>
+            <p>From the receipt detail view, you can edit details or delete the receipt if needed.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Receipt Capture Best Practices</h4>
+            <ul>
+                <li>Capture receipts immediately after purchase</li>
+                <li>Ensure good lighting - natural light works best</li>
+                <li>Keep receipts flat to avoid distortion</li>
+                <li>Check that all text is readable before saving</li>
+                <li>Enter details right away while the purchase is fresh in your mind</li>
+            </ul>
+        </div>
+        
+        <h2 id="hours-tracking">Hours Worked Tracking</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="hours-tracking-screen"></div>
+        
+        <h3>Logging Hours</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Hours Worked"</strong>
+            <p>From the home screen, tap the "Hours Worked" tile.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Select Date</strong>
+            <p>Choose the date for the hours entry (defaults to today).</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Enter Hours</strong>
+            <p>Enter the number of hours worked. You can enter decimal values (e.g., 7.5 for 7 hours 30 minutes).</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Select Cost Center</strong>
+            <p>Choose the cost center these hours should be allocated to.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">5</span>
+            <strong>Add Description (Optional)</strong>
+            <p>Optionally add notes about what work was performed.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">6</span>
+            <strong>Save Entry</strong>
+            <p>Tap "Save" to record the hours.</p>
+        </div>
+        
+        <h3>Viewing Hours</h3>
+        <p>The Hours Worked screen shows:</p>
+        <ul>
+            <li>A calendar view of your logged hours</li>
+            <li>Daily totals</li>
+            <li>Monthly summary</li>
+            <li>Cost center breakdown</li>
+        </ul>
+        
+        <h3>Editing Hours</h3>
+        <p>To edit existing hours entries:</p>
+        <ol>
+            <li>Navigate to the Hours Worked screen</li>
+            <li>Tap on the date with hours you want to edit</li>
+            <li>Modify the hours, cost center, or description</li>
+            <li>Tap "Save" to update</li>
+        </ol>
+        
+        <h2 id="daily-descriptions">Daily Descriptions</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="daily-description-screen"></div>
+        
+        <h3>Adding Daily Descriptions</h3>
+        <p>Daily descriptions allow you to add notes about your work activities for each day. This is useful for:</p>
+        <ul>
+            <li>Documenting work activities</li>
+            <li>Providing context for expenses</li>
+            <li>Meeting notes or important events</li>
+            <li>Any other relevant information</li>
+        </ul>
+        
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Daily Description"</strong>
+            <p>From the home screen, tap the "Daily Description" tile.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Select Date</strong>
+            <p>Choose the date for the description (defaults to today).</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Enter Description</strong>
+            <p>Type your description in the text field. There's no character limit, so be as detailed as needed.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Save</strong>
+            <p>Tap "Save" to save the description.</p>
+        </div>
+        
+        <h3>Viewing and Editing Descriptions</h3>
+        <p>You can view and edit daily descriptions from the same screen. Descriptions are organized by date, making it easy to review past entries.</p>
+        
+        <h2 id="monthly-reports">Monthly Reports</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="monthly-report-screen"></div>
+        
+        <h3>Viewing Monthly Reports</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Navigate to Reports</strong>
+            <p>From the home screen or navigation menu, tap "Reports".</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Select Month</strong>
+            <p>Choose the month and year you want to view.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Review Report</strong>
+            <p>The report shows:</p>
+            <ul>
+                <li>Total mileage and amount</li>
+                <li>All receipts by category</li>
+                <li>Hours worked</li>
+                <li>Daily descriptions</li>
+                <li>Cost center breakdown</li>
+            </ul>
+        </div>
+        
+        <h3>Exporting Reports</h3>
+        <p>You can export your monthly report as a PDF:</p>
+        <ol>
+            <li>View the monthly report</li>
+            <li>Tap the "Export" or "Share" button</li>
+            <li>Choose PDF format</li>
+            <li>The PDF will be generated and can be shared via email or saved to your device</li>
+        </ol>
+        
+        <div class="tip-box">
+            <h4>Report Completeness</h4>
+            <p>Before submitting your report, review it to ensure all entries are complete and accurate. Check that all receipts are captured and mileage is properly logged.</p>
+        </div>
+        
+        <h2 id="settings">Settings and Preferences</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="settings-screen"></div>
+        
+        <h3>Accessing Settings</h3>
+        <p>Tap the "Settings" option from the navigation menu or home screen.</p>
+        
+        <h3>Available Settings</h3>
+        <ul>
+            <li><strong>Profile</strong> - View and edit your profile information</li>
+            <li><strong>Preferences</strong> - Configure app preferences</li>
+            <li><strong>Notifications</strong> - Manage notification settings</li>
+            <li><strong>Data Sync</strong> - View sync status and manually trigger sync</li>
+            <li><strong>Saved Addresses</strong> - Manage your saved addresses</li>
+            <li><strong>About</strong> - App version and information</li>
+            <li><strong>Log Out</strong> - Sign out of the app</li>
+        </ul>
+        
+        <h3>Preferences</h3>
+        <p>In the Preferences section, you can configure:</p>
+        <ul>
+            <li><strong>Default Cost Center</strong> - Set your most commonly used cost center</li>
+            <li><strong>Dashboard Tile Order</strong> - Customize the order of tiles on the home screen</li>
+            <li><strong>Theme</strong> - Light or dark mode (if available)</li>
+            <li><strong>Sunday Reminder</strong> - Enable/disable weekly expense reminders</li>
+        </ul>
+        
+        <h2 id="data-sync">Data Sync and Offline Mode</h2>
+        
+        <h3>Automatic Sync</h3>
+        <p>The app automatically syncs your data with the server when:</p>
+        <ul>
+            <li>You have an internet connection</li>
+            <li>You create, edit, or delete entries</li>
+            <li>The app is opened</li>
+            <li>Periodically in the background</li>
+        </ul>
+        
+        <h3>Offline Mode</h3>
+        <p>The app works offline! You can:</p>
+        <ul>
+            <li>Create new entries without internet</li>
+            <li>View existing entries</li>
+            <li>Edit entries</li>
+            <li>Capture receipts</li>
+        </ul>
+        <p>All data is stored locally on your device and will sync automatically when you regain internet connectivity.</p>
+        
+        <h3>Manual Sync</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Go to Settings</strong>
+            <p>Navigate to Settings > Data Sync.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Tap "Sync Now"</strong>
+            <p>Tap the "Sync Now" button to manually trigger a sync.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Wait for Completion</strong>
+            <p>The app will show sync progress. Wait until sync is complete.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Sync Status Indicator</h4>
+            <p>Look for the sync status indicator in the app. A green checkmark means your data is synced. A yellow icon means sync is in progress. A red icon indicates a sync error.</p>
+        </div>
+        
+        <h2 id="saved-addresses">Saved Addresses</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="saved-addresses-screen"></div>
+        
+        <h3>Why Save Addresses?</h3>
+        <p>Saving frequently used addresses makes manual mileage entry much faster. Instead of typing the same address repeatedly, you can select it from your saved list.</p>
+        
+        <h3>Adding a Saved Address</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Go to Settings</strong>
+            <p>Navigate to Settings > Saved Addresses.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Tap "Add Address"</strong>
+            <p>Tap the plus button or "Add Address" option.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Enter Address Details</strong>
+            <p>Enter:</p>
+            <ul>
+                <li>Address name (e.g., "Office", "Client Site A")</li>
+                <li>Full address</li>
+                <li>Optional notes</li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Save</strong>
+            <p>Tap "Save" to add the address to your saved list.</p>
+        </div>
+        
+        <h3>Using Saved Addresses</h3>
+        <p>When creating a manual mileage entry, you'll see an option to "Use Saved Address". Tap this to select from your saved addresses instead of typing.</p>
+        
+        <h3>Managing Saved Addresses</h3>
+        <p>From the Saved Addresses screen, you can:</p>
+        <ul>
+            <li>View all saved addresses</li>
+            <li>Edit address details</li>
+            <li>Delete addresses you no longer need</li>
+        </ul>
+    </div>
+    
+    <!-- Tips & Best Practices -->
+    <div class="section-divider" id="tips-best-practices">
+        <h1>Tips & Best Practices</h1>
+        
+        <h2>When to Use GPS vs Manual Entry</h2>
+        
+        <h3>Use GPS Tracking When:</h3>
+        <ul>
+            <li>You're starting a trip from your current location</li>
+            <li>You want automatic distance calculation</li>
+            <li>You want a visual route map</li>
+            <li>You remember to start tracking before leaving</li>
+        </ul>
+        
+        <h3>Use Manual Entry When:</h3>
+        <ul>
+            <li>You forgot to start GPS tracking</li>
+            <li>GPS signal is weak or unavailable</li>
+            <li>You need to enter historical mileage</li>
+            <li>You prefer using odometer readings</li>
+            <li>You're entering mileage for someone else's vehicle</li>
+        </ul>
+        
+        <div class="tip-box">
+            <h4>Best Practice</h4>
+            <p>Make it a habit to start GPS tracking as soon as you get in your vehicle. This ensures you never miss tracking a trip and provides the most accurate distance measurements.</p>
+        </div>
+        
+        <h2>Receipt Capture Best Practices</h2>
+        
+        <h3>Capture Immediately</h3>
+        <p>Capture receipts as soon as you receive them. This prevents loss and ensures details are fresh in your mind.</p>
+        
+        <h3>Lighting Tips</h3>
+        <ul>
+            <li>Use natural light when possible</li>
+            <li>Avoid harsh shadows</li>
+            <li>Ensure the receipt is evenly lit</li>
+            <li>If indoors, use bright overhead lighting</li>
+        </ul>
+        
+        <h3>Photo Quality</h3>
+        <ul>
+            <li>Keep the receipt flat - avoid wrinkles or folds</li>
+            <li>Ensure the entire receipt is in frame</li>
+            <li>Check that all text is readable before saving</li>
+            <li>Hold the device steady to avoid blur</li>
+        </ul>
+        
+        <h3>Enter Details Promptly</h3>
+        <p>Enter receipt details (amount, category, cost center) immediately after capturing. This prevents confusion later and ensures accuracy.</p>
+        
+        <h2>Offline Usage Patterns</h2>
+        
+        <h3>Working Offline</h3>
+        <p>The app is designed to work seamlessly offline. Here are some tips:</p>
+        <ul>
+            <li><strong>Plan Ahead</strong> - If you know you'll be offline, ensure the app is synced before leaving</li>
+            <li><strong>Create Entries Normally</strong> - Don't worry about being offline - just create entries as usual</li>
+            <li><strong>Check Sync Status</strong> - When you regain connectivity, check the sync status to ensure everything uploaded</li>
+            <li><strong>Manual Sync</strong> - If automatic sync doesn't trigger, use manual sync from Settings</li>
+        </ul>
+        
+        <div class="tip-box">
+            <h4>Offline Advantage</h4>
+            <p>The app's offline capability means you can track expenses even in areas with poor connectivity, such as remote work sites or while traveling.</p>
+        </div>
+        
+        <h2>General Best Practices</h2>
+        
+        <h3>Daily Routine</h3>
+        <ul>
+            <li>Start GPS tracking at the beginning of each work trip</li>
+            <li>Capture receipts immediately after purchase</li>
+            <li>Log hours at the end of each workday</li>
+            <li>Add daily descriptions while the day's activities are fresh</li>
+        </ul>
+        
+        <h3>Weekly Review</h3>
+        <ul>
+            <li>Review your entries at the end of each week</li>
+            <li>Ensure all receipts are captured</li>
+            <li>Verify mileage entries are complete</li>
+            <li>Check that hours are accurately logged</li>
+        </ul>
+        
+        <h3>Monthly Preparation</h3>
+        <ul>
+            <li>Review your monthly report before submission</li>
+            <li>Ensure all entries are complete and accurate</li>
+            <li>Verify cost center allocations</li>
+            <li>Check that all required information is present</li>
+        </ul>
+    </div>
+    
+    <!-- Troubleshooting -->
+    <div class="section-divider" id="troubleshooting">
+        <h1>Troubleshooting</h1>
+        
+        <h2>Common Login Issues</h2>
+        
+        <h3>Can't Log In</h3>
+        <p><strong>Problem:</strong> Login fails with "Invalid credentials" error.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Verify you're using the correct email address</li>
+            <li>Check that your password is correct (passwords are case-sensitive)</li>
+            <li>Ensure you have an active internet connection</li>
+            <li>Try closing and reopening the app</li>
+            <li>Contact your administrator if the problem persists</li>
+        </ul>
+        
+        <h3>Forgot Password</h3>
+        <p><strong>Problem:</strong> You don't remember your password.</p>
+        <p><strong>Solution:</strong> Contact your system administrator to reset your password. They can generate a new password for you.</p>
+        
+        <h3>App Crashes on Login</h3>
+        <p><strong>Problem:</strong> The app crashes immediately after attempting to log in.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Close the app completely and reopen it</li>
+            <li>Restart your device</li>
+            <li>Check if there's an app update available</li>
+            <li>Uninstall and reinstall the app (your data will sync back)</li>
+            <li>Contact support if the issue continues</li>
+        </ul>
+        
+        <h2>GPS Not Working</h2>
+        
+        <h3>GPS Tracking Won't Start</h3>
+        <p><strong>Problem:</strong> The "Start GPS Tracking" button doesn't work or GPS tracking fails to start.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Check that location services are enabled for the app in your device settings</li>
+            <li>Ensure your device's GPS/Location is turned on</li>
+            <li>Grant location permissions when prompted</li>
+            <li>Try restarting the app</li>
+            <li>Check if other apps can access your location (to verify GPS hardware is working)</li>
+        </ul>
+        
+        <h3>Inaccurate Distance</h3>
+        <p><strong>Problem:</strong> GPS tracking shows incorrect distance.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Ensure you have a clear view of the sky for better GPS signal</li>
+            <li>Wait a few seconds after starting tracking for GPS to lock on</li>
+            <li>If in a building or tunnel, GPS may be inaccurate - use manual entry instead</li>
+            <li>Check that you started and stopped tracking at the correct locations</li>
+        </ul>
+        
+        <h3>GPS Drains Battery Quickly</h3>
+        <p><strong>Problem:</strong> Battery drains very fast during GPS tracking.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>This is normal - GPS tracking is battery-intensive</li>
+            <li>Keep your device plugged into a car charger during long trips</li>
+            <li>Close other apps that might be using location services</li>
+            <li>Reduce screen brightness to save battery</li>
+        </ul>
+        
+        <h2>Sync Problems</h2>
+        
+        <h3>Data Not Syncing</h3>
+        <p><strong>Problem:</strong> Your entries aren't appearing on the web portal or other devices.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Check your internet connection</li>
+            <li>Look for the sync status indicator - ensure it shows synced (green checkmark)</li>
+            <li>Try manual sync from Settings > Data Sync > Sync Now</li>
+            <li>Close and reopen the app to trigger automatic sync</li>
+            <li>Check if you're in airplane mode or have data disabled</li>
+            <li>Verify you're logged in (sync requires authentication)</li>
+        </ul>
+        
+        <h3>Sync Error Messages</h3>
+        <p><strong>Problem:</strong> You see error messages during sync.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Check your internet connection stability</li>
+            <li>Try syncing again after a few moments</li>
+            <li>Restart the app</li>
+            <li>If errors persist, contact support with the error message</li>
+        </ul>
+        
+        <h3>Duplicate Entries After Sync</h3>
+        <p><strong>Problem:</strong> You see duplicate entries after syncing.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>This is rare but can happen if sync is interrupted</li>
+            <li>You can delete duplicate entries manually</li>
+            <li>Contact support if duplicates continue to appear</li>
+        </ul>
+        
+        <h2>Receipt Upload Failures</h2>
+        
+        <h3>Receipt Photo Won't Save</h3>
+        <p><strong>Problem:</strong> Can't save a captured receipt photo.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Check available storage space on your device</li>
+            <li>Ensure camera permissions are granted</li>
+            <li>Try capturing the photo again</li>
+            <li>Restart the app if the problem persists</li>
+        </ul>
+        
+        <h3>Receipt Details Won't Save</h3>
+        <p><strong>Problem:</strong> Receipt information isn't saving.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Ensure all required fields are filled (amount, category, cost center)</li>
+            <li>Check your internet connection (though offline mode should work)</li>
+            <li>Try saving again</li>
+            <li>If the receipt was saved offline, ensure sync completes</li>
+        </ul>
+        
+        <h3>Can't View Receipt Photos</h3>
+        <p><strong>Problem:</strong> Receipt photos won't display.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Check your internet connection (photos may need to download)</li>
+            <li>Try closing and reopening the receipt detail view</li>
+            <li>Restart the app</li>
+            <li>If the photo was corrupted during capture, delete and recapture the receipt</li>
+        </ul>
+        
+        <h2>General Issues</h2>
+        
+        <h3>App is Slow or Freezing</h3>
+        <p><strong>Problem:</strong> The app runs slowly or freezes.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Close other apps to free up device memory</li>
+            <li>Restart your device</li>
+            <li>Check for app updates</li>
+            <li>Clear app cache (device settings > Apps > Oxford House Expense Tracker > Clear Cache)</li>
+            <li>If problems persist, reinstall the app</li>
+        </ul>
+        
+        <h3>Can't Find a Feature</h3>
+        <p><strong>Problem:</strong> You can't locate a specific feature or function.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Check the home screen tiles</li>
+            <li>Look in the navigation menu</li>
+            <li>Check the Settings screen</li>
+            <li>Refer to this guide's table of contents</li>
+            <li>Contact support if you believe a feature is missing</li>
+        </ul>
+        
+        <h3>Data Appears Incorrect</h3>
+        <p><strong>Problem:</strong> Your entries show incorrect information.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Edit the entry to correct the information</li>
+            <li>Check if the entry was created on a different device</li>
+            <li>Ensure sync has completed to see the latest data</li>
+            <li>Contact support if data corruption is suspected</li>
+        </ul>
+        
+        <div class="warning-box">
+            <h4>Still Having Issues?</h4>
+            <p>If you've tried the troubleshooting steps above and are still experiencing problems, contact your system administrator or technical support. Be prepared to provide:</p>
+            <ul>
+                <li>Description of the problem</li>
+                <li>Steps you've already tried</li>
+                <li>Device type and operating system version</li>
+                <li>App version (found in Settings > About)</li>
+                <li>Screenshots of any error messages</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Footer Note -->
+    <div style="margin-top: 40pt; padding-top: 20pt; border-top: 1px solid #ddd; font-size: 9pt; color: #666; text-align: center;">
+        <p>This document is part of the Oxford House Expense Tracker documentation suite.</p>
+        <p>For technical support, please contact your system administrator.</p>
+        <p>Document Version: 1.0 | Last Updated: January 2026</p>
+    </div>
+</body>
+</html>

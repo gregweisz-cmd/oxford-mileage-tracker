@@ -47,7 +47,7 @@ router.get('/api/cost-centers/:id', (req, res) => {
  * Create new cost center
  */
 router.post('/api/cost-centers', (req, res) => {
-  const { name, description, isActive, code } = req.body;
+  const { name, description, isActive, code, enableGoogleMaps } = req.body;
   const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
   const now = new Date().toISOString();
   
@@ -56,15 +56,15 @@ router.post('/api/cost-centers', (req, res) => {
   
   const db = dbService.getDb();
   db.run(
-    'INSERT INTO cost_centers (id, code, name, description, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, now],
+    'INSERT INTO cost_centers (id, code, name, description, isActive, enableGoogleMaps, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, costCenterCode, name, description || '', isActive !== false ? 1 : 0, enableGoogleMaps ? 1 : 0, now, now],
     function(err) {
       if (err) {
         debugError('❌ Error creating cost center:', err);
         res.status(500).json({ error: err.message });
         return;
       }
-      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, createdAt: now, updatedAt: now });
+      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, enableGoogleMaps: enableGoogleMaps ? true : false, createdAt: now, updatedAt: now });
     }
   );
 });
@@ -74,7 +74,7 @@ router.post('/api/cost-centers', (req, res) => {
  */
 router.put('/api/cost-centers/:id', (req, res) => {
   const { id } = req.params;
-  const { name, description, isActive, code } = req.body;
+  const { name, description, isActive, code, enableGoogleMaps } = req.body;
   const now = new Date().toISOString();
   
   // Generate code from name if not provided
@@ -82,8 +82,8 @@ router.put('/api/cost-centers/:id', (req, res) => {
   
   const db = dbService.getDb();
   db.run(
-    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, updatedAt = ? WHERE id = ?',
-    [costCenterCode, name, description || '', isActive !== false ? 1 : 0, now, id],
+    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, enableGoogleMaps = ?, updatedAt = ? WHERE id = ?',
+    [costCenterCode, name, description || '', isActive !== false ? 1 : 0, enableGoogleMaps ? 1 : 0, now, id],
     function(err) {
       if (err) {
         debugError('❌ Error updating cost center:', err);
@@ -94,7 +94,7 @@ router.put('/api/cost-centers/:id', (req, res) => {
         res.status(404).json({ error: 'Cost center not found' });
         return;
       }
-      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, updatedAt: now });
+      res.json({ id, code: costCenterCode, name, description, isActive: isActive !== false, enableGoogleMaps: enableGoogleMaps ? true : false, updatedAt: now });
     }
   );
 });

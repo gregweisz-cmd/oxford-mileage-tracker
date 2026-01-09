@@ -28,6 +28,9 @@ import {
   Tab,
   CircularProgress,
   Alert,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -96,6 +99,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [revisionComments, setRevisionComments] = useState('');
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [mapViewDialogOpen, setMapViewDialogOpen] = useState(false);
+  const [selectedReportForExport, setSelectedReportForExport] = useState<ExpenseReport | null>(null);
+  const [mapViewMode, setMapViewMode] = useState<'day' | 'costCenter' | 'none'>('none');
   
   // Filter states
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -137,6 +143,60 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     } catch (error) {
       debugError('Error loading cost centers:', error);
     }
+  };
+
+  // Check if any cost center in the report has Google Maps enabled
+  const hasMapsEnabled = (report: ExpenseReport): boolean => {
+    // Get cost centers from report.costCenters or fallback to reportData.costCenters
+    const reportCostCenters = report.costCenters || (report.reportData?.costCenters || []);
+    
+    if (!reportCostCenters || reportCostCenters.length === 0) {
+      debugLog('🗺️ hasMapsEnabled: No cost centers in report', { 
+        reportCostCenters, 
+        reportCostCentersTopLevel: report.costCenters,
+        reportDataCostCenters: report.reportData?.costCenters 
+      });
+      return false;
+    }
+    
+    debugLog('🗺️ hasMapsEnabled: Checking report cost centers:', reportCostCenters);
+    debugLog('🗺️ hasMapsEnabled: Available cost centers with maps:', costCenters.filter(cc => !!cc.enableGoogleMaps).map(cc => cc.name));
+    
+    const result = reportCostCenters.some((ccName: string) => {
+      // Case-insensitive matching by name
+      let costCenter = costCenters.find(cc => cc.name.toLowerCase() === ccName.toLowerCase());
+      
+      // Also try matching by code if name doesn't match
+      if (!costCenter) {
+        costCenter = costCenters.find(cc => cc.code && cc.code.toLowerCase() === ccName.toLowerCase());
+      }
+      
+      // Also check if the cost center name contains the report cost center (for aliases like "PS-UNFUNDED" -> "Program Services")
+      if (!costCenter) {
+        costCenter = costCenters.find(cc => {
+          const ccNameLower = ccName.toLowerCase();
+          const dbNameLower = cc.name.toLowerCase();
+          const dbCodeLower = (cc.code || '').toLowerCase();
+          // Check if report name is contained in DB name/code or vice versa
+          return dbNameLower.includes(ccNameLower) || ccNameLower.includes(dbNameLower) ||
+                 dbCodeLower.includes(ccNameLower) || ccNameLower.includes(dbCodeLower);
+        });
+      }
+      
+      // Check if maps are enabled (handle both boolean true and integer 1 from database)
+      const enabled = !!costCenter?.enableGoogleMaps;
+      if (enabled) {
+        debugLog(`🗺️ hasMapsEnabled: Found enabled cost center: ${ccName} -> ${costCenter?.name} (code: ${costCenter?.code})`);
+      } else if (costCenter) {
+        debugLog(`🗺️ hasMapsEnabled: Cost center found but maps not enabled: ${ccName} -> ${costCenter?.name} (code: ${costCenter?.code})`);
+      } else {
+        debugLog(`🗺️ hasMapsEnabled: Cost center not found in database: ${ccName}`);
+      }
+      return enabled;
+    });
+    
+    debugLog(`🗺️ hasMapsEnabled: Final result: ${result}`);
+    return result;
   };
 
   useEffect(() => {
@@ -516,11 +576,27 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     }
   };
 
-  const handleExportToExcel = async (report: ExpenseReport) => {
+  const handleExportToExcel = async (report: ExpenseReport, viewMode?: 'day' | 'costCenter' | 'none') => {
     try {
       debugVerbose('📊 Exporting report:', report.id, report.employeeName);
-      const response = await fetch(`${API_BASE_URL}/api/export/expense-report-pdf/${report.id}`, {
+      
+      // Check if maps are enabled for this report
+      const mapsEnabled = hasMapsEnabled(report);
+      
+      // Build URL with map view mode if maps are enabled and mode is specified
+      let exportUrl = `${API_BASE_URL}/api/export/expense-report-pdf/${report.id}`;
+      if (mapsEnabled && viewMode && viewMode !== 'none') {
+        exportUrl += `?mapViewMode=${viewMode}`;
+      }
+      
+      // Get auth token from localStorage
+      const authToken = localStorage.getItem('authToken');
+      
+      const response = await fetch(exportUrl, {
         method: 'GET',
+        headers: {
+          ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+        },
       });
 
       if (!response.ok) {
@@ -531,9 +607,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
+      link.href = blobUrl;
       
       // Generate filename matching Staff Portal format: LASTNAME, FIRSTNAME EXPENSES MMM-YY.pdf
       // Use employeeFullName (full name from database) if available, otherwise fall back to employeeName
@@ -571,7 +647,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       
       debugVerbose('✅ PDF export completed successfully');
       debugVerbose('✅ PDF export completed - Ready to print!');
@@ -1251,8 +1327,23 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                       <IconButton
                         size="small"
                         color="success"
-                        onClick={() => handleExportToExcel(report)}
-                        title="Export to Excel"
+                        onClick={() => {
+                          debugLog('🗺️ Export button clicked for report:', report.id);
+                          debugLog('🗺️ Report cost centers:', report.costCenters);
+                          debugLog('🗺️ Report reportData.costCenters:', report.reportData?.costCenters);
+                          const mapsEnabled = hasMapsEnabled(report);
+                          debugLog('🗺️ Maps enabled result:', mapsEnabled);
+                          if (mapsEnabled) {
+                            setSelectedReportForExport(report);
+                            setMapViewMode('none');
+                            setMapViewDialogOpen(true);
+                            debugLog('🗺️ Opening map view dialog');
+                          } else {
+                            debugLog('🗺️ Maps not enabled, exporting directly');
+                            handleExportToExcel(report);
+                          }
+                        }}
+                        title="Export to PDF"
                       >
                         <DownloadIcon />
                       </IconButton>
@@ -1578,6 +1669,41 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         shortcuts={shortcuts}
         title="Keyboard Shortcuts - Finance Portal"
       />
+
+      {/* Map View Mode Selection Dialog */}
+      <Dialog open={mapViewDialogOpen} onClose={() => setMapViewDialogOpen(false)}>
+        <DialogTitle>Select Map View Mode</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            This report contains cost centers with Google Maps enabled. Choose how you want to view the routes:
+          </Typography>
+          <FormControl component="fieldset">
+            <RadioGroup
+              value={mapViewMode}
+              onChange={(e) => setMapViewMode(e.target.value as 'day' | 'costCenter' | 'none')}
+            >
+              <FormControlLabel value="day" control={<Radio />} label="By Day (one map per day showing all routes)" />
+              <FormControlLabel value="costCenter" control={<Radio />} label="By Cost Center (one map per cost center showing all routes)" />
+              <FormControlLabel value="none" control={<Radio />} label="No Maps" />
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMapViewDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (selectedReportForExport) {
+                handleExportToExcel(selectedReportForExport, mapViewMode);
+                setMapViewDialogOpen(false);
+                setSelectedReportForExport(null);
+              }
+            }}
+          >
+            Export
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

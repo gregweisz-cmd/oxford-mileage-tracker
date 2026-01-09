@@ -1,0 +1,17 @@
+{
+  "name": "pdf-guide-generator",
+  "version": "1.0.0",
+  "description": "PDF generation scripts for Oxford House Expense Tracker How-To guides",
+  "main": "generate-pdfs.js",
+  "scripts": {
+    "generate": "node generate-pdfs.js",
+    "generate:single": "node generate-single-pdf.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -23,6 +23,7 @@ import {
   Tooltip,
   InputAdornment,
   Checkbox,
+  FormControlLabel,
   Tabs,
   Tab,
   LinearProgress
@@ -58,7 +59,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
     code: '',
     name: '',
     description: '',
-    isActive: true
+    isActive: true,
+    enableGoogleMaps: false
   });
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
@@ -98,7 +100,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
 
   const handleAddCostCenter = () => {
     setEditingCostCenter(null);
-    setFormData({ code: '', name: '', description: '', isActive: true });
+    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false });
     setShowDialog(true);
     setError(null);
   };
@@ -109,7 +111,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       code: costCenter.code,
       name: costCenter.name,
       description: costCenter.description || '',
-      isActive: costCenter.isActive
+      isActive: costCenter.isActive,
+      enableGoogleMaps: costCenter.enableGoogleMaps || false
     });
     setShowDialog(true);
     setError(null);
@@ -154,7 +157,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
 
   const handleCancel = () => {
     setShowDialog(false);
-    setFormData({ code: '', name: '', description: '', isActive: true });
+    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false });
     setError(null);
   };
 
@@ -429,6 +432,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
                   <TableCell>Description</TableCell>
                   <TableCell>Per Diem Rules</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Google Maps</TableCell>
                   <TableCell>Created</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
@@ -473,6 +477,19 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
                         color={costCenter.isActive ? 'success' : 'default'}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell>
+                      {costCenter.enableGoogleMaps ? (
+                        <Chip
+                          label="Enabled"
+                          color="info"
+                          size="small"
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Disabled
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">
@@ -769,6 +786,20 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
               rows={3}
               placeholder="Optional description for this cost center..."
             />
+            
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.enableGoogleMaps}
+                  onChange={(e) => setFormData({ ...formData, enableGoogleMaps: e.target.checked })}
+                />
+              }
+              label="Enable Google Maps in Reports"
+              sx={{ mt: 2 }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 4, display: 'block', mt: -1 }}>
+              When enabled, finance team can view route maps in PDF reports for this cost center
+            </Typography>
           </Box>
         </DialogContent>
         <DialogActions>

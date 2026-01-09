@@ -13,6 +13,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const XLSX = require('xlsx');
 const { jsPDF } = require('jspdf');
 const { PDFDocument } = require('pdf-lib');
+const googleMapsService = require('../services/googleMapsService');
 
 // Export data to Excel
 router.get('/api/export/excel', (req, res) => {
@@ -252,10 +253,63 @@ router.get('/api/export/expense-report/:id', (req, res) => {
 router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
   const db = dbService.getDb();
   const { id } = req.params;
+  const { mapViewMode } = req.query; // 'day' or 'costCenter'
   
-  debugLog(`📊 Exporting expense report to PDF: ${id}`);
+  debugLog(`📊 Exporting expense report to PDF: ${id}, mapViewMode: ${mapViewMode || 'none'}`);
   
-  db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, report) => {
+  // Helper function to check if user is finance team
+  const isFinanceUser = async () => {
+    try {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '') || req.query.token;
+      
+      debugLog(`🔐 Checking finance user - token present: ${!!token}, header: ${!!authHeader}`);
+      
+      if (!token) {
+        debugLog('🔐 No token found in request');
+        return false;
+      }
+      
+      const employeeId = token.split('_')[1];
+      if (!employeeId) {
+        debugLog('🔐 Could not extract employee ID from token');
+        return false;
+      }
+      
+      debugLog(`🔐 Checking employee ID: ${employeeId}`);
+      
+      return new Promise((resolve) => {
+        db.get('SELECT role FROM employees WHERE id = ?', [employeeId], (err, employee) => {
+          if (err || !employee) {
+            debugLog(`🔐 Employee not found or error: ${err?.message || 'not found'}`);
+            resolve(false);
+            return;
+          }
+          const isFinance = employee.role === 'finance' || employee.role === 'admin';
+          debugLog(`🔐 Employee role: ${employee.role}, isFinance: ${isFinance}`);
+          resolve(isFinance);
+        });
+      });
+    } catch (error) {
+      debugError('Error checking finance user:', error);
+      return false;
+    }
+  };
+  
+  // Helper function to check if cost center has Google Maps enabled
+  const isCostCenterMapsEnabled = (costCenterName) => {
+    return new Promise((resolve) => {
+      db.get('SELECT enableGoogleMaps FROM cost_centers WHERE name = ?', [costCenterName], (err, row) => {
+        if (err || !row) {
+          resolve(false);
+          return;
+        }
+        resolve(row.enableGoogleMaps === 1);
+      });
+    });
+  };
+  
+  db.get('SELECT * FROM expense_reports WHERE id = ?', [id], async (err, report) => {
     if (err) {
       debugError('❌ Database error:', err);
       res.status(500).json({ error: err.message });
@@ -1845,7 +1899,9 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         // Query that handles both YYYY-MM-DD and MM/DD/YY date formats
         // STRICT cost center matching - only match exact cost center (no empty string fallback)
         const mileageQuery = `
-          SELECT date, startLocation, endLocation, miles, odometerReading, costCenter
+          SELECT date, startLocation, endLocation, miles, odometerReading, costCenter,
+                 startLocationAddress, endLocationAddress, startLocationName, endLocationName,
+                 startLocationLat, startLocationLng, endLocationLat, endLocationLng, createdAt
           FROM mileage_entries 
           WHERE employeeId = ? 
           AND (
@@ -1853,7 +1909,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
           )
           AND costCenter = ?
-          ORDER BY date
+          ORDER BY date, createdAt
         `;
         
         const timeTrackingQuery = `
@@ -2252,8 +2308,131 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         yPos += 18;
             safeText(`Total Amount: $${totalAmount.toFixed(2)}`, margin, yPos);
             
-            // This cost center sheet is complete, call the callback to process the next one
-            onComplete();
+            // Generate Google Maps if enabled and user is finance
+            (async () => {
+              try {
+                const userIsFinance = await isFinanceUser();
+                const mapsEnabled = await isCostCenterMapsEnabled(costCenter);
+                const apiConfigured = googleMapsService.isConfigured();
+                
+                debugLog(`🗺️ Map generation check for ${costCenter}:`);
+                debugLog(`   - User is finance: ${userIsFinance}`);
+                debugLog(`   - Maps enabled for cost center: ${mapsEnabled}`);
+                debugLog(`   - API configured: ${apiConfigured}`);
+                debugLog(`   - Map view mode: ${mapViewMode || 'none'}`);
+                debugLog(`   - Mileage entries count: ${mileageEntries?.length || 0}`);
+                
+                if (!userIsFinance) {
+                  debugLog(`⚠️ Maps skipped: User is not finance team`);
+                } else if (!mapsEnabled) {
+                  debugLog(`⚠️ Maps skipped: Cost center ${costCenter} does not have maps enabled`);
+                } else if (!apiConfigured) {
+                  debugLog(`⚠️ Maps skipped: Google Maps API key not configured`);
+                } else if (!mapViewMode) {
+                  debugLog(`⚠️ Maps skipped: No map view mode specified`);
+                }
+                
+                if (userIsFinance && mapsEnabled && apiConfigured && mapViewMode) {
+                  debugLog(`🗺️ Generating Google Maps for cost center: ${costCenter}, mode: ${mapViewMode}`);
+                  
+                  let addresses = [];
+                  if (mapViewMode === 'costCenter') {
+                    // Collect all addresses for this cost center across all days
+                    addresses = googleMapsService.collectAddressesForCostCenter(mileageEntries);
+                  } else if (mapViewMode === 'day') {
+                    // Group by day and generate one map per day
+                    const entriesByDate = {};
+                    mileageEntries.forEach(entry => {
+                      const dateKey = entry.date.split('T')[0] || entry.date.split(' ')[0];
+                      if (!entriesByDate[dateKey]) {
+                        entriesByDate[dateKey] = [];
+                      }
+                      entriesByDate[dateKey].push(entry);
+                    });
+                    
+                    debugLog(`🗺️ Grouped ${mileageEntries.length} entries into ${Object.keys(entriesByDate).length} days`);
+                    
+                    // Generate maps for each day
+                    const sortedDates = Object.keys(entriesByDate).sort();
+                    for (const date of sortedDates) {
+                      const dayAddresses = googleMapsService.collectAddressesForDay(entriesByDate[date]);
+                      debugLog(`🗺️ Day ${date}: Found ${dayAddresses.length} addresses`);
+                      if (dayAddresses.length > 0) {
+                        try {
+                          const mapImage = await googleMapsService.downloadStaticMapImage(dayAddresses, { size: '600x400' });
+                          const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
+                          
+                          // Add new page for map
+                          doc.addPage();
+                          yPos = margin + 20;
+                          
+                          // Add title
+                          doc.setFontSize(14);
+                          doc.setFont('helvetica', 'bold');
+                          safeText(`Daily Routes - ${date}`, pageWidth / 2, yPos, { align: 'center' });
+                          yPos += 30;
+                          
+                          // Add map image (600x400, scaled to fit page width)
+                          const imageWidth = pageWidth - (margin * 2);
+                          const imageHeight = (imageWidth * 400) / 600; // Maintain aspect ratio
+                          doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
+                          yPos += imageHeight + 20;
+                        } catch (mapError) {
+                          debugError(`❌ Error generating map for date ${date}:`, mapError);
+                          debugError(`❌ Map error details:`, mapError.message, mapError.stack);
+                        }
+                      }
+                    }
+                    
+                    // Skip the cost center map if we did daily maps
+                    onComplete();
+                    return;
+                  }
+                  
+                  // For cost center mode, collect all addresses
+                  debugLog(`🗺️ Cost center mode: Collected ${addresses.length} addresses`);
+                  if (addresses.length > 0) {
+                    try {
+                      debugLog(`🗺️ Downloading map image for ${addresses.length} addresses...`);
+                      const mapImage = await googleMapsService.downloadStaticMapImage(addresses, { size: '600x400' });
+                      debugLog(`🗺️ Map image downloaded: ${mapImage.length} bytes`);
+                      const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
+                      debugLog(`🗺️ Adding map image to PDF...`);
+                      
+                      // Add new page for map
+                      doc.addPage();
+                      yPos = margin + 20;
+                      
+                      // Add title
+                      doc.setFontSize(14);
+                      doc.setFont('helvetica', 'bold');
+                      safeText(`Cost Center Routes - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
+                      yPos += 30;
+                      
+                      // Add map image (600x400, scaled to fit page width)
+                      const imageWidth = pageWidth - (margin * 2);
+                      const imageHeight = (imageWidth * 400) / 600; // Maintain aspect ratio
+                      doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
+                      yPos += imageHeight + 20;
+                      debugLog(`✅ Map added to PDF for cost center ${costCenter}`);
+                    } catch (mapError) {
+                      debugError(`❌ Error generating map for cost center ${costCenter}:`, mapError);
+                      debugError(`❌ Map error details:`, mapError.message, mapError.stack);
+                    }
+                  } else {
+                    debugLog(`⚠️ No addresses found for cost center ${costCenter}`);
+                  }
+                } else {
+                  debugLog(`⚠️ Map generation conditions not met for ${costCenter}`);
+                }
+              } catch (error) {
+                debugError('❌ Error in map generation:', error);
+                debugError('❌ Error details:', error.message, error.stack);
+              }
+              
+              // This cost center sheet is complete, call the callback to process the next one
+              onComplete();
+            })();
             }); // Close timeTrackingQuery callback
           }); // Close dailyDescriptionsQuery callback
         }); // Close mileageEntries callback

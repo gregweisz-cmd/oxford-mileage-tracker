@@ -302,6 +302,7 @@ function ensureTablesExist() {
         name TEXT NOT NULL,
         description TEXT,
         isActive INTEGER DEFAULT 1,
+        enableGoogleMaps INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`, (err) => {
@@ -309,6 +310,24 @@ function ensureTablesExist() {
           debugError('❌ Error creating cost_centers table:', err);
         } else {
           debugLog('✅ Cost centers table created/verified');
+        }
+      });
+
+      // Add enableGoogleMaps column if it doesn't exist (for existing databases)
+      db.all(`PRAGMA table_info(cost_centers)`, [], (pragmaErr, columns) => {
+        if (!pragmaErr && columns) {
+          const columnNames = columns.map((col) => col.name);
+          
+          // Check if enableGoogleMaps column exists
+          if (!columnNames.includes('enableGoogleMaps')) {
+            db.run(`ALTER TABLE cost_centers ADD COLUMN enableGoogleMaps INTEGER DEFAULT 0`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add enableGoogleMaps column:', alterErr.message);
+              } else {
+                debugLog('✅ Added enableGoogleMaps column to existing cost_centers table');
+              }
+            });
+          }
         }
       });
 
