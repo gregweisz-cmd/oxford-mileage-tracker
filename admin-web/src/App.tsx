@@ -23,8 +23,6 @@ import { debugLog, debugError, debugVerbose } from './config/debug';
 
 // Helper function to get available portals for a user (used before user state is set)
 const getAvailablePortalsForUser = (role: string, position: string): Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> => {
-  const availablePortals: Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> = [];
-  
   if (role === 'admin') {
     return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
   } else if (role === 'finance') {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { IconButton, Badge, Tooltip } from '@mui/material';
 import { Notifications as NotificationsIcon } from '@mui/icons-material';
 import { NotificationsDialog } from './NotificationsDialog';
@@ -13,7 +13,18 @@ interface NotificationBellProps {
 export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, role, onReportClick }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!employeeId) return;
+    
+    try {
+      const data = await apiGet<{ count: number }>(`/api/notifications/${employeeId}/count`);
+      setUnreadCount(data.count || 0);
+    } catch (error) {
+      // Silently fail - don't show errors for polling
+      // Rate limiting and network errors will resolve when connection is restored
+    }
+  }, [employeeId]);
 
   useEffect(() => {
     if (employeeId) {
@@ -26,19 +37,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
       
       return () => clearInterval(interval);
     }
-  }, [employeeId]);
-
-  const fetchUnreadCount = async () => {
-    if (!employeeId) return;
-    
-    try {
-      const data = await apiGet<{ count: number }>(`/api/notifications/${employeeId}/count`);
-      setUnreadCount(data.count || 0);
-    } catch (error) {
-      // Silently fail - don't show errors for polling
-      // Rate limiting and network errors will resolve when connection is restored
-    }
-  };
+  }, [employeeId, fetchUnreadCount]);
 
   const handleOpen = () => {
     setOpen(true);

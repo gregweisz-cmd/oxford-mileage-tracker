@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import { debugLog, debugError } from '../config/debug';
 
 interface AuthCallbackProps {

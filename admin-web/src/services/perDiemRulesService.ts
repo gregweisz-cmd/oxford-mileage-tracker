@@ -1,4 +1,4 @@
-import { debugLog, debugError, debugVerbose } from '../config/debug';
+import { debugError, debugVerbose } from '../config/debug';
 import { apiGet, apiPost, apiPut, apiDelete } from './rateLimitedApi';
 
 export interface PerDiemRule {

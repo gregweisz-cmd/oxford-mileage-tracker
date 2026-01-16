@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { realtimeSyncService, RealtimeUpdate } from '../services/realtimeSyncService';
-import { debugLog, debugError, debugVerbose } from '../config/debug';
+import { debugError, debugVerbose } from '../config/debug';
 
 export interface RealtimeSyncStatus {
   connected: boolean;
@@ -50,7 +50,7 @@ export function useRealtimeSync(options: UseRealtimeSyncOptions = {}) {
     };
 
     initializeSync();
-  }, []);
+  }, [enabled]);
 
   // Handle enabled state changes
   useEffect(() => {

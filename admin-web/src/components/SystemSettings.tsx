@@ -8,7 +8,6 @@ import {
   Switch,
   FormControlLabel,
   Alert,
-  Divider,
   Stack,
   Select,
   MenuItem,
@@ -35,7 +34,7 @@ import {
 } from '@mui/icons-material';
 import { debugError } from '../config/debug';
 
-interface SystemSettings {
+interface SystemSettingsData {
   // Email/SMTP Configuration
   email: {
     smtpHost: string;
@@ -69,7 +68,7 @@ interface SystemSettings {
   };
 }
 
-const DEFAULT_SETTINGS: SystemSettings = {
+const DEFAULT_SETTINGS: SystemSettingsData = {
   email: {
     smtpHost: 'smtp.gmail.com',
     smtpPort: 587,
@@ -113,7 +112,7 @@ const TIMEZONES = [
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 export const SystemSettings: React.FC = () => {
-  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<SystemSettingsData>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

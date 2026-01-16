@@ -48,7 +48,7 @@ import {
   YAxis,
 } from 'recharts';
 import StaffPortal from '../StaffPortal';
-import { debugError, debugLog } from '../config/debug';
+import { debugError } from '../config/debug';
 
 interface MonthlyReport {
   id: string;
@@ -122,7 +122,6 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDetailedView, setShowDetailedView] = useState(false);
-  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [viewingEmployeeReport, setViewingEmployeeReport] = useState<{id: string; name: string; email?: string} | null>(null);
   const [viewingReportMonth, setViewingReportMonth] = useState<number | null>(null);
   const [viewingReportYear, setViewingReportYear] = useState<number | null>(null);
@@ -130,13 +129,12 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
   const [kpis, setKpis] = useState<SupervisorKpiData | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
-  const [hoursAlerts, setHoursAlerts] = useState<any[]>([]);
+  const [hoursAlerts] = useState<any[]>([]);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
   const handleCloseDetailedView = useCallback(() => {
     setShowDetailedView(false);
-    setSelectedReportId(null);
     setViewingEmployeeReport(null);
     setViewingReportMonth(null);
     setViewingReportYear(null);
@@ -166,7 +164,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
     } finally {
       setKpiLoading(false);
     }
-  }, [API_BASE_URL, currentEmployee]);
+  }, [currentEmployee]);
 
   const loadReports = useCallback(async () => {
     if (!currentEmployee) return;
@@ -209,7 +207,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
     } finally {
       setLoading(false);
     }
-  }, [API_BASE_URL, currentEmployee]);
+  }, [currentEmployee]);
 
   useEffect(() => {
     loadReports();

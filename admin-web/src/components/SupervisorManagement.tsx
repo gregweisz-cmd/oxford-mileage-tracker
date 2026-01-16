@@ -4,13 +4,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
   Button,
   Dialog,
   DialogTitle,
@@ -18,9 +11,6 @@ import {
   DialogActions,
   TextField,
   FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Chip,
   IconButton,
   Alert,
@@ -378,7 +368,6 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   };
 
   const unassignedStaff = getUnassignedStaff();
-  const potentialSupervisors = getPotentialSupervisors();
   
   // Filter supervisors by type based on active tab
   const filteredSupervisors = supervisors.filter(s => 

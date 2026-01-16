@@ -12,7 +12,7 @@
 
 // Import types from main types file
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
-import { debugLog, debugError, debugWarn, debugVerbose } from '../config/debug';
+import { debugError, debugWarn, debugVerbose } from '../config/debug';
 
 // Types are now imported from ../types
 

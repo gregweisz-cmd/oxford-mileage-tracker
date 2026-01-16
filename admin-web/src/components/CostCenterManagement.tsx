@@ -40,7 +40,6 @@ import {
   Clear
 } from '@mui/icons-material';
 import { CostCenterApiService, CostCenter } from '../services/costCenterApiService';
-import { PerDiemRulesManagement } from './PerDiemRulesManagement';
 
 import { PerDiemRulesService } from '../services/perDiemRulesService';
 import { debugError } from '../config/debug';

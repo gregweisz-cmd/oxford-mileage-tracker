@@ -40,7 +40,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs, { Dayjs } from 'dayjs';
 // import { DataSyncService } from '../services/dataSyncService'; // Currently unused
-import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
+import { Employee } from '../types';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import AddressSelector from './AddressSelector';
 import { debugLog, debugError } from '../config/debug';

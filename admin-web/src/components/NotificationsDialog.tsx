@@ -16,7 +16,6 @@ import {
   IconButton,
   CircularProgress,
   Divider,
-  Alert,
   MenuItem,
   Menu,
   Switch,
@@ -27,11 +26,9 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
-  Error as ErrorIcon,
   MoreVert as MoreVertIcon,
   Delete as DeleteIcon,
   MarkEmailRead as MarkEmailReadIcon,
-  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useToast } from '../contexts/ToastContext';
 import { debugError } from '../config/debug';
@@ -128,6 +125,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
       fetchNotifications();
       fetchSundayReminderPreference();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employeeId]);
 
   const fetchNotifications = async () => {
@@ -307,20 +305,6 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
         return <CheckCircleIcon color="success" />;
       default:
         return <InfoIcon />;
-    }
-  };
-
-  const getNotificationColor = (type: string) => {
-    switch (type) {
-      case 'report_submitted':
-      case 'approval_needed':
-        return 'info';
-      case 'revision_requested':
-        return 'warning';
-      case 'sunday_reminder':
-        return 'success';
-      default:
-        return 'default';
     }
   };
 

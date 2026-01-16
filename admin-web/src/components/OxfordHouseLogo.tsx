@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box } from '@mui/material';
-import { debugLog, debugError } from '../config/debug';
+import { debugError } from '../config/debug';
 
 interface OxfordHouseLogoProps {
   size?: number;
@@ -82,10 +82,6 @@ const OxfordHouseLogo: React.FC<OxfordHouseLogoProps> = ({
                 </g>
               </svg>
             `;
-          }}
-          onLoad={(e) => {
-            const target = e.target as HTMLImageElement;
-            // Logo loaded successfully - no logging needed
           }}
         />
       </Box>

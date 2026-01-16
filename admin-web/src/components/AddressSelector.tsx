@@ -127,6 +127,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
     } catch (error) {
       debugError('Error loading employee data:', error);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
   // Load employee data

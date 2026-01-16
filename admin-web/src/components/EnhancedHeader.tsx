@@ -12,7 +12,6 @@ import {
   Menu,
   MenuItem,
   Divider,
-  Badge,
   Select,
   FormControl,
   // Fade // Currently unused
@@ -20,13 +19,11 @@ import {
 import {
   // Print as PrintIcon, // Currently unused
   Download as DownloadIcon,
-  Upload as UploadIcon,
   List as ListIcon,
   Add as AddIcon,
   Save as SaveIcon,
   Send as SendIcon,
   Settings as SettingsIcon,
-  Notifications as NotificationsIcon,
   AccountCircle as AccountIcon,
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,

@@ -32,9 +32,7 @@ import {
   OutlinedInput,
   ListItemText,
   InputAdornment,
-  Menu,
   Popover,
-  ClickAwayListener,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -53,7 +51,6 @@ import {
   ArrowUpward,
   ArrowDownward,
   FilterList,
-  FilterListOff
 } from '@mui/icons-material';
 import { BulkImportService, BulkImportResult, EmployeeImportData } from '../services/bulkImportService';
 import { EmployeeApiService } from '../services/employeeApiService';

@@ -47,7 +47,6 @@ import {
 } from '@mui/icons-material';
 
 // PDF generation imports
-import TabPdfExportService from './services/tabPdfExportService';
 
 // Tips system imports
 import { TipCard } from './components/TipCard';
@@ -82,7 +81,7 @@ import { DashboardNotifications } from './components/DashboardNotifications';
 import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistoryEntry } from './components/EmployeeApprovalStatusCard';
 
 // Address formatting utility
-import { formatAddressForDisplay, formatLocationForDescription } from './utils/addressFormatter';
+import { formatLocationForDescription } from './utils/addressFormatter';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
@@ -288,7 +287,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         });
       }
     }
-  }, [selectedMileageItems, selectedReceiptItems, selectedTimeTrackingItems, supervisorMode]);
+  }, [selectedMileageItems, selectedReceiptItems, selectedTimeTrackingItems, supervisorMode, onSelectedItemsChange]);
 
   // Helper function to normalize dates to YYYY-MM-DD format
   const normalizeDate = (dateValue: any): string => {
@@ -393,7 +392,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [approvalHistory, setApprovalHistory] = useState<ApprovalHistoryEntry[]>([]);
   const [approvalHistoryLoading, setApprovalHistoryLoading] = useState(false);
   const [reportSubmittedAt, setReportSubmittedAt] = useState<string | null>(null);
-  const [reportApprovedAt, setReportApprovedAt] = useState<string | null>(null);
+  const [, setReportApprovedAt] = useState<string | null>(null);
   const [currentApprovalStage, setCurrentApprovalStage] = useState<string | null>(null);
   const [currentApproverName, setCurrentApproverName] = useState<string | null>(null);
   const [approvalCommentDialogOpen, setApprovalCommentDialogOpen] = useState(false);
@@ -1151,7 +1150,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             .reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
           
           // Calculate total Per Diem from daily entries (manual entries + receipt-based)
-          const totalPerDiemFromEntries = dailyEntries.reduce((sum: number, entry: any) => sum + (entry.perDiem || 0), 0);
           
           // Create employee expense data with real data
           const expenseData: EmployeeExpenseData = {
@@ -1406,6 +1404,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     };
     
     loadEmployeeData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId, currentMonth, currentYear, refreshTrigger]);
 
   // Initialize tips when employee data is loaded
@@ -2186,6 +2185,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // PDF Generation Functions
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function generateApprovalCoverSheet(pdf: any, data: EmployeeExpenseData, isFirstPage: boolean) {
     // Generating Approval Cover Sheet
     
@@ -2301,6 +2301,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Approval Cover Sheet generated
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function generateSummarySheet(pdf: any, data: EmployeeExpenseData) {
     // Generating Summary Sheet
     debugLog('🔧 generateSummarySheet called with updated alignment logic');
@@ -2614,6 +2615,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Summary Sheet generated
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function generateCostCenterSheet(pdf: any, data: EmployeeExpenseData, costCenter: string, index: number) {
     // Generating Cost Center Sheet - Compact layout to fit all days on one page
     
@@ -2852,6 +2854,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Cost Center Sheet generated
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function generateTimesheet(pdf: any, data: EmployeeExpenseData) {
     // Generating Timesheet
     
@@ -3163,6 +3166,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Timesheet generated
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function generateReceiptManagement(pdf: any, receipts: any[]) {
     // Generating Receipt Management
     
@@ -3274,6 +3278,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // Load expense report from backend
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleLoadReport = async () => {
     if (!employeeId || !reportMonth || !reportYear) {
       alert('Missing employee ID, month, or year');
