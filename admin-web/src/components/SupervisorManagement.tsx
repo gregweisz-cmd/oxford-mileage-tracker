@@ -158,14 +158,6 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     );
   };
 
-  const getPotentialSupervisors = () => {
-    return employees.filter(emp =>
-      emp.position.toLowerCase().includes('supervisor') ||
-      emp.position.toLowerCase().includes('manager') ||
-      emp.position.toLowerCase().includes('director')
-    );
-  };
-
   const handleOpenAssignDialog = (supervisor: Employee) => {
     setSelectedSupervisor(supervisor);
     setSelectedStaff([]);
