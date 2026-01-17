@@ -150,11 +150,9 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   }, [employees, organizeSupervisors]);
 
   const getUnassignedStaff = () => {
-    return employees.filter(emp => 
-      !emp.supervisorId && 
-      !emp.position.toLowerCase().includes('supervisor') &&
-      !emp.position.toLowerCase().includes('manager') &&
-      !emp.position.toLowerCase().includes('director')
+    return employees.filter(emp =>
+      !emp.supervisorId &&
+      emp.id !== selectedSupervisor?.id
     );
   };
 
