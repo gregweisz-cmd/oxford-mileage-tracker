@@ -181,7 +181,7 @@ export const SystemSettings: React.FC = () => {
     }
   };
 
-  const updateSettings = (section: keyof SystemSettings, updates: any) => {
+  const updateSettings = (section: keyof SystemSettingsData, updates: any) => {
     setSettings(prev => ({
       ...prev,
       [section]: { ...prev[section], ...updates }
