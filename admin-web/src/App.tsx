@@ -54,10 +54,10 @@ const createAppTheme = (mode: 'light' | 'dark') => {
       palette: {
         mode: 'dark',
         primary: {
-          main: '#64b5f6', // Lighter blue for dark theme
+          main: '#1C75BC', // Brand blue
         },
         secondary: {
-          main: '#f48fb1', // Lighter pink for dark theme
+          main: '#2BB673', // Brand green
         },
         background: {
           default: '#1e1e1e', // Dark grey background
@@ -68,6 +68,9 @@ const createAppTheme = (mode: 'light' | 'dark') => {
           secondary: '#b0b0b0', // Medium grey text
         },
         divider: '#404040', // Dark grey divider
+      },
+      typography: {
+        fontFamily: '"Myriad Pro", "Segoe UI", Arial, sans-serif',
       },
       components: {
         MuiCard: {
@@ -105,11 +108,14 @@ const createAppTheme = (mode: 'light' | 'dark') => {
       palette: {
         mode: 'light',
         primary: {
-          main: '#1976d2',
+          main: '#1C75BC',
         },
         secondary: {
-          main: '#dc004e',
+          main: '#2BB673',
         },
+      },
+      typography: {
+        fontFamily: '"Myriad Pro", "Segoe UI", Arial, sans-serif',
       },
     });
   }

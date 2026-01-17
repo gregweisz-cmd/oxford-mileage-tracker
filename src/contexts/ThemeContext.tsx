@@ -25,8 +25,8 @@ interface ThemeContextType {
 const lightColors = {
   background: '#f5f5f5',
   surface: '#ffffff',
-  primary: '#2196F3',
-  secondary: '#4CAF50',
+  primary: '#1C75BC',
+  secondary: '#2BB673',
   text: '#333333',
   textSecondary: '#666666',
   border: '#e0e0e0',
@@ -36,8 +36,8 @@ const lightColors = {
 const darkColors = {
   background: '#0a0a0a',
   surface: '#1a1a1a',
-  primary: '#1565C0', // Darker blue
-  secondary: '#2E7D32', // Darker green
+  primary: '#155A99', // Darker brand blue
+  secondary: '#1F8F5A', // Darker brand green
   text: '#e0e0e0', // Light gray instead of pure white
   textSecondary: '#a0a0a0', // Darker gray
   border: '#2a2a2a', // Darker border

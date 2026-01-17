@@ -32,7 +32,7 @@ export default function UnifiedHeader({
   onBackPress,
   leftButton,
   rightButton,
-  backgroundColor = '#2196F3',
+  backgroundColor = '#1C75BC',
 }: UnifiedHeaderProps) {
   return (
     <>
@@ -66,7 +66,7 @@ export default function UnifiedHeader({
 
         <View style={styles.centerSection}>
           <Text style={styles.headerTitle}>{title}</Text>
-          <Text style={styles.headerSubtitle}>Oxford House Staff Tracker</Text>
+          <Text style={styles.headerSubtitle}>Oxford House Expense Tracker</Text>
         </View>
 
         <View style={styles.rightSection}>
