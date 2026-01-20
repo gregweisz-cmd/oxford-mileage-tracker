@@ -5,11 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
+  Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 interface UnifiedHeaderProps {
   title: string;
+  subtitle?: string;
   showBackButton?: boolean;
   onBackPress?: () => void;
   leftButton?: {
@@ -28,70 +30,61 @@ interface UnifiedHeaderProps {
 
 export default function UnifiedHeader({
   title,
+  subtitle = 'Oxford House Staff Tracker',
   showBackButton = false,
   onBackPress,
   leftButton,
   rightButton,
-  backgroundColor = '#1C75BC',
+  backgroundColor = '#E6E6E6',
 }: UnifiedHeaderProps) {
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor={backgroundColor} />
+      <StatusBar barStyle="dark-content" backgroundColor={backgroundColor} />
       <View style={[styles.header, { backgroundColor }]}>
-        <View style={styles.leftSection}>
-          {showBackButton ? (
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBackPress}
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#fff" />
-            </TouchableOpacity>
-          ) : leftButton ? (
-            <TouchableOpacity
-              style={styles.leftButton}
-              onPress={leftButton.onPress}
-            >
-              <MaterialIcons 
-                name={leftButton.icon as any} 
-                size={24} 
-                color={leftButton.color || '#fff'} 
-              />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.logoContainer}>
-              <MaterialIcons name="directions-car" size={24} color="#fff" />
-            </View>
-          )}
-        </View>
+        <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="contain" />
+        <View style={styles.row}>
+          <View style={styles.sideSection}>
+            {showBackButton ? (
+              <TouchableOpacity style={styles.iconButton} onPress={onBackPress}>
+                <MaterialIcons name="arrow-back" size={22} color="#1C75BC" />
+              </TouchableOpacity>
+            ) : leftButton ? (
+              <TouchableOpacity style={styles.iconButton} onPress={leftButton.onPress}>
+                <MaterialIcons
+                  name={leftButton.icon as any}
+                  size={22}
+                  color={leftButton.color || '#1C75BC'}
+                />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.iconPlaceholder} />
+            )}
+          </View>
 
-        <View style={styles.centerSection}>
-          <Text style={styles.headerTitle}>{title}</Text>
-          <Text style={styles.headerSubtitle}>Oxford House Expense Tracker</Text>
-        </View>
+          <View style={styles.centerSection}>
+            <Text style={styles.headerTitle}>{title}</Text>
+            <Text style={styles.headerSubtitle}>{subtitle}</Text>
+          </View>
 
-        <View style={styles.rightSection}>
-          {rightButton ? (
-            <TouchableOpacity
-              style={[
-                rightButton.text ? styles.rightButtonWithText : styles.rightButton,
-                rightButton.icon === 'stop' && styles.stopButton,
-              ]}
-              onPress={rightButton.onPress}
-            >
-              <MaterialIcons 
-                name={rightButton.icon as any} 
-                size={rightButton.text ? 20 : 28} 
-                color="#fff"
-              />
-              {rightButton.text && (
-                <Text style={styles.rightButtonText}>
-                  {rightButton.text}
-                </Text>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.placeholder} />
-          )}
+          <View style={styles.sideSection}>
+            {rightButton ? (
+              <TouchableOpacity
+                style={rightButton.text ? styles.iconButtonWithText : styles.iconButton}
+                onPress={rightButton.onPress}
+              >
+                <MaterialIcons
+                  name={rightButton.icon as any}
+                  size={22}
+                  color={rightButton.color || '#1C75BC'}
+                />
+                {rightButton.text ? (
+                  <Text style={styles.rightButtonText}>{rightButton.text}</Text>
+                ) : null}
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.iconPlaceholder} />
+            )}
+          </View>
         </View>
       </View>
     </>
@@ -100,88 +93,69 @@ export default function UnifiedHeader({
 
 const styles = StyleSheet.create({
   header: {
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D6D6D6',
+  },
+  logo: {
+    height: 46,
+    width: 160,
+    alignSelf: 'center',
+    marginBottom: 6,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  leftSection: {
-    width: 40,
-    alignItems: 'flex-start',
+  sideSection: {
+    width: 52,
+    alignItems: 'center',
   },
   centerSection: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
-  rightSection: {
-    width: 40,
-    alignItems: 'flex-end',
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#DDE3EA',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  iconButtonWithText: {
+    width: 64,
+    height: 56,
+    borderRadius: 10,
+    backgroundColor: '#DDE3EA',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  leftButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  logoContainer: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  iconPlaceholder: {
+    width: 48,
+    height: 48,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1C75BC',
     textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    color: '#6CA6D9',
     textAlign: 'center',
     marginTop: 2,
   },
-  rightButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  stopButton: {
-    backgroundColor: '#f44336',
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rightButtonWithText: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
   rightButtonText: {
-    color: '#fff',
-    fontSize: 14,
+    color: '#1C75BC',
+    fontSize: 11,
     fontWeight: '600',
-    marginLeft: 6,
-  },
-  placeholder: {
-    width: 40,
+    marginTop: 2,
   },
 });
 

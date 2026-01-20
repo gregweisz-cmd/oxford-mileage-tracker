@@ -1,3 +1,4 @@
+import { AppState, AppStateStatus } from 'react-native';
 import { DatabaseService } from './database';
 import { ApiSyncService } from './apiSyncService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
@@ -6,7 +7,7 @@ import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 export interface SyncQueueItem {
   id: string;
   operation: 'create' | 'update' | 'delete';
-  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking';
+  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription';
   data: any;
   timestamp: Date;
   retryCount: number;
@@ -15,10 +16,12 @@ export interface SyncQueueItem {
 export class SyncIntegrationService {
   private static syncQueue: SyncQueueItem[] = [];
   private static isProcessingQueue = false;
-  private static autoSyncEnabled = true; // Enable auto-sync for real-time backend updates
-  private static syncInterval: ReturnType<typeof setInterval> | null = null;
+  private static autoSyncEnabled = true; // Event-driven sync on change
+  private static syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private static appStateListener: { remove: () => void } | null = null;
+  private static lastAppState: AppStateStatus = 'active';
   private static readonly MAX_RETRY_ATTEMPTS = 3;
-  private static readonly SYNC_INTERVAL_MS = 5000; // 5 seconds for faster sync
+  private static readonly SYNC_DEBOUNCE_MS = 15000; // Debounce local changes before syncing
 
   /**
    * Initialize the sync integration service
@@ -37,11 +40,14 @@ export class SyncIntegrationService {
       // Initialize API sync service
       await ApiSyncService.initialize();
       
-      // Start auto-sync immediately
+      // Start event-driven auto-sync
       if (this.autoSyncEnabled) {
         this.startAutoSync();
-        debugLog('✅ SyncIntegration: Auto-sync enabled and started (syncs every 5 seconds)');
+        debugLog('✅ SyncIntegration: Event-driven auto-sync enabled');
       }
+      
+      // Listen for app foreground to sync remote changes
+      this.startAppStateListener();
       
       debugLog('✅ SyncIntegration: Sync integration service initialized');
     } catch (error) {
@@ -68,27 +74,19 @@ export class SyncIntegrationService {
    * Start auto-sync timer
    */
   private static startAutoSync(): void {
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-    }
-    
-    this.syncInterval = setInterval(() => {
-      this.processSyncQueue();
-    }, this.SYNC_INTERVAL_MS);
-    
-    debugLog('🔄 SyncIntegration: Auto-sync timer started');
+    debugLog('🔄 SyncIntegration: Auto-sync set to event-driven mode');
   }
 
   /**
    * Stop auto-sync timer
    */
   private static stopAutoSync(): void {
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+      this.syncDebounceTimer = null;
     }
     
-    debugLog('🔄 SyncIntegration: Auto-sync timer stopped');
+    debugLog('🔄 SyncIntegration: Auto-sync disabled');
   }
 
   /**
@@ -111,7 +109,7 @@ export class SyncIntegrationService {
    */
   static queueSyncOperation(
     operation: 'create' | 'update' | 'delete',
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
     data: any
   ): void {
     // Validate data before queuing
@@ -146,8 +144,57 @@ export class SyncIntegrationService {
     this.syncQueue.push(queueItem);
     debugLog(`🔄 SyncIntegration: Queued ${operation} operation for ${entityType}:`, data.id);
     
-    // Don't process immediately - let the interval handle it to avoid duplicates
-    // The interval will process the queue every 5 seconds
+    if (this.autoSyncEnabled) {
+      this.scheduleDebouncedSync();
+    }
+  }
+
+  /**
+   * Schedule a debounced sync for local changes.
+   */
+  private static scheduleDebouncedSync(): void {
+    if (!this.autoSyncEnabled) {
+      return;
+    }
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+    }
+    this.syncDebounceTimer = setTimeout(() => {
+      this.processSyncQueue();
+    }, this.SYNC_DEBOUNCE_MS);
+  }
+
+  /**
+   * Start listening for app foreground events to sync remote changes.
+   */
+  private static startAppStateListener(): void {
+    if (this.appStateListener) {
+      return;
+    }
+    this.appStateListener = AppState.addEventListener('change', (nextState) => {
+      this.handleAppStateChange(nextState);
+    });
+  }
+
+  private static async handleAppStateChange(nextState: AppStateStatus): Promise<void> {
+    if (this.lastAppState !== 'active' && nextState === 'active') {
+      await this.syncOnAppActive();
+    }
+    this.lastAppState = nextState;
+  }
+
+  private static async syncOnAppActive(): Promise<void> {
+    try {
+      const currentEmployee = await DatabaseService.getCurrentEmployee();
+      if (!currentEmployee?.id) {
+        return;
+      }
+      debugLog('🔄 SyncIntegration: App foregrounded, syncing from backend');
+      await ApiSyncService.syncFromBackend(currentEmployee.id);
+      await this.processSyncQueue();
+    } catch (error) {
+      debugWarn('⚠️ SyncIntegration: Error syncing on app foreground:', error);
+    }
   }
 
   /**
@@ -211,7 +258,7 @@ export class SyncIntegrationService {
    * Process a group of operations for a specific entity type
    */
   private static async processEntityGroup(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
     operations: SyncQueueItem[]
   ): Promise<void> {
     try {
@@ -257,7 +304,7 @@ export class SyncIntegrationService {
    * Process create/update operations
    */
   private static async processCreateUpdateOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
     operations: SyncQueueItem[]
   ): Promise<void> {
     const entities = operations.map(op => op.data);
@@ -288,7 +335,7 @@ export class SyncIntegrationService {
    * Process delete operations
    */
   private static async processDeleteOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
     operations: SyncQueueItem[]
   ): Promise<void> {
     // For delete operations, we need to make individual API calls
@@ -327,6 +374,8 @@ export class SyncIntegrationService {
         return `${baseUrl}/receipts/${id}`;
       case 'timeTracking':
         return `${baseUrl}/time-tracking/${id}`;
+      case 'dailyDescription':
+        return `${baseUrl}/daily-descriptions/${id}`;
       default:
         throw new Error(`Unknown entity type: ${entityType}`);
     }
@@ -369,6 +418,9 @@ export class SyncIntegrationService {
         // Get all time tracking for current employee
         const allTimeTracking = await DatabaseService.getAllTimeTrackingEntries();
         const timeTracking = allTimeTracking.filter(t => t.employeeId === currentEmployeeId);
+
+      // Get all daily descriptions for current employee
+      const dailyDescriptions = await DatabaseService.getDailyDescriptions(currentEmployeeId);
         
         // Sync employee data (just the current employee)
         const employeeData = currentEmployee ? [currentEmployee] : [];
@@ -377,7 +429,8 @@ export class SyncIntegrationService {
           employees: employeeData,
           mileageEntries,
           receipts,
-          timeTracking
+        timeTracking,
+        dailyDescriptions
         });
         
         if (result.success) {
@@ -410,7 +463,7 @@ export class SyncIntegrationService {
       queueLength: this.syncQueue.length,
       isProcessing: this.isProcessingQueue,
       autoSyncEnabled: this.autoSyncEnabled,
-      nextSyncIn: this.syncInterval ? this.SYNC_INTERVAL_MS : 0
+      nextSyncIn: this.syncDebounceTimer ? this.SYNC_DEBOUNCE_MS : 0
     };
   }
 
@@ -442,6 +495,10 @@ export class SyncIntegrationService {
   static cleanup(): void {
     this.stopAutoSync();
     this.clearSyncQueue();
+    if (this.appStateListener) {
+      this.appStateListener.remove();
+      this.appStateListener = null;
+    }
     debugLog('🔄 SyncIntegration: Cleanup completed');
   }
 }

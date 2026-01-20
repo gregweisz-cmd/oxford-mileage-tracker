@@ -22,6 +22,7 @@ import { PreferencesService } from '../services/preferencesService';
 import { DemoDataService } from '../services/demoDataService';
 import { PermissionService } from '../services/permissionService';
 import RealtimeSyncService from '../services/realtimeSyncService';
+import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { MileageEntry, Employee, Receipt } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
 import { API_BASE_URL } from '../config/api';
@@ -491,6 +492,24 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       entryId: entryId,
       isEditing: true 
     });
+  };
+
+  const handleSyncNow = async () => {
+    if (!currentEmployee || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const success = await SyncIntegrationService.forceSync(currentEmployee.id);
+      if (success) {
+        setLastSyncTime(new Date());
+      } else {
+        Alert.alert('Sync Failed', 'Unable to sync right now. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error syncing now:', error);
+      Alert.alert('Sync Failed', 'Unable to sync right now. Please try again.');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const loadData = async () => {
@@ -1074,13 +1093,13 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <UnifiedHeader 
         title={viewingEmployee?.id === currentEmployee?.id 
-          ? `Welcome, ${currentEmployee?.name || 'User'}`
-          : `Viewing: ${viewingEmployee?.name || 'Employee'}`
+          ? `Welcome,\n${currentEmployee?.name || 'User'}`
+          : `Viewing:\n${viewingEmployee?.name || 'Employee'}`
         }
         leftButton={{
           icon: 'settings',
           onPress: () => navigation.navigate('Settings', { currentEmployeeId: currentEmployee?.id }),
-          color: '#fff'
+          color: '#1C75BC'
         }}
         rightButton={{
           icon: 'logout',
@@ -1098,7 +1117,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               ]
             );
           },
-          color: '#fff'
+          color: '#1C75BC'
         }}
       />
       
@@ -1346,21 +1365,28 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         <View 
           style={[styles.syncStatusContainer, isSyncing && styles.syncStatusContainerSyncing]}
         >
-          <MaterialIcons 
-            name={isSyncing ? "sync" : (lastSyncTime ? "cloud-done" : "cloud-off")} 
-            size={18} 
-            color={isSyncing ? "#2196F3" : (lastSyncTime ? "#4CAF50" : "#999")} 
-          />
-          <Text style={[styles.syncStatusText, isSyncing && styles.syncStatusTextSyncing]}>
-            {isSyncing 
-              ? "Syncing..." 
-              : lastSyncTime 
-                ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` 
-                : "Never synced"}
-          </Text>
-          {!isSyncing && (
-            <MaterialIcons name="sync" size={18} color="#2196F3" style={{ marginLeft: 8 }} />
-          )}
+          <View style={styles.syncStatusLeft}>
+            <MaterialIcons 
+              name={isSyncing ? "sync" : (lastSyncTime ? "cloud-done" : "cloud-off")} 
+              size={18} 
+              color={isSyncing ? "#2196F3" : (lastSyncTime ? "#4CAF50" : "#999")} 
+            />
+            <Text style={[styles.syncStatusText, isSyncing && styles.syncStatusTextSyncing]}>
+              {isSyncing 
+                ? "Syncing..." 
+                : lastSyncTime 
+                  ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` 
+                  : "Never synced"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.syncNowButton}
+            onPress={handleSyncNow}
+            disabled={isSyncing}
+          >
+            <MaterialIcons name="sync" size={18} color={isSyncing ? "#999" : "#2196F3"} />
+            <Text style={[styles.syncNowText, isSyncing && { color: '#999' }]}>Sync Now</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Quick Actions */}
@@ -2564,7 +2590,7 @@ const styles = StyleSheet.create({
   syncStatusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 16,
     backgroundColor: '#e8f5e9',
@@ -2578,9 +2604,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#e3f2fd',
     borderColor: '#90caf9',
   },
+  syncStatusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   syncStatusTextSyncing: {
     color: '#1976d2',
     fontWeight: '600',
+  },
+  syncNowButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#e3f2fd',
+  },
+  syncNowText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2196F3',
   },
   // Draggable Tiles Styles
   actionsHeader: {
