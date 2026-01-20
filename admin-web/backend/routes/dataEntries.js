@@ -117,7 +117,29 @@ router.post('/api/mileage-entries', (req, res) => {
   debugLog('📝 POST /api/mileage-entries - Request body:', req.body);
   const db = dbService.getDb();
   
-  const { id, employeeId, oxfordHouseId, date, odometerReading, miles, startLocation, endLocation, purpose, notes, hoursWorked, isGpsTracked, costCenter } = req.body;
+  const { 
+    id,
+    employeeId,
+    oxfordHouseId,
+    date,
+    odometerReading,
+    miles,
+    startLocation,
+    endLocation,
+    startLocationName,
+    startLocationAddress,
+    startLocationLat,
+    startLocationLng,
+    endLocationName,
+    endLocationAddress,
+    endLocationLat,
+    endLocationLng,
+    purpose,
+    notes,
+    hoursWorked,
+    isGpsTracked,
+    costCenter
+  } = req.body;
   const entryId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
 
@@ -131,9 +153,40 @@ router.post('/api/mileage-entries', (req, res) => {
   // Use miles as odometerReading if odometerReading is not provided
   const finalOdometerReading = odometerReading || miles || 0;
 
+  // Normalize manual entry locations into name/address fields if missing
+  const normalizedStartLocationName = startLocationName || startLocation || '';
+  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
+  const normalizedEndLocationName = endLocationName || endLocation || '';
+  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
+
   db.run(
-    'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
-    [entryId, employeeId, oxfordHouseId || '', normalizedDate, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', entryId, now, now],
+    'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
+    [
+      entryId,
+      employeeId,
+      oxfordHouseId || '',
+      normalizedDate,
+      finalOdometerReading,
+      startLocation || '',
+      endLocation || '',
+      normalizedStartLocationName,
+      normalizedStartLocationAddress,
+      startLocationLat || 0,
+      startLocationLng || 0,
+      normalizedEndLocationName,
+      normalizedEndLocationAddress,
+      endLocationLat || 0,
+      endLocationLng || 0,
+      purpose,
+      miles,
+      notes || '',
+      hoursWorked || 0,
+      isGpsTracked ? 1 : 0,
+      costCenter || '',
+      entryId,
+      now,
+      now
+    ],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);
@@ -155,7 +208,28 @@ router.post('/api/mileage-entries', (req, res) => {
  */
 router.put('/api/mileage-entries/:id', (req, res) => {
   const { id } = req.params;
-  const { employeeId, oxfordHouseId, date, odometerReading, miles, startLocation, endLocation, purpose, notes, hoursWorked, isGpsTracked, costCenter } = req.body;
+  const {
+    employeeId,
+    oxfordHouseId,
+    date,
+    odometerReading,
+    miles,
+    startLocation,
+    endLocation,
+    startLocationName,
+    startLocationAddress,
+    startLocationLat,
+    startLocationLng,
+    endLocationName,
+    endLocationAddress,
+    endLocationLat,
+    endLocationLng,
+    purpose,
+    notes,
+    hoursWorked,
+    isGpsTracked,
+    costCenter
+  } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
   
@@ -169,9 +243,38 @@ router.put('/api/mileage-entries/:id', (req, res) => {
   // Use miles as odometerReading if odometerReading is not provided
   const finalOdometerReading = odometerReading || miles || 0;
 
+  // Normalize manual entry locations into name/address fields if missing
+  const normalizedStartLocationName = startLocationName || startLocation || '';
+  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
+  const normalizedEndLocationName = endLocationName || endLocation || '';
+  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
+
   db.run(
-    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, oxfordHouseId || '', normalizedDate || date, finalOdometerReading, startLocation, endLocation, purpose, miles, notes || '', hoursWorked || 0, isGpsTracked ? 1 : 0, costCenter || '', now, id],
+    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
+    [
+      employeeId,
+      oxfordHouseId || '',
+      normalizedDate || date,
+      finalOdometerReading,
+      startLocation || '',
+      endLocation || '',
+      normalizedStartLocationName,
+      normalizedStartLocationAddress,
+      startLocationLat || 0,
+      startLocationLng || 0,
+      normalizedEndLocationName,
+      normalizedEndLocationAddress,
+      endLocationLat || 0,
+      endLocationLng || 0,
+      purpose,
+      miles,
+      notes || '',
+      hoursWorked || 0,
+      isGpsTracked ? 1 : 0,
+      costCenter || '',
+      now,
+      id
+    ],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);

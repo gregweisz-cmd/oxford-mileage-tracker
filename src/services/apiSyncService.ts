@@ -36,9 +36,83 @@ export class ApiSyncService {
     timeout: 10000, // 10 seconds
     retryAttempts: 3
   };
+  private static employeeIdCache = new Map<string, string>();
 
   private static lastSyncTime: Date | null = null;
   private static pendingChanges: number = 0;
+
+  /**
+   * Fetch a backend employee by email (case-insensitive).
+   */
+  private static async fetchEmployeeByEmail(email: string): Promise<Employee | null> {
+    try {
+      if (!email) return null;
+      const response = await fetch(`${this.config.baseUrl}/employees?search=${encodeURIComponent(email)}`);
+      if (!response.ok) return null;
+      const employees = await response.json();
+      const match = (employees || []).find((emp: any) =>
+        String(emp.email || '').toLowerCase() === email.toLowerCase()
+      );
+      if (!match) return null;
+      return {
+        id: match.id,
+        name: match.name,
+        preferredName: match.preferredName || '',
+        email: match.email,
+        password: match.password || '',
+        oxfordHouseId: match.oxfordHouseId,
+        position: match.position,
+        phoneNumber: match.phoneNumber,
+        baseAddress: match.baseAddress,
+        baseAddress2: match.baseAddress2 || '',
+        costCenters: Array.isArray(match.costCenters) ? match.costCenters : (match.costCenters ? JSON.parse(match.costCenters) : []),
+        selectedCostCenters: Array.isArray(match.selectedCostCenters) ? match.selectedCostCenters : (match.selectedCostCenters ? JSON.parse(match.selectedCostCenters) : []),
+        defaultCostCenter: match.defaultCostCenter || '',
+        createdAt: new Date(match.createdAt),
+        updatedAt: new Date(match.updatedAt)
+      };
+    } catch (error) {
+      debugWarn('⚠️ ApiSync: Failed to fetch employee by email:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Resolve backend employee ID for a local employee ID using email matching.
+   */
+  private static async resolveBackendEmployeeId(localEmployeeId?: string): Promise<string | null> {
+    if (!localEmployeeId) return null;
+    if (this.employeeIdCache.has(localEmployeeId)) {
+      return this.employeeIdCache.get(localEmployeeId) || null;
+    }
+    const localEmployee = await DatabaseService.getEmployeeById(localEmployeeId);
+    if (!localEmployee?.email) {
+      this.employeeIdCache.set(localEmployeeId, localEmployeeId);
+      return localEmployeeId;
+    }
+    const backendEmployee = await this.fetchEmployeeByEmail(localEmployee.email);
+    const backendId = backendEmployee?.id || localEmployeeId;
+    this.employeeIdCache.set(localEmployeeId, backendId);
+    return backendId;
+  }
+
+  /**
+   * Map backend employee IDs to local employee ID for local persistence.
+   */
+  private static mapEmployeeIdForLocal<T extends { employeeId?: string }>(
+    items: T[],
+    localEmployeeId?: string,
+    backendEmployeeId?: string | null
+  ): T[] {
+    if (!localEmployeeId || !backendEmployeeId || localEmployeeId === backendEmployeeId) {
+      return items;
+    }
+    return items.map((item) =>
+      item.employeeId === backendEmployeeId
+        ? { ...item, employeeId: localEmployeeId }
+        : item
+    );
+  }
 
   /**
    * Parse date safely - treats YYYY-MM-DD as local date
@@ -161,6 +235,7 @@ export class ApiSyncService {
     mileageEntries?: MileageEntry[];
     receipts?: Receipt[];
     timeTracking?: TimeTracking[];
+    dailyDescriptions?: DailyDescription[];
   }): Promise<SyncResult> {
     try {
       debugLog('📤 ApiSync: Syncing data to backend...');
@@ -189,6 +264,12 @@ export class ApiSyncService {
       if (data.timeTracking && data.timeTracking.length > 0) {
         const timeResult = await this.syncTimeTracking(data.timeTracking);
         results.push(timeResult);
+      }
+
+      // Sync daily descriptions
+      if (data.dailyDescriptions && data.dailyDescriptions.length > 0) {
+        const descriptionResult = await this.syncDailyDescriptions(data.dailyDescriptions);
+        results.push(descriptionResult);
       }
       
       // Check if all syncs were successful
@@ -229,42 +310,66 @@ export class ApiSyncService {
       debugLog('📥 ApiSync: Syncing data from backend...');
       
       const syncData: any = {};
+      const backendEmployeeId = employeeId
+        ? await this.resolveBackendEmployeeId(employeeId)
+        : null;
+      const effectiveEmployeeId = backendEmployeeId || employeeId;
       
       // Fetch employees
       const employees = await this.fetchEmployees();
       syncData.employees = employees;
       
       // Fetch mileage entries
-      const mileageEntries = await this.fetchMileageEntries(employeeId);
-      syncData.mileageEntries = mileageEntries;
+      const mileageEntries = await this.fetchMileageEntries(effectiveEmployeeId);
+      const mappedMileageEntries = this.mapEmployeeIdForLocal(
+        mileageEntries,
+        employeeId,
+        backendEmployeeId
+      );
+      syncData.mileageEntries = mappedMileageEntries;
       
       // Fetch receipts
-      const receipts = await this.fetchReceipts(employeeId);
-      syncData.receipts = receipts;
+      const receipts = await this.fetchReceipts(effectiveEmployeeId);
+      const mappedReceipts = this.mapEmployeeIdForLocal(
+        receipts,
+        employeeId,
+        backendEmployeeId
+      );
+      syncData.receipts = mappedReceipts;
       
       // Fetch time tracking
-      const timeTracking = await this.fetchTimeTracking(employeeId);
-      syncData.timeTracking = timeTracking;
+      const timeTracking = await this.fetchTimeTracking(effectiveEmployeeId);
+      const mappedTimeTracking = this.mapEmployeeIdForLocal(
+        timeTracking,
+        employeeId,
+        backendEmployeeId
+      );
+      syncData.timeTracking = mappedTimeTracking;
       
       // Fetch daily descriptions
-      const dailyDescriptions = await this.fetchDailyDescriptions(employeeId);
-      syncData.dailyDescriptions = dailyDescriptions;
+      const dailyDescriptions = await this.fetchDailyDescriptions(effectiveEmployeeId);
+      const mappedDailyDescriptions = this.mapEmployeeIdForLocal(
+        dailyDescriptions,
+        employeeId,
+        backendEmployeeId
+      );
+      syncData.dailyDescriptions = mappedDailyDescriptions;
       
       // Note: Per Diem rules are fetched on-demand in AddReceiptScreen
       // to avoid unnecessary API calls during general sync
       
       // Sync all data to local database
-      if (mileageEntries.length > 0) {
-        await this.syncMileageEntriesToLocal(mileageEntries);
+      if (mappedMileageEntries.length > 0) {
+        await this.syncMileageEntriesToLocal(mappedMileageEntries);
       }
-      if (receipts.length > 0) {
-        await this.syncReceiptsToLocal(receipts);
+      if (mappedReceipts.length > 0) {
+        await this.syncReceiptsToLocal(mappedReceipts);
       }
-      if (timeTracking.length > 0) {
-        await this.syncTimeTrackingToLocal(timeTracking);
+      if (mappedTimeTracking.length > 0) {
+        await this.syncTimeTrackingToLocal(mappedTimeTracking);
       }
-      if (dailyDescriptions.length > 0) {
-        await this.syncDailyDescriptionsToLocal(dailyDescriptions);
+      if (mappedDailyDescriptions.length > 0) {
+        await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions);
       }
       
       // Per Diem rules sync removed - now loaded on-demand in AddReceiptScreen
@@ -274,10 +379,10 @@ export class ApiSyncService {
       
       debugLog('📥 ApiSync: Backend sync completed:', {
         employees: employees.length,
-        mileageEntries: mileageEntries.length,
-        receipts: receipts.length,
-        timeTracking: timeTracking.length,
-        dailyDescriptions: dailyDescriptions.length
+        mileageEntries: mappedMileageEntries.length,
+        receipts: mappedReceipts.length,
+        timeTracking: mappedTimeTracking.length,
+        dailyDescriptions: mappedDailyDescriptions.length
       });
       
       return {
@@ -383,6 +488,9 @@ export class ApiSyncService {
       
       for (const entry of entries) {
         try {
+          const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
+          const employeeIdToSend = backendEmployeeId || entry.employeeId;
+          
           // Validate and prepare mileage entry data
           // Preserve date as local date without timezone conversion
           let dateToSend: string;
@@ -400,12 +508,20 @@ export class ApiSyncService {
           
           const mileageData = {
             id: entry.id, // Include ID to prevent duplicates on backend
-            employeeId: entry.employeeId,
+            employeeId: employeeIdToSend,
             oxfordHouseId: entry.oxfordHouseId,
             date: dateToSend,
             odometerReading: entry.odometerReading,
             startLocation: entry.startLocation || '',
             endLocation: entry.endLocation || '',
+            startLocationName: entry.startLocationDetails?.name || '',
+            startLocationAddress: entry.startLocationDetails?.address || '',
+            startLocationLat: entry.startLocationDetails?.latitude || 0,
+            startLocationLng: entry.startLocationDetails?.longitude || 0,
+            endLocationName: entry.endLocationDetails?.name || '',
+            endLocationAddress: entry.endLocationDetails?.address || '',
+            endLocationLat: entry.endLocationDetails?.latitude || 0,
+            endLocationLng: entry.endLocationDetails?.longitude || 0,
             purpose: entry.purpose || '',
             miles: entry.miles,
             notes: entry.notes || '',
@@ -699,6 +815,8 @@ export class ApiSyncService {
       
       for (const receipt of receipts) {
         try {
+          const backendEmployeeId = await this.resolveBackendEmployeeId(receipt.employeeId);
+          const employeeIdToSend = backendEmployeeId || receipt.employeeId;
           let backendImageUri = receipt.imageUri || '';
           
           // Upload image to backend if we have a local image URI
@@ -849,7 +967,7 @@ export class ApiSyncService {
           // Only include imageUri if we successfully uploaded it (not a file:// path)
           const receiptData = {
             id: receipt.id, // Include ID to prevent duplicates on backend
-            employeeId: receipt.employeeId,
+            employeeId: employeeIdToSend,
             date: receipt.date instanceof Date ? receipt.date.toISOString() : new Date(receipt.date).toISOString(),
             amount: receipt.amount,
             vendor: receipt.vendor || '',
@@ -911,6 +1029,76 @@ export class ApiSyncService {
   }
 
   /**
+   * Sync daily descriptions to backend
+   */
+  private static async syncDailyDescriptions(descriptions: DailyDescription[]): Promise<SyncResult> {
+    try {
+      const results = [];
+      
+      for (const desc of descriptions) {
+        try {
+          const backendEmployeeId = await this.resolveBackendEmployeeId(desc.employeeId);
+          const employeeIdToSend = backendEmployeeId || desc.employeeId;
+          
+          let dateToSend: string;
+          if (desc.date instanceof Date) {
+            const year = desc.date.getFullYear();
+            const month = String(desc.date.getMonth() + 1).padStart(2, '0');
+            const day = String(desc.date.getDate()).padStart(2, '0');
+            dateToSend = `${year}-${month}-${day}`;
+          } else {
+            const dateStr = desc.date as unknown as string;
+            dateToSend = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+          }
+          
+          const payload = {
+            id: desc.id,
+            employeeId: employeeIdToSend,
+            date: dateToSend,
+            description: desc.description || '',
+            costCenter: desc.costCenter || '',
+            stayedOvernight: !!desc.stayedOvernight,
+            dayOff: !!desc.dayOff,
+            dayOffType: desc.dayOffType || null
+          };
+          
+          const response = await fetch(`${this.config.baseUrl}/daily-descriptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ ApiSync: Failed to sync daily description ${desc.id}:`, response.status, errorText);
+            throw new Error(`Failed to sync daily description: ${response.statusText}`);
+          }
+          
+          results.push({ success: true, id: desc.id });
+        } catch (error) {
+          console.error(`❌ ApiSync: Error syncing daily description ${desc.id}:`, error);
+          results.push({ success: false, id: desc.id, error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+      }
+      
+      const allSuccessful = results.every(result => result.success);
+      
+      return {
+        success: allSuccessful,
+        data: results,
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
    * Sync time tracking to backend
    */
   private static async syncTimeTracking(entries: TimeTracking[]): Promise<SyncResult> {
@@ -919,10 +1107,12 @@ export class ApiSyncService {
       
       for (const entry of entries) {
         try {
+          const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
+          const employeeIdToSend = backendEmployeeId || entry.employeeId;
           // Validate and prepare time tracking data
           const timeTrackingData = {
             id: entry.id, // Include ID to prevent duplicates on backend
-            employeeId: entry.employeeId,
+            employeeId: employeeIdToSend,
             date: entry.date instanceof Date ? entry.date.toISOString() : new Date(entry.date).toISOString(),
             category: entry.category || '',
             hours: entry.hours,
@@ -1207,7 +1397,7 @@ export class ApiSyncService {
     return data.map((desc: any) => ({
       id: desc.id,
       employeeId: desc.employeeId,
-      date: new Date(desc.date),
+      date: this.parseDateSafe(desc.date),
       description: desc.description,
       costCenter: desc.costCenter,
       createdAt: new Date(desc.createdAt),
@@ -1520,18 +1710,25 @@ export class ApiSyncService {
   static async syncMileageEntriesFromBackend(employeeId: string): Promise<SyncResult> {
     try {
       debugLog(`📥 ApiSync: Syncing mileage entries for employee ${employeeId}...`);
+      const backendEmployeeId = await this.resolveBackendEmployeeId(employeeId);
+      const effectiveEmployeeId = backendEmployeeId || employeeId;
       
-      const mileageEntries = await this.fetchMileageEntries(employeeId);
+      const mileageEntries = await this.fetchMileageEntries(effectiveEmployeeId);
+      const mappedMileageEntries = this.mapEmployeeIdForLocal(
+        mileageEntries,
+        employeeId,
+        backendEmployeeId
+      );
       
-      if (mileageEntries.length > 0) {
-        await this.syncMileageEntriesToLocal(mileageEntries);
+      if (mappedMileageEntries.length > 0) {
+        await this.syncMileageEntriesToLocal(mappedMileageEntries);
       }
       
-      debugLog(`✅ ApiSync: Mileage entries sync completed for employee ${employeeId}: ${mileageEntries.length} entries`);
+      debugLog(`✅ ApiSync: Mileage entries sync completed for employee ${employeeId}: ${mappedMileageEntries.length} entries`);
       
       return {
         success: true,
-        data: { mileageEntries },
+        data: { mileageEntries: mappedMileageEntries },
         timestamp: new Date()
       };
       
@@ -1551,18 +1748,25 @@ export class ApiSyncService {
   static async syncReceiptsFromBackend(employeeId: string): Promise<SyncResult> {
     try {
       debugLog(`📥 ApiSync: Syncing receipts for employee ${employeeId}...`);
+      const backendEmployeeId = await this.resolveBackendEmployeeId(employeeId);
+      const effectiveEmployeeId = backendEmployeeId || employeeId;
       
-      const receipts = await this.fetchReceipts(employeeId);
+      const receipts = await this.fetchReceipts(effectiveEmployeeId);
+      const mappedReceipts = this.mapEmployeeIdForLocal(
+        receipts,
+        employeeId,
+        backendEmployeeId
+      );
       
-      if (receipts.length > 0) {
-        await this.syncReceiptsToLocal(receipts);
+      if (mappedReceipts.length > 0) {
+        await this.syncReceiptsToLocal(mappedReceipts);
       }
       
-      debugLog(`✅ ApiSync: Receipts sync completed for employee ${employeeId}: ${receipts.length} receipts`);
+      debugLog(`✅ ApiSync: Receipts sync completed for employee ${employeeId}: ${mappedReceipts.length} receipts`);
       
       return {
         success: true,
-        data: { receipts },
+        data: { receipts: mappedReceipts },
         timestamp: new Date()
       };
       
@@ -1582,28 +1786,35 @@ export class ApiSyncService {
   static async syncTimeTrackingFromBackend(employeeId: string): Promise<SyncResult> {
     try {
       debugLog(`📥 ApiSync: Syncing time tracking for employee ${employeeId}...`);
+      const backendEmployeeId = await this.resolveBackendEmployeeId(employeeId);
+      const effectiveEmployeeId = backendEmployeeId || employeeId;
       
-      const timeTracking = await this.fetchTimeTracking(employeeId);
+      const timeTracking = await this.fetchTimeTracking(effectiveEmployeeId);
+      const mappedTimeTracking = this.mapEmployeeIdForLocal(
+        timeTracking,
+        employeeId,
+        backendEmployeeId
+      );
       
       // Safety check: if there are too many entries, something might be wrong
-      if (timeTracking.length > 1000) {
-        debugWarn(`⚠️ ApiSync: Too many time tracking entries (${timeTracking.length}), skipping sync to prevent issues`);
+      if (mappedTimeTracking.length > 1000) {
+        debugWarn(`⚠️ ApiSync: Too many time tracking entries (${mappedTimeTracking.length}), skipping sync to prevent issues`);
         return {
           success: false,
-          error: `Too many time tracking entries (${timeTracking.length}), skipping sync`,
+          error: `Too many time tracking entries (${mappedTimeTracking.length}), skipping sync`,
           timestamp: new Date()
         };
       }
       
-      if (timeTracking.length > 0) {
-        await this.syncTimeTrackingToLocal(timeTracking);
+      if (mappedTimeTracking.length > 0) {
+        await this.syncTimeTrackingToLocal(mappedTimeTracking);
       }
       
-      debugLog(`✅ ApiSync: Time tracking sync completed for employee ${employeeId}: ${timeTracking.length} entries`);
+      debugLog(`✅ ApiSync: Time tracking sync completed for employee ${employeeId}: ${mappedTimeTracking.length} entries`);
       
       return {
         success: true,
-        data: { timeTracking },
+        data: { timeTracking: mappedTimeTracking },
         timestamp: new Date()
       };
       
@@ -1623,18 +1834,25 @@ export class ApiSyncService {
   static async syncDailyDescriptionsFromBackend(employeeId: string): Promise<SyncResult> {
     try {
       debugLog(`📥 ApiSync: Syncing daily descriptions for employee ${employeeId}...`);
+      const backendEmployeeId = await this.resolveBackendEmployeeId(employeeId);
+      const effectiveEmployeeId = backendEmployeeId || employeeId;
       
-      const dailyDescriptions = await this.fetchDailyDescriptions(employeeId);
+      const dailyDescriptions = await this.fetchDailyDescriptions(effectiveEmployeeId);
+      const mappedDailyDescriptions = this.mapEmployeeIdForLocal(
+        dailyDescriptions,
+        employeeId,
+        backendEmployeeId
+      );
       
-      if (dailyDescriptions.length > 0) {
-        await this.syncDailyDescriptionsToLocal(dailyDescriptions);
+      if (mappedDailyDescriptions.length > 0) {
+        await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions);
       }
       
-      debugLog(`✅ ApiSync: Daily descriptions sync completed for employee ${employeeId}: ${dailyDescriptions.length} descriptions`);
+      debugLog(`✅ ApiSync: Daily descriptions sync completed for employee ${employeeId}: ${mappedDailyDescriptions.length} descriptions`);
       
       return {
         success: true,
-        data: { dailyDescriptions },
+        data: { dailyDescriptions: mappedDailyDescriptions },
         timestamp: new Date()
       };
       

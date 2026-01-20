@@ -5210,10 +5210,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           )}
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.startLocationName || 'N/A'}
+                          {entry.startLocationName || entry.startLocation || 'N/A'}
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.endLocationName || 'N/A'}
+                          {entry.endLocationName || entry.endLocation || 'N/A'}
                         </TableCell>
                         <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
                           {Math.round(entry.milesTraveled)}
