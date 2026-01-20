@@ -82,6 +82,7 @@ router.get('/api/employees', (req, res) => {
         // Handle corrupted "[object Object]" entries
         let costCenters = [];
         let selectedCostCenters = [];
+        let permissions = [];
         
         if (row.costCenters) {
           if (row.costCenters === '[object Object]' || row.costCenters === '[object Object]') {
@@ -110,18 +111,29 @@ router.get('/api/employees', (req, res) => {
             }
           }
         }
+
+        if (row.permissions) {
+          try {
+            permissions = JSON.parse(row.permissions);
+          } catch (parseErr) {
+            debugLog('⚠️ Failed to parse permissions for', row.id, ':', row.permissions);
+            permissions = [];
+          }
+        }
         
         return {
           ...row,
           costCenters,
-          selectedCostCenters
+          selectedCostCenters,
+          permissions
         };
       } catch (parseErr) {
         debugError('❌ Error parsing employee data for', row.id, ':', parseErr);
         return {
           ...row,
           costCenters: ['Program Services'],
-          selectedCostCenters: ['Program Services']
+          selectedCostCenters: ['Program Services'],
+          permissions: []
         };
       }
     });
@@ -147,6 +159,7 @@ router.get('/api/employees/archived', (req, res) => {
       try {
         let costCenters = [];
         let selectedCostCenters = [];
+        let permissions = [];
         
         if (row.costCenters) {
           if (row.costCenters === '[object Object]') {
@@ -171,17 +184,27 @@ router.get('/api/employees/archived', (req, res) => {
             }
           }
         }
+
+        if (row.permissions) {
+          try {
+            permissions = JSON.parse(row.permissions);
+          } catch (parseErr) {
+            permissions = [];
+          }
+        }
         
         return {
           ...row,
           costCenters,
-          selectedCostCenters
+          selectedCostCenters,
+          permissions
         };
       } catch (parseErr) {
         return {
           ...row,
           costCenters: ['Program Services'],
-          selectedCostCenters: ['Program Services']
+          selectedCostCenters: ['Program Services'],
+          permissions: []
         };
       }
     });
@@ -221,7 +244,30 @@ router.get('/api/employees/:id', (req, res) => {
       });
     }
     
-    res.json(row);
+    let costCenters = row.costCenters;
+    let selectedCostCenters = row.selectedCostCenters;
+    let permissions = row.permissions;
+
+    try {
+      if (row.costCenters) {
+        costCenters = JSON.parse(row.costCenters);
+      }
+      if (row.selectedCostCenters) {
+        selectedCostCenters = JSON.parse(row.selectedCostCenters);
+      }
+      if (row.permissions) {
+        permissions = JSON.parse(row.permissions);
+      }
+    } catch (parseErr) {
+      debugError('❌ Error parsing employee JSON fields:', parseErr);
+    }
+
+    res.json({
+      ...row,
+      costCenters,
+      selectedCostCenters,
+      permissions
+    });
   });
 });
 
@@ -248,7 +294,11 @@ router.put('/api/employees/bulk-update', (req, res) => {
     // Include both defined values and null (null is valid for clearing fields)
     if (updates[key] !== undefined) {
       updateFields.push(`${key} = ?`);
-      values.push(updates[key]);
+      if (key === 'permissions' && Array.isArray(updates[key])) {
+        values.push(JSON.stringify(updates[key]));
+      } else {
+        values.push(updates[key]);
+      }
     }
   });
   
@@ -352,11 +402,14 @@ router.post('/api/employees/bulk-create', async (req, res) => {
     }
     
     // Validate and set role (defaults to 'employee' if not provided or invalid)
-    const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+    const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
     const userRole = allowedRoles.includes(employee.role) ? employee.role : 'employee';
+    const permissionsValue = Array.isArray(employee.permissions)
+      ? JSON.stringify(employee.permissions)
+      : (typeof employee.permissions === 'string' ? employee.permissions : '[]');
     
     db.run(
-      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id,
         employee.name,
@@ -366,6 +419,7 @@ router.post('/api/employees/bulk-create', async (req, res) => {
         employee.oxfordHouseId || '',
         employee.position,
         userRole, // Include role field
+        permissionsValue,
         employee.phoneNumber || '',
         employee.baseAddress || '',
         employee.baseAddress2 || '',
@@ -422,7 +476,7 @@ router.post('/api/employees',
   validateRequired(['name', 'email', 'position']),
   validateEmail('email'),
   asyncHandler(async (req, res) => {
-    const { name, email, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, preferredName, password } = req.body;
+  const { name, email, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, preferredName, password } = req.body;
     const db = dbService.getDb();
   
   // Generate ID based on employee name
@@ -442,13 +496,16 @@ router.post('/api/employees',
   }
   
   // Validate and set role (defaults to 'employee' if not provided or invalid)
-  const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+  const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
   const userRole = allowedRoles.includes(role) ? role : 'employee';
+  const permissionsValue = Array.isArray(permissions)
+    ? JSON.stringify(permissions)
+    : (typeof permissions === 'string' ? permissions : '[]');
   
   // Use Promise wrapper for callback-based database operations
   await new Promise((resolve, reject) => {
     db.run(
-      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id, 
         name, 
@@ -458,6 +515,7 @@ router.post('/api/employees',
         oxfordHouseId || '', 
         position, 
         userRole, // Include role field
+        permissionsValue,
         phoneNumber || '', 
         baseAddress || '', 
         baseAddress2 || '', 
@@ -544,11 +602,14 @@ router.put('/api/employees/:id', async (req, res) => {
     const oxfordHouseId = updateData.oxfordHouseId !== undefined ? (updateData.oxfordHouseId || '') : (currentEmployee.oxfordHouseId || '');
     const position = updateData.position !== undefined ? (updateData.position || currentEmployee.position || '') : (currentEmployee.position || '');
     // Validate and set role (defaults to existing role or 'employee' if not provided or invalid)
-    const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+    const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
     const currentRole = currentEmployee.role || 'employee';
     const role = updateData.role !== undefined 
       ? (allowedRoles.includes(updateData.role) ? updateData.role : currentRole)
       : currentRole;
+    const permissions = updateData.permissions !== undefined
+      ? (typeof updateData.permissions === 'string' ? updateData.permissions : JSON.stringify(updateData.permissions || []))
+      : (currentEmployee.permissions || '[]');
     const phoneNumber = updateData.phoneNumber !== undefined ? (updateData.phoneNumber || '') : (currentEmployee.phoneNumber || '');
     const baseAddress = updateData.baseAddress !== undefined ? (updateData.baseAddress || '') : (currentEmployee.baseAddress || '');
     const baseAddress2 = updateData.baseAddress2 !== undefined ? (updateData.baseAddress2 || '') : (currentEmployee.baseAddress2 || '');
@@ -607,8 +668,8 @@ router.put('/api/employees/:id', async (req, res) => {
     }
 
     db.run(
-      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, role = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, preferences = ?, updatedAt = ? WHERE id = ?',
-      [name, preferredName, email, password, oxfordHouseId, position, role, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, preferences, now, id],
+      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, role = ?, permissions = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, preferences = ?, updatedAt = ? WHERE id = ?',
+      [name, preferredName, email, password, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, preferences, now, id],
       function(err) {
         if (err) {
           debugError('❌ Database error updating employee:', err.message);

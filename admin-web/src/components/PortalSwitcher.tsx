@@ -136,6 +136,18 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   const getAvailablePortals = () => {
     const role = currentUser?.role?.toLowerCase() || '';
     const position = currentUser?.position?.toLowerCase() || '';
+    const permissions = Array.isArray(currentUser?.permissions)
+      ? currentUser.permissions
+      : (typeof currentUser?.permissions === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(currentUser.permissions);
+            } catch (error) {
+              console.warn('Failed to parse permissions:', error);
+              return [];
+            }
+          })()
+        : []);
     const personalizedStaffName = getPersonalizedStaffPortalName();
     const availablePortals: Array<{
       id: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts';
@@ -143,6 +155,51 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
       icon: React.ReactNode;
       description: string;
     }> = [];
+
+    if (permissions.length > 0) {
+      if (permissions.includes('admin')) {
+        availablePortals.push({
+          id: 'admin',
+          name: 'Admin Portal',
+          icon: <AdminPanelSettings />,
+          description: 'Manage employees, cost centers, and system settings'
+        });
+      }
+      if (permissions.includes('finance')) {
+        availablePortals.push({
+          id: 'finance',
+          name: 'Finance Portal',
+          icon: <AccountBalance />,
+          description: 'Review, export, and print expense reports'
+        });
+      }
+      if (permissions.includes('contracts')) {
+        availablePortals.push({
+          id: 'contracts',
+          name: 'Contracts Portal',
+          icon: <Description />,
+          description: 'Review expense reports for quarterly audit'
+        });
+      }
+      if (permissions.includes('supervisor')) {
+        availablePortals.push({
+          id: 'supervisor',
+          name: 'Supervisor Portal',
+          icon: <SupervisorAccount />,
+          description: 'Review team reports and approve expenses'
+        });
+      }
+      if (permissions.includes('staff')) {
+        availablePortals.push({
+          id: 'staff',
+          name: personalizedStaffName,
+          icon: <Person />,
+          description: 'Manage your own expense reports and mileage'
+        });
+      }
+
+      return availablePortals;
+    }
 
     const hasAdminRole = role.includes('admin') || role.includes('ceo');
     const hasFinanceRole = role.includes('finance') || role.includes('accounting');

@@ -58,6 +58,69 @@ import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import { debugLog, debugError } from '../config/debug';
 
+const PORTAL_PERMISSIONS = [
+  {
+    id: 'admin',
+    label: 'Admin Portal',
+    description: 'Full system access - manage employees and settings',
+  },
+  {
+    id: 'finance',
+    label: 'Finance Portal',
+    description: 'Review, export, and print expense reports',
+  },
+  {
+    id: 'contracts',
+    label: 'Contracts Portal',
+    description: 'Review expense reports for quarterly audit',
+  },
+  {
+    id: 'supervisor',
+    label: 'Supervisor Portal',
+    description: 'Review team reports and approve expenses',
+  },
+  {
+    id: 'staff',
+    label: 'Staff Portal',
+    description: 'Manage your own expense reports and mileage',
+  },
+];
+
+const getDefaultPermissions = (role: string, position: string): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> => {
+  const normalizedRole = (role || '').toLowerCase();
+  const normalizedPosition = (position || '').toLowerCase();
+
+  if (normalizedRole.includes('admin') || normalizedRole.includes('ceo')) {
+    return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
+  }
+  if (normalizedRole.includes('finance') || normalizedRole.includes('accounting')) {
+    return ['finance', 'staff'];
+  }
+  if (normalizedRole.includes('contracts')) {
+    return ['contracts', 'staff'];
+  }
+  if (normalizedRole.includes('supervisor') || normalizedRole.includes('director') || normalizedRole.includes('manager')) {
+    return ['supervisor', 'staff'];
+  }
+
+  if (!normalizedRole || normalizedRole === 'employee') {
+    if (normalizedPosition.includes('admin') || normalizedPosition.includes('ceo')) {
+      return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
+    }
+    if (normalizedPosition.includes('finance') || normalizedPosition.includes('accounting')) {
+      return ['finance', 'staff'];
+    }
+    if (normalizedPosition.includes('contracts')) {
+      return ['contracts', 'staff'];
+    }
+    if (normalizedPosition.includes('supervisor') || normalizedPosition.includes('director') || normalizedPosition.includes('regional manager') || normalizedPosition.includes('manager')) {
+      return ['supervisor', 'staff'];
+    }
+  }
+
+  return ['staff'];
+};
+
 interface EmployeeManagementProps {
   onImportComplete: (result: BulkImportResult) => void;
   existingEmployees: Employee[];
@@ -550,7 +613,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     // Create a copy of employee but clear the password field (don't show hashed password)
     const employeeToEdit = {
       ...viewingEmployee,
-      password: '' // Clear password field - user can enter new password if needed
+      password: '', // Clear password field - user can enter new password if needed
+      permissions: viewingEmployee.permissions && viewingEmployee.permissions.length > 0
+        ? viewingEmployee.permissions
+        : getDefaultPermissions(viewingEmployee.role || 'employee', viewingEmployee.position || '')
     };
     setEditingEmployee(employeeToEdit);
     const costCenters = parseCostCenters(viewingEmployee.costCenters);
@@ -564,7 +630,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     // Create a copy of employee but clear the password field (don't show hashed password)
     const employeeToEdit = {
       ...employee,
-      password: '' // Clear password field - user can enter new password if needed
+      password: '', // Clear password field - user can enter new password if needed
+      permissions: employee.permissions && employee.permissions.length > 0
+        ? employee.permissions
+        : getDefaultPermissions(employee.role || 'employee', employee.position || '')
     };
     setEditingEmployee(employeeToEdit);
     const costCenters = parseCostCenters(employee.costCenters);
@@ -583,6 +652,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       oxfordHouseId: '',
       position: '',
       role: 'employee', // Default login role
+      permissions: getDefaultPermissions('employee', ''),
       phoneNumber: '',
       baseAddress: '',
       costCenters: ['Program Services'],
@@ -616,6 +686,9 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       const updatedEmployee: any = {
         ...editingEmployee,
         role: editingEmployee.role || 'employee', // Ensure role is set (defaults to 'employee')
+        permissions: editingEmployee.permissions && editingEmployee.permissions.length > 0
+          ? editingEmployee.permissions
+          : getDefaultPermissions(editingEmployee.role || 'employee', editingEmployee.position || ''),
         costCenters: selectedCostCenters,
         selectedCostCenters: selectedCostCenters,
         defaultCostCenter: defaultCostCenter || selectedCostCenters[0]
@@ -1591,7 +1664,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     value={editingEmployee.role || 'employee'}
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
-                      role: e.target.value as 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts'
+                      role: e.target.value as 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts',
+                      permissions: (editingEmployee.permissions && editingEmployee.permissions.length > 0)
+                        ? editingEmployee.permissions
+                        : getDefaultPermissions(e.target.value as string, editingEmployee.position || '')
                     })}
                     label="Login Role (System Access)"
                   >
@@ -1638,6 +1714,40 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   </Select>
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                     Login role determines system access and permissions (separate from job title)
+                  </Typography>
+                </FormControl>
+                
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <InputLabel>Portal Permissions</InputLabel>
+                  <Select
+                    multiple
+                    value={editingEmployee.permissions || []}
+                    onChange={(e) => setEditingEmployee({
+                      ...editingEmployee,
+                      permissions: e.target.value as Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'>
+                    })}
+                    input={<OutlinedInput label="Portal Permissions" />}
+                    renderValue={(selected) =>
+                      (selected as string[])
+                        .map((permission) => {
+                          const match = PORTAL_PERMISSIONS.find((item) => item.id === permission);
+                          return match ? match.label : permission;
+                        })
+                        .join(', ')
+                    }
+                  >
+                    {PORTAL_PERMISSIONS.map((permission) => (
+                      <MenuItem key={permission.id} value={permission.id}>
+                        <Checkbox checked={(editingEmployee.permissions || []).includes(permission.id as any)} />
+                        <ListItemText
+                          primary={permission.label}
+                          secondary={permission.description}
+                        />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Select which portals this user can access. If none are selected, defaults are based on Login Role.
                   </Typography>
                 </FormControl>
                 

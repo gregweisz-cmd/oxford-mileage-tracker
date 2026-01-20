@@ -133,6 +133,7 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
       // Parse JSON fields
       let costCenters = [];
       let selectedCostCenters = [];
+      let permissions = [];
       
       try {
         if (employee.costCenters) {
@@ -140,6 +141,9 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
         }
         if (employee.selectedCostCenters) {
           selectedCostCenters = JSON.parse(employee.selectedCostCenters);
+        }
+        if (employee.permissions) {
+          permissions = JSON.parse(employee.permissions);
         }
       } catch (parseErr) {
         debugError('Error parsing cost centers:', parseErr);
@@ -153,7 +157,7 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
       const userRole = employee.role || 'employee';
       
       // Validate role is one of the allowed values
-      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
       const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
       
       // Create session token (simple for now - use JWT in production)
@@ -167,7 +171,8 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
           lastLoginAt: now, // Explicitly include lastLoginAt in response
           role: validRole, // Include role in response
           costCenters,
-          selectedCostCenters
+          selectedCostCenters,
+          permissions
         },
         token: sessionToken
       });
@@ -245,6 +250,7 @@ router.get('/api/auth/verify', (req, res) => {
       // Parse JSON fields
       let costCenters = [];
       let selectedCostCenters = [];
+      let permissions = [];
       
       try {
         if (employee.costCenters) {
@@ -252,6 +258,9 @@ router.get('/api/auth/verify', (req, res) => {
         }
         if (employee.selectedCostCenters) {
           selectedCostCenters = JSON.parse(employee.selectedCostCenters);
+        }
+        if (employee.permissions) {
+          permissions = JSON.parse(employee.permissions);
         }
       } catch (parseErr) {
         debugError('Error parsing cost centers:', parseErr);
@@ -261,7 +270,7 @@ router.get('/api/auth/verify', (req, res) => {
       
       // Get role from database (defaults to 'employee' if not set)
       const userRole = employee.role || 'employee';
-      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
       const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
       
       res.json({
@@ -271,7 +280,8 @@ router.get('/api/auth/verify', (req, res) => {
           lastLoginAt: employee.lastLoginAt, // Ensure lastLoginAt is included
           role: validRole, // Explicitly include role in response
           costCenters,
-          selectedCostCenters
+          selectedCostCenters,
+          permissions
         }
       });
     }
@@ -609,7 +619,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
           const { password: _, ...employeeData } = userToReturn;
 
           const userRole = userToReturn.role || 'employee';
-          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
           const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
 
           debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
@@ -1246,7 +1256,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
 
           const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
           const userRole = userToReturn.role || 'employee';
-          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
           const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}, serving redirect page...`);
@@ -1667,7 +1677,7 @@ router.post('/api/auth/google/mobile', async (req, res) => {
           const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
           const { password: _, ...employeeData } = userToReturn;
           const userRole = userToReturn.role || 'employee';
-          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance'];
+          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
           const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}`);

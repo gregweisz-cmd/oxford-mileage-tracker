@@ -1,7 +1,7 @@
 // Authentication Service for Admin Web Portal
 import { debugError, debugWarn } from '../config/debug';
 
-export type UserRole = 'employee' | 'supervisor' | 'admin' | 'finance';
+export type UserRole = 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
 
 export interface User {
   id: string;

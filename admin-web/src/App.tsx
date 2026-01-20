@@ -22,9 +22,34 @@ import AuthCallback from './components/AuthCallback';
 import { debugLog, debugError, debugVerbose } from './config/debug';
 
 // Helper function to get available portals for a user (used before user state is set)
-const getAvailablePortalsForUser = (role: string, position: string): Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> => {
+const getAvailablePortalsForUser = (
+  role: string,
+  position: string,
+  permissions: string[] = []
+): Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> => {
   const normalizedRole = role.toLowerCase();
   const normalizedPosition = position.toLowerCase();
+  const normalizedPermissions = permissions.map((perm) => perm.toLowerCase());
+
+  if (normalizedPermissions.length > 0) {
+    const allowed = new Set<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'>();
+    normalizedPermissions.forEach((permission) => {
+      if (permission === 'admin') allowed.add('admin');
+      if (permission === 'finance') allowed.add('finance');
+      if (permission === 'contracts') allowed.add('contracts');
+      if (permission === 'supervisor') allowed.add('supervisor');
+      if (permission === 'staff') allowed.add('staff');
+    });
+    const portalOrder: Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> = [
+      'admin',
+      'finance',
+      'contracts',
+      'supervisor',
+      'staff',
+    ];
+    return portalOrder.filter((portal) => allowed.has(portal));
+  }
+
   const hasAdminRole = normalizedRole.includes('admin') || normalizedRole.includes('ceo');
   const hasFinanceRole = normalizedRole.includes('finance') || normalizedRole.includes('accounting');
   const hasContractsRole = normalizedRole.includes('contracts');
@@ -205,6 +230,18 @@ const App: React.FC = () => {
             // Set initial portal based on user preference, then role, then position (fallback)
             const role = employee?.role?.toLowerCase() || '';
             const position = employee?.position?.toLowerCase() || '';
+            const permissions = Array.isArray(employee?.permissions)
+              ? employee.permissions
+              : (typeof employee?.permissions === 'string'
+                ? (() => {
+                    try {
+                      return JSON.parse(employee.permissions);
+                    } catch (error) {
+                      debugError('Error parsing permissions:', error);
+                      return [];
+                    }
+                  })()
+                : []);
             
             // First, check if user has a saved default portal preference
             try {
@@ -213,7 +250,7 @@ const App: React.FC = () => {
               debugLog('🔍 Loaded user preferences (checkAuthStatus):', preferences);
               if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
                 // Verify user has access to this portal
-                const availablePortals = getAvailablePortalsForUser(role, position);
+                const availablePortals = getAvailablePortalsForUser(role, position, permissions);
                 debugLog('🔍 Available portals for user (checkAuthStatus):', availablePortals);
                 debugLog('🔍 Preferred portal (checkAuthStatus):', preferences.defaultPortal);
                 if (availablePortals.includes(preferences.defaultPortal)) {
@@ -232,23 +269,15 @@ const App: React.FC = () => {
             }
             
             // If no preference or preference invalid, use role/position-based detection
-            if (role === 'admin') {
+            const availablePortals = getAvailablePortalsForUser(role, position, permissions);
+            if (availablePortals.includes('admin')) {
               setCurrentPortal('admin');
-            } else if (role === 'finance') {
+            } else if (availablePortals.includes('finance')) {
               setCurrentPortal('finance');
-            } else if (role === 'supervisor') {
+            } else if (availablePortals.includes('contracts')) {
+              setCurrentPortal('contracts');
+            } else if (availablePortals.includes('supervisor')) {
               setCurrentPortal('supervisor');
-            } else if (!role || role === 'employee') {
-              // Fallback to position-based detection
-              if (position.includes('admin') || position.includes('ceo')) {
-                setCurrentPortal('admin');
-              } else if (position.includes('finance') || position.includes('accounting')) {
-                setCurrentPortal('finance');
-              } else if (position.includes('supervisor') || position.includes('director') || position.includes('regional manager') || position.includes('manager')) {
-                setCurrentPortal('supervisor');
-              } else {
-                setCurrentPortal('staff');
-              }
             } else {
               setCurrentPortal('staff');
             }
@@ -420,6 +449,18 @@ const App: React.FC = () => {
     // IMPORTANT: Role field takes priority over position field
     const role = employee?.role?.toLowerCase() || '';
     const position = employee?.position?.toLowerCase() || '';
+    const permissions = Array.isArray(employee?.permissions)
+      ? employee.permissions
+      : (typeof employee?.permissions === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(employee.permissions);
+            } catch (error) {
+              debugError('Error parsing permissions:', error);
+              return [];
+            }
+          })()
+        : []);
     
     // First, check if user has a saved default portal preference
     try {
@@ -428,7 +469,8 @@ const App: React.FC = () => {
       debugLog('🔍 Loaded user preferences:', preferences);
       if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
         // Verify user has access to this portal
-        const availablePortals = getAvailablePortalsForUser(role, position);
+        const availablePortals = getAvailablePortalsForUser(role, position, permissions);
+    const availablePortals = getAvailablePortalsForUser(role, position, permissions);
         debugLog('🔍 Available portals for user:', availablePortals);
         debugLog('🔍 Preferred portal:', preferences.defaultPortal);
         if (availablePortals.includes(preferences.defaultPortal)) {

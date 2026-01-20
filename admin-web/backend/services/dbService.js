@@ -79,6 +79,7 @@ function ensureTablesExist() {
         oxfordHouseId TEXT NOT NULL,
         position TEXT NOT NULL,
         role TEXT DEFAULT 'employee',
+        permissions TEXT DEFAULT '[]',
         phoneNumber TEXT,
         baseAddress TEXT NOT NULL,
         baseAddress2 TEXT DEFAULT '',
@@ -138,6 +139,22 @@ function ensureTablesExist() {
                     debugLog('✅ Backfilled supervisor roles based on position');
                   }
                 });
+                db.run(`UPDATE employees SET role = 'contracts' WHERE LOWER(position) LIKE '%contracts%' AND role = 'employee'`, (backfillErr) => {
+                  if (!backfillErr) {
+                    debugLog('✅ Backfilled contracts roles based on position');
+                  }
+                });
+              }
+            });
+          }
+          
+          // Check if permissions column exists
+          if (!columnNames.includes('permissions')) {
+            db.run(`ALTER TABLE employees ADD COLUMN permissions TEXT DEFAULT '[]'`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add permissions column:', alterErr.message);
+              } else {
+                debugLog('✅ Added permissions column to employees table');
               }
             });
           }
@@ -622,6 +639,13 @@ function ensureTablesExist() {
             db.run(`ALTER TABLE employees ADD COLUMN preferences TEXT DEFAULT '{}'`, (err) => {
               if (err) debugLog('Note: preferences column may already exist');
               else debugLog('✅ Added preferences column to employees table');
+            });
+          }
+
+          if (!columnNames.includes('permissions')) {
+            db.run(`ALTER TABLE employees ADD COLUMN permissions TEXT DEFAULT '[]'`, (err) => {
+              if (err) debugLog('Note: permissions column may already exist');
+              else debugLog('✅ Added permissions column to employees table');
             });
           }
           
