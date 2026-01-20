@@ -8,6 +8,7 @@ import {
   Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface UnifiedHeaderProps {
   title: string;
@@ -37,10 +38,20 @@ export default function UnifiedHeader({
   rightButton,
   backgroundColor = '#E6E6E6',
 }: UnifiedHeaderProps) {
+  const insets = useSafeAreaInsets();
+
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor={backgroundColor} />
-      <View style={[styles.header, { backgroundColor }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor,
+            paddingTop: Math.max(insets.top, 12),
+          },
+        ]}
+      >
         <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="contain" />
         <View style={styles.row}>
           <View style={styles.sideSection}>
