@@ -1110,10 +1110,21 @@ export class ApiSyncService {
           const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
           const employeeIdToSend = backendEmployeeId || entry.employeeId;
           // Validate and prepare time tracking data
+          let dateToSend: string;
+          if (entry.date instanceof Date) {
+            const year = entry.date.getFullYear();
+            const month = String(entry.date.getMonth() + 1).padStart(2, '0');
+            const day = String(entry.date.getDate()).padStart(2, '0');
+            dateToSend = `${year}-${month}-${day}`;
+          } else {
+            const dateStr = entry.date as string;
+            dateToSend = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+          }
+
           const timeTrackingData = {
             id: entry.id, // Include ID to prevent duplicates on backend
             employeeId: employeeIdToSend,
-            date: entry.date instanceof Date ? entry.date.toISOString() : new Date(entry.date).toISOString(),
+            date: dateToSend,
             category: entry.category || '',
             hours: entry.hours,
             description: entry.description || '',
@@ -1371,7 +1382,7 @@ export class ApiSyncService {
     return data.map((entry: any) => ({
       id: entry.id,
       employeeId: entry.employeeId,
-      date: new Date(entry.date),
+      date: this.parseDateSafe(entry.date),
       category: entry.category,
       hours: entry.hours,
       description: entry.description,

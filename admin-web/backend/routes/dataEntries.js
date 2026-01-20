@@ -978,10 +978,15 @@ router.post('/api/time-tracking', async (req, res) => {
   const db = dbService.getDb();
   
   const { id, employeeId, date, category, hours, description, costCenter } = req.body;
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (!normalizedDate) {
+    debugError('❌ Invalid date provided:', date);
+    return res.status(400).json({ error: 'Invalid date format. Date is required.' });
+  }
   
   // ALWAYS create a deterministic ID based on the unique combination to ensure proper replacement
   // Ignore any ID sent from frontend to prevent duplicates
-  const uniqueKey = `${employeeId}-${date}-${category || ''}-${costCenter || ''}`;
+  const uniqueKey = `${employeeId}-${normalizedDate}-${category || ''}-${costCenter || ''}`;
   // Use crypto hash to ensure unique IDs even for similar keys
   const hash = crypto.createHash('sha256').update(uniqueKey).digest('hex');
   const trackingId = hash.substring(0, 32); // Use first 32 chars of hash for uniqueness
@@ -989,7 +994,7 @@ router.post('/api/time-tracking', async (req, res) => {
   
   db.run(
     'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
-    [trackingId, employeeId, date, category || '', hours, description || '', costCenter || '', trackingId, now, now],
+    [trackingId, employeeId, normalizedDate, category || '', hours, description || '', costCenter || '', trackingId, now, now],
     async function(err) {
       if (err) {
         debugError('❌ Database error:', err.message);
@@ -999,7 +1004,7 @@ router.post('/api/time-tracking', async (req, res) => {
       
       // Check for 50+ hours alert after saving
       try {
-        await checkAndNotify50PlusHours(employeeId, date);
+        await checkAndNotify50PlusHours(employeeId, normalizedDate);
       } catch (alertError) {
         debugError('❌ Error checking 50+ hours alert:', alertError);
         // Don't fail the request if alert check fails
@@ -1018,10 +1023,15 @@ router.put('/api/time-tracking/:id', async (req, res) => {
   const { employeeId, date, category, hours, description, costCenter } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (!normalizedDate) {
+    debugError('❌ Invalid date provided:', date);
+    return res.status(400).json({ error: 'Invalid date format. Date is required.' });
+  }
 
   db.run(
     'UPDATE time_tracking SET employeeId = ?, date = ?, category = ?, hours = ?, description = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, date, category || '', hours, description || '', costCenter || '', now, id],
+    [employeeId, normalizedDate, category || '', hours, description || '', costCenter || '', now, id],
     async function(err) {
       if (err) {
         debugError('Database error:', err.message);
@@ -1031,7 +1041,7 @@ router.put('/api/time-tracking/:id', async (req, res) => {
       
       // Check for 50+ hours alert after updating
       try {
-        await checkAndNotify50PlusHours(employeeId, date);
+        await checkAndNotify50PlusHours(employeeId, normalizedDate);
       } catch (alertError) {
         debugError('❌ Error checking 50+ hours alert:', alertError);
         // Don't fail the request if alert check fails
