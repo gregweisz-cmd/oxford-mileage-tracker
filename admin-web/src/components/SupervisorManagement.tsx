@@ -98,10 +98,8 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         type = 'senior-staff';
         debugLog('👥 Found senior staff:', emp.name, emp.position);
       }
-      // Check for Supervisor, Manager, or Director
-      else if (positionLower.includes('supervisor') || 
-               positionLower.includes('manager') ||
-               positionLower.includes('director')) {
+      // Check for Supervisor designation
+      else if (positionLower.includes('supervisor')) {
         type = 'supervisor';
         debugLog('👔 Found supervisor:', emp.name, emp.position);
       }
@@ -120,8 +118,8 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       if (emp.supervisorId && !supervisorMap.has(emp.supervisorId)) {
         const supervisor = employees.find(e => e.id === emp.supervisorId);
         if (supervisor) {
-          const positionLower = supervisor.position.toLowerCase();
-          const type = positionLower.includes('senior staff') ? 'senior-staff' : 'supervisor';
+        const positionLower = supervisor.position.toLowerCase();
+        const type = positionLower.includes('senior staff') ? 'senior-staff' : 'supervisor';
           supervisorMap.set(supervisor.id, {
             supervisor,
             staffMembers: [],
@@ -595,13 +593,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
           <Box sx={{ mt: 2 }}>
             <FormControl fullWidth>
               <Autocomplete
-                options={employees.filter(e => {
-                  const pos = e.position.toLowerCase();
-                  return !pos.includes('supervisor') &&
-                         !pos.includes('manager') &&
-                         !pos.includes('director') &&
-                         !pos.includes('senior staff');
-                })}
+                options={employees}
                 getOptionLabel={(option) => `${option.name} - ${option.position}`}
                 value={employeeToPromote}
                 onChange={(_, newValue) => setEmployeeToPromote(newValue)}

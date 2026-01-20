@@ -403,7 +403,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
                 <View style={styles.manualEntryContent}>
                   <View style={styles.manualEntryInfo}>
                     <MaterialIcons name="edit" size={48} color="#2196F3" />
-                    <Text style={styles.manualEntryTitle}>Manual Entry</Text>
+                    <Text style={styles.manualEntryTitle}>Manual Travel Entry</Text>
                     <Text style={styles.manualEntryDescription}>
                       Enter any location manually in the search box above. This will be saved as entered.
                     </Text>

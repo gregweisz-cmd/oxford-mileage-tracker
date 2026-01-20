@@ -1533,7 +1533,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                   style={styles.manualEntryButton}
                   onPress={() => {
                     // Handle manual entry - could open a simple text input modal
-                    Alert.alert('Manual Entry', 'Manual location entry feature coming soon!');
+                    Alert.alert('Manual Travel Entry', 'Manual travel location entry feature coming soon!');
                   }}
                 >
                   <MaterialIcons name="edit" size={20} color="#2196F3" />

@@ -298,7 +298,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       'manual-entry': {
         id: 'manual-entry',
         icon: 'add',
-        label: 'Manual Entry',
+        label: 'Manual Travel Entry',
         color: colors.primary,
         onPress: handleAddEntry,
       },
@@ -1345,7 +1345,14 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
         {/* Monthly Mileage Link */}
         <View style={styles.monthlyMileageContainer}>
-          <View style={dynamicStyles.monthlyMileageButton}>
+          <TouchableOpacity 
+            style={dynamicStyles.monthlyMileageButton}
+            onPress={() => navigation.navigate('MileageEntries', { 
+              selectedMonth, 
+              selectedYear 
+            })}
+            activeOpacity={0.7}
+          >
             <View style={styles.monthlyMileageContent}>
               <View style={styles.monthlyMileageIconContainer}>
                 <MaterialIcons name="speed" size={28} color={colors.primary} />
@@ -1353,11 +1360,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               <View style={styles.monthlyMileageTextContainer}>
                 <Text style={dynamicStyles.monthlyMileageTitle}>Monthly Mileage Summary</Text>
                 <Text style={dynamicStyles.monthlyMileageSubtitle}>
-                  {totalMilesThisMonth.toFixed(1)} miles • {recentEntries.length} entries • {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  {totalMilesThisMonth.toFixed(1)} miles • {recentEntries.length} entries • {new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </Text>
               </View>
+              <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
 

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer How-To Guide - Oxford House Expense Tracker</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 0.75in;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 0;
+        }
+        
+        .cover-page {
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 9in;
+            text-align: center;
+        }
+        
+        .cover-page h1 {
+            font-size: 32pt;
+            margin-bottom: 16pt;
+            color: #1976d2;
+        }
+        
+        .cover-page .subtitle {
+            font-size: 16pt;
+            color: #666;
+            margin-bottom: 36pt;
+        }
+        
+        .cover-page .version {
+            font-size: 11pt;
+            color: #999;
+            margin-top: 32pt;
+        }
+        
+        h1 {
+            font-size: 22pt;
+            color: #1976d2;
+            margin-top: 24pt;
+            margin-bottom: 12pt;
+            page-break-after: avoid;
+        }
+        
+        h2 {
+            font-size: 16pt;
+            color: #1976d2;
+            margin-top: 18pt;
+            margin-bottom: 10pt;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: 13pt;
+            color: #333;
+            margin-top: 14pt;
+            margin-bottom: 8pt;
+            page-break-after: avoid;
+        }
+        
+        p {
+            margin-bottom: 10pt;
+        }
+        
+        ul, ol {
+            margin-bottom: 10pt;
+            padding-left: 22pt;
+        }
+        
+        li {
+            margin-bottom: 5pt;
+        }
+        
+        .quick-start {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 14pt;
+            margin: 16pt 0;
+            page-break-inside: avoid;
+        }
+        
+        .tip-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 14pt;
+            margin: 16pt 0;
+            page-break-inside: avoid;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14pt 0;
+            page-break-inside: avoid;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8pt;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #1976d2;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .doc-list code {
+            background-color: #f4f4f4;
+            padding: 2pt 6pt;
+            border-radius: 3pt;
+            font-family: 'Courier New', monospace;
+            font-size: 10pt;
+        }
+        
+        .section-divider {
+            border-top: 2px solid #1976d2;
+            margin: 26pt 0;
+            page-break-before: always;
+        }
+    </style>
+</head>
+<body>
+    <div class="cover-page">
+        <h1>Developer How-To Guide</h1>
+        <div class="subtitle">Oxford House Expense Tracker</div>
+        <div class="version">Version 1.0 | January 2026</div>
+    </div>
+
+    <h1>Overview</h1>
+    <p>
+        This guide summarizes the developer workflow, system architecture, and the core files
+        used to maintain the Oxford House Expense Tracker. It is designed as a quick reference
+        and points to deeper documentation stored in <code>docs/developer/</code>.
+    </p>
+
+    <div class="quick-start">
+        <h3>Quick Start (Local Dev)</h3>
+        <ul>
+            <li>Backend: <code>cd admin-web/backend &amp;&amp; npm start</code> (http://localhost:3002)</li>
+            <li>Web portal: <code>cd admin-web &amp;&amp; npm start</code> (http://localhost:3000)</li>
+            <li>Mobile (Expo): <code>npm start</code></li>
+        </ul>
+    </div>
+
+    <h2>Primary Architecture References</h2>
+    <table class="doc-list">
+        <thead>
+            <tr>
+                <th>Document</th>
+                <th>Purpose</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>docs/developer/ARCHITECTURE_CLEAN.md</code></td>
+                <td>Clean architecture overview, data flow, and sync model</td>
+            </tr>
+            <tr>
+                <td><code>docs/developer/PROJECT_STRUCTURE.md</code></td>
+                <td>Full repository map with folder-by-folder description</td>
+            </tr>
+            <tr>
+                <td><code>docs/developer/DATABASE_MANAGEMENT_GUIDE.md</code></td>
+                <td>Database schema and migration references</td>
+            </tr>
+            <tr>
+                <td><code>docs/developer/PRODUCTION_GO_LIVE_PLAN.md</code></td>
+                <td>Production rollout checklist and validation steps</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Repository Map (High Level)</h2>
+    <ul>
+        <li><code>src/</code> - Mobile app (Expo)</li>
+        <li><code>admin-web/</code> - Web portal (React)</li>
+        <li><code>admin-web/backend/</code> - Backend API (Express + SQLite)</li>
+        <li><code>docs/</code> - Documentation and guides</li>
+        <li><code>assets/</code> - Brand assets and images</li>
+    </ul>
+    <p>
+        For a full directory walkthrough, see <code>docs/developer/PROJECT_STRUCTURE.md</code>.
+    </p>
+
+    <div class="section-divider"></div>
+
+    <h1>System Components</h1>
+    <h2>Mobile App (React Native / Expo)</h2>
+    <ul>
+        <li>Source: <code>src/</code></li>
+        <li>Core entry: <code>App.tsx</code></li>
+        <li>Local data: <code>src/services/database.ts</code></li>
+        <li>API base URL: <code>src/config/api.ts</code></li>
+    </ul>
+
+    <h2>Admin Web Portal</h2>
+    <ul>
+        <li>Frontend: <code>admin-web/src/</code></li>
+        <li>Theme and branding: <code>admin-web/src/App.tsx</code></li>
+    </ul>
+
+    <h2>Backend (Render)</h2>
+    <ul>
+        <li>Server entry: <code>admin-web/backend/server.js</code></li>
+        <li>Routes: <code>admin-web/backend/routes/</code></li>
+        <li>Database: SQLite (backend server)</li>
+        <li>WebSocket: real-time updates to web portal</li>
+    </ul>
+
+    <div class="section-divider"></div>
+
+    <h1>Data &amp; Sync</h1>
+    <h2>Database Architecture</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Mobile App (SQLite)</th>
+                <th>Backend (SQLite)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>
+                    employees, mileage_entries, receipts, time_tracking,
+                    daily_descriptions, daily_odometer_readings, saved_addresses,
+                    per_diem_rules, monthly_reports, weekly_reports, biweekly_reports,
+                    cost_center_summaries, current_employee
+                </td>
+                <td>
+                    employees, cost_centers, per_diem_rules, monthly_reports,
+                    weekly_reports, biweekly_reports, report_status (legacy)
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <p>
+        The mobile app is the source of truth for mileage entries, receipts, and hours.
+        The backend stores employee/admin data and report workflow metadata.
+    </p>
+
+    <h2>Mobile Local DB</h2>
+    <p>
+        The mobile app stores data in SQLite for offline-first behavior. Sync services push
+        changes to the backend and pull updates back into the local store.
+    </p>
+
+    <h2>Backend Sync</h2>
+    <p>
+        The backend provides REST endpoints and WebSocket updates for real-time sync.
+        See <code>docs/developer/ARCHITECTURE_CLEAN.md</code> for a full flow diagram.
+    </p>
+
+    <h2>Sync Flow (Write)</h2>
+    <pre>
+Mobile action
+  → Save to local DB
+  → SyncIntegrationService queue
+  → Auto-sync every 5 seconds
+  → POST to backend API
+  → WebSocket broadcast to web portal
+    </pre>
+
+    <h2>Sync Flow (Read)</h2>
+    <pre>
+App launch
+  → ApiSyncService.syncFromBackend()
+  → Fetch employees / time / descriptions / per diem rules
+  → Store in local DB
+  → UI refresh
+    </pre>
+
+    <h2>What Syncs</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>From Mobile to Backend</th>
+                <th>From Backend to Mobile</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>mileage entries, receipts, time tracking, daily descriptions, employee updates</td>
+                <td>employees list, time tracking updates, daily descriptions, per diem rules</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Web Portal Data Access</h2>
+    <ul>
+        <li>Staff portal reads mobile data via API and submits monthly reports</li>
+        <li>Supervisor portal reviews and approves/rejects reports</li>
+        <li>Admin portal manages employees, cost centers, per diem rules</li>
+    </ul>
+
+    <div class="tip-box">
+        <h3>Tip</h3>
+        <p>
+            When testing sync behavior, verify both the local DB changes and the backend response
+            logs. This catches silent failures early.
+        </p>
+    </div>
+
+    <div class="section-divider"></div>
+
+    <h1>Data Integrity Rules</h1>
+    <ul>
+        <li>Preserve IDs when syncing; generate new IDs only for brand-new entries.</li>
+        <li>Always validate employeeId before saving records.</li>
+        <li>Use YYYY-MM-DD date format and avoid timezone shifts.</li>
+        <li>Check for duplicates by ID and data signature before insert.</li>
+    </ul>
+
+    <h1>Best Practices</h1>
+    <h2>Do</h2>
+    <ul>
+        <li>Save to local DB first, then rely on auto-sync.</li>
+        <li>Use Promise.all for parallel DB queries.</li>
+        <li>Refresh screens via useFocusEffect without re-syncing.</li>
+        <li>Log important operations in backend routes and sync services.</li>
+    </ul>
+    <h2>Don't</h2>
+    <ul>
+        <li>Call backend APIs directly from screens for write operations.</li>
+        <li>Sync on every screen focus (avoid duplicate writes).</li>
+        <li>Store the same data in multiple places.</li>
+    </ul>
+
+    <div class="section-divider"></div>
+
+    <h1>Monitoring &amp; Debugging</h1>
+    <h2>Mobile Log Markers</h2>
+    <p>✅ success • ❌ error • 🔄 syncing • 📥 downloading • 📤 uploading • 💾 saving</p>
+    <h2>Backend Observability</h2>
+    <ul>
+        <li>Check server logs for sync queue activity and WebSocket broadcasts.</li>
+        <li>Inspect SQLite with a viewer if data appears missing in portals.</li>
+    </ul>
+
+    <div class="section-divider"></div>
+
+    <h1>Release &amp; Deployment</h1>
+    <ul>
+        <li>Expo OTA updates: <code>eas update --branch main</code></li>
+        <li>Android internal testing: EAS build + Play Console upload</li>
+        <li>iOS TestFlight: Requires Apple Developer account</li>
+    </ul>
+
+    <div style="margin-top: 40pt; padding-top: 20pt; border-top: 1px solid #ddd; font-size: 9pt; color: #666; text-align: center;">
+        <p>This document is part of the Oxford House Expense Tracker documentation suite.</p>
+        <p>For technical support, please contact your system administrator.</p>
+        <p>Document Version: 1.0 | Last Updated: January 2026</p>
+    </div>
+</body>
+</html>

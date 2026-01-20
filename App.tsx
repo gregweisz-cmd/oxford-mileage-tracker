@@ -35,6 +35,7 @@ import SavedAddressesScreen from './src/screens/SavedAddressesScreen';
 import DataSyncScreen from './src/screens/DataSyncScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import PreferencesScreen from './src/screens/PreferencesScreen';
+import MileageEntriesScreen from './src/screens/MileageEntriesScreen';
 import OnboardingScreen from './src/components/OnboardingScreen';
 import SetupWizard from './src/components/SetupWizard';
 import { RootStackParamList } from './src/types';
@@ -268,6 +269,7 @@ export default function App() {
             <Stack.Screen name="ManagerDashboard" component={ManagerDashboardScreen} />
             <Stack.Screen name="SavedAddresses" component={SavedAddressesScreen} />
             <Stack.Screen name="DataSync" component={DataSyncScreen} />
+            <Stack.Screen name="MileageEntries" component={MileageEntriesScreen} />
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen}

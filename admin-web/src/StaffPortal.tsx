@@ -1955,6 +1955,44 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCategoryValue('');
   };
 
+  const buildReportData = (overrides: Record<string, unknown> = {}) => {
+    if (!employeeData) return null;
+    return {
+      ...employeeData,
+      receipts: receipts,
+      dailyDescriptions: dailyDescriptions,
+      employeeSignature: signatureImage,
+      supervisorSignature: supervisorSignatureState,
+      employeeCertificationAcknowledged: employeeCertificationAcknowledged,
+      supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
+      ...overrides,
+    };
+  };
+
+  const syncReportData = async (overrides: Record<string, unknown> = {}) => {
+    if (!employeeData) return;
+    const reportData = buildReportData(overrides);
+    if (!reportData) return;
+
+    const response = await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        employeeId: employeeData.employeeId,
+        month: currentMonth,
+        year: currentYear,
+        reportData: reportData,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(`Failed to sync report data: ${errorData.error || errorData.message || 'Unknown error'}`);
+    }
+  };
+
   // Handle signature file upload
   const handleSignatureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1970,25 +2008,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         // Auto-save signature to expense report
         if (employeeData) {
           try {
-            const reportData = {
-              ...employeeData,
-              receipts: receipts,
-              employeeSignature: result,
-              supervisorSignature: supervisorSignatureState
-            };
-
-            await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                employeeId: employeeData.employeeId,
-                month: currentMonth,
-                year: currentYear,
-                reportData: reportData
-              }),
-            });
+            await syncReportData({ employeeSignature: result });
             
             debugVerbose('✅ Signature upload synced to expense report');
             
@@ -2032,24 +2052,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         // Auto-save supervisor signature to expense report
         if (employeeData) {
           try {
-            const reportData = {
-              ...employeeData,
-              receipts: receipts,
-              employeeSignature: signatureImage,
-              supervisorSignature: result
-            };
-
-            await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                employeeId: employeeData.employeeId,
-                month: currentMonth,
-                year: currentYear,
-                reportData: reportData
-              }),
+            await syncReportData({ 
+              supervisorSignature: result,
+              supervisorCertificationAcknowledged: true,
             });
             
             debugVerbose('✅ Supervisor signature upload synced to expense report');
@@ -2074,25 +2079,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Auto-save signature removal
     if (employeeData) {
       try {
-        const reportData = {
-          ...employeeData,
-          receipts: receipts,
-          employeeSignature: null,
-          supervisorSignature: supervisorSignatureState
-        };
-
-        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            employeeId: employeeData.employeeId,
-            month: currentMonth,
-            year: currentYear,
-            reportData: reportData
-          }),
-        });
+        await syncReportData({ employeeSignature: null });
         
         debugVerbose('✅ Signature removal synced to expense report');
         setSignatureDialogOpen(false);
@@ -3461,12 +3448,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
 
     try {
-      const reportData = {
-        ...employeeData,
-        receipts: receipts,
-        signatureImage: signatureImage,
-        supervisorSignature: supervisorSignatureState
-      };
+      const reportData = buildReportData();
+
+      if (!reportData) {
+        throw new Error('Missing report data for submission');
+      }
 
       const response = await fetch(`${API_BASE_URL}/api/expense-reports`, {
         method: 'POST',
@@ -4308,6 +4294,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       setEmployeeCertificationAcknowledged(false);
                     } else {
                       setEmployeeCertificationAcknowledged(checked);
+                      void syncReportData({ employeeCertificationAcknowledged: checked })
+                        .catch((error) => debugError('Error syncing employee acknowledgment:', error));
                     }
                   }}
                   size="small"
@@ -4334,6 +4322,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       else if (!checked) {
                         setSupervisorSignatureState(null);
                       }
+
+                      void syncReportData({
+                        supervisorCertificationAcknowledged: checked,
+                        supervisorSignature: checked ? supervisorSignatureState : null,
+                      }).catch((error) => debugError('Error syncing supervisor acknowledgment:', error));
                     }}
                     size="small"
                   />
@@ -4531,24 +4524,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             // Auto-save signature removal
                             if (employeeData) {
                               try {
-                                const reportData = {
-                                  ...employeeData,
-                                  receipts: receipts,
-                                  employeeSignature: signatureImage,
-                                  supervisorSignature: null
-                                };
-
-                                await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({
-                                    employeeId: employeeData.employeeId,
-                                    month: currentMonth,
-                                    year: currentYear,
-                                    reportData: reportData
-                                  }),
+                                await syncReportData({
+                                  supervisorSignature: null,
+                                  supervisorCertificationAcknowledged: false,
                                 });
                                 
                                 debugVerbose('✅ Supervisor signature removal synced to expense report');
@@ -6884,25 +6862,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     // Auto-save to expense report
                     if (employeeData) {
                       try {
-                        const reportData = {
-                          ...employeeData,
-                          receipts: receipts,
-                          employeeSignature: savedSignature,
-                          supervisorSignature: supervisorSignatureState
-                        };
-
-                        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            employeeId: employeeData.employeeId,
-                            month: currentMonth,
-                            year: currentYear,
-                            reportData: reportData
-                          }),
-                        });
+                        await syncReportData({ employeeSignature: savedSignature });
                         
                         debugVerbose('✅ Saved signature synced to source tables');
                       } catch (error) {
@@ -7025,24 +6985,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     // Auto-save signature removal
                     if (employeeData) {
                       try {
-                        const reportData = {
-                          ...employeeData,
-                          receipts: receipts,
-                          employeeSignature: signatureImage,
-                          supervisorSignature: null
-                        };
-
-                        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            employeeId: employeeData.employeeId,
-                            month: currentMonth,
-                            year: currentYear,
-                            reportData: reportData
-                          }),
+                        await syncReportData({
+                          supervisorSignature: null,
+                          supervisorCertificationAcknowledged: false,
                         });
                         
                         debugVerbose('✅ Supervisor signature removal synced to expense report');

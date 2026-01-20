@@ -16,12 +16,15 @@ import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataServi
 import { ApiSyncService } from '../services/apiSyncService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
+import { useTips } from '../contexts/TipsContext';
+import { TipCard } from '../components/TipCard';
 
 interface DailyDescriptionScreenProps {
   navigation: any;
 }
 
 export default function DailyDescriptionScreen({ navigation }: DailyDescriptionScreenProps) {
+  const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [daysWithData, setDaysWithData] = useState<UnifiedDayData[]>([]);
@@ -47,6 +50,10 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
         return;
       }
       setCurrentEmployee(employee);
+      setTipsEmployee(employee);
+      if (showTips) {
+        await loadTipsForScreen('DailyDescriptionScreen', 'on_load');
+      }
       
       // Get month data for all days
       const monthData = await UnifiedDataService.getMonthData(
@@ -80,26 +87,11 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
       const localDescriptions = await DatabaseService.getDailyDescriptions(currentEmployee.id);
       
       if (localDescriptions.length > 0) {
-        // Sync local descriptions to backend
-        for (const desc of localDescriptions) {
-          try {
-            await fetch('http://192.168.86.101:3002/api/daily-descriptions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: desc.id,
-                employeeId: desc.employeeId,
-                date: desc.date.toISOString(),
-                description: desc.description,
-                costCenter: desc.costCenter || '',
-                createdAt: desc.createdAt.toISOString(),
-                updatedAt: desc.updatedAt.toISOString()
-              })
-            });
-            console.log(`✅ DailyDescriptionScreen: Synced local description for ${desc.date.toISOString().split('T')[0]}`);
-          } catch (error) {
-            console.error(`❌ DailyDescriptionScreen: Error syncing description for ${desc.date}:`, error);
-          }
+        const syncResult = await ApiSyncService.syncToBackend({
+          dailyDescriptions: localDescriptions
+        });
+        if (!syncResult.success) {
+          console.error('❌ DailyDescriptionScreen: Error syncing local descriptions:', syncResult.error);
         }
       }
       
@@ -167,20 +159,9 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
       try {
         console.log('📤 DailyDescriptionScreen: Auto-syncing to backend...');
         const savedDescription = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
-        
         if (savedDescription) {
-          await fetch('http://192.168.86.101:3002/api/daily-descriptions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: savedDescription.id,
-              employeeId: savedDescription.employeeId,
-              date: savedDescription.date.toISOString(),
-              description: savedDescription.description,
-              costCenter: savedDescription.costCenter || '',
-              createdAt: savedDescription.createdAt.toISOString(),
-              updatedAt: savedDescription.updatedAt.toISOString()
-            })
+          await ApiSyncService.syncToBackend({
+            dailyDescriptions: [savedDescription]
           });
           console.log('✅ DailyDescriptionScreen: Auto-synced to backend');
         }
@@ -335,6 +316,26 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
           </View>
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Tips Display */}
+            {showTips && tips.length > 0 && (
+              <View style={styles.tipsContainer}>
+                <ScrollView 
+                  style={styles.tipsScrollView} 
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled={true}
+                >
+                  {tips.map((tip) => (
+                    <TipCard
+                      key={tip.id}
+                      tip={tip}
+                      onDismiss={dismissTip}
+                      onMarkSeen={markTipAsSeen}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             {/* Description Input */}
             <View style={styles.descriptionSection}>
               <Text style={styles.descriptionLabel}>What did you do today?</Text>
@@ -540,6 +541,15 @@ const styles = StyleSheet.create({
   modalContent: {
     flex: 1,
     padding: 20,
+  },
+  tipsContainer: {
+    marginTop: 8,
+    marginBottom: 16,
+    borderRadius: 12,
+    backgroundColor: '#f8f9fa',
+  },
+  tipsScrollView: {
+    maxHeight: 180,
   },
   descriptionSection: {
     marginBottom: 20,

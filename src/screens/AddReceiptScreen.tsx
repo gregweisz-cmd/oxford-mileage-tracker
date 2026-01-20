@@ -63,6 +63,7 @@ const EES_NOTE_SUFFIX = ` - ${EES_NOTE_TEXT}`;
 export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) {
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const { showAnomalyAlert } = useNotifications();
+  const lastNonPerDiemCategoryRef = useRef<string>('Other');
   const [formData, setFormData] = useState({
     date: new Date(),
     amount: '',
@@ -453,6 +454,19 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
   const handlePerDiemToggle = () => {
     setAutoPerDiemEnabled(!autoPerDiemEnabled);
+  };
+
+  const handlePerDiemReceiptToggle = async (nextChecked: boolean) => {
+    if (nextChecked) {
+      if (formData.category !== 'Per Diem') {
+        lastNonPerDiemCategoryRef.current = formData.category || 'Other';
+      }
+      await handleInputChange('category', 'Per Diem');
+      return;
+    }
+
+    const fallbackCategory = lastNonPerDiemCategoryRef.current || 'Other';
+    await handleInputChange('category', fallbackCategory);
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -1312,6 +1326,19 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         {/* Category */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Category</Text>
+          <View style={styles.perDiemQuickToggle}>
+            <Text style={styles.perDiemQuickToggleLabel}>Per Diem Receipt</Text>
+            <TouchableOpacity
+              style={styles.perDiemQuickToggleButton}
+              onPress={() => handlePerDiemReceiptToggle(formData.category !== 'Per Diem')}
+            >
+              <MaterialIcons
+                name={formData.category === 'Per Diem' ? 'check-box' : 'check-box-outline-blank'}
+                size={24}
+                color={formData.category === 'Per Diem' ? '#1C75BC' : '#999'}
+              />
+            </TouchableOpacity>
+          </View>
           <View style={styles.categoryContainer}>
             {RECEIPT_CATEGORIES.map((category) => (
               <TouchableOpacity
@@ -2000,6 +2027,20 @@ const styles = StyleSheet.create({
   },
   toggleButtonActive: {
     // Additional styles for active state if needed
+  },
+  perDiemQuickToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  perDiemQuickToggleLabel: {
+    fontSize: 14,
+    color: '#444',
+    fontWeight: '600',
+  },
+  perDiemQuickToggleButton: {
+    padding: 4,
   },
   
   // Cost Center Selector Styles
