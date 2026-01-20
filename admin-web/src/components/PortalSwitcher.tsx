@@ -144,9 +144,14 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
       description: string;
     }> = [];
 
+    const hasAdminRole = role.includes('admin') || role.includes('ceo');
+    const hasFinanceRole = role.includes('finance') || role.includes('accounting');
+    const hasContractsRole = role.includes('contracts');
+    const hasSupervisorRole = role.includes('supervisor') || role.includes('director') || role.includes('manager');
+
     // Admin/CEO users can access all portals
     // Check role first (explicit role assignment takes priority)
-    if (role === 'admin') {
+    if (hasAdminRole) {
       availablePortals.push(
         {
           id: 'admin',
@@ -182,7 +187,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     }
     // Finance users can access finance and staff portals
     // Check role first (explicit role assignment takes priority)
-    else if (role === 'finance') {
+    else if (hasFinanceRole) {
       availablePortals.push(
         {
           id: 'finance',
@@ -199,7 +204,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
       );
     }
     // Contracts users can access contracts and staff portals
-    else if (role === 'contracts') {
+    else if (hasContractsRole) {
       availablePortals.push(
         {
           id: 'contracts',
@@ -217,7 +222,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     }
     // Supervisor/Director/Manager users can access supervisor and staff portals
     // Check role first (explicit role assignment takes priority)
-    else if (role === 'supervisor') {
+    else if (hasSupervisorRole) {
       availablePortals.push(
         {
           id: 'supervisor',
