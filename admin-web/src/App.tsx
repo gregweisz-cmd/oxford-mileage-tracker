@@ -23,23 +23,30 @@ import { debugLog, debugError, debugVerbose } from './config/debug';
 
 // Helper function to get available portals for a user (used before user state is set)
 const getAvailablePortalsForUser = (role: string, position: string): Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> => {
-  if (role === 'admin') {
+  const normalizedRole = role.toLowerCase();
+  const normalizedPosition = position.toLowerCase();
+  const hasAdminRole = normalizedRole.includes('admin') || normalizedRole.includes('ceo');
+  const hasFinanceRole = normalizedRole.includes('finance') || normalizedRole.includes('accounting');
+  const hasContractsRole = normalizedRole.includes('contracts');
+  const hasSupervisorRole = normalizedRole.includes('supervisor') || normalizedRole.includes('director') || normalizedRole.includes('manager');
+
+  if (hasAdminRole) {
     return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
-  } else if (role === 'finance') {
+  } else if (hasFinanceRole) {
     return ['finance', 'staff'];
-  } else if (role === 'contracts') {
+  } else if (hasContractsRole) {
     return ['contracts', 'staff'];
-  } else if (role === 'supervisor') {
+  } else if (hasSupervisorRole) {
     return ['supervisor', 'staff'];
-  } else if (!role || role === 'employee') {
+  } else if (!normalizedRole || normalizedRole === 'employee') {
     // Fallback to position-based detection
-    if (position.includes('admin') || position.includes('ceo')) {
+    if (normalizedPosition.includes('admin') || normalizedPosition.includes('ceo')) {
       return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
-    } else if (position.includes('finance') || position.includes('accounting')) {
+    } else if (normalizedPosition.includes('finance') || normalizedPosition.includes('accounting')) {
       return ['finance', 'staff'];
-    } else if (position.includes('contracts')) {
+    } else if (normalizedPosition.includes('contracts')) {
       return ['contracts', 'staff'];
-    } else if (position.includes('supervisor') || position.includes('director') || position.includes('regional manager') || position.includes('manager')) {
+    } else if (normalizedPosition.includes('supervisor') || normalizedPosition.includes('director') || normalizedPosition.includes('regional manager') || normalizedPosition.includes('manager')) {
       return ['supervisor', 'staff'];
     }
   }

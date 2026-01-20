@@ -41,7 +41,7 @@ interface EnhancedHeaderProps {
   subtitle?: string;
   employeeName?: string;
   employeeId?: string;
-  employeeRole?: 'employee' | 'supervisor' | 'admin' | 'finance';
+  employeeRole?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
   reportMonth?: number;
   reportYear?: number;
   loading?: boolean;

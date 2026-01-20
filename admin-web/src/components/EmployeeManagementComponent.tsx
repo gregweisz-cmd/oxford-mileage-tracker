@@ -1591,7 +1591,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     value={editingEmployee.role || 'employee'}
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
-                      role: e.target.value as 'employee' | 'supervisor' | 'admin' | 'finance'
+                      role: e.target.value as 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts'
                     })}
                     label="Login Role (System Access)"
                   >
@@ -1616,6 +1616,14 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         <Typography variant="body2" fontWeight="bold">Finance</Typography>
                         <Typography variant="caption" color="text.secondary" display="block">
                           Finance team - can review reports and mark for revisions
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="contracts">
+                      <Box>
+                        <Typography variant="body2" fontWeight="bold">Contracts</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Contracts team - can review reports for quarterly audit
                         </Typography>
                       </Box>
                     </MenuItem>
@@ -1669,13 +1677,11 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     <MenuItem value="">
                       <em>No Supervisor</em>
                     </MenuItem>
-                    {existingEmployees
-                      .filter(emp => ['Supervisor', 'Manager', 'Director', 'Admin', 'CEO'].includes(emp.position))
-                      .map(emp => (
-                        <MenuItem key={emp.id} value={emp.id}>
-                          {emp.name} ({emp.position})
-                        </MenuItem>
-                      ))}
+                    {existingEmployees.map(emp => (
+                      <MenuItem key={emp.id} value={emp.id}>
+                        {emp.name} ({emp.position})
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
                 

@@ -247,7 +247,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [currentYear, setCurrentYear] = useState(reportYear);
   const [activeTab, setActiveTab] = useState(0);
   const [employeeData, setEmployeeData] = useState<EmployeeExpenseData | null>(null);
-  const [employeeRole, setEmployeeRole] = useState<'employee' | 'supervisor' | 'admin' | 'finance'>('employee');
+  const [employeeRole, setEmployeeRole] = useState<'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts'>('employee');
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null);
   const [editingValue, setEditingValue] = useState('');
@@ -860,7 +860,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         
         // Set employee role for notifications
         if (employee && employee.role) {
-          setEmployeeRole(employee.role as 'employee' | 'supervisor' | 'admin' | 'finance');
+          setEmployeeRole(employee.role as 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts');
         } else {
           setEmployeeRole('employee'); // Default to employee
         }

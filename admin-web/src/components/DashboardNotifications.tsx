@@ -46,7 +46,7 @@ interface Notification {
 
 interface DashboardNotificationsProps {
   employeeId: string;
-  role?: 'employee' | 'supervisor' | 'admin' | 'finance';
+  role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
   onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
   maxDisplay?: number; // Maximum number of notifications to show in collapsed view
 }

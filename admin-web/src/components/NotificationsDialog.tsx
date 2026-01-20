@@ -100,7 +100,7 @@ interface NotificationsDialogProps {
   open: boolean;
   onClose: () => void;
   employeeId: string;
-  role?: 'employee' | 'supervisor' | 'admin' | 'finance';
+  role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
   onUpdate?: () => void;
   onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
 }
