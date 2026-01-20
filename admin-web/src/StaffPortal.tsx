@@ -5577,7 +5577,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 }
                               }}
                             />
-                            {dayDescription?.dayOff && (
+                            {Boolean(dayDescription?.dayOff) && (
                               <FormControl size="small" sx={{ minWidth: 120 }}>
                                 <Select
                                   value={dayDescription?.dayOffType || 'Day Off'}

@@ -38,10 +38,19 @@ export interface UnifiedDayData {
 
 export class UnifiedDataService {
   /**
+   * Format a Date as YYYY-MM-DD in local time to avoid timezone shifts.
+   */
+  private static toLocalDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  /**
    * Get unified data for a specific day
    */
   static async getDayData(employeeId: string, date: Date): Promise<UnifiedDayData> {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = this.toLocalDateKey(date);
     
     // Get all data for this day
     const [mileageEntries, timeTrackingEntries, receipts, dailyDescription] = await Promise.all([
@@ -52,16 +61,16 @@ export class UnifiedDataService {
     ]);
     
     // Filter to specific day
-    const dayMileage = mileageEntries.filter(entry => 
-      entry.date.toISOString().split('T')[0] === dateStr
+    const dayMileage = mileageEntries.filter(entry =>
+      this.toLocalDateKey(entry.date) === dateStr
     );
     
-    const dayTimeTracking = timeTrackingEntries.filter(entry => 
-      entry.date.toISOString().split('T')[0] === dateStr
+    const dayTimeTracking = timeTrackingEntries.filter(entry =>
+      this.toLocalDateKey(entry.date) === dateStr
     );
     
-    const dayReceipts = receipts.filter(receipt => 
-      receipt.date.toISOString().split('T')[0] === dateStr
+    const dayReceipts = receipts.filter(receipt =>
+      this.toLocalDateKey(receipt.date) === dateStr
     );
     
     // Calculate unified hours breakdown
@@ -147,7 +156,7 @@ export class UnifiedDataService {
     
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day);
-      const dateKey = date.toISOString().split('T')[0];
+      const dateKey = this.toLocalDateKey(date);
       daysMap.set(dateKey, {
         mileage: [],
         timeTracking: [],
@@ -157,7 +166,7 @@ export class UnifiedDataService {
     
     // Group entries by date
     mileageEntries.forEach(entry => {
-      const dateKey = entry.date.toISOString().split('T')[0];
+      const dateKey = this.toLocalDateKey(entry.date);
       const dayData = daysMap.get(dateKey);
       if (dayData) {
         dayData.mileage.push(entry);
@@ -165,7 +174,7 @@ export class UnifiedDataService {
     });
     
     timeTrackingEntries.forEach(entry => {
-      const dateKey = entry.date.toISOString().split('T')[0];
+      const dateKey = this.toLocalDateKey(entry.date);
       const dayData = daysMap.get(dateKey);
       if (dayData) {
         dayData.timeTracking.push(entry);
@@ -173,7 +182,7 @@ export class UnifiedDataService {
     });
     
     receipts.forEach(receipt => {
-      const dateKey = receipt.date.toISOString().split('T')[0];
+      const dateKey = this.toLocalDateKey(receipt.date);
       const dayData = daysMap.get(dateKey);
       if (dayData) {
         dayData.receipts.push(receipt);
@@ -182,7 +191,7 @@ export class UnifiedDataService {
     
     // Add daily descriptions
     dailyDescriptions.forEach(description => {
-      const dateKey = description.date.toISOString().split('T')[0];
+      const dateKey = this.toLocalDateKey(description.date);
       const dayData = daysMap.get(dateKey);
       if (dayData) {
         dayData.description = description.description;

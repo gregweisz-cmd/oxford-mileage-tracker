@@ -58,6 +58,16 @@ export class DatabaseService {
     return new Date(dateStr);
   }
 
+  /**
+   * Format a Date as YYYY-MM-DD in local time to avoid timezone shifts.
+   */
+  private static toLocalDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   private static async syncToApi(operation: string, data: any) {
     try {
       // Increment pending changes counter
@@ -65,6 +75,7 @@ export class DatabaseService {
       
       // Queue the sync operation for batch processing
       // Map operation names to correct entity types (must preserve camelCase for SyncIntegrationService)
+      const syncOperation = operation.startsWith('update') ? 'update' : 'create';
       let entityType: string;
       if (operation === 'addMileageEntry') {
         entityType = 'mileageEntry';
@@ -74,11 +85,13 @@ export class DatabaseService {
         entityType = 'receipt';
       } else if (operation === 'addTimeTracking') {
         entityType = 'timeTracking';
+      } else if (operation === 'addDailyDescription' || operation === 'updateDailyDescription') {
+        entityType = 'dailyDescription';
       } else {
         entityType = operation.replace('add', '').replace('update', '').toLowerCase();
       }
       
-      queueSyncOperation('create', entityType as any, data);
+      queueSyncOperation(syncOperation as any, entityType as any, data);
       
     } catch (error) {
       console.error(`❌ Database: Error queuing ${operation} for sync:`, error);
@@ -2438,11 +2451,16 @@ export class DatabaseService {
       date: data.date,
       description: data.description,
       costCenter: data.costCenter,
+      stayedOvernight: data.stayedOvernight || false,
+      dayOff: data.dayOff || false,
+      dayOffType: data.dayOffType || null,
       createdAt: new Date(now),
       updatedAt: new Date(now)
     };
     
     debugLog('💬 Database: Creating daily description:', dailyDescription);
+    
+    const dateKey = this.toLocalDateKey(data.date);
     
     await database.runAsync(
       `INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) 
@@ -2450,7 +2468,7 @@ export class DatabaseService {
       [
         dailyDescription.id,
         dailyDescription.employeeId,
-        dailyDescription.date.toISOString().split('T')[0], // Store as YYYY-MM-DD
+        dateKey, // Store as YYYY-MM-DD (local)
         dailyDescription.description,
         dailyDescription.costCenter || '',
         dailyDescription.stayedOvernight ? 1 : 0,
@@ -2462,6 +2480,7 @@ export class DatabaseService {
     );
     
     debugLog('✅ Database: Daily description created successfully');
+    await this.syncToApi('addDailyDescription', dailyDescription);
     return dailyDescription;
   }
 
@@ -2479,7 +2498,7 @@ export class DatabaseService {
     const values = fields.map(field => {
       const value = updates[field as keyof DailyDescription];
       if (field === 'date' && value instanceof Date) {
-        return value.toISOString().split('T')[0]; // Store as YYYY-MM-DD
+        return this.toLocalDateKey(value); // Store as YYYY-MM-DD (local)
       }
       return value instanceof Date ? value.toISOString() : value;
     });
@@ -2491,6 +2510,10 @@ export class DatabaseService {
       await database.runAsync(updateQuery, [...values, new Date().toISOString(), id] as any[]);
       
       debugLog('✅ Database: Daily description updated successfully');
+      const updatedDescription = await this.getDailyDescription(id);
+      if (updatedDescription) {
+        await this.syncToApi('updateDailyDescription', updatedDescription);
+      }
     }
   }
 
@@ -2505,6 +2528,7 @@ export class DatabaseService {
     );
     
     debugLog('✅ Database: Daily description deleted successfully');
+    queueSyncOperation('delete', 'dailyDescription', { id });
   }
 
   static async getDailyDescription(id: string): Promise<DailyDescription | null> {
@@ -2522,7 +2546,7 @@ export class DatabaseService {
     return {
       id: result.id,
       employeeId: result.employeeId,
-      date: new Date(result.date + 'T00:00:00.000Z'),
+      date: this.parseDateSafe(result.date),
       description: result.description,
       costCenter: result.costCenter,
       stayedOvernight: result.stayedOvernight === 1 || result.stayedOvernight === true,
@@ -2551,7 +2575,7 @@ export class DatabaseService {
     return results.map(result => ({
       id: result.id,
       employeeId: result.employeeId,
-      date: new Date(result.date + 'T00:00:00.000Z'),
+      date: this.parseDateSafe(result.date),
       description: result.description,
       costCenter: result.costCenter,
       stayedOvernight: result.stayedOvernight === 1 || result.stayedOvernight === true,
@@ -2565,7 +2589,7 @@ export class DatabaseService {
   static async getDailyDescriptionByDate(employeeId: string, date: Date): Promise<DailyDescription | null> {
     const database = await getDatabase();
     
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = this.toLocalDateKey(date);
     
     const result = await database.getFirstAsync(
       'SELECT * FROM daily_descriptions WHERE employeeId = ? AND date = ?',
@@ -2579,7 +2603,7 @@ export class DatabaseService {
     return {
       id: result.id,
       employeeId: result.employeeId,
-      date: new Date(result.date + 'T00:00:00.000Z'),
+      date: this.parseDateSafe(result.date),
       description: result.description,
       costCenter: result.costCenter,
       createdAt: new Date(result.createdAt),

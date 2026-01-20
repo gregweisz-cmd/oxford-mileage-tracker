@@ -111,7 +111,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
 
   // Helper function to get personalized Staff Portal name
   const getPersonalizedStaffPortalName = (): string => {
-    if (!currentUser) return 'Staff Portal';
+    if (!currentUser) return "User's Portal";
     
     const displayName = getEmployeeDisplayName(currentUser);
     
@@ -128,7 +128,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
       return `${firstName}'s Portal`;
     }
     
-    return 'Staff Portal';
+    return "User's Portal";
   };
 
   // Determine which portals the user has access to based on their role
@@ -198,6 +198,23 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
         }
       );
     }
+    // Contracts users can access contracts and staff portals
+    else if (role === 'contracts') {
+      availablePortals.push(
+        {
+          id: 'contracts',
+          name: 'Contracts Portal',
+          icon: <Description />,
+          description: 'Review expense reports for quarterly audit'
+        },
+        {
+          id: 'staff',
+          name: personalizedStaffName,
+          icon: <Person />,
+          description: 'Manage your own expense reports and mileage'
+        }
+      );
+    }
     // Supervisor/Director/Manager users can access supervisor and staff portals
     // Check role first (explicit role assignment takes priority)
     else if (role === 'supervisor') {
@@ -241,7 +258,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           },
           {
             id: 'staff',
-            name: 'Staff Portal',
+            name: personalizedStaffName,
             icon: <Person />,
             description: 'Manage your own expense reports and mileage'
           }
@@ -256,7 +273,22 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           },
           {
             id: 'staff',
-            name: 'Staff Portal',
+            name: personalizedStaffName,
+            icon: <Person />,
+            description: 'Manage your own expense reports and mileage'
+          }
+        );
+      } else if (position.includes('contracts')) {
+        availablePortals.push(
+          {
+            id: 'contracts',
+            name: 'Contracts Portal',
+            icon: <Description />,
+            description: 'Review expense reports for quarterly audit'
+          },
+          {
+            id: 'staff',
+            name: personalizedStaffName,
             icon: <Person />,
             description: 'Manage your own expense reports and mileage'
           }
@@ -271,7 +303,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           },
           {
             id: 'staff',
-            name: 'Staff Portal',
+            name: personalizedStaffName,
             icon: <Person />,
             description: 'Manage your own expense reports and mileage'
           }
