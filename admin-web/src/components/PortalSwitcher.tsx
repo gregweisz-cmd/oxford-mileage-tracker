@@ -136,18 +136,42 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   const getAvailablePortals = () => {
     const role = currentUser?.role?.toLowerCase() || '';
     const position = currentUser?.position?.toLowerCase() || '';
-    const permissions = Array.isArray(currentUser?.permissions)
-      ? currentUser.permissions
-      : (typeof currentUser?.permissions === 'string'
-        ? (() => {
-            try {
-              return JSON.parse(currentUser.permissions);
-            } catch (error) {
-              console.warn('Failed to parse permissions:', error);
-              return [];
-            }
-          })()
-        : []);
+    const normalizePermissions = (value: unknown): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> => {
+      const normalizeToken = (token: string) => {
+        const normalized = token.toLowerCase().trim();
+        if (normalized.includes('admin')) return 'admin';
+        if (normalized.includes('finance')) return 'finance';
+        if (normalized.includes('contracts')) return 'contracts';
+        if (normalized.includes('supervisor')) return 'supervisor';
+        if (normalized.includes('staff')) return 'staff';
+        return null;
+      };
+
+      const normalizeList = (list: string[]) =>
+        list
+          .map((item) => normalizeToken(item))
+          .filter((item): item is 'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff' => item !== null);
+
+      if (Array.isArray(value)) {
+        return normalizeList(value.map(String));
+      }
+
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            return normalizeList(parsed.map(String));
+          }
+        } catch (error) {
+          const fallback = value.split(',').map((item) => item.trim()).filter(Boolean);
+          return normalizeList(fallback);
+        }
+      }
+
+      return [];
+    };
+
+    const permissions = normalizePermissions(currentUser?.permissions);
     const personalizedStaffName = getPersonalizedStaffPortalName();
     const availablePortals: Array<{
       id: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts';

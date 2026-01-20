@@ -79,6 +79,41 @@ const getAvailablePortalsForUser = (
   return ['staff'];
 };
 
+const normalizePermissionsValue = (value: unknown): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> => {
+  const normalizeToken = (token: string) => {
+    const normalized = token.toLowerCase().trim();
+    if (normalized.includes('admin')) return 'admin';
+    if (normalized.includes('finance')) return 'finance';
+    if (normalized.includes('contracts')) return 'contracts';
+    if (normalized.includes('supervisor')) return 'supervisor';
+    if (normalized.includes('staff')) return 'staff';
+    return null;
+  };
+
+  const normalizeList = (list: string[]) =>
+    list
+      .map((item) => normalizeToken(item))
+      .filter((item): item is 'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff' => item !== null);
+
+  if (Array.isArray(value)) {
+    return normalizeList(value.map(String));
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return normalizeList(parsed.map(String));
+      }
+    } catch (error) {
+      const fallback = value.split(',').map((item) => item.trim()).filter(Boolean);
+      return normalizeList(fallback);
+    }
+  }
+
+  return [];
+};
+
 // Create theme function
 const createAppTheme = (mode: 'light' | 'dark') => {
   if (mode === 'dark') {
@@ -230,18 +265,7 @@ const App: React.FC = () => {
             // Set initial portal based on user preference, then role, then position (fallback)
             const role = employee?.role?.toLowerCase() || '';
             const position = employee?.position?.toLowerCase() || '';
-            const permissions = Array.isArray(employee?.permissions)
-              ? employee.permissions
-              : (typeof employee?.permissions === 'string'
-                ? (() => {
-                    try {
-                      return JSON.parse(employee.permissions);
-                    } catch (error) {
-                      debugError('Error parsing permissions:', error);
-                      return [];
-                    }
-                  })()
-                : []);
+            const permissions = normalizePermissionsValue(employee?.permissions);
             
             // First, check if user has a saved default portal preference
             try {
@@ -449,18 +473,7 @@ const App: React.FC = () => {
     // IMPORTANT: Role field takes priority over position field
     const role = employee?.role?.toLowerCase() || '';
     const position = employee?.position?.toLowerCase() || '';
-    const permissions = Array.isArray(employee?.permissions)
-      ? employee.permissions
-      : (typeof employee?.permissions === 'string'
-        ? (() => {
-            try {
-              return JSON.parse(employee.permissions);
-            } catch (error) {
-              debugError('Error parsing permissions:', error);
-              return [];
-            }
-          })()
-        : []);
+    const permissions = normalizePermissionsValue(employee?.permissions);
     
     // First, check if user has a saved default portal preference
     try {
