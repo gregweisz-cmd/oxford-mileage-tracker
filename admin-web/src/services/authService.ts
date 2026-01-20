@@ -44,6 +44,12 @@ export class AuthService {
         'view_team_employees',
         'manage_team_settings'
       ],
+      contracts: [
+        'view_own_data',
+        'edit_own_profile',
+        'view_contracts_reports',
+        'export_data'
+      ],
       finance: [
         'view_own_data',
         'edit_own_profile',
@@ -104,7 +110,7 @@ export class AuthService {
       let userRole: UserRole = employee.role || 'employee';
       
       // Validate role is one of the allowed values
-      const allowedRoles: UserRole[] = ['employee', 'supervisor', 'admin', 'finance'];
+      const allowedRoles: UserRole[] = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
       if (!allowedRoles.includes(userRole)) {
         // Fallback: determine from position if role is invalid or missing
         debugWarn(`Invalid or missing role for employee ${employee.email}, determining from position`);

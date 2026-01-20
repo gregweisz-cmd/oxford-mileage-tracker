@@ -470,7 +470,6 @@ const App: React.FC = () => {
       if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
         // Verify user has access to this portal
         const availablePortals = getAvailablePortalsForUser(role, position, permissions);
-    const availablePortals = getAvailablePortalsForUser(role, position, permissions);
         debugLog('🔍 Available portals for user:', availablePortals);
         debugLog('🔍 Preferred portal:', preferences.defaultPortal);
         if (availablePortals.includes(preferences.defaultPortal)) {
