@@ -498,15 +498,31 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     if (!currentEmployee || isSyncing) return;
     setIsSyncing(true);
     try {
-      const success = await SyncIntegrationService.forceSync(currentEmployee.id);
-      if (success) {
+      // First sync FROM backend to get latest data
+      const { ApiSyncService } = await import('../services/apiSyncService');
+      const syncFromResult = await ApiSyncService.syncFromBackend(currentEmployee.id);
+      
+      if (!syncFromResult.success) {
+        console.error('❌ HomeScreen: Sync from backend failed:', syncFromResult.error);
+        // Continue anyway - might still have local changes to sync
+      }
+      
+      // Then sync TO backend (local changes)
+      const syncResult = await SyncIntegrationService.forceSync(currentEmployee.id);
+      if (syncResult.success) {
         setLastSyncTime(new Date());
+        // Refresh data after sync
+        await loadEmployeeData(currentEmployee.id, currentEmployee);
       } else {
-        Alert.alert('Sync Failed', 'Unable to sync right now. Please try again.');
+        // Get detailed error message from sync result
+        const errorMsg = syncResult.error || syncFromResult.error || 'Unable to sync right now. Please try again.';
+        console.error('❌ HomeScreen: Force sync failed:', errorMsg);
+        Alert.alert('Sync Failed', errorMsg);
       }
     } catch (error) {
-      console.error('Error syncing now:', error);
-      Alert.alert('Sync Failed', 'Unable to sync right now. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('❌ HomeScreen: Error syncing now:', error);
+      Alert.alert('Sync Failed', `Unable to sync right now: ${errorMessage}`);
     } finally {
       setIsSyncing(false);
     }

@@ -384,8 +384,9 @@ export class SyncIntegrationService {
   /**
    * Force immediate sync of all pending changes
    * Optionally sync all data for a specific employee
+   * Returns object with success status and error message if failed
    */
-  static async forceSync(employeeId?: string): Promise<boolean> {
+  static async forceSync(employeeId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       debugLog('🔄 SyncIntegration: Force sync requested', employeeId ? `for employee ${employeeId}` : '');
       
@@ -435,18 +436,20 @@ export class SyncIntegrationService {
         
         if (result.success) {
           debugLog(`✅ SyncIntegration: Force sync completed successfully for employee ${currentEmployeeId}`);
-          return true;
+          return { success: true };
         } else {
-          console.error('❌ SyncIntegration: Force sync failed:', result.error);
-          return false;
+          const errorMsg = result.error || 'Unknown sync error';
+          console.error('❌ SyncIntegration: Force sync failed:', errorMsg);
+          return { success: false, error: errorMsg };
         }
       }
       
       // If no employee ID available, just return success (queue was processed)
-      return true;
+      return { success: true };
     } catch (error) {
-      console.error('❌ SyncIntegration: Force sync error:', error);
-      return false;
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred during sync';
+      console.error('❌ SyncIntegration: Force sync error:', errorMsg);
+      return { success: false, error: errorMsg };
     }
   }
 
