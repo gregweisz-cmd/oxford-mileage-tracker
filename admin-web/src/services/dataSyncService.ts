@@ -173,7 +173,8 @@ class DataSyncServiceClass {
       if (!response.ok) {
         // Don't retry on 429 (rate limit) errors - retrying will just make it worse
         if (response.status === 429) {
-          const errorText = await response.text().catch(() => 'Rate limit exceeded');
+          // Consume the response body to prevent memory leaks
+          await response.text().catch(() => {});
           throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
         }
         throw new Error(`HTTP error! status: ${response.status}`);
