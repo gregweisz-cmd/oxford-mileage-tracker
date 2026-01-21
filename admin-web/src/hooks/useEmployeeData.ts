@@ -157,7 +157,16 @@ export function useEmployeeData(
         // Find entries for this day
         // Use local date parsing to avoid timezone shifts (treat YYYY-MM-DD as local, not UTC)
         const dayMileage = mileage.filter(m => {
-          const dateStr = typeof m.date === 'string' ? m.date.split('T')[0] : m.date;
+          if (!m.date) return false;
+          let dateStr: string;
+          if (typeof m.date === 'string') {
+            dateStr = m.date.split('T')[0];
+          } else if (m.date instanceof Date) {
+            dateStr = m.date.toISOString().split('T')[0];
+          } else {
+            dateStr = String(m.date).split('T')[0];
+          }
+          
           if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
             // Parse YYYY-MM-DD as local date to avoid timezone shifts
             const [year, month, dayOfMonth] = dateStr.split('-').map(Number);
@@ -169,7 +178,16 @@ export function useEmployeeData(
         });
 
         const dayTimeTracking = timeTracking.filter(t => {
-          const dateStr = typeof t.date === 'string' ? t.date.split('T')[0] : t.date;
+          if (!t.date) return false;
+          let dateStr: string;
+          if (typeof t.date === 'string') {
+            dateStr = t.date.split('T')[0];
+          } else if (t.date instanceof Date) {
+            dateStr = t.date.toISOString().split('T')[0];
+          } else {
+            dateStr = String(t.date).split('T')[0];
+          }
+          
           if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
             // Parse YYYY-MM-DD as local date to avoid timezone shifts
             const [year, month, dayOfMonth] = dateStr.split('-').map(Number);
