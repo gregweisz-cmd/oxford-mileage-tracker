@@ -196,10 +196,29 @@ function ensureTablesExist() {
         description TEXT,
         category TEXT NOT NULL,
         imageUri TEXT,
+        fileType TEXT DEFAULT 'image',
         costCenter TEXT DEFAULT '',
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
+
+      // Add fileType column to receipts table if it doesn't exist (migration)
+      db.all(`PRAGMA table_info(receipts)`, [], (pragmaErr, columns) => {
+        if (!pragmaErr && columns) {
+          const columnNames = columns.map((col) => col.name);
+          
+          // Check if fileType column exists
+          if (!columnNames.includes('fileType')) {
+            db.run(`ALTER TABLE receipts ADD COLUMN fileType TEXT DEFAULT 'image'`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add fileType column:', alterErr.message);
+              } else {
+                debugLog('✅ Added fileType column to existing receipts table');
+              }
+            });
+          }
+        }
+      });
 
       db.run(`CREATE TABLE IF NOT EXISTS time_tracking (
         id TEXT PRIMARY KEY,

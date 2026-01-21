@@ -383,9 +383,10 @@ router.post('/api/receipts', (req, res) => {
     return res.status(400).json({ error: 'Invalid date format. Date is required.' });
   }
 
+  const fileType = req.body.fileType || (imageUri && imageUri.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
   db.run(
-    'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
-    [receiptId, employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', receiptId, now, now],
+    'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
+    [receiptId, employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', fileType, receiptId, now, now],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);
@@ -414,7 +415,7 @@ router.put('/api/receipts/:id', (req, res) => {
   }
 
   const { id } = req.params;
-  const { employeeId, date, amount, vendor, description, category, imageUri } = req.body;
+  const { employeeId, date, amount, vendor, description, category, imageUri, fileType } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
 
@@ -425,9 +426,12 @@ router.put('/api/receipts/:id', (req, res) => {
     return res.status(400).json({ error: 'Invalid date format. Date is required.' });
   }
 
+  // Determine fileType if not provided
+  const finalFileType = fileType || (imageUri && imageUri.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
+
   db.run(
-    'UPDATE receipts SET employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', now, id],
+    'UPDATE receipts SET employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, fileType = ?, updatedAt = ? WHERE id = ?',
+    [employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', finalFileType, now, id],
     function(err) {
       if (err) {
         debugError('Database error:', err.message);
@@ -485,13 +489,23 @@ router.post('/api/receipts/upload-image', uploadLimiter, (req, res, next) => {
       const imageBuffer = Buffer.from(base64String, 'base64');
       debugLog(`📸 Image decoded, size: ${imageBuffer.length} bytes`);
       
-      const fileExtension = req.body.extension || '.jpg';
+      // Determine file extension from content type or request
+      let fileExtension = req.body.extension || '.jpg';
+      // Check if it's a PDF by looking at the base64 data prefix or content
+      if (base64Data.includes('data:application/pdf') || req.body.extension === '.pdf') {
+        fileExtension = '.pdf';
+      } else if (base64Data.includes('data:image/png')) {
+        fileExtension = '.png';
+      } else if (base64Data.includes('data:image/jpeg') || base64Data.includes('data:image/jpg')) {
+        fileExtension = '.jpg';
+      }
+      
       const uniqueFilename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExtension}`;
       const imagePath = path.join(uploadsDir, uniqueFilename);
       
-      debugLog(`📸 Saving image to: ${imagePath}`);
+      debugLog(`📸 Saving file to: ${imagePath}`);
       fs.writeFileSync(imagePath, imageBuffer);
-      debugLog(`✅ Image saved successfully: ${uniqueFilename}`);
+      debugLog(`✅ File saved successfully: ${uniqueFilename}`);
       
       res.json({ 
         imageUri: uniqueFilename,
@@ -527,7 +541,11 @@ router.post('/api/receipts/upload-image', uploadLimiter, (req, res, next) => {
     }
     
     const originalName = uploadedFile.originalname || uploadedFile.name || 'receipt.jpg';
-    const fileExtension = path.extname(originalName) || '.jpg';
+    let fileExtension = path.extname(originalName) || '.jpg';
+    // Ensure PDF extension is preserved
+    if (uploadedFile.mimetype === 'application/pdf' || originalName.toLowerCase().endsWith('.pdf')) {
+      fileExtension = '.pdf';
+    }
     
     // Create a unique filename if not already set
     const uniqueFilename = uploadedFile.filename || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExtension}`;

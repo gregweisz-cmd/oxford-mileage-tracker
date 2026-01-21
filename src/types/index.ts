@@ -133,6 +133,7 @@ export interface Receipt {
   description?: string;
   category: string;
   imageUri: string;
+  fileType?: 'image' | 'pdf'; // Type of file (image or PDF)
   costCenter?: string; // Cost center for this specific receipt
   createdAt: Date;
   updatedAt: Date;
@@ -208,8 +209,7 @@ export type RootStackParamList = {
   GpsTracking: { showEndModal?: boolean };
   Receipts: undefined;
   AddReceipt: undefined;
-  HoursWorked: undefined;
-  DailyDescription: undefined;
+  DailyHours: undefined;
   Admin: undefined;
   ManagerDashboard: undefined;
   SavedAddresses: undefined;
@@ -217,4 +217,5 @@ export type RootStackParamList = {
   EmployeeProfile: undefined;
   Settings: { currentEmployeeId?: string };
   Preferences: undefined;
+  PerDiem: undefined;
 };

@@ -307,6 +307,7 @@ export class DatabaseService {
           id TEXT PRIMARY KEY,
           employeeId TEXT NOT NULL,
           date TEXT NOT NULL,
+          fileType TEXT,
           amount REAL NOT NULL,
           vendor TEXT NOT NULL,
           description TEXT NOT NULL,
@@ -408,6 +409,18 @@ export class DatabaseService {
         // Column may already exist, which is fine
         if (!error?.message?.includes('duplicate column name')) {
           debugWarn('⚠️ Database: Error adding dayOffType column (may already exist):', error);
+        }
+      }
+
+      // Add fileType column to receipts table if it doesn't exist (migration)
+      try {
+        await database.execAsync(`
+          ALTER TABLE receipts ADD COLUMN fileType TEXT;
+        `);
+      } catch (error: any) {
+        // Column may already exist, which is fine
+        if (!error?.message?.includes('duplicate column name')) {
+          debugWarn('⚠️ Database: Error adding fileType column (may already exist):', error);
         }
       }
 
@@ -1258,8 +1271,8 @@ export class DatabaseService {
     });
     
     await database.runAsync(
-      'INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, receipt.employeeId, receipt.date.toISOString(), receipt.amount, receipt.vendor, receipt.description || '', receipt.category, receipt.imageUri, receipt.costCenter || '', now, now]
+      'INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, receipt.employeeId, receipt.date.toISOString(), receipt.amount, receipt.vendor, receipt.description || '', receipt.category, receipt.imageUri, receipt.fileType || 'image', receipt.costCenter || '', now, now]
     );
 
     const newReceipt = {
@@ -1392,6 +1405,8 @@ export class DatabaseService {
         description: row.description,
         category: row.category,
         imageUri: row.imageUri,
+        fileType: row.fileType || 'image', // Default to 'image' for backward compatibility
+        costCenter: row.costCenter,
         createdAt: new Date(row.createdAt),
         updatedAt: new Date(row.updatedAt)
       }));
@@ -1437,6 +1452,8 @@ export class DatabaseService {
         description: row.description,
         category: row.category,
         imageUri: row.imageUri,
+        fileType: row.fileType || 'image', // Default to 'image' for backward compatibility
+        costCenter: row.costCenter,
         createdAt: new Date(row.createdAt),
         updatedAt: new Date(row.updatedAt)
       }));
@@ -1526,6 +1543,7 @@ export class DatabaseService {
     return result.map((row: any) => ({
       ...row,
       date: new Date(row.date),
+      fileType: row.fileType || 'image', // Default to 'image' for backward compatibility
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
@@ -1543,6 +1561,7 @@ export class DatabaseService {
     return result.map((row: any) => ({
       ...row,
       date: new Date(row.date),
+      fileType: row.fileType || 'image', // Default to 'image' for backward compatibility
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
@@ -1552,26 +1571,52 @@ export class DatabaseService {
     const database = await getDatabase();
     const now = new Date().toISOString();
     
-    const fields = [];
-    const values = [];
+    // Build dynamic UPDATE query
+    const updates: string[] = [];
+    const values: any[] = [];
     
+    if (receipt.employeeId !== undefined) {
+      updates.push('employeeId = ?');
+      values.push(receipt.employeeId);
+    }
+    if (receipt.date !== undefined) {
+      updates.push('date = ?');
+      values.push(receipt.date instanceof Date ? receipt.date.toISOString() : receipt.date);
+    }
     if (receipt.amount !== undefined) {
-      fields.push('amount = ?');
+      updates.push('amount = ?');
       values.push(receipt.amount);
     }
     if (receipt.vendor !== undefined) {
-      fields.push('vendor = ?');
+      updates.push('vendor = ?');
       values.push(receipt.vendor);
     }
-    if (receipt.category !== undefined) {
-      fields.push('category = ?');
-      values.push(receipt.category);
-    }
     if (receipt.description !== undefined) {
-      fields.push('description = ?');
+      updates.push('description = ?');
       values.push(receipt.description);
     }
-    // Get existing receipt to check if imageUri is being updated
+    if (receipt.category !== undefined) {
+      updates.push('category = ?');
+      values.push(receipt.category);
+    }
+    if (receipt.imageUri !== undefined) {
+      updates.push('imageUri = ?');
+      values.push(receipt.imageUri);
+    }
+    if (receipt.fileType !== undefined) {
+      updates.push('fileType = ?');
+      values.push(receipt.fileType);
+    }
+    if (receipt.costCenter !== undefined) {
+      updates.push('costCenter = ?');
+      values.push(receipt.costCenter);
+    }
+    
+    updates.push('updatedAt = ?');
+    values.push(now);
+    values.push(id);
+    
+    // Get existing receipt to check if imageUri is being updated (before we update it)
     let existingReceipt: Receipt | undefined;
     try {
       const allReceipts = await this.getReceipts();
@@ -1584,39 +1629,21 @@ export class DatabaseService {
                                 receipt.imageUri !== existingReceipt?.imageUri &&
                                 receipt.imageUri.trim() !== '';
     
-    if (receipt.imageUri !== undefined) {
-      fields.push('imageUri = ?');
-      values.push(receipt.imageUri);
-    }
-    
-    fields.push('updatedAt = ?');
-    values.push(now);
-    values.push(id);
-    
-    await database.runAsync(
-      `UPDATE receipts SET ${fields.join(', ')} WHERE id = ?`,
-      values
-    );
-    
-    // If a new image was added, clear any missing image notification
-    if (isImageBeingUpdated && existingReceipt) {
-      try {
-        const { SmartNotificationService } = await import('./smartNotificationService');
-        SmartNotificationService.clearMissingImageNotification(existingReceipt.employeeId, id);
-        debugLog(`✅ Database: Cleared missing image notification for receipt ${id}`);
-      } catch (error) {
-        debugWarn('Could not clear missing image notification:', error);
-      }
-    }
-    
-    // If a new image was added, clear any missing image notification
-    if (isImageBeingUpdated && existingReceipt) {
-      try {
-        const { SmartNotificationService } = await import('./smartNotificationService');
-        SmartNotificationService.clearMissingImageNotification(existingReceipt.employeeId, id);
-        debugLog(`✅ Database: Cleared missing image notification for receipt ${id}`);
-      } catch (error) {
-        debugWarn('Could not clear missing image notification:', error);
+    if (updates.length > 1) { // More than just updatedAt
+      await database.runAsync(
+        `UPDATE receipts SET ${updates.join(', ')} WHERE id = ?`,
+        values
+      );
+      
+      // If a new image was added, clear any missing image notification
+      if (isImageBeingUpdated && existingReceipt) {
+        try {
+          const { SmartNotificationService } = await import('./smartNotificationService');
+          SmartNotificationService.clearMissingImageNotification(existingReceipt.employeeId, id);
+          debugLog(`✅ Database: Cleared missing image notification for receipt ${id}`);
+        } catch (error) {
+          debugWarn('Could not clear missing image notification:', error);
+        }
       }
     }
   }

@@ -33,6 +33,7 @@ export interface Receipt {
   description?: string;
   category: string;
   imageUri?: string;
+  fileType?: 'image' | 'pdf'; // Type of file (image or PDF)
   costCenter?: string; // Cost center for this specific receipt
   createdAt: Date;
   updatedAt: Date;

@@ -183,16 +183,17 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
     return undefined;
   };
 
+  // Safety check - ensure tabs array is not empty
+  const displayTabs = tabs && tabs.length > 0 ? tabs : createTabConfig(employeeData);
+
   return (
     <Box 
       ref={tabsContainerRef}
       sx={{ 
-        borderBottom: 1, 
-        borderColor: 'divider',
         bgcolor: 'background.paper',
-        position: 'sticky',
-        top: 80, // 80px header height
-        zIndex: 1
+        width: '100%',
+        display: 'block',
+        // Remove sticky positioning since tabs are now in the header which is already sticky
       }}
     >
       <Tabs 
@@ -220,7 +221,7 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
           scrollBehavior: 'smooth'
         }}
       >
-        {tabs.map((tab, index) => {
+        {displayTabs.map((tab, index) => {
           const status = getTabStatus(index);
           const statusIcon = getStatusIcon(status);
           const statusColor = getStatusColor(status);

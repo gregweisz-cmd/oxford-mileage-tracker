@@ -951,6 +951,10 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                     <View style={[styles.receiptThumbnail, styles.imagePlaceholder]}>
                       <MaterialIcons name="receipt" size={30} color="#999" />
                     </View>
+                  ) : receipt.fileType === 'pdf' ? (
+                    <View style={[styles.receiptThumbnail, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
+                      <MaterialIcons name="picture-as-pdf" size={40} color="#F44336" />
+                    </View>
                   ) : (
                     <Image 
                       source={{ uri: resolveImageUri(receipt.imageUri) }} 
@@ -1027,8 +1031,14 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                 {imageErrors.has(selectedReceipt.id) || !selectedReceipt.imageUri ? (
                   <View style={styles.imageErrorContainer}>
                     <MaterialIcons name="broken-image" size={64} color="#999" />
-                    <Text style={styles.imageErrorText}>Image not available</Text>
-                    <Text style={styles.imageErrorSubtext}>The receipt image may have been deleted or moved.</Text>
+                    <Text style={styles.imageErrorText}>Receipt not available</Text>
+                    <Text style={styles.imageErrorSubtext}>The receipt file may have been deleted or moved.</Text>
+                  </View>
+                ) : selectedReceipt.fileType === 'pdf' ? (
+                  <View style={[styles.fullImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
+                    <MaterialIcons name="picture-as-pdf" size={120} color="#F44336" />
+                    <Text style={{ marginTop: 16, color: '#666', fontSize: 16 }}>PDF Receipt</Text>
+                    <Text style={{ marginTop: 8, color: '#999', fontSize: 14 }}>PDF files cannot be previewed in the app</Text>
                   </View>
                 ) : (
                   <Image

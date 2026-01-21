@@ -34,6 +34,8 @@ export interface UnifiedDayData {
   costCenter?: string;
   notes?: string;
   description?: string;
+  dayOff?: boolean;
+  dayOffType?: string;
 }
 
 export class UnifiedDataService {
@@ -125,7 +127,9 @@ export class UnifiedDataService {
       receipts: dayReceipts,
       costCenter: dayTimeTracking[0]?.costCenter || dayMileage[0]?.costCenter || dailyDescription?.costCenter || '',
       notes: dayMileage[0]?.notes || '',
-      description: dailyDescription?.description || ''
+      description: dailyDescription?.description || '',
+      dayOff: dailyDescription?.dayOff || false,
+      dayOffType: dailyDescription?.dayOffType || undefined
     };
   }
   
@@ -146,7 +150,9 @@ export class UnifiedDataService {
       mileage: any[],
       timeTracking: any[],
       receipts: any[],
-      description?: string
+      description?: string,
+      dayOff?: boolean,
+      dayOffType?: string
     }>();
     
     // Initialize all days of the month
@@ -195,6 +201,8 @@ export class UnifiedDataService {
       const dayData = daysMap.get(dateKey);
       if (dayData) {
         dayData.description = description.description;
+        dayData.dayOff = description.dayOff;
+        dayData.dayOffType = description.dayOffType;
       }
     });
     
@@ -256,7 +264,9 @@ export class UnifiedDataService {
         receipts: dayData.receipts,
         costCenter: dayData.timeTracking[0]?.costCenter || dayData.mileage[0]?.costCenter || '',
         notes: dayData.mileage[0]?.notes || '',
-        description: dayData.description || ''
+        description: dayData.description || '',
+        dayOff: dayData.dayOff || false,
+        dayOffType: dayData.dayOffType || undefined
       });
     });
     
@@ -322,7 +332,10 @@ export class UnifiedDataService {
     employeeId: string, 
     date: Date, 
     description: string,
-    costCenter?: string
+    costCenter?: string,
+    stayedOvernight?: boolean,
+    dayOff?: boolean,
+    dayOffType?: string
   ): Promise<void> {
     
     // Check if description already exists for this day
@@ -332,7 +345,10 @@ export class UnifiedDataService {
       // Update existing description
       await DatabaseService.updateDailyDescription(existingDescription.id, {
         description,
-        costCenter
+        costCenter,
+        stayedOvernight,
+        dayOff,
+        dayOffType
       });
     } else {
       // Create new description
@@ -340,7 +356,10 @@ export class UnifiedDataService {
         employeeId,
         date,
         description,
-        costCenter
+        costCenter,
+        stayedOvernight,
+        dayOff,
+        dayOffType
       });
     }
   }

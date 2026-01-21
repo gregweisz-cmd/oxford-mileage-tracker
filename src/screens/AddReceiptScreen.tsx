@@ -19,6 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
@@ -53,7 +54,6 @@ const RECEIPT_CATEGORIES = [
   'Airfare/Bus/Train',
   'Parking/Tolls',
   'Hotels/AirBnB',
-  'Per Diem',
   'Other'
 ];
 
@@ -73,7 +73,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   });
   
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [fileType, setFileType] = useState<'image' | 'pdf' | null>(null); // Track file type
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState<Date>(new Date());
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -150,14 +152,14 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     loadCategorySuggestions();
   }, [formData.vendor, formData.amount, formData.description, formData.category, currentEmployee]);
 
-  // Check per diem eligibility when category is "Per Diem"
+  // Per Diem has been moved to a separate screen - this effect is no longer needed
+  // Keeping for now in case of any remaining references
   useEffect(() => {
     const checkPerDiemEligibility = async () => {
-      if (!currentEmployee || formData.category !== 'Per Diem') {
-        setPerDiemEligibility(null);
-        setCurrentPerDiemRule(null);
-        return;
-      }
+      // Per Diem is now handled in PerDiemScreen
+      setPerDiemEligibility(null);
+      setCurrentPerDiemRule(null);
+      return;
       
       try {
         const eligibility = await PerDiemAiService.checkPerDiemEligibility(
@@ -373,10 +375,22 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         console.error('❌ AddReceipt: Error getting Per Diem rule:', error);
       }
       
-      setFormData(prev => {
-        const description = adjustDescriptionForCategory(prev.category, value, prev.description);
-        return { ...prev, [field]: value, amount: defaultAmount, description };
-      });
+      // Per Diem has been moved to PerDiemScreen - redirect user
+      Alert.alert(
+        'Per Diem Entry',
+        'Per Diem entries are now managed in a separate screen. Would you like to go there?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => {
+            // Reset category to previous value
+            setFormData(prev => ({ ...prev, category: prev.category }));
+          }},
+          {
+            text: 'Go to Per Diem',
+            onPress: () => navigation.navigate('PerDiem')
+          }
+        ]
+      );
+      return;
     } else if (field === 'category') {
       setFormData(prev => {
         const description = adjustDescriptionForCategory(prev.category, value, prev.description);
@@ -470,10 +484,20 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false); // Close picker immediately after selection
+    // Only update temp date, don't close picker or update formData
     if (selectedDate) {
-      setFormData(prev => ({ ...prev, date: selectedDate }));
+      setTempDate(selectedDate);
     }
+  };
+
+  const handleDatePickerOpen = () => {
+    setTempDate(formData.date);
+    setShowDatePicker(true);
+  };
+
+  const handleDatePickerConfirm = () => {
+    setFormData(prev => ({ ...prev, date: tempDate }));
+    setShowDatePicker(false);
   };
 
   const processOcrOnImage = async (uri: string) => {
@@ -561,6 +585,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         const uri = result.assets[0].uri;
         console.log('📸 Image captured:', uri);
         setImageUri(uri);
+        setFileType('image');
         setDismissedQualityWarning(false); // Reset warning dismissal when new image is selected
         
         // Check photo quality
@@ -601,6 +626,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         const uri = result.assets[0].uri;
         console.log('📷 Image selected:', uri);
         setImageUri(uri);
+        setFileType('image');
         setDismissedQualityWarning(false); // Reset warning dismissal when new image is selected
         
         // Check photo quality
@@ -625,13 +651,40 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }
   };
 
+  const selectPDF = async () => {
+    try {
+      console.log('📄 Selecting PDF...');
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+
+      console.log('📄 PDF picker result:', result);
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        const name = result.assets[0].name || 'receipt.pdf';
+        console.log('📄 PDF selected:', uri, name);
+        setImageUri(uri);
+        setFileType('pdf');
+        setDismissedQualityWarning(false);
+        setPhotoQualityResult(null); // PDFs don't need quality check
+      } else {
+        console.log('📄 PDF selection was canceled');
+      }
+    } catch (error) {
+      console.error('❌ Error selecting PDF:', error);
+      Alert.alert('Error', `Failed to select PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
 
   const validateForm = async (): Promise<boolean> => {
     const isPerDiem = formData.category === 'Per Diem';
     
-    // Photo is optional for Per Diem receipts
+    // Photo/PDF is optional for Per Diem receipts
     if (!imageUri && !isPerDiem) {
-      Alert.alert('Validation Error', 'Please take or select a receipt photo');
+      Alert.alert('Validation Error', 'Please take or select a receipt photo, or upload a PDF');
       return false;
     }
     // Vendor is optional for Per Diem receipts (when photo isn't required)
@@ -883,6 +936,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             category: 'Rental Car', // Change category to Rental Car
             description: formData.description.trim(),
             imageUri: imageUri || '',
+            fileType: fileType || 'image',
             costCenter: selectedCostCenter,
           };
           await DatabaseService.createReceipt(receiptData);
@@ -910,6 +964,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             vendor: `${formData.vendor.trim()} + ${existingFuel[0].vendor}`,
             category: 'Rental Car',
             imageUri: imageUri || '',
+            fileType: fileType || 'image',
             costCenter: selectedCostCenter,
           };
           await DatabaseService.createReceipt(receiptData);
@@ -935,6 +990,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         category: formData.category,
         description: finalDescription,
         imageUri: imageUri || '',
+        fileType: fileType || 'image', // Include file type (image or pdf)
         costCenter: selectedCostCenter,
       };
 
@@ -1029,17 +1085,24 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           
           {imageUri ? (
             <View style={styles.imageContainer}>
-              <Image 
-                source={{ uri: imageUri || '' }} 
-                style={styles.receiptImage}
-                onError={(error) => {
-                  console.error('❌ Error loading receipt image:', error.nativeEvent.error);
-                  Alert.alert('Image Error', 'Failed to load receipt image. Please try selecting a new image.');
-                }}
-              />
+              {fileType === 'pdf' ? (
+                <View style={[styles.receiptImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
+                  <MaterialIcons name="picture-as-pdf" size={64} color="#F44336" />
+                  <Text style={{ marginTop: 8, color: '#666', fontSize: 14 }}>PDF Receipt</Text>
+                </View>
+              ) : (
+                <Image 
+                  source={{ uri: imageUri || '' }} 
+                  style={styles.receiptImage}
+                  onError={(error) => {
+                    console.error('❌ Error loading receipt image:', error.nativeEvent.error);
+                    Alert.alert('Image Error', 'Failed to load receipt image. Please try selecting a new image.');
+                  }}
+                />
+              )}
               
-              {/* Photo Quality Warning - Only show for significant issues (score < 70) */}
-              {photoQualityResult && !dismissedQualityWarning && photoQualityResult.score < 70 && (
+              {/* Photo Quality Warning - Only show for images with significant issues (score < 70) */}
+              {fileType === 'image' && photoQualityResult && !dismissedQualityWarning && photoQualityResult.score < 70 && (
                 <View style={[
                   styles.qualityWarning,
                   photoQualityResult.score < 50 && styles.qualityWarningHigh
@@ -1077,13 +1140,14 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 style={styles.changePhotoButton}
                 onPress={() => {
                   Alert.alert(
-                    'Change Photo',
-                    'How would you like to change the photo?',
+                    fileType === 'pdf' ? 'Change Receipt' : 'Change Photo',
+                    'How would you like to change the receipt?',
                     [
                       { text: 'Cancel', style: 'cancel' },
                       { text: 'Take Photo', onPress: takePicture },
                       { text: 'Select from Gallery', onPress: selectFromGallery },
-                      { text: 'Crop Photo', onPress: () => {
+                      { text: 'Upload PDF', onPress: selectPDF },
+                      fileType === 'image' && { text: 'Crop Photo', onPress: () => {
                         // Re-crop the existing photo
                         Alert.alert(
                           'Crop Photo',
@@ -1095,12 +1159,12 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                           ]
                         );
                       }},
-                    ]
+                    ].filter(Boolean)
                   );
                 }}
               >
                 <MaterialIcons name="edit" size={20} color="#fff" />
-                <Text style={styles.changePhotoText}>Change Photo</Text>
+                <Text style={styles.changePhotoText}>Change {fileType === 'pdf' ? 'PDF' : 'Photo'}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -1114,7 +1178,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.photoButton} onPress={selectFromGallery}>
                   <MaterialIcons name="photo-library" size={20} color="#2196F3" />
-                  <Text style={styles.photoButtonText}>Select from Gallery</Text>
+                  <Text style={styles.photoButtonText}>Select Photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.photoButton} onPress={selectPDF}>
+                  <MaterialIcons name="picture-as-pdf" size={20} color="#2196F3" />
+                  <Text style={styles.photoButtonText}>Upload PDF</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1126,7 +1194,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           <Text style={styles.label}>Date</Text>
           <TouchableOpacity
             style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
+            onPress={handleDatePickerOpen}
           >
             <Text style={styles.dateText}>
               {formData.date.toLocaleDateString()}
@@ -1152,9 +1220,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               </View>
               
               <DateTimePicker
-                value={formData.date}
+                value={tempDate}
                 mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
                 onChange={handleDateChange}
                 style={styles.datePicker}
               />
@@ -1168,9 +1236,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.modalConfirmButton} 
-                  onPress={() => setShowDatePicker(false)}
+                  onPress={handleDatePickerConfirm}
                 >
-                  <Text style={styles.modalConfirmButtonText}>Done</Text>
+                  <Text style={styles.modalConfirmButtonText}>Select</Text>
                 </TouchableOpacity>
               </View>
             </View>

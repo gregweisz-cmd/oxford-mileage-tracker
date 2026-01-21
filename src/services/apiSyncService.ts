@@ -711,19 +711,30 @@ export class ApiSyncService {
         
         // Extract file extension from URI if possible, otherwise default to jpg
         let fileExtension = '.jpg';
-        const uriMatch = imageUri.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        let mimeType = 'image/jpeg';
+        const uriMatch = imageUri.match(/\.(jpg|jpeg|png|gif|webp|pdf)$/i);
         if (uriMatch) {
           fileExtension = uriMatch[0].toLowerCase();
+          // Set MIME type based on extension
+          if (fileExtension === '.pdf') {
+            mimeType = 'application/pdf';
+          } else if (fileExtension === '.png') {
+            mimeType = 'image/png';
+          } else if (fileExtension === '.gif') {
+            mimeType = 'image/gif';
+          } else if (fileExtension === '.webp') {
+            mimeType = 'image/webp';
+          }
         }
         
-        // Add the image file to FormData
+        // Add the file to FormData (image or PDF)
         const fileName = `receipt_${Date.now()}${fileExtension}`;
         
         // Try to append the file - this may throw if file doesn't exist
         try {
           formData.append('image', {
             uri: imageUri,
-            type: 'image/jpeg',
+            type: mimeType,
             name: fileName,
           } as any);
           debugLog(`📤 ApiSync: FormData created successfully`);
@@ -732,11 +743,11 @@ export class ApiSyncService {
           const errorMsg = appendError instanceof Error ? appendError.message : String(appendError);
           if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("NSCocoaErrorDomain")) {
             debugWarn(`⚠️ ApiSync: Cannot append file to FormData (file doesn't exist): ${imageUri}`);
-            // Create notification for missing image
+            // Create notification for missing file
             await this.createMissingImageNotification(imageUri);
             return { 
               success: false, 
-              error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+              error: `Receipt file not found. The file may have been deleted or moved. Please re-add the receipt.` 
             };
           }
           throw appendError;
@@ -746,11 +757,11 @@ export class ApiSyncService {
         const errorMsg = formDataError instanceof Error ? formDataError.message : String(formDataError);
         if (errorMsg.includes("couldn't be opened") || errorMsg.includes("no such file") || errorMsg.includes("code=260") || errorMsg.includes("NSCocoaErrorDomain")) {
           debugWarn(`⚠️ ApiSync: File not found or cannot be opened: ${imageUri}`);
-          // Create notification for missing image
+          // Create notification for missing file
           await this.createMissingImageNotification(imageUri);
           return { 
             success: false, 
-            error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+            error: `Receipt file not found. The file may have been deleted or moved. Please re-add the receipt.` 
           };
         }
         // Re-throw other FormData errors
@@ -786,7 +797,7 @@ export class ApiSyncService {
             debugWarn(`⚠️ ApiSync: File access error during fetch initialization: ${imageUri}`);
             return { 
               success: false, 
-              error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+              error: `Receipt file not found. The file may have been deleted or moved. Please re-add the receipt.` 
             };
           }
           throw fetchInitError;
@@ -820,7 +831,7 @@ export class ApiSyncService {
           debugWarn(`⚠️ ApiSync: File access error during fetch (file doesn't exist): ${imageUri}`);
           return { 
             success: false, 
-            error: `Image file not found. The file may have been deleted or moved. Please re-add the receipt image.` 
+            error: `Receipt file not found. The file may have been deleted or moved. Please re-add the receipt.` 
           };
         }
         

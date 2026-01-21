@@ -27,8 +27,7 @@ import MileageEntryScreen from './src/screens/MileageEntryScreen';
 import GpsTrackingScreen from './src/screens/GpsTrackingScreen';
 import ReceiptsScreen from './src/screens/ReceiptsScreen';
 import AddReceiptScreen from './src/screens/AddReceiptScreen';
-import HoursWorkedScreen from './src/screens/HoursWorkedScreen';
-import DailyDescriptionScreen from './src/screens/DailyDescriptionScreen';
+import DailyHoursScreen from './src/screens/DailyHoursScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import ManagerDashboardScreen from './src/screens/ManagerDashboardScreen';
 import SavedAddressesScreen from './src/screens/SavedAddressesScreen';
@@ -36,6 +35,7 @@ import DataSyncScreen from './src/screens/DataSyncScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import PreferencesScreen from './src/screens/PreferencesScreen';
 import MileageEntriesScreen from './src/screens/MileageEntriesScreen';
+import PerDiemScreen from './src/screens/PerDiemScreen';
 import OnboardingScreen from './src/components/OnboardingScreen';
 import SetupWizard from './src/components/SetupWizard';
 import { RootStackParamList } from './src/types';
@@ -263,13 +263,13 @@ export default function App() {
             <Stack.Screen name="GpsTracking" component={GpsTrackingScreen} />
             <Stack.Screen name="Receipts" component={ReceiptsScreen} />
             <Stack.Screen name="AddReceipt" component={AddReceiptScreen} />
-            <Stack.Screen name="HoursWorked" component={HoursWorkedScreen} />
-            <Stack.Screen name="DailyDescription" component={DailyDescriptionScreen} />
+            <Stack.Screen name="DailyHours" component={DailyHoursScreen} />
             <Stack.Screen name="Admin" component={AdminScreen} />
             <Stack.Screen name="ManagerDashboard" component={ManagerDashboardScreen} />
             <Stack.Screen name="SavedAddresses" component={SavedAddressesScreen} />
             <Stack.Screen name="DataSync" component={DataSyncScreen} />
             <Stack.Screen name="MileageEntries" component={MileageEntriesScreen} />
+            <Stack.Screen name="PerDiem" component={PerDiemScreen} />
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen}

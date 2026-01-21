@@ -171,6 +171,11 @@ interface DailyExpenseEntry {
   odometerEnd: number;
   milesTraveled: number;
   mileageAmount: number;
+  startLocation?: string;
+  startLocationName?: string;
+  endLocation?: string;
+  endLocationName?: string;
+  costCenter?: string;
   airRailBus: number;
   vehicleRentalFuel: number;
   parkingTolls: number;
@@ -187,6 +192,7 @@ interface ReceiptData {
   description: string;
   category: string;
   imageUri?: string;
+  fileType?: 'image' | 'pdf'; // Type of file (image or PDF)
   costCenter?: string;
 }
 
@@ -823,6 +829,82 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     debugLog('🔄 refreshTimesheetData completed');
   }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Function to sync daily description changes to the cost center screen
+  const syncDescriptionToCostCenter = useCallback(async (descToSave: any, entryDate: Date) => {
+    if (!employeeData) return;
+
+    const dateStr = normalizeDate(entryDate);
+    const description = descToSave.description || '';
+    const dayOff = descToSave.dayOff || false;
+    const dayOffType = descToSave.dayOffType || null;
+
+    const updatedEntries = [...employeeData.dailyEntries];
+    const entryIndex = updatedEntries.findIndex((e: any) => normalizeDate(e.date) === dateStr);
+
+    if (entryIndex >= 0) {
+      let fullDescription = '';
+      if (dayOff && dayOffType) {
+        fullDescription = dayOffType;
+      } else if (description) {
+        fullDescription = description.trim();
+      }
+
+      // Re-calculate driving summary for the day
+      const day = entryDate.getDate();
+      const dayMileageEntries = rawMileageEntries.filter((entry: any) => {
+        const entryDate = new Date(entry.date);
+        return entryDate.getDate() === day;
+      });
+
+      let drivingSummary = '';
+      if (dayMileageEntries.length > 0) {
+        const tripSegments: string[] = [];
+        const baseAddress = employeeData.baseAddress;
+        const baseAddress2 = employeeData.baseAddress2;
+
+        dayMileageEntries.forEach((entry: any, index: number) => {
+          if (index === 0) {
+            const startLocation = entry.startLocation || '';
+            const formattedStart = formatLocationForDescription(startLocation, baseAddress, baseAddress2);
+            if (formattedStart) {
+              tripSegments.push(formattedStart);
+            }
+          }
+          const endLocation = entry.endLocation || '';
+          const purpose = entry.purpose || 'Travel';
+          const formattedEnd = formatLocationForDescription(endLocation, baseAddress, baseAddress2);
+          const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
+
+          if (formattedEnd) {
+            if (isBaseAddress) {
+              tripSegments.push(`to ${formattedEnd}`);
+            } else {
+              if (purpose && purpose.toLowerCase() !== 'travel' && purpose.trim() !== '') {
+                tripSegments.push(`to ${formattedEnd} for ${purpose}`);
+              } else {
+                tripSegments.push(`to ${formattedEnd}`);
+              }
+            }
+          }
+        });
+        drivingSummary = tripSegments.join(' ');
+      }
+
+      if (fullDescription && drivingSummary) {
+        fullDescription += '\n\n' + drivingSummary;
+      } else if (drivingSummary) {
+        fullDescription = drivingSummary;
+      }
+
+      updatedEntries[entryIndex].description = fullDescription;
+
+      setEmployeeData({
+        ...employeeData,
+        dailyEntries: updatedEntries
+      });
+    }
+  }, [employeeData, rawMileageEntries]);
+
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
   // debugLog('🔍 StaffPortal Debug:', {
   //   reportStatus,
@@ -1059,6 +1141,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             const firstEntry = dayMileageEntries[0];
             const lastEntry = dayMileageEntries[dayMileageEntries.length - 1];
             
+            // Extract location information from first and last entries
+            const startLocation = firstEntry?.startLocation || '';
+            const startLocationName = firstEntry?.startLocationName || firstEntry?.startLocation || '';
+            const endLocation = lastEntry?.endLocation || '';
+            const endLocationName = lastEntry?.endLocationName || lastEntry?.endLocation || '';
+            
+            // Get cost center from entries (prefer first entry's cost center, or use default)
+            const costCenter = firstEntry?.costCenter || dayMileageEntries.find((e: any) => e.costCenter)?.costCenter || employee.defaultCostCenter || employee.costCenters?.[0] || '';
+            
             // Find time tracking for this day (use UTC to avoid timezone issues)
             const dayTimeTracking = currentMonthTimeTracking.find((tracking: any) => {
               const trackingDate = new Date(tracking.date);
@@ -1082,7 +1173,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             let calculatedPerDiem = perDiemFromReceipts;
             if (perDiemFromReceipts === 0) {
               // Get employee's cost center
-              const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
+              const costCenterForPerDiem = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
               
               // Calculate distance from base address (simplified: use total miles as proxy if no geocoding available)
               // For now, if stayedOvernight is checked and there are mileage entries, assume they qualify
@@ -1098,7 +1189,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               // Requirement: stayedOvernight must be true AND distanceFromBase >= 50
               try {
                 const perDiemResult = await PerDiemRulesService.calculatePerDiem(
-                  costCenter,
+                  costCenterForPerDiem,
                   dayTimeTracking?.hours || 0,
                   totalDayMiles,
                   distanceFromBase,
@@ -1111,7 +1202,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 if (qualifiesForPerDiem) {
                   calculatedPerDiem = perDiemResult.amount;
                   debugVerbose(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
-                    costCenter,
+                    costCenter: costCenterForPerDiem,
                     hours: dayTimeTracking?.hours || 0,
                     miles: totalDayMiles,
                     stayedOvernight,
@@ -1141,6 +1232,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               odometerEnd: Math.round(lastEntry ? (lastEntry.odometerReading + lastEntry.miles) : 0),
               milesTraveled: Math.round(totalDayMiles),
               mileageAmount: totalDayMiles * 0.445,
+              startLocation: startLocation,
+              startLocationName: startLocationName,
+              endLocation: endLocation,
+              endLocationName: endLocationName,
+              costCenter: costCenter,
               airRailBus: 0,
               vehicleRentalFuel: 0,
               parkingTolls: 0,
@@ -2106,11 +2202,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Handle receipt image upload
   const handleReceiptImageUpload = (receiptId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
+    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
-        // Update the receipt with the new image
+        // Update the receipt with the new file
         setReceipts(receipts.map(receipt => 
           receipt.id === receiptId 
             ? { ...receipt, imageUri: result }
@@ -2119,7 +2215,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
       reader.readAsDataURL(file);
     } else {
-      alert('Please upload an image file.');
+      alert('Please upload an image file or PDF.');
     }
   };
 
@@ -4103,6 +4199,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
         }}
         showRealTimeStatus={true}
+        tabs={
+          <EnhancedTabNavigation
+            value={activeTab}
+            onChange={handleTabChange}
+            tabs={createTabConfig(employeeData)}
+            employeeData={employeeData}
+            showStatus={!!employeeData}
+          />
+        }
       />
 
       {/* Dashboard Notifications */}
@@ -4171,14 +4276,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         disableResubmit={loading}
       />
 
-      {/* Enhanced Tab Navigation */}
-      <EnhancedTabNavigation
-        value={activeTab}
-        onChange={handleTabChange}
-        tabs={createTabConfig(employeeData)}
-        employeeData={employeeData}
-        showStatus={true}
-      />
+      {/* Enhanced Tab Navigation - Now in header */}
 
       <Dialog open={approvalCommentDialogOpen} onClose={handleCloseApprovalComment} maxWidth="sm" fullWidth>
         <DialogTitle>Send a Comment to Your Supervisor</DialogTitle>
@@ -5360,6 +5458,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 
                                 setDailyDescriptions(newDescriptions);
                                 
+                                // Also update the corresponding entry in dailyEntries (for cost center screen)
+                                syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                
                                 // Save to backend
                                 const dateToSave = normalizeDate(descToSave.date);
                                 const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
@@ -5434,6 +5535,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 }
                                 
                                 setDailyDescriptions(newDescriptions);
+                                
+                                // Also update the corresponding entry in dailyEntries (for cost center screen)
+                                syncDescriptionToCostCenter(descToSave, new Date(entry.date));
                                 
                                 // Save to backend
                                 const dateToSave = normalizeDate(descToSave.date);
@@ -5516,28 +5620,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                     newDescriptions.push(descToSave);
                                   }
                                   
-                                  // Update the daily entry description to match
-                                  const updatedEntries = [...employeeData.dailyEntries];
-                                  const entryIndex = updatedEntries.findIndex((e: any) => {
-                                    const eDateStr = normalizeDate(e.date);
-                                    return eDateStr === entryDateStr;
-                                  });
-                                  if (entryIndex >= 0) {
-                                    if (e.target.checked) {
-                                      updatedEntries[entryIndex].description = descToSave.dayOffType || 'Day Off';
-                                    } else {
-                                      // Clear entry description when unchecking day off
-                                      const currentEntryDesc = updatedEntries[entryIndex].description || '';
-                                      const isDayOffType = currentEntryDesc === 'Day Off' || currentEntryDesc === 'PTO' || currentEntryDesc === 'Sick Day' || currentEntryDesc === 'Holiday' || currentEntryDesc === 'Unpaid Leave';
-                                      if (isDayOffType) {
-                                        updatedEntries[entryIndex].description = '';
-                                      }
-                                    }
-                                  }
-                                  setEmployeeData({ ...employeeData, dailyEntries: updatedEntries });
-                                  
                                   // Update state first for immediate UI feedback
                                   setDailyDescriptions(newDescriptions);
+                                  
+                                  // Also update the corresponding entry in dailyEntries (for cost center screen)
+                                  syncDescriptionToCostCenter(descToSave, new Date(entry.date));
                                   
                                   // Immediately save to backend - use normalized date string
                                   const dateToSave = normalizeDate(descToSave.date);
@@ -5588,21 +5675,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                           description: dayOffType // Update description to match day off type
                                         };
                                         
-                                        // Update the daily entry description to match
-                                        const updatedEntries = [...employeeData.dailyEntries];
-                                        const entryIndex = updatedEntries.findIndex((e: any) => {
-                                          const eDateStr = normalizeDate(e.date);
-                                          return eDateStr === entryDateStr;
-                                        });
-                                        if (entryIndex >= 0) {
-                                          updatedEntries[entryIndex].description = dayOffType;
-                                        }
-                                        setEmployeeData({ ...employeeData, dailyEntries: updatedEntries });
-                                        
                                         setDailyDescriptions(newDescriptions);
                                         
-                                        // Save to backend
+                                        // Also update the corresponding entry in dailyEntries (for cost center screen)
                                         const descToSave = newDescriptions[existingIndex];
+                                        syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                        
+                                        // Save to backend
                                         const dateToSave = normalizeDate(descToSave.date);
                                         const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
                                           method: 'POST',
@@ -6696,7 +6775,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               }}>
                                 <input
                                   type="file"
-                                  accept="image/*"
+                                  accept="image/*,application/pdf"
                                   style={{ display: 'none' }}
                                   id={`receipt-upload-${receipt.id}`}
                                   onChange={(e) => handleReceiptImageUpload(receipt.id, e)}
@@ -6727,6 +6806,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               ? `/${raw}`
                               : (`/uploads/${raw}`));
                           const imageSrc = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+                          const isPDF = receipt.imageUri && (receipt.imageUri.toLowerCase().endsWith('.pdf') || (receipt as any).fileType === 'pdf');
                           
                           return (
                             <Box 
@@ -6752,24 +6832,35 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 }
                               }}
                             >
-                              <img 
-                                src={imageSrc} 
-                                alt="Receipt - Click to view full size" 
-                                style={{ 
-                                  maxWidth: '100%', 
-                                  maxHeight: '100%',
-                                  objectFit: 'cover'
-                                }}
-                                onError={(e) => {
-                                  // If image fails to load, show placeholder
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                  const parent = target.parentElement;
-                                  if (parent) {
-                                    parent.innerHTML = '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">No image</div>';
-                                  }
-                                }}
-                              />
+                              {isPDF ? (
+                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 1 }}>
+                                  <Box sx={{ color: '#F44336', mb: 0.5 }}>
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                    </svg>
+                                  </Box>
+                                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: '#666' }}>PDF</Typography>
+                                </Box>
+                              ) : (
+                                <img 
+                                  src={imageSrc} 
+                                  alt="Receipt - Click to view full size" 
+                                  style={{ 
+                                    maxWidth: '100%', 
+                                    maxHeight: '100%',
+                                    objectFit: 'cover'
+                                  }}
+                                  onError={(e) => {
+                                    // If image fails to load, show placeholder
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    const parent = target.parentElement;
+                                    if (parent) {
+                                      parent.innerHTML = '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">No image</div>';
+                                    }
+                                  }}
+                                />
+                              )}
                             </Box>
                           );
                         })()}

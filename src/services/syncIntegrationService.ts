@@ -183,12 +183,24 @@ export class SyncIntegrationService {
     this.lastAppState = nextState;
   }
 
+  private static lastSyncOnActiveTime = 0;
+  private static readonly MIN_SYNC_INTERVAL_MS = 30000; // Minimum 30 seconds between syncs on app active
+
   private static async syncOnAppActive(): Promise<void> {
     try {
+      const now = Date.now();
+      // Prevent too frequent syncing - only sync if at least 30 seconds have passed
+      if (now - this.lastSyncOnActiveTime < this.MIN_SYNC_INTERVAL_MS) {
+        debugLog(`🔄 SyncIntegration: Skipping sync on app active (only ${Math.round((now - this.lastSyncOnActiveTime) / 1000)}s since last sync)`);
+        return;
+      }
+      
       const currentEmployee = await DatabaseService.getCurrentEmployee();
       if (!currentEmployee?.id) {
         return;
       }
+      
+      this.lastSyncOnActiveTime = now;
       debugLog('🔄 SyncIntegration: App foregrounded, syncing from backend');
       await ApiSyncService.syncFromBackend(currentEmployee.id);
       await this.processSyncQueue();
@@ -213,6 +225,7 @@ export class SyncIntegrationService {
       const isConnected = await ApiSyncService.testConnection();
       if (!isConnected) {
         debugLog('🔄 SyncIntegration: No connection, skipping sync queue processing');
+        this.isProcessingQueue = false; // Reset flag before returning
         return;
       }
       

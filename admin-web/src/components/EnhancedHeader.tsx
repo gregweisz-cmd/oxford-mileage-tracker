@@ -60,6 +60,7 @@ interface EnhancedHeaderProps {
   notifications?: number;
   showRealTimeStatus?: boolean;
   onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
+  tabs?: React.ReactNode; // Tabs navigation component
 }
 
 export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
@@ -72,6 +73,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   reportYear,
   loading = false,
   isAdminView = false,
+  tabs,
   supervisorMode = false,
   onExportPdf,
   onSaveReport,
@@ -145,27 +147,35 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   };
 
   return (
-    <AppBar 
-      position="sticky" 
-      elevation={2}
-      sx={{ 
+    <Box
+      sx={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 1100,
         bgcolor: 'background.paper',
-        color: 'text.primary',
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        transform: 'none !important',
-        transition: 'none !important',
-        // Increased height for better spacing
-        height: 'auto !important',
-        minHeight: '72px !important',
-        '&.MuiAppBar-root': {
-          height: 'auto !important',
-          minHeight: '72px !important',
-          transform: 'none !important',
-          transition: 'none !important'
-        }
       }}
     >
+      <AppBar 
+        position="static" 
+        elevation={2}
+        sx={{ 
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          transform: 'none !important',
+          transition: 'none !important',
+          // Increased height for better spacing
+          height: 'auto !important',
+          minHeight: '72px !important',
+          '&.MuiAppBar-root': {
+            height: 'auto !important',
+            minHeight: '72px !important',
+            transform: 'none !important',
+            transition: 'none !important'
+          }
+        }}
+      >
       <Toolbar sx={{ 
         minHeight: '72px !important',
         height: '72px !important',
@@ -363,7 +373,57 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         </Box>
       </Toolbar>
 
-      {/* Utility Icons Row */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+      >
+        <MenuItem onClick={() => { onSettings?.(); handleMenuClose(); }}>
+          <SettingsIcon sx={{ mr: 1 }} />
+          Settings
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => { showInfo('Profile management coming soon'); handleMenuClose(); }}>
+          <AccountIcon sx={{ mr: 1 }} />
+          Profile
+        </MenuItem>
+      </Menu>
+
+      </AppBar>
+
+      {/* Tabs Navigation - Second Row */}
+      {tabs && (
+        <Box
+          component="div"
+          sx={{
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            overflowX: 'auto',
+            width: '100%',
+            display: 'block',
+            '&::-webkit-scrollbar': {
+              height: '4px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              borderRadius: '2px',
+            },
+          }}
+        >
+          {tabs}
+        </Box>
+      )}
+
+      {/* Utility Icons Row - Below Tabs */}
       <Box sx={{ 
         display: 'flex', 
         alignItems: 'center', 
@@ -479,30 +539,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
           </Tooltip>
         </Box>
       </Box>
-
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
-        }}
-        transformOrigin={{
-          vertical: 'top',
-          horizontal: 'right',
-        }}
-      >
-        <MenuItem onClick={() => { onSettings?.(); handleMenuClose(); }}>
-          <SettingsIcon sx={{ mr: 1 }} />
-          Settings
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={() => { showInfo('Profile management coming soon'); handleMenuClose(); }}>
-          <AccountIcon sx={{ mr: 1 }} />
-          Profile
-        </MenuItem>
-      </Menu>
-    </AppBar>
+    </Box>
   );
 };
