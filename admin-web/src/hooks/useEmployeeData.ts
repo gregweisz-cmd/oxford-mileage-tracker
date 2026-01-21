@@ -155,12 +155,27 @@ export function useEmployeeData(
         });
 
         // Find entries for this day
+        // Use local date parsing to avoid timezone shifts (treat YYYY-MM-DD as local, not UTC)
         const dayMileage = mileage.filter(m => {
+          const dateStr = typeof m.date === 'string' ? m.date.split('T')[0] : m.date;
+          if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            // Parse YYYY-MM-DD as local date to avoid timezone shifts
+            const [year, month, dayOfMonth] = dateStr.split('-').map(Number);
+            return dayOfMonth === day;
+          }
+          // Fallback to Date parsing for other formats
           const mDate = new Date(m.date);
           return mDate.getDate() === day;
         });
 
         const dayTimeTracking = timeTracking.filter(t => {
+          const dateStr = typeof t.date === 'string' ? t.date.split('T')[0] : t.date;
+          if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            // Parse YYYY-MM-DD as local date to avoid timezone shifts
+            const [year, month, dayOfMonth] = dateStr.split('-').map(Number);
+            return dayOfMonth === day;
+          }
+          // Fallback to Date parsing for other formats
           const tDate = new Date(t.date);
           return tDate.getDate() === day;
         });

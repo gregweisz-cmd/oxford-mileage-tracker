@@ -558,11 +558,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         };
       }
       
+      // Helper function to extract day from date string (treat YYYY-MM-DD as local)
+      const getDayFromDate = (dateValue: any): number => {
+        const dateStr = typeof dateValue === 'string' ? dateValue.split('T')[0] : dateValue;
+        if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          // Parse YYYY-MM-DD as local date to avoid timezone shifts
+          const [year, month, day] = dateStr.split('-').map(Number);
+          return day;
+        }
+        // Fallback to Date parsing for other formats
+        return new Date(dateValue).getDate();
+      };
+      
       // Process all time tracking entries and group by day
       debugLog('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
       debugLog('🔍 All entries before processing:', currentMonthTimeTracking.map((t: any) => ({
         date: t.date,
-        day: new Date(t.date).getUTCDate(),
+        day: getDayFromDate(t.date),
         category: t.category,
         hours: t.hours,
         costCenter: t.costCenter || '(empty)',
@@ -572,8 +584,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       debugLog('🔍 Days in dailyEntries:', data.dailyEntries?.map((e: any) => e.day).sort((a: number, b: number) => a - b) || []);
       
       currentMonthTimeTracking.forEach((tracking: any) => {
-        const trackingDate = new Date(tracking.date);
-        const day = trackingDate.getUTCDate();
+        // Use helper function to extract day from date (treat YYYY-MM-DD as local)
+        const day = getDayFromDate(tracking.date);
         
         if (day >= 1 && day <= daysInMonth) {
           const dayData = dailyHourDistributions[day];
