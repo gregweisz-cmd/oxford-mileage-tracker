@@ -246,30 +246,40 @@ export class ApiSyncService {
       if (data.employees && data.employees.length > 0) {
         const employeeResult = await this.syncEmployees(data.employees);
         results.push(employeeResult);
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
       
       // Sync mileage entries
       if (data.mileageEntries && data.mileageEntries.length > 0) {
         const mileageResult = await this.syncMileageEntries(data.mileageEntries);
         results.push(mileageResult);
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
       
       // Sync receipts
       if (data.receipts && data.receipts.length > 0) {
         const receiptResult = await this.syncReceipts(data.receipts);
         results.push(receiptResult);
+        // Add longer delay after receipts (they have images which take more time)
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
       // Sync time tracking
       if (data.timeTracking && data.timeTracking.length > 0) {
         const timeResult = await this.syncTimeTracking(data.timeTracking);
         results.push(timeResult);
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       // Sync daily descriptions
       if (data.dailyDescriptions && data.dailyDescriptions.length > 0) {
         const descriptionResult = await this.syncDailyDescriptions(data.dailyDescriptions);
         results.push(descriptionResult);
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
       
       // Check if all syncs were successful
@@ -533,6 +543,11 @@ export class ApiSyncService {
       
       for (const entry of entries) {
         try {
+          // Add small delay between entries to avoid rate limiting
+          if (results.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
           const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
           const employeeIdToSend = backendEmployeeId || entry.employeeId;
           
@@ -867,6 +882,11 @@ export class ApiSyncService {
       
       for (const receipt of receipts) {
         try {
+          // Add small delay between receipts to avoid rate limiting
+          if (results.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+          
           const backendEmployeeId = await this.resolveBackendEmployeeId(receipt.employeeId);
           const employeeIdToSend = backendEmployeeId || receipt.employeeId;
           let backendImageUri = receipt.imageUri || '';
@@ -1068,6 +1088,11 @@ export class ApiSyncService {
       
       for (const desc of descriptions) {
         try {
+          // Add small delay between descriptions to avoid rate limiting
+          if (results.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
           const backendEmployeeId = await this.resolveBackendEmployeeId(desc.employeeId);
           const employeeIdToSend = backendEmployeeId || desc.employeeId;
           
@@ -1145,6 +1170,11 @@ export class ApiSyncService {
       
       for (const entry of entries) {
         try {
+          // Add small delay between entries to avoid rate limiting
+          if (results.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
           const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
           const employeeIdToSend = backendEmployeeId || entry.employeeId;
           // Validate and prepare time tracking data

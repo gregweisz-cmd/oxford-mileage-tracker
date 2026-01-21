@@ -14,7 +14,7 @@ const { debugLog, debugWarn } = require('../debug');
  */
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 500 : 1000, // Increased from 200 to 500 for production (allows ~33 requests per minute)
+  max: process.env.NODE_ENV === 'production' ? 1000 : 1000, // Increased to 1000 for production (allows ~66 requests per minute) to handle sync operations
   message: {
     error: 'Too many requests from this IP, please try again later.',
     retryAfter: '15 minutes'
