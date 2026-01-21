@@ -158,13 +158,15 @@ export function useEmployeeData(
         // Use local date parsing to avoid timezone shifts (treat YYYY-MM-DD as local, not UTC)
         const dayMileage = mileage.filter(m => {
           if (!m.date) return false;
+          // Handle both Date objects and string dates from API
+          const dateValue: Date | string = m.date as any;
           let dateStr: string;
-          if (typeof m.date === 'string') {
-            dateStr = m.date.split('T')[0];
-          } else if (m.date instanceof Date) {
-            dateStr = m.date.toISOString().split('T')[0];
+          if (typeof dateValue === 'string') {
+            dateStr = dateValue.split('T')[0];
+          } else if (dateValue instanceof Date) {
+            dateStr = dateValue.toISOString().split('T')[0];
           } else {
-            dateStr = String(m.date).split('T')[0];
+            dateStr = String(dateValue).split('T')[0];
           }
           
           if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -173,19 +175,21 @@ export function useEmployeeData(
             return dayOfMonth === day;
           }
           // Fallback to Date parsing for other formats
-          const mDate = new Date(m.date);
+          const mDate = new Date(dateValue);
           return mDate.getDate() === day;
         });
 
         const dayTimeTracking = timeTracking.filter(t => {
           if (!t.date) return false;
+          // Handle both Date objects and string dates from API
+          const dateValue: Date | string = t.date as any;
           let dateStr: string;
-          if (typeof t.date === 'string') {
-            dateStr = t.date.split('T')[0];
-          } else if (t.date instanceof Date) {
-            dateStr = t.date.toISOString().split('T')[0];
+          if (typeof dateValue === 'string') {
+            dateStr = dateValue.split('T')[0];
+          } else if (dateValue instanceof Date) {
+            dateStr = dateValue.toISOString().split('T')[0];
           } else {
-            dateStr = String(t.date).split('T')[0];
+            dateStr = String(dateValue).split('T')[0];
           }
           
           if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -194,7 +198,7 @@ export function useEmployeeData(
             return dayOfMonth === day;
           }
           // Fallback to Date parsing for other formats
-          const tDate = new Date(t.date);
+          const tDate = new Date(dateValue);
           return tDate.getDate() === day;
         });
 
