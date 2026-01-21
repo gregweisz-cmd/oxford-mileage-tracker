@@ -563,7 +563,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const dateStr = typeof dateValue === 'string' ? dateValue.split('T')[0] : dateValue;
         if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
           // Parse YYYY-MM-DD as local date to avoid timezone shifts
-          const [year, month, day] = dateStr.split('-').map(Number);
+          const [, , day] = dateStr.split('-').map(Number);
           return day;
         }
         // Fallback to Date parsing for other formats
