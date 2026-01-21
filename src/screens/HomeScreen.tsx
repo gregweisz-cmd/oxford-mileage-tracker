@@ -498,33 +498,120 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     if (!currentEmployee || isSyncing) return;
     setIsSyncing(true);
     try {
-      // First sync FROM backend to get latest data
+      console.log('🔄 HomeScreen: Starting bi-directional sync...');
       const { ApiSyncService } = await import('../services/apiSyncService');
-      const syncFromResult = await ApiSyncService.syncFromBackend(currentEmployee.id);
+      const { DatabaseService } = await import('../services/database');
       
-      if (!syncFromResult.success) {
-        console.error('❌ HomeScreen: Sync from backend failed:', syncFromResult.error);
-        // Continue anyway - might still have local changes to sync
+      // Step 1: Sync local changes TO backend (one data type at a time to avoid rate limits)
+      console.log('📤 HomeScreen: Syncing local data to backend...');
+      let syncSuccesses = 0;
+      let syncFailures = 0;
+      const errors: string[] = [];
+      
+      // Sync daily descriptions
+      try {
+        const localDescriptions = await DatabaseService.getDailyDescriptions(currentEmployee.id);
+        if (localDescriptions.length > 0) {
+          const result = await ApiSyncService.syncToBackend({ dailyDescriptions: localDescriptions });
+          if (result.success) {
+            syncSuccesses++;
+          } else {
+            syncFailures++;
+            if (result.error) errors.push(`Daily descriptions: ${result.error}`);
+          }
+          // Small delay between data types
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      } catch (error) {
+        syncFailures++;
+        console.error('❌ HomeScreen: Error syncing daily descriptions:', error);
       }
       
-      // Then sync TO backend (local changes)
-      const syncResult = await SyncIntegrationService.forceSync(currentEmployee.id);
-      if (syncResult.success) {
+      // Sync mileage entries
+      try {
+        const localMileage = await DatabaseService.getMileageEntries(currentEmployee.id);
+        if (localMileage.length > 0) {
+          const result = await ApiSyncService.syncToBackend({ mileageEntries: localMileage });
+          if (result.success) {
+            syncSuccesses++;
+          } else {
+            syncFailures++;
+            if (result.error) errors.push(`Mileage entries: ${result.error}`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      } catch (error) {
+        syncFailures++;
+        console.error('❌ HomeScreen: Error syncing mileage entries:', error);
+      }
+      
+      // Sync receipts
+      try {
+        const localReceipts = await DatabaseService.getReceipts(currentEmployee.id);
+        if (localReceipts.length > 0) {
+          const result = await ApiSyncService.syncToBackend({ receipts: localReceipts });
+          if (result.success) {
+            syncSuccesses++;
+          } else {
+            syncFailures++;
+            if (result.error) errors.push(`Receipts: ${result.error}`);
+          }
+          // Longer delay after receipts (images take time)
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (error) {
+        syncFailures++;
+        console.error('❌ HomeScreen: Error syncing receipts:', error);
+      }
+      
+      // Sync time tracking
+      try {
+        const allTimeTracking = await DatabaseService.getAllTimeTrackingEntries();
+        const localTimeTracking = allTimeTracking.filter(t => t.employeeId === currentEmployee.id);
+        if (localTimeTracking.length > 0) {
+          const result = await ApiSyncService.syncToBackend({ timeTracking: localTimeTracking });
+          if (result.success) {
+            syncSuccesses++;
+          } else {
+            syncFailures++;
+            if (result.error) errors.push(`Time tracking: ${result.error}`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      } catch (error) {
+        syncFailures++;
+        console.error('❌ HomeScreen: Error syncing time tracking:', error);
+      }
+      
+      // Step 2: Sync FROM backend to get latest data
+      console.log('📥 HomeScreen: Pulling updates from backend...');
+      const syncFromResult = await ApiSyncService.syncFromBackend(currentEmployee.id);
+      
+      if (syncFromResult.success) {
+        console.log('✅ HomeScreen: Sync from backend successful');
         setLastSyncTime(new Date());
         // Refresh data after sync
         await loadEmployeeData(currentEmployee.id, currentEmployee);
         
-        // If there's an error message but sync was successful, it means partial success
-        if (syncResult.error) {
-          Alert.alert('Sync Completed with Warnings', syncResult.error);
+        // Show success/warning message
+        if (syncFailures > 0 && syncSuccesses > 0) {
+          Alert.alert('Sync Completed with Warnings', 
+            `Some data synced successfully, but ${syncFailures} type(s) had errors:\n${errors.join('\n')}`);
+        } else if (syncFailures === 0) {
+          Alert.alert('Success', 'All data synced successfully!');
         } else {
-          Alert.alert('Success', 'Data synced successfully!');
+          Alert.alert('Sync Completed', 
+            `Pulled updates from server, but had issues syncing local changes:\n${errors.join('\n')}`);
         }
       } else {
-        // Get detailed error message from sync result
-        const errorMsg = syncResult.error || syncFromResult.error || 'Unable to sync right now. Please try again.';
-        console.error('❌ HomeScreen: Force sync failed:', errorMsg);
-        Alert.alert('Sync Failed', errorMsg);
+        console.error('❌ HomeScreen: Sync from backend failed:', syncFromResult.error);
+        if (syncSuccesses > 0) {
+          Alert.alert('Partial Sync', 
+            `Local changes synced, but couldn't pull updates from server. ${syncFromResult.error}`);
+        } else {
+          Alert.alert('Sync Failed', 
+            syncFromResult.error || 'Unable to sync right now. Please try again.');
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
