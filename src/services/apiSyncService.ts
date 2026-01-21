@@ -346,14 +346,22 @@ export class ApiSyncService {
       );
       syncData.timeTracking = mappedTimeTracking;
       
-      // Fetch daily descriptions
-      const dailyDescriptions = await this.fetchDailyDescriptions(effectiveEmployeeId);
-      const mappedDailyDescriptions = this.mapEmployeeIdForLocal(
-        dailyDescriptions,
-        employeeId,
-        backendEmployeeId
-      );
-      syncData.dailyDescriptions = mappedDailyDescriptions;
+      // Fetch daily descriptions (non-blocking - continue even if it fails)
+      let mappedDailyDescriptions: DailyDescription[] = [];
+      try {
+        const dailyDescriptions = await this.fetchDailyDescriptions(effectiveEmployeeId);
+        mappedDailyDescriptions = this.mapEmployeeIdForLocal(
+          dailyDescriptions,
+          employeeId,
+          backendEmployeeId
+        );
+        syncData.dailyDescriptions = mappedDailyDescriptions;
+      } catch (error) {
+        // Log error but continue sync - daily descriptions are optional
+        console.error(`⚠️ ApiSync: Failed to fetch daily descriptions (continuing sync):`, error);
+        debugWarn(`⚠️ ApiSync: Daily descriptions fetch failed, but continuing with other data. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        syncData.dailyDescriptions = [];
+      }
       
       // Note: Per Diem rules are fetched on-demand in AddReceiptScreen
       // to avoid unnecessary API calls during general sync
@@ -874,22 +882,8 @@ export class ApiSyncService {
                     console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
                     debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
                     
-                    // Show immediate alert (only on mobile, not web)
-                    if (Platform.OS !== 'web') {
-                      Alert.alert(
-                        notification.title,
-                        notification.message,
-                        [
-                          { text: 'OK', style: 'default' },
-                          {
-                            text: 'View Receipt',
-                            onPress: () => {
-                              // Navigation would be handled by the notification action in HomeScreen
-                            }
-                          }
-                        ]
-                      );
-                    }
+                  // Don't show alert during sync - notification is enough
+                  // Alert will be shown in HomeScreen when notification is clicked
                   } catch (notifError) {
                     console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
                     debugWarn('Could not create missing image notification:', notifError);
@@ -934,22 +928,8 @@ export class ApiSyncService {
                   console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
                   debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
                   
-                  // Show immediate alert (only on mobile, not web)
-                  if (Platform.OS !== 'web') {
-                    Alert.alert(
-                      notification.title,
-                      notification.message,
-                      [
-                        { text: 'OK', style: 'default' },
-                        {
-                          text: 'View Receipt',
-                          onPress: () => {
-                            // Navigation would be handled by the notification action in HomeScreen
-                          }
-                        }
-                      ]
-                    );
-                  }
+                  // Don't show alert during sync - notification is enough
+                  // Alert will be shown in HomeScreen when notification is clicked
                 } catch (notifError) {
                   console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
                   debugWarn('Could not create missing image notification:', notifError);
@@ -1401,7 +1381,27 @@ export class ApiSyncService {
       
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Failed to fetch daily descriptions: ${response.statusText}`);
+      // Try to get more detailed error message
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorText = await response.text();
+        if (errorText) {
+          try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.error) {
+              errorMessage = errorJson.error;
+            }
+          } catch {
+            // If not JSON, use the text as-is
+            if (errorText.length < 200) {
+              errorMessage = errorText;
+            }
+          }
+        }
+      } catch {
+        // Use default error message if we can't read the response
+      }
+      throw new Error(`Failed to fetch daily descriptions: ${errorMessage}`);
     }
     
     const data = await response.json();
@@ -1411,6 +1411,9 @@ export class ApiSyncService {
       date: this.parseDateSafe(desc.date),
       description: desc.description,
       costCenter: desc.costCenter,
+      stayedOvernight: desc.stayedOvernight === 1 || desc.stayedOvernight === true,
+      dayOff: desc.dayOff === 1 || desc.dayOff === true,
+      dayOffType: desc.dayOffType || undefined,
       createdAt: new Date(desc.createdAt),
       updatedAt: new Date(desc.updatedAt)
     }));
