@@ -8,13 +8,13 @@ const { debugLog, debugWarn } = require('../debug');
 
 /**
  * General API rate limiter
- * Limits: 1000 requests per 15 minutes per IP (very lenient for development)
+ * Limits: 200 requests per 15 minutes per IP in production (increased from 100)
  * In development: Essentially disabled (1000 is very high)
- * In production: Still provides protection against abuse
+ * In production: Provides protection against abuse while allowing normal usage
  */
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // Much higher limit in development
+  max: process.env.NODE_ENV === 'production' ? 200 : 1000, // Increased from 100 to 200 for production
   message: {
     error: 'Too many requests from this IP, please try again later.',
     retryAfter: '15 minutes'
@@ -33,18 +33,20 @@ const generalLimiter = rateLimit({
     if (process.env.NODE_ENV !== 'production') {
       return true; // Disable rate limiting entirely in development
     }
-    return req.path === '/api/health' || req.path === '/health';
+    // Skip rate limiting for health checks and auth verify (frequently called)
+    return req.path === '/api/health' || req.path === '/health' || req.path === '/api/auth/verify';
   }
 });
 
 /**
- * Strict rate limiter for authentication endpoints
- * Limits: 5 requests per 15 minutes per IP in production (prevents brute force)
+ * Strict rate limiter for authentication endpoints (login only)
+ * Limits: 20 requests per 15 minutes per IP in production (prevents brute force)
  * In development: Much higher limit (100) to avoid blocking during testing
+ * Note: Successful logins don't count toward the limit (skipSuccessfulRequests: true)
  */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 5 : 100, // Much higher in development
+  max: process.env.NODE_ENV === 'production' ? 20 : 100, // Increased from 5 to 20 for production
   message: {
     error: 'Too many login attempts from this IP, please try again in 15 minutes.',
     retryAfter: '15 minutes'
@@ -58,8 +60,8 @@ const authLimiter = rateLimit({
       retryAfter: '15 minutes'
     });
   },
-  // Track failed attempts
-  skipSuccessfulRequests: false, // Count all attempts, successful or not
+  // Only count failed login attempts (successful logins don't count)
+  skipSuccessfulRequests: true, // Changed from false - only count failed attempts
   skip: (req) => {
     // Skip rate limiting entirely in development
     return process.env.NODE_ENV !== 'production';
