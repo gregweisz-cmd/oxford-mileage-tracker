@@ -57,42 +57,51 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   };
 
   const handlePortalSelect = async (portal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts') => {
-    onPortalChange(portal);
+    // Close the menu first
     handleClose();
     
-    // Save as default portal preference
+    // Change portal immediately (triggers UI update)
+    onPortalChange(portal);
+    
+    // Save as default portal preference (non-blocking, with error handling)
     if (currentUser?.id) {
-      try {
-        const { apiGet, apiPut } = await import('../services/rateLimitedApi');
-        let preferences: any = {};
-        
+      // Use setTimeout to defer this API call, allowing portal change to process first
+      setTimeout(async () => {
         try {
-          preferences = await apiGet(`/api/dashboard-preferences/${currentUser.id}`);
-        } catch (error) {
-          // If preferences don't exist, start with empty object
-          preferences = {};
-        }
-        
-        // Update preferences with default portal
-        preferences.defaultPortal = portal;
-        
-        console.log('💾 Saving default portal preference:', { userId: currentUser.id, portal, preferences });
-        
-        try {
-          await apiPut(`/api/dashboard-preferences/${currentUser.id}`, preferences);
-          console.log('✅ Default portal preference saved successfully');
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error('❌ Failed to save default portal preference:', errorMessage);
+          const { apiGet, apiPut } = await import('../services/rateLimitedApi');
+          let preferences: any = {};
           
-          // Show user-friendly error for rate limiting
-          if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
-            console.warn('Rate limited - preference will be saved on next attempt');
+          try {
+            // Try to get existing preferences, but don't fail if rate limited
+            preferences = await apiGet(`/api/dashboard-preferences/${currentUser.id}`).catch(() => ({}));
+          } catch (error) {
+            // If preferences don't exist or rate limited, start with empty object
+            preferences = {};
           }
+          
+          // Update preferences with default portal
+          preferences.defaultPortal = portal;
+          
+          console.log('💾 Saving default portal preference:', { userId: currentUser.id, portal, preferences });
+          
+          try {
+            await apiPut(`/api/dashboard-preferences/${currentUser.id}`, preferences);
+            console.log('✅ Default portal preference saved successfully');
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error('❌ Failed to save default portal preference:', errorMessage);
+            
+            // Don't show error to user - preference saving is non-critical
+            // It will be saved on next successful API call
+            if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+              console.warn('Rate limited - preference will be saved on next attempt');
+            }
+          }
+        } catch (error) {
+          // Silent failure - preference saving is non-critical
+          console.error('Error saving default portal preference:', error);
         }
-      } catch (error) {
-        console.error('Error saving default portal preference:', error);
-      }
+      }, 500); // Defer by 500ms to let portal change complete
     }
   };
 

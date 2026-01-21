@@ -438,6 +438,27 @@ export class SyncIntegrationService {
           debugLog(`✅ SyncIntegration: Force sync completed successfully for employee ${currentEmployeeId}`);
           return { success: true };
         } else {
+          // Check if any data was successfully synced
+          const results = result.data || [];
+          const successfulSyncs = results.filter((r: any) => r.success);
+          const failedSyncs = results.filter((r: any) => !r.success);
+          
+          // If at least one sync type succeeded, report as success with a warning about partial failures
+          if (successfulSyncs.length > 0) {
+            const errorMsg = result.error || 'Some sync operations failed';
+            debugLog(`⚠️ SyncIntegration: Partial sync success - ${successfulSyncs.length} succeeded, ${failedSyncs.length} failed`);
+            
+            // Return success but with a warning message about partial failures
+            // The error message from syncToBackend already contains details about what failed
+            const warningMsg = `Sync completed, but some data types had errors. ${errorMsg}`;
+            
+            return { 
+              success: true, 
+              error: warningMsg
+            };
+          }
+          
+          // All syncs failed
           const errorMsg = result.error || 'Unknown sync error';
           console.error('❌ SyncIntegration: Force sync failed:', errorMsg);
           return { success: false, error: errorMsg };

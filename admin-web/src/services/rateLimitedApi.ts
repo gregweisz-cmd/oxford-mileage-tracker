@@ -21,7 +21,7 @@ class RateLimitedApiService {
   private maxRetries = 3;
   private retryDelay = 1000; // Start with 1 second
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
-  private cacheTTL = 30000; // 30 seconds cache
+  private cacheTTL = 60000; // 60 seconds cache (increased to reduce API calls)
 
   /**
    * Add request to queue and process

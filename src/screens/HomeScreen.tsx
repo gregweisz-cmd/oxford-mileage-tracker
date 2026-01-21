@@ -513,6 +513,13 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         setLastSyncTime(new Date());
         // Refresh data after sync
         await loadEmployeeData(currentEmployee.id, currentEmployee);
+        
+        // If there's an error message but sync was successful, it means partial success
+        if (syncResult.error) {
+          Alert.alert('Sync Completed with Warnings', syncResult.error);
+        } else {
+          Alert.alert('Success', 'Data synced successfully!');
+        }
       } else {
         // Get detailed error message from sync result
         const errorMsg = syncResult.error || syncFromResult.error || 'Unable to sync right now. Please try again.';
