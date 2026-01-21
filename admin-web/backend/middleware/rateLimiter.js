@@ -14,7 +14,7 @@ const { debugLog, debugWarn } = require('../debug');
  */
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 200 : 1000, // Increased from 100 to 200 for production
+  max: process.env.NODE_ENV === 'production' ? 500 : 1000, // Increased from 200 to 500 for production (allows ~33 requests per minute)
   message: {
     error: 'Too many requests from this IP, please try again later.',
     retryAfter: '15 minutes'
@@ -46,7 +46,7 @@ const generalLimiter = rateLimit({
  */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 20 : 100, // Increased from 5 to 20 for production
+  max: process.env.NODE_ENV === 'production' ? 50 : 100, // Increased from 20 to 50 for production
   message: {
     error: 'Too many login attempts from this IP, please try again in 15 minutes.',
     retryAfter: '15 minutes'

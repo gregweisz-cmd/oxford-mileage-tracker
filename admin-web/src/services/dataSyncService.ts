@@ -53,6 +53,7 @@ interface CacheEntry<T> {
  */
 class DataSyncServiceClass {
   private cache: Map<string, CacheEntry<any>> = new Map();
+  private pendingRequests: Map<string, Promise<any>> = new Map();
 
   constructor() {
     this.initializeRealtimeSync();
@@ -170,11 +171,21 @@ class DataSyncServiceClass {
       });
 
       if (!response.ok) {
+        // Don't retry on 429 (rate limit) errors - retrying will just make it worse
+        if (response.status === 429) {
+          const errorText = await response.text().catch(() => 'Rate limit exceeded');
+          throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       return await response.json();
     } catch (error) {
+      // Don't retry on rate limit errors
+      if (error instanceof Error && error.message.includes('Rate limit')) {
+        throw error;
+      }
+      
       if (retries > 0) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
         return this.fetchWithRetry<T>(url, options, retries - 1);
@@ -185,6 +196,7 @@ class DataSyncServiceClass {
 
   /**
    * Get data from cache or fetch from API
+   * Includes request deduplication to prevent multiple simultaneous requests for the same data
    */
   private async getCachedOrFetch<T>(
     cacheKey: string,
@@ -199,16 +211,35 @@ class DataSyncServiceClass {
       }
     }
 
-    // Fetch fresh data
-    const data = await fetcher();
+    // Check if there's already a pending request for this cache key
+    // This prevents duplicate simultaneous requests
+    const pendingRequest = this.pendingRequests.get(cacheKey);
+    if (pendingRequest) {
+      return pendingRequest as Promise<T>;
+    }
 
-    // Update cache
-    this.cache.set(cacheKey, {
-      data,
-      timestamp: Date.now(),
-    });
+    // Create new fetch request
+    const fetchPromise = fetcher()
+      .then((data) => {
+        // Update cache
+        this.cache.set(cacheKey, {
+          data,
+          timestamp: Date.now(),
+        });
+        // Remove from pending requests
+        this.pendingRequests.delete(cacheKey);
+        return data;
+      })
+      .catch((error) => {
+        // Remove from pending requests on error
+        this.pendingRequests.delete(cacheKey);
+        throw error;
+      });
 
-    return data;
+    // Store pending request
+    this.pendingRequests.set(cacheKey, fetchPromise);
+
+    return fetchPromise;
   }
 
   /**

@@ -275,6 +275,31 @@ export class ApiSyncService {
       // Check if all syncs were successful
       const allSuccessful = results.every(result => result.success);
       
+      // Collect error messages from failed syncs
+      const failedSyncs = results.filter(result => !result.success);
+      const errorMessages: string[] = [];
+      
+      // Collect errors from top-level result objects
+      failedSyncs.forEach(result => {
+        if (result.error && typeof result.error === 'string' && result.error.trim()) {
+          errorMessages.push(result.error);
+        }
+      });
+      
+      // Also collect errors from individual items in data arrays
+      results.forEach(result => {
+        if (result.data && Array.isArray(result.data)) {
+          result.data.forEach((item: any) => {
+            if (!item.success && item.error && typeof item.error === 'string' && item.error.trim()) {
+              errorMessages.push(item.error);
+            }
+          });
+        }
+      });
+      
+      // Remove duplicates
+      const uniqueErrors = [...new Set(errorMessages)];
+      
       if (allSuccessful) {
         this.lastSyncTime = new Date();
         this.pendingChanges = 0;
@@ -283,12 +308,17 @@ export class ApiSyncService {
       
       debugLog('📤 ApiSync: Backend sync completed:', {
         successful: allSuccessful,
-        results: results.length
+        results: results.length,
+        failed: failedSyncs.length,
+        errors: uniqueErrors
       });
       
       return {
         success: allSuccessful,
         data: results,
+        error: uniqueErrors.length > 0 
+          ? uniqueErrors.join('; ') 
+          : (allSuccessful ? undefined : 'One or more sync operations failed. Please check your connection and try again.'),
         timestamp: new Date()
       };
       
@@ -472,9 +502,16 @@ export class ApiSyncService {
       
       const allSuccessful = results.every(result => result.success);
       
+      // Collect error messages from failed individual syncs
+      const failedResults = results.filter((r: any) => !r.success && r.error);
+      const errorMessages = failedResults.map((r: any) => r.error).filter(Boolean);
+      
       return {
         success: allSuccessful,
         data: results,
+        error: errorMessages.length > 0 
+          ? errorMessages.join('; ') 
+          : (allSuccessful ? undefined : 'One or more employee sync operations failed'),
         timestamp: new Date()
       };
       
@@ -558,9 +595,16 @@ export class ApiSyncService {
       
       const allSuccessful = results.every(result => result.success);
       
+      // Collect error messages from failed individual syncs
+      const failedResults = results.filter((r: any) => !r.success && r.error);
+      const errorMessages = failedResults.map((r: any) => r.error).filter(Boolean);
+      
       return {
         success: allSuccessful,
         data: results,
+        error: errorMessages.length > 0 
+          ? errorMessages.join('; ') 
+          : (allSuccessful ? undefined : 'One or more mileage entry sync operations failed'),
         timestamp: new Date()
       };
       
@@ -993,9 +1037,16 @@ export class ApiSyncService {
       
       const allSuccessful = results.every(result => result.success);
       
+      // Collect error messages from failed individual syncs
+      const failedResults = results.filter((r: any) => !r.success && r.error);
+      const errorMessages = failedResults.map((r: any) => r.error).filter(Boolean);
+      
       return {
         success: allSuccessful,
         data: results,
+        error: errorMessages.length > 0 
+          ? errorMessages.join('; ') 
+          : (allSuccessful ? undefined : 'One or more mileage entry sync operations failed'),
         timestamp: new Date()
       };
       
@@ -1063,9 +1114,16 @@ export class ApiSyncService {
       
       const allSuccessful = results.every(result => result.success);
       
+      // Collect error messages from failed individual syncs
+      const failedResults = results.filter((r: any) => !r.success && r.error);
+      const errorMessages = failedResults.map((r: any) => r.error).filter(Boolean);
+      
       return {
         success: allSuccessful,
         data: results,
+        error: errorMessages.length > 0 
+          ? errorMessages.join('; ') 
+          : (allSuccessful ? undefined : 'One or more mileage entry sync operations failed'),
         timestamp: new Date()
       };
       
@@ -1160,9 +1218,16 @@ export class ApiSyncService {
       
       const allSuccessful = results.every(result => result.success);
       
+      // Collect error messages from failed individual syncs
+      const failedResults = results.filter((r: any) => !r.success && r.error);
+      const errorMessages = failedResults.map((r: any) => r.error).filter(Boolean);
+      
       return {
         success: allSuccessful,
         data: results,
+        error: errorMessages.length > 0 
+          ? errorMessages.join('; ') 
+          : (allSuccessful ? undefined : 'One or more mileage entry sync operations failed'),
         timestamp: new Date()
       };
       
