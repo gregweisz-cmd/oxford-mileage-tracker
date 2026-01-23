@@ -1494,7 +1494,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           (expenseData as any).ptoHours = ptoHours;
           (expenseData as any).receipts = currentMonthReceipts;
           // Set employeeSignature from saved expense report or signature state
-          (expenseData as any).employeeSignature = savedExpenseReport?.reportData?.signatureImage || signatureImage || employee.signature || null;
+          (expenseData as any).employeeSignature = savedExpenseReport?.reportData?.signatureImage || savedExpenseReport?.reportData?.employeeSignature || signatureImage || employee.signature || null;
+          // Set employeeCertificationAcknowledged from saved expense report or current state
+          (expenseData as any).employeeCertificationAcknowledged = savedExpenseReport?.reportData?.employeeCertificationAcknowledged || employeeCertificationAcknowledged || false;
           
           setEmployeeData(expenseData);
           const formattedReceipts = currentMonthReceipts.map((receipt: any) => ({
@@ -1958,6 +1960,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     (updatedData as any).ptoHours = ptoHours;
     (updatedData as any).receipts = receipts;
     (updatedData as any).employeeSignature = signatureImage;
+    (updatedData as any).employeeCertificationAcknowledged = employeeCertificationAcknowledged;
     
     setEmployeeData(updatedData);
     setEditingCell(null);
@@ -1988,6 +1991,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           reportData: reportData
         }),
       });
+      
+      // Also save to expense report table for persistence
+      await syncReportData();
       
       debugVerbose('✅ Changes auto-saved and synced to source tables');
     } catch (error) {
@@ -2299,6 +2305,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Clear editing state
     setEditingTimesheetCell(null);
     setEditingTimesheetValue('');
+    
+    // Save to expense report table for persistence
+    try {
+      await syncReportData();
+    } catch (error) {
+      debugError('Error saving timesheet to expense report:', error);
+    }
     
     // Refresh timesheet data in background after a short delay to ensure save/delete is complete
     // Use a longer delay for deletes to ensure they're processed
@@ -2644,18 +2657,47 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // Handle receipt image upload
-  const handleReceiptImageUpload = (receiptId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReceiptImageUpload = async (receiptId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         const result = e.target?.result as string;
         // Update the receipt with the new file
-        setReceipts(receipts.map(receipt => 
+        const updatedReceipts = receipts.map(receipt => 
           receipt.id === receiptId 
             ? { ...receipt, imageUri: result }
             : receipt
-        ));
+        );
+        setReceipts(updatedReceipts);
+        
+        // Update employeeData for status indicator
+        if (employeeData) {
+          setEmployeeData({ ...employeeData, receipts: updatedReceipts } as any);
+        }
+        
+        // Save to backend
+        try {
+          // Update receipt in backend
+          const receipt = updatedReceipts.find(r => r.id === receiptId);
+          if (receipt) {
+            const response = await fetch(`${API_BASE_URL}/api/receipts/${receiptId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...receipt,
+                imageUri: result
+              })
+            });
+            
+            if (response.ok) {
+              // Also save to expense report table for persistence
+              await syncReportData();
+            }
+          }
+        } catch (error) {
+          debugError('Error saving receipt image:', error);
+        }
       };
       reader.readAsDataURL(file);
     } else {
@@ -4701,6 +4743,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             tabs={createTabConfig(employeeData)}
             employeeData={employeeData}
             showStatus={!!employeeData}
+            rawTimeEntries={rawTimeEntries}
+            currentMonth={currentMonth}
+            currentYear={currentYear}
+            daysInMonth={new Date(currentYear, currentMonth, 0).getDate()}
           />
         }
       />

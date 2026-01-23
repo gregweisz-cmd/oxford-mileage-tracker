@@ -38,6 +38,10 @@ interface EnhancedTabNavigationProps {
   tabs: EnhancedTab[];
   employeeData?: any;
   showStatus?: boolean;
+  rawTimeEntries?: any[];
+  currentMonth?: number;
+  currentYear?: number;
+  daysInMonth?: number;
 }
 
 /**
@@ -60,7 +64,11 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
   onChange,
   tabs,
   employeeData,
-  showStatus = true
+  showStatus = true,
+  rawTimeEntries = [],
+  currentMonth,
+  currentYear,
+  daysInMonth
 }) => {
   const tabsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -177,53 +185,79 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
   const getTabStatus = (tabIndex: number): 'complete' | 'warning' | 'error' | undefined => {
     if (!showStatus || !employeeData) return undefined;
 
-    // Approval Cover Sheet
+    // Approval Cover Sheet - requires both signature AND checkbox
     if (tabIndex === 0) {
-      return employeeData.employeeSignature ? 'complete' : 'warning';
+      const hasSignature = !!employeeData.employeeSignature;
+      const hasAcknowledgment = !!employeeData.employeeCertificationAcknowledged;
+      return (hasSignature && hasAcknowledgment) ? 'complete' : 'warning';
     }
 
-    // Summary Sheet
+    // Summary Sheet - no icon (auto-populated from other sheets)
     if (tabIndex === 1) {
-      const hasData = employeeData.dailyEntries?.length > 0 || 
-                     employeeData.totalMileageAmount > 0 ||
-                     employeeData.phoneInternetFax > 0;
-      return hasData ? 'complete' : 'warning';
+      return undefined;
     }
 
-    // Mileage Entries Tab
+    // Mileage Entries Tab - no icon (data from app/manual entry)
     if (tabIndex === 2) {
-      const hasMileage = employeeData.totalMileageAmount > 0;
-      return hasMileage ? 'complete' : 'warning';
+      return undefined;
     }
 
-    // Daily Descriptions Tab
+    // Daily Descriptions Tab - no icon (no way to know if needed)
     if (tabIndex === 3) {
-      const hasDescriptions = employeeData.dailyEntries?.some((entry: any) => entry.description);
-      return hasDescriptions ? 'complete' : 'warning';
+      return undefined;
     }
 
-    // Cost Center Travel Tabs
+    // Cost Center Travel Tabs - no icon (no way to know if needed)
     if (tabIndex >= 4 && tabIndex < 4 + (employeeData.costCenters?.length || 0)) {
-      const costCenterIndex = tabIndex - 4;
-      const costCenter = employeeData.costCenters[costCenterIndex];
-      const hasEntries = employeeData.dailyEntries?.some((entry: any) => 
-        entry.costCenter === costCenter
-      );
-      return hasEntries ? 'complete' : 'warning';
+      return undefined;
     }
 
-    // Timesheet
+    // Timesheet - check if hours entered for all days up to current day
     if (tabIndex === employeeData.costCenters?.length + 4) {
-      const hasTimeData = employeeData.gaHours > 0 || 
-                         employeeData.holidayHours > 0 ||
-                         employeeData.ptoHours > 0;
-      return hasTimeData ? 'complete' : 'warning';
+      if (!currentMonth || !currentYear || !daysInMonth || !rawTimeEntries) {
+        return undefined;
+      }
+      
+      const currentDate = new Date();
+      const isCurrentMonth = currentMonth === currentDate.getMonth() + 1 && currentYear === currentDate.getFullYear();
+      const daysToCheck = isCurrentMonth ? currentDate.getDate() : daysInMonth;
+      
+      // Filter time entries for current month
+      const currentMonthTimeEntries = rawTimeEntries.filter((entry: any) => {
+        const entryDate = new Date(entry.date);
+        const entryMonth = entryDate.getUTCMonth() + 1;
+        const entryYear = entryDate.getUTCFullYear();
+        return entryMonth === currentMonth && entryYear === currentYear;
+      });
+      
+      // Check if entries exist for each day from 1 to daysToCheck
+      const allDaysHaveEntries = Array.from({ length: daysToCheck }, (_, i) => {
+        const day = i + 1;
+        return currentMonthTimeEntries.some((entry: any) => {
+          const entryDate = new Date(entry.date);
+          return entryDate.getUTCDate() === day;
+        });
+      }).every(hasEntry => hasEntry);
+      
+      return allDaysHaveEntries ? 'complete' : 'warning';
     }
 
-    // Receipt Management
+    // Receipt Management - check if images present for all non-Per-Diem receipts
     if (tabIndex === employeeData.costCenters?.length + 5) {
-      const hasReceipts = employeeData.receipts?.length > 0;
-      return hasReceipts ? 'complete' : 'warning';
+      const receipts = employeeData.receipts || [];
+      const nonPerDiemReceipts = receipts.filter((r: any) => r.category !== 'Per Diem');
+      
+      // If no non-Per-Diem receipts, consider complete
+      if (nonPerDiemReceipts.length === 0) {
+        return 'complete';
+      }
+      
+      // Check if all non-Per-Diem receipts have images
+      const allHaveImages = nonPerDiemReceipts.every((r: any) => 
+        r.imageUri && r.imageUri.trim() !== ''
+      );
+      
+      return allHaveImages ? 'complete' : 'warning';
     }
 
     return undefined;
