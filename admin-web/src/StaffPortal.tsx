@@ -5830,8 +5830,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       );
                     })}
                   {rawMileageEntries.filter((entry: any) => {
-                    const entryDate = new Date(entry.date);
-                    return entryDate.getMonth() === currentMonth - 1 && entryDate.getFullYear() === currentYear;
+                    // Use string-based date comparison to avoid timezone issues (same as main filter)
+                    const entryDateStr = normalizeDate(entry.date);
+                    const entryDateParts = entryDateStr.split('-');
+                    if (entryDateParts.length !== 3) return false;
+                    const entryYear = parseInt(entryDateParts[0], 10);
+                    const entryMonth = parseInt(entryDateParts[1], 10);
+                    return entryMonth === currentMonth && entryYear === currentYear;
                   }).length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
