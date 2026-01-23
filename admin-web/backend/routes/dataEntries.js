@@ -156,10 +156,12 @@ router.post('/api/mileage-entries', (req, res) => {
   const finalOdometerReading = odometerReading || miles || 0;
 
   // Normalize manual entry locations into name/address fields if missing
+  // If address is missing but location name exists, use name as fallback for address
+  // This ensures addresses are always populated when location names are provided
   const normalizedStartLocationName = startLocationName || startLocation || '';
-  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
+  const normalizedStartLocationAddress = startLocationAddress || (startLocationName ? startLocationName : startLocation) || '';
   const normalizedEndLocationName = endLocationName || endLocation || '';
-  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
+  const normalizedEndLocationAddress = endLocationAddress || (endLocationName ? endLocationName : endLocation) || '';
 
   // Check if entry with this ID already exists
   db.get('SELECT id FROM mileage_entries WHERE id = ?', [entryId], (checkErr, existingRow) => {
@@ -259,10 +261,12 @@ router.put('/api/mileage-entries/:id', (req, res) => {
   const finalOdometerReading = odometerReading || miles || 0;
 
   // Normalize manual entry locations into name/address fields if missing
+  // If address is missing but location name exists, use name as fallback for address
+  // This ensures addresses are always populated when location names are provided
   const normalizedStartLocationName = startLocationName || startLocation || '';
-  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
+  const normalizedStartLocationAddress = startLocationAddress || (startLocationName ? startLocationName : startLocation) || '';
   const normalizedEndLocationName = endLocationName || endLocation || '';
-  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
+  const normalizedEndLocationAddress = endLocationAddress || (endLocationName ? endLocationName : endLocation) || '';
 
   db.run(
     'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
