@@ -772,6 +772,81 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Function to sync daily description changes to the cost center screen
   /**
+   * Extracts user-entered description by removing any existing driving summary
+   * Driving summary patterns: "to [Location]" sequences, odometer readings, etc.
+   * This prevents duplication when descriptions are saved and then rebuilt from mileage entries.
+   */
+  const extractUserDescription = useCallback((fullDescription: string): string => {
+    if (!fullDescription) return '';
+    
+    // Remove odometer readings first
+    let cleaned = fullDescription
+      .replace(/Odometer:\s*\d+/gi, '')
+      .replace(/\s+to\s+Odometer:\s*\d+/gi, '')
+      .trim();
+    
+    // Split by double newlines (driving summary is typically separated by \n\n)
+    const parts = cleaned.split(/\n\n+/);
+    
+    // The driving summary typically contains patterns like:
+    // - "to [Location]" sequences (especially multiple "to" patterns)
+    // - Location names with addresses in parentheses: "OH Location (address)"
+    // - Patterns like "BA to OH Location (address) to OH Location2 (address)"
+    // - Repeated "for [purpose]" patterns
+    
+    // Filter out parts that look like driving summaries
+    const userParts = parts.filter(part => {
+      const trimmedPart = part.trim();
+      if (!trimmedPart) return false;
+      
+      // Count "to" patterns - driving summaries typically have multiple "to [Location]" patterns
+      const toMatches = trimmedPart.match(/\bto\s+/gi);
+      const toCount = toMatches ? toMatches.length : 0;
+      
+      // If there are 2+ "to" patterns, it's almost certainly a driving summary
+      if (toCount >= 2) {
+        return false;
+      }
+      
+      // Check for location patterns with addresses in parentheses
+      // Pattern: "to OH LocationName (address)" or "to LocationName (address)"
+      const locationPattern = /\bto\s+(?:OH\s+)?[^(]+\([^)]+\)/gi;
+      const locationMatches = trimmedPart.match(locationPattern);
+      
+      // If there are location patterns with addresses, it's likely a driving summary
+      if (locationMatches && locationMatches.length >= 1 && toCount >= 1) {
+        return false;
+      }
+      
+      // Check for repeated patterns (like "for House stabilization" appearing multiple times)
+      // This indicates a duplicated driving summary
+      const purposePattern = /\bfor\s+[^to\s]+/gi;
+      const purposeMatches = trimmedPart.match(purposePattern);
+      if (purposeMatches && purposeMatches.length >= 2) {
+        // Multiple "for [purpose]" patterns = likely duplicated driving summary
+        return false;
+      }
+      
+      // If it contains "to BA" or "to BA1" or "to BA2" and has other location patterns, it's a driving summary
+      if (/\bto\s+(?:BA|BA1|BA2)\b/i.test(trimmedPart) && toCount >= 1) {
+        return false;
+      }
+      
+      // Otherwise, it's likely user-entered text
+      return true;
+    });
+    
+    // Join remaining parts (user description) and clean up extra whitespace
+    const result = userParts.join('\n\n').trim();
+    
+    // Remove any remaining odometer patterns that might have slipped through
+    return result
+      .replace(/Odometer:\s*\d+/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  /**
    * Syncs daily description to the cost center screen
    * Extracts user-entered description (removing any existing driving summary) and recalculates driving summary
    * to prevent duplication when saving multiple times
@@ -1081,27 +1156,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               drivingSummary = tripSegments.join(' ');
             }
             
-            // Helper function to clean odometer readings from description
-            const cleanOdometerReadings = (text: string): string => {
-              if (!text) return text;
-              // Remove patterns like "Odometer: 123456" or "Odometer: 123456 to Odometer: 123789"
-              return text
-                .replace(/Odometer:\s*\d+/gi, '')
-                .replace(/\s+to\s+Odometer:\s*\d+/gi, '')
-                .replace(/\s+/g, ' ')
-                .trim();
-            };
-            
-            // Clean odometer readings from the description before using it
-            const cleanedUserDescription = dayDescription && dayDescription.description 
-              ? cleanOdometerReadings(dayDescription.description.trim())
+            // Extract user-entered description (removing any existing driving summary)
+            // This prevents duplication when rebuilding the description
+            const userDescription = dayDescription && dayDescription.description 
+              ? extractUserDescription(dayDescription.description)
               : '';
             
-            // Concatenate daily description + driving summary (NO odometer readings)
+            // Concatenate user description + driving summary (NO odometer readings)
+            // Only append driving summary if it's not already in the user description
             let fullDescription = '';
-            if (cleanedUserDescription) {
-              fullDescription = cleanedUserDescription;
-              if (drivingSummary) {
+            if (userDescription) {
+              fullDescription = userDescription;
+              // Only add driving summary if it's not already present
+              if (drivingSummary && !userDescription.includes(drivingSummary)) {
                 fullDescription += '\n\n' + drivingSummary;
               }
             } else if (drivingSummary) {
@@ -1687,11 +1754,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         return descDateStr === dateStr;
       });
       
+      // Extract user description (remove any existing driving summary) before saving
+      // This prevents the driving summary from being saved and then duplicated on reload
+      const userDescriptionToSave = hasDescription 
+        ? extractUserDescription(editingValue)
+        : '';
+      
       if (existingDescIndex >= 0) {
-        if (hasDescription) {
-          // Update existing description (but don't overwrite if it's a day off)
+        if (userDescriptionToSave) {
+          // Update existing description with user-entered text only (but don't overwrite if it's a day off)
           if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
-            updatedDailyDescriptions[existingDescIndex].description = editingValue;
+            updatedDailyDescriptions[existingDescIndex].description = userDescriptionToSave;
             updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
           }
         } else {
@@ -1701,13 +1774,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
           }
         }
-      } else if (hasDescription) {
-        // Create new description entry only if it has content
+      } else if (userDescriptionToSave) {
+        // Create new description entry only with user-entered text (no driving summary)
         updatedDailyDescriptions.push({
           id: `desc-${entry.day}`,
           employeeId: employeeData.employeeId,
           date: dateStr,
-          description: editingValue,
+          description: userDescriptionToSave,
           costCenter: entry.costCenter || employeeData.costCenters[0] || '',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
