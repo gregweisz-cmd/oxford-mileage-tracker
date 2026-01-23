@@ -525,7 +525,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     try {
       // Fetch updated time tracking data - no delay needed
-      const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
+      const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
       const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
       
       // Reduced logging for performance
@@ -768,7 +768,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     // Reduced logging for performance
     // debugLog('🔄 refreshTimesheetData completed');
-  }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [effectiveEmployeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Function to sync daily description changes to the cost center screen
   /**
@@ -903,9 +903,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     'July', 'August', 'September', 'October', 'November', 'December'];
   const monthName = monthNames[currentMonth - 1];
 
+  // Get effective employeeId from props or localStorage (for dependency tracking)
+  const effectiveEmployeeId = React.useMemo(() => {
+    return employeeId || localStorage.getItem('currentEmployeeId') || '';
+  }, [employeeId]);
+
   // Load employee data based on props
   useEffect(() => {
     const loadEmployeeData = async () => {
+      if (!effectiveEmployeeId) {
+        debugWarn('⚠️ StaffPortal: No employeeId provided and none found in localStorage');
+        setLoading(false);
+        return;
+      }
+      
       setLoading(true);
       let employee: any = null;
       let costCenters: string[] = ['NC.F-SAPTBG']; // Default fallback
@@ -918,7 +929,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
       
       // Use mapped ID or original ID
-      const backendEmployeeId = employeeIdMap[employeeId] || employeeId;
+      const backendEmployeeId = employeeIdMap[effectiveEmployeeId] || effectiveEmployeeId;
       
       try {
         // Fetch employee details from backend
@@ -980,12 +991,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Fetch real data from backend APIs using rate-limited API
           const { apiFetch } = await import('./services/rateLimitedApi');
           const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, reportResponse, expenseReportResponse] = await Promise.all([
-            apiFetch(`/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/daily-descriptions?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/monthly-reports?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}`).catch(() => ({ ok: false } as Response)) // Load expense report if it exists
+            apiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/daily-descriptions?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/monthly-reports?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/expense-reports/${effectiveEmployeeId}/${currentMonth}/${currentYear}`).catch(() => ({ ok: false } as Response)) // Load expense report if it exists
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
@@ -1581,7 +1592,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     loadEmployeeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employeeId, currentMonth, currentYear, refreshTrigger]);
+  }, [effectiveEmployeeId, currentMonth, currentYear, refreshTrigger]);
 
   // Initialize tips when employee data is loaded
   useEffect(() => {
@@ -1595,14 +1606,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Check for revision requests
   useEffect(() => {
     const checkRevisionItems = async () => {
-      if (reportStatus === 'needs_revision' && employeeId) {
+      if (reportStatus === 'needs_revision' && effectiveEmployeeId) {
         try {
           // Fetch receipts, mileage entries, and time entries to check for revision flags
           const { apiFetch } = await import('./services/rateLimitedApi');
           const [receiptsRes, mileageRes, timeRes] = await Promise.all([
-            apiFetch(`/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
+            apiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`)
           ]);
 
           const receipts = await receiptsRes.json();
@@ -1632,7 +1643,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     };
 
     checkRevisionItems();
-  }, [reportStatus, employeeId, currentMonth, currentYear]);
+  }, [reportStatus, effectiveEmployeeId, currentMonth, currentYear]);
 
   // Fetch revision notes and highlight items that need revision
   useEffect(() => {
@@ -2000,7 +2011,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       // Reload mileage entries to refresh the display
-      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
+      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
       if (mileageRes.ok) {
         const mileageEntries = await mileageRes.json();
         setRawMileageEntries(mileageEntries);
