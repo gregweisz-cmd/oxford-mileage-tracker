@@ -984,6 +984,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const receipts = receiptsResponse.ok ? await receiptsResponse.json() : [];
           const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
           const dailyDescriptionsRaw = dailyDescriptionsResponse.ok ? await dailyDescriptionsResponse.json() : [];
+          
+          // Set raw mileage entries for the mileage entries tab
+          setRawMileageEntries(mileageEntries);
+          setRawTimeEntries(timeTracking);
           // Normalize all dates in dailyDescriptions to ensure consistent format
           const dailyDescriptions = dailyDescriptionsRaw.map((desc: any) => ({
             ...desc,
