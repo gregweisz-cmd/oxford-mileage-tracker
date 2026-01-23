@@ -91,14 +91,13 @@ export default function LocationCaptureModal({
       return;
     }
     
-    if (!locationAddress.trim()) {
-      Alert.alert('Validation Error', 'Please enter or confirm the address');
-      return;
-    }
+    // If address is empty, use location name as fallback to ensure address is always populated
+    // This prevents issues where reverse geocoding fails or returns incomplete addresses
+    const finalAddress = locationAddress.trim() || locationName.trim();
 
     const locationDetails: LocationDetails = {
       name: locationName.trim(),
-      address: locationAddress.trim(),
+      address: finalAddress,
       latitude: currentLocation?.coords.latitude,
       longitude: currentLocation?.coords.longitude,
     };
