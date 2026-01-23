@@ -1596,12 +1596,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Initialize tips when employee data is loaded
   useEffect(() => {
-    if (employeeId && !loading) {
-      setCurrentUserId(employeeId);
+    if (effectiveEmployeeId && !loading) {
+      setCurrentUserId(effectiveEmployeeId);
       loadTipsForScreen('staff_portal', 'on_load');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employeeId, loading]);
+  }, [effectiveEmployeeId, loading]);
 
   // Check for revision requests
   useEffect(() => {
