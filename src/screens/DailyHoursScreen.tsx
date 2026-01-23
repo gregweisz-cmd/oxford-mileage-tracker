@@ -269,11 +269,16 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     if (!selectedDay || !currentEmployee) return;
 
     try {
-      // Save description
+      // Save the current scroll position before closing modal
+      const savedScrollPosition = scrollPositionRef.current;
+      const savedDayIndex = selectedDayIndexRef.current;
+      
+      // Save description - use trimmed text, but allow empty strings if user cleared it
+      const descriptionToSave = isDayOff ? dayOffType : (descriptionText || '').trim();
       await UnifiedDataService.updateDayDescription(
         currentEmployee.id,
         selectedDay.date,
-        isDayOff ? dayOffType : descriptionText.trim(),
+        descriptionToSave,
         selectedCostCenter,
         undefined, // stayedOvernight
         isDayOff,
@@ -299,7 +304,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         );
       }
       
-      // Save recent description if not day off
+      // Save recent description if not day off and has content
       if (!isDayOff && descriptionText.trim()) {
         await saveRecentDescription(descriptionText.trim());
       }
@@ -314,21 +319,15 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       // Reload data
       await loadData();
       
-      // Restore scroll position and scroll to selected day
+      // Restore scroll position to exact saved position
       setTimeout(() => {
-        if (scrollViewRef.current && selectedDayIndexRef.current >= 0) {
-          // Calculate approximate position based on day index
-          const dayCardHeight = 120; // Approximate height of each day card
-          const spacing = 12; // Margin between cards
-          const headerHeight = 200; // Approximate header height
-          const scrollY = selectedDayIndexRef.current * (dayCardHeight + spacing) + headerHeight;
-          
+        if (scrollViewRef.current && savedScrollPosition >= 0) {
           scrollViewRef.current.scrollTo({
-            y: Math.max(0, scrollY - 100), // Offset to show day near top
-            animated: true
+            y: savedScrollPosition,
+            animated: false // Use false for exact positioning
           });
         }
-      }, 100);
+      }, 150); // Slightly longer delay to ensure data is rendered
       
       // Auto-sync to backend
       try {
@@ -466,6 +465,41 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           <Text style={styles.instructionText}>
             Tap on any day to enter or edit hours and description
           </Text>
+          {currentEmployee && (
+            <TouchableOpacity
+              style={styles.resetButton}
+              onPress={async () => {
+                Alert.alert(
+                  'Reset All Hours',
+                  `Are you sure you want to reset all hours for ${getMonthName(currentMonth)}? This will set all hours to 0 for all days.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Reset',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await UnifiedDataService.resetMonthHours(
+                            currentEmployee.id,
+                            currentMonth.getMonth() + 1,
+                            currentMonth.getFullYear()
+                          );
+                          await loadData();
+                          Alert.alert('Success', 'All hours have been reset to 0 for this month.');
+                        } catch (error) {
+                          Alert.alert('Error', 'Failed to reset hours. Please try again.');
+                          console.error('Error resetting hours:', error);
+                        }
+                      }
+                    }
+                  ]
+                );
+              }}
+            >
+              <MaterialIcons name="refresh" size={20} color="#fff" />
+              <Text style={styles.resetButtonText}>Reset All Hours</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Days List */}
@@ -774,6 +808,21 @@ const styles = StyleSheet.create({
   instructionText: {
     fontSize: 14,
     color: '#666',
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF3B30',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   daysList: {
     flex: 1,

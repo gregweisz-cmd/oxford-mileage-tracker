@@ -1,16 +1,19 @@
 /**
  * API Configuration
  * 
- * Currently set to use PRODUCTION backend for testing from anywhere.
- * Data will sync to Render.com and be visible at:
- * https://oxford-mileage-tracker.vercel.app
+ * Currently set to use LOCAL backend for development.
+ * Set USE_PRODUCTION_FOR_TESTING to true to use Render.com backend.
  */
 
 // Production backend URL (Render.com deployment)
 const PRODUCTION_API_URL = 'https://oxford-mileage-backend.onrender.com/api';
 
 // Local development backend URL (for testing on same network)
-const LOCAL_API_URL = 'http://192.168.86.101:3002/api';
+// Use localhost for simulator/emulator/web, or your computer's local IP for physical device
+// To find your IP: Windows: ipconfig | findstr IPv4, Mac/Linux: ifconfig | grep inet
+// For physical device testing, update the IP address below to your computer's local IP
+const LOCAL_API_URL = 'http://localhost:3002/api';  // For simulator/emulator/web
+// const LOCAL_API_URL = 'http://192.168.86.101:3002/api';  // Uncomment and update IP for physical device
 
 // Production mode: Always use Render.com backend
 // This ensures the app works from anywhere and syncs with the web portal

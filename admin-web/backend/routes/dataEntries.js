@@ -1107,7 +1107,58 @@ router.put('/api/time-tracking/:id', async (req, res) => {
 });
 
 /**
- * Delete time tracking entry
+ * Delete all time tracking entries (admin/maintenance endpoint)
+ * Optional query params: employeeId, month, year
+ * NOTE: This must come BEFORE the /:id route to avoid route conflicts
+ */
+router.delete('/api/time-tracking', (req, res) => {
+  const { employeeId, month, year } = req.query;
+  const db = dbService.getDb();
+  
+  // If no query params, require confirmation or specific params to prevent accidental deletion
+  if (!employeeId && !month && !year) {
+    return res.status(400).json({ 
+      error: 'Missing required parameters. Provide employeeId, or month+year, or all three to delete specific entries.' 
+    });
+  }
+  
+  let query = 'DELETE FROM time_tracking';
+  const params = [];
+  const conditions = [];
+  
+  if (employeeId) {
+    conditions.push('employeeId = ?');
+    params.push(employeeId);
+  }
+  
+  if (month && year) {
+    conditions.push('strftime("%m", date) = ? AND strftime("%Y", date) = ?');
+    params.push(month.toString().padStart(2, '0'), year.toString());
+  }
+  
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+  
+  debugLog(`🗑️ Deleting time tracking entries with query: ${query}, params:`, params);
+  
+  db.run(query, params, function(err) {
+    if (err) {
+      debugError('❌ Error deleting time tracking entries:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    debugLog(`✅ Deleted ${this.changes} time tracking entries`);
+    res.json({ 
+      message: `Successfully deleted ${this.changes} time tracking entries`,
+      deletedCount: this.changes
+    });
+  });
+});
+
+/**
+ * Delete time tracking entry by ID
  */
 router.delete('/api/time-tracking/:id', (req, res) => {
   const { id } = req.params;

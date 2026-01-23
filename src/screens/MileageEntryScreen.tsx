@@ -149,6 +149,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     initializeAndLoad();
   }, [route.params]);
 
+  // Check for daily odometer reading when date changes
+  useEffect(() => {
+    if (currentEmployee && formData.date && !isEditing) {
+      checkExistingEntriesForDate(formData.date);
+    }
+  }, [formData.date, currentEmployee, isEditing]);
+
   // Load purpose suggestions when both locations are entered
   useEffect(() => {
     const loadPurposeSuggestions = async () => {
@@ -331,17 +338,30 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       
       setHasExistingEntriesToday(entriesForDate.length > 0);
       
-      // If there are existing entries and we're not editing, set the odometer reading from the first entry
-      if (entriesForDate.length > 0 && !isEditing) {
+      // Check if there's a daily odometer reading for this date
+      const dailyOdometerReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, date);
+      if (dailyOdometerReading) {
+        // If daily odometer reading exists, use it and disable input
+        setFormData(prev => ({
+          ...prev,
+          odometerReading: dailyOdometerReading.odometerReading.toString()
+        }));
+        setHasStartedGpsToday(true); // This will disable the input
+      } else if (entriesForDate.length > 0 && !isEditing) {
+        // If there are existing entries and we're not editing, set the odometer reading from the first entry
         const firstEntry = entriesForDate[0];
         setFormData(prev => ({
           ...prev,
           odometerReading: firstEntry.odometerReading?.toString() || ''
         }));
+        setHasStartedGpsToday(false); // Allow editing if no daily reading
+      } else {
+        setHasStartedGpsToday(false);
       }
     } catch (error) {
       console.error('Error checking existing entries for date:', error);
       setHasExistingEntriesToday(false);
+      setHasStartedGpsToday(false);
     }
   };
 
@@ -558,9 +578,25 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
     setCalculatingDistance(true);
     try {
+      // Get actual addresses - use location details if available, otherwise use the location string
+      // Handle "BA" (base address) specially
+      let startAddress = formData.startLocation.trim();
+      if (startAddress === 'BA' && startLocationDetails?.address) {
+        startAddress = startLocationDetails.address;
+      } else if (startLocationDetails?.address) {
+        startAddress = startLocationDetails.address;
+      }
+      
+      let endAddress = formData.endLocation.trim();
+      if (endAddress === 'BA' && endLocationDetails?.address) {
+        endAddress = endLocationDetails.address;
+      } else if (endLocationDetails?.address) {
+        endAddress = endLocationDetails.address;
+      }
+      
       const distance = await DistanceService.calculateDistance(
-        formData.startLocation.trim(),
-        formData.endLocation.trim()
+        startAddress,
+        endAddress
       );
       
       setFormData(prev => ({ ...prev, miles: distance.toString() }));

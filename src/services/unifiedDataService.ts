@@ -284,16 +284,27 @@ export class UnifiedDataService {
     costCenter?: string
   ): Promise<void> {
     // Delete existing time tracking entries for this day
+    // Use local date string to avoid timezone issues
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const dayStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    
     const existingEntries = await DatabaseService.getTimeTrackingEntries(
       employeeId, 
-      date.getMonth() + 1, 
-      date.getFullYear()
+      month, 
+      year
     );
     
-    const dayStr = date.toISOString().split('T')[0];
-    const dayEntries = existingEntries.filter(entry => 
-      entry.date.toISOString().split('T')[0] === dayStr
-    );
+    // Filter entries for this specific day using local date comparison
+    const dayEntries = existingEntries.filter(entry => {
+      const entryDate = new Date(entry.date);
+      const entryYear = entryDate.getFullYear();
+      const entryMonth = entryDate.getMonth() + 1;
+      const entryDay = entryDate.getDate();
+      const entryDayStr = `${entryYear}-${entryMonth.toString().padStart(2, '0')}-${entryDay.toString().padStart(2, '0')}`;
+      return entryDayStr === dayStr;
+    });
     
     // Delete existing entries
     for (const entry of dayEntries) {
@@ -322,6 +333,27 @@ export class UnifiedDataService {
           costCenter: costCenter || ''
         });
       }
+    }
+  }
+  
+  /**
+   * Reset all hours for a specific month (set all to 0)
+   */
+  static async resetMonthHours(
+    employeeId: string,
+    month: number,
+    year: number
+  ): Promise<void> {
+    // Get all time tracking entries for the month
+    const existingEntries = await DatabaseService.getTimeTrackingEntries(
+      employeeId,
+      month,
+      year
+    );
+    
+    // Delete all entries for the month
+    for (const entry of existingEntries) {
+      await DatabaseService.deleteTimeTracking(entry.id);
     }
   }
   

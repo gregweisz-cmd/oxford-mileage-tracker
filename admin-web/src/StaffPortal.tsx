@@ -508,56 +508,47 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Function to refresh timesheet data after saving - NEW APPROACH: Daily Hours Distribution
   const refreshTimesheetData = useCallback(async (dataToUse?: any) => {
-    debugLog('🔄 refreshTimesheetData called');
-    debugLog('🔍 Current employeeData state:', employeeData ? 'exists' : 'null');
+    // Reduced logging for performance - only log errors
     // Prefer current employeeData from state, but use dataToUse if state is not available
     // This is needed during initial load when state hasn't been set yet
     const data = employeeData || dataToUse;
     if (!data) {
-      debugWarn('❌ No employeeData available (neither state nor parameter), skipping refresh');
+      // Silently skip if no data available (will retry when data is loaded)
       return;
-    }
-    
-    if (!employeeData && dataToUse) {
-      debugLog('⚠️ Using dataToUse parameter because employeeData state is not yet available');
     }
     
     // Prevent multiple simultaneous calls
     if (isRefreshingTimesheet) {
-      debugWarn('⏳ refreshTimesheetData already running, skipping');
-      return;
+      return; // Silently skip if already refreshing
     }
     setIsRefreshingTimesheet(true);
-    debugLog('🔄 Starting refresh process...');
     
     try {
       // Fetch updated time tracking data - no delay needed
       const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
       const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
       
-      debugLog(`🔍 Fetched ${timeTracking.length} total time tracking entries from API`);
+      // Reduced logging for performance
       
-      // Filter for current month
+      // Filter for current month - optimized to avoid creating Date objects multiple times
+      const monthStr = currentMonth.toString().padStart(2, '0');
+      const yearStr = currentYear.toString();
       const currentMonthTimeTracking = timeTracking.filter((tracking: any) => {
+        // Fast string-based filtering for YYYY-MM-DD format
+        const dateStr = typeof tracking.date === 'string' ? tracking.date.split('T')[0] : tracking.date;
+        if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          const [year, month] = dateStr.split('-');
+          return month === monthStr && year === yearStr;
+        }
+        // Fallback to Date parsing only if needed
         const trackingDate = new Date(tracking.date);
         const trackingMonth = trackingDate.getUTCMonth() + 1;
         const trackingYear = trackingDate.getUTCFullYear();
         return trackingMonth === currentMonth && trackingYear === currentYear;
       });
       
-      debugLog(`🔍 Filtered to ${currentMonthTimeTracking.length} entries for month ${currentMonth}/${currentYear}`);
-      
-      // Log all category entries to verify they're all present
-      const categoryEntries = currentMonthTimeTracking.filter((t: any) => {
-        const categoryTypes = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'];
-        return categoryTypes.includes(t.category) && (!t.costCenter || t.costCenter === '');
-      });
-      debugVerbose(`🔍 Category entries found (${categoryEntries.length}):`, categoryEntries.map((t: any) => ({
-        day: new Date(t.date).getUTCDate(),
-        category: t.category,
-        hours: t.hours,
-        id: t.id
-      })));
+      // Reduced logging for performance
+      // debugLog(`🔍 Filtered to ${currentMonthTimeTracking.length} entries for month ${currentMonth}/${currentYear}`);
       
       // NEW APPROACH: Group by day and create daily hour distributions
       const dailyHourDistributions: { [day: number]: any } = {};
@@ -585,17 +576,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
       
       // Process all time tracking entries and group by day
-      debugLog('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
-      debugLog('🔍 All entries before processing:', currentMonthTimeTracking.map((t: any) => ({
-        date: t.date,
-        day: getDayFromDate(t.date),
-        category: t.category,
-        hours: t.hours,
-        costCenter: t.costCenter || '(empty)',
-        id: t.id
-      })));
-      debugLog('🔍 Current dailyEntries count:', data.dailyEntries?.length || 0);
-      debugLog('🔍 Days in dailyEntries:', data.dailyEntries?.map((e: any) => e.day).sort((a: number, b: number) => a - b) || []);
+      // Reduced logging for performance - only log if there's an issue
+      // debugLog('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
       
       currentMonthTimeTracking.forEach((tracking: any) => {
         // Use helper function to extract day from date (treat YYYY-MM-DD as local)
@@ -619,7 +601,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             if (existingHours > 0 && existingHours !== tracking.hours) {
               debugWarn(`⚠️ Multiple entries found for ${tracking.category} on day ${day}. Using latest: ${tracking.hours} (was ${existingHours})`);
             }
-            debugLog(`✅ Processed ${tracking.category} for day ${day}: ${tracking.hours} hours (ID: ${tracking.id})`);
+            // Reduced logging for performance
+            // debugLog(`✅ Processed ${tracking.category} for day ${day}: ${tracking.hours} hours (ID: ${tracking.id})`);
           } else if (tracking.category === 'Working Hours' || tracking.category === 'Regular Hours') {
             // Working hours entry - treat as cost center 0, use assignment since deterministic IDs should prevent duplicates
             dayData.costCenterHours[0] = (tracking.hours || 0);
@@ -629,18 +612,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }
       });
       
-      // Debug: Log the final distributions to verify all days are preserved
-      const daysWithHours = Object.keys(dailyHourDistributions)
-        .map(day => parseInt(day))
-        .filter(day => {
-          const dayData = dailyHourDistributions[day];
-          return dayData.totalHours > 0 || Object.keys(dayData.categoryHours).length > 0;
-        });
-      debugLog('🔍 Days with hours after processing:', daysWithHours.map(day => ({
-        day,
-        categoryHours: dailyHourDistributions[day].categoryHours,
-        totalHours: dailyHourDistributions[day].totalHours
-      })));
+      // Reduced logging for performance - removed expensive debug operations
       
       // Calculate totals AFTER processing all entries to avoid accumulation
       for (let day = 1; day <= daysInMonth; day++) {
@@ -691,7 +663,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Combine existing entries with missing day entries
       const allDailyEntries = [...data.dailyEntries, ...entriesForMissingDays].sort((a: any, b: any) => a.day - b.day);
       
-      debugLog(`🔍 Total daily entries to process: ${allDailyEntries.length} (${data.dailyEntries.length} existing + ${entriesForMissingDays.length} new)`);
+      // Reduced logging for performance
+      // debugLog(`🔍 Total daily entries to process: ${allDailyEntries.length} (${data.dailyEntries.length} existing + ${entriesForMissingDays.length} new)`);
       
       // Update daily entries with the new distribution approach
       const updatedDailyEntries = allDailyEntries.map((entry: any) => {
@@ -730,15 +703,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         // Add category hours
         (updatedEntry as any).categoryHours = dayData.categoryHours;
         
-        // Verbose logging for this entry (disabled by default)
-        if (dayData.totalHours > 0) {
-          debugVerbose(`🔍 Day ${entry.day} distribution:`, {
-            costCenterHours: dayData.costCenterHours,
-            categoryHours: dayData.categoryHours,
-            totalHours: dayData.totalHours,
-            workingHours: dayData.workingHours
-          });
-        }
+        // Removed verbose logging for performance
         
         return updatedEntry;
       });
@@ -746,37 +711,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Calculate total hours for the month
       const totalHours = Object.values(dailyHourDistributions).reduce((sum: number, dayData: any) => sum + dayData.totalHours, 0);
       
-      // Verify all days with category hours are preserved before updating state
-      const daysWithCategoryHours = updatedDailyEntries
-        .filter((entry: any) => {
-          const categoryHours = (entry as any).categoryHours || {};
-          return Object.keys(categoryHours).length > 0 || entry.hoursWorked > 0;
-        })
-        .map((entry: any) => ({
-          day: entry.day,
-          categoryHours: (entry as any).categoryHours || {},
-          totalHours: entry.hoursWorked
-        }));
-      
-      debugLog(`🔍 Days with category hours before state update (${daysWithCategoryHours.length}):`, daysWithCategoryHours);
-      
-      // Log specific entries for debugging - show ALL holiday entries
-      const holidayEntries = updatedDailyEntries
-        .filter((entry: any) => (entry as any).categoryHours?.Holiday)
-        .map((entry: any) => ({
-          day: entry.day,
-          holidayHours: (entry as any).categoryHours.Holiday
-        }));
-      debugLog(`🔍 Holiday entries in updatedDailyEntries (${holidayEntries.length}):`, holidayEntries);
-      
-      // Also log what's in dailyHourDistributions for holiday
-      const holidayInDistributions = Object.keys(dailyHourDistributions)
-        .filter(day => dailyHourDistributions[parseInt(day)].categoryHours?.Holiday)
-        .map(day => ({
-          day: parseInt(day),
-          holidayHours: dailyHourDistributions[parseInt(day)].categoryHours.Holiday
-        }));
-      debugLog(`🔍 Holiday entries in dailyHourDistributions (${holidayInDistributions.length}):`, holidayInDistributions);
+      // Removed expensive verification operations for performance
+      // These were only used for debugging and caused significant lag
       
       // Update employee data - use functional update to ensure we're working with latest state
       // If employeeData is null, we need to merge with the data we used for processing
@@ -788,7 +724,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           return null;
         }
         
-        debugLog(`🔄 Updating state with ${updatedDailyEntries.length} daily entries`);
+        // Reduced logging for performance
+        // debugLog(`🔄 Updating state with ${updatedDailyEntries.length} daily entries`);
         
         // Merge category hours from previous state to preserve any that might not be in database yet
         // This is a safety measure in case of race conditions
@@ -817,24 +754,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         };
         
         // Verify the update
-        const holidayInNewData = newData.dailyEntries
-          .filter((entry: any) => (entry as any).categoryHours?.Holiday)
-          .map((entry: any) => ({
-            day: entry.day,
-            holidayHours: (entry as any).categoryHours.Holiday
-          }));
-        debugLog(`🔍 Holiday entries in new state (${holidayInNewData.length}):`, holidayInNewData);
+        // Removed expensive debug operations for performance
         
         return newData;
       });
       
-      debugLog('✅ Timesheet data refreshed with new distribution approach');
+      // Reduced logging for performance
+      // debugLog('✅ Timesheet data refreshed with new distribution approach');
     } catch (error) {
       debugError('❌ Error refreshing timesheet data:', error);
     } finally {
       setIsRefreshingTimesheet(false);
     }
-    debugLog('🔄 refreshTimesheetData completed');
+    // Reduced logging for performance
+    // debugLog('🔄 refreshTimesheetData completed');
   }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Function to sync daily description changes to the cost center screen
@@ -1364,16 +1297,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Calculate receipt totals by category for validation
           const categoryTotals: {[key: string]: number} = {};
-          debugLog(`🔍 Calculating receipt totals from ${currentMonthReceipts.length} receipts`);
+          // Reduced logging for performance
           currentMonthReceipts.forEach((receipt: any) => {
             const category = receipt.category?.toLowerCase() || '';
             const amount = receipt.amount || 0;
-            debugLog(`🔍 Processing receipt: category="${receipt.category}" (lowercase: "${category}"), amount=$${amount}`);
             
             // Map receipt categories to summary sheet categories
             if (category.includes('air') || category.includes('rail') || category.includes('bus') || category.includes('flight')) {
               categoryTotals['airRailBus'] = (categoryTotals['airRailBus'] || 0) + amount;
-              debugLog(`✅ Matched to airRailBus: total now = $${categoryTotals['airRailBus']}`);
+              // Reduced logging for performance
+              // debugLog(`✅ Matched to airRailBus: total now = $${categoryTotals['airRailBus']}`);
             } else if (category.includes('vehicle') || category.includes('rental') || category.includes('fuel')) {
               categoryTotals['vehicleRentalFuel'] = (categoryTotals['vehicleRentalFuel'] || 0) + amount;
             } else if (category.includes('parking') || category.includes('toll')) {
@@ -1396,7 +1329,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               categoryTotals['other'] = (categoryTotals['other'] || 0) + amount;
             }
           });
-          debugLog(`🔍 Final receipt totals by category:`, categoryTotals);
+          // Reduced logging for performance
+          // debugLog(`🔍 Final receipt totals by category:`, categoryTotals);
           setReceiptTotalsByCategory(categoryTotals);
           
           // Auto-populate summary sheet from receipt totals (only if value is 0 or undefined)
@@ -1474,11 +1408,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             setSignatureImage(employee.signature); // Also set as current for this report
           }
           
-          // Wait for state to be set, then refresh timesheet data to load actual hours from database
-          // Use a small delay to ensure setEmployeeData has completed
-          await new Promise(resolve => setTimeout(resolve, 50));
-          // Call refresh without parameters so it uses the current state (which should now be set)
-          await refreshTimesheetData();
+          // Refresh timesheet data immediately using the data we just loaded
+          // Pass expenseData directly since React state updates are async
+          await refreshTimesheetData(expenseData);
       } catch (error) {
         debugError('Error loading employee data:', error);
         // Create dynamic fallback data instead of using hardcoded mock data
@@ -2042,72 +1974,171 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     debugLog(`  Final actualCostCenter: "${actualCostCenter}"`);
     debugLog(`  Final category: "${category}"`);
     
+    // Update the UI optimistically FIRST - show the change immediately
+    setEmployeeData(prev => {
+      if (!prev) return null;
+      const updatedEntries = prev.dailyEntries.map((entry: any) => {
+        if (entry.day === day) {
+          const updatedEntry = { ...entry };
+          if (type === 'costCenter' || type === 'billable') {
+            // Update cost center hours
+            const costCenterKey = `costCenter${costCenter}Hours`;
+            const oldValue = (updatedEntry as any)[costCenterKey] || 0;
+            (updatedEntry as any)[costCenterKey] = value;
+            updatedEntry.hoursWorked = Math.max(0, (updatedEntry.hoursWorked || 0) - oldValue + value);
+            updatedEntry.workingHours = Math.max(0, (updatedEntry.workingHours || 0) - oldValue + value);
+          } else if (type === 'workingHours') {
+            // Update working hours (cost center 0)
+            const oldValue = (updatedEntry as any).costCenter0Hours || 0;
+            (updatedEntry as any).costCenter0Hours = value;
+            updatedEntry.hoursWorked = Math.max(0, (updatedEntry.hoursWorked || 0) - oldValue + value);
+            updatedEntry.workingHours = Math.max(0, (updatedEntry.workingHours || 0) - oldValue + value);
+          }
+          return updatedEntry;
+        }
+        return entry;
+      });
+      return {
+        ...prev,
+        dailyEntries: updatedEntries,
+        totalHours: updatedEntries.reduce((sum: number, e: any) => sum + (e.hoursWorked || 0), 0)
+      };
+    });
+    
     // Save to time tracking API with correct cost center and category
     try {
       const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
-      const requestBody = {
-          employeeId: employeeData.employeeId,
-          date: dateStr,
-          hours: value,
-          category: category,
-          description: `${category} hours worked on ${dateStr}`,
-          costCenter: actualCostCenter
-      };
+      // First, check if an entry already exists for this day, category, and cost center
+      const checkResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`);
+      let existingEntry = null;
       
-      debugLog(`📤 Saving to time tracking API:`, requestBody);
-      
-      // Save to time tracking table
-      const response = await fetch(`${API_BASE_URL}/api/time-tracking`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
-        throw new Error(`Failed to save: ${response.status}`);
+      if (checkResponse.ok) {
+        const allEntries = await checkResponse.json();
+        // Only log if we're debugging a specific issue
+        // debugLog(`🔍 All entries for month:`, allEntries.map((e: any) => ({
+        //   id: e.id,
+        //   date: e.date,
+        //   category: e.category,
+        //   costCenter: e.costCenter || '(empty)',
+        //   hours: e.hours
+        // })));
+        
+        // Find entry for this specific day, category, and cost center
+        // Use local date parsing to avoid timezone issues
+        existingEntry = allEntries.find((entry: any) => {
+          const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
+          const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
+          const entryCostCenter = entry.costCenter || '';
+          const entryCategory = entry.category || '';
+          
+          // For cost center entries, we need to match:
+          // 1. Same date (day, month, year)
+          // 2. Same cost center
+          // 3. Category should be "Working Hours", "Regular Hours", or empty/null (for entries created via sync-to-source)
+          const dateMatches = entryDay === day && entryMonth === currentMonth && entryYear === currentYear;
+          const costCenterMatches = entryCostCenter === actualCostCenter && actualCostCenter !== '';
+          
+          // Category matching: for cost center entries, accept:
+          // - Exact match with "Working Hours"
+          // - "Regular Hours" (legacy)
+          // - Empty/null category (from sync-to-source endpoint)
+          const categoryMatches = entryCategory === category || 
+                                  (category === 'Working Hours' && (
+                                    entryCategory === 'Working Hours' || 
+                                    entryCategory === 'Regular Hours' || 
+                                    entryCategory === '' || 
+                                    !entryCategory
+                                  ));
+          
+          const matches = dateMatches && costCenterMatches && categoryMatches;
+          
+          // Only log when we find a match to reduce console noise
+          if (matches) {
+            debugLog(`✅ Found matching entry for deletion:`, {
+              id: entry.id,
+              day: entryDay,
+              category: entryCategory || '(empty)',
+              costCenter: entryCostCenter,
+              hours: entry.hours
+            });
+          }
+          
+          return matches;
+        });
       }
       
-      const result = await response.json();
-      debugLog(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+      // Only log if no entry found (for debugging)
+      if (!existingEntry && value === 0) {
+        debugLog(`⚠️ No existing entry found to delete: day=${day}, category="${category}", costCenter="${actualCostCenter}"`);
+      }
       
-      // Update the UI optimistically before refresh
-      setEmployeeData(prev => {
-        if (!prev) return null;
-        const updatedEntries = prev.dailyEntries.map((entry: any) => {
-          if (entry.day === day) {
-            const updatedEntry = { ...entry };
-            if (type === 'costCenter' || type === 'billable') {
-              // Update cost center hours
-              const costCenterKey = `costCenter${costCenter}Hours`;
-              const oldValue = (updatedEntry as any)[costCenterKey] || 0;
-              (updatedEntry as any)[costCenterKey] = value;
-              updatedEntry.hoursWorked = (updatedEntry.hoursWorked || 0) - oldValue + value;
-              updatedEntry.workingHours = (updatedEntry.workingHours || 0) - oldValue + value;
-            } else if (type === 'workingHours') {
-              // Update working hours (cost center 0)
-              const oldValue = (updatedEntry as any).costCenter0Hours || 0;
-              (updatedEntry as any).costCenter0Hours = value;
-              updatedEntry.hoursWorked = (updatedEntry.hoursWorked || 0) - oldValue + value;
-              updatedEntry.workingHours = (updatedEntry.workingHours || 0) - oldValue + value;
-            }
-            return updatedEntry;
+      // If value is 0, delete the entry if it exists
+      if (value === 0) {
+        if (existingEntry) {
+          debugLog(`🗑️ Deleting time tracking entry (0 hours):`, existingEntry.id);
+          const deleteResponse = await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
+            method: 'DELETE',
+          });
+          
+          if (!deleteResponse.ok) {
+            const errorText = await deleteResponse.text();
+            debugError(`❌ Failed to delete time tracking: ${deleteResponse.status} - ${errorText}`);
+            // Revert optimistic update on error
+            refreshTimesheetData(employeeData).catch(() => {});
+            throw new Error(`Failed to delete: ${deleteResponse.status}`);
           }
-          return entry;
-        });
-        return {
-          ...prev,
-          dailyEntries: updatedEntries,
-          totalHours: updatedEntries.reduce((sum: number, e: any) => sum + (e.hoursWorked || 0), 0)
+          
+          debugLog(`✅ Deleted time tracking entry for day ${day}`);
+        } else {
+          debugLog(`ℹ️ Value is 0 and no existing entry found - nothing to delete`);
+          // Even if no entry found, the optimistic update already shows 0, which is correct
+        }
+      } else if (value > 0) {
+        // Save or update entry
+        const requestBody = {
+            employeeId: employeeData.employeeId,
+            date: dateStr,
+            hours: value,
+            category: category,
+            description: `${category} hours worked on ${dateStr}`,
+            costCenter: actualCostCenter
         };
-      });
+        
+        debugLog(`📤 Saving to time tracking API:`, requestBody);
+        debugLog(`🔍 Existing entry found:`, existingEntry);
+        
+        // Use PUT if entry exists, POST if it doesn't
+        const response = existingEntry 
+          ? await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+            })
+          : await fetch(`${API_BASE_URL}/api/time-tracking`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+            });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
+          throw new Error(`Failed to save: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        debugLog(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+      }
     } catch (error) {
       debugError('❌ Error saving to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Revert optimistic update on error
+      refreshTimesheetData(employeeData).catch(() => {});
       return; // Don't continue if save failed
     }
     
@@ -2115,12 +2146,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingTimesheetCell(null);
     setEditingTimesheetValue('');
     
-    // Refresh timesheet data in background after a short delay to ensure save is complete
+    // Refresh timesheet data in background after a short delay to ensure save/delete is complete
+    // Use a longer delay for deletes to ensure they're processed
+    // Only refresh if we actually made a change (not just optimistic update)
+    const refreshDelay = value === 0 ? 1000 : 500;
     setTimeout(() => {
-      refreshTimesheetData(employeeData).catch((error) => {
-        debugError('❌ Error refreshing timesheet data:', error);
-      });
-    }, 500);
+      // Only refresh if not already refreshing to prevent cascading refreshes
+      if (!isRefreshingTimesheet) {
+        refreshTimesheetData(employeeData).catch((error) => {
+          debugError('❌ Error refreshing timesheet data:', error);
+        });
+      }
+    }, refreshDelay);
   };
 
   // Cancel timesheet cell edit
@@ -2208,11 +2245,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (checkResponse.ok) {
         const allEntries = await checkResponse.json();
         // Find entry for this specific day and category
+        // Use local date parsing to avoid timezone issues
         existingEntry = allEntries.find((entry: any) => {
-          const entryDate = new Date(entry.date);
-          const entryDay = entryDate.getUTCDate();
-          const entryMonth = entryDate.getUTCMonth() + 1;
-          const entryYear = entryDate.getUTCFullYear();
+          const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
+          const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
           return entryDay === day && 
                  entryMonth === currentMonth && 
                  entryYear === currentYear &&
@@ -2233,31 +2269,56 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       debugLog(`📤 Saving to time tracking API:`, requestBody);
       debugLog(`🔍 Existing entry found:`, existingEntry);
       
-      // Use PUT if entry exists, POST if it doesn't (POST will use INSERT OR REPLACE with deterministic ID)
-      const response = existingEntry 
-        ? await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-          })
-        : await fetch(`${API_BASE_URL}/api/time-tracking`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
+      // If value is 0, delete the entry if it exists
+      if (value === 0) {
+        if (existingEntry) {
+          debugLog(`🗑️ Deleting time tracking entry (0 hours):`, existingEntry.id);
+          const deleteResponse = await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
+            method: 'DELETE',
           });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
-        throw new Error(`Failed to save: ${response.status}`);
+          
+          if (!deleteResponse.ok) {
+            const errorText = await deleteResponse.text();
+            debugError(`❌ Failed to delete time tracking: ${deleteResponse.status} - ${errorText}`);
+            // Revert optimistic update on error
+            refreshTimesheetData(employeeData).catch(() => {});
+            throw new Error(`Failed to delete: ${deleteResponse.status}`);
+          }
+          
+          debugLog(`✅ Deleted time tracking entry for day ${day}`);
+        } else {
+          debugLog(`ℹ️ Value is 0 and no existing entry found - nothing to delete`);
+        }
+      } else if (value > 0) {
+        // Use PUT if entry exists, POST if it doesn't (POST will use INSERT OR REPLACE with deterministic ID)
+        const response = existingEntry 
+          ? await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+            })
+          : await fetch(`${API_BASE_URL}/api/time-tracking`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+            });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
+          throw new Error(`Failed to save: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+      } else {
+        // Value is 0 and no existing entry - nothing to do
+        debugLog(`ℹ️ Value is 0 and no existing entry - nothing to save`);
       }
-      
-      const result = await response.json();
-      debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
     } catch (error) {
       debugError('❌ Error saving category hours to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);

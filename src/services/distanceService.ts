@@ -119,8 +119,14 @@ export class DistanceService {
   /**
    * Extract address from format like "OH Abigail (1025 S. Fulton St., Salisbury, NC 28144)"
    * Returns just the address part (the part in parentheses)
+   * Also handles "BA" which should be resolved to the actual base address by the caller
    */
   private static extractAddressFromLocation(location: string): string {
+    // If it's "BA", return as-is (caller should have already resolved it)
+    if (location.trim() === 'BA') {
+      return location.trim();
+    }
+    
     // If it contains parentheses, extract the address part
     const match = location.match(/\(([^)]+)\)/);
     if (match && match[1]) {
@@ -315,9 +321,12 @@ Current method provides good estimates but Google Maps will give you the exact d
     // First try to use free geocoding services for more accurate estimation
     try {
       debugLog('🌍 Attempting geocoding with free services...');
-      return await this.calculateDistanceWithFreeGeocoding(startAddress, endAddress);
+      const distance = await this.calculateDistanceWithFreeGeocoding(startAddress, endAddress);
+      debugLog(`✅ Free geocoding succeeded: ${distance} miles`);
+      return distance;
     } catch (error) {
       debugLog('⚠️ Free geocoding failed, using keyword-based estimation');
+      debugError('Free geocoding error details:', error);
     }
     
     // Fallback: Simple keyword-based estimation for common locations
@@ -369,9 +378,26 @@ Current method provides good estimates but Google Maps will give you the exact d
       const cleanedStart = this.extractAddressFromLocation(startAddress);
       const cleanedEnd = this.extractAddressFromLocation(endAddress);
       
-      // Use Nominatim (OpenStreetMap) for free geocoding
-      const startCoords = await this.geocodeWithNominatim(cleanedStart);
-      const endCoords = await this.geocodeWithNominatim(cleanedEnd);
+      debugLog(`📏 Calculating distance: "${cleanedStart}" → "${cleanedEnd}"`);
+      
+      // Use Nominatim (OpenStreetMap) for free geocoding with timeout
+      // Add a small delay between requests to respect rate limits
+      const startCoords = await Promise.race([
+        this.geocodeWithNominatim(cleanedStart),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Geocoding timeout for start address')), 10000)
+        )
+      ]);
+      
+      // Small delay to respect Nominatim rate limits (1 request per second)
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      
+      const endCoords = await Promise.race([
+        this.geocodeWithNominatim(cleanedEnd),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Geocoding timeout for end address')), 10000)
+        )
+      ]);
       
       // Calculate straight-line distance (Haversine formula)
       const straightLineDistance = this.calculateHaversineDistance(startCoords, endCoords);
@@ -388,40 +414,101 @@ Current method provides good estimates but Google Maps will give you the exact d
       return roundedDistance;
     } catch (error) {
       console.error('Free geocoding error:', error);
-      throw new Error('Could not geocode addresses for distance calculation');
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Could not geocode addresses for distance calculation: ${errorMsg}`);
     }
   }
 
   private static async geocodeWithNominatim(address: string): Promise<{ lat: number; lng: number }> {
-    const encodedAddress = encodeURIComponent(address);
+    // Clean the address first - extract just the address part if in format "Name (Address)"
+    const cleanedAddress = this.extractAddressFromLocation(address);
+    
+    const encodedAddress = encodeURIComponent(cleanedAddress);
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=1&countrycodes=us`;
     
-    debugLog(`🌍 Geocoding with Nominatim: ${address}`);
+    debugLog(`🌍 Geocoding with Nominatim: ${address} -> ${cleanedAddress}`);
     
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'OH-Staff-Tracker/1.0'
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'OH-Staff-Tracker/1.0'
+        }
+      });
+      
+      if (!response.ok) {
+        debugError(`Nominatim request failed with status: ${response.status}`);
+        // If cleaned address failed, try original address
+        if (cleanedAddress !== address) {
+          debugLog(`Retrying with original address: ${address}`);
+          const encodedOriginal = encodeURIComponent(address);
+          const retryUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedOriginal}&limit=1&countrycodes=us`;
+          const retryResponse = await fetch(retryUrl, {
+            headers: {
+              'User-Agent': 'OH-Staff-Tracker/1.0'
+            }
+          });
+          
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json();
+            if (retryData && retryData.length > 0) {
+              const result = retryData[0];
+              const coords = {
+                lat: parseFloat(result.lat),
+                lng: parseFloat(result.lon)
+              };
+              debugLog(`📍 Coordinates found (retry): ${coords.lat}, ${coords.lng}`);
+              return coords;
+            }
+          }
+        }
+        throw new Error(`Geocoding request failed: ${response.status}`);
       }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Geocoding request failed: ${response.status}`);
+      
+      const data = await response.json();
+      
+      if (!data || data.length === 0) {
+        // If cleaned address failed, try original address
+        if (cleanedAddress !== address) {
+          debugLog(`No results for cleaned address, retrying with original: ${address}`);
+          const encodedOriginal = encodeURIComponent(address);
+          const retryUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedOriginal}&limit=1&countrycodes=us`;
+          const retryResponse = await fetch(retryUrl, {
+            headers: {
+              'User-Agent': 'OH-Staff-Tracker/1.0'
+            }
+          });
+          
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json();
+            if (retryData && retryData.length > 0) {
+              const result = retryData[0];
+              const coords = {
+                lat: parseFloat(result.lat),
+                lng: parseFloat(result.lon)
+              };
+              debugLog(`📍 Coordinates found (retry): ${coords.lat}, ${coords.lng}`);
+              return coords;
+            }
+          }
+        }
+        throw new Error(`Could not find coordinates for address: ${address}`);
+      }
+      
+      const result = data[0];
+      const coords = {
+        lat: parseFloat(result.lat),
+        lng: parseFloat(result.lon)
+      };
+      
+      debugLog(`📍 Coordinates found: ${coords.lat}, ${coords.lng}`);
+      return coords;
+    } catch (error) {
+      debugError('Nominatim geocoding error:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(`Could not geocode address: ${address}`);
     }
-    
-    const data = await response.json();
-    
-    if (!data || data.length === 0) {
-      throw new Error(`Could not find coordinates for address: ${address}`);
-    }
-    
-    const result = data[0];
-    const coords = {
-      lat: parseFloat(result.lat),
-      lng: parseFloat(result.lon)
-    };
-    
-    debugLog(`📍 Coordinates found: ${coords.lat}, ${coords.lng}`);
-    return coords;
   }
 
   private static getCommonDistances(): Record<string, number> {

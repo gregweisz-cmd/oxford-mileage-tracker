@@ -1461,19 +1461,18 @@ export class DatabaseService {
   // Calculate totals
   const totalMiles = processedMileageEntries.reduce((sum, entry) => sum + entry.miles, 0);
   
-  // Calculate total hours from both time tracking and mileage entries (combined)
+  // Calculate total hours ONLY from time tracking entries
+  // NOTE: hoursWorked on mileage entries is DEPRECATED and should NOT be counted
+  // Hours should only come from TimeTracking entries to avoid double-counting
   const totalTimeTrackingHours: number = monthlyTimeTracking.reduce((sum: number, entry: any) => sum + (entry.hours || 0), 0);
-  const totalMileageHours = processedMileageEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
-  const totalHours: number = totalTimeTrackingHours + totalMileageHours;
+  const totalHours: number = totalTimeTrackingHours; // Only use time tracking hours
   
   debugLog('🕒 Database: Hours calculation debug:', {
     timeTrackingEntries: monthlyTimeTracking.length,
     timeTrackingHours: totalTimeTrackingHours,
-    mileageEntriesWithHours: processedMileageEntries.filter(e => e.hoursWorked > 0).length,
-    mileageHours: totalMileageHours,
     finalTotalHours: totalHours,
     timeTrackingEntryDetails: monthlyTimeTracking.map((e: any) => ({ date: e.date, hours: e.hours, category: e.category })),
-    mileageEntriesWithHoursDetails: processedMileageEntries.filter(e => e.hoursWorked > 0).map(e => ({ date: e.date.toISOString(), hoursWorked: e.hoursWorked, purpose: e.purpose }))
+    note: 'Mileage entry hoursWorked field is deprecated and not included in totals'
   });
   
   const totalReceipts = processedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
