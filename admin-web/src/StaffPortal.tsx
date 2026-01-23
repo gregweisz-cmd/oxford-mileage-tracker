@@ -5722,8 +5722,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableBody>
                   {rawMileageEntries
                     .filter((entry: any) => {
-                      const entryDate = new Date(entry.date);
-                      return entryDate.getMonth() === currentMonth - 1 && entryDate.getFullYear() === currentYear;
+                      // Use string-based date comparison to avoid timezone issues
+                      const entryDateStr = normalizeDate(entry.date);
+                      const entryDateParts = entryDateStr.split('-');
+                      if (entryDateParts.length !== 3) return false;
+                      const entryYear = parseInt(entryDateParts[0], 10);
+                      const entryMonth = parseInt(entryDateParts[1], 10);
+                      return entryMonth === currentMonth && entryYear === currentYear;
                     })
                     .map((entry: any) => {
                       const mileageAmount = (entry.miles || 0) * 0.655; // Standard mileage rate
