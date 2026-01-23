@@ -5747,7 +5747,31 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       return (
                         <TableRow key={entry.id} sx={{ bgcolor: entry.needsRevision ? 'warning.light' : 'transparent' }}>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                            {new Date(entry.date).toLocaleDateString()}
+                            {(() => {
+                              // Use normalizeDate to get YYYY-MM-DD format, then parse and format consistently
+                              const normalizedDate = normalizeDate(entry.date);
+                              const dateParts = normalizedDate.split('-');
+                              if (dateParts.length === 3) {
+                                const [year, month, day] = dateParts.map(Number);
+                                const date = new Date(year, month - 1, day);
+                                return date.toLocaleDateString('en-US', {
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  year: '2-digit'
+                                });
+                              }
+                              // Fallback to original formatting if normalization fails
+                              try {
+                                const date = new Date(entry.date);
+                                return date.toLocaleDateString('en-US', {
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  year: '2-digit'
+                                });
+                              } catch {
+                                return entry.date;
+                              }
+                            })()}
                             {entry.needsRevision && (
                               <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
                             )}
