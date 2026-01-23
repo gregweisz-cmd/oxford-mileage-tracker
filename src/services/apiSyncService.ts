@@ -590,6 +590,14 @@ export class ApiSyncService {
             costCenter: entry.costCenter || '' // Include costCenter to ensure it's synced
           };
           
+          // Debug: Log address information to verify it's being sent
+          debugLog(`📤 ApiSync: Syncing mileage entry ${entry.id} with addresses:`, {
+            startLocationName: mileageData.startLocationName,
+            startLocationAddress: mileageData.startLocationAddress,
+            endLocationName: mileageData.endLocationName,
+            endLocationAddress: mileageData.endLocationAddress
+          });
+          
           const response = await fetch(`${this.config.baseUrl}/mileage-entries`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -601,6 +609,8 @@ export class ApiSyncService {
             console.error(`❌ ApiSync: Failed to sync mileage entry ${entry.id}:`, response.status, errorText);
             throw new Error(`Failed to sync mileage entry: ${response.statusText}`);
           }
+          
+          debugLog(`✅ ApiSync: Successfully synced mileage entry ${entry.id} with addresses`);
           
           results.push({ success: true, id: entry.id });
         } catch (error) {
