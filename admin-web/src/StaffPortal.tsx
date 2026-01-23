@@ -1617,6 +1617,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     loadEmployeeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveEmployeeId, currentMonth, currentYear, refreshTrigger]);
+  
+  // Sync receipts to employeeData whenever receipts change (for status indicators)
+  useEffect(() => {
+    if (employeeData && receipts) {
+      setEmployeeData({ ...employeeData, receipts: receipts } as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipts.length]); // Only update when count changes to avoid infinite loops
 
   // Initialize tips when employee data is loaded
   useEffect(() => {
