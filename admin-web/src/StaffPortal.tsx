@@ -804,8 +804,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const toCount = toMatches ? toMatches.length : 0;
       
       // If there are 2+ "to" patterns, it's almost certainly a driving summary
+      // Also check for patterns like "to OH Location (address) for purpose to OH Location2"
       if (toCount >= 2) {
         return false;
+      }
+      
+      // Check for very long descriptions with multiple location patterns (likely duplicated driving summary)
+      // Pattern: "to [Location] for [purpose] to [Location2] for [purpose]" repeated
+      const repeatedTripPattern = /to\s+[^to]+for\s+[^to]+to\s+[^to]+for\s+[^to]+/i;
+      if (repeatedTripPattern.test(trimmedPart) && trimmedPart.length > 200) {
+        return false; // Very long with repeated trip patterns = duplicated
       }
       
       // Check for location patterns with addresses in parentheses
@@ -1998,7 +2006,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setRawMileageEntries(mileageEntries);
       }
       
-      // Trigger a refresh of employee data by incrementing refreshTrigger
+      // Trigger a full refresh of employee data to recalculate odometer end and daily entries
+      // This ensures odometer end is recalculated after deletion
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
       debugError('Error deleting mileage entry:', error);
@@ -5731,7 +5740,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       return entryMonth === currentMonth && entryYear === currentYear;
                     })
                     .map((entry: any) => {
-                      const mileageAmount = (entry.miles || 0) * 0.655; // Standard mileage rate
+                      const mileageAmount = (entry.miles || 0) * 0.445; // Standard mileage rate ($0.445 per mile)
                       const startLocation = entry.startLocationName || entry.startLocation || '';
                       const endLocation = entry.endLocationName || entry.endLocation || '';
                       
