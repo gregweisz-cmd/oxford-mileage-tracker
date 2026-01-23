@@ -229,9 +229,6 @@ export class ReportCompletenessService {
       return issues; // No cost centers assigned, skip check
     }
     
-    // Categories that don't require cost center assignment
-    const nonCostCenterCategories = ['Holiday', 'PTO', 'STD/LTD', 'PFL/PFML', 'G&A', 'Holiday Hours', 'PTO Hours', 'STD/LTD Hours', 'PFL/PFML Hours', 'G&A Hours'];
-    
     // Group time tracking by date
     const timeByDate = this.groupTimeTrackingByDate(timeTracking);
     

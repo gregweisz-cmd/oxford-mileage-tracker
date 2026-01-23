@@ -61,7 +61,6 @@ import { PerDiemRulesService } from './services/perDiemRulesService';
 // Data entry imports
 import { DataEntryManager } from './components/DataEntryManager';
 import { MileageEntryForm, MileageEntryFormData } from './components/DataEntryForms';
-import { Employee } from './types';
 
 // UI Enhancement imports
 import { ToastProvider, useToast } from './contexts/ToastContext';
@@ -1845,7 +1844,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         newEntries[row].mileageAmount = newEntries[row].milesTraveled * 0.445;
       }
     } else if (field === 'hoursWorked') {
+      // Hours should be saved via time tracking API, not just local state
+      // This field is deprecated - hours should be edited via the timesheet grid
+      // But if someone uses this, we'll update local state only (legacy support)
       newEntries[row].hoursWorked = parseInt(editingValue) || 0;
+      debugWarn('⚠️ hoursWorked field is deprecated. Please use the Timesheet tab to edit hours.');
     } else if (field === 'perDiem') {
       const value = parseFloat(editingValue) || 0;
       // Cap per diem at $35 per day
@@ -1916,8 +1919,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Handle mileage entry save
   const handleMileageEntrySave = async (formData: MileageEntryFormData) => {
-    if (!editingMileageEntry) return;
-    
     try {
       // Prepare the data for the backend, mapping startingOdometer to odometerReading
       const backendData = {
@@ -1925,15 +1926,27 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         odometerReading: formData.startingOdometer || 0
       };
       
-      // Update existing entry
-      const response = await fetch(`${API_BASE_URL}/api/mileage-entries/${editingMileageEntry.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(backendData)
-      });
+      let response;
+      const isEdit = editingMileageEntry && editingMileageEntry.id;
+      
+      if (isEdit) {
+        // Update existing entry
+        response = await fetch(`${API_BASE_URL}/api/mileage-entries/${editingMileageEntry.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(backendData)
+        });
+      } else {
+        // Create new entry
+        response = await fetch(`${API_BASE_URL}/api/mileage-entries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(backendData)
+        });
+      }
       
       if (!response.ok) {
-        throw new Error('Failed to update mileage entry');
+        throw new Error(`Failed to ${isEdit ? 'update' : 'create'} mileage entry`);
       }
       
       // Reload mileage entries to refresh the display
@@ -1943,17 +1956,44 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setRawMileageEntries(mileageEntries);
       }
       
-      // Trigger a refresh by updating a state that causes useEffect to re-run
-      // We'll use a simple approach: reload the page after a short delay to show success
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      // Trigger a refresh of employee data by incrementing refreshTrigger
+      setRefreshTrigger(prev => prev + 1);
       
       setEditingMileageEntry(null);
       setMileageFormOpen(false);
     } catch (error) {
       debugError('Error saving mileage entry:', error);
-      alert('Failed to update mileage entry. Please try again.');
+      alert(`Failed to ${editingMileageEntry && editingMileageEntry.id ? 'update' : 'create'} mileage entry. Please try again.`);
+    }
+  };
+
+  const handleMileageEntryDelete = async (entryId: string) => {
+    if (!window.confirm('Are you sure you want to delete this mileage entry? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/mileage-entries/${entryId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete mileage entry');
+      }
+      
+      // Reload mileage entries to refresh the display
+      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
+      if (mileageRes.ok) {
+        const mileageEntries = await mileageRes.json();
+        setRawMileageEntries(mileageEntries);
+      }
+      
+      // Trigger a refresh of employee data by incrementing refreshTrigger
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      debugError('Error deleting mileage entry:', error);
+      alert('Failed to delete mileage entry. Please try again.');
     }
   };
 
@@ -2034,6 +2074,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       const result = await response.json();
       debugLog(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+      
+      // Update the UI optimistically before refresh
+      setEmployeeData(prev => {
+        if (!prev) return null;
+        const updatedEntries = prev.dailyEntries.map((entry: any) => {
+          if (entry.day === day) {
+            const updatedEntry = { ...entry };
+            if (type === 'costCenter' || type === 'billable') {
+              // Update cost center hours
+              const costCenterKey = `costCenter${costCenter}Hours`;
+              const oldValue = (updatedEntry as any)[costCenterKey] || 0;
+              (updatedEntry as any)[costCenterKey] = value;
+              updatedEntry.hoursWorked = (updatedEntry.hoursWorked || 0) - oldValue + value;
+              updatedEntry.workingHours = (updatedEntry.workingHours || 0) - oldValue + value;
+            } else if (type === 'workingHours') {
+              // Update working hours (cost center 0)
+              const oldValue = (updatedEntry as any).costCenter0Hours || 0;
+              (updatedEntry as any).costCenter0Hours = value;
+              updatedEntry.hoursWorked = (updatedEntry.hoursWorked || 0) - oldValue + value;
+              updatedEntry.workingHours = (updatedEntry.workingHours || 0) - oldValue + value;
+            }
+            return updatedEntry;
+          }
+          return entry;
+        });
+        return {
+          ...prev,
+          dailyEntries: updatedEntries,
+          totalHours: updatedEntries.reduce((sum: number, e: any) => sum + (e.hoursWorked || 0), 0)
+        };
+      });
     } catch (error) {
       debugError('❌ Error saving to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -2044,8 +2115,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingTimesheetCell(null);
     setEditingTimesheetValue('');
     
-    // Refresh timesheet data to show updated values with new distribution approach
-    await refreshTimesheetData(employeeData);
+    // Refresh timesheet data in background after a short delay to ensure save is complete
+    setTimeout(() => {
+      refreshTimesheetData(employeeData).catch((error) => {
+        debugError('❌ Error refreshing timesheet data:', error);
+      });
+    }, 500);
   };
 
   // Cancel timesheet cell edit
@@ -2183,11 +2258,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       const result = await response.json();
       debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
-      
-      // Verification happens in background via refresh - no need to wait, optimistic update already shown
     } catch (error) {
       debugError('❌ Error saving category hours to time tracking API:', error);
       alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Revert optimistic update on error
+      refreshTimesheetData(employeeData).catch(() => {});
       return; // Don't continue if save failed
     }
     
@@ -2195,14 +2270,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCategoryCell(null);
     setEditingCategoryValue('');
     
-    // Refresh in background - no need to wait, optimistic update already shown
-    // Don't await - let it run in background while user continues working
-    debugLog('🔄 About to call refreshTimesheetData (background)...');
-    debugLog('🔍 employeeData available:', employeeData ? 'yes' : 'no');
-    refreshTimesheetData(employeeData).catch((error) => {
-      debugError('❌ Error calling refreshTimesheetData:', error);
-      // If refresh fails, the optimistic update is still shown, which is fine
-    });
+    // Refresh in background after a short delay to ensure save is complete
+    // The optimistic update is already shown, so this just syncs with backend
+    setTimeout(() => {
+      refreshTimesheetData(employeeData).catch((error) => {
+        debugError('❌ Error calling refreshTimesheetData:', error);
+        // If refresh fails, the optimistic update is still shown, which is fine
+      });
+    }, 500);
   };
 
   // Cancel category cell edit
@@ -5471,12 +5546,27 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       <TabPanel value={activeTab} index={2}>
         <Card variant="outlined">
           <CardContent>
-            <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
-              Mileage Entries
-            </Typography>
-            <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-              Enter mileage data for each day. The system will automatically track locations, miles traveled, and calculate reimbursement.
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box>
+                <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Mileage Entries
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Enter mileage data for each day. The system will automatically track locations, miles traveled, and calculate reimbursement.
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  setEditingMileageEntry(null);
+                  setMileageFormOpen(true);
+                }}
+                sx={{ ml: 2 }}
+              >
+                Add Mileage Entry
+              </Button>
+            </Box>
             
             <TableContainer component={Paper}>
               <Table size="small">
@@ -5526,16 +5616,27 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
                           </TableCell>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                setEditingMileageEntry(entry);
-                                setMileageFormOpen(true);
-                              }}
-                              sx={{ color: 'primary.main' }}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  setEditingMileageEntry(entry);
+                                  setMileageFormOpen(true);
+                                }}
+                                sx={{ color: 'primary.main' }}
+                                title="Edit mileage entry"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleMileageEntryDelete(entry.id)}
+                                sx={{ color: 'error.main' }}
+                                title="Delete mileage entry"
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
                           </TableCell>
                         </TableRow>
                       );
@@ -5558,15 +5659,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             
             <Box sx={{ mt: 3, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
               <Typography variant="body2">
-                <strong>💡 Tip:</strong> Mileage entries are created in the mobile app when you track your trips. 
-                Click the edit icon to modify any entry.
+                <strong>💡 Tip:</strong> You can add, edit, or delete mileage entries directly from this page. 
+                Click "Add Mileage Entry" to create a new entry, or use the edit/delete icons to modify existing entries.
               </Typography>
             </Box>
           </CardContent>
         </Card>
         
-        {/* Mileage Entry Edit Form */}
-        {editingMileageEntry && employeeData && (
+        {/* Mileage Entry Form (Create or Edit) */}
+        {employeeData && (
           <MileageEntryForm
             open={mileageFormOpen}
             onClose={() => {
@@ -5587,7 +5688,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               selectedCostCenters: employeeData.costCenters || [],
               costCenters: employeeData.costCenters || []
             } as any}
-            initialData={{
+            initialData={editingMileageEntry ? {
               id: editingMileageEntry.id,
               employeeId: editingMileageEntry.employeeId || employeeData.employeeId,
               date: new Date(editingMileageEntry.date).toISOString().split('T')[0],
@@ -5600,8 +5701,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               hoursWorked: editingMileageEntry.hoursWorked || 0,
               isGpsTracked: editingMileageEntry.isGpsTracked || false,
               costCenter: editingMileageEntry.costCenter || employeeData.costCenters[0] || ''
+            } : {
+              employeeId: employeeData.employeeId,
+              date: new Date(currentYear, currentMonth - 1, new Date().getDate()).toISOString().split('T')[0],
+              startLocation: '',
+              endLocation: '',
+              purpose: '',
+              miles: 0,
+              startingOdometer: 0,
+              notes: '',
+              hoursWorked: 0,
+              isGpsTracked: false,
+              costCenter: employeeData.costCenters[0] || ''
             }}
-            mode="edit"
+            mode={editingMileageEntry ? 'edit' : 'create'}
           />
         )}
       </TabPanel>

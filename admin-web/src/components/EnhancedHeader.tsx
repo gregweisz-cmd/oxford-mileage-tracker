@@ -14,7 +14,6 @@ import {
   Divider,
   Select,
   FormControl,
-  MenuItem as MenuItemType,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
