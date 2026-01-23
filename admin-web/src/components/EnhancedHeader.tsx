@@ -14,10 +14,9 @@ import {
   Divider,
   Select,
   FormControl,
-  // Fade // Currently unused
+  MenuItem as MenuItemType,
 } from '@mui/material';
 import {
-  // Print as PrintIcon, // Currently unused
   Download as DownloadIcon,
   List as ListIcon,
   Add as AddIcon,
@@ -29,7 +28,6 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Today as TodayIcon,
-  // Error as ErrorIcon // Currently unused
 } from '@mui/icons-material';
 import { RealtimeStatusIndicator } from './RealtimeStatusIndicator';
 import { NotificationBell } from './NotificationBell';
@@ -92,27 +90,23 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const { showSuccess, showInfo } = useToast();
 
-  // Debug: Log handlers when in supervisor mode
-  React.useEffect(() => {
-    if (supervisorMode) {
-      console.log('🔍 EnhancedHeader received handlers:', { 
-        onApproveReport: !!onApproveReport, 
-        onRequestRevision: !!onRequestRevision,
-        supervisorMode,
-        onApproveReportType: typeof onApproveReport,
-        onRequestRevisionType: typeof onRequestRevision
-      });
-    }
-  }, [supervisorMode, onApproveReport, onRequestRevision]);
-
+  /**
+   * Opens the settings menu
+   */
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
 
+  /**
+   * Closes the settings menu
+   */
   const handleMenuClose = () => {
     setAnchorEl(null);
   };
 
+  /**
+   * Handles the refresh action, calling the onRefresh callback if provided
+   */
   const handleRefresh = () => {
     if (onRefresh) {
       onRefresh();
@@ -120,7 +114,12 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
     }
   };
 
-  const getMonthName = (month: number) => {
+  /**
+   * Converts a month number (1-12) to its name
+   * @param month - Month number (1-12)
+   * @returns Month name or empty string if invalid
+   */
+  const getMonthName = (month: number): string => {
     const months = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
@@ -128,24 +127,48 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
     return months[month - 1] || '';
   };
 
-  const getStatusColor = () => {
+  /**
+   * Returns the appropriate status color based on current state
+   * @returns MUI color name ('warning', 'info', or 'success')
+   */
+  const getStatusColor = (): 'warning' | 'info' | 'success' => {
     if (loading) return 'warning';
     if (isAdminView) return 'info';
     return 'success';
   };
 
-  const getStatusIcon = () => {
+  /**
+   * Returns the appropriate status icon based on current state
+   * @returns React element for the status icon
+   */
+  const getStatusIcon = (): React.ReactElement | undefined => {
     if (loading) return <WarningIcon />;
     if (isAdminView) return <SettingsIcon />;
     return <CheckCircleIcon />;
   };
 
-  const getStatusText = () => {
+  /**
+   * Returns the appropriate status text based on current state
+   * @returns Status text string
+   */
+  const getStatusText = (): string => {
     if (loading) return 'Loading...';
     if (isAdminView) return 'Admin View';
     return 'Ready';
   };
 
+  /**
+   * Enhanced Header Component
+   * 
+   * Provides a sticky header with:
+   * - Logo and title
+   * - Employee information and status indicators
+   * - Action buttons (Save, Submit, Approve, etc.)
+   * - Tab navigation (if provided)
+   * - Month/year selectors and utility icons
+   * 
+   * The entire header is wrapped in a sticky container that stays at the top when scrolling.
+   */
   return (
     <Box
       sx={{
@@ -155,6 +178,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         bgcolor: 'background.paper',
       }}
     >
+      {/* Main AppBar with logo, title, and action buttons */}
       <AppBar 
         position="static" 
         elevation={2}
@@ -165,7 +189,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
           borderColor: 'divider',
           transform: 'none !important',
           transition: 'none !important',
-          // Increased height for better spacing
           height: 'auto !important',
           minHeight: '72px !important',
           '&.MuiAppBar-root': {
@@ -310,8 +333,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   onClick={() => {
                     if (onApproveReport) {
                       onApproveReport();
-                    } else {
-                      console.warn('Approve handler not provided', { onApproveReport, supervisorMode });
                     }
                   }}
                   disabled={loading}
@@ -327,8 +348,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   onClick={() => {
                     if (onRequestRevision) {
                       onRequestRevision();
-                    } else {
-                      console.warn('Revision handler not provided', { onRequestRevision, supervisorMode });
                     }
                   }}
                   disabled={loading}
@@ -399,7 +418,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
 
       </AppBar>
 
-      {/* Tabs Navigation - Second Row */}
+      {/* Tab Navigation - Renders below the main header */}
       {tabs && (
         <Box
           component="div"
@@ -423,7 +442,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         </Box>
       )}
 
-      {/* Utility Icons Row - Below Tabs */}
+      {/* Utility Icons Row - Month/Year selectors and utility buttons positioned below tabs */}
       <Box sx={{ 
         display: 'flex', 
         alignItems: 'center', 

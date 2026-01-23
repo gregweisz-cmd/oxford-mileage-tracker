@@ -1061,7 +1061,20 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
         </Typography>
       )}
 
-      <Dialog open={scheduleDialogOpen} onClose={handleCloseScheduleDialog} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={scheduleDialogOpen} 
+        onClose={handleCloseScheduleDialog} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>
           {scheduleDialogMode === 'create' ? 'Schedule Delivery' : 'Edit Schedule'}
         </DialogTitle>
@@ -1234,7 +1247,20 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={presetDialogOpen} onClose={handleClosePresetDialog} maxWidth="xs" fullWidth>
+      <Dialog 
+        open={presetDialogOpen} 
+        onClose={handleClosePresetDialog} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>
           {presetDialogMode === 'create' ? 'Save New Preset' : 'Update Preset'}
         </DialogTitle>

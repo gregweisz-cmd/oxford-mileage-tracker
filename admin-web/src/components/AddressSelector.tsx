@@ -31,7 +31,7 @@ import {
 import { debugLog, debugError } from '../config/debug';
 
 // API configuration - use environment variable or default to localhost for development
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -300,7 +300,20 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog 
+      open={open} 
+      onClose={handleClose} 
+      maxWidth={false}
+      fullWidth
+      PaperProps={{
+        sx: {
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          width: 'auto',
+          height: 'auto',
+        }
+      }}
+    >
       <DialogTitle>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">{title}</Typography>
@@ -310,7 +323,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         </Box>
       </DialogTitle>
       
-      <DialogContent>
+      <DialogContent sx={{ overflow: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
         <Tabs
           value={activeTab}
           onChange={(e, newValue) => setActiveTab(newValue)}
@@ -423,7 +436,13 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
                 Filter by State:
               </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              <Box sx={{ 
+                display: 'flex', 
+                flexWrap: 'wrap', 
+                gap: 1,
+                overflow: 'hidden',
+                maxWidth: '100%'
+              }}>
                 <Chip
                   label="All States"
                   size="small"

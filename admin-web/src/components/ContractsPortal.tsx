@@ -58,7 +58,7 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 // Debug logging
 import { debugLog, debugError, debugVerbose } from '../config/debug';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 interface ContractsPortalProps {
   contractsUserId: string;

@@ -3,7 +3,7 @@
  * Handles HTTP 429 errors, request throttling, and retry logic
  */
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 interface RequestQueueItem {
   url: string;

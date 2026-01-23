@@ -150,7 +150,20 @@ export const ExcelViewer: React.FC<ExcelViewerProps> = ({
   const currentSheet = sheets[currentSheetIndex];
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth={false}
+      fullWidth
+      PaperProps={{
+        sx: {
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          width: 'auto',
+          height: 'auto',
+        }
+      }}
+    >
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">

@@ -40,6 +40,21 @@ interface EnhancedTabNavigationProps {
   showStatus?: boolean;
 }
 
+/**
+ * Enhanced Tab Navigation Component
+ * 
+ * Provides a scrollable tab navigation bar with:
+ * - Status indicators (complete/warning/error) for each tab
+ * - Horizontal scrolling via mouse wheel
+ * - Dynamic tab labels based on cost centers
+ * - Badge support for notifications
+ * 
+ * @param value - Currently selected tab index
+ * @param onChange - Callback when tab selection changes
+ * @param tabs - Array of tab configurations
+ * @param employeeData - Employee data for status calculations
+ * @param showStatus - Whether to show status indicators
+ */
 export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
   value,
   onChange,
@@ -49,13 +64,16 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
 }) => {
   const tabsContainerRef = useRef<HTMLDivElement>(null);
 
-  // Add mouse wheel scrolling functionality
+  /**
+   * Enables horizontal scrolling via mouse wheel
+   * Converts vertical wheel movement to horizontal tab scrolling
+   */
   useEffect(() => {
     const tabsContainer = tabsContainerRef.current;
     if (!tabsContainer) return;
 
     const handleWheel = (e: WheelEvent) => {
-      // Find the actual scrollable element within the tabs
+      // Find the scrollable element within MUI Tabs component
       const scrollableElement = tabsContainer.querySelector('.MuiTabs-scroller') || 
                                tabsContainer.querySelector('.MuiTabs-scrollableX') || 
                                tabsContainer.querySelector('[role="tablist"]') ||
@@ -67,19 +85,25 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
         e.preventDefault();
         e.stopPropagation();
         
-        // Scroll horizontally based on wheel delta
+        // Convert vertical wheel delta to horizontal scroll
         const scrollAmount = e.deltaY;
         scrollableElement.scrollLeft += scrollAmount;
       }
     };
 
-    // Add event listener with capture to catch it early
+    // Add event listener with capture to intercept wheel events early
     tabsContainer.addEventListener('wheel', handleWheel, { passive: false, capture: true });
 
     return () => {
       tabsContainer.removeEventListener('wheel', handleWheel, { capture: true });
     };
   }, []);
+
+  /**
+   * Returns the appropriate status icon based on tab status
+   * @param status - Status value ('complete', 'warning', 'error')
+   * @returns React component for the status icon or null
+   */
   const getStatusIcon = (status?: string) => {
     switch (status) {
       case 'complete': return <CheckIcon fontSize="small" />;
@@ -89,7 +113,12 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
     }
   };
 
-  const getStatusColor = (status?: string) => {
+  /**
+   * Returns the appropriate MUI color name based on tab status
+   * @param status - Status value ('complete', 'warning', 'error')
+   * @returns MUI color name
+   */
+  const getStatusColor = (status?: string): 'success' | 'warning' | 'error' | 'default' => {
     switch (status) {
       case 'complete': return 'success';
       case 'warning': return 'warning';
@@ -98,7 +127,12 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
     }
   };
 
-  const getTabIcon = (tabIndex: number) => {
+  /**
+   * Returns the icon for a tab based on its index
+   * @param tabIndex - Zero-based index of the tab
+   * @returns React component for the tab icon
+   */
+  const getTabIcon = (tabIndex: number): React.ReactNode => {
     const icons = [
       <ApprovalIcon />,
       <SummaryIcon />,
@@ -117,10 +151,17 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
     return icons[tabIndex] || <ArticleIcon />;
   };
 
-  const getTabLabel = (tabIndex: number, originalLabel: string) => {
-    // Add cost center numbers to travel tabs
+  /**
+   * Formats the tab label, adding cost center numbers for cost center tabs
+   * @param tabIndex - Zero-based index of the tab
+   * @param originalLabel - Original label from tab configuration
+   * @returns Formatted label string
+   */
+  const getTabLabel = (tabIndex: number, originalLabel: string): string => {
+    // Add cost center numbers to travel tabs (tabs 4+ are cost centers)
     if (originalLabel.includes('Cost Ctr') && employeeData?.costCenters) {
-      const costCenterIndex = tabIndex - 4; // First two tabs are approval and summary, plus Mileage Entries and Daily Descriptions
+      // Tab indices: 0=Approval, 1=Summary, 2=Mileage, 3=Descriptions, 4+=Cost Centers
+      const costCenterIndex = tabIndex - 4;
       if (costCenterIndex >= 0 && costCenterIndex < employeeData.costCenters.length) {
         return `#${costCenterIndex + 1} ${employeeData.costCenters[costCenterIndex]}`;
       }
@@ -128,7 +169,12 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
     return originalLabel;
   };
 
-  const getTabStatus = (tabIndex: number) => {
+  /**
+   * Determines the status of a tab based on employee data completeness
+   * @param tabIndex - Zero-based index of the tab
+   * @returns Status value ('complete', 'warning', 'error') or undefined
+   */
+  const getTabStatus = (tabIndex: number): 'complete' | 'warning' | 'error' | undefined => {
     if (!showStatus || !employeeData) return undefined;
 
     // Approval Cover Sheet
@@ -183,7 +229,7 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
     return undefined;
   };
 
-  // Safety check - ensure tabs array is not empty
+  // Ensure tabs array is not empty - fallback to default configuration if needed
   const displayTabs = tabs && tabs.length > 0 ? tabs : createTabConfig(employeeData);
 
   return (

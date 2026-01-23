@@ -33,7 +33,9 @@ export class DuplicateDetectionService {
       // Calculate similarity score
       const similarity = this.calculateSimilarity(newEntry, existing);
       
-      if (similarity.score >= 0.8) {
+      // Require score of 1.0 (all criteria met) to flag as duplicate
+      // This is much stricter and only catches true duplicates
+      if (similarity.score >= 1.0) {
         return {
           isDuplicate: true,
           confidence: similarity.score,
@@ -52,6 +54,7 @@ export class DuplicateDetectionService {
   
   /**
    * Calculate similarity between two trips
+   * Made much stricter - only flags true duplicates (same date, same route, same purpose, very similar mileage)
    */
   private static calculateSimilarity(
     entry1: Partial<MileageEntry>,
@@ -60,55 +63,90 @@ export class DuplicateDetectionService {
     let score = 0;
     const matches: string[] = [];
     
-    // Same purpose (40 points)
+    // Require ALL of the following for a duplicate:
+    // 1. Same purpose (must be identical, not just similar)
+    let hasSamePurpose = false;
     if (entry1.purpose && entry2.purpose) {
       const purpose1 = entry1.purpose.toLowerCase().trim();
       const purpose2 = entry2.purpose.toLowerCase().trim();
       
       if (purpose1 === purpose2) {
-        score += 0.4;
-        matches.push('identical purpose');
-      } else if (this.fuzzyMatch(purpose1, purpose2) > 0.8) {
+        hasSamePurpose = true;
         score += 0.3;
-        matches.push('similar purpose');
+        matches.push('identical purpose');
       }
     }
     
-    // Same start location (25 points)
+    // 2. Same start location (must be very similar)
+    let hasSameStart = false;
     if (entry1.startLocation && entry2.startLocation) {
       const start1 = entry1.startLocation.toLowerCase().trim();
       const start2 = entry2.startLocation.toLowerCase().trim();
       
-      if (start1 === start2 || this.fuzzyMatch(start1, start2) > 0.8) {
-        score += 0.25;
+      // Extract just the address part if it's in format "Name (Address)"
+      const cleanStart1 = this.extractAddress(start1);
+      const cleanStart2 = this.extractAddress(start2);
+      
+      if (cleanStart1 === cleanStart2 || this.fuzzyMatch(cleanStart1, cleanStart2) > 0.9) {
+        hasSameStart = true;
+        score += 0.3;
         matches.push('same start location');
       }
     }
     
-    // Same end location (25 points)
+    // 3. Same end location (must be very similar)
+    let hasSameEnd = false;
     if (entry1.endLocation && entry2.endLocation) {
       const end1 = entry1.endLocation.toLowerCase().trim();
       const end2 = entry2.endLocation.toLowerCase().trim();
       
-      if (end1 === end2 || this.fuzzyMatch(end1, end2) > 0.8) {
-        score += 0.25;
+      // Extract just the address part if it's in format "Name (Address)"
+      const cleanEnd1 = this.extractAddress(end1);
+      const cleanEnd2 = this.extractAddress(end2);
+      
+      if (cleanEnd1 === cleanEnd2 || this.fuzzyMatch(cleanEnd1, cleanEnd2) > 0.9) {
+        hasSameEnd = true;
+        score += 0.3;
         matches.push('same end location');
       }
     }
     
-    // Similar mileage (10 points)
+    // 4. Very similar mileage (within 5%, not 10%)
+    let hasSimilarMiles = false;
     if (entry1.miles && entry2.miles) {
       const diff = Math.abs(entry1.miles - entry2.miles);
       const avgMiles = (entry1.miles + entry2.miles) / 2;
-      const percentDiff = diff / avgMiles;
+      const percentDiff = avgMiles > 0 ? diff / avgMiles : 1;
       
-      if (percentDiff < 0.1) { // Within 10%
+      if (percentDiff < 0.05) { // Within 5% (much stricter)
+        hasSimilarMiles = true;
         score += 0.1;
-        matches.push('similar mileage');
+        matches.push('very similar mileage');
       }
     }
     
+    // Only consider it a duplicate if ALL criteria are met
+    // This prevents false positives from legitimate trips with same route but different purposes/mileage
+    if (!hasSamePurpose || !hasSameStart || !hasSameEnd || !hasSimilarMiles) {
+      // Reset score if not all criteria met
+      return { score: 0, matches: [] };
+    }
+    
     return { score, matches };
+  }
+  
+  /**
+   * Extract address from format like "OH Abigail (1025 S. Fulton St., Salisbury, NC 28144)"
+   * Returns just the address part
+   */
+  private static extractAddress(location: string): string {
+    // If it contains parentheses, extract the address part
+    const match = location.match(/\(([^)]+)\)/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+    // Otherwise return the whole string
+    return location;
   }
   
   /**

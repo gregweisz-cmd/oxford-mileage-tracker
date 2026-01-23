@@ -131,7 +131,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
   const [kpiError, setKpiError] = useState<string | null>(null);
   const [hoursAlerts] = useState<any[]>([]);
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
   const handleCloseDetailedView = useCallback(() => {
     setShowDetailedView(false);

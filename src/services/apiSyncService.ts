@@ -567,7 +567,7 @@ export class ApiSyncService {
           }
           
           const mileageData = {
-            id: entry.id, // Include ID to prevent duplicates on backend
+            id: entry.id, // CRITICAL: Always include ID to prevent duplicates - backend uses INSERT OR REPLACE
             employeeId: employeeIdToSend,
             oxfordHouseId: entry.oxfordHouseId,
             date: dateToSend,
@@ -586,7 +586,8 @@ export class ApiSyncService {
             miles: entry.miles,
             notes: entry.notes || '',
             hoursWorked: entry.hoursWorked,
-            isGpsTracked: entry.isGpsTracked || false
+            isGpsTracked: entry.isGpsTracked || false,
+            costCenter: entry.costCenter || '' // Include costCenter to ensure it's synced
           };
           
           const response = await fetch(`${this.config.baseUrl}/mileage-entries`, {
@@ -944,24 +945,39 @@ export class ApiSyncService {
                                       errorMsg.includes("couldn't be opened because there is no such file");
                 
                 if (isFileNotFound) {
-                  // Create notification for missing receipt image
-                  try {
-                    const { SmartNotificationService } = await import('./smartNotificationService');
-                    const notification = SmartNotificationService.createMissingImageNotification(
-                      receipt.employeeId,
-                      receipt.id,
-                      receipt.vendor || 'Unknown',
-                      receipt.amount,
-                      receipt.date instanceof Date ? receipt.date : new Date(receipt.date)
-                    );
-                    console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
-                    debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
-                    
-                  // Don't show alert during sync - notification is enough
-                  // Alert will be shown in HomeScreen when notification is clicked
-                  } catch (notifError) {
-                    console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
-                    debugWarn('Could not create missing image notification:', notifError);
+                  // Only create notification for current month receipts
+                  const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
+                  const now = new Date();
+                  const isCurrentMonth = receiptDate.getMonth() === now.getMonth() && 
+                                        receiptDate.getFullYear() === now.getFullYear();
+                  
+                  if (isCurrentMonth) {
+                    // Verify receipt still exists before creating notification
+                    try {
+                      const { DatabaseService } = await import('./database');
+                      const existingReceipt = await DatabaseService.getReceipt(receipt.id);
+                      
+                      if (existingReceipt) {
+                        // Create notification for missing receipt image
+                        const { SmartNotificationService } = await import('./smartNotificationService');
+                        const notification = SmartNotificationService.createMissingImageNotification(
+                          receipt.employeeId,
+                          receipt.id,
+                          receipt.vendor || 'Unknown',
+                          receipt.amount,
+                          receiptDate
+                        );
+                        console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
+                        debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
+                      } else {
+                        debugLog(`ℹ️ ApiSync: Receipt ${receipt.id} was deleted, skipping missing image notification`);
+                      }
+                    } catch (notifError) {
+                      console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
+                      debugWarn('Could not create missing image notification:', notifError);
+                    }
+                  } else {
+                    debugLog(`ℹ️ ApiSync: Receipt ${receipt.id} is from previous month (${receiptDate.toLocaleDateString()}), skipping missing image notification`);
                   }
                 } else {
                   // Log other upload errors for debugging
@@ -990,24 +1006,39 @@ export class ApiSyncService {
                                     errorMsg.includes("couldn't be opened because there is no such file");
               
               if (isFileNotFound) {
-                // Create notification for missing receipt image
-                try {
-                  const { SmartNotificationService } = await import('./smartNotificationService');
-                  const notification = SmartNotificationService.createMissingImageNotification(
-                    receipt.employeeId,
-                    receipt.id,
-                    receipt.vendor || 'Unknown',
-                    receipt.amount,
-                    receipt.date instanceof Date ? receipt.date : new Date(receipt.date)
-                  );
-                  console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
-                  debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
-                  
-                  // Don't show alert during sync - notification is enough
-                  // Alert will be shown in HomeScreen when notification is clicked
-                } catch (notifError) {
-                  console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
-                  debugWarn('Could not create missing image notification:', notifError);
+                // Only create notification for current month receipts
+                const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
+                const now = new Date();
+                const isCurrentMonth = receiptDate.getMonth() === now.getMonth() && 
+                                      receiptDate.getFullYear() === now.getFullYear();
+                
+                if (isCurrentMonth) {
+                  // Verify receipt still exists before creating notification
+                  try {
+                    const { DatabaseService } = await import('./database');
+                    const existingReceipt = await DatabaseService.getReceipt(receipt.id);
+                    
+                    if (existingReceipt) {
+                      // Create notification for missing receipt image
+                      const { SmartNotificationService } = await import('./smartNotificationService');
+                      const notification = SmartNotificationService.createMissingImageNotification(
+                        receipt.employeeId,
+                        receipt.id,
+                        receipt.vendor || 'Unknown',
+                        receipt.amount,
+                        receiptDate
+                      );
+                      console.error(`❌ ApiSync: Receipt image missing for receipt ${receipt.id} (${receipt.vendor || 'Unknown'}), notification created. Error: ${errorMsg}`);
+                      debugWarn(`⚠️ ApiSync: Receipt image missing for receipt ${receipt.id}, notification created`);
+                    } else {
+                      debugLog(`ℹ️ ApiSync: Receipt ${receipt.id} was deleted, skipping missing image notification`);
+                    }
+                  } catch (notifError) {
+                    console.error(`❌ ApiSync: Could not create missing image notification:`, notifError);
+                    debugWarn('Could not create missing image notification:', notifError);
+                  }
+                } else {
+                  debugLog(`ℹ️ ApiSync: Receipt ${receipt.id} is from previous month (${receiptDate.toLocaleDateString()}), skipping missing image notification`);
                 }
               } else if (errorMsg.includes('timeout') || errorMsg.includes('Aborted')) {
                 debugLog(`⏱️ ApiSync: Image upload timed out for receipt ${receipt.id}, continuing with local URI (expected behavior)`);
@@ -1598,30 +1629,87 @@ export class ApiSyncService {
     try {
       debugLog(`📥 ApiSync: Syncing ${dailyDescriptions.length} daily descriptions to local database...`);
       
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
+      
+      // Helper function to clean odometer readings from description
+      const cleanOdometerReadings = (text: string): string => {
+        if (!text) return text;
+        // Remove patterns like "Odometer: 123456" or "Odometer: 123456 to Odometer: 123789"
+        return text
+          .replace(/Odometer:\s*\d+/gi, '')
+          .replace(/\s+to\s+Odometer:\s*\d+/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+      
       for (const desc of dailyDescriptions) {
         try {
-          // Check if description already exists in local database
-          const existingDesc = await DatabaseService.getDailyDescriptionByDate(desc.employeeId, desc.date);
+          if (!desc.id) {
+            console.warn(`⚠️ ApiSync: Skipping daily description without ID`);
+            continue;
+          }
           
-          if (existingDesc) {
-            // Update existing description
-            await DatabaseService.updateDailyDescription(existingDesc.id, {
-              description: desc.description,
-              costCenter: desc.costCenter
-            });
-            debugLog(`✅ ApiSync: Updated daily description for ${desc.date}`);
+          // Check if description with this ID already exists
+          const existing = await database.getFirstAsync(
+            'SELECT id, updatedAt FROM daily_descriptions WHERE id = ?',
+            [desc.id]
+          );
+          
+          // Convert date to YYYY-MM-DD format only (timezone-safe)
+          const descDate = desc.date instanceof Date ? desc.date : new Date(desc.date);
+          const dateOnly = `${descDate.getFullYear()}-${String(descDate.getMonth() + 1).padStart(2, '0')}-${String(descDate.getDate()).padStart(2, '0')}`;
+          
+          // Clean odometer readings from description
+          const cleanedDescription = cleanOdometerReadings(desc.description || '');
+          
+          // Get entry's updatedAt timestamp for comparison
+          const descUpdatedAt = desc.updatedAt instanceof Date ? desc.updatedAt.toISOString() : (desc.updatedAt || new Date().toISOString());
+          const existingUpdatedAt = existing?.updatedAt ? (existing.updatedAt instanceof Date ? existing.updatedAt.toISOString() : existing.updatedAt) : null;
+          
+          // If description exists, update it; otherwise create it
+          if (existing) {
+            // Update existing description to ensure it matches backend
+            await database.runAsync(
+              `UPDATE daily_descriptions SET
+                employeeId = ?, date = ?, description = ?, costCenter = ?, stayedOvernight = ?, dayOff = ?, dayOffType = ?, updatedAt = ?
+              WHERE id = ?`,
+              [
+                desc.employeeId,
+                dateOnly,
+                cleanedDescription,
+                desc.costCenter || '',
+                desc.stayedOvernight ? 1 : 0,
+                desc.dayOff ? 1 : 0,
+                desc.dayOffType || null,
+                descUpdatedAt,
+                desc.id
+              ]
+            );
+            debugLog(`🔄 ApiSync: Updated existing daily description ${desc.id}`);
           } else {
-            // Create new description
-            await DatabaseService.createDailyDescription({
-              employeeId: desc.employeeId,
-              date: desc.date,
-              description: desc.description,
-              costCenter: desc.costCenter || ''
-            });
-            debugLog(`✅ ApiSync: Created daily description for ${desc.date}`);
+            // Insert new description with the SAME ID from backend to avoid duplicates
+            await database.runAsync(
+              `INSERT INTO daily_descriptions (
+                id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                desc.id, // Preserve backend ID
+                desc.employeeId,
+                dateOnly,
+                cleanedDescription,
+                desc.costCenter || '',
+                desc.stayedOvernight ? 1 : 0,
+                desc.dayOff ? 1 : 0,
+                desc.dayOffType || null,
+                desc.createdAt instanceof Date ? desc.createdAt.toISOString() : (desc.createdAt || new Date().toISOString()),
+                descUpdatedAt
+              ]
+            );
+            debugLog(`➕ ApiSync: Created new daily description ${desc.id}`);
           }
         } catch (error) {
-          console.error(`❌ ApiSync: Error syncing daily description for ${desc.date}:`, error);
+          console.error(`❌ ApiSync: Error syncing daily description ${desc.id}:`, error);
         }
       }
       
@@ -1643,45 +1731,81 @@ export class ApiSyncService {
       
       for (const entry of mileageEntries) {
         try {
-          // Check if entry with this backend ID already exists
+          if (!entry.id) {
+            console.warn(`⚠️ ApiSync: Skipping mileage entry without ID`);
+            continue;
+          }
+          
+          // Check if entry with this ID already exists
           const existing = await database.getFirstAsync(
-            'SELECT id FROM mileage_entries WHERE id = ?',
+            'SELECT id, updatedAt FROM mileage_entries WHERE id = ?',
             [entry.id]
           );
           
-          if (existing) {
-            continue; // Skip existing entries
-          }
-          
           // Convert date to YYYY-MM-DD format only (timezone-safe)
-          const entryDate = entry.date;
+          const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
           const dateOnly = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}-${String(entryDate.getDate()).padStart(2, '0')}`;
           
-          // Insert with the SAME ID from backend to avoid duplicates
-          await database.runAsync(
-            `INSERT INTO mileage_entries (
-              id, employeeId, oxfordHouseId, costCenter, date, odometerReading,
-              startLocation, endLocation, purpose, miles, notes, hoursWorked,
-              isGpsTracked, createdAt, updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              entry.id, // Preserve backend ID
-              entry.employeeId,
-              entry.oxfordHouseId,
-              entry.costCenter || '',
-              dateOnly, // Store as YYYY-MM-DD only
-              entry.odometerReading,
-              entry.startLocation,
-              entry.endLocation,
-              entry.purpose,
-              entry.miles,
-              entry.notes || '',
-              entry.hoursWorked || 0,
-              entry.isGpsTracked ? 1 : 0,
-              entry.createdAt instanceof Date ? entry.createdAt.toISOString() : (entry.createdAt || new Date().toISOString()),
-              new Date().toISOString()
-            ]
-          );
+          // Get entry's updatedAt timestamp for comparison
+          const entryUpdatedAt = entry.updatedAt instanceof Date ? entry.updatedAt.toISOString() : (entry.updatedAt || new Date().toISOString());
+          const existingUpdatedAt = existing?.updatedAt ? (existing.updatedAt instanceof Date ? existing.updatedAt.toISOString() : existing.updatedAt) : null;
+          
+          // If entry exists and backend version is newer or same, update it
+          // If entry doesn't exist, create it
+          if (existing) {
+            // Update existing entry to ensure it matches backend
+            await database.runAsync(
+              `UPDATE mileage_entries SET
+                employeeId = ?, oxfordHouseId = ?, costCenter = ?, date = ?, odometerReading = ?,
+                startLocation = ?, endLocation = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?,
+                isGpsTracked = ?, updatedAt = ?
+              WHERE id = ?`,
+              [
+                entry.employeeId,
+                entry.oxfordHouseId,
+                entry.costCenter || '',
+                dateOnly,
+                entry.odometerReading,
+                entry.startLocation,
+                entry.endLocation,
+                entry.purpose,
+                entry.miles,
+                entry.notes || '',
+                entry.hoursWorked || 0,
+                entry.isGpsTracked ? 1 : 0,
+                entryUpdatedAt,
+                entry.id
+              ]
+            );
+            debugLog(`🔄 ApiSync: Updated existing mileage entry ${entry.id}`);
+          } else {
+            // Insert new entry with the SAME ID from backend to avoid duplicates
+            await database.runAsync(
+              `INSERT INTO mileage_entries (
+                id, employeeId, oxfordHouseId, costCenter, date, odometerReading,
+                startLocation, endLocation, purpose, miles, notes, hoursWorked,
+                isGpsTracked, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                entry.id, // Preserve backend ID
+                entry.employeeId,
+                entry.oxfordHouseId,
+                entry.costCenter || '',
+                dateOnly, // Store as YYYY-MM-DD only
+                entry.odometerReading,
+                entry.startLocation,
+                entry.endLocation,
+                entry.purpose,
+                entry.miles,
+                entry.notes || '',
+                entry.hoursWorked || 0,
+                entry.isGpsTracked ? 1 : 0,
+                entry.createdAt instanceof Date ? entry.createdAt.toISOString() : (entry.createdAt || new Date().toISOString()),
+                entryUpdatedAt
+              ]
+            );
+            debugLog(`➕ ApiSync: Created new mileage entry ${entry.id}`);
+          }
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing entry ${entry.id}:`, error);
         }
@@ -1700,71 +1824,74 @@ export class ApiSyncService {
     try {
       debugLog(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
       
-      // Get database connection once outside the loop
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
       
-      // Get all existing receipts to check against (more efficient than querying each time)
-      const allExistingReceipts = await database.getAllAsync(
-        'SELECT id, employeeId, date, amount, category, vendor FROM receipts'
-      ) as any[];
-      
       for (const receipt of receipts) {
         try {
-          // Check if receipt already exists by ID
-          const existsById = allExistingReceipts.some(existing => existing.id === receipt.id);
-          
-          if (existsById) {
-            debugLog(`ℹ️ ApiSync: Receipt ${receipt.id} already exists by ID, skipping`);
+          if (!receipt.id) {
+            console.warn(`⚠️ ApiSync: Skipping receipt without ID`);
             continue;
           }
           
-          // Check for duplicates by date, amount, category, and vendor
-          const receiptDate = new Date(receipt.date);
-          const dateStr = `${receiptDate.getFullYear()}-${String(receiptDate.getMonth() + 1).padStart(2, '0')}-${String(receiptDate.getDate()).padStart(2, '0')}`;
-          
-          const existsByData = allExistingReceipts.some(existing => 
-            existing.employeeId === receipt.employeeId &&
-            existing.date === dateStr &&
-            Math.abs(existing.amount - receipt.amount) < 0.01 && // Handle floating point comparison
-            existing.category === receipt.category &&
-            existing.vendor === receipt.vendor
+          // Check if receipt with this ID already exists
+          const existing = await database.getFirstAsync(
+            'SELECT id, updatedAt FROM receipts WHERE id = ?',
+            [receipt.id]
           );
           
-          if (existsByData) {
-            debugLog(`ℹ️ ApiSync: Duplicate receipt detected (same date/amount/category/vendor), skipping:`, {
-              date: dateStr,
-              amount: receipt.amount,
-              category: receipt.category,
-              vendor: receipt.vendor
-            });
-            continue;
+          // Convert date to YYYY-MM-DD format only (timezone-safe)
+          const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
+          const dateOnly = `${receiptDate.getFullYear()}-${String(receiptDate.getMonth() + 1).padStart(2, '0')}-${String(receiptDate.getDate()).padStart(2, '0')}`;
+          
+          // Get receipt's updatedAt timestamp for comparison
+          const receiptUpdatedAt = receipt.updatedAt instanceof Date ? receipt.updatedAt.toISOString() : (receipt.updatedAt || new Date().toISOString());
+          const existingUpdatedAt = existing?.updatedAt ? (existing.updatedAt instanceof Date ? existing.updatedAt.toISOString() : existing.updatedAt) : null;
+          
+          // If receipt exists, update it; otherwise create it
+          if (existing) {
+            // Update existing receipt to ensure it matches backend
+            await database.runAsync(
+              `UPDATE receipts SET
+                employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, 
+                category = ?, imageUri = ?, costCenter = ?, updatedAt = ?
+              WHERE id = ?`,
+              [
+                receipt.employeeId,
+                dateOnly,
+                receipt.amount,
+                receipt.vendor || '',
+                receipt.description || '',
+                receipt.category || '',
+                receipt.imageUri || '',
+                receipt.costCenter || '',
+                receiptUpdatedAt,
+                receipt.id
+              ]
+            );
+            debugLog(`🔄 ApiSync: Updated existing receipt ${receipt.id}`);
+          } else {
+            // Insert new receipt with the SAME ID from backend to avoid duplicates
+            await database.runAsync(
+              `INSERT INTO receipts (
+                id, employeeId, date, amount, vendor, description, category, imageUri, costCenter, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                receipt.id, // Preserve backend ID
+                receipt.employeeId,
+                dateOnly,
+                receipt.amount,
+                receipt.vendor || '',
+                receipt.description || '',
+                receipt.category || '',
+                receipt.imageUri || '',
+                receipt.costCenter || '',
+                receipt.createdAt instanceof Date ? receipt.createdAt.toISOString() : (receipt.createdAt || new Date().toISOString()),
+                receiptUpdatedAt
+              ]
+            );
+            debugLog(`➕ ApiSync: Created new receipt ${receipt.id}`);
           }
-          
-          // Create new receipt with backend ID preserved
-          await DatabaseService.createReceipt({
-            id: receipt.id, // Preserve backend ID to prevent duplicates
-            employeeId: receipt.employeeId,
-            date: receipt.date,
-            amount: receipt.amount,
-            vendor: receipt.vendor,
-            description: receipt.description,
-            category: receipt.category,
-            imageUri: receipt.imageUri,
-            costCenter: receipt.costCenter || ''
-          });
-          
-          // Add to our tracking list to avoid duplicates within the same sync batch
-          allExistingReceipts.push({
-            id: receipt.id,
-            employeeId: receipt.employeeId,
-            date: dateStr,
-            amount: receipt.amount,
-            category: receipt.category,
-            vendor: receipt.vendor
-          });
-          
-          debugLog(`✅ ApiSync: Created receipt for ${dateStr}: ${receipt.vendor} - $${receipt.amount}`);
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, error);
         }
@@ -1783,42 +1910,75 @@ export class ApiSyncService {
     try {
       debugLog(`📥 ApiSync: Syncing ${timeTracking.length} time tracking entries to local database...`);
       
-      // Get all existing time tracking entries for this employee to avoid duplicates
-      const existingEntries = await DatabaseService.getTimeTrackingEntries(timeTracking[0]?.employeeId || '');
-      const existingKeys = new Set(existingEntries.map(t => 
-        `${t.date.toDateString()}_${t.category}_${t.hours}`
-      ));
-      
-      let syncedCount = 0;
-      let skippedCount = 0;
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
       
       for (const tracking of timeTracking) {
         try {
-          const trackingKey = `${tracking.date.toDateString()}_${tracking.category}_${tracking.hours}`;
-          
-          if (existingKeys.has(trackingKey)) {
-            debugLog(`ℹ️ ApiSync: Time tracking for ${tracking.date} (${tracking.category}) already exists locally, skipping`);
-            skippedCount++;
+          if (!tracking.id) {
+            console.warn(`⚠️ ApiSync: Skipping time tracking entry without ID`);
             continue;
           }
           
-          // Create new time tracking entry
-          await DatabaseService.createTimeTracking({
-            employeeId: tracking.employeeId,
-            date: tracking.date,
-            hours: tracking.hours,
-            category: tracking.category,
-            description: tracking.description,
-            costCenter: tracking.costCenter || ''
-          });
-          debugLog(`✅ ApiSync: Created time tracking for ${tracking.date} (${tracking.category})`);
-          syncedCount++;
+          // Check if entry with this ID already exists
+          const existing = await database.getFirstAsync(
+            'SELECT id, updatedAt FROM time_tracking WHERE id = ?',
+            [tracking.id]
+          );
+          
+          // Convert date to YYYY-MM-DD format only (timezone-safe)
+          const trackingDate = tracking.date instanceof Date ? tracking.date : new Date(tracking.date);
+          const dateOnly = `${trackingDate.getFullYear()}-${String(trackingDate.getMonth() + 1).padStart(2, '0')}-${String(trackingDate.getDate()).padStart(2, '0')}`;
+          
+          // Get entry's updatedAt timestamp for comparison
+          const trackingUpdatedAt = tracking.updatedAt instanceof Date ? tracking.updatedAt.toISOString() : (tracking.updatedAt || new Date().toISOString());
+          const existingUpdatedAt = existing?.updatedAt ? (existing.updatedAt instanceof Date ? existing.updatedAt.toISOString() : existing.updatedAt) : null;
+          
+          // If entry exists, update it; otherwise create it
+          if (existing) {
+            // Update existing entry to ensure it matches backend
+            await database.runAsync(
+              `UPDATE time_tracking SET
+                employeeId = ?, date = ?, category = ?, hours = ?, description = ?, costCenter = ?, updatedAt = ?
+              WHERE id = ?`,
+              [
+                tracking.employeeId,
+                dateOnly,
+                tracking.category || '',
+                tracking.hours,
+                tracking.description || '',
+                tracking.costCenter || '',
+                trackingUpdatedAt,
+                tracking.id
+              ]
+            );
+            debugLog(`🔄 ApiSync: Updated existing time tracking entry ${tracking.id}`);
+          } else {
+            // Insert new entry with the SAME ID from backend to avoid duplicates
+            await database.runAsync(
+              `INSERT INTO time_tracking (
+                id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                tracking.id, // Preserve backend ID
+                tracking.employeeId,
+                dateOnly,
+                tracking.category || '',
+                tracking.hours,
+                tracking.description || '',
+                tracking.costCenter || '',
+                tracking.createdAt instanceof Date ? tracking.createdAt.toISOString() : (tracking.createdAt || new Date().toISOString()),
+                trackingUpdatedAt
+              ]
+            );
+            debugLog(`➕ ApiSync: Created new time tracking entry ${tracking.id}`);
+          }
         } catch (error) {
-          console.error(`❌ ApiSync: Error syncing time tracking ${tracking.id}:`, error);
+          console.error(`❌ ApiSync: Error syncing time tracking entry ${tracking.id}:`, error);
         }
       }
       
-      debugLog(`✅ ApiSync: Time tracking sync completed - ${syncedCount} synced, ${skippedCount} skipped`);
+      debugLog(`✅ ApiSync: Time tracking sync completed`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing time tracking to local database:', error);
     }

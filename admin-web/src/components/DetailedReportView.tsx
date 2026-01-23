@@ -38,7 +38,7 @@ import {
 } from '@mui/icons-material';
 
 // API configuration - use environment variable or default to localhost for development
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 interface MileageEntry {
   id: string;
@@ -459,7 +459,20 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
 
   if (loading) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+      <Dialog 
+        open={open} 
+        onClose={onClose} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogContent>
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
             <CircularProgress />
@@ -472,7 +485,20 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
 
   if (error) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+      <Dialog 
+        open={open} 
+        onClose={onClose} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogContent>
           <Typography color="error">{error}</Typography>
         </DialogContent>
@@ -482,7 +508,20 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
 
   if (!reportData) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+      <Dialog 
+        open={open} 
+        onClose={onClose} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogContent>
           <Typography>No report data available</Typography>
         </DialogContent>
@@ -493,7 +532,20 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
   const { report, summary, mileageEntries, receipts, timeTracking } = reportData;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth sx={{ '& .MuiDialog-paper': { height: '90vh' } }}>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth={false}
+      fullWidth
+      PaperProps={{
+        sx: {
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          width: 'auto',
+          height: 'auto',
+        }
+      }}
+    >
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 3, py: 2, borderBottom: 1, borderColor: 'divider' }}>
         <Typography variant="h5" fontWeight="bold">
@@ -1040,7 +1092,20 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
       </DialogActions>
 
       {/* Revision Request Dialog */}
-      <Dialog open={showRevisionDialog} onClose={() => !submittingRevision && setShowRevisionDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={showRevisionDialog} 
+        onClose={() => !submittingRevision && setShowRevisionDialog(false)} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>Request Revision on Selected Items</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>

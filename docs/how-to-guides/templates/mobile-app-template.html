@@ -252,7 +252,7 @@
     <div class="cover-page">
         <h1>Mobile App How-To Guide</h1>
         <div class="subtitle">Oxford House Expense Tracker</div>
-        <div class="version">Version 1.0 | January 2026</div>
+        <div class="version">Version 1.1 | January 2026</div>
     </div>
     
     <!-- Table of Contents -->
@@ -273,8 +273,8 @@
                     <li><a href="#gps-tracking">GPS Tracking</a></li>
                     <li><a href="#manual-mileage">Manual Mileage Entry</a></li>
                     <li><a href="#receipts">Receipt Capture and Management</a></li>
-                    <li><a href="#hours-tracking">Hours Worked Tracking</a></li>
-                    <li><a href="#daily-descriptions">Daily Descriptions</a></li>
+                    <li><a href="#daily-hours">Daily Hours & Descriptions</a></li>
+                    <li><a href="#per-diem">Per Diem Management</a></li>
                     <li><a href="#monthly-reports">Monthly Reports</a></li>
                     <li><a href="#settings">Settings and Preferences</a></li>
                     <li><a href="#data-sync">Data Sync and Offline Mode</a></li>
@@ -349,9 +349,10 @@
             <li><strong>Home</strong> - Return to the main dashboard</li>
             <li><strong>Mileage</strong> - View and manage mileage entries</li>
             <li><strong>Receipts</strong> - View and manage receipts</li>
-            <li><strong>Hours</strong> - Track hours worked</li>
-            <li><strong>Reports</strong> - View monthly expense reports</li>
-            <li><strong>Settings</strong> - Configure app preferences</li>
+                <li><strong>Hours & Descriptions</strong> - Track hours and add daily notes</li>
+                <li><strong>Per Diem</strong> - Manage per diem allowances</li>
+                <li><strong>Reports</strong> - View monthly expense reports</li>
+                <li><strong>Settings</strong> - Configure app preferences</li>
         </ul>
         
         <h2 id="essential-features">Essential Features Overview</h2>
@@ -362,8 +363,8 @@
                 <li><strong>GPS Tracking</strong> - Automatically track your trips</li>
                 <li><strong>Manual Entry</strong> - Add mileage manually</li>
                 <li><strong>Receipt Capture</strong> - Take photos of receipts</li>
-                <li><strong>Hours Tracking</strong> - Log work hours</li>
-                <li><strong>Daily Descriptions</strong> - Add notes for each day</li>
+                <li><strong>Hours & Descriptions</strong> - Log work hours and daily notes</li>
+                <li><strong>Per Diem</strong> - Manage meal allowances</li>
                 <li><strong>Monthly Reports</strong> - View and export reports</li>
             </ul>
         </div>
@@ -684,68 +685,43 @@
             </ul>
         </div>
         
-        <h2 id="hours-tracking">Hours Worked Tracking</h2>
+        <h2 id="daily-hours">Daily Hours & Descriptions</h2>
         
-        <div class="screenshot-placeholder" data-screenshot-name="hours-tracking-screen"></div>
+        <div class="screenshot-placeholder" data-screenshot-name="daily-hours-screen"></div>
+        
+        <p>The Daily Hours & Descriptions screen combines hours tracking and daily notes in one convenient location. This allows you to manage both your work hours and activity descriptions for each day in a single place.</p>
+        
+        <h3>Accessing the Screen</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Daily Description" or "Hours Worked"</strong>
+            <p>From the home screen, tap either the "Daily Description" or "Hours Worked" tile. Both will take you to the same combined screen.</p>
+        </div>
         
         <h3>Logging Hours</h3>
         <div class="step">
             <span class="step-number">1</span>
-            <strong>Tap "Hours Worked"</strong>
-            <p>From the home screen, tap the "Hours Worked" tile.</p>
+            <strong>Select Date</strong>
+            <p>Use the calendar or date picker to select the date you want to log hours for (defaults to today).</p>
         </div>
         
         <div class="step">
             <span class="step-number">2</span>
-            <strong>Select Date</strong>
-            <p>Choose the date for the hours entry (defaults to today).</p>
+            <strong>Enter Hours</strong>
+            <p>Enter the number of hours worked in the hours field. You can enter decimal values (e.g., 7.5 for 7 hours 30 minutes).</p>
         </div>
         
         <div class="step">
             <span class="step-number">3</span>
-            <strong>Enter Hours</strong>
-            <p>Enter the number of hours worked. You can enter decimal values (e.g., 7.5 for 7 hours 30 minutes).</p>
+            <strong>Select Cost Center</strong>
+            <p>Choose the cost center these hours should be allocated to from the dropdown menu.</p>
         </div>
         
         <div class="step">
             <span class="step-number">4</span>
-            <strong>Select Cost Center</strong>
-            <p>Choose the cost center these hours should be allocated to.</p>
+            <strong>Save Hours</strong>
+            <p>Tap "Save" to record the hours. The hours will be saved and synced automatically.</p>
         </div>
-        
-        <div class="step">
-            <span class="step-number">5</span>
-            <strong>Add Description (Optional)</strong>
-            <p>Optionally add notes about what work was performed.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">6</span>
-            <strong>Save Entry</strong>
-            <p>Tap "Save" to record the hours.</p>
-        </div>
-        
-        <h3>Viewing Hours</h3>
-        <p>The Hours Worked screen shows:</p>
-        <ul>
-            <li>A calendar view of your logged hours</li>
-            <li>Daily totals</li>
-            <li>Monthly summary</li>
-            <li>Cost center breakdown</li>
-        </ul>
-        
-        <h3>Editing Hours</h3>
-        <p>To edit existing hours entries:</p>
-        <ol>
-            <li>Navigate to the Hours Worked screen</li>
-            <li>Tap on the date with hours you want to edit</li>
-            <li>Modify the hours, cost center, or description</li>
-            <li>Tap "Save" to update</li>
-        </ol>
-        
-        <h2 id="daily-descriptions">Daily Descriptions</h2>
-        
-        <div class="screenshot-placeholder" data-screenshot-name="daily-description-screen"></div>
         
         <h3>Adding Daily Descriptions</h3>
         <p>Daily descriptions allow you to add notes about your work activities for each day. This is useful for:</p>
@@ -758,30 +734,114 @@
         
         <div class="step">
             <span class="step-number">1</span>
-            <strong>Tap "Daily Description"</strong>
-            <p>From the home screen, tap the "Daily Description" tile.</p>
+            <strong>Select Date</strong>
+            <p>Choose the date for the description (same date picker as hours).</p>
         </div>
         
         <div class="step">
             <span class="step-number">2</span>
-            <strong>Select Date</strong>
-            <p>Choose the date for the description (defaults to today).</p>
+            <strong>Enter Description</strong>
+            <p>Type your description in the text field. There's no character limit, so be as detailed as needed. The field will expand as you type.</p>
         </div>
         
         <div class="step">
             <span class="step-number">3</span>
-            <strong>Enter Description</strong>
-            <p>Type your description in the text field. There's no character limit, so be as detailed as needed.</p>
+            <strong>Use Day Off Option (Optional)</strong>
+            <p>If you didn't work that day, you can check the "Day Off" option and select the type (PTO, Sick Day, Holiday, etc.).</p>
         </div>
         
         <div class="step">
             <span class="step-number">4</span>
-            <strong>Save</strong>
-            <p>Tap "Save" to save the description.</p>
+            <strong>Save Description</strong>
+            <p>Tap "Save" to save the description. Both hours and descriptions are saved together for the selected date.</p>
         </div>
         
-        <h3>Viewing and Editing Descriptions</h3>
-        <p>You can view and edit daily descriptions from the same screen. Descriptions are organized by date, making it easy to review past entries.</p>
+        <h3>Viewing and Editing</h3>
+        <p>The screen shows a calendar view where you can:</p>
+        <ul>
+            <li>See all days with logged hours and descriptions</li>
+            <li>Scroll through the month to view past entries</li>
+            <li>Tap on any day to view or edit its hours and description</li>
+            <li>See daily totals and monthly summaries</li>
+        </ul>
+        
+        <div class="tip-box">
+            <h4>Tip: Combined Entry</h4>
+            <p>You can enter both hours and description for the same day in one session. The screen remembers your scroll position, so you can easily navigate through multiple days without losing your place.</p>
+        </div>
+        
+        <h2 id="per-diem">Per Diem Management</h2>
+        
+        <div class="screenshot-placeholder" data-screenshot-name="per-diem-screen"></div>
+        
+        <p>The Per Diem screen provides a dedicated interface for managing your meal allowances. Per diem is a daily allowance for meals when traveling for work.</p>
+        
+        <h3>Accessing Per Diem</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Tap "Per Diem" Tile</strong>
+            <p>From the home screen, tap the "Per Diem" tile to open the Per Diem management screen.</p>
+        </div>
+        
+        <h3>Monthly Summary</h3>
+        <p>At the top of the screen, you'll see:</p>
+        <ul>
+            <li><strong>Current Month Total</strong> - Total per diem used this month</li>
+            <li><strong>Monthly Limit</strong> - Maximum per diem allowed per month (typically $350)</li>
+            <li><strong>Remaining</strong> - How much per diem you have left for the month</li>
+        </ul>
+        
+        <h3>Marking Days as Eligible</h3>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Select a Day</strong>
+            <p>Scroll through the calendar to find the day you want to mark as eligible for per diem.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Check the Box</strong>
+            <p>Check the box next to the date to mark it as eligible for per diem.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Enter Amount (Optional)</strong>
+            <p>If the default amount needs to be adjusted, enter the specific amount for that day. The default is typically $35 per day.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Add Receipt (Optional)</strong>
+            <p>You can optionally add a receipt for per diem expenses by tapping "Add Receipt" for that day.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">5</span>
+            <strong>Save Changes</strong>
+            <p>When you're done making your selections, tap the "Save Changes" button at the bottom of the screen. This will save all your per diem entries at once.</p>
+        </div>
+        
+        <h3>Monthly Limit Enforcement</h3>
+        <p>The system will prevent you from exceeding your monthly per diem limit:</p>
+        <ul>
+            <li>If checking a day would exceed the limit, you'll see a warning message</li>
+            <li>The system shows how much per diem you have remaining</li>
+            <li>You must uncheck other days or reduce amounts before adding new eligible days</li>
+        </ul>
+        
+        <h3>Unchecking Days</h3>
+        <p>If you need to remove per diem for a day:</p>
+        <ol>
+            <li>Uncheck the box for that day</li>
+            <li>The amount will be cleared and any associated receipt will be deleted</li>
+            <li>Tap "Save Changes" to apply the update</li>
+        </ol>
+        
+        <div class="tip-box">
+            <h4>Tip: Batch Saving</h4>
+            <p>You can check or uncheck multiple days before saving. The "Save Changes" button will appear when you have unsaved changes. This reduces server load and allows you to make all your selections before syncing.</p>
+        </div>
         
         <h2 id="monthly-reports">Monthly Reports</h2>
         

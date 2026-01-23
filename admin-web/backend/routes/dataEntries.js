@@ -140,6 +140,8 @@ router.post('/api/mileage-entries', (req, res) => {
     isGpsTracked,
     costCenter
   } = req.body;
+  // Use provided ID or generate a new one
+  // IMPORTANT: Always use the provided ID if available to prevent duplicates
   const entryId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
 
@@ -159,48 +161,61 @@ router.post('/api/mileage-entries', (req, res) => {
   const normalizedEndLocationName = endLocationName || endLocation || '';
   const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
 
-  db.run(
-    'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
-    [
-      entryId,
-      employeeId,
-      oxfordHouseId || '',
-      normalizedDate,
-      finalOdometerReading,
-      startLocation || '',
-      endLocation || '',
-      normalizedStartLocationName,
-      normalizedStartLocationAddress,
-      startLocationLat || 0,
-      startLocationLng || 0,
-      normalizedEndLocationName,
-      normalizedEndLocationAddress,
-      endLocationLat || 0,
-      endLocationLng || 0,
-      purpose,
-      miles,
-      notes || '',
-      hoursWorked || 0,
-      isGpsTracked ? 1 : 0,
-      costCenter || '',
-      entryId,
-      now,
-      now
-    ],
-    function(err) {
-      if (err) {
-        debugError('Database error:', err.message);
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      debugLog('✅ Mileage entry created successfully:', entryId);
-      
-      // Broadcast WebSocket update
-      websocketService.broadcastDataChange('mileage_entry', 'create', { id: entryId, employeeId, date: normalizedDate }, employeeId);
-      
-      res.json({ id: entryId, message: 'Mileage entry created successfully' });
+  // Check if entry with this ID already exists
+  db.get('SELECT id FROM mileage_entries WHERE id = ?', [entryId], (checkErr, existingRow) => {
+    if (checkErr) {
+      debugError('❌ Error checking for existing mileage entry:', checkErr);
+      return res.status(500).json({ error: checkErr.message });
     }
-  );
+
+    const isUpdate = !!existingRow;
+    const action = isUpdate ? 'updated' : 'created';
+
+    // Use INSERT OR REPLACE to handle both create and update cases
+    // This ensures entries with the same ID are updated, not duplicated
+    db.run(
+      'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
+      [
+        entryId,
+        employeeId,
+        oxfordHouseId || '',
+        normalizedDate,
+        finalOdometerReading,
+        startLocation || '',
+        endLocation || '',
+        normalizedStartLocationName,
+        normalizedStartLocationAddress,
+        startLocationLat || 0,
+        startLocationLng || 0,
+        normalizedEndLocationName,
+        normalizedEndLocationAddress,
+        endLocationLat || 0,
+        endLocationLng || 0,
+        purpose,
+        miles,
+        notes || '',
+        hoursWorked || 0,
+        isGpsTracked ? 1 : 0,
+        costCenter || '',
+        entryId,
+        now,
+        now
+      ],
+      function(err) {
+        if (err) {
+          debugError('Database error:', err.message);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        debugLog(`✅ Mileage entry ${action} successfully:`, entryId);
+        
+        // Broadcast WebSocket update
+        websocketService.broadcastDataChange('mileage_entry', isUpdate ? 'update' : 'create', { id: entryId, employeeId, date: normalizedDate }, employeeId);
+        
+        res.json({ id: entryId, message: `Mileage entry ${action} successfully`, isUpdate });
+      }
+    );
+  });
 });
 
 /**
@@ -384,23 +399,35 @@ router.post('/api/receipts', (req, res) => {
   }
 
   const fileType = req.body.fileType || (imageUri && imageUri.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
-  db.run(
-    'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
-    [receiptId, employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', fileType, receiptId, now, now],
-    function(err) {
-      if (err) {
-        debugError('Database error:', err.message);
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      debugLog(`✅ Receipt ${receiptId} saved with amount: ${amount}`);
-      
-      // Broadcast WebSocket update
-      websocketService.broadcastDataChange('receipt', 'create', { id: receiptId, employeeId, date: normalizedDate, amount, category }, employeeId);
-      
-      res.json({ id: receiptId, message: 'Receipt created successfully' });
+  
+  // Check if receipt with this ID already exists
+  db.get('SELECT id FROM receipts WHERE id = ?', [receiptId], (checkErr, existingRow) => {
+    if (checkErr) {
+      debugError('❌ Error checking for existing receipt:', checkErr);
+      return res.status(500).json({ error: checkErr.message });
     }
-  );
+
+    const isUpdate = !!existingRow;
+    const action = isUpdate ? 'updated' : 'created';
+  
+    db.run(
+      'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
+      [receiptId, employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', fileType, receiptId, now, now],
+      function(err) {
+        if (err) {
+          debugError('Database error:', err.message);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        debugLog(`✅ Receipt ${action} successfully:`, receiptId);
+        
+        // Broadcast WebSocket update
+        websocketService.broadcastDataChange('receipt', isUpdate ? 'update' : 'create', { id: receiptId, employeeId, date: normalizedDate, amount, category }, employeeId);
+        
+        res.json({ id: receiptId, message: `Receipt ${action} successfully`, isUpdate });
+      }
+    );
+  });
 });
 
 /**
@@ -1002,17 +1029,24 @@ router.post('/api/time-tracking', async (req, res) => {
     return res.status(400).json({ error: 'Invalid date format. Date is required.' });
   }
   
-  // ALWAYS create a deterministic ID based on the unique combination to ensure proper replacement
-  // Ignore any ID sent from frontend to prevent duplicates
-  const uniqueKey = `${employeeId}-${normalizedDate}-${category || ''}-${costCenter || ''}`;
-  // Use crypto hash to ensure unique IDs even for similar keys
-  const hash = crypto.createHash('sha256').update(uniqueKey).digest('hex');
-  const trackingId = hash.substring(0, 32); // Use first 32 chars of hash for uniqueness
+  // Use provided ID or generate a new one
+  // IMPORTANT: Always use the provided ID if available to prevent duplicates
+  const trackingId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
   
-  db.run(
-    'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
-    [trackingId, employeeId, normalizedDate, category || '', hours, description || '', costCenter || '', trackingId, now, now],
+  // Check if entry with this ID already exists
+  db.get('SELECT id FROM time_tracking WHERE id = ?', [trackingId], (checkErr, existingRow) => {
+    if (checkErr) {
+      debugError('❌ Error checking for existing time tracking entry:', checkErr);
+      return res.status(500).json({ error: checkErr.message });
+    }
+
+    const isUpdate = !!existingRow;
+    const action = isUpdate ? 'updated' : 'created';
+  
+    db.run(
+      'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
+      [trackingId, employeeId, normalizedDate, category || '', hours, description || '', costCenter || '', trackingId, now, now],
     async function(err) {
       if (err) {
         debugError('❌ Database error:', err.message);
@@ -1028,9 +1062,11 @@ router.post('/api/time-tracking', async (req, res) => {
         // Don't fail the request if alert check fails
       }
       
-      res.json({ id: trackingId, message: 'Time tracking entry created successfully' });
+      debugLog(`✅ Time tracking entry ${action} successfully:`, trackingId);
+      res.json({ id: trackingId, message: `Time tracking entry ${action} successfully`, isUpdate });
     }
-  );
+    );
+  });
 });
 
 /**
@@ -1139,51 +1175,38 @@ router.post('/api/daily-descriptions', (req, res) => {
     return res.status(400).json({ error: `Invalid date format: ${date}` });
   }
   
-  // Generate ID using normalized date to ensure uniqueness
+  // Use provided ID or generate one based on normalized date
+  // IMPORTANT: Always use the provided ID if available to prevent duplicates
   const descriptionId = id || `desc-${employeeId}-${normalizedDate}`;
   const now = new Date().toISOString();
   const stayedOvernightValue = stayedOvernight ? 1 : 0;
   const dayOffValue = dayOff ? 1 : 0;
 
-  // Check if a description already exists for this date (using normalized date)
-  db.get(
-    'SELECT id FROM daily_descriptions WHERE employeeId = ? AND date = ?',
-    [employeeId, normalizedDate],
-    (err, row) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-
-      if (row) {
-        // Update existing description
-        db.run(
-          'UPDATE daily_descriptions SET description = ?, costCenter = ?, stayedOvernight = ?, dayOff = ?, dayOffType = ?, updatedAt = ? WHERE id = ?',
-          [description, costCenter || '', stayedOvernightValue, dayOffValue, dayOffType || null, now, row.id],
-          function(updateErr) {
-            if (updateErr) {
-              res.status(500).json({ error: updateErr.message });
-              return;
-            }
-            res.json({ id: row.id, message: 'Daily description updated successfully' });
-          }
-        );
-      } else {
-        // Create new description - use INSERT OR REPLACE to handle ID conflicts
-        db.run(
-          'INSERT OR REPLACE INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM daily_descriptions WHERE id = ?), ?), ?)',
-          [descriptionId, employeeId, normalizedDate, description, costCenter || '', stayedOvernightValue, dayOffValue, dayOffType || null, descriptionId, now, now],
-          function(insertErr) {
-            if (insertErr) {
-              res.status(500).json({ error: insertErr.message });
-              return;
-            }
-            res.json({ id: descriptionId, message: 'Daily description created successfully' });
-          }
-        );
-      }
+  // Check if description with this ID already exists
+  db.get('SELECT id FROM daily_descriptions WHERE id = ?', [descriptionId], (checkErr, existingRow) => {
+    if (checkErr) {
+      debugError('❌ Error checking for existing daily description:', checkErr);
+      return res.status(500).json({ error: checkErr.message });
     }
-  );
+
+    const isUpdate = !!existingRow;
+    const action = isUpdate ? 'updated' : 'created';
+  
+    // Use INSERT OR REPLACE to handle both create and update cases
+    db.run(
+      'INSERT OR REPLACE INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM daily_descriptions WHERE id = ?), ?), ?)',
+      [descriptionId, employeeId, normalizedDate, description, costCenter || '', stayedOvernightValue, dayOffValue, dayOffType || null, descriptionId, now, now],
+      function(err) {
+        if (err) {
+          debugError('❌ Database error:', err.message);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        debugLog(`✅ Daily description ${action} successfully:`, descriptionId);
+        res.json({ id: descriptionId, message: `Daily description ${action} successfully`, isUpdate });
+      }
+    );
+  });
 });
 
 /**

@@ -121,8 +121,9 @@ export class RealtimeSyncService {
     if (isDev) {
       return 'ws://localhost:3002/ws';
     } else {
-      // Production WebSocket URL
-      return 'wss://oxford-mileage-backend.onrender.com/ws';
+      // Production WebSocket URL (Render.com)
+      const baseUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+      return baseUrl.replace('http', 'ws').replace('https', 'wss') + '/ws';
     }
   }
 

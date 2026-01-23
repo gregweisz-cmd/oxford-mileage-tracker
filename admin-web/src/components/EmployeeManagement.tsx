@@ -58,7 +58,7 @@ import {
 } from '@mui/icons-material';
 
 // API configuration - use environment variable or default to localhost for development
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 import { debugError } from '../config/debug';
 
 interface Employee {

@@ -12,11 +12,10 @@ const PRODUCTION_API_URL = 'https://oxford-mileage-backend.onrender.com/api';
 // Local development backend URL (for testing on same network)
 const LOCAL_API_URL = 'http://192.168.86.101:3002/api';
 
-// TEMPORARY: Force production for mobile testing from anywhere
-// This allows testing while driving without localhost connectivity
-// Set to true to sync with Vercel web portal (production backend)
-// Set to false to use local backend (requires backend running locally)
-const USE_PRODUCTION_FOR_TESTING = false; // Set to false to use local backend
+// Production mode: Always use Render.com backend
+// This ensures the app works from anywhere and syncs with the web portal
+// Set to false only for local development (requires backend running locally)
+const USE_PRODUCTION_FOR_TESTING = true; // Production: Always use Render backend
 
 // Determine which API URL to use
 export const API_BASE_URL = USE_PRODUCTION_FOR_TESTING

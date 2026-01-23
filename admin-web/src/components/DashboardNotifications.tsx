@@ -30,7 +30,7 @@ import {
 import { NotificationsDialog } from './NotificationsDialog';
 import { debugError } from '../config/debug';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 interface Notification {
   id: string;

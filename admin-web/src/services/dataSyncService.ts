@@ -35,7 +35,7 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 
 // API base URL - use environment variable or default to localhost for development
-const API_BASE_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api`;
+const API_BASE_URL = `${process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'}/api`;
 
 // Initialize real-time sync
 let realtimeInitialized = false;

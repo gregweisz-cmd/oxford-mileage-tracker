@@ -748,7 +748,20 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       )}
 
       {/* Add/Edit Dialog */}
-      <Dialog open={showDialog} onClose={handleCancel} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={showDialog} 
+        onClose={handleCancel} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>
           {editingCostCenter ? 'Edit Cost Center' : 'Add Cost Center'}
         </DialogTitle>
@@ -817,7 +830,20 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       </Dialog>
 
       {/* Per Diem Rules Dialog */}
-      <Dialog open={showPerDiemDialog} onClose={handleCancelPerDiemRules} maxWidth="md" fullWidth>
+      <Dialog 
+        open={showPerDiemDialog} 
+        onClose={handleCancelPerDiemRules} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>
           Per Diem Rules - {editingPerDiemCostCenter?.name}
         </DialogTitle>

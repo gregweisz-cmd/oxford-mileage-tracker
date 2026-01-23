@@ -33,7 +33,6 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
   const [selectedDay, setSelectedDay] = useState<UnifiedDayData | null>(null);
   const [descriptionText, setDescriptionText] = useState<string>('');
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
-  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -69,51 +68,6 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
       console.error('❌ DailyDescriptionScreen: Error loading data:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSyncFromBackend = async () => {
-    if (!currentEmployee) {
-      Alert.alert('Error', 'No employee found');
-      return;
-    }
-
-    try {
-      setSyncing(true);
-      console.log('🔄 DailyDescriptionScreen: Starting bi-directional sync...');
-      
-      // Step 1: First, get all local daily descriptions and sync them TO the backend
-      console.log('📤 DailyDescriptionScreen: Syncing local data to backend...');
-      const localDescriptions = await DatabaseService.getDailyDescriptions(currentEmployee.id);
-      
-      if (localDescriptions.length > 0) {
-        const syncResult = await ApiSyncService.syncToBackend({
-          dailyDescriptions: localDescriptions
-        });
-        if (!syncResult.success) {
-          console.error('❌ DailyDescriptionScreen: Error syncing local descriptions:', syncResult.error);
-        }
-      }
-      
-      // Step 2: Then, pull any updates FROM the backend
-      console.log('📥 DailyDescriptionScreen: Pulling updates from backend...');
-      const result = await ApiSyncService.syncDailyDescriptionsFromBackend(currentEmployee.id);
-      
-      if (result.success) {
-        console.log('✅ DailyDescriptionScreen: Bi-directional sync successful');
-        Alert.alert('Success', 'Daily descriptions synced successfully! Your changes were saved and any updates from the web portal were loaded.');
-        
-        // Reload data to show the synced descriptions
-        await loadData();
-      } else {
-        console.error('❌ DailyDescriptionScreen: Sync failed:', result.error);
-        Alert.alert('Sync Failed', result.error || 'Failed to sync daily descriptions');
-      }
-    } catch (error) {
-      console.error('❌ DailyDescriptionScreen: Error syncing:', error);
-      Alert.alert('Error', 'Failed to sync daily descriptions. Please check your connection.');
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -236,17 +190,7 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Daily Descriptions</Text>
-        <TouchableOpacity 
-          style={styles.syncButton} 
-          onPress={handleSyncFromBackend}
-          disabled={syncing}
-        >
-          <MaterialIcons 
-            name={syncing ? "sync" : "sync"} 
-            size={24} 
-            color={syncing ? "#999" : "#2196F3"} 
-          />
-        </TouchableOpacity>
+        <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>

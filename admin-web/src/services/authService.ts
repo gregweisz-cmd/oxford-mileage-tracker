@@ -86,7 +86,7 @@ export class AuthService {
     
     try {
       // First, get all employees to find the one with matching email
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
       const response = await fetch(`${API_BASE_URL}/api/employees`);
       if (!response.ok) {
         throw new Error('Failed to fetch employees');

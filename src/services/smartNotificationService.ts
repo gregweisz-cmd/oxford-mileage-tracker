@@ -69,29 +69,49 @@ export class SmartNotificationService {
         notifications.push(receiptNotification);
       }
 
-      // Check for receipts with missing image files
+      // Check for receipts with missing image files (only current month)
       const missingImageReceipts = this.missingImageReceipts.get(employeeId);
       if (missingImageReceipts && missingImageReceipts.size > 0) {
         // Get receipt details for notifications
         const { DatabaseService } = await import('./database');
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
         for (const receiptId of missingImageReceipts) {
           try {
             const receipts = await DatabaseService.getReceipts(employeeId);
             const receipt = receipts.find(r => r.id === receiptId);
+            
+            // Only show notification if receipt exists and is from current month
             if (receipt) {
-              notifications.push({
-                id: `missing_image_${receiptId}`,
-                type: 'receipt',
-                priority: 'high',
-                title: 'Receipt image missing',
-                message: `The image for your ${receipt.vendor} receipt ($${receipt.amount.toFixed(2)} on ${new Date(receipt.date).toLocaleDateString()}) could not be found. Please re-add the receipt image.`,
-                actionLabel: 'View Receipt',
-                actionRoute: 'Receipts',
-                timestamp: new Date(receipt.date),
-              });
+              const receiptDate = new Date(receipt.date);
+              const isCurrentMonth = receiptDate.getMonth() === currentMonth && 
+                                    receiptDate.getFullYear() === currentYear;
+              
+              if (isCurrentMonth) {
+                notifications.push({
+                  id: `missing_image_${receiptId}`,
+                  type: 'receipt',
+                  priority: 'high',
+                  title: 'Receipt image missing',
+                  message: `The image for your ${receipt.vendor} receipt ($${receipt.amount.toFixed(2)} on ${receiptDate.toLocaleDateString()}) could not be found. Please re-add the receipt image.`,
+                  actionLabel: 'View Receipt',
+                  actionRoute: 'Receipts',
+                  timestamp: receiptDate,
+                });
+              } else {
+                // Receipt is from previous month, remove from tracking
+                this.clearMissingImageNotification(employeeId, receiptId);
+              }
+            } else {
+              // Receipt was deleted, remove from tracking
+              this.clearMissingImageNotification(employeeId, receiptId);
             }
           } catch (error) {
             debugWarn(`Error loading receipt ${receiptId} for notification:`, error);
+            // If we can't load the receipt, assume it was deleted and remove from tracking
+            this.clearMissingImageNotification(employeeId, receiptId);
           }
         }
       }

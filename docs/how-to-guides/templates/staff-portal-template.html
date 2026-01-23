@@ -252,7 +252,7 @@
     <div class="cover-page">
         <h1>Staff Portal How-To Guide</h1>
         <div class="subtitle">Oxford House Expense Tracker</div>
-        <div class="version">Version 1.0 | January 2026</div>
+        <div class="version">Version 1.1 | January 2026</div>
     </div>
     
     <!-- Table of Contents -->
@@ -312,8 +312,33 @@
         
         <div class="step">
             <span class="step-number">3</span>
-            <strong>Access Staff Portal</strong>
-            <p>After logging in, you'll be taken to your personalized Staff Portal (e.g., "John's Portal").</p>
+            <strong>Access Your Portal</strong>
+            <p>After logging in, you'll be taken to your personalized portal. The portal name appears in the header (e.g., "John's Portal").</p>
+        </div>
+        
+        <h3>Portal Switching</h3>
+        <p>If you have access to multiple portals (e.g., Staff, Supervisor, Finance, Contracts, Admin), you can switch between them:</p>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Find Portal Switcher</strong>
+            <p>Look for the portal switcher dropdown in the header, typically near your name or in the navigation area.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Select Portal</strong>
+            <p>Click the dropdown to see all portals you have access to based on your role and permissions. Select the portal you want to use.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Portal Loads</strong>
+            <p>The selected portal will load with its specific features and interface. Your portal preference is saved for future logins.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Tip: Portal Access</h4>
+            <p>Your access to different portals is determined by your role and permissions assigned by your administrator. If you don't see a portal you expect, contact your administrator.</p>
         </div>
         
         <div class="tip-box">
@@ -422,14 +447,20 @@
         <h3>Daily Travel Tab</h3>
         <p>The Daily Travel tab shows all your mileage entries organized by day of the month. Each row represents a day, and you can see:</p>
         <ul>
-            <li>Date</li>
-            <li>Start location</li>
-            <li>End location</li>
-            <li>Miles traveled</li>
-            <li>Mileage amount (calculated)</li>
-            <li>Cost center</li>
-            <li>Purpose/description</li>
+            <li><strong>Date</strong> - The date of travel</li>
+            <li><strong>Description of Activity</strong> - Your daily work description and driving summary</li>
+            <li><strong>Hours Worked</strong> - Hours worked for that day</li>
+            <li><strong>Odometer Start</strong> - Starting odometer reading for the day (from your first trip)</li>
+            <li><strong>Odometer End</strong> - Ending odometer reading (calculated as start + total miles)</li>
+            <li><strong>Miles Traveled</strong> - Total miles for the day</li>
+            <li><strong>Mileage ($)</strong> - Calculated reimbursement amount (miles × $0.445)</li>
+            <li><strong>Per Diem ($)</strong> - Per diem amount for the day</li>
         </ul>
+        
+        <div class="tip-box">
+            <h4>Understanding Odometer Columns</h4>
+            <p>The Odometer Start column shows the starting odometer reading from your first trip of the day. The Odometer End column is automatically calculated by adding the total miles traveled to the starting odometer reading. This helps verify your mileage calculations.</p>
+        </div>
         
         <h3>Editing Mileage Entries</h3>
         <div class="step">
@@ -504,10 +535,15 @@
         <ol>
             <li>Go to the Receipts tab</li>
             <li>Click "Add Receipt" or "Upload Receipt"</li>
-            <li>Select an image file from your computer</li>
+            <li>Select an image file from your computer. The portal supports both image files (JPG, PNG) and PDF files</li>
             <li>Fill in the receipt details (date, amount, category, cost center)</li>
             <li>Save the receipt</li>
         </ol>
+        
+        <div class="tip-box">
+            <h4>PDF Receipt Support</h4>
+            <p>The portal now supports PDF receipt uploads in addition to image files. This is especially useful for digital receipts or scanned documents. PDF receipts are displayed in the receipt viewer just like image receipts.</p>
+        </div>
         
         <h2 id="viewing-hours">Viewing Hours Worked</h2>
         
@@ -558,20 +594,36 @@
         <h3>Adding or Editing Descriptions</h3>
         <div class="step">
             <span class="step-number">1</span>
-            <strong>Select a Day</strong>
-            <p>Click on the day you want to add or edit a description for.</p>
+            <strong>Click on Description Cell</strong>
+            <p>In the Daily Travel tab, click on the "Description of Activity" cell for the day you want to edit.</p>
         </div>
         
         <div class="step">
             <span class="step-number">2</span>
-            <strong>Enter Description</strong>
-            <p>Type your description in the text field. There's no character limit.</p>
+            <strong>Edit in Large Text Box</strong>
+            <p>A large, multi-line text box will appear that expands to show all your content. This makes it easy to:</p>
+            <ul>
+                <li>See long descriptions without scrolling</li>
+                <li>Find specific text to edit</li>
+                <li>Add or remove content comfortably</li>
+            </ul>
+            <p>Type your description in the text field. There's no character limit, and the box will expand as you type.</p>
         </div>
         
         <div class="step">
             <span class="step-number">3</span>
-            <strong>Save</strong>
-            <p>Click "Save" or press Enter to save the description.</p>
+            <strong>Save Your Changes</strong>
+            <p>Press Ctrl+Enter (or Cmd+Enter on Mac) to save, or click outside the text box. Your changes are saved immediately and won't be overwritten by the system.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Description Content</h4>
+            <p>The description field shows your daily work activities and automatically includes a driving summary based on your mileage entries. Odometer readings are no longer included in descriptions - they appear in the separate Odometer Start and Odometer End columns instead.</p>
+        </div>
+        
+        <div class="warning-box">
+            <h4>Important: Description Persistence</h4>
+            <p>When you delete content from a description and save it, the deleted content will not reappear. The system respects your edits and only shows what you've entered, plus the automatically generated driving summary.</p>
         </div>
         
         <h2 id="monthly-report">Monthly Report Creation</h2>
@@ -630,20 +682,54 @@
         
         <div class="step">
             <span class="step-number">2</span>
-            <strong>Confirm Submission</strong>
-            <p>A confirmation dialog will appear. Review the message and click "Confirm" to proceed.</p>
+            <strong>Choose Submission Type</strong>
+            <p>A dialog will appear asking you to choose your submission type:</p>
+            <ul>
+                <li><strong>Monthly Submission</strong> - For final monthly reports. This option runs a completeness check to ensure all required information is present (signatures, acknowledgments, receipts, etc.).</li>
+                <li><strong>Weekly Check-up</strong> - For interim submissions or progress updates. This option skips the completeness check, allowing you to submit even if some items are still pending.</li>
+                <li><strong>Cancel</strong> - Return to editing your report</li>
+            </ul>
         </div>
         
         <div class="step">
             <span class="step-number">3</span>
+            <strong>Completeness Check (Monthly Submission Only)</strong>
+            <p>If you selected "Monthly Submission", the system will check for:</p>
+            <ul>
+                <li>Missing employee signature</li>
+                <li>Missing employee certification acknowledgment</li>
+                <li>Missing supervisor signature (if you're a supervisor)</li>
+                <li>Missing receipts for high-value expenses</li>
+                <li>Missing cost center assignments for hours</li>
+                <li>Other required information</li>
+            </ul>
+            <p>If issues are found, you'll see a list of what needs to be fixed before you can submit.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Confirm Submission</strong>
+            <p>After passing the completeness check (or if using Weekly Check-up), confirm your submission. The report will be locked and sent to your supervisor.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">5</span>
             <strong>Report Locked</strong>
             <p>Once submitted, the report is locked and cannot be edited. You'll see a status indicator showing "Submitted" or "Pending Approval".</p>
         </div>
         
         <div class="step">
-            <span class="step-number">4</span>
+            <span class="step-number">6</span>
             <strong>Notification Sent</strong>
             <p>Your supervisor will receive a notification that your report is ready for review.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>When to Use Each Submission Type</h4>
+            <ul>
+                <li><strong>Monthly Submission</strong> - Use this for your final monthly report when everything is complete and ready for approval.</li>
+                <li><strong>Weekly Check-up</strong> - Use this for progress updates, interim reviews, or when you want supervisor feedback before the month ends.</li>
+            </ul>
         </div>
         
         <div class="warning-box">

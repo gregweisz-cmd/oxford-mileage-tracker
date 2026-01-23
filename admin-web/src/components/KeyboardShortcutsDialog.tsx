@@ -39,7 +39,20 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
   const activeShortcuts = shortcuts.filter((s) => !s.disabled);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth={false}
+      fullWidth
+      PaperProps={{
+        sx: {
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          width: 'auto',
+          height: 'auto',
+        }
+      }}
+    >
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <KeyboardIcon />

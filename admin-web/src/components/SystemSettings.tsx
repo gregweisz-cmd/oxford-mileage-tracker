@@ -109,7 +109,7 @@ const TIMEZONES = [
   'UTC'
 ];
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 export const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettingsData>(DEFAULT_SETTINGS);

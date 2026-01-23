@@ -397,7 +397,7 @@ const App: React.FC = () => {
       const authToken = localStorage.getItem('authToken');
       if (authToken) {
         // Call logout endpoint
-        await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/auth/logout`, {
+        await fetch(`${process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'}/api/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${authToken}`
@@ -572,7 +572,7 @@ const App: React.FC = () => {
         <OnboardingScreen onComplete={async () => {
           // Mark onboarding as complete in the backend
           try {
-            await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3002'}/api/employees/${currentUser.id}`, {
+            await fetch(`${process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'}/api/employees/${currentUser.id}`, {
               method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',

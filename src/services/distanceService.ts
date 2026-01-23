@@ -65,24 +65,45 @@ export class DistanceService {
     // Calculate distance using Google Maps Distance Matrix API
     const distance = await this.getDistanceFromGoogleMaps(startCoords, endCoords);
     
-    // Convert meters to miles and round to nearest tenth
+    // Convert meters to miles and round to nearest mile
     const miles = distance * 0.000621371;
-    const roundedMiles = Math.round(miles * 10) / 10;
+    const roundedMiles = Math.round(miles);
     
     debugLog(`Distance calculated: ${roundedMiles} miles`);
     return roundedMiles;
   }
 
   private static async geocodeAddress(address: string): Promise<{ lat: number; lng: number }> {
-    const encodedAddress = encodeURIComponent(address);
+    // Clean the address - extract just the address part if it's in format "Name (Address)"
+    const cleanedAddress = this.extractAddressFromLocation(address);
+    
+    const encodedAddress = encodeURIComponent(cleanedAddress);
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${this.GOOGLE_MAPS_API_KEY}`;
 
-    debugLog(`Geocoding: ${address}`);
+    debugLog(`Geocoding: ${address} -> ${cleanedAddress}`);
     
     const response = await fetch(url);
     const data = await response.json();
 
     if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+      // Try with the original address if cleaned version fails
+      if (cleanedAddress !== address) {
+        debugLog(`Retrying with original address: ${address}`);
+        const encodedOriginal = encodeURIComponent(address);
+        const retryUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedOriginal}&key=${this.GOOGLE_MAPS_API_KEY}`;
+        const retryResponse = await fetch(retryUrl);
+        const retryData = await retryResponse.json();
+        
+        if (retryData.status === 'OK' && retryData.results && retryData.results.length > 0) {
+          const location = retryData.results[0].geometry.location;
+          debugLog(`Coordinates found (retry): ${location.lat}, ${location.lng}`);
+          return {
+            lat: location.lat,
+            lng: location.lng,
+          };
+        }
+      }
+      
       throw new Error(`Could not find coordinates for address: ${address}`);
     }
 
@@ -93,6 +114,20 @@ export class DistanceService {
       lat: location.lat,
       lng: location.lng,
     };
+  }
+  
+  /**
+   * Extract address from format like "OH Abigail (1025 S. Fulton St., Salisbury, NC 28144)"
+   * Returns just the address part (the part in parentheses)
+   */
+  private static extractAddressFromLocation(location: string): string {
+    // If it contains parentheses, extract the address part
+    const match = location.match(/\(([^)]+)\)/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+    // Otherwise return the whole string
+    return location.trim();
   }
 
   private static async getDistanceFromGoogleMaps(
@@ -224,8 +259,8 @@ Current method provides good estimates but Google Maps will give you the exact d
       // Add 20% buffer for driving distance vs straight-line distance
       const drivingDistance = distance * 1.2;
       
-      // Round to nearest tenth
-      return Math.round(drivingDistance * 10) / 10;
+      // Round to nearest mile
+      return Math.round(drivingDistance);
     } catch (error) {
       console.error('OpenRouteService error:', error);
       throw new Error('Could not calculate distance. Please enter manually.');
@@ -309,7 +344,7 @@ Current method provides good estimates but Google Maps will give you the exact d
     
     if (startCity === endCity && startCity !== 'unknown') {
       // Same city - estimate 5-15 miles
-      const estimate = Math.round((Math.random() * 10 + 5) * 10) / 10;
+      const estimate = Math.round(Math.random() * 10 + 5);
       debugLog(`🏙️ Same city (${startCity}) estimate: ${estimate} miles`);
       return estimate;
     }
@@ -322,7 +357,7 @@ Current method provides good estimates but Google Maps will give you the exact d
     }
     
     // Default estimation: 10-50 miles
-    const estimate = Math.round((Math.random() * 40 + 10) * 10) / 10;
+    const estimate = Math.round(Math.random() * 40 + 10);
     debugLog(`❓ Default estimate: ${estimate} miles`);
     return estimate;
   }
@@ -330,9 +365,13 @@ Current method provides good estimates but Google Maps will give you the exact d
   // Use free geocoding services for better estimation
   private static async calculateDistanceWithFreeGeocoding(startAddress: string, endAddress: string): Promise<number> {
     try {
+      // Clean addresses first - extract just the address part if in format "Name (Address)"
+      const cleanedStart = this.extractAddressFromLocation(startAddress);
+      const cleanedEnd = this.extractAddressFromLocation(endAddress);
+      
       // Use Nominatim (OpenStreetMap) for free geocoding
-      const startCoords = await this.geocodeWithNominatim(startAddress);
-      const endCoords = await this.geocodeWithNominatim(endAddress);
+      const startCoords = await this.geocodeWithNominatim(cleanedStart);
+      const endCoords = await this.geocodeWithNominatim(cleanedEnd);
       
       // Calculate straight-line distance (Haversine formula)
       const straightLineDistance = this.calculateHaversineDistance(startCoords, endCoords);
@@ -341,8 +380,8 @@ Current method provides good estimates but Google Maps will give you the exact d
       const drivingBuffer = 1.4; // 40% buffer for typical driving routes
       const estimatedDrivingDistance = straightLineDistance * drivingBuffer;
       
-      // Round to nearest tenth
-      const roundedDistance = Math.round(estimatedDrivingDistance * 10) / 10;
+      // Round to nearest mile
+      const roundedDistance = Math.round(estimatedDrivingDistance);
       
       debugLog(`📏 Geocoded distance: ${straightLineDistance.toFixed(1)} mi straight-line → ${roundedDistance} mi estimated driving`);
       

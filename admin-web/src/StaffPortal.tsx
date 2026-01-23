@@ -60,6 +60,8 @@ import { PerDiemRulesService } from './services/perDiemRulesService';
 
 // Data entry imports
 import { DataEntryManager } from './components/DataEntryManager';
+import { MileageEntryForm, MileageEntryFormData } from './components/DataEntryForms';
+import { Employee } from './types';
 
 // UI Enhancement imports
 import { ToastProvider, useToast } from './contexts/ToastContext';
@@ -94,7 +96,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs, { Dayjs } from 'dayjs';
 
 // API URL configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 // Props interface for the StaffPortal component
 interface StaffPortalProps {
@@ -383,6 +385,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [completenessDialogOpen, setCompletenessDialogOpen] = useState(false);
   const [completenessLoading, setCompletenessLoading] = useState(false);
 
+  // Submission type dialog state
+  const [submissionTypeDialogOpen, setSubmissionTypeDialogOpen] = useState(false);
+
   // Report submission and approval state
   const [reportStatus, setReportStatus] = useState<
     'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision' | 'pending_supervisor' | 'pending_finance' | 'under_review'
@@ -391,6 +396,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Raw line item data for revision checking
   const [rawMileageEntries, setRawMileageEntries] = useState<any[]>([]);
   const [rawTimeEntries, setRawTimeEntries] = useState<any[]>([]);
+  
+  // Mileage entry editing state
+  const [editingMileageEntry, setEditingMileageEntry] = useState<any | null>(null);
+  const [mileageFormOpen, setMileageFormOpen] = useState(false);
   // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
   // Approval workflow data
@@ -830,6 +839,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   }, [employeeId, currentMonth, currentYear, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Function to sync daily description changes to the cost center screen
+  /**
+   * Syncs daily description to the cost center screen
+   * Extracts user-entered description (removing any existing driving summary) and recalculates driving summary
+   * to prevent duplication when saving multiple times
+   */
   const syncDescriptionToCostCenter = useCallback(async (descToSave: any, entryDate: Date) => {
     if (!employeeData) return;
 
@@ -842,58 +856,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const entryIndex = updatedEntries.findIndex((e: any) => normalizeDate(e.date) === dateStr);
 
     if (entryIndex >= 0) {
+      // Use the description exactly as saved - don't re-generate or add driving summary
+      // This prevents deleted content from coming back
       let fullDescription = '';
+      
       if (dayOff && dayOffType) {
         fullDescription = dayOffType;
-      } else if (description) {
-        fullDescription = description.trim();
-      }
-
-      // Re-calculate driving summary for the day
-      const day = entryDate.getDate();
-      const dayMileageEntries = rawMileageEntries.filter((entry: any) => {
-        const entryDate = new Date(entry.date);
-        return entryDate.getDate() === day;
-      });
-
-      let drivingSummary = '';
-      if (dayMileageEntries.length > 0) {
-        const tripSegments: string[] = [];
-        const baseAddress = employeeData.baseAddress;
-        const baseAddress2 = employeeData.baseAddress2;
-
-        dayMileageEntries.forEach((entry: any, index: number) => {
-          if (index === 0) {
-            const startLocation = entry.startLocation || '';
-            const formattedStart = formatLocationForDescription(startLocation, baseAddress, baseAddress2);
-            if (formattedStart) {
-              tripSegments.push(formattedStart);
-            }
-          }
-          const endLocation = entry.endLocation || '';
-          const purpose = entry.purpose || 'Travel';
-          const formattedEnd = formatLocationForDescription(endLocation, baseAddress, baseAddress2);
-          const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
-
-          if (formattedEnd) {
-            if (isBaseAddress) {
-              tripSegments.push(`to ${formattedEnd}`);
-            } else {
-              if (purpose && purpose.toLowerCase() !== 'travel' && purpose.trim() !== '') {
-                tripSegments.push(`to ${formattedEnd} for ${purpose}`);
-              } else {
-                tripSegments.push(`to ${formattedEnd}`);
-              }
-            }
-          }
-        });
-        drivingSummary = tripSegments.join(' ');
-      }
-
-      if (fullDescription && drivingSummary) {
-        fullDescription += '\n\n' + drivingSummary;
-      } else if (drivingSummary) {
-        fullDescription = drivingSummary;
+      } else {
+        // Use the description as-is (user may have deleted content intentionally)
+        fullDescription = description;
       }
 
       updatedEntries[entryIndex].description = fullDescription;
@@ -903,7 +874,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         dailyEntries: updatedEntries
       });
     }
-  }, [employeeData, rawMileageEntries]);
+  }, [employeeData]);
 
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
   // debugLog('🔍 StaffPortal Debug:', {
@@ -993,12 +964,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Fetch real data from backend APIs using rate-limited API
           const { apiFetch } = await import('./services/rateLimitedApi');
-          const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, reportResponse] = await Promise.all([
+          const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, reportResponse, expenseReportResponse] = await Promise.all([
             apiFetch(`/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/receipts?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/time-tracking?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/daily-descriptions?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/monthly-reports?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`)
+            apiFetch(`/api/monthly-reports?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}`).catch(() => ({ ok: false } as Response)) // Load expense report if it exists
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
@@ -1026,6 +998,62 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 setCurrentReportId(currentReport.id);
               }
             }
+          }
+
+          // Load expense report data (including checkbox states) if it exists
+          let savedExpenseReport: any = null;
+          if (expenseReportResponse && expenseReportResponse.ok) {
+            try {
+              savedExpenseReport = await expenseReportResponse.json();
+              if (savedExpenseReport && savedExpenseReport.reportData) {
+                // Restore checkbox states from saved report
+                const { employeeCertificationAcknowledged: savedEmployeeCert, supervisorCertificationAcknowledged: savedSupervisorCert } = savedExpenseReport.reportData;
+                setEmployeeCertificationAcknowledged(savedEmployeeCert || false);
+                setSupervisorCertificationAcknowledged(savedSupervisorCert || false);
+                
+                // Also restore signature images if they exist
+                if (savedExpenseReport.reportData.signatureImage) {
+                  setSignatureImage(savedExpenseReport.reportData.signatureImage);
+                }
+                if (savedExpenseReport.reportData.supervisorSignature) {
+                  setSupervisorSignatureState(savedExpenseReport.reportData.supervisorSignature);
+                }
+                
+                // Restore report status and ID
+                if (savedExpenseReport.status) {
+                  setReportStatus(savedExpenseReport.status);
+                }
+                if (savedExpenseReport.id) {
+                  setCurrentReportId(savedExpenseReport.id);
+                }
+                if (savedExpenseReport.submittedAt) {
+                  setReportSubmittedAt(savedExpenseReport.submittedAt);
+                }
+                if (savedExpenseReport.approvedAt) {
+                  setReportApprovedAt(savedExpenseReport.approvedAt);
+                }
+                if (savedExpenseReport.currentApprovalStage) {
+                  setCurrentApprovalStage(savedExpenseReport.currentApprovalStage);
+                }
+                if (savedExpenseReport.currentApproverName) {
+                  setCurrentApproverName(savedExpenseReport.currentApproverName);
+                }
+              }
+            } catch (error) {
+              debugWarn('Could not parse expense report data:', error);
+            }
+          } else {
+            // No expense report exists for this month - clear checkbox states for new month
+            setEmployeeCertificationAcknowledged(false);
+            setSupervisorCertificationAcknowledged(false);
+            setSignatureImage(null);
+            setSupervisorSignatureState(null);
+            setCurrentReportId(null);
+            setReportStatus('draft');
+            setReportSubmittedAt(null);
+            setReportApprovedAt(null);
+            setCurrentApprovalStage(null);
+            setCurrentApproverName(null);
           }
           
           const currentMonthMileage = mileageEntries.filter((entry: any) => {
@@ -1121,10 +1149,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               drivingSummary = tripSegments.join(' ');
             }
             
-            // Concatenate daily description + driving summary
+            // Helper function to clean odometer readings from description
+            const cleanOdometerReadings = (text: string): string => {
+              if (!text) return text;
+              // Remove patterns like "Odometer: 123456" or "Odometer: 123456 to Odometer: 123789"
+              return text
+                .replace(/Odometer:\s*\d+/gi, '')
+                .replace(/\s+to\s+Odometer:\s*\d+/gi, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            };
+            
+            // Clean odometer readings from the description before using it
+            const cleanedUserDescription = dayDescription && dayDescription.description 
+              ? cleanOdometerReadings(dayDescription.description.trim())
+              : '';
+            
+            // Concatenate daily description + driving summary (NO odometer readings)
             let fullDescription = '';
-            if (dayDescription && dayDescription.description) {
-              fullDescription = dayDescription.description.trim();
+            if (cleanedUserDescription) {
+              fullDescription = cleanedUserDescription;
               if (drivingSummary) {
                 fullDescription += '\n\n' + drivingSummary;
               }
@@ -1137,15 +1181,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             // Calculate total miles for the day
             const totalDayMiles = dayMileageEntries.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0);
             
-            // Get first odometer start and last odometer end
-            const firstEntry = dayMileageEntries[0];
-            const lastEntry = dayMileageEntries[dayMileageEntries.length - 1];
+            // Get odometer start from first entry's odometerReading (this is the starting odometer for the day)
+            const firstEntry = dayMileageEntries.length > 0 ? dayMileageEntries[0] : null;
+            const lastEntry = dayMileageEntries.length > 0 ? dayMileageEntries[dayMileageEntries.length - 1] : null;
+            const odometerStart = firstEntry?.odometerReading || 0;
+            
+            // Calculate odometer end = start + total miles for the day
+            const odometerEnd = odometerStart + totalDayMiles;
             
             // Extract location information from first and last entries
-            const startLocation = firstEntry?.startLocation || '';
-            const startLocationName = firstEntry?.startLocationName || firstEntry?.startLocation || '';
-            const endLocation = lastEntry?.endLocation || '';
-            const endLocationName = lastEntry?.endLocationName || lastEntry?.endLocation || '';
+            // Prioritize startLocationName over startLocation, and skip startLocation if it contains "Odometer:"
+            const startLocationRaw = firstEntry?.startLocation || '';
+            const startLocationNameRaw = firstEntry?.startLocationName || '';
+            // Use startLocationName if available, otherwise use startLocation only if it doesn't contain "Odometer:"
+            const startLocationName = startLocationNameRaw || 
+              (startLocationRaw && !startLocationRaw.toLowerCase().includes('odometer:') ? startLocationRaw : '');
+            const startLocation = (startLocationRaw && !startLocationRaw.toLowerCase().includes('odometer:')) ? startLocationRaw : '';
+            
+            const endLocationRaw = lastEntry?.endLocation || '';
+            const endLocationNameRaw = lastEntry?.endLocationName || '';
+            // Use endLocationName if available, otherwise use endLocation only if it doesn't contain "Odometer:"
+            const endLocationName = endLocationNameRaw || 
+              (endLocationRaw && !endLocationRaw.toLowerCase().includes('odometer:') ? endLocationRaw : '');
+            const endLocation = (endLocationRaw && !endLocationRaw.toLowerCase().includes('odometer:')) ? endLocationRaw : '';
             
             // Get cost center from entries (prefer first entry's cost center, or use default)
             const costCenter = firstEntry?.costCenter || dayMileageEntries.find((e: any) => e.costCenter)?.costCenter || employee.defaultCostCenter || employee.costCenters?.[0] || '';
@@ -1228,8 +1286,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               description: fullDescription,
               hoursWorked: dayTimeTracking?.hours || 0,
               workingHours: dayTimeTracking?.hours || 0, // Set workingHours to match hoursWorked for existing data
-              odometerStart: Math.round(firstEntry?.odometerReading || 0),
-              odometerEnd: Math.round(lastEntry ? (lastEntry.odometerReading + lastEntry.miles) : 0),
+              odometerStart: Math.round(odometerStart),
+              odometerEnd: Math.round(odometerEnd),
               milesTraveled: Math.round(totalDayMiles),
               mileageAmount: totalDayMiles * 0.445,
               startLocation: startLocation,
@@ -1703,11 +1761,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Update existing description (but don't overwrite if it's a day off)
           if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
             updatedDailyDescriptions[existingDescIndex].description = editingValue;
+            updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
           }
         } else {
           // Remove existing description if it's empty (but not if it's a day off)
           if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
-            updatedDailyDescriptions.splice(existingDescIndex, 1);
+            updatedDailyDescriptions[existingDescIndex].description = '';
+            updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
           }
         }
       } else if (hasDescription) {
@@ -1717,12 +1777,57 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           employeeId: employeeData.employeeId,
           date: dateStr,
           description: editingValue,
+          costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        // Create empty description entry to mark that user explicitly cleared it
+        updatedDailyDescriptions.push({
+          id: `desc-${entry.day}`,
+          employeeId: employeeData.employeeId,
+          date: dateStr,
+          description: '',
+          costCenter: entry.costCenter || employeeData.costCenters[0] || '',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
       }
       
       setDailyDescriptions(updatedDailyDescriptions);
+      
+      // Save to backend immediately to prevent syncDescriptionToCostCenter from overwriting
+      try {
+        const descToSave = updatedDailyDescriptions.find((desc: any) => {
+          const descDateStr = normalizeDate(desc.date);
+          return descDateStr === dateStr;
+        });
+        
+        if (descToSave) {
+          const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              id: descToSave.id,
+              employeeId: descToSave.employeeId,
+              date: dateStr,
+              description: descToSave.description || '',
+              costCenter: descToSave.costCenter || '',
+              stayedOvernight: descToSave.stayedOvernight || false,
+              dayOff: descToSave.dayOff || false,
+              dayOffType: descToSave.dayOffType || null
+            })
+          });
+          
+          if (!response.ok) {
+            debugError('Error saving description:', response.status);
+          }
+        }
+      } catch (error) {
+        debugError('Error saving description to backend:', error);
+      }
     } else if (field === 'odometerStart') {
       const value = parseInt(editingValue) || 0;
       newEntries[row].odometerStart = value;
@@ -1807,6 +1912,49 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const handleTimesheetCellEdit = (costCenter: number, day: number, type: string, currentValue: any) => {
     setEditingTimesheetCell({ costCenter, day, type });
     setEditingTimesheetValue(currentValue.toString());
+  };
+
+  // Handle mileage entry save
+  const handleMileageEntrySave = async (formData: MileageEntryFormData) => {
+    if (!editingMileageEntry) return;
+    
+    try {
+      // Prepare the data for the backend, mapping startingOdometer to odometerReading
+      const backendData = {
+        ...formData,
+        odometerReading: formData.startingOdometer || 0
+      };
+      
+      // Update existing entry
+      const response = await fetch(`${API_BASE_URL}/api/mileage-entries/${editingMileageEntry.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backendData)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update mileage entry');
+      }
+      
+      // Reload mileage entries to refresh the display
+      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
+      if (mileageRes.ok) {
+        const mileageEntries = await mileageRes.json();
+        setRawMileageEntries(mileageEntries);
+      }
+      
+      // Trigger a refresh by updating a state that causes useEffect to re-run
+      // We'll use a simple approach: reload the page after a short delay to show success
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+      
+      setEditingMileageEntry(null);
+      setMileageFormOpen(false);
+    } catch (error) {
+      debugError('Error saving mileage entry:', error);
+      alert('Failed to update mileage entry. Please try again.');
+    }
   };
 
   // Save timesheet cell edit
@@ -3481,74 +3629,99 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
     }
 
-    // First, run completeness check automatically
-    let completenessReport: CompletenessReport;
-    try {
-      setLoading(true);
-      
-      debugLog('🔍 Running automatic completeness check before submission...');
-      completenessReport = await ReportCompletenessService.analyzeReportCompleteness(
-        employeeData.employeeId,
-        reportMonth,
-        reportYear
-      );
-      
-      debugLog('📊 Completeness check results:', {
-        score: completenessReport.overallScore,
-        isReady: completenessReport.isReadyForSubmission,
-        issuesCount: completenessReport.issues.length
-      });
-      
-      // Check if report is ready for submission
-      if (!completenessReport.isReadyForSubmission) {
-        const criticalIssues = completenessReport.issues.filter(issue => issue.severity === 'critical');
-        const highIssues = completenessReport.issues.filter(issue => issue.severity === 'high');
-        
-        let errorMessage = `❌ Report Not Ready for Submission\n\n`;
-        errorMessage += `Completeness Score: ${completenessReport.overallScore}/100\n\n`;
-        
-        if (criticalIssues.length > 0) {
-          errorMessage += `🚨 Critical Issues (${criticalIssues.length}):\n`;
-          criticalIssues.forEach(issue => {
-            errorMessage += `• ${issue.title}: ${issue.description}\n`;
-          });
-          errorMessage += `\n`;
-        }
-        
-        if (highIssues.length > 0) {
-          errorMessage += `⚠️ High Priority Issues (${highIssues.length}):\n`;
-          highIssues.forEach(issue => {
-            errorMessage += `• ${issue.title}: ${issue.description}\n`;
-          });
-          errorMessage += `\n`;
-        }
-        
-        errorMessage += `💡 Recommendations:\n`;
-        completenessReport.recommendations.forEach(rec => {
-          errorMessage += `• ${rec}\n`;
-        });
-        
-        errorMessage += `\nPlease fix these issues before submitting your report.`;
-        
-        alert(errorMessage);
-        setLoading(false);
-        return;
-      }
-      
-      // If we get here, the report passed completeness check
-      debugLog('✅ Report passed completeness check, proceeding with submission...');
-      
-    } catch (error) {
-      debugError('❌ Error running completeness check:', error);
-      alert('Error running completeness check. Please try again.');
-      setLoading(false);
+    // Open submission type dialog - actual submission will happen in handleSubmissionTypeSelected
+    setSubmissionTypeDialogOpen(true);
+  };
+
+  // Handle submission type selection from dialog
+  const handleSubmissionTypeSelected = async (isWeeklyCheckup: boolean) => {
+    setSubmissionTypeDialogOpen(false);
+    
+    if (!employeeData) {
       return;
     }
 
-    // Proceed with normal submission confirmation
-    const confirmSubmit = window.confirm(
-      `✅ Report Completeness Check Passed!\n\nCompleteness Score: ${completenessReport.overallScore}/100\n\nAre you sure you want to submit this expense report? Once submitted, you will not be able to make further edits.`
-    );
+    // Set loading state
+    setLoading(true);
+
+    // Only run completeness check for monthly submissions
+    let completenessReport: CompletenessReport | null = null;
+    if (!isWeeklyCheckup) {
+      // First, run completeness check automatically
+      try {
+        debugLog('🔍 Running automatic completeness check before submission...');
+        completenessReport = await ReportCompletenessService.analyzeReportCompleteness(
+          employeeData.employeeId,
+          reportMonth,
+          reportYear
+        );
+        
+        debugLog('📊 Completeness check results:', {
+          score: completenessReport.overallScore,
+          isReady: completenessReport.isReadyForSubmission,
+          issuesCount: completenessReport.issues.length
+        });
+        
+        // Check if report is ready for submission
+        if (!completenessReport.isReadyForSubmission) {
+          const criticalIssues = completenessReport.issues.filter(issue => issue.severity === 'critical');
+          const highIssues = completenessReport.issues.filter(issue => issue.severity === 'high');
+          
+          let errorMessage = `❌ Report Not Ready for Submission\n\n`;
+          errorMessage += `Completeness Score: ${completenessReport.overallScore}/100\n\n`;
+          
+          if (criticalIssues.length > 0) {
+            errorMessage += `🚨 Critical Issues (${criticalIssues.length}):\n`;
+            criticalIssues.forEach(issue => {
+              errorMessage += `• ${issue.title}: ${issue.description}\n`;
+            });
+            errorMessage += `\n`;
+          }
+          
+          if (highIssues.length > 0) {
+            errorMessage += `⚠️ High Priority Issues (${highIssues.length}):\n`;
+            highIssues.forEach(issue => {
+              errorMessage += `• ${issue.title}: ${issue.description}\n`;
+            });
+            errorMessage += `\n`;
+          }
+          
+          errorMessage += `💡 Recommendations:\n`;
+          completenessReport.recommendations.forEach(rec => {
+            errorMessage += `• ${rec}\n`;
+          });
+          
+          errorMessage += `\nPlease fix these issues before submitting your report.`;
+          
+          alert(errorMessage);
+          setLoading(false);
+          return;
+        }
+        
+        // If we get here, the report passed completeness check
+        debugLog('✅ Report passed completeness check, proceeding with submission...');
+        
+      } catch (error) {
+        debugError('❌ Error running completeness check:', error);
+        alert('Error running completeness check. Please try again.');
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Proceed with submission confirmation based on type
+    let confirmSubmit: boolean;
+    if (!isWeeklyCheckup && completenessReport) {
+      // Monthly submission with completeness check
+      confirmSubmit = window.confirm(
+        `✅ Report Completeness Check Passed!\n\nCompleteness Score: ${completenessReport.overallScore}/100\n\nAre you sure you want to submit this expense report? Once submitted, you will not be able to make further edits.`
+      );
+    } else {
+      // Weekly checkup - skip completeness check
+      confirmSubmit = window.confirm(
+        `📋 Weekly Checkup Submission\n\nThis report will be submitted for weekly review by your Regional Manager. Completeness check has been skipped.\n\nAre you sure you want to submit this weekly checkup?`
+      );
+    }
     
     if (!confirmSubmit) {
       setLoading(false);
@@ -3571,8 +3744,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           employeeId: employeeData.employeeId,
           month: currentMonth,
           year: currentYear,
-          reportData: reportData,
-          status: 'submitted'
+          reportData: {
+            ...reportData,
+            submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission'
+          },
+          status: 'submitted',
+          submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission'
         }),
       });
 
@@ -3633,16 +3810,32 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         fetchApprovalHistory(resolvedReportId);
 
         if (typeof showSuccess === 'function') {
-          showSuccess('Expense report submitted! Your supervisor has been notified.');
+          if (isWeeklyCheckup) {
+            showSuccess('Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+          } else {
+            showSuccess('Expense report submitted! Your supervisor has been notified.');
+          }
         } else {
-          alert('🎉 Expense report submitted successfully! It has been sent to your supervisor for review.');
+          if (isWeeklyCheckup) {
+            alert('✅ Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+          } else {
+            alert('🎉 Expense report submitted successfully! It has been sent to your supervisor for review.');
+          }
         }
       } else {
         setReportStatus('submitted');
         if (typeof showSuccess === 'function') {
-          showSuccess('Expense report submitted! Your supervisor has been notified.');
+          if (isWeeklyCheckup) {
+            showSuccess('Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+          } else {
+            showSuccess('Expense report submitted! Your supervisor has been notified.');
+          }
         } else {
-          alert('🎉 Expense report submitted successfully! It is now ready for supervisor review.');
+          if (isWeeklyCheckup) {
+            alert('✅ Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+          } else {
+            alert('🎉 Expense report submitted successfully! It is now ready for supervisor review.');
+          }
         }
       }
       
@@ -3652,6 +3845,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle canceling submission type selection
+  const handleSubmissionTypeCancel = () => {
+    setSubmissionTypeDialogOpen(false);
+    setLoading(false);
   };
 
   const handleCloseApprovalComment = () => {
@@ -4278,7 +4477,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       {/* Enhanced Tab Navigation - Now in header */}
 
-      <Dialog open={approvalCommentDialogOpen} onClose={handleCloseApprovalComment} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={approvalCommentDialogOpen} 
+        onClose={handleCloseApprovalComment} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>Send a Comment to Your Supervisor</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -5276,48 +5488,64 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>Miles</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>Mileage ($)</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Cost Center</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Actions</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {employeeData.dailyEntries.filter((entry: any) => entry.milesTraveled > 0).map((entry: any, index: number) => {
-                    // Check if any mileage entries for this date need revision
+                  {rawMileageEntries
+                    .filter((entry: any) => {
+                      const entryDate = new Date(entry.date);
+                      return entryDate.getMonth() === currentMonth - 1 && entryDate.getFullYear() === currentYear;
+                    })
+                    .map((entry: any) => {
+                      const mileageAmount = (entry.miles || 0) * 0.655; // Standard mileage rate
+                      const startLocation = entry.startLocationName || entry.startLocation || '';
+                      const endLocation = entry.endLocationName || entry.endLocation || '';
+                      
+                      return (
+                        <TableRow key={entry.id} sx={{ bgcolor: entry.needsRevision ? 'warning.light' : 'transparent' }}>
+                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                            {new Date(entry.date).toLocaleDateString()}
+                            {entry.needsRevision && (
+                              <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                            {startLocation.toLowerCase().includes('odometer:') ? (entry.startLocationName || 'N/A') : (startLocation || 'N/A')}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                            {endLocation.toLowerCase().includes('odometer:') ? (entry.endLocationName || 'N/A') : (endLocation || 'N/A')}
+                          </TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
+                            {Math.round(entry.miles || 0)}
+                          </TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
+                            ${mileageAmount.toFixed(2)}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                            {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
+                          </TableCell>
+                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setEditingMileageEntry(entry);
+                                setMileageFormOpen(true);
+                              }}
+                              sx={{ color: 'primary.main' }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  {rawMileageEntries.filter((entry: any) => {
                     const entryDate = new Date(entry.date);
-                    const needsRevision = rawMileageEntries.some((m: any) => {
-                      const mDate = new Date(m.date);
-                      return mDate.getUTCDate() === entryDate.getUTCDate() && 
-                             mDate.getUTCMonth() === entryDate.getUTCMonth() && 
-                             m.needsRevision;
-                    });
-                    
-                    return (
-                      <TableRow key={index} sx={{ bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
-                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.date}
-                          {needsRevision && (
-                            <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
-                          )}
-                        </TableCell>
-                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.startLocationName || entry.startLocation || 'N/A'}
-                        </TableCell>
-                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.endLocationName || entry.endLocation || 'N/A'}
-                        </TableCell>
-                        <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {Math.round(entry.milesTraveled)}
-                        </TableCell>
-                        <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                          ${entry.mileageAmount?.toFixed(2) || '0.00'}
-                        </TableCell>
-                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {employeeData.dailyEntries.filter((entry: any) => entry.milesTraveled > 0).length === 0 && (
+                    return entryDate.getMonth() === currentMonth - 1 && entryDate.getFullYear() === currentYear;
+                  }).length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
+                      <TableCell colSpan={7} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
                         <Typography variant="body2" color="textSecondary">
                           No mileage entries found. Use the mobile app or Data Entry tab to add mileage.
                         </Typography>
@@ -5331,11 +5559,51 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             <Box sx={{ mt: 3, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
               <Typography variant="body2">
                 <strong>💡 Tip:</strong> Mileage entries are created in the mobile app when you track your trips. 
-                The Data Entry tab can also be used to manually add or edit mileage entries.
+                Click the edit icon to modify any entry.
               </Typography>
             </Box>
           </CardContent>
         </Card>
+        
+        {/* Mileage Entry Edit Form */}
+        {editingMileageEntry && employeeData && (
+          <MileageEntryForm
+            open={mileageFormOpen}
+            onClose={() => {
+              setMileageFormOpen(false);
+              setEditingMileageEntry(null);
+            }}
+            onSave={handleMileageEntrySave}
+            employee={{
+              id: employeeData.employeeId,
+              name: employeeData.name,
+              email: '', // Not needed for form
+              password: '', // Not needed for form
+              oxfordHouseId: '',
+              position: '',
+              phoneNumber: '',
+              baseAddress: '',
+              defaultCostCenter: employeeData.costCenters[0] || '',
+              selectedCostCenters: employeeData.costCenters || [],
+              costCenters: employeeData.costCenters || []
+            } as any}
+            initialData={{
+              id: editingMileageEntry.id,
+              employeeId: editingMileageEntry.employeeId || employeeData.employeeId,
+              date: new Date(editingMileageEntry.date).toISOString().split('T')[0],
+              startLocation: editingMileageEntry.startLocation || editingMileageEntry.startLocationName || '',
+              endLocation: editingMileageEntry.endLocation || editingMileageEntry.endLocationName || '',
+              purpose: editingMileageEntry.purpose || '',
+              miles: editingMileageEntry.miles || 0,
+              startingOdometer: editingMileageEntry.odometerReading || 0,
+              notes: editingMileageEntry.notes || '',
+              hoursWorked: editingMileageEntry.hoursWorked || 0,
+              isGpsTracked: editingMileageEntry.isGpsTracked || false,
+              costCenter: editingMileageEntry.costCenter || employeeData.costCenters[0] || ''
+            }}
+            mode="edit"
+          />
+        )}
       </TabPanel>
 
       {/* Daily Descriptions Tab */}
@@ -5458,40 +5726,68 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 
                                 setDailyDescriptions(newDescriptions);
                                 
-                                // Also update the corresponding entry in dailyEntries (for cost center screen)
-                                syncDescriptionToCostCenter(descToSave, new Date(entry.date));
-                                
-                                // Save to backend
+                                // Save to backend first (debounced to avoid too many calls)
                                 const dateToSave = normalizeDate(descToSave.date);
-                                const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({
-                                    id: descToSave.id,
-                                    employeeId: descToSave.employeeId,
-                                    date: dateToSave,
-                                    description: descToSave.description || '',
-                                    costCenter: descToSave.costCenter || '',
-                                    stayedOvernight: descToSave.stayedOvernight || false,
-                                    dayOff: descToSave.dayOff || false,
-                                    dayOffType: descToSave.dayOffType || null
-                                  })
-                                });
                                 
-                                if (!response.ok) {
-                                  const errorText = await response.text();
-                                  debugError('Error saving description:', response.status, errorText);
-                                }
+                                // Use a timeout to debounce the save and sync
+                                setTimeout(async () => {
+                                  try {
+                                    const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+                                      method: 'POST',
+                                      headers: {
+                                        'Content-Type': 'application/json',
+                                      },
+                                      body: JSON.stringify({
+                                        id: descToSave.id,
+                                        employeeId: descToSave.employeeId,
+                                        date: dateToSave,
+                                        description: descToSave.description || '',
+                                        costCenter: descToSave.costCenter || '',
+                                        stayedOvernight: descToSave.stayedOvernight || false,
+                                        dayOff: descToSave.dayOff || false,
+                                        dayOffType: descToSave.dayOffType || null
+                                      })
+                                    });
+                                    
+                                    if (!response.ok) {
+                                      const errorText = await response.text();
+                                      debugError('Error saving description:', response.status, errorText);
+                                    } else {
+                                      // Only sync to cost center screen AFTER successful save
+                                      // This prevents duplication from multiple onChange calls
+                                      syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                    }
+                                  } catch (error) {
+                                    debugError('Error saving description:', error);
+                                  }
+                                }, 500); // 500ms debounce
                               } catch (error) {
                                 debugError('Error saving description:', error);
                               }
                             }}
                             fullWidth
                             multiline
-                            rows={2}
+                            minRows={1}
+                            maxRows={15}
                             size="small"
+                            sx={{
+                              '& .MuiInputBase-root': {
+                                alignItems: 'flex-start',
+                                minHeight: 'auto',
+                              },
+                              '& .MuiInputBase-input': {
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                overflowWrap: 'break-word',
+                                padding: '8px !important',
+                                lineHeight: 1.5,
+                                minHeight: 'auto',
+                              },
+                              '& .MuiInputBase-inputMultiline': {
+                                overflow: 'auto',
+                                resize: 'vertical',
+                              }
+                            }}
                             placeholder={dayDescription?.dayOff ? `${dayDescription?.dayOffType || 'Day Off'}` : "Describe daily activities (e.g., 'Meetings, phone calls, site visits')"}
                             disabled={isAdminView || dayDescription?.dayOff}
                           />
@@ -5536,10 +5832,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 
                                 setDailyDescriptions(newDescriptions);
                                 
-                                // Also update the corresponding entry in dailyEntries (for cost center screen)
-                                syncDescriptionToCostCenter(descToSave, new Date(entry.date));
-                                
-                                // Save to backend
+                                // Save to backend first
                                 const dateToSave = normalizeDate(descToSave.date);
                                 const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
                                   method: 'POST',
@@ -5561,6 +5854,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 if (!response.ok) {
                                   const errorText = await response.text();
                                   debugError('Error saving stayed overnight status:', response.status, errorText);
+                                } else {
+                                  // Only sync to cost center screen AFTER successful save
+                                  syncDescriptionToCostCenter(descToSave, new Date(entry.date));
                                 }
                               } catch (error) {
                                 debugError('Error saving stayed overnight status:', error);
@@ -5897,12 +6193,32 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             onChange={(e) => setEditingValue(e.target.value)}
                             onBlur={handleCellSave}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleCellSave();
-                              if (e.key === 'Escape') handleTimesheetCellCancel();
+                              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                // Ctrl+Enter or Cmd+Enter to save
+                                handleCellSave();
+                              } else if (e.key === 'Escape') {
+                                handleTimesheetCellCancel();
+                              }
+                              // Allow Enter to create new lines
                             }}
                             autoFocus
-                            size="small"
+                            multiline
+                            minRows={6}
+                            maxRows={20}
                             fullWidth
+                            sx={{
+                              '& .MuiInputBase-root': {
+                                minHeight: '150px',
+                                alignItems: 'flex-start',
+                                paddingTop: '8px',
+                              },
+                              '& .MuiInputBase-input': {
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                overflowWrap: 'break-word',
+                                lineHeight: '1.5',
+                              }
+                            }}
                           />
                         ) : (
                           <Box 
@@ -6799,7 +7115,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             );
                           }
                           // Construct proper backend URL for the image
-                          const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+                          const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
                           const path = raw.startsWith('/uploads')
                             ? raw
                             : (raw.startsWith('uploads')
@@ -6922,7 +7238,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       </TabPanel>
 
       {/* Signature Dialog */}
-      <Dialog open={signatureDialogOpen} onClose={() => setSignatureDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={signatureDialogOpen} 
+        onClose={() => setSignatureDialogOpen(false)} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>Signature Capture</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -7026,7 +7355,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       </Dialog>
 
       {/* Supervisor Signature Dialog */}
-      <Dialog open={supervisorSignatureDialogOpen} onClose={() => setSupervisorSignatureDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={supervisorSignatureDialogOpen} 
+        onClose={() => setSupervisorSignatureDialogOpen(false)} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>Supervisor Signature Capture</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -7117,7 +7459,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       </Dialog>
 
       {/* Receipt Dialog */}
-      <Dialog open={receiptDialogOpen} onClose={() => setReceiptDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={receiptDialogOpen} 
+        onClose={() => setReceiptDialogOpen(false)} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>{editingReceipt ? 'Edit Receipt' : 'Add Receipt'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -7448,7 +7803,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       </Dialog>
 
       {/* All Reports Dialog */}
-      <Dialog open={reportsDialogOpen} onClose={() => setReportsDialogOpen(false)} maxWidth="lg" fullWidth>
+      <Dialog 
+        open={reportsDialogOpen} 
+        onClose={() => setReportsDialogOpen(false)} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6" component="div">All Submitted Reports</Typography>
@@ -7717,6 +8085,68 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCompletenessDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Submission Type Selection Dialog */}
+      <Dialog 
+        open={submissionTypeDialogOpen} 
+        onClose={handleSubmissionTypeCancel}
+        maxWidth={false}
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+        fullWidth
+      >
+        <DialogTitle>
+          <Typography variant="h6" component="div">Select Submission Type</Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Please select the type of submission:
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                📅 Monthly Submission
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                Full expense report submission with completeness check. This is the standard monthly submission.
+              </Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                onClick={() => handleSubmissionTypeSelected(false)}
+              >
+                Submit Monthly Report
+              </Button>
+            </Box>
+            <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                📋 Weekly Check-up
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                Submit for weekly review by your Regional Manager. Completeness check will be skipped.
+              </Typography>
+              <Button
+                variant="outlined"
+                color="primary"
+                fullWidth
+                onClick={() => handleSubmissionTypeSelected(true)}
+              >
+                Submit Weekly Check-up
+              </Button>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleSubmissionTypeCancel}>Cancel</Button>
         </DialogActions>
       </Dialog>
 

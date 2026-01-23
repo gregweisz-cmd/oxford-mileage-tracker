@@ -79,7 +79,7 @@ export const PerDiemRulesManagement: React.FC<PerDiemRulesManagementProps> = ({ 
   const loadPerDiemRules = useCallback(async () => {
     try {
       setLoading(true);
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
       const response = await fetch(`${apiUrl}/api/per-diem-rules`);
       if (!response.ok) {
         throw new Error('Failed to load per diem rules');
@@ -154,7 +154,7 @@ export const PerDiemRulesManagement: React.FC<PerDiemRulesManagementProps> = ({ 
         minDistanceFromBase: Number(formData.minDistanceFromBase)
       };
 
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
       const response = await fetch(`${apiUrl}/api/per-diem-rules`, {
         method: 'POST',
         headers: {
@@ -183,7 +183,7 @@ export const PerDiemRulesManagement: React.FC<PerDiemRulesManagementProps> = ({ 
     }
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
       const response = await fetch(`${apiUrl}/api/per-diem-rules/${ruleId}`, {
         method: 'DELETE',
       });

@@ -20,7 +20,7 @@ interface CostCenterCreateData {
 export class CostCenterApiService {
   private static baseUrl = process.env.REACT_APP_API_URL 
     ? `${process.env.REACT_APP_API_URL}/api`
-    : 'http://localhost:3002/api';
+    : 'https://oxford-mileage-backend.onrender.com/api';
 
   static async getAllCostCenters(): Promise<CostCenter[]> {
     const response = await fetch(`${this.baseUrl}/cost-centers`, {

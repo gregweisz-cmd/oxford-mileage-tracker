@@ -44,11 +44,12 @@ export const WebPortalSyncTester: React.FC = () => {
     setError(null);
     
     try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
       const [employeesRes, mileageRes, receiptsRes, timeRes] = await Promise.all([
-        fetch('http://localhost:3002/api/employees'),
-        fetch('http://localhost:3002/api/mileage-entries'),
-        fetch('http://localhost:3002/api/receipts'),
-        fetch('http://localhost:3002/api/time-tracking')
+        fetch(`${apiUrl}/api/employees`),
+        fetch(`${apiUrl}/api/mileage-entries`),
+        fetch(`${apiUrl}/api/receipts`),
+        fetch(`${apiUrl}/api/time-tracking`)
       ]);
 
       if (!employeesRes.ok || !mileageRes.ok || !receiptsRes.ok || !timeRes.ok) {
@@ -84,7 +85,8 @@ export const WebPortalSyncTester: React.FC = () => {
     setSuccess(null);
     
     try {
-      const response = await fetch('http://localhost:3002/api/stats');
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+      const response = await fetch(`${apiUrl}/api/stats`);
       
       if (!response.ok) {
         throw new Error(`Backend not responding: ${response.status}`);
@@ -117,7 +119,8 @@ export const WebPortalSyncTester: React.FC = () => {
         costCenters: ['WEB-TEST']
       };
 
-      const response = await fetch('http://localhost:3002/api/employees', {
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+      const response = await fetch(`${apiUrl}/api/employees`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(testEmployee)

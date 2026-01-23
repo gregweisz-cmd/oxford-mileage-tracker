@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Image } from 'react-native';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
 
@@ -222,13 +223,17 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       
       <WrapperComponent {...wrapperProps}>
         <ScrollView contentContainerStyle={styles.scrollContainer}>
         {/* Header */}
         <View style={styles.header}>
-          <MaterialIcons name="work" size={80} color="#fff" />
+          <Image 
+            source={require('../../assets/oxford-house-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>Oxford House Expense Tracker</Text>
           <Text style={styles.subtitle}>Employee Login</Text>
         </View>
@@ -363,24 +368,30 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    backgroundColor: '#2196F3',
+    backgroundColor: '#E6E6E6',
     paddingTop: 60,
     paddingBottom: 40,
     paddingHorizontal: 20,
     alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#D6D6D6',
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 10,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: '600',
+    color: '#1C75BC',
     marginTop: 20,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#fff',
+    color: '#6CA6D9',
     marginTop: 8,
-    opacity: 0.9,
   },
   formContainer: {
     flex: 1,

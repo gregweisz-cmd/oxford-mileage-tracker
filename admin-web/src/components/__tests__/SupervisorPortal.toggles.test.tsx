@@ -48,7 +48,7 @@ jest.mock('../../StaffPortal', () => ({
 
 const mockFetch = jest.fn();
 
-describe('SupervisorPortal dashboard toggles', () => {
+describe('SupervisorPortal dashboard', () => {
   beforeAll(() => {
     global.fetch = mockFetch as unknown as typeof fetch;
   });
@@ -80,66 +80,12 @@ describe('SupervisorPortal dashboard toggles', () => {
     cleanup();
   });
 
-  it('toggles dashboard widgets visibility and persists preference', async () => {
+  it('always shows supervisor dashboard', async () => {
     render(<SupervisorPortal supervisorId="super-1" supervisorName="Sam Supervisor" />);
 
-    const widgetsToggle = await screen.findByLabelText('Show widgets');
-    const dashboardToggle = await screen.findByLabelText('Show supervisor dashboard');
-
-    expect(widgetsToggle).toBeChecked();
-    expect(dashboardToggle).toBeChecked();
-
-    await waitFor(() => expect(mockDashboardStatistics).toHaveBeenCalled());
     await waitFor(() => expect(mockSupervisorDashboard).toHaveBeenCalled());
     await waitFor(() => expect(mockSupervisorDashboardMounts).toBe(1));
-    expect(screen.getByLabelText('Show supervisor dashboard')).toBeChecked();
-    expect(screen.getByLabelText('Show widgets')).toBeChecked();
     expect(screen.getByTestId('supervisor-dashboard')).toBeInTheDocument();
-
-    fireEvent.click(widgetsToggle);
-
-    await waitFor(() => expect(widgetsToggle).not.toBeChecked());
-    await waitFor(() =>
-      expect(window.localStorage.getItem('supervisorPortal.showDashboardWidgets')).toBe('false')
-    );
-    await waitFor(() => {
-      const lastCall = mockSupervisorDashboard.mock.calls[mockSupervisorDashboard.mock.calls.length - 1];
-      expect(lastCall[0].showKpiCards).toBe(false);
-    });
-    expect(screen.getByTestId('supervisor-dashboard')).toBeInTheDocument();
-
-    fireEvent.click(dashboardToggle);
-
-    await waitFor(() => expect(dashboardToggle).not.toBeChecked());
-    await waitFor(() =>
-      expect(window.localStorage.getItem('supervisorPortal.showSupervisorDashboard')).toBe('false')
-    );
-    await waitFor(() => expect(mockSupervisorDashboardUnmounts).toBe(1));
-    await waitFor(() => expect(screen.queryByTestId('supervisor-dashboard')).not.toBeInTheDocument());
-  });
-
-  it('initializes toggle state from stored preferences', async () => {
-    window.localStorage.setItem('supervisorPortal.showDashboardWidgets', 'false');
-    window.localStorage.setItem('supervisorPortal.showSupervisorDashboard', 'false');
-
-    render(<SupervisorPortal supervisorId="super-2" supervisorName="Stacey Supervisor" />);
-
-    const widgetsToggle = await screen.findByLabelText('Show widgets');
-    const dashboardToggle = await screen.findByLabelText('Show supervisor dashboard');
-
-    expect(widgetsToggle).not.toBeChecked();
-    expect(dashboardToggle).not.toBeChecked();
-    await waitFor(() =>
-      expect(window.localStorage.getItem('supervisorPortal.showDashboardWidgets')).toBe('false')
-    );
-    await waitFor(() =>
-      expect(window.localStorage.getItem('supervisorPortal.showSupervisorDashboard')).toBe('false')
-    );
-    expect(mockDashboardStatistics).not.toHaveBeenCalled();
-    expect(mockSupervisorDashboard).not.toHaveBeenCalled();
-    expect(mockSupervisorDashboardMounts).toBe(0);
-    expect(mockSupervisorDashboardUnmounts).toBe(0);
-    expect(screen.queryByTestId('supervisor-dashboard')).not.toBeInTheDocument();
   });
 });
 

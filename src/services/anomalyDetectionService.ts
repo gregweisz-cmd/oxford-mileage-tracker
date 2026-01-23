@@ -116,11 +116,11 @@ export class AnomalyDetectionService {
         results.push(tripMileageResult);
       }
       
-      // Check duplicate trip anomaly
-      const duplicateResult = await this.checkDuplicateTripAnomaly(employeeId, newEntry);
-      if (duplicateResult.isAnomaly) {
-        results.push(duplicateResult);
-      }
+      // Check duplicate trip anomaly - DISABLED per user request
+      // const duplicateResult = await this.checkDuplicateTripAnomaly(employeeId, newEntry);
+      // if (duplicateResult.isAnomaly) {
+      //   results.push(duplicateResult);
+      // }
       
       // Check unusual route anomaly
       const routeResult = this.checkUnusualRouteAnomaly(newEntry, baseline);
@@ -515,26 +515,45 @@ export class AnomalyDetectionService {
       }
       
       // Check for trips that are suspiciously similar but not exact duplicates
+      // This check is now much stricter - only flags true duplicates
       const suspiciousTrips = recent.filter(entry => {
         const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
         const newEntryDate = newEntry.date instanceof Date ? newEntry.date : new Date(newEntry.date);
         const sameDate = entryDate.toDateString() === newEntryDate.toDateString();
-        const sameRoute = entry.startLocation === newEntry.startLocation && 
-                         entry.endLocation === newEntry.endLocation;
-        const similarMiles = Math.abs(entry.miles - newEntry.miles) < 5;
+        
+        // Must have exact same route (check both location fields)
+        const sameStartLocation = (entry.startLocation === newEntry.startLocation) ||
+                                  (entry.startLocationName === newEntry.startLocationName);
+        const sameEndLocation = (entry.endLocation === newEntry.endLocation) ||
+                               (entry.endLocationName === newEntry.endLocationName);
+        const sameRoute = sameStartLocation && sameEndLocation;
+        
+        // Must have very similar miles (within 1 mile, not 5)
+        const similarMiles = Math.abs(entry.miles - newEntry.miles) < 1;
+        
+        // Must have same purpose
         const samePurpose = entry.purpose === newEntry.purpose;
         
-        return sameDate && sameRoute && similarMiles && samePurpose;
+        // Must be created within a short time window (30 minutes)
+        let withinShortTime = true;
+        if (entry.createdAt && newEntry.createdAt) {
+          const entryTime = entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
+          const newEntryTime = newEntry.createdAt instanceof Date ? newEntry.createdAt : new Date(newEntry.createdAt);
+          const timeDiff = Math.abs(entryTime.getTime() - newEntryTime.getTime());
+          withinShortTime = timeDiff < 30 * 60 * 1000; // Within 30 minutes
+        }
+        
+        return sameDate && sameRoute && similarMiles && samePurpose && withinShortTime;
       });
       
-      // Flag if we find 1+ suspicious trips (could be accidental duplicate)
-      // Only warn if there's actually a different trip, not just the one we created
+      // Only flag if we find 1+ suspicious trips that meet ALL strict criteria
+      // This should only catch true duplicates, not just similar trips
       if (suspiciousTrips.length >= 1) {
         return {
           isAnomaly: true,
-          confidence: 0.6,
-          reason: `Similar trip found on ${newEntry.date.toLocaleDateString()}: ${suspiciousTrips[0].miles.toFixed(1)} miles`,
-          severity: 'low',
+          confidence: 0.8,
+          reason: `Potential duplicate entry detected on ${newEntry.date.toLocaleDateString()}: ${suspiciousTrips[0].miles.toFixed(1)} miles`,
+          severity: 'medium',
           suggestedAction: 'Verify this is not a duplicate entry'
         };
       }

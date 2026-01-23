@@ -52,9 +52,22 @@ const DEFAULT_DESCRIPTION_TEMPLATES = [
   'Workshop'
 ];
 
+// AsyncStorage keys for persisting description templates and recent descriptions
 const DESCRIPTION_TEMPLATES_KEY = '@description_templates';
 const RECENT_DESCRIPTIONS_KEY = '@recent_descriptions';
 
+/**
+ * Daily Hours Screen Component
+ * 
+ * Unified screen for managing daily hours worked and descriptions.
+ * Features:
+ * - View/edit hours for each day of the month
+ * - Add/edit daily descriptions
+ * - Day off selection with type dropdown
+ * - Quick description menu with templates
+ * - Scroll position preservation after editing
+ * - Auto-sync on save
+ */
 export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -72,15 +85,20 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const [descriptionTemplates, setDescriptionTemplates] = useState<string[]>(DEFAULT_DESCRIPTION_TEMPLATES);
   const [recentDescriptions, setRecentDescriptions] = useState<string[]>([]);
   
+  // Refs for scroll position management
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef<number>(0);
   const selectedDayIndexRef = useRef<number>(-1);
 
+  // Load data when month changes
   useEffect(() => {
     loadData();
     loadDescriptionTemplates();
   }, [currentMonth]);
 
+  /**
+   * Loads description templates and recent descriptions from AsyncStorage
+   */
   const loadDescriptionTemplates = async () => {
     try {
       // Load custom templates
@@ -94,13 +112,20 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       const recentJson = await AsyncStorage.getItem(RECENT_DESCRIPTIONS_KEY);
       if (recentJson) {
         const recent = JSON.parse(recentJson);
-        setRecentDescriptions(recent.slice(0, 10)); // Keep last 10
+        setRecentDescriptions(recent.slice(0, 10)); // Keep last 10 recent descriptions
       }
     } catch (error) {
-      console.error('Error loading description templates:', error);
+      // Silently fail - templates are optional
+      if (__DEV__) {
+        console.error('Error loading description templates:', error);
+      }
     }
   };
 
+  /**
+   * Saves a description to the recent descriptions list
+   * @param description - Description text to save
+   */
   const saveRecentDescription = async (description: string) => {
     if (!description.trim()) return;
     
@@ -113,15 +138,22 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       }
       // Add to front
       recent.unshift(description);
-      // Keep only last 10
+      // Keep only last 10 recent descriptions
       const limited = recent.slice(0, 10);
       setRecentDescriptions(limited);
       await AsyncStorage.setItem(RECENT_DESCRIPTIONS_KEY, JSON.stringify(limited));
     } catch (error) {
-      console.error('Error saving recent description:', error);
+      // Silently fail - recent descriptions are optional
+      if (__DEV__) {
+        console.error('Error saving recent description:', error);
+      }
     }
   };
 
+  /**
+   * Saves a custom description template
+   * @param template - Template text to save
+   */
   const saveCustomTemplate = async (template: string) => {
     if (!template.trim()) return;
     
@@ -136,10 +168,16 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         setDescriptionTemplates([...DEFAULT_DESCRIPTION_TEMPLATES, ...customTemplates]);
       }
     } catch (error) {
-      console.error('Error saving custom template:', error);
+      // Silently fail - custom templates are optional
+      if (__DEV__) {
+        console.error('Error saving custom template:', error);
+      }
     }
   };
 
+  /**
+   * Loads employee data and month data for the current month
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -149,13 +187,14 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       const employee = await DatabaseService.getCurrentEmployee();
       
       if (!employee) {
-        console.error('❌ DailyHoursScreen: No current employee found');
+        Alert.alert('Error', 'No employee data found. Please log in again.');
         setLoading(false);
         return;
       }
       
       setCurrentEmployee(employee);
       
+      // Load unified data (hours + descriptions) for the current month
       const monthData = await UnifiedDataService.getMonthData(
         employee.id,
         currentMonth.getMonth() + 1,
@@ -165,7 +204,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       setDaysWithData(monthData);
       
     } catch (error) {
-      console.error('❌ DailyHoursScreen: Error loading data:', error);
+      Alert.alert('Error', 'Failed to load data. Please try again.');
+      if (__DEV__) {
+        console.error('DailyHoursScreen: Error loading data:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -297,11 +339,16 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           });
         }
       } catch (error) {
-        console.error('⚠️ Error auto-syncing:', error);
+        // Auto-sync errors are non-critical, log only in dev mode
+        if (__DEV__) {
+          console.error('Error auto-syncing:', error);
+        }
       }
       
     } catch (error) {
-      console.error('❌ DailyHoursScreen: Error saving:', error);
+      if (__DEV__) {
+        console.error('DailyHoursScreen: Error saving:', error);
+      }
       Alert.alert('Error', 'Failed to save data');
     }
   };

@@ -38,7 +38,7 @@ export class ReportCompletenessService {
       // Get all data for the month from the backend API
       debugLog('🔍 ReportCompleteness: Fetching data from APIs...');
       
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
       const [mileageResponse, receiptsResponse, timeTrackingResponse, employeeResponse, expenseReportResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${month}&year=${year}`),
         fetch(`${API_BASE_URL}/api/receipts?employeeId=${employeeId}&month=${month}&year=${year}`),
@@ -101,9 +101,9 @@ export class ReportCompletenessService {
       issues.push(...this.checkMissingOdometerReadings(mileageEntries));
       issues.push(...this.checkIncompleteCostCenterHours(timeTracking, employee));
       issues.push(...this.checkMissingReceipts(mileageEntries, receipts));
-      issues.push(...this.checkReceiptImages(receipts)); // NEW: Check that all receipts have images (mandatory)
-      issues.push(...this.checkEmployeeSignatureAndAcknowledgment(reportData)); // NEW: Check employee signature and checkbox (mandatory)
-      issues.push(...this.checkSupervisorSignatureAndAcknowledgment(reportData)); // NEW: Check supervisor signature and checkbox (mandatory)
+      issues.push(...this.checkReceiptImages(receipts, month, year)); // Check that all receipts have images (mandatory), exclude Per Diem
+      issues.push(...this.checkEmployeeSignatureAndAcknowledgment(reportData)); // Check employee signature and checkbox (mandatory)
+      issues.push(...this.checkSupervisorSignatureAndAcknowledgment(reportData, employee)); // Check supervisor signature and checkbox (mandatory, only if employee is supervisor)
       issues.push(...this.checkUnusualGaps(mileageEntries, timeTracking));
       issues.push(...this.checkMissingWorkDays(mileageEntries, timeTracking, month, year));
       issues.push(...this.checkBurnoutPrevention(timeTracking, month, year));
@@ -217,6 +217,7 @@ export class ReportCompletenessService {
   
   /**
    * Check for incomplete cost center hours
+   * Only checks "Working Hours" or "Regular Hours" - other categories (Holiday, PTO, STD/LTD, PFL/PFML, G&A) don't need cost centers
    */
   private static checkIncompleteCostCenterHours(
     timeTracking: TimeTracking[], 
@@ -225,41 +226,59 @@ export class ReportCompletenessService {
     const issues: CompletenessIssue[] = [];
     
     if (!employee.costCenters || employee.costCenters.length === 0) {
-      return issues;
+      return issues; // No cost centers assigned, skip check
     }
+    
+    // Categories that don't require cost center assignment
+    const nonCostCenterCategories = ['Holiday', 'PTO', 'STD/LTD', 'PFL/PFML', 'G&A', 'Holiday Hours', 'PTO Hours', 'STD/LTD Hours', 'PFL/PFML Hours', 'G&A Hours'];
     
     // Group time tracking by date
     const timeByDate = this.groupTimeTrackingByDate(timeTracking);
     
     Object.entries(timeByDate).forEach(([dateStr, entries]) => {
-      const totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
-      const costCenterHours = entries
-        .filter(entry => employee.costCenters?.includes(entry.category))
-        .reduce((sum, entry) => sum + entry.hours, 0);
+      // Filter to only "Working Hours" or "Regular Hours" entries (these need cost centers)
+      const workingHoursEntries = entries.filter(entry => {
+        const category = entry.category || '';
+        return category === 'Working Hours' || category === 'Regular Hours';
+      });
       
-      // Check if cost center hours are missing
-      if (costCenterHours === 0 && totalHours > 0) {
+      if (workingHoursEntries.length === 0) {
+        return; // No working hours entries, skip check
+      }
+      
+      const totalWorkingHours = workingHoursEntries.reduce((sum, entry) => sum + entry.hours, 0);
+      
+      // Check if entries have costCenter assigned (not category in costCenters list)
+      const entriesWithCostCenter = workingHoursEntries.filter(entry => 
+        entry.costCenter && entry.costCenter.trim() !== '' && 
+        employee.costCenters?.includes(entry.costCenter)
+      );
+      
+      const costCenterHours = entriesWithCostCenter.reduce((sum, entry) => sum + entry.hours, 0);
+      
+      // Check if cost center hours are missing for working hours
+      if (costCenterHours === 0 && totalWorkingHours > 0) {
         issues.push({
           id: `missing-cost-center-${dateStr}`,
           type: 'incomplete_hours',
           severity: 'high',
           title: 'Missing Cost Center Hours',
-          description: `${totalHours} hours logged but no cost center hours specified`,
-          suggestion: 'Add cost center hours for proper expense allocation',
+          description: `${totalWorkingHours} working hours logged but no cost center assigned`,
+          suggestion: 'Assign a cost center to working hours entries for proper expense allocation',
           date: new Date(dateStr),
           category: 'Cost Center Hours'
         });
       }
       
-      // Check if cost center hours seem incomplete
-      if (costCenterHours > 0 && costCenterHours < totalHours * 0.5) {
+      // Check if cost center hours seem incomplete (less than 50% of working hours)
+      if (costCenterHours > 0 && costCenterHours < totalWorkingHours * 0.5) {
         issues.push({
           id: `incomplete-cost-center-${dateStr}`,
           type: 'incomplete_hours',
           severity: 'medium',
           title: 'Incomplete Cost Center Hours',
-          description: `Only ${costCenterHours} of ${totalHours} hours allocated to cost centers`,
-          suggestion: 'Consider allocating more hours to cost centers',
+          description: `Only ${costCenterHours} of ${totalWorkingHours} working hours allocated to cost centers`,
+          suggestion: 'Consider allocating more working hours to cost centers',
           date: new Date(dateStr),
           category: 'Cost Center Hours'
         });
@@ -271,6 +290,7 @@ export class ReportCompletenessService {
   
   /**
    * Check for missing receipts for expenses
+   * Excludes Per Diem receipts as they are not mandatory
    */
   private static checkMissingReceipts(
     mileageEntries: MileageEntry[], 
@@ -283,7 +303,10 @@ export class ReportCompletenessService {
     const receiptsByDate = this.groupReceiptsByDate(receipts);
     
     Object.entries(entriesByDate).forEach(([dateStr, entries]) => {
-      const dayReceipts = receiptsByDate[dateStr] || [];
+      // Filter out Per Diem receipts (they are not mandatory)
+      const dayReceipts = (receiptsByDate[dateStr] || []).filter(receipt => 
+        !receipt.category || receipt.category.toLowerCase() !== 'per diem'
+      );
       const totalMileage = entries.reduce((sum, entry) => sum + entry.miles, 0);
       const totalReceiptAmount = dayReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
       
@@ -321,16 +344,40 @@ export class ReportCompletenessService {
   
   /**
    * Check that all receipts have images (mandatory requirement)
+   * Excludes Per Diem receipts as they are not mandatory
    */
-  private static checkReceiptImages(receipts: Receipt[]): CompletenessIssue[] {
+  private static checkReceiptImages(receipts: Receipt[], month: number, year: number): CompletenessIssue[] {
     const issues: CompletenessIssue[] = [];
     
     if (receipts.length === 0) {
       return issues; // No receipts to check
     }
     
+    // Filter to only receipts for the current month/year and exclude Per Diem
+    const relevantReceipts = receipts.filter(receipt => {
+      const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
+      const receiptMonth = receiptDate.getMonth() + 1;
+      const receiptYear = receiptDate.getFullYear();
+      
+      // Only check receipts for the current month/year
+      if (receiptMonth !== month || receiptYear !== year) {
+        return false;
+      }
+      
+      // Exclude Per Diem receipts (they are not mandatory)
+      if (receipt.category && receipt.category.toLowerCase() === 'per diem') {
+        return false;
+      }
+      
+      return true;
+    });
+    
+    if (relevantReceipts.length === 0) {
+      return issues; // No relevant receipts to check
+    }
+    
     // Find receipts without images
-    const receiptsWithoutImages = receipts.filter(receipt => 
+    const receiptsWithoutImages = relevantReceipts.filter(receipt => 
       !receipt.imageUri || receipt.imageUri.trim() === ''
     );
     
@@ -417,17 +464,25 @@ export class ReportCompletenessService {
   }
   
   /**
-   * Check that supervisor has signed and acknowledged certification (mandatory requirement if supervisor mode)
+   * Check that supervisor has signed and acknowledged certification (mandatory requirement only if employee is a supervisor)
    */
-  private static checkSupervisorSignatureAndAcknowledgment(reportData: any): CompletenessIssue[] {
+  private static checkSupervisorSignatureAndAcknowledgment(reportData: any, employee: Employee): CompletenessIssue[] {
     const issues: CompletenessIssue[] = [];
+    
+    // Only check supervisor requirements if the employee is actually a supervisor
+    // Check both role and position to determine if they are a supervisor
+    const isSupervisor = employee.role?.toLowerCase() === 'supervisor' || 
+                         employee.position?.toLowerCase().includes('supervisor') ||
+                         employee.position?.toLowerCase().includes('director') ||
+                         employee.position?.toLowerCase().includes('manager');
+    
+    if (!isSupervisor) {
+      // Employee is not a supervisor, so supervisor certification is not required
+      return issues;
+    }
     
     const supervisorSignature = reportData.supervisorSignature;
     const supervisorCertificationAcknowledged = reportData.supervisorCertificationAcknowledged;
-    
-    // Note: Supervisor signature and acknowledgment are mandatory if the report requires supervisor approval
-    // For now, we'll check if supervisorCertificationAcknowledged exists - if it's set, then it's required
-    // This allows for reports that may not require supervisor approval yet
     
     // If supervisor acknowledgment is expected but missing
     if (supervisorCertificationAcknowledged !== undefined && !supervisorCertificationAcknowledged) {

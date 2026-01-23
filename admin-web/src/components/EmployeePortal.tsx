@@ -678,7 +678,20 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
 
 
       {/* Advanced Template Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={uploadDialogOpen} 
+        onClose={() => setUploadDialogOpen(false)} 
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto',
+          }
+        }}
+      >
         <DialogTitle>Upload Advanced Template</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" paragraph>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -33,6 +34,17 @@ interface PerDiemEntry {
   imageUri?: string;
 }
 
+/**
+ * Per Diem Screen Component
+ * 
+ * Dedicated screen for managing per diem entries with:
+ * - Monthly per diem limit tracking
+ * - Day-by-day eligibility selection
+ * - Amount entry with limit enforcement
+ * - Optional receipt attachment
+ * - Monthly summary with progress bar
+ * - Navigation to add receipt screen
+ */
 export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -43,18 +55,35 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [monthlyLimit, setMonthlyLimit] = useState(350);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  // Reload data when month changes
   useEffect(() => {
     loadData();
   }, [currentMonth]);
+  
+  // Reload data when screen comes into focus (to sync with dashboard)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData();
+    }, [currentMonth])
+  );
 
+  /**
+   * Loads per diem data for the current month including:
+   * - Employee information
+   * - Per diem rules and limits
+   * - Existing per diem entries
+   * - Monthly totals and statistics
+   */
   const loadData = async () => {
     try {
       setLoading(true);
       
       const employee = await DatabaseService.getCurrentEmployee();
       if (!employee) {
-        console.error('❌ PerDiemScreen: No current employee found');
+        Alert.alert('Error', 'No employee data found. Please log in again.');
         setLoading(false);
         return;
       }
@@ -126,24 +155,29 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       
       setPerDiemEntries(entriesMap);
       
-      // Recalculate monthly total after loading entries
-      const currentTotal = Array.from(entriesMap.values())
-        .filter(e => e.isEligible)
-        .reduce((sum, e) => sum + e.amount, 0);
-      setMonthlyTotal(currentTotal);
+      // Recalculate monthly total from actual receipts (not from entries map)
+      // This ensures consistency with dashboard
+      const actualTotal = perDiemReceipts.reduce((sum, r) => sum + r.amount, 0);
+      setMonthlyTotal(actualTotal);
+      
+      // Reset unsaved changes flag when data is loaded
+      setHasUnsavedChanges(false);
       
     } catch (error) {
-      console.error('❌ PerDiemScreen: Error loading data:', error);
+      Alert.alert('Error', 'Failed to load per diem data. Please try again.');
+      if (__DEV__) {
+        console.error('PerDiemScreen: Error loading data:', error);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleToggleEligible = async (dateKey: string) => {
+  const handleToggleEligible = (dateKey: string) => {
     const entry = perDiemEntries.get(dateKey);
     if (!entry) return;
     
-    // If enabling, check if we would exceed monthly limit
+    // If enabling, check if we would exceed monthly limit (based on current state)
     if (!entry.isEligible) {
       const currentTotal = Array.from(perDiemEntries.values())
         .filter(e => e.isEligible)
@@ -165,18 +199,17 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       isEligible: !entry.isEligible,
     };
     
+    // Update state immediately for responsive UI (no save yet)
     const newMap = new Map(perDiemEntries);
     newMap.set(dateKey, updatedEntry);
     setPerDiemEntries(newMap);
+    setHasUnsavedChanges(true);
     
-    // Update monthly total
-    const newTotal = Array.from(newMap.values())
+    // Update monthly total preview (not from database, just from state)
+    const previewTotal = Array.from(newMap.values())
       .filter(e => e.isEligible)
       .reduce((sum, e) => sum + e.amount, 0);
-    setMonthlyTotal(newTotal);
-    
-    // Auto-save
-    await savePerDiemEntry(updatedEntry);
+    setMonthlyTotal(previewTotal);
   };
 
   const handleAmountChange = (dateKey: string, amount: string) => {
@@ -208,12 +241,13 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     const newMap = new Map(perDiemEntries);
     newMap.set(dateKey, updatedEntry);
     setPerDiemEntries(newMap);
+    setHasUnsavedChanges(true);
     
-    // Update monthly total
-    const newMonthlyTotal = Array.from(newMap.values())
+    // Update monthly total preview (not from database, just from state)
+    const previewTotal = Array.from(newMap.values())
       .filter(e => e.isEligible)
       .reduce((sum, e) => sum + e.amount, 0);
-    setMonthlyTotal(newMonthlyTotal);
+    setMonthlyTotal(previewTotal);
   };
 
   const handleImagePicker = async (dateKey: string) => {
@@ -243,60 +277,153 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       const newMap = new Map(perDiemEntries);
       newMap.set(dateKey, updatedEntry);
       setPerDiemEntries(newMap);
+      setHasUnsavedChanges(true);
       
-      // Save with image
-      await savePerDiemEntry(updatedEntry, result.assets[0].uri);
+      // Note: Image will be saved when user clicks Save button
+    }
+  };
+
+  const handleSaveAll = async () => {
+    if (!currentEmployee || !hasUnsavedChanges) return;
+    
+    try {
+      setSaving(true);
+      
+      // Save all entries (only eligible ones will create/update receipts)
+      const entriesToSave = Array.from(perDiemEntries.values());
+      
+      for (const entry of entriesToSave) {
+        // Only save if eligible (creates/updates receipt) or if not eligible but has receiptId (needs deletion)
+        if (entry.isEligible || entry.receiptId) {
+          await savePerDiemEntry(entry, entry.imageUri);
+        }
+      }
+      
+      // Sync all receipts to backend at once
+      const allReceipts = await DatabaseService.getReceipts(
+        currentEmployee.id,
+        currentMonth.getMonth() + 1,
+        currentMonth.getFullYear()
+      );
+      const perDiemReceipts = allReceipts.filter(r => r.category === 'Per Diem');
+      await ApiSyncService.syncToBackend({ receipts: perDiemReceipts });
+      
+      // Recalculate monthly total from actual receipts
+      const newTotal = perDiemReceipts.reduce((sum, r) => sum + r.amount, 0);
+      setMonthlyTotal(newTotal);
+      
+      // Reload data to ensure sync and reset unsaved changes flag
+      await loadData();
+      
+      Alert.alert('Success', 'Per diem entries saved successfully');
+      
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save per diem entries. Please try again.');
+      if (__DEV__) {
+        console.error('Error saving all per diem entries:', error);
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   const savePerDiemEntry = async (entry: PerDiemEntry, imageUri?: string) => {
-    if (!currentEmployee || !entry.isEligible) return;
+    if (!currentEmployee) return;
     
     try {
-      // Check if receipt already exists
-      if (entry.receiptId) {
-        // Update existing receipt
-        const existingReceipt = await DatabaseService.getReceipt(entry.receiptId);
+      // If entry is not eligible, delete the receipt if it exists
+      if (!entry.isEligible) {
+        if (entry.receiptId) {
+          await DatabaseService.deleteReceipt(entry.receiptId);
+        }
+        
+        // Update the entry to ensure it's marked as not eligible and remove receiptId
+        const newMap = new Map(perDiemEntries);
+        const updatedEntry = {
+          ...entry,
+          isEligible: false,
+          receiptId: undefined,
+          imageUri: undefined,
+        };
+        newMap.set(entry.date.toISOString().split('T')[0], updatedEntry);
+        setPerDiemEntries(newMap);
+      } else {
+        // Entry is eligible - create or update receipt
+        // Check if receipt already exists for this date
+        const receipts = await DatabaseService.getReceipts(
+          currentEmployee.id,
+          entry.date.getMonth() + 1,
+          entry.date.getFullYear()
+        );
+        const existingReceipt = receipts.find(r => {
+          if (r.category !== 'Per Diem') return false;
+          const receiptDate = new Date(r.date);
+          return receiptDate.getDate() === entry.date.getDate() &&
+                 receiptDate.getMonth() === entry.date.getMonth() &&
+                 receiptDate.getFullYear() === entry.date.getFullYear();
+        });
+        
         if (existingReceipt) {
-          await DatabaseService.updateReceipt(entry.receiptId, {
+          // Update existing receipt
+          await DatabaseService.updateReceipt(existingReceipt.id, {
             amount: entry.amount,
             date: entry.date,
             imageUri: imageUri || entry.imageUri || existingReceipt.imageUri,
           });
+          
+          // Update entry with receiptId
+          const newMap = new Map(perDiemEntries);
+          const updatedEntry = {
+            ...entry,
+            receiptId: existingReceipt.id,
+            imageUri: imageUri || entry.imageUri || existingReceipt.imageUri,
+          };
+          newMap.set(entry.date.toISOString().split('T')[0], updatedEntry);
+          setPerDiemEntries(newMap);
+        } else {
+          // Create new receipt
+          const receipt: Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'> = {
+            employeeId: currentEmployee.id,
+            date: entry.date,
+            amount: entry.amount,
+            vendor: 'Per Diem',
+            category: 'Per Diem',
+            description: 'Per Diem',
+            imageUri: imageUri || entry.imageUri || '',
+          };
+          
+          const newReceipt = await DatabaseService.createReceipt(receipt);
+          
+          // Update entry with new receiptId
+          const newMap = new Map(perDiemEntries);
+          const updatedEntry = {
+            ...entry,
+            receiptId: newReceipt.id,
+            imageUri: imageUri || entry.imageUri || '',
+          };
+          newMap.set(entry.date.toISOString().split('T')[0], updatedEntry);
+          setPerDiemEntries(newMap);
         }
-      } else {
-        // Create new receipt
-        const receipt: Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'> = {
-          employeeId: currentEmployee.id,
-          date: entry.date,
-          amount: entry.amount,
-          vendor: 'Per Diem',
-          category: 'Per Diem',
-          description: 'Per Diem',
-          imageUri: imageUri || entry.imageUri || '',
-        };
-        
-        await DatabaseService.createReceipt(receipt);
       }
       
       // Sync to backend
-      const receipts = await DatabaseService.getReceipts(
+      const allReceipts = await DatabaseService.getReceipts(
         currentEmployee.id,
         entry.date.getMonth() + 1,
         entry.date.getFullYear()
       );
-      const perDiemReceipts = receipts.filter(r => r.category === 'Per Diem');
+      const perDiemReceipts = allReceipts.filter(r => r.category === 'Per Diem');
       await ApiSyncService.syncToBackend({ receipts: perDiemReceipts });
       
-      // Recalculate monthly total
-      const newTotal = Array.from(perDiemEntries.values())
-        .filter(e => e.isEligible)
-        .reduce((sum, e) => sum + e.amount, 0);
+      // Recalculate monthly total from actual receipts
+      const newTotal = perDiemReceipts.reduce((sum, r) => sum + r.amount, 0);
       setMonthlyTotal(newTotal);
       
     } catch (error) {
-      console.error('❌ Error saving per diem entry:', error);
       Alert.alert('Error', 'Failed to save per diem entry');
+      if (__DEV__) {
+        console.error('Error saving per diem entry:', error);
+      }
     }
   };
 
@@ -334,15 +461,19 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
               );
               await ApiSyncService.syncToBackend({ receipts });
               
-              // Recalculate monthly total
-              const newTotal = Array.from(newMap.values())
-                .filter(e => e.isEligible)
-                .reduce((sum, e) => sum + e.amount, 0);
+              // Recalculate monthly total from actual receipts
+              const perDiemReceipts = receipts.filter(r => r.category === 'Per Diem');
+              const newTotal = perDiemReceipts.reduce((sum, r) => sum + r.amount, 0);
               setMonthlyTotal(newTotal);
               
+              // Reload data to ensure sync
+              await loadData();
+              
             } catch (error) {
-              console.error('❌ Error deleting per diem:', error);
               Alert.alert('Error', 'Failed to delete per diem entry');
+              if (__DEV__) {
+                console.error('Error deleting per diem:', error);
+              }
             }
           }
         }
@@ -512,7 +643,6 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
                       value={perDiemEntry.amount.toString()}
                       onChangeText={(text) => handleAmountChange(dateKey, text)}
                       keyboardType="numeric"
-                      onBlur={() => savePerDiemEntry(perDiemEntry)}
                     />
                   </View>
                   
@@ -543,6 +673,22 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           );
         })}
       </ScrollView>
+
+      {/* Floating Save Button */}
+      {hasUnsavedChanges && (
+        <View style={styles.saveButtonContainer}>
+          <TouchableOpacity
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            onPress={handleSaveAll}
+            disabled={saving}
+          >
+            <MaterialIcons name="save" size={20} color="#fff" />
+            <Text style={styles.saveButtonText}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -759,6 +905,38 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addReceiptText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveButtonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    gap: 8,
+    minWidth: 200,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#999',
+    opacity: 0.7,
+  },
+  saveButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

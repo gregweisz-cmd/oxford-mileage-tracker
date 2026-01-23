@@ -30,7 +30,7 @@ export interface BulkOperationResult {
 export class EmployeeApiService {
   private static baseUrl = process.env.REACT_APP_API_URL 
     ? `${process.env.REACT_APP_API_URL}/api`
-    : 'http://localhost:3002/api';
+    : 'https://oxford-mileage-backend.onrender.com/api';
 
   static async getAllEmployees(skipCache: boolean = false): Promise<Employee[]> {
     const url = skipCache 

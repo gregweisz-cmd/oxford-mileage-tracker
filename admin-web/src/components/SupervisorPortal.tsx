@@ -28,8 +28,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Switch,
-  FormControlLabel,
   Tabs,
   Tab,
   Badge,
@@ -85,7 +83,7 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 // Debug logging
 import { debugError, debugLog } from '../config/debug';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 interface SupervisorPortalProps {
   supervisorId: string;
@@ -215,15 +213,6 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [viewingReportYear, setViewingReportYear] = useState<number | null>(new Date().getFullYear());
   const [showEmployeeReportView, setShowEmployeeReportView] = useState(false);
 
-  // Widgets removed - only show in Finance portal
-  const [showSupervisorDashboard, setShowSupervisorDashboard] = useState<boolean>(() => {
-    if (typeof window === 'undefined') {
-      return true;
-    }
-    const stored = window.localStorage.getItem('supervisorPortal.showSupervisorDashboard');
-    return stored !== 'false';
-  });
-
   // Loading states
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState(false);
@@ -237,16 +226,6 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const currentEmployee = useMemo(() => ({ id: supervisorId, name: supervisorName }), [supervisorId, supervisorName]);
 
   // Widget toggle removed
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(
-        'supervisorPortal.showSupervisorDashboard',
-        showSupervisorDashboard ? 'true' : 'false'
-      );
-    }
-  }, [showSupervisorDashboard]);
-
 
   const loadTeamMembers = useCallback(async () => {
     try {
@@ -1016,18 +995,6 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
             </Box>
           </Box>
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showSupervisorDashboard}
-                    onChange={(_, checked) => setShowSupervisorDashboard(checked)}
-                    color="primary"
-                  />
-                }
-                label="Show supervisor dashboard"
-              />
-            </Box>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               {/* Notification Bell */}
               <NotificationBell 
@@ -1086,9 +1053,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           {/* Approvals Tab */}
           {activeTab === 0 && (
             <Box sx={{ p: 3 }}>
-              {showSupervisorDashboard && (
-                <SupervisorDashboard currentEmployee={currentEmployee} showKpiCards={false} />
-              )}
+              <SupervisorDashboard currentEmployee={currentEmployee} showKpiCards={false} />
             </Box>
           )}
 

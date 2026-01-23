@@ -169,7 +169,7 @@ export interface ReportingTrends {
 
 const baseUrl = process.env.REACT_APP_API_URL
   ? `${process.env.REACT_APP_API_URL}/api/admin/reporting`
-  : 'http://localhost:3002/api/admin/reporting';
+  : 'https://oxford-mileage-backend.onrender.com/api/admin/reporting';
 
 export async function fetchReportsAnalyticsOverview(
   filters: ReportsAnalyticsFilters

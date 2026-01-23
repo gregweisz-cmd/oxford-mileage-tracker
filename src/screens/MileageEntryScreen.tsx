@@ -705,107 +705,77 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           entryYear
         );
         
-        const duplicateCheck = await DuplicateDetectionService.checkForDuplicate(
-          entryData,
-          recentEntries
-        );
+        // Duplicate check disabled per user request
+        // Save normally (duplicate check disabled)
+        await DatabaseService.createMileageEntry(entryData);
         
-        if (duplicateCheck.isDuplicate && duplicateCheck.matchingEntry) {
-          // Show duplicate warning
-          Alert.alert(
-            '🔍 Possible Duplicate Detected',
-            `${duplicateCheck.reason}\n\nExisting trip:\n• ${duplicateCheck.matchingEntry.startLocation} to ${duplicateCheck.matchingEntry.endLocation}\n• ${duplicateCheck.matchingEntry.miles} miles\n• ${duplicateCheck.matchingEntry.purpose}\n\nDo you want to save this as a separate trip?`,
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-              },
-              {
-                text: 'Save Anyway',
-                onPress: async () => {
-                  await DatabaseService.createMileageEntry(entryData);
-                  
-                  // Note: Auto-sync service will handle syncing to backend automatically
-                  console.log('✅ Mileage entry saved locally (duplicate override), auto-sync will handle backend');
-                  
-                  Alert.alert('Success', 'Mileage entry created successfully');
-                  navigation.goBack();
-                },
-              },
-            ]
+        // Note: Auto-sync service will handle syncing to backend automatically
+        console.log('✅ Mileage entry saved locally, auto-sync will handle backend');
+        
+        // Run anomaly detection BEFORE showing success alert
+        let anomalyMessage = '';
+        try {
+          console.log('🔍 Running anomaly detection for new entry...');
+          const anomalies = await AnomalyDetectionService.detectMileageAnomaly(
+            currentEmployee.id,
+            entryData as MileageEntry
           );
-        } else {
-          // No duplicate, save normally
-          await DatabaseService.createMileageEntry(entryData);
           
-          // Note: Auto-sync service will handle syncing to backend automatically
-          console.log('✅ Mileage entry saved locally, auto-sync will handle backend');
-          
-          // Run anomaly detection BEFORE showing success alert
-          let anomalyMessage = '';
-          try {
-            console.log('🔍 Running anomaly detection for new entry...');
-            const anomalies = await AnomalyDetectionService.detectMileageAnomaly(
+          if (anomalies.length > 0) {
+            console.log('🚨 Anomalies detected:', anomalies.length);
+            const alerts = AnomalyDetectionService.generateAlerts(
               currentEmployee.id,
-              entryData as MileageEntry
+              anomalies,
+              'mileage'
             );
             
-            if (anomalies.length > 0) {
-              console.log('🚨 Anomalies detected:', anomalies.length);
-              const alerts = AnomalyDetectionService.generateAlerts(
-                currentEmployee.id,
-                anomalies,
-                'mileage'
-              );
-              
-              // Build anomaly message for the success alert
-              anomalyMessage = '\n\n⚠️ Smart Alert:\n' + alerts.map(alert => `• ${alert.message}`).join('\n');
-              
-              // Also show the detailed anomaly alert
-              showAnomalyAlert(anomalies, 'Mileage');
-            } else {
-              console.log('✅ No anomalies detected');
-            }
-          } catch (error) {
-            console.error('❌ Error running anomaly detection:', error);
+            // Build anomaly message for the success alert
+            anomalyMessage = '\n\n⚠️ Smart Alert:\n' + alerts.map(alert => `• ${alert.message}`).join('\n');
+            
+            // Also show the detailed anomaly alert
+            showAnomalyAlert(anomalies, 'Mileage');
+          } else {
+            console.log('✅ No anomalies detected');
           }
-          
-          // Remember the date for smart defaulting
-          setLastSavedDate(formData.date);
-          
-          // Show success alert with anomaly info (if any)
-          Alert.alert(
-            'Success',
-            `Mileage entry created successfully${anomalyMessage}`,
-            [
-              { text: 'Done', onPress: () => navigation.goBack() },
-              {
-                text: 'Add Another',
-                onPress: () => {
-                  // Calculate ending odometer for next trip
-                  const lastOdometer = Number(formData.odometerReading) || 0;
-                  const lastMiles = Number(formData.miles) || 0;
-                  const nextOdometer = lastOdometer + lastMiles;
-                  
-                  // Reset form but keep date and use last ending location as new start
-                  setFormData({
-                    date: formData.date, // Keep same date
-                    odometerReading: nextOdometer > 0 ? nextOdometer.toString() : '',
-                    startLocation: formData.endLocation, // Previous end becomes new start!
-                    endLocation: '',
-                    purpose: '',
-                    miles: '',
-                    notes: '',
-                    isGpsTracked: false,
-                  });
-                  // Previous end location details become new start location details
-                  setStartLocationDetails(endLocationDetails);
-                  setEndLocationDetails(null);
-                },
-              },
-            ]
-          );
+        } catch (error) {
+          console.error('❌ Error running anomaly detection:', error);
         }
+        
+        // Remember the date for smart defaulting
+        setLastSavedDate(formData.date);
+        
+        // Show success alert with anomaly info (if any)
+        Alert.alert(
+          'Success',
+          `Mileage entry created successfully${anomalyMessage}`,
+          [
+            { text: 'Done', onPress: () => navigation.goBack() },
+            {
+              text: 'Add Another',
+              onPress: () => {
+                // Calculate ending odometer for next trip
+                const lastOdometer = Number(formData.odometerReading) || 0;
+                const lastMiles = Number(formData.miles) || 0;
+                const nextOdometer = lastOdometer + lastMiles;
+                
+                // Reset form but keep date and use last ending location as new start
+                setFormData({
+                  date: formData.date, // Keep same date
+                  odometerReading: nextOdometer > 0 ? nextOdometer.toString() : '',
+                  startLocation: formData.endLocation, // Previous end becomes new start!
+                  endLocation: '',
+                  purpose: '',
+                  miles: '',
+                  notes: '',
+                  isGpsTracked: false,
+                });
+                // Previous end location details become new start location details
+                setStartLocationDetails(endLocationDetails);
+                setEndLocationDetails(null);
+              },
+            },
+          ]
+        );
       }
     } catch (error) {
       console.error('Error saving entry:', error);
