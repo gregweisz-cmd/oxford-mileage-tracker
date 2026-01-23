@@ -249,6 +249,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   }, [supervisorMode, onApproveReport, onRequestRevision]);
 
+  // Get effective employeeId from props or localStorage (for dependency tracking)
+  // This must be declared early so it can be used in callbacks and effects
+  const effectiveEmployeeId = React.useMemo(() => {
+    return employeeId || localStorage.getItem('currentEmployeeId') || '';
+  }, [employeeId]);
+
   // Use state for current month/year so users can change them
   const [currentMonth, setCurrentMonth] = useState(reportMonth);
   const [currentYear, setCurrentYear] = useState(reportYear);
@@ -902,11 +908,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                     'July', 'August', 'September', 'October', 'November', 'December'];
   const monthName = monthNames[currentMonth - 1];
-
-  // Get effective employeeId from props or localStorage (for dependency tracking)
-  const effectiveEmployeeId = React.useMemo(() => {
-    return employeeId || localStorage.getItem('currentEmployeeId') || '';
-  }, [employeeId]);
 
   // Load employee data based on props
   useEffect(() => {
