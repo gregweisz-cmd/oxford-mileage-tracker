@@ -1477,6 +1477,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               : [];
           }
           
+          // Calculate category hours for status indicators (gaHours, holidayHours, ptoHours)
+          const gaHours = currentMonthTimeTracking
+            .filter((t: any) => t.category === 'G&A' || t.category === 'G&a')
+            .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
+          const holidayHours = currentMonthTimeTracking
+            .filter((t: any) => t.category === 'Holiday')
+            .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
+          const ptoHours = currentMonthTimeTracking
+            .filter((t: any) => t.category === 'PTO')
+            .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
+          
+          // Set fields required for status indicators
+          (expenseData as any).gaHours = gaHours;
+          (expenseData as any).holidayHours = holidayHours;
+          (expenseData as any).ptoHours = ptoHours;
+          (expenseData as any).receipts = currentMonthReceipts;
+          // Set employeeSignature from saved expense report or signature state
+          (expenseData as any).employeeSignature = savedExpenseReport?.reportData?.signatureImage || signatureImage || employee.signature || null;
+          
           setEmployeeData(expenseData);
           setReceipts(currentMonthReceipts.map((receipt: any) => ({
             id: receipt.id,
@@ -1893,6 +1912,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       newEntries[row].perDiem = Math.max(0, newEntries[row].perDiem - excess);
     }
     
+    // Calculate category hours for status indicators from rawTimeEntries
+    const currentMonthTimeTracking = rawTimeEntries.filter((t: any) => {
+      const trackingDate = new Date(t.date);
+      const trackingMonth = trackingDate.getUTCMonth() + 1;
+      const trackingYear = trackingDate.getUTCFullYear();
+      return trackingMonth === currentMonth && trackingYear === currentYear;
+    });
+    
+    const gaHours = currentMonthTimeTracking
+      .filter((t: any) => t.category === 'G&A' || t.category === 'G&a')
+      .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
+    const holidayHours = currentMonthTimeTracking
+      .filter((t: any) => t.category === 'Holiday')
+      .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
+    const ptoHours = currentMonthTimeTracking
+      .filter((t: any) => t.category === 'PTO')
+      .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
+    
     // Update totals
     const updatedData = {
       ...employeeData,
@@ -1902,6 +1939,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       totalMiles: newEntries.reduce((sum, entry) => sum + entry.milesTraveled, 0),
       perDiem: Math.min(newEntries.reduce((sum, entry) => sum + entry.perDiem, 0), 350)
     };
+    
+    // Set status indicator fields
+    (updatedData as any).gaHours = gaHours;
+    (updatedData as any).holidayHours = holidayHours;
+    (updatedData as any).ptoHours = ptoHours;
+    (updatedData as any).receipts = receipts;
+    (updatedData as any).employeeSignature = signatureImage;
     
     setEmployeeData(updatedData);
     setEditingCell(null);
@@ -2500,6 +2544,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           try {
             await syncReportData({ employeeSignature: result });
             
+            // Update employeeData for status indicator
+            setEmployeeData({ ...employeeData, employeeSignature: result } as any);
+            
             debugVerbose('✅ Signature upload synced to expense report');
             
             // Also save to user settings in the backend
@@ -2570,6 +2617,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (employeeData) {
       try {
         await syncReportData({ employeeSignature: null });
+        
+        // Update employeeData for status indicator
+        setEmployeeData({ ...employeeData, employeeSignature: null } as any);
         
         debugVerbose('✅ Signature removal synced to expense report');
         setSignatureDialogOpen(false);
