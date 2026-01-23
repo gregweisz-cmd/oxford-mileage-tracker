@@ -1497,7 +1497,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           (expenseData as any).employeeSignature = savedExpenseReport?.reportData?.signatureImage || signatureImage || employee.signature || null;
           
           setEmployeeData(expenseData);
-          setReceipts(currentMonthReceipts.map((receipt: any) => ({
+          const formattedReceipts = currentMonthReceipts.map((receipt: any) => ({
             id: receipt.id,
             date: new Date(receipt.date).toLocaleDateString('en-US', { 
               month: '2-digit', 
@@ -1509,7 +1509,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             description: receipt.description,
             category: receipt.category,
             imageUri: receipt.imageUri
-          })));
+          }));
+          setReceipts(formattedReceipts);
+          
+          // Also set receipts on expenseData for status indicator
+          (expenseData as any).receipts = currentMonthReceipts;
           setDailyDescriptions(dailyDescriptions);
           
           // Load signature from employee data
