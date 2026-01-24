@@ -3409,7 +3409,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     subtotalX += colWidths[3]; // Move to Odometer End column (empty)
     subtotalX += colWidths[4]; // Move to Miles column
     
-    pdf.text(totalMiles.toString(), subtotalX, tableY);
+    pdf.text(Math.round(totalMiles).toString(), subtotalX, tableY);
     subtotalX += colWidths[5]; // Move to Mileage ($) column
     
     pdf.text(`$${totalMileageAmount.toFixed(2)}`, subtotalX, tableY);
