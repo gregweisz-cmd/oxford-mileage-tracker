@@ -1328,7 +1328,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }));
           
           // Calculate totals from real data
-          const totalMiles = currentMonthMileage.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0);
+          const totalMiles = Math.round(currentMonthMileage.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0));
           const totalMileageAmount = totalMiles * 0.445;
           const totalReceipts = currentMonthReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
           const totalHours = currentMonthTimeTracking.reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
@@ -1950,7 +1950,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       dailyEntries: newEntries,
       totalMileageAmount: newEntries.reduce((sum, entry) => sum + entry.mileageAmount, 0),
       totalHours: newEntries.reduce((sum, entry) => sum + entry.hoursWorked, 0),
-      totalMiles: newEntries.reduce((sum, entry) => sum + entry.milesTraveled, 0),
+      totalMiles: Math.round(newEntries.reduce((sum, entry) => sum + entry.milesTraveled, 0)),
       perDiem: Math.min(newEntries.reduce((sum, entry) => sum + entry.perDiem, 0), 350)
     };
     
@@ -3355,7 +3355,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       dataX += colWidths[4];
       
       // Miles Traveled
-      const milesTraveled = entry?.milesTraveled || 0;
+      const milesTraveled = Math.round(entry?.milesTraveled || 0);
       pdf.text(milesTraveled.toString(), dataX, tableY);
       dataX += colWidths[5];
       
@@ -6729,7 +6729,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           </Box>
                         )}
                       </TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{entry.milesTraveled || 0}</TableCell>
+                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{Math.round(entry.milesTraveled || 0)}</TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${entry.mileageAmount.toFixed(2)}</TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
                         {editingCell?.row === index && editingCell?.field === 'perDiem' ? (
