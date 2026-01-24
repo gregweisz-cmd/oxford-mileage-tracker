@@ -343,6 +343,116 @@ async function deleteExpenseReports(employeeId) {
 }
 
 /**
+ * Delete all weekly reports for employee
+ */
+async function deleteWeeklyReports(employeeId) {
+  try {
+    log('  Fetching weekly reports...', 'step');
+    const response = await makeRequest('GET', `/api/weekly-reports?employeeId=${employeeId}`);
+    const reports = response.data || [];
+    log(`  Found ${reports.length} weekly reports`, 'info');
+    
+    if (reports.length === 0) {
+      return { deleted: 0, failed: 0 };
+    }
+    
+    let deleted = 0;
+    let failed = 0;
+    
+    for (const report of reports) {
+      if (dryRun) {
+        log(`    Would delete: ${report.id} (Week ${report.weekNumber}/${report.year})`, 'info');
+        deleted++;
+      } else {
+        try {
+          await makeRequest('DELETE', `/api/weekly-reports/${report.id}`);
+          deleted++;
+        } catch (error) {
+          log(`    Failed to delete ${report.id}: ${error.error || error.message}`, 'error');
+          failed++;
+        }
+      }
+    }
+    
+    return { deleted, failed };
+  } catch (error) {
+    log(`  Error deleting weekly reports: ${error.error || error.message}`, 'error');
+    return { deleted: 0, failed: 0 };
+  }
+}
+
+/**
+ * Delete all biweekly reports for employee
+ */
+async function deleteBiweeklyReports(employeeId) {
+  try {
+    log('  Fetching biweekly reports...', 'step');
+    const response = await makeRequest('GET', `/api/biweekly-reports?employeeId=${employeeId}`);
+    const reports = response.data || [];
+    log(`  Found ${reports.length} biweekly reports`, 'info');
+    
+    if (reports.length === 0) {
+      return { deleted: 0, failed: 0 };
+    }
+    
+    let deleted = 0;
+    let failed = 0;
+    
+    for (const report of reports) {
+      if (dryRun) {
+        log(`    Would delete: ${report.id} (Period ${report.periodNumber}/${report.month}/${report.year})`, 'info');
+        deleted++;
+      } else {
+        try {
+          await makeRequest('DELETE', `/api/biweekly-reports/${report.id}`);
+          deleted++;
+        } catch (error) {
+          log(`    Failed to delete ${report.id}: ${error.error || error.message}`, 'error');
+          failed++;
+        }
+      }
+    }
+    
+    return { deleted, failed };
+  } catch (error) {
+    log(`  Error deleting biweekly reports: ${error.error || error.message}`, 'error');
+    return { deleted: 0, failed: 0 };
+  }
+}
+
+/**
+ * Clear employee signature and certification data
+ */
+async function clearEmployeeSignature(employeeId) {
+  try {
+    log('  Clearing employee signature and certification data...', 'step');
+    
+    if (dryRun) {
+      log('    Would clear signature and certification data', 'info');
+      return { cleared: true };
+    } else {
+      // Get current employee data
+      const employeeResponse = await makeRequest('GET', `/api/employees/${employeeId}`);
+      if (!employeeResponse.data) {
+        log('    Employee not found', 'warning');
+        return { cleared: false };
+      }
+      
+      // Update employee to clear signature
+      await makeRequest('PUT', `/api/employees/${employeeId}`, {
+        signature: null
+      });
+      
+      log('    ✅ Cleared signature data', 'success');
+      return { cleared: true };
+    }
+  } catch (error) {
+    log(`  Error clearing signature: ${error.error || error.message}`, 'error');
+    return { cleared: false };
+  }
+}
+
+/**
  * Main function to clear all data
  */
 async function clearGregWeiszData() {
@@ -379,7 +489,10 @@ async function clearGregWeiszData() {
     receipts: { deleted: 0, failed: 0 },
     timeTracking: { deleted: 0, failed: 0 },
     dailyDescriptions: { deleted: 0, failed: 0 },
-    expenseReports: { deleted: 0, failed: 0 }
+    expenseReports: { deleted: 0, failed: 0 },
+    weeklyReports: { deleted: 0, failed: 0 },
+    biweeklyReports: { deleted: 0, failed: 0 },
+    signature: { cleared: false }
   };
 
   // Delete mileage entries
@@ -417,9 +530,36 @@ async function clearGregWeiszData() {
       results.expenseReports.failed > 0 ? 'error' : 'success');
   log('', 'info');
 
+  // Delete weekly reports
+  log('📅 Weekly Reports:', 'step');
+  results.weeklyReports = await deleteWeeklyReports(employee.id);
+  log(`   ✅ Deleted: ${results.weeklyReports.deleted}, ❌ Failed: ${results.weeklyReports.failed}`, 
+      results.weeklyReports.failed > 0 ? 'error' : 'success');
+  log('', 'info');
+
+  // Delete biweekly reports
+  log('📆 Biweekly Reports:', 'step');
+  results.biweeklyReports = await deleteBiweeklyReports(employee.id);
+  log(`   ✅ Deleted: ${results.biweeklyReports.deleted}, ❌ Failed: ${results.biweeklyReports.failed}`, 
+      results.biweeklyReports.failed > 0 ? 'error' : 'success');
+  log('', 'info');
+
+  // Clear employee signature
+  log('✍️  Employee Signature:', 'step');
+  results.signature = await clearEmployeeSignature(employee.id);
+  log(`   ${results.signature.cleared ? '✅ Cleared' : '❌ Failed'}`, 
+      results.signature.cleared ? 'success' : 'error');
+  log('', 'info');
+
   // Summary
-  const totalDeleted = Object.values(results).reduce((sum, r) => sum + r.deleted, 0);
-  const totalFailed = Object.values(results).reduce((sum, r) => sum + r.failed, 0);
+  const totalDeleted = Object.values(results).reduce((sum, r) => {
+    if (r && typeof r.deleted === 'number') return sum + r.deleted;
+    return sum;
+  }, 0);
+  const totalFailed = Object.values(results).reduce((sum, r) => {
+    if (r && typeof r.failed === 'number') return sum + r.failed;
+    return sum;
+  }, 0);
 
   log('📊 Summary:', 'step');
   log(`   Mileage Entries: ${results.mileageEntries.deleted} deleted, ${results.mileageEntries.failed} failed`, 'info');
@@ -427,6 +567,9 @@ async function clearGregWeiszData() {
   log(`   Time Tracking: ${results.timeTracking.deleted} deleted, ${results.timeTracking.failed} failed`, 'info');
   log(`   Daily Descriptions: ${results.dailyDescriptions.deleted} deleted, ${results.dailyDescriptions.failed} failed`, 'info');
   log(`   Expense Reports: ${results.expenseReports.deleted} deleted, ${results.expenseReports.failed} failed`, 'info');
+  log(`   Weekly Reports: ${results.weeklyReports.deleted} deleted, ${results.weeklyReports.failed} failed`, 'info');
+  log(`   Biweekly Reports: ${results.biweeklyReports.deleted} deleted, ${results.biweeklyReports.failed} failed`, 'info');
+  log(`   Signature: ${results.signature.cleared ? 'Cleared' : 'Failed'}`, results.signature.cleared ? 'success' : 'error');
   log('', 'info');
   log(`   Total: ${totalDeleted} items deleted, ${totalFailed} failed`, 
       totalFailed > 0 ? 'error' : 'success');
