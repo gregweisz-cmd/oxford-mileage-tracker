@@ -300,45 +300,90 @@ async function deleteDailyDescriptions(employeeId) {
 async function deleteExpenseReports(employeeId) {
   try {
     log('  Fetching expense reports...', 'step');
-    // Get all months/years - we'll need to check common ranges
-    const currentYear = new Date().getFullYear();
-    const years = [currentYear - 1, currentYear, currentYear + 1];
-    const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    
-    let deleted = 0;
-    let failed = 0;
-    let found = 0;
-    
-    for (const year of years) {
-      for (const month of months) {
-        try {
-          const response = await makeRequest('GET', `/api/expense-reports/${employeeId}/${month}/${year}`);
-          if (response.data && response.data.id) {
-            found++;
-            if (dryRun) {
-              log(`    Would delete: ${response.data.id} (${month}/${year})`, 'info');
-              deleted++;
-            } else {
-              try {
-                await makeRequest('DELETE', `/api/expense-reports/${response.data.id}`);
-                deleted++;
-              } catch (error) {
-                log(`    Failed to delete ${response.data.id}: ${error.error || error.message}`, 'error');
-                failed++;
-              }
+    // First, try to get all reports for the employee
+    let allReports = [];
+    try {
+      const response = await makeRequest('GET', `/api/expense-reports?employeeId=${employeeId}`);
+      if (response.data && Array.isArray(response.data)) {
+        allReports = response.data;
+      }
+    } catch (error) {
+      // If that fails, fall back to checking specific months/years
+      log('    Could not fetch all reports, checking specific months/years...', 'warning');
+      const currentYear = new Date().getFullYear();
+      const years = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
+      const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      
+      for (const year of years) {
+        for (const month of months) {
+          try {
+            const response = await makeRequest('GET', `/api/expense-reports/${employeeId}/${month}/${year}`);
+            if (response.data && response.data.id) {
+              allReports.push(response.data);
             }
+          } catch (error) {
+            // Not found for this month/year, continue
           }
-        } catch (error) {
-          // Not found for this month/year, continue
         }
       }
     }
     
-    log(`  Found ${found} expense reports`, 'info');
-    return { deleted, failed };
+    log(`  Found ${allReports.length} expense reports`, 'info');
+    
+    if (allReports.length === 0) {
+      return { deleted: 0, failed: 0, cleared: 0 };
+    }
+    
+    let deleted = 0;
+    let failed = 0;
+    let cleared = 0;
+    
+    for (const report of allReports) {
+      if (dryRun) {
+        log(`    Would delete: ${report.id} (${report.month}/${report.year})`, 'info');
+        deleted++;
+      } else {
+        try {
+          // First, try to clear the reportData JSON to remove all embedded data
+          try {
+            const clearedReportData = {
+              employeeSignature: null,
+              employeeCertificationAcknowledged: false,
+              supervisorSignature: null,
+              supervisorCertificationAcknowledged: false,
+              dailyEntries: [],
+              dailyDescriptions: [],
+              receipts: [],
+              mileageEntries: [],
+              timeTracking: []
+            };
+            await makeRequest('POST', `/api/expense-reports`, {
+              employeeId: employeeId,
+              month: report.month,
+              year: report.year,
+              reportData: clearedReportData
+            });
+            cleared++;
+            log(`    Cleared reportData for ${report.id}`, 'info');
+          } catch (clearError) {
+            // If clearing fails, continue to delete
+            log(`    Could not clear reportData for ${report.id}: ${clearError.error || clearError.message}`, 'warning');
+          }
+          
+          // Then delete the report
+          await makeRequest('DELETE', `/api/expense-reports/${report.id}`);
+          deleted++;
+        } catch (error) {
+          log(`    Failed to delete ${report.id}: ${error.error || error.message}`, 'error');
+          failed++;
+        }
+      }
+    }
+    
+    return { deleted, failed, cleared };
   } catch (error) {
     log(`  Error deleting expense reports: ${error.error || error.message}`, 'error');
-    return { deleted: 0, failed: 0 };
+    return { deleted: 0, failed: 0, cleared: 0 };
   }
 }
 
@@ -438,12 +483,23 @@ async function clearEmployeeSignature(employeeId) {
         return { cleared: false };
       }
       
-      // Update employee to clear signature
-      await makeRequest('PUT', `/api/employees/${employeeId}`, {
-        signature: null
-      });
+      const employee = employeeResponse.data;
       
-      log('    ✅ Cleared signature data', 'success');
+      // Update employee to clear signature - need to include all required fields
+      const updateData = {
+        name: employee.name,
+        email: employee.email,
+        oxfordHouseId: employee.oxfordHouseId,
+        position: employee.position,
+        phoneNumber: employee.phoneNumber || '',
+        baseAddress: employee.baseAddress,
+        baseAddress2: employee.baseAddress2 || '',
+        signature: null  // Clear the signature
+      };
+      
+      await makeRequest('PUT', `/api/employees/${employeeId}`, updateData);
+      
+      log('    ✅ Cleared signature data from employee record', 'success');
       return { cleared: true };
     }
   } catch (error) {
@@ -566,7 +622,7 @@ async function clearGregWeiszData() {
   log(`   Receipts: ${results.receipts.deleted} deleted, ${results.receipts.failed} failed`, 'info');
   log(`   Time Tracking: ${results.timeTracking.deleted} deleted, ${results.timeTracking.failed} failed`, 'info');
   log(`   Daily Descriptions: ${results.dailyDescriptions.deleted} deleted, ${results.dailyDescriptions.failed} failed`, 'info');
-  log(`   Expense Reports: ${results.expenseReports.deleted} deleted, ${results.expenseReports.failed} failed`, 'info');
+  log(`   Expense Reports: ${results.expenseReports.deleted} deleted, ${results.expenseReports.cleared || 0} cleared, ${results.expenseReports.failed} failed`, 'info');
   log(`   Weekly Reports: ${results.weeklyReports.deleted} deleted, ${results.weeklyReports.failed} failed`, 'info');
   log(`   Biweekly Reports: ${results.biweeklyReports.deleted} deleted, ${results.biweeklyReports.failed} failed`, 'info');
   log(`   Signature: ${results.signature.cleared ? 'Cleared' : 'Failed'}`, results.signature.cleared ? 'success' : 'error');
