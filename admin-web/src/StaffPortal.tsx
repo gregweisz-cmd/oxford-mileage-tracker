@@ -1825,35 +1825,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
           }
         } else {
-          // Remove existing description if it's empty (but not if it's a day off)
+          // Remove existing description from array if it's empty (but not if it's a day off)
           if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
-            updatedDailyDescriptions[existingDescIndex].description = '';
-            updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
+            // Actually remove it from the array (not just set to empty) so it gets deleted on save
+            updatedDailyDescriptions.splice(existingDescIndex, 1);
           }
         }
       } else if (userDescriptionToSave) {
         // Create new description entry only with user-entered text (no driving summary)
+        // Use full date string in ID to ensure uniqueness (not just day number)
         updatedDailyDescriptions.push({
-          id: `desc-${entry.day}`,
+          id: `desc-${employeeData.employeeId}-${dateStr}`,
           employeeId: employeeData.employeeId,
           date: dateStr,
           description: userDescriptionToSave,
           costCenter: entry.costCenter || employeeData.costCenters[0] || '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-      } else {
-        // Create empty description entry to mark that user explicitly cleared it
-        updatedDailyDescriptions.push({
-          id: `desc-${entry.day}`,
-          employeeId: employeeData.employeeId,
-          date: dateStr,
-          description: '',
-          costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+          stayedOvernight: false,
+          dayOff: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
       }
+      // If empty and no existing entry, don't add anything to the array
+      // This ensures empty descriptions are not saved (they'll be deleted from backend)
       
       setDailyDescriptions(updatedDailyDescriptions);
       
@@ -2516,10 +2510,27 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   const buildReportData = (overrides: Record<string, unknown> = {}) => {
     if (!employeeData) return null;
+    
+    // Normalize all dates in dailyDescriptions array to ensure consistent YYYY-MM-DD format
+    // Filter to only include descriptions for the current month/year being saved
+    // This prevents descriptions from other months from being saved to wrong dates
+    const normalizedDailyDescriptions = dailyDescriptions
+      .map((desc: any) => ({
+        ...desc,
+        date: normalizeDate(desc.date) // Ensure all dates are in YYYY-MM-DD format
+      }))
+      .filter((desc: any) => {
+        // Only include descriptions for the current month/year
+        const descDate = new Date(desc.date);
+        const descMonth = descDate.getMonth() + 1; // getMonth() returns 0-11
+        const descYear = descDate.getFullYear();
+        return descMonth === currentMonth && descYear === currentYear;
+      });
+    
     return {
       ...employeeData,
       receipts: receipts,
-      dailyDescriptions: dailyDescriptions,
+      dailyDescriptions: normalizedDailyDescriptions,
       employeeSignature: signatureImage,
       supervisorSignature: supervisorSignatureState,
       employeeCertificationAcknowledged: employeeCertificationAcknowledged,

@@ -481,11 +481,32 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
       });
     }
     
-    // 2a. Sync daily descriptions from the dedicated dailyDescriptions array (new tab-based approach)
+    // 2a. Sync daily descriptions - SIMPLE LOGIC: Whatever is in the UI is what gets saved
+    // Step 1: Delete ALL descriptions for this month (we'll recreate only what's in the array)
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    
+    await new Promise((resolve, reject) => {
+      db.run(
+        'DELETE FROM daily_descriptions WHERE employeeId = ? AND date >= ? AND date <= ?',
+        [employeeId, startDate, endDate],
+        function(deleteErr) {
+          if (deleteErr) {
+            debugError(`❌ Error deleting daily descriptions for month:`, deleteErr);
+            reject(deleteErr);
+          } else {
+            debugLog(`🗑️ Deleted ${this.changes} existing daily descriptions for month ${month}/${year}`);
+            resolve();
+          }
+        }
+      );
+    });
+    
+    // Step 2: Save ONLY what's in the dailyDescriptions array (exactly what user sees in UI)
     if (reportData.dailyDescriptions && reportData.dailyDescriptions.length > 0) {
       // Deduplicate by date (keep the last one if duplicates exist)
       const seenDates = new Map();
-      const uniqueDescriptions = [];
       for (const desc of reportData.dailyDescriptions) {
         const dateStr = dateHelpers.normalizeDateString(desc.date);
         if (!dateStr) {
@@ -495,210 +516,161 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
         // Use date as key to deduplicate
         seenDates.set(dateStr, desc);
       }
-      // Convert map values back to array
+      
+      debugLog(`💾 Saving ${seenDates.size} daily descriptions from UI (exactly what user sees)`);
+      
+      // Save each description from the array - save exactly what's in the UI
       for (const desc of seenDates.values()) {
-        uniqueDescriptions.push(desc);
-      }
-      
-      debugLog(`🔄 Processing ${uniqueDescriptions.length} unique daily descriptions (${reportData.dailyDescriptions.length} total, ${reportData.dailyDescriptions.length - uniqueDescriptions.length} duplicates removed)`);
-      
-      for (const desc of uniqueDescriptions) {
         try {
           const dateStr = dateHelpers.normalizeDateString(desc.date);
           if (!dateStr) {
             debugWarn(`⚠️ Skipping daily description with invalid date: ${desc.date}`);
             continue;
           }
+          
           const hasDescription = desc.description && desc.description.trim();
+          const isDayOff = desc.dayOff || false;
           
-          // Always use deterministic ID based on employee and date
-          const id = desc.id || `desc-${employeeId}-${dateStr}`;
-          const now = new Date().toISOString();
-          const stayedOvernightValue = desc.stayedOvernight ? 1 : 0;
-          const dayOffValue = desc.dayOff ? 1 : 0;
-          
-          if (hasDescription || desc.dayOff) {
-            // Use INSERT OR REPLACE to handle all cases (new, update, duplicate)
+          // Only save if it has content OR is a day off (empty descriptions are already deleted in step 1)
+          if (hasDescription || isDayOff) {
+            const id = desc.id || `desc-${employeeId}-${dateStr}`;
+            const now = new Date().toISOString();
+            const stayedOvernightValue = desc.stayedOvernight ? 1 : 0;
+            const dayOffValue = isDayOff ? 1 : 0;
+            
             await new Promise((resolve, reject) => {
               db.run(
-                'INSERT OR REPLACE INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM daily_descriptions WHERE id = ?), ?), ?)',
-                [id, employeeId, dateStr, desc.description || '', desc.costCenter || '', stayedOvernightValue, dayOffValue, desc.dayOffType || null, id, now, now],
+                'INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [id, employeeId, dateStr, desc.description || '', desc.costCenter || '', stayedOvernightValue, dayOffValue, desc.dayOffType || null, now, now],
                 function(insertErr) {
                   if (insertErr) {
-                    debugError(`❌ Error upserting daily description for date ${dateStr} (id: ${id}):`, insertErr);
+                    debugError(`❌ Error saving daily description for date ${dateStr}:`, insertErr);
                     reject(insertErr);
                   } else {
-                    if (this.changes === 0) {
-                      debugLog(`⚠️ No changes for daily description ${dateStr} (id: ${id})`);
-                    } else {
-                      debugLog(`✅ Upserted daily description for date ${dateStr} (id: ${id})`);
-                    }
-                    resolve();
-                  }
-                }
-              );
-            });
-          } else {
-            // Delete if empty and not a day off
-            await new Promise((resolve, reject) => {
-              db.run(
-                'DELETE FROM daily_descriptions WHERE employeeId = ? AND date = ?',
-                [employeeId, dateStr],
-                function(deleteErr) {
-                  if (deleteErr) {
-                    debugError(`❌ Error deleting daily description for date ${dateStr}:`, deleteErr);
-                    reject(deleteErr);
-                  } else {
-                    if (this.changes > 0) {
-                      debugLog(`✅ Deleted empty daily description for date ${dateStr}`);
-                    }
+                    debugLog(`✅ Saved daily description for date ${dateStr} (exactly as shown in UI)`);
                     resolve();
                   }
                 }
               );
             });
           }
+          // If empty and not day off, don't save (already deleted in step 1)
         } catch (descError) {
-          debugError(`❌ Error syncing daily description for date ${desc.date}:`, descError);
+          debugError(`❌ Error saving daily description for date ${desc.date}:`, descError);
           // Continue with next entry instead of failing entire sync
         }
       }
+    } else {
+      debugLog(`ℹ️ No daily descriptions in array - all descriptions for month ${month}/${year} deleted (empty array = delete all)`);
     }
     
-    // 2b. Sync time tracking and mileage entries from dailyEntries
+    // 2b. Sync time tracking hours - SIMPLE LOGIC: Whatever is in the UI is what gets saved
+    // Step 1: Delete ALL time tracking entries for this month (we'll recreate only what's in dailyEntries)
+    await new Promise((resolve, reject) => {
+      db.run(
+        'DELETE FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?',
+        [employeeId, startDate, endDate],
+        function(deleteErr) {
+          if (deleteErr) {
+            debugError(`❌ Error deleting time tracking for month:`, deleteErr);
+            reject(deleteErr);
+          } else {
+            debugLog(`🗑️ Deleted ${this.changes} existing time tracking entries for month ${month}/${year}`);
+            resolve();
+          }
+        }
+      );
+    });
+    
+    // Step 2: Save ONLY what's in dailyEntries (exactly what user sees in UI)
     if (reportData.dailyEntries && reportData.dailyEntries.length > 0) {
       const costCenters = reportData.costCenters || [];
       
       for (const entry of reportData.dailyEntries) {
         try {
-          // Parse the date to match the format in the database
           const dateStr = dateHelpers.normalizeDateString(entry.date);
           if (!dateStr) {
             debugWarn(`⚠️ Skipping daily entry with invalid date: ${entry.date}`);
             continue;
           }
           
-          // Sync cost center hours from dailyEntries to time_tracking table
-          // Check for costCenter0Hours, costCenter1Hours, etc.
+          // Save cost center hours (exactly as shown in UI)
           for (let i = 0; i < costCenters.length; i++) {
             const costCenterName = costCenters[i];
             const hoursProperty = `costCenter${i}Hours`;
             const hours = entry[hoursProperty] || 0;
             
+            // Only save if hours > 0 (empty = already deleted in step 1)
             if (hours > 0) {
-              // Create or update time_tracking entry for this cost center
+              const id = `time-${employeeId}-${dateStr}-costcenter-${i}`;
+              const now = new Date().toISOString();
+              
               await new Promise((resolve, reject) => {
-                // Check if entry already exists
-                db.get(
-                'SELECT id FROM time_tracking WHERE employeeId = ? AND date = ? AND costCenter = ? AND (category IS NULL OR category = "")',
-                [employeeId, dateStr, costCenterName],
-                (err, row) => {
-                  if (err) {
-                    reject(err);
-                    return;
-                  }
-                  
-                  const now = new Date().toISOString();
-                  
-                  if (row) {
-                    // Update existing entry
-                    db.run(
-                      'UPDATE time_tracking SET hours = ?, updatedAt = ? WHERE id = ?',
-                      [hours, now, row.id],
-                      (updateErr) => {
-                        if (updateErr) reject(updateErr);
-                        else {
-                          debugLog(`✅ Updated time tracking for ${costCenterName} on ${dateStr}: ${hours} hours`);
-                          resolve();
-                        }
-                      }
-                    );
-                  } else {
-                    // Create new entry - use deterministic ID
-                    const id = `time-${employeeId}-${dateStr}-costcenter-${i}`;
-                    db.run(
-                      'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
-                      [id, employeeId, dateStr, '', hours, costCenterName, id, now, now],
-                      (insertErr) => {
-                        if (insertErr) {
-                          debugError(`❌ Error creating time tracking for ${costCenterName} on ${dateStr}:`, insertErr);
-                          reject(insertErr);
-                        } else {
-                          debugLog(`✅ Created time tracking for ${costCenterName} on ${dateStr}: ${hours} hours`);
-                          resolve();
-                        }
-                      }
-                    );
-                  }
-                }
-              );
-            });
-          }
-        }
-          
-        // Sync category hours (PTO, Holiday, etc.) if they exist
-        if (entry.categoryHours && typeof entry.categoryHours === 'object') {
-          // Iterate over all category keys in the categoryHours object
-          for (const category of Object.keys(entry.categoryHours)) {
-            const hours = entry.categoryHours[category] || 0;
-            
-            if (hours > 0) {
-              await new Promise((resolve, reject) => {
-                // Check if entry already exists
-                db.get(
-                  'SELECT id FROM time_tracking WHERE employeeId = ? AND date = ? AND category = ? AND (costCenter IS NULL OR costCenter = "")',
-                  [employeeId, dateStr, category],
-                  (err, row) => {
-                    if (err) {
-                      reject(err);
-                      return;
-                    }
-                    
-                    const now = new Date().toISOString();
-                    
-                    if (row) {
-                      // Update existing entry
-                      db.run(
-                        'UPDATE time_tracking SET hours = ?, updatedAt = ? WHERE id = ?',
-                        [hours, now, row.id],
-                        (updateErr) => {
-                          if (updateErr) reject(updateErr);
-                          else {
-                            debugLog(`✅ Updated time tracking for ${category} on ${dateStr}: ${hours} hours`);
-                            resolve();
-                          }
-                        }
-                      );
+                db.run(
+                  'INSERT INTO time_tracking (id, employeeId, date, category, hours, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                  [id, employeeId, dateStr, '', hours, costCenterName, now, now],
+                  (insertErr) => {
+                    if (insertErr) {
+                      debugError(`❌ Error saving time tracking for ${costCenterName} on ${dateStr}:`, insertErr);
+                      reject(insertErr);
                     } else {
-                      // Create new entry - use deterministic ID
-                      const id = `time-${employeeId}-${dateStr}-category-${category}`;
-                      db.run(
-                        'INSERT OR REPLACE INTO time_tracking (id, employeeId, date, category, hours, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM time_tracking WHERE id = ?), ?), ?)',
-                        [id, employeeId, dateStr, category, hours, '', id, now, now],
-                        (insertErr) => {
-                          if (insertErr) {
-                            debugError(`❌ Error creating time tracking for ${category} on ${dateStr}:`, insertErr);
-                            reject(insertErr);
-                          } else {
-                            debugLog(`✅ Created time tracking for ${category} on ${dateStr}: ${hours} hours`);
-                            resolve();
-                          }
-                        }
-                      );
+                      debugLog(`✅ Saved ${hours} hours for ${costCenterName} on ${dateStr} (exactly as shown in UI)`);
+                      resolve();
                     }
                   }
                 );
               });
             }
           }
-        }
-      } catch (entryError) {
+          
+          // Save category hours (PTO, Holiday, etc.) - exactly as shown in UI
+          if (entry.categoryHours && typeof entry.categoryHours === 'object') {
+            for (const category of Object.keys(entry.categoryHours)) {
+              const hours = entry.categoryHours[category] || 0;
+              
+              // Only save if hours > 0 (empty = already deleted in step 1)
+              if (hours > 0) {
+                const id = `time-${employeeId}-${dateStr}-category-${category}`;
+                const now = new Date().toISOString();
+                
+                await new Promise((resolve, reject) => {
+                  db.run(
+                    'INSERT INTO time_tracking (id, employeeId, date, category, hours, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [id, employeeId, dateStr, category, hours, '', now, now],
+                    (insertErr) => {
+                      if (insertErr) {
+                        debugError(`❌ Error saving time tracking for ${category} on ${dateStr}:`, insertErr);
+                        reject(insertErr);
+                      } else {
+                        debugLog(`✅ Saved ${hours} hours for ${category} on ${dateStr} (exactly as shown in UI)`);
+                        resolve();
+                      }
+                    }
+                  );
+                });
+              }
+            }
+          }
+        } catch (entryError) {
           debugError(`❌ Error syncing daily entry for date ${entry.date}:`, entryError);
           // Continue with next entry instead of failing entire sync
         }
       }
+    } else {
+      debugLog(`ℹ️ No daily entries in array - all hours for month ${month}/${year} deleted (empty array = delete all)`);
+    }
       
-      // Sync mileage entries from dailyEntries to mileage_entries table
+      // NOTE: Mileage entries are NOT synced from dailyEntries
+      // Mobile app is the source of truth for mileage entries
+      // The web portal should only display mileage, not create/update it
+      // This prevents deleted mileage entries from being restored when Save is clicked
+      // 
+      // If you need to sync mileage from web portal, it should be done through
+      // a dedicated endpoint that explicitly creates mileage entries, not through
+      // the sync-to-source endpoint which is meant for descriptions and hours only
+      
+      // DISABLED: Sync mileage entries from dailyEntries to mileage_entries table
+      /*
       for (const entry of reportData.dailyEntries) {
         try {
           // Parse the date to match the format in the database
@@ -807,6 +779,7 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
           // Continue with next entry instead of failing entire sync
         }
       }
+      */
     }
     
     // 3. Sync receipts
