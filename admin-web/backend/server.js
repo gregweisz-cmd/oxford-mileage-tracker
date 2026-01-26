@@ -39,6 +39,7 @@ const approvalRoutes = require('./routes/approval');
 const notificationRoutes = require('./routes/notifications');
 const supervisorRoutes = require('./routes/supervisor');
 const adminRoutes = require('./routes/admin');
+const powerBiExportRoutes = require('./routes/powerBiExport');
 const { startSundayReminderJob, stopSundayReminderJob } = require('./services/sundayReminderJob');
 
 const app = express();
@@ -166,6 +167,7 @@ app.use('/', approvalRoutes);
 app.use('/', notificationRoutes);
 app.use('/', supervisorRoutes);
 app.use('/', adminRoutes);
+app.use('/', powerBiExportRoutes);
 
 // Get all employees supervised by a supervisor (directly and indirectly) - Promise based
 // getAllSupervisedEmployees is now in dbService
