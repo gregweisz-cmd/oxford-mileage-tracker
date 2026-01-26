@@ -771,21 +771,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  resetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FF3B30',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 12,
-    gap: 8,
-  },
-  resetButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   daysList: {
     flex: 1,
     padding: 16,
