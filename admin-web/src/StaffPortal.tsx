@@ -3931,13 +3931,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       await response.json();
-      showSuccess('Report saved and synced successfully! Changes will appear in the mobile app.');
       
-      // Wait a moment to ensure database commits, then refresh
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait longer to ensure backend processes all deletions before reloading
+      // This is especially important for daily descriptions that were deleted
+      // Show loading state during the wait
+      startLoading('Processing changes...');
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Increased to 1.5 seconds
       
       // Refresh the data to update all tabs
       setRefreshTrigger(prev => prev + 1);
+      
+      showSuccess('Report saved and synced successfully! Changes will appear in the mobile app.');
       
     } catch (error) {
       debugError('Error saving report:', error);
