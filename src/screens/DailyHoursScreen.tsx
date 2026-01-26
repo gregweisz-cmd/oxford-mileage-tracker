@@ -279,6 +279,13 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       // Check if user is trying to delete (empty string and not day off)
       const isDeleting = !isDayOff && !descriptionToSave;
       
+      console.log(`💾 DailyHoursScreen: Saving description for ${selectedDay.date.toISOString()}:`, {
+        descriptionToSave,
+        isDeleting,
+        isDayOff,
+        originalDescription: selectedDay.description
+      });
+      
       await UnifiedDataService.updateDayDescription(
         currentEmployee.id,
         selectedDay.date,
@@ -288,6 +295,16 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         isDayOff,
         isDayOff ? dayOffType : undefined
       );
+      
+      // Verify deletion happened
+      if (isDeleting) {
+        const afterDelete = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
+        if (afterDelete) {
+          console.error(`❌ DailyHoursScreen: Description still exists after deletion! ID: ${afterDelete.id}`);
+        } else {
+          console.log(`✅ DailyHoursScreen: Description successfully deleted`);
+        }
+      }
       
       // Save hours (only if not day off)
       if (!isDayOff) {

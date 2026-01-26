@@ -376,7 +376,15 @@ export class UnifiedDataService {
     // If description is empty and not a day off, delete it
     const isEmpty = !description || description.trim() === '';
     if (isEmpty && !dayOff && existingDescription) {
+      console.log(`🗑️ UnifiedDataService: Deleting daily description ${existingDescription.id} for date ${date.toISOString()}`);
       await DatabaseService.deleteDailyDescription(existingDescription.id);
+      console.log(`✅ UnifiedDataService: Daily description deleted successfully`);
+      return;
+    }
+    
+    // If description is empty and not a day off but doesn't exist, nothing to delete
+    if (isEmpty && !dayOff && !existingDescription) {
+      console.log(`ℹ️ UnifiedDataService: No description to delete for date ${date.toISOString()}`);
       return;
     }
     
