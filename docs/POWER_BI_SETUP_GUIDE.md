@@ -126,27 +126,73 @@ Use a SQLite tool to export each table to CSV, then import into Power BI.
 
 ---
 
-## Option 3: Create Custom Export Endpoint (Best for Large Datasets)
+## Option 3: Use Custom Power BI Export Endpoint (Recommended for Best Performance)
 
-We can create a dedicated endpoint that returns all data in a Power BI-friendly format.
+A dedicated endpoint has been created that returns all data in a single optimized request.
 
-### Benefits:
-- Single endpoint for all data
-- Optimized queries
-- Pre-joined relationships
-- Better performance
-
-### Example Endpoint Structure:
+### Endpoint:
 ```
-GET /api/power-bi/export
-Returns: {
-  mileageEntries: [...],
-  receipts: [...],
-  timeTracking: [...],
-  dailyDescriptions: [...],
-  employees: [...]
+GET https://oxford-mileage-backend.onrender.com/api/power-bi/export
+Query Parameters (all optional):
+  - employeeId: Filter by specific employee
+  - startDate: Filter from date (YYYY-MM-DD)
+  - endDate: Filter to date (YYYY-MM-DD)
+```
+
+### Response Format:
+```json
+{
+  "employees": [...],
+  "mileageEntries": [...],
+  "receipts": [...],
+  "timeTracking": [...],
+  "dailyDescriptions": [...],
+  "exportDate": "2026-01-XX...",
+  "recordCounts": {
+    "employees": 50,
+    "mileageEntries": 1000,
+    "receipts": 500,
+    "timeTracking": 2000,
+    "dailyDescriptions": 300
+  }
 }
 ```
+
+### Benefits:
+- ✅ Single endpoint for all data
+- ✅ Optimized queries with pre-joined relationships
+- ✅ Better performance (one request instead of multiple)
+- ✅ Includes employee names already joined
+- ✅ Optional date/employee filtering
+
+### Step-by-Step: Connect Power BI to Export Endpoint
+
+1. **Open Power BI Desktop**
+2. **Get Data** → **Web**
+3. **Enter URL**: `https://oxford-mileage-backend.onrender.com/api/power-bi/export`
+4. Click **OK**
+5. Power BI will fetch the JSON response
+6. Click **Transform Data**
+7. Expand the tables you need:
+   - Click the expand icon (↗) next to `mileageEntries`
+   - Click the expand icon next to `receipts`
+   - Click the expand icon next to `timeTracking`
+   - Click the expand icon next to `dailyDescriptions`
+   - Click the expand icon next to `employees`
+8. Click **Close & Apply**
+
+### Summary Statistics Endpoint
+
+For dashboard summaries, use:
+```
+GET https://oxford-mileage-backend.onrender.com/api/power-bi/summary
+Query Parameters (all optional):
+  - employeeId: Filter by specific employee
+  - startDate: Filter from date (YYYY-MM-DD)
+  - endDate: Filter to date (YYYY-MM-DD)
+```
+
+Returns aggregated statistics and employee-level summaries.
 
 ---
 
