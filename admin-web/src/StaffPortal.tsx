@@ -2514,14 +2514,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           });
           
           if (!deleteResponse.ok) {
-            const errorText = await deleteResponse.text();
-            debugError(`❌ Failed to delete time tracking: ${deleteResponse.status} - ${errorText}`);
-            // Revert optimistic update on error
-            refreshTimesheetData(employeeData).catch(() => {});
-            throw new Error(`Failed to delete: ${deleteResponse.status}`);
+            // If entry doesn't exist (404), that's fine - it's already deleted
+            // Only throw error for other status codes
+            if (deleteResponse.status === 404) {
+              debugLog(`ℹ️ Entry ${existingEntry.id} already deleted (404) - continuing`);
+            } else {
+              const errorText = await deleteResponse.text();
+              debugError(`❌ Failed to delete time tracking: ${deleteResponse.status} - ${errorText}`);
+              // Revert optimistic update on error
+              refreshTimesheetData(employeeData).catch(() => {});
+              throw new Error(`Failed to delete: ${deleteResponse.status}`);
+            }
+          } else {
+            debugLog(`✅ Deleted time tracking entry for day ${day}`);
           }
-          
-          debugLog(`✅ Deleted time tracking entry for day ${day}`);
         } else {
           debugLog(`ℹ️ Value is 0 and no existing entry found - nothing to delete`);
         }
