@@ -256,7 +256,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       // Set base address as default start location if available
       if (employee?.baseAddress) {
         setStartLocationDetails({
-          name: 'Home Base',
+          name: 'BA',
           address: employee.baseAddress,
           latitude: undefined,
           longitude: undefined

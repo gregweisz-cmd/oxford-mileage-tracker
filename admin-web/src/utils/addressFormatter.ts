@@ -93,7 +93,8 @@ export function getBaseAddressLabel(
   if (
     locationLower === 'ba' ||
     locationLower === 'base address' ||
-    locationLower === 'base'
+    locationLower === 'base' ||
+    locationLower === 'home base'
   ) {
     // If there are two base addresses, we can't determine which one, default to BA1
     // But typically if someone uses "BA" they mean the primary

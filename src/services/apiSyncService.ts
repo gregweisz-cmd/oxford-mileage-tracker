@@ -418,12 +418,10 @@ export class ApiSyncService {
       // if (mappedReceipts.length > 0) {
       //   await this.syncReceiptsToLocal(mappedReceipts);
       // }
-      if (mappedTimeTracking.length > 0) {
-        await this.syncTimeTrackingToLocal(mappedTimeTracking);
-      }
-      if (mappedDailyDescriptions.length > 0) {
-        await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions);
-      }
+      // Always sync time tracking (even if empty array) to handle deletions
+      await this.syncTimeTrackingToLocal(mappedTimeTracking, effectiveEmployeeId);
+      // Always sync daily descriptions (even if empty array) to handle deletions
+      await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, effectiveEmployeeId);
       
       // Per Diem rules sync removed - now loaded on-demand in AddReceiptScreen
       
@@ -571,6 +569,22 @@ export class ApiSyncService {
             dateToSend = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00.000Z`;
           }
           
+          // Normalize "Home Base" to "BA" for location names
+          const normalizeLocationName = (name: string | undefined): string => {
+            if (!name) return '';
+            const normalized = name.trim();
+            // Convert "Home Base" to "BA" to match standard notation
+            if (normalized.toLowerCase() === 'home base') {
+              return 'BA';
+            }
+            return normalized;
+          };
+          
+          const startLocationNameRaw = entry.startLocationDetails?.name || entry.startLocation || '';
+          const endLocationNameRaw = entry.endLocationDetails?.name || entry.endLocation || '';
+          const startLocationName = normalizeLocationName(startLocationNameRaw);
+          const endLocationName = normalizeLocationName(endLocationNameRaw);
+          
           const mileageData = {
             id: entry.id, // CRITICAL: Always include ID to prevent duplicates - backend uses INSERT OR REPLACE
             employeeId: employeeIdToSend,
@@ -579,12 +593,12 @@ export class ApiSyncService {
             odometerReading: entry.odometerReading,
             startLocation: entry.startLocation || '',
             endLocation: entry.endLocation || '',
-            startLocationName: entry.startLocationDetails?.name || entry.startLocation || '',
-            startLocationAddress: entry.startLocationDetails?.address || entry.startLocationDetails?.name || entry.startLocation || '',
+            startLocationName: startLocationName,
+            startLocationAddress: entry.startLocationDetails?.address || startLocationName || entry.startLocation || '',
             startLocationLat: entry.startLocationDetails?.latitude || 0,
             startLocationLng: entry.startLocationDetails?.longitude || 0,
-            endLocationName: entry.endLocationDetails?.name || entry.endLocation || '',
-            endLocationAddress: entry.endLocationDetails?.address || entry.endLocationDetails?.name || entry.endLocation || '',
+            endLocationName: endLocationName,
+            endLocationAddress: entry.endLocationDetails?.address || endLocationName || entry.endLocation || '',
             endLocationLat: entry.endLocationDetails?.latitude || 0,
             endLocationLng: entry.endLocationDetails?.longitude || 0,
             purpose: entry.purpose || '',
@@ -1640,7 +1654,7 @@ export class ApiSyncService {
   /**
    * Sync daily descriptions from backend to local database
    */
-  private static async syncDailyDescriptionsToLocal(dailyDescriptions: DailyDescription[]): Promise<void> {
+  private static async syncDailyDescriptionsToLocal(dailyDescriptions: DailyDescription[], employeeId?: string | null): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${dailyDescriptions.length} daily descriptions to local database...`);
       
@@ -1650,6 +1664,16 @@ export class ApiSyncService {
       // Check sync queue for pending deletions to avoid overwriting them
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('dailyDescription');
+      
+      // Extract unique employee IDs from backend descriptions
+      const backendEmployeeIds = new Set(dailyDescriptions.map(d => d.employeeId).filter(Boolean));
+      const backendDescriptionIds = new Set(dailyDescriptions.map(d => d.id).filter(Boolean));
+      
+      // If we're syncing for a specific employee and the array is empty, 
+      // it means all descriptions were deleted - add that employee to cleanup list
+      if (employeeId && dailyDescriptions.length === 0) {
+        backendEmployeeIds.add(employeeId);
+      }
       
       // Helper function to clean odometer readings from description
       const cleanOdometerReadings = (text: string): string => {
@@ -1662,6 +1686,7 @@ export class ApiSyncService {
           .trim();
       };
       
+      // Update or create descriptions from backend
       for (const desc of dailyDescriptions) {
         try {
           if (!desc.id) {
@@ -1727,31 +1752,35 @@ export class ApiSyncService {
           } else {
             debugLog(`⚠️ ApiSync: Skipping daily description ${desc.id} - local version is newer or same`);
           }
-          
-          // Don't create new descriptions from backend - mobile is source of truth
-          // (Removed the else block that was creating new descriptions)
-            // Insert new description with the SAME ID from backend to avoid duplicates
-            await database.runAsync(
-              `INSERT INTO daily_descriptions (
-                id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                desc.id, // Preserve backend ID
-                desc.employeeId,
-                dateOnly,
-                cleanedDescription,
-                desc.costCenter || '',
-                desc.stayedOvernight ? 1 : 0,
-                desc.dayOff ? 1 : 0,
-                desc.dayOffType || null,
-                desc.createdAt instanceof Date ? desc.createdAt.toISOString() : (desc.createdAt || new Date().toISOString()),
-                descUpdatedAt
-              ]
-            );
-            debugLog(`➕ ApiSync: Created new daily description ${desc.id}`);
-          }
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing daily description ${desc.id}:`, error);
+        }
+      }
+      
+      // Delete local descriptions that are not in the backend response
+      // This handles the case where descriptions were deleted on the backend
+      if (backendEmployeeIds.size > 0) {
+        for (const employeeId of backendEmployeeIds) {
+          try {
+            // Get all local descriptions for this employee
+            const localDescriptions = await database.getAllAsync(
+              'SELECT id FROM daily_descriptions WHERE employeeId = ?',
+              [employeeId]
+            ) as Array<{ id: string }>;
+            
+            // Delete local descriptions that are not in backend response and not pending deletion
+            for (const localDesc of localDescriptions) {
+              if (!backendDescriptionIds.has(localDesc.id) && !pendingDeletionIds.has(localDesc.id)) {
+                debugLog(`🗑️ ApiSync: Deleting local daily description ${localDesc.id} - not found in backend (was deleted on backend)`);
+                await database.runAsync(
+                  'DELETE FROM daily_descriptions WHERE id = ?',
+                  [localDesc.id]
+                );
+              }
+            }
+          } catch (error) {
+            console.error(`❌ ApiSync: Error cleaning up deleted daily descriptions for employee ${employeeId}:`, error);
+          }
         }
       }
       
@@ -1948,7 +1977,7 @@ export class ApiSyncService {
   /**
    * Sync time tracking from backend to local database
    */
-  private static async syncTimeTrackingToLocal(timeTracking: TimeTracking[]): Promise<void> {
+  private static async syncTimeTrackingToLocal(timeTracking: TimeTracking[], employeeId?: string | null): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${timeTracking.length} time tracking entries to local database...`);
       
@@ -1959,6 +1988,17 @@ export class ApiSyncService {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('timeTracking');
       
+      // Extract unique employee IDs from backend entries
+      const backendEmployeeIds = new Set(timeTracking.map(t => t.employeeId).filter(Boolean));
+      const backendTrackingIds = new Set(timeTracking.map(t => t.id).filter(Boolean));
+      
+      // If we're syncing for a specific employee and the array is empty, 
+      // it means all entries were deleted - add that employee to cleanup list
+      if (employeeId && timeTracking.length === 0) {
+        backendEmployeeIds.add(employeeId);
+      }
+      
+      // Update or create entries from backend
       for (const tracking of timeTracking) {
         try {
           if (!tracking.id) {
@@ -2027,6 +2067,33 @@ export class ApiSyncService {
           }
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing time tracking entry ${tracking.id}:`, error);
+        }
+      }
+      
+      // Delete local entries that are not in the backend response
+      // This handles the case where entries were deleted on the backend
+      if (backendEmployeeIds.size > 0) {
+        for (const empId of backendEmployeeIds) {
+          try {
+            // Get all local time tracking entries for this employee
+            const localEntries = await database.getAllAsync(
+              'SELECT id FROM time_tracking WHERE employeeId = ?',
+              [empId]
+            ) as Array<{ id: string }>;
+            
+            // Delete local entries that are not in backend response and not pending deletion
+            for (const localEntry of localEntries) {
+              if (!backendTrackingIds.has(localEntry.id) && !pendingDeletionIds.has(localEntry.id)) {
+                debugLog(`🗑️ ApiSync: Deleting local time tracking entry ${localEntry.id} - not found in backend (was deleted on backend)`);
+                await database.runAsync(
+                  'DELETE FROM time_tracking WHERE id = ?',
+                  [localEntry.id]
+                );
+              }
+            }
+          } catch (error) {
+            console.error(`❌ ApiSync: Error cleaning up deleted time tracking entries for employee ${empId}:`, error);
+          }
         }
       }
       
