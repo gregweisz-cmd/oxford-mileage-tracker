@@ -273,8 +273,12 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       const savedScrollPosition = scrollPositionRef.current;
       const savedDayIndex = selectedDayIndexRef.current;
       
-      // Save description - use trimmed text, but allow empty strings if user cleared it
+      // Save description - if empty and not day off, it will be deleted
       const descriptionToSave = isDayOff ? dayOffType : (descriptionText || '').trim();
+      
+      // Check if user is trying to delete (empty string and not day off)
+      const isDeleting = !isDayOff && !descriptionToSave;
+      
       await UnifiedDataService.updateDayDescription(
         currentEmployee.id,
         selectedDay.date,
@@ -319,11 +323,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       // Sync to backend FIRST before reloading data
       // This ensures deletions are sent to backend before we reload
       try {
-        // Check if description was deleted (empty and not day off)
-        const isEmpty = !descriptionText.trim() && !isDayOff;
+        // Check if description was deleted
         const savedDescription = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
         
-        if (isEmpty && !savedDescription) {
+        if (isDeleting && !savedDescription) {
           // Description was deleted - sync deletion immediately
           const { SyncIntegrationService } = await import('../services/syncIntegrationService');
           // Process sync queue to send deletion to backend
@@ -337,8 +340,9 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           });
         }
         
-        // Also sync hours if they were updated
+        // Also sync hours if they were updated - ALWAYS sync hours when not day off
         if (!isDayOff) {
+          // Get all time entries for this day after the update
           const timeEntries = await DatabaseService.getTimeTrackingEntries(
             currentEmployee.id,
             selectedDay.date.getMonth() + 1,
@@ -350,11 +354,15 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                    entryDate.getMonth() === selectedDay.date.getMonth() &&
                    entryDate.getFullYear() === selectedDay.date.getFullYear();
           });
-          if (dayEntries.length > 0) {
-            await ApiSyncService.syncToBackend({
-              timeTracking: dayEntries
-            });
-          }
+          
+          // Always sync hours (even if empty array - this ensures deletions sync)
+          await ApiSyncService.syncToBackend({
+            timeTracking: dayEntries
+          });
+          
+          // Also process sync queue to ensure deletions are sent
+          const { SyncIntegrationService } = await import('../services/syncIntegrationService');
+          await SyncIntegrationService.processSyncQueue();
         }
       } catch (error) {
         // Auto-sync errors are non-critical, log only in dev mode
