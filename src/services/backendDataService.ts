@@ -616,9 +616,14 @@ export class BackendDataService {
 
     const isEmpty = !description || description.trim() === '';
 
-    // If empty and not a day off, delete it
-    if (isEmpty && !dayOff && existing) {
-      await this.deleteDailyDescription(existing.id);
+    // If empty and user is not setting it as a day off, delete it
+    // This allows deletion even if the existing entry was previously a day off
+    if (isEmpty && !dayOff) {
+      if (existing) {
+        await this.deleteDailyDescription(existing.id);
+        return;
+      }
+      // If no existing entry and empty, nothing to do
       return;
     }
 
@@ -628,8 +633,8 @@ export class BackendDataService {
         description,
         costCenter,
         stayedOvernight,
-        dayOff,
-        dayOffType
+        dayOff: dayOff || false, // Explicitly set dayOff to false if not provided
+        dayOffType: dayOff ? dayOffType : null // Clear dayOffType if not a day off
       });
     } else if (!isEmpty || dayOff) {
       await this.createDailyDescription({
@@ -638,8 +643,8 @@ export class BackendDataService {
         description,
         costCenter,
         stayedOvernight,
-        dayOff,
-        dayOffType
+        dayOff: dayOff || false,
+        dayOffType: dayOff ? dayOffType : null
       });
     }
   }
