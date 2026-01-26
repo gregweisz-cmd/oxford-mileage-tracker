@@ -1834,20 +1834,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const newEntries = [...employeeData.dailyEntries];
     
     if (field === 'description') {
-      // Check if this day is marked as day off - if so, don't allow editing
-      const entry = newEntries[row];
-      const entryDateStr = normalizeDate(entry.date);
-      const dayDescription = dailyDescriptions.find((desc: any) => {
-        const descDateStr = normalizeDate(desc.date);
-        return entryDateStr === descDateStr;
-      });
-      
-      if (dayDescription?.dayOff) {
-        // Day off - don't allow editing, keep the day off type as description
-        setEditingCell(null);
-        return;
-      }
-      
+      // Allow editing all descriptions, including day off entries
+      // User should be able to change or delete day off entries
       newEntries[row].description = editingValue;
       
       // Also update the dailyDescriptions state for proper syncing
@@ -1869,17 +1857,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       if (existingDescIndex >= 0) {
         if (userDescriptionToSave) {
-          // Update existing description with user-entered text only (but don't overwrite if it's a day off)
-          if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
-            updatedDailyDescriptions[existingDescIndex].description = userDescriptionToSave;
-            updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
-          }
+          // Update existing description with user-entered text
+          // Allow updating even if it was previously a day off (user is changing it)
+          updatedDailyDescriptions[existingDescIndex].description = userDescriptionToSave;
+          updatedDailyDescriptions[existingDescIndex].dayOff = false; // Clear day off flag when user enters text
+          updatedDailyDescriptions[existingDescIndex].dayOffType = null; // Clear day off type
+          updatedDailyDescriptions[existingDescIndex].updatedAt = new Date().toISOString();
         } else {
-          // Remove existing description from array if it's empty (but not if it's a day off)
-          if (!updatedDailyDescriptions[existingDescIndex].dayOff) {
-            // Actually remove it from the array (not just set to empty) so it gets deleted on save
-            updatedDailyDescriptions.splice(existingDescIndex, 1);
-          }
+          // Remove existing description from array if it's empty
+          // Allow deletion even if it was previously a day off (user wants to delete it)
+          // Actually remove it from the array (not just set to empty) so it gets deleted on save
+          updatedDailyDescriptions.splice(existingDescIndex, 1);
         }
       } else if (userDescriptionToSave) {
         // Create new description entry only with user-entered text (no driving summary)

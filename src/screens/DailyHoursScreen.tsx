@@ -273,27 +273,29 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       const savedScrollPosition = scrollPositionRef.current;
       const savedDayIndex = selectedDayIndexRef.current;
       
-      // Save description - if empty and not day off, it will be deleted
+      // Determine what to save
+      // If user unchecks "Day Off" and clears description, delete the entry
+      // If user checks "Day Off", save the dayOffType
+      // If user enters text (not day off), save the text
       const descriptionToSave = isDayOff ? dayOffType : (descriptionText || '').trim();
-      
-      // Check if user is trying to delete (empty string and not day off)
-      const isDeleting = !isDayOff && !descriptionToSave;
+      const shouldDelete = !isDayOff && !descriptionToSave;
       
       console.log(`💾 DailyHoursScreen: Saving description for ${selectedDay.date.toISOString()}:`, {
         descriptionToSave,
-        isDeleting,
+        shouldDelete,
         isDayOff,
         originalDescription: selectedDay.description
       });
       
       // Save description directly to backend
+      // If shouldDelete is true, updateDayDescription will delete the entry
       await BackendDataService.updateDayDescription(
         currentEmployee.id,
         selectedDay.date,
         descriptionToSave,
         selectedCostCenter,
         undefined, // stayedOvernight
-        isDayOff,
+        isDayOff, // Only set dayOff if user explicitly checked it
         isDayOff ? dayOffType : undefined
       );
       
