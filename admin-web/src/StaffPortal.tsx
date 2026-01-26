@@ -2033,6 +2033,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // If we saved a description (especially if it was deleted), wait a bit before reloading
       // This gives the backend time to process the deletion
       if (field === 'description') {
+        // Clear API cache to ensure we get fresh data after save
+        // This is critical because the API service caches responses for 60 seconds
+        const { rateLimitedApi } = await import('./services/rateLimitedApi');
+        rateLimitedApi.clearCacheFor('/api/daily-descriptions');
+        
         setLoading(true); // Show loading state
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second (increased from 500ms)
         setRefreshTrigger(prev => prev + 1); // Trigger reload
@@ -3931,6 +3936,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       await response.json();
+      
+      // Clear API cache to ensure we get fresh data after save
+      // This is critical because the API service caches responses for 60 seconds
+      const { rateLimitedApi } = await import('./services/rateLimitedApi');
+      rateLimitedApi.clearCacheFor('/api/daily-descriptions');
+      rateLimitedApi.clearCacheFor('/api/time-tracking');
+      rateLimitedApi.clearCacheFor('/api/mileage-entries');
+      rateLimitedApi.clearCacheFor('/api/receipts');
       
       // Wait longer to ensure backend processes all deletions before reloading
       // This is especially important for daily descriptions that were deleted
