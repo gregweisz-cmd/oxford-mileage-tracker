@@ -374,9 +374,9 @@ export class SyncIntegrationService {
    * Get the delete endpoint for an entity type
    */
   private static getDeleteEndpoint(entityType: string, id: string): string {
-    // Use production API for production builds, local for development
-    // This file is for mobile app - should use the API config from config/api.ts
-    const baseUrl = __DEV__ ? 'http://192.168.86.101:3002/api' : 'https://oxford-mileage-backend.onrender.com/api';
+    // Use API config from config/api.ts to ensure consistency
+    const { API_BASE_URL } = require('../config/api');
+    const baseUrl = API_BASE_URL;
     
     switch (entityType) {
       case 'employee':

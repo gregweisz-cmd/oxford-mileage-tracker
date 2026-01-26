@@ -373,6 +373,14 @@ export class UnifiedDataService {
     // Check if description already exists for this day
     const existingDescription = await DatabaseService.getDailyDescriptionByDate(employeeId, date);
     
+    // If description is empty and not a day off, delete it
+    const isEmpty = !description || description.trim() === '';
+    if (isEmpty && !dayOff && existingDescription) {
+      await DatabaseService.deleteDailyDescription(existingDescription.id);
+      return;
+    }
+    
+    // If it's a day off or has content, update or create
     if (existingDescription) {
       // Update existing description
       await DatabaseService.updateDailyDescription(existingDescription.id, {
@@ -382,8 +390,8 @@ export class UnifiedDataService {
         dayOff,
         dayOffType
       });
-    } else {
-      // Create new description
+    } else if (!isEmpty || dayOff) {
+      // Create new description (only if not empty or is a day off)
       await DatabaseService.createDailyDescription({
         employeeId,
         date,

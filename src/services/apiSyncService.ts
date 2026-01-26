@@ -349,6 +349,16 @@ export class ApiSyncService {
     try {
       debugLog('📥 ApiSync: Syncing data from backend...');
       
+      // Process any pending sync operations (including deletions) before syncing from backend
+      // This ensures local deletions are sent to backend before we fetch data
+      try {
+        const { SyncIntegrationService } = await import('./syncIntegrationService');
+        await SyncIntegrationService.processSyncQueue();
+      } catch (queueError) {
+        debugWarn('⚠️ ApiSync: Error processing sync queue before backend sync:', queueError);
+        // Continue with backend sync even if queue processing fails
+      }
+      
       const syncData: any = {};
       const backendEmployeeId = employeeId
         ? await this.resolveBackendEmployeeId(employeeId)

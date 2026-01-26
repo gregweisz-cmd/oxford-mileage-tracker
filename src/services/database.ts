@@ -2289,7 +2289,12 @@ export class DatabaseService {
 
   static async deleteTimeTracking(id: string): Promise<void> {
     const database = await getDatabase();
+    debugLog('🗑️ Database: Deleting time tracking entry:', id);
+    
     await database.runAsync('DELETE FROM time_tracking WHERE id = ?', [id]);
+    
+    debugLog('✅ Database: Time tracking entry deleted successfully');
+    queueSyncOperation('delete', 'timeTracking', { id });
   }
 
   static async getAllTimeTrackingEntries(): Promise<TimeTracking[]> {

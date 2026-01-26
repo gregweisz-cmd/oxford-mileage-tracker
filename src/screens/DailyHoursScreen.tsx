@@ -331,11 +331,39 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       
       // Auto-sync to backend
       try {
+        // Check if description was deleted (empty and not day off)
+        const isEmpty = !descriptionText.trim() && !isDayOff;
         const savedDescription = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
-        if (savedDescription) {
+        
+        if (isEmpty && !savedDescription) {
+          // Description was deleted - trigger sync queue processing to sync deletion
+          const { SyncIntegrationService } = await import('../services/syncIntegrationService');
+          await SyncIntegrationService.processSyncQueue();
+        } else if (savedDescription) {
+          // Description exists - sync it
           await ApiSyncService.syncToBackend({
             dailyDescriptions: [savedDescription]
           });
+        }
+        
+        // Also sync hours if they were updated
+        if (!isDayOff) {
+          const timeEntries = await DatabaseService.getTimeTrackingEntries(
+            currentEmployee.id,
+            selectedDay.date.getMonth() + 1,
+            selectedDay.date.getFullYear()
+          );
+          const dayEntries = timeEntries.filter(entry => {
+            const entryDate = new Date(entry.date);
+            return entryDate.getDate() === selectedDay.date.getDate() &&
+                   entryDate.getMonth() === selectedDay.date.getMonth() &&
+                   entryDate.getFullYear() === selectedDay.date.getFullYear();
+          });
+          if (dayEntries.length > 0) {
+            await ApiSyncService.syncToBackend({
+              timeTracking: dayEntries
+            });
+          }
         }
       } catch (error) {
         // Auto-sync errors are non-critical, log only in dev mode
