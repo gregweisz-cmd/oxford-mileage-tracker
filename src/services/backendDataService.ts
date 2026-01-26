@@ -479,12 +479,46 @@ export class BackendDataService {
       return entryDayStr === dayStr || sameDay;
     });
 
-    // Delete ALL existing entries for this day (including any duplicates)
-    console.log(`🗑️ BackendDataService: Deleting ${dayEntries.length} time tracking entries for ${dayStr}`);
-    for (const entry of dayEntries) {
+    // IMPORTANT: Only delete entries that match the costCenter being updated
+    // This preserves cost center-specific entries created by the web portal
+    // If no costCenter is provided, delete all entries for the day (legacy behavior)
+    const targetCostCenter = costCenter || '';
+    
+    // List of categories we might be updating
+    const categoryMap: { [key: string]: string } = {
+      'workingHours': 'Working Hours',
+      'gahours': 'G&A Hours',
+      'holidayHours': 'Holiday Hours',
+      'ptoHours': 'PTO Hours',
+      'stdLtdHours': 'STD/LTD Hours',
+      'pflPfmlHours': 'PFL/PFML Hours'
+    };
+    
+    // Determine which categories are being updated (have values in hoursBreakdown)
+    const categoriesBeingUpdated = Object.keys(hoursBreakdown)
+      .filter(key => hoursBreakdown[key as keyof typeof hoursBreakdown] !== undefined)
+      .map(key => categoryMap[key] || key);
+    
+    // Filter entries to delete: only those matching costCenter AND category being updated
+    const entriesToDelete = targetCostCenter 
+      ? dayEntries.filter(entry => {
+          const entryCostCenter = entry.costCenter || '';
+          const entryCategory = entry.category || '';
+          
+          // Only delete if:
+          // 1. CostCenter matches the one being updated
+          // 2. Category is one of the categories being updated
+          return entryCostCenter === targetCostCenter && 
+                 categoriesBeingUpdated.includes(entryCategory);
+        })
+      : dayEntries; // If no costCenter, delete all (legacy behavior for backward compatibility)
+
+    // Delete matching entries
+    console.log(`🗑️ BackendDataService: Deleting ${entriesToDelete.length} time tracking entries for ${dayStr} (costCenter: ${targetCostCenter || 'all'})`);
+    for (const entry of entriesToDelete) {
       try {
         await this.deleteTimeTracking(entry.id);
-        console.log(`✅ BackendDataService: Deleted entry ${entry.id} (${entry.category}, ${entry.hours} hours)`);
+        console.log(`✅ BackendDataService: Deleted entry ${entry.id} (${entry.category}, ${entry.costCenter || 'no costCenter'}, ${entry.hours} hours)`);
       } catch (error) {
         console.error(`❌ BackendDataService: Error deleting entry ${entry.id}:`, error);
         // Continue deleting other entries even if one fails
@@ -492,7 +526,7 @@ export class BackendDataService {
     }
 
     // Create new entries for each category with hours > 0
-    // If all hours are 0, no entries will be created (all entries already deleted above)
+    // Only create entries for the costCenter being updated
     const categories = [
       { key: 'workingHours', category: 'Working Hours' },
       { key: 'gahours', category: 'G&A Hours' },
@@ -504,23 +538,24 @@ export class BackendDataService {
 
     let entriesCreated = 0;
     for (const { key, category } of categories) {
-      const hours = hoursBreakdown[key as keyof typeof hoursBreakdown] || 0;
-      if (hours > 0) {
+      const hours = hoursBreakdown[key as keyof typeof hoursBreakdown];
+      // Only create if hours is explicitly set (not undefined) and > 0
+      if (hours !== undefined && hours !== null && hours > 0) {
         await this.createTimeTracking({
           employeeId,
           date,
           category: category as any,
           hours,
           description: '',
-          costCenter: costCenter || ''
+          costCenter: targetCostCenter // Use the costCenter being updated
         });
         entriesCreated++;
-        console.log(`✅ BackendDataService: Created ${category} entry: ${hours} hours`);
+        console.log(`✅ BackendDataService: Created ${category} entry: ${hours} hours (costCenter: ${targetCostCenter || 'none'})`);
       }
     }
     
     if (entriesCreated === 0) {
-      console.log(`✅ BackendDataService: All hours cleared for ${dayStr} - no entries created`);
+      console.log(`✅ BackendDataService: All hours cleared for ${dayStr} (costCenter: ${targetCostCenter || 'all'}) - no entries created`);
     }
   }
 
