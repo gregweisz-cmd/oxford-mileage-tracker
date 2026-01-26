@@ -581,11 +581,43 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         return new Date(dateValue).getDate();
       };
       
-      // Process all time tracking entries and group by day
-      // Reduced logging for performance - only log if there's an issue
-      // debugLog('🔍 Processing time tracking entries:', currentMonthTimeTracking.length);
+      // DEDUPLICATION: Group entries by day/costCenter/category and keep only the most recent
+      // This prevents duplicate entries from causing hours to reappear after deletion
+      const entryMap = new Map<string, any>();
       
       currentMonthTimeTracking.forEach((tracking: any) => {
+        const day = getDayFromDate(tracking.date);
+        if (day < 1 || day > daysInMonth) return;
+        
+        // Create a unique key for this entry: day-costCenter-category
+        let key: string;
+        if (tracking.costCenter && tracking.costCenter !== '') {
+          key = `${day}-${tracking.costCenter}-Working Hours`;
+        } else if (tracking.category) {
+          key = `${day}--${tracking.category}`;
+        } else {
+          key = `${day}--Working Hours`;
+        }
+        
+        // Keep only the most recent entry for this key (by updatedAt timestamp)
+        const existing = entryMap.get(key);
+        if (!existing) {
+          entryMap.set(key, tracking);
+        } else {
+          const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+          const trackingTime = tracking.updatedAt ? new Date(tracking.updatedAt).getTime() : 0;
+          // If tracking is more recent, or if existing has no timestamp, use tracking
+          if (trackingTime > existingTime || existingTime === 0) {
+            entryMap.set(key, tracking);
+          }
+        }
+      });
+      
+      // Process deduplicated entries and group by day
+      const deduplicatedEntries = Array.from(entryMap.values());
+      debugLog(`🔍 Deduplicated ${currentMonthTimeTracking.length} entries to ${deduplicatedEntries.length} unique entries`);
+      
+      deduplicatedEntries.forEach((tracking: any) => {
         // Use helper function to extract day from date (treat YYYY-MM-DD as local)
         const day = getDayFromDate(tracking.date);
         
@@ -594,23 +626,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const categoryTypes = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'];
           
           if (tracking.costCenter && tracking.costCenter !== '') {
-            // Cost center entry - use assignment since deterministic IDs should prevent duplicates
+            // Cost center entry - use assignment (deduplication already handled)
             const costCenterIndex = data.costCenters.findIndex((cc: string) => cc === tracking.costCenter);
             if (costCenterIndex >= 0) {
               dayData.costCenterHours[costCenterIndex] = (tracking.hours || 0);
             }
           } else if (categoryTypes.includes(tracking.category)) {
-            // Category entry - use assignment since deterministic IDs should prevent duplicates
-            // If multiple entries exist (shouldn't happen but handle it), use the latest one
-            const existingHours = dayData.categoryHours[tracking.category] || 0;
+            // Category entry - use assignment (deduplication already handled)
             dayData.categoryHours[tracking.category] = (tracking.hours || 0);
-            if (existingHours > 0 && existingHours !== tracking.hours) {
-              debugWarn(`⚠️ Multiple entries found for ${tracking.category} on day ${day}. Using latest: ${tracking.hours} (was ${existingHours})`);
-            }
             // Reduced logging for performance
             // debugLog(`✅ Processed ${tracking.category} for day ${day}: ${tracking.hours} hours (ID: ${tracking.id})`);
           } else if (tracking.category === 'Working Hours' || tracking.category === 'Regular Hours') {
-            // Working hours entry - treat as cost center 0, use assignment since deterministic IDs should prevent duplicates
+            // Working hours entry - treat as cost center 0, use assignment (deduplication already handled)
             dayData.costCenterHours[0] = (tracking.hours || 0);
           }
         } else {
@@ -2186,24 +2213,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
-      // First, check if an entry already exists for this day, category, and cost center
+      // First, check if entries exist for this day, category, and cost center
+      // IMPORTANT: Find ALL matching entries (not just one) to handle duplicates
       const checkResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`);
-      let existingEntry = null;
+      let existingEntries: any[] = [];
       
       if (checkResponse.ok) {
         const allEntries = await checkResponse.json();
-        // Only log if we're debugging a specific issue
-        // debugLog(`🔍 All entries for month:`, allEntries.map((e: any) => ({
-        //   id: e.id,
-        //   date: e.date,
-        //   category: e.category,
-        //   costCenter: e.costCenter || '(empty)',
-        //   hours: e.hours
-        // })));
         
-        // Find entry for this specific day, category, and cost center
+        // Find ALL entries matching this day, category, and cost center
         // Use local date parsing to avoid timezone issues
-        existingEntry = allEntries.find((entry: any) => {
+        existingEntries = allEntries.filter((entry: any) => {
           const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
           const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
           const entryCostCenter = entry.costCenter || '';
@@ -2228,51 +2248,81 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                     !entryCategory
                                   ));
           
-          const matches = dateMatches && costCenterMatches && categoryMatches;
-          
-          // Only log when we find a match to reduce console noise
-          if (matches) {
-            debugLog(`✅ Found matching entry for deletion:`, {
-              id: entry.id,
-              day: entryDay,
-              category: entryCategory || '(empty)',
-              costCenter: entryCostCenter,
-              hours: entry.hours
-            });
-          }
-          
-          return matches;
+          return dateMatches && costCenterMatches && categoryMatches;
         });
       }
       
-      // Only log if no entry found (for debugging)
-      if (!existingEntry && value === 0) {
-        debugLog(`⚠️ No existing entry found to delete: day=${day}, category="${category}", costCenter="${actualCostCenter}"`);
-      }
-      
-      // If value is 0, delete the entry if it exists
+      // If value is 0, delete ALL matching entries (handle duplicates)
       if (value === 0) {
-        if (existingEntry) {
-          debugLog(`🗑️ Deleting time tracking entry (0 hours):`, existingEntry.id);
-          const deleteResponse = await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
-            method: 'DELETE',
+        if (existingEntries.length > 0) {
+          debugLog(`🗑️ Deleting ${existingEntries.length} time tracking entry/entries (0 hours):`, existingEntries.map(e => e.id));
+          
+          // Delete all matching entries in parallel
+          const deletePromises = existingEntries.map(entry => 
+            fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, {
+              method: 'DELETE',
+            })
+          );
+          
+          const deleteResults = await Promise.allSettled(deletePromises);
+          
+          // Check if any deletions failed
+          const failedDeletions = deleteResults.filter((result, index) => {
+            if (result.status === 'rejected') {
+              debugError(`❌ Failed to delete entry ${existingEntries[index].id}:`, result.reason);
+              return true;
+            }
+            if (result.status === 'fulfilled' && !result.value.ok) {
+              debugError(`❌ Failed to delete entry ${existingEntries[index].id}: ${result.value.status}`);
+              return true;
+            }
+            return false;
           });
           
-          if (!deleteResponse.ok) {
-            const errorText = await deleteResponse.text();
-            debugError(`❌ Failed to delete time tracking: ${deleteResponse.status} - ${errorText}`);
+          if (failedDeletions.length > 0) {
             // Revert optimistic update on error
             refreshTimesheetData(employeeData).catch(() => {});
-            throw new Error(`Failed to delete: ${deleteResponse.status}`);
+            throw new Error(`Failed to delete ${failedDeletions.length} of ${existingEntries.length} entries`);
           }
           
-          debugLog(`✅ Deleted time tracking entry for day ${day}`);
+          debugLog(`✅ Deleted ${existingEntries.length} time tracking entry/entries for day ${day}`);
         } else {
-          debugLog(`ℹ️ Value is 0 and no existing entry found - nothing to delete`);
+          debugLog(`ℹ️ Value is 0 and no existing entries found - nothing to delete`);
           // Even if no entry found, the optimistic update already shows 0, which is correct
         }
       } else if (value > 0) {
         // Save or update entry
+        // If multiple entries exist, delete all but the most recent one, then update that one
+        if (existingEntries.length > 1) {
+          debugLog(`⚠️ Found ${existingEntries.length} duplicate entries, deleting all but the most recent`);
+          // Sort by updatedAt (most recent first) and keep the first one
+          existingEntries.sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime; // Most recent first
+          });
+          
+          // Delete all but the first (most recent) entry
+          const entriesToDelete = existingEntries.slice(1);
+          const deletePromises = entriesToDelete.map(entry => 
+            fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, {
+              method: 'DELETE',
+            })
+          );
+          
+          await Promise.allSettled(deletePromises);
+          debugLog(`🗑️ Deleted ${entriesToDelete.length} duplicate entries`);
+        }
+        
+        // Use the most recent entry if one exists, otherwise create new
+        const entryToUpdate = existingEntries.length > 0 
+          ? existingEntries.sort((a, b) => {
+              const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+              const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+              return bTime - aTime; // Most recent first
+            })[0]
+          : null;
+        
         const requestBody = {
             employeeId: employeeData.employeeId,
             date: dateStr,
@@ -2283,11 +2333,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         };
         
         debugLog(`📤 Saving to time tracking API:`, requestBody);
-        debugLog(`🔍 Existing entry found:`, existingEntry);
+        debugLog(`🔍 Existing entry to update:`, entryToUpdate);
         
         // Use PUT if entry exists, POST if it doesn't
-        const response = existingEntry 
-          ? await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
+        const response = entryToUpdate 
+          ? await fetch(`${API_BASE_URL}/api/time-tracking/${entryToUpdate.id}`, {
               method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',
