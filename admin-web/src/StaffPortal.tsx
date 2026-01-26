@@ -1836,6 +1836,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (field === 'description') {
       // Allow editing all descriptions, including day off entries
       // User should be able to change or delete day off entries
+      const entry = newEntries[row];
       newEntries[row].description = editingValue;
       
       // Also update the dailyDescriptions state for proper syncing
