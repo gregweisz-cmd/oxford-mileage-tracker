@@ -1666,6 +1666,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
     };
     
+    // Clear cache when refreshTrigger changes to ensure fresh data
+    // This is critical because the API service caches responses for 60 seconds
+    if (refreshTrigger > 0) {
+      import('./services/rateLimitedApi').then(({ rateLimitedApi }) => {
+        rateLimitedApi.clearCacheFor('/api/daily-descriptions');
+        rateLimitedApi.clearCacheFor('/api/time-tracking');
+        rateLimitedApi.clearCacheFor('/api/mileage-entries');
+        rateLimitedApi.clearCacheFor('/api/receipts');
+      });
+    }
+    
     loadEmployeeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveEmployeeId, currentMonth, currentYear, refreshTrigger]);
