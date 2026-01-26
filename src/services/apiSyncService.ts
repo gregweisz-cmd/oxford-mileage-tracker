@@ -369,22 +369,13 @@ export class ApiSyncService {
       const employees = await this.fetchEmployees();
       syncData.employees = employees;
       
-      // Fetch mileage entries
-      const mileageEntries = await this.fetchMileageEntries(effectiveEmployeeId);
-      const mappedMileageEntries = this.mapEmployeeIdForLocal(
-        mileageEntries,
-        employeeId,
-        backendEmployeeId
-      );
+      // NOTE: Mileage entries and receipts are NOT synced FROM backend
+      // Mobile app is the source of truth for these - they only sync TO backend
+      // This prevents old/deleted data from being restored from backend
+      const mappedMileageEntries: MileageEntry[] = [];
       syncData.mileageEntries = mappedMileageEntries;
       
-      // Fetch receipts
-      const receipts = await this.fetchReceipts(effectiveEmployeeId);
-      const mappedReceipts = this.mapEmployeeIdForLocal(
-        receipts,
-        employeeId,
-        backendEmployeeId
-      );
+      const mappedReceipts: Receipt[] = [];
       syncData.receipts = mappedReceipts;
       
       // Fetch time tracking
@@ -417,12 +408,16 @@ export class ApiSyncService {
       // to avoid unnecessary API calls during general sync
       
       // Sync all data to local database
-      if (mappedMileageEntries.length > 0) {
-        await this.syncMileageEntriesToLocal(mappedMileageEntries);
-      }
-      if (mappedReceipts.length > 0) {
-        await this.syncReceiptsToLocal(mappedReceipts);
-      }
+      // NOTE: Mileage entries and receipts are NOT synced FROM backend
+      // Mobile app is the source of truth - they only sync TO backend
+      // This prevents deleted data from being restored
+      
+      // if (mappedMileageEntries.length > 0) {
+      //   await this.syncMileageEntriesToLocal(mappedMileageEntries);
+      // }
+      // if (mappedReceipts.length > 0) {
+      //   await this.syncReceiptsToLocal(mappedReceipts);
+      // }
       if (mappedTimeTracking.length > 0) {
         await this.syncTimeTrackingToLocal(mappedTimeTracking);
       }
@@ -437,8 +432,8 @@ export class ApiSyncService {
       
       debugLog('📥 ApiSync: Backend sync completed:', {
         employees: employees.length,
-        mileageEntries: mappedMileageEntries.length,
-        receipts: mappedReceipts.length,
+        mileageEntries: 0, // Not synced from backend (mobile is source of truth)
+        receipts: 0, // Not synced from backend (mobile is source of truth)
         timeTracking: mappedTimeTracking.length,
         dailyDescriptions: mappedDailyDescriptions.length
       });

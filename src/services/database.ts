@@ -1177,7 +1177,12 @@ export class DatabaseService {
 
   static async deleteMileageEntry(id: string): Promise<void> {
     const database = await getDatabase();
+    debugLog('🗑️ Database: Deleting mileage entry:', id);
+    
     await database.runAsync('DELETE FROM mileage_entries WHERE id = ?', [id]);
+    
+    debugLog('✅ Database: Mileage entry deleted successfully');
+    queueSyncOperation('delete', 'mileageEntry', { id });
     
     // Remove from sync queue to prevent trying to sync a deleted entry
     try {
