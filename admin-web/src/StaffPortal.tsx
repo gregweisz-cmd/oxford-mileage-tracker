@@ -2034,7 +2034,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // This gives the backend time to process the deletion
       if (field === 'description') {
         setLoading(true); // Show loading state
-        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second (increased from 500ms)
         setRefreshTrigger(prev => prev + 1); // Trigger reload
         setLoading(false); // Hide loading state (loadEmployeeData will set it appropriately)
       }
