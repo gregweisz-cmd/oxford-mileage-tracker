@@ -316,29 +316,20 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       setIsDayOff(false);
       setDayOffType('Day Off');
       
-      // Reload data
-      await loadData();
-      
-      // Restore scroll position to exact saved position
-      setTimeout(() => {
-        if (scrollViewRef.current && savedScrollPosition >= 0) {
-          scrollViewRef.current.scrollTo({
-            y: savedScrollPosition,
-            animated: false // Use false for exact positioning
-          });
-        }
-      }, 150); // Slightly longer delay to ensure data is rendered
-      
-      // Auto-sync to backend
+      // Sync to backend FIRST before reloading data
+      // This ensures deletions are sent to backend before we reload
       try {
         // Check if description was deleted (empty and not day off)
         const isEmpty = !descriptionText.trim() && !isDayOff;
         const savedDescription = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
         
         if (isEmpty && !savedDescription) {
-          // Description was deleted - trigger sync queue processing to sync deletion
+          // Description was deleted - sync deletion immediately
           const { SyncIntegrationService } = await import('../services/syncIntegrationService');
+          // Process sync queue to send deletion to backend
           await SyncIntegrationService.processSyncQueue();
+          // Wait a bit to ensure deletion is processed
+          await new Promise(resolve => setTimeout(resolve, 500));
         } else if (savedDescription) {
           // Description exists - sync it
           await ApiSyncService.syncToBackend({
@@ -371,6 +362,19 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           console.error('Error auto-syncing:', error);
         }
       }
+      
+      // Reload data AFTER syncing
+      await loadData();
+      
+      // Restore scroll position to exact saved position
+      setTimeout(() => {
+        if (scrollViewRef.current && savedScrollPosition >= 0) {
+          scrollViewRef.current.scrollTo({
+            y: savedScrollPosition,
+            animated: false // Use false for exact positioning
+          });
+        }
+      }, 150); // Slightly longer delay to ensure data is rendered
       
     } catch (error) {
       if (__DEV__) {

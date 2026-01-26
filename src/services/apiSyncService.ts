@@ -1652,6 +1652,10 @@ export class ApiSyncService {
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
       
+      // Check sync queue for pending deletions to avoid overwriting them
+      const { SyncIntegrationService } = await import('./syncIntegrationService');
+      const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('dailyDescription');
+      
       // Helper function to clean odometer readings from description
       const cleanOdometerReadings = (text: string): string => {
         if (!text) return text;
@@ -1667,6 +1671,12 @@ export class ApiSyncService {
         try {
           if (!desc.id) {
             console.warn(`⚠️ ApiSync: Skipping daily description without ID`);
+            continue;
+          }
+          
+          // Skip if this item is pending deletion
+          if (pendingDeletionIds.has(desc.id)) {
+            debugLog(`⚠️ ApiSync: Skipping daily description ${desc.id} - pending deletion in sync queue`);
             continue;
           }
           
@@ -1933,10 +1943,20 @@ export class ApiSyncService {
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
       
+      // Check sync queue for pending deletions to avoid overwriting them
+      const { SyncIntegrationService } = await import('./syncIntegrationService');
+      const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('timeTracking');
+      
       for (const tracking of timeTracking) {
         try {
           if (!tracking.id) {
             console.warn(`⚠️ ApiSync: Skipping time tracking entry without ID`);
+            continue;
+          }
+          
+          // Skip if this item is pending deletion
+          if (pendingDeletionIds.has(tracking.id)) {
+            debugLog(`⚠️ ApiSync: Skipping time tracking ${tracking.id} - pending deletion in sync queue`);
             continue;
           }
           

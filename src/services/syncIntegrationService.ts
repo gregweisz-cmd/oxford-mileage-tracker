@@ -212,7 +212,7 @@ export class SyncIntegrationService {
   /**
    * Process the sync queue
    */
-  private static async processSyncQueue(): Promise<void> {
+  static async processSyncQueue(): Promise<void> {
     if (this.isProcessingQueue || this.syncQueue.length === 0) {
       return;
     }
@@ -502,6 +502,19 @@ export class SyncIntegrationService {
       autoSyncEnabled: this.autoSyncEnabled,
       nextSyncIn: this.syncDebounceTimer ? this.SYNC_DEBOUNCE_MS : 0
     };
+  }
+
+  /**
+   * Get IDs of items pending deletion for a specific entity type
+   */
+  static getPendingDeletionIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription'): Set<string> {
+    const pendingIds = new Set<string>();
+    this.syncQueue.forEach(item => {
+      if (item.operation === 'delete' && item.entityType === entityType && item.data?.id) {
+        pendingIds.add(item.data.id);
+      }
+    });
+    return pendingIds;
   }
 
   /**
