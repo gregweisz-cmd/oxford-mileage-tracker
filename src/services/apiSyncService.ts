@@ -1681,6 +1681,13 @@ export class ApiSyncService {
             [desc.id]
           );
           
+          // If it doesn't exist locally, it might have been deleted
+          // Don't restore deleted descriptions from backend
+          if (!existing) {
+            debugLog(`⚠️ ApiSync: Skipping daily description ${desc.id} - not found locally (may have been deleted)`);
+            continue;
+          }
+          
           // Convert date to YYYY-MM-DD format only (timezone-safe)
           const descDate = desc.date instanceof Date ? desc.date : new Date(desc.date);
           const dateOnly = `${descDate.getFullYear()}-${String(descDate.getMonth() + 1).padStart(2, '0')}-${String(descDate.getDate()).padStart(2, '0')}`;
@@ -1692,9 +1699,14 @@ export class ApiSyncService {
           const descUpdatedAt = desc.updatedAt instanceof Date ? desc.updatedAt.toISOString() : (desc.updatedAt || new Date().toISOString());
           const existingUpdatedAt = existing?.updatedAt ? (existing.updatedAt instanceof Date ? existing.updatedAt.toISOString() : existing.updatedAt) : null;
           
-          // If description exists, update it; otherwise create it
-          if (existing) {
-            // Update existing description to ensure it matches backend
+          // If description exists, only update if backend version is newer (by timestamp)
+          // This prevents overwriting local changes that haven't synced yet
+          // Compare timestamps - only update if backend is newer
+          const existingTime = existingUpdatedAt ? new Date(existingUpdatedAt).getTime() : 0;
+          const backendTime = new Date(descUpdatedAt).getTime();
+          
+          if (backendTime > existingTime) {
+            // Backend is newer - update it
             await database.runAsync(
               `UPDATE daily_descriptions SET
                 employeeId = ?, date = ?, description = ?, costCenter = ?, stayedOvernight = ?, dayOff = ?, dayOffType = ?, updatedAt = ?
@@ -1711,8 +1723,13 @@ export class ApiSyncService {
                 desc.id
               ]
             );
-            debugLog(`🔄 ApiSync: Updated existing daily description ${desc.id}`);
+            debugLog(`🔄 ApiSync: Updated existing daily description ${desc.id} (backend was newer)`);
           } else {
+            debugLog(`⚠️ ApiSync: Skipping daily description ${desc.id} - local version is newer or same`);
+          }
+          
+          // Don't create new descriptions from backend - mobile is source of truth
+          // (Removed the else block that was creating new descriptions)
             // Insert new description with the SAME ID from backend to avoid duplicates
             await database.runAsync(
               `INSERT INTO daily_descriptions (

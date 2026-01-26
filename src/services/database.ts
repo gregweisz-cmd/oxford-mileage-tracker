@@ -2543,11 +2543,14 @@ export class DatabaseService {
       const setClause = fields.map(field => `${field} = ?`).join(', ');
       const updateQuery = `UPDATE daily_descriptions SET ${setClause}, updatedAt = ? WHERE id = ?`;
       
-      await database.runAsync(updateQuery, [...values, new Date().toISOString(), id] as any[]);
+      const newUpdatedAt = new Date().toISOString();
+      await database.runAsync(updateQuery, [...values, newUpdatedAt, id] as any[]);
       
       debugLog('✅ Database: Daily description updated successfully');
       const updatedDescription = await this.getDailyDescription(id);
       if (updatedDescription) {
+        // Update the updatedAt to ensure it's newer than backend
+        updatedDescription.updatedAt = new Date(newUpdatedAt);
         await this.syncToApi('updateDailyDescription', updatedDescription);
       }
     }
