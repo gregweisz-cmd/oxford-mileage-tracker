@@ -1231,11 +1231,34 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             // Get cost center from entries (prefer first entry's cost center, or use default)
             const costCenter = firstEntry?.costCenter || dayMileageEntries.find((e: any) => e.costCenter)?.costCenter || employee.defaultCostCenter || employee.costCenters?.[0] || '';
             
-            // Find time tracking for this day (use UTC to avoid timezone issues)
-            const dayTimeTracking = currentMonthTimeTracking.find((tracking: any) => {
+            // Find ALL time tracking entries for this day (use UTC to avoid timezone issues)
+            const dayTimeTrackingEntries = currentMonthTimeTracking.filter((tracking: any) => {
               const trackingDate = new Date(tracking.date);
               return trackingDate.getUTCDate() === day;
             });
+            
+            // Build hours breakdown from time tracking entries
+            const costCenterHours: { [key: number]: number } = {};
+            const categoryHours: { [key: string]: number } = {};
+            
+            dayTimeTrackingEntries.forEach((tracking: any) => {
+              if (tracking.costCenter && tracking.costCenter !== '') {
+                // Cost center entry
+                const costCenterIndex = costCenters.findIndex((cc: string) => cc === tracking.costCenter);
+                if (costCenterIndex >= 0) {
+                  costCenterHours[costCenterIndex] = (tracking.hours || 0);
+                }
+              } else if (tracking.category && tracking.category !== '') {
+                // Category entry (PTO, Holiday, etc.)
+                categoryHours[tracking.category] = (tracking.hours || 0);
+              } else {
+                // Default to cost center 0 for working hours
+                costCenterHours[0] = (tracking.hours || 0);
+              }
+            });
+            
+            // Get single time tracking entry for backward compatibility
+            const dayTimeTracking = dayTimeTrackingEntries[0];
             
             // Find Per Diem receipts for this day (use UTC to avoid timezone issues)
             const dayPerDiemReceipts = currentMonthReceipts.filter((receipt: any) => {
