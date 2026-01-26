@@ -2029,9 +2029,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       await syncReportData();
       
       debugVerbose('✅ Changes auto-saved and synced to source tables');
+      
+      // If we saved a description (especially if it was deleted), wait a bit before reloading
+      // This gives the backend time to process the deletion
+      if (field === 'description') {
+        setLoading(true); // Show loading state
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+        setRefreshTrigger(prev => prev + 1); // Trigger reload
+        setLoading(false); // Hide loading state (loadEmployeeData will set it appropriately)
+      }
     } catch (error) {
       debugError('Error auto-saving changes:', error);
       // Don't show alert for auto-save failures to avoid interrupting user workflow
+      if (field === 'description') {
+        setLoading(false); // Make sure to clear loading state on error
+      }
     }
   };
 
