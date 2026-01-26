@@ -15,8 +15,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
-import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataService';
-import { ApiSyncService } from '../services/apiSyncService';
+import { UnifiedDayData } from '../services/unifiedDataService';
+import { BackendDataService } from '../services/backendDataService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import UnifiedHeader from '../components/UnifiedHeader';
@@ -194,8 +194,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       
       setCurrentEmployee(employee);
       
-      // Load unified data (hours + descriptions) for the current month
-      const monthData = await UnifiedDataService.getMonthData(
+      // Load unified data (hours + descriptions) directly from backend
+      const monthData = await BackendDataService.getMonthData(
         employee.id,
         currentMonth.getMonth() + 1,
         currentMonth.getFullYear()
@@ -286,7 +286,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         originalDescription: selectedDay.description
       });
       
-      await UnifiedDataService.updateDayDescription(
+      // Save description directly to backend
+      await BackendDataService.updateDayDescription(
         currentEmployee.id,
         selectedDay.date,
         descriptionToSave,
@@ -296,17 +297,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         isDayOff ? dayOffType : undefined
       );
       
-      // Verify deletion happened
-      if (isDeleting) {
-        const afterDelete = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
-        if (afterDelete) {
-          console.error(`❌ DailyHoursScreen: Description still exists after deletion! ID: ${afterDelete.id}`);
-        } else {
-          console.log(`✅ DailyHoursScreen: Description successfully deleted`);
-        }
-      }
-      
-      // Save hours (only if not day off)
+      // Save hours directly to backend (only if not day off)
       if (!isDayOff) {
         const hoursBreakdown = {
           workingHours: timeTrackingInputs['Working Hours'] || 0,
@@ -317,7 +308,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           pflPfmlHours: timeTrackingInputs['PFL/PFML Hours'] || 0
         };
         
-        await UnifiedDataService.updateDayHours(
+        await BackendDataService.updateDayHours(
           currentEmployee.id,
           selectedDay.date,
           hoursBreakdown,
@@ -337,58 +328,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       setIsDayOff(false);
       setDayOffType('Day Off');
       
-      // Sync to backend FIRST before reloading data
-      // This ensures deletions are sent to backend before we reload
-      try {
-        // Check if description was deleted
-        const savedDescription = await DatabaseService.getDailyDescriptionByDate(currentEmployee.id, selectedDay.date);
-        
-        if (isDeleting && !savedDescription) {
-          // Description was deleted - sync deletion immediately
-          const { SyncIntegrationService } = await import('../services/syncIntegrationService');
-          // Process sync queue to send deletion to backend
-          await SyncIntegrationService.processSyncQueue();
-          // Wait a bit to ensure deletion is processed
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } else if (savedDescription) {
-          // Description exists - sync it
-          await ApiSyncService.syncToBackend({
-            dailyDescriptions: [savedDescription]
-          });
-        }
-        
-        // Also sync hours if they were updated - ALWAYS sync hours when not day off
-        if (!isDayOff) {
-          // Get all time entries for this day after the update
-          const timeEntries = await DatabaseService.getTimeTrackingEntries(
-            currentEmployee.id,
-            selectedDay.date.getMonth() + 1,
-            selectedDay.date.getFullYear()
-          );
-          const dayEntries = timeEntries.filter(entry => {
-            const entryDate = new Date(entry.date);
-            return entryDate.getDate() === selectedDay.date.getDate() &&
-                   entryDate.getMonth() === selectedDay.date.getMonth() &&
-                   entryDate.getFullYear() === selectedDay.date.getFullYear();
-          });
-          
-          // Always sync hours (even if empty array - this ensures deletions sync)
-          await ApiSyncService.syncToBackend({
-            timeTracking: dayEntries
-          });
-          
-          // Also process sync queue to ensure deletions are sent
-          const { SyncIntegrationService } = await import('../services/syncIntegrationService');
-          await SyncIntegrationService.processSyncQueue();
-        }
-      } catch (error) {
-        // Auto-sync errors are non-critical, log only in dev mode
-        if (__DEV__) {
-          console.error('Error auto-syncing:', error);
-        }
-      }
-      
-      // Reload data AFTER syncing
+      // Reload data from backend (no sync needed - already saved directly)
       await loadData();
       
       // Restore scroll position to exact saved position
@@ -522,41 +462,6 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           <Text style={styles.instructionText}>
             Tap on any day to enter or edit hours and description
           </Text>
-          {currentEmployee && (
-            <TouchableOpacity
-              style={styles.resetButton}
-              onPress={async () => {
-                Alert.alert(
-                  'Reset All Hours',
-                  `Are you sure you want to reset all hours for ${getMonthName(currentMonth)}? This will set all hours to 0 for all days.`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Reset',
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          await UnifiedDataService.resetMonthHours(
-                            currentEmployee.id,
-                            currentMonth.getMonth() + 1,
-                            currentMonth.getFullYear()
-                          );
-                          await loadData();
-                          Alert.alert('Success', 'All hours have been reset to 0 for this month.');
-                        } catch (error) {
-                          Alert.alert('Error', 'Failed to reset hours. Please try again.');
-                          console.error('Error resetting hours:', error);
-                        }
-                      }
-                    }
-                  ]
-                );
-              }}
-            >
-              <MaterialIcons name="refresh" size={20} color="#fff" />
-              <Text style={styles.resetButtonText}>Reset All Hours</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Days List */}
