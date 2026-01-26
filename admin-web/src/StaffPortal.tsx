@@ -2380,18 +2380,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       debugError('Error saving timesheet to expense report:', error);
     }
     
-    // Refresh timesheet data in background after a short delay to ensure save/delete is complete
-    // Use a longer delay for deletes to ensure they're processed
-    // Only refresh if we actually made a change (not just optimistic update)
-    const refreshDelay = value === 0 ? 1000 : 500;
-    setTimeout(() => {
-      // Only refresh if not already refreshing to prevent cascading refreshes
-      if (!isRefreshingTimesheet) {
-        refreshTimesheetData(employeeData).catch((error) => {
-          debugError('❌ Error refreshing timesheet data:', error);
-        });
-      }
-    }, refreshDelay);
+    // REMOVED: Automatic refresh after save
+    // The optimistic update already shows the correct value in the UI immediately
+    // Refreshing immediately can overwrite the optimistic update if:
+    // 1. Backend hasn't fully processed the save yet (race condition)
+    // 2. User clicks on another cell before refresh completes
+    // 3. There are duplicate entries that haven't been cleaned up yet
+    // 
+    // Data will be refreshed naturally on:
+    // - Next page navigation
+    // - Explicit "Refresh Data" button click
+    // - Month/year change
+    // - Initial page load
+    //
+    // This ensures the optimistic update persists and user sees their changes immediately
   };
 
   // Cancel timesheet cell edit
@@ -2565,14 +2567,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCategoryCell(null);
     setEditingCategoryValue('');
     
-    // Refresh in background after a short delay to ensure save is complete
-    // The optimistic update is already shown, so this just syncs with backend
-    setTimeout(() => {
-      refreshTimesheetData(employeeData).catch((error) => {
-        debugError('❌ Error calling refreshTimesheetData:', error);
-        // If refresh fails, the optimistic update is still shown, which is fine
-      });
-    }, 500);
+    // REMOVED: Automatic refresh after save
+    // Same reasoning as handleTimesheetCellSave - optimistic update already shows correct value
+    // Refreshing immediately can overwrite the optimistic update before backend processes the save
+    // Data will be refreshed naturally on next page navigation or explicit refresh
   };
 
   // Cancel category cell edit
