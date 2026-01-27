@@ -18,13 +18,10 @@ export interface GoogleUserInfo {
 }
 
 export class GoogleAuthService {
-  // Use the same API configuration as the rest of the app
+  // Use the same API configuration as the rest of the app (Render when USE_PRODUCTION_FOR_TESTING)
   private static getBaseUrl(): string {
-    // Remove /api suffix since we'll add it back in the endpoint
-    const baseUrl = API_BASE_URL?.replace('/api', '') || '';
-    return baseUrl || (__DEV__ 
-      ? 'http://192.168.86.101:3002' 
-      : 'https://oxford-mileage-backend.onrender.com');
+    const baseUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '');
+    return baseUrl || 'https://oxford-mileage-backend.onrender.com';
   }
   
   private static baseUrl = GoogleAuthService.getBaseUrl();

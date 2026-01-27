@@ -1,10 +1,6 @@
 import { DatabaseService } from './database';
 import { debugLog, debugError, debugWarn } from '../config/debug';
-
-// API Configuration - use local backend for testing, cloud backend for production
-const API_BASE_URL = __DEV__ 
-  ? 'http://192.168.86.101:3002/api' 
-  : 'https://oxford-mileage-backend.onrender.com/api';
+import { API_BASE_URL } from '../config/api';
 
 export interface PerDiemRule {
   id: string;
@@ -23,20 +19,42 @@ export class PerDiemRulesService {
   private static rulesCache: PerDiemRule[] = [];
   private static lastFetchTime: Date | null = null;
   private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private static fetchInFlight: Promise<PerDiemRule[]> | null = null;
+
+  /** Timeout in ms for backend fetch — fail fast so app doesn't hang on Loading */
+  private static readonly FETCH_TIMEOUT_MS = 12000;
 
   /**
-   * Fetch Per Diem rules from backend
+   * Fetch Per Diem rules from backend (or from local fallback on timeout/error).
+   * Concurrent callers share one in-flight request.
    */
   static async fetchPerDiemRules(): Promise<PerDiemRule[]> {
+    if (this.fetchInFlight) {
+      return this.fetchInFlight;
+    }
+    const promise = this.doFetchPerDiemRules();
+    this.fetchInFlight = promise;
+    try {
+      const result = await promise;
+      return result;
+    } finally {
+      this.fetchInFlight = null;
+    }
+  }
+
+  private static async doFetchPerDiemRules(): Promise<PerDiemRule[]> {
     try {
       debugLog('📋 PerDiemRules: Fetching rules from backend...');
-      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.FETCH_TIMEOUT_MS);
       const response = await fetch(`${API_BASE_URL}/per-diem-rules`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch per diem rules: ${response.status} ${response.statusText}`);
@@ -54,9 +72,11 @@ export class PerDiemRulesService {
       return rules;
     } catch (error) {
       console.error('❌ PerDiemRules: Error fetching rules from backend:', error);
-      
-      // Try to load from local storage as fallback
-      return await this.getLocalRules();
+      const local = await this.getLocalRules();
+      // Treat local fallback as valid cache to avoid repeated failed fetches
+      this.rulesCache = local;
+      this.lastFetchTime = new Date();
+      return local;
     }
   }
 

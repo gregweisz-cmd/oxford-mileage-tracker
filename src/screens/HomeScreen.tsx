@@ -1457,7 +1457,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               {isSyncing ? "Syncing..." : lastSyncTime ? `Last sync: ${lastSyncTime.toLocaleTimeString()}` : "Not synced yet"}
             </Text>
             <Text style={styles.syncStatusUrl}>
-              {__DEV__ ? "192.168.86.101:3002" : "Production"}
+              {API_BASE_URL?.includes('onrender') ? 'Production' : 'Local'}
             </Text>
           </View>
         )}

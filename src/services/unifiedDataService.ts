@@ -85,8 +85,19 @@ export class UnifiedDataService {
       pflPfmlHours: 0
     };
     
-    // Process time tracking entries
+    // Deduplicate time tracking entries by category
+    // Keep only the most recent entry for each category (by updatedAt)
+    const categoryMap = new Map<string, any>();
     dayTimeTracking.forEach(entry => {
+      const category = entry.category || '';
+      const existing = categoryMap.get(category);
+      if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
+        categoryMap.set(category, entry);
+      }
+    });
+    
+    // Process deduplicated entries
+    categoryMap.forEach(entry => {
       switch (entry.category) {
         case 'Working Hours':
           hoursBreakdown.workingHours += entry.hours;
@@ -223,7 +234,19 @@ export class UnifiedDataService {
         pflPfmlHours: 0
       };
       
+      // Deduplicate time tracking entries by category and date
+      // Keep only the most recent entry for each category (by updatedAt)
+      const categoryMap = new Map<string, any>();
       dayData.timeTracking.forEach(entry => {
+        const category = entry.category || '';
+        const existing = categoryMap.get(category);
+        if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
+          categoryMap.set(category, entry);
+        }
+      });
+      
+      // Process deduplicated entries
+      categoryMap.forEach(entry => {
         switch (entry.category) {
           case 'Working Hours':
             hoursBreakdown.workingHours += entry.hours;

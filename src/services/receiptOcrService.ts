@@ -4,6 +4,7 @@
  */
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { API_BASE_URL } from '../config/api';
 
 export interface OcrResult {
   vendor: string;
@@ -20,10 +21,9 @@ export interface OcrResult {
 }
 
 export class ReceiptOcrService {
-  // Use local network IP for mobile device development, or localhost for web/simulator
-  private static readonly API_BASE_URL = __DEV__ 
-    ? 'http://192.168.86.101:3002'  // Change to your computer's local IP address
-    : 'https://oxford-mileage-backend.onrender.com';
+  // Base URL without /api for receipt OCR path: .../api/receipts/ocr
+  private static getBaseUrl = (): string =>
+    (API_BASE_URL ?? '').replace(/\/api\/?$/, '') || 'https://oxford-mileage-backend.onrender.com';
 
   /**
    * Process receipt image and extract information using backend OCR
@@ -41,7 +41,7 @@ export class ReceiptOcrService {
       console.log('📸 OCR: Sending image to backend for processing...');
       
       // Call backend OCR endpoint
-      const response = await fetch(`${this.API_BASE_URL}/api/receipts/ocr`, {
+      const response = await fetch(`${ReceiptOcrService.getBaseUrl()}/api/receipts/ocr`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

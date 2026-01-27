@@ -23,6 +23,7 @@ import { formatLocation } from '../utils/locationFormatter';
 import LocationCaptureModal from '../components/LocationCaptureModal';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
 import { CostCenterAiService, CostCenterSuggestion } from '../services/costCenterAiService';
+import { getTravelReasons, TravelReason } from '../services/travelReasonsService';
 import SimpleNavigationButton from '../components/SimpleNavigationButton';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
@@ -67,10 +68,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
   const [isEditingOdometer, setIsEditingOdometer] = useState(false);
+  const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
+  const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
 
   useEffect(() => {
     loadEmployee();
     loadPreferences();
+    getTravelReasons().then(setTravelReasons);
     
     // Reset all states when component mounts to prevent stuck modals
     return () => {
@@ -786,46 +790,56 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Purpose *</Text>
-              <TextInput
-                ref={purposeInputRef}
-                style={styles.input}
-                value={trackingForm.purpose}
-                onChangeText={(value) => handleInputChange('purpose', value)}
-                placeholder="e.g., Client visit, Meeting, Training"
-                placeholderTextColor="#999"
-                returnKeyType="next"
-                blurOnSubmit={false}
-                onSubmitEditing={() => {
-                  notesInputRef.current?.focus();
-                }}
-              />
-              
-              {/* AI Purpose Suggestions */}
-              {showPurposeSuggestions && purposeSuggestions.length > 0 && (
-                <View style={styles.suggestionsContainer}>
-                  <Text style={styles.suggestionsTitle}>🤖 AI Suggestions</Text>
-                  {purposeSuggestions.slice(0, 3).map((suggestion, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.suggestionItem}
-                      onPress={() => {
-                        setTrackingForm(prev => ({ ...prev, purpose: suggestion.purpose }));
-                        setShowPurposeSuggestions(false);
-                      }}
-                    >
-                      <View style={styles.suggestionContent}>
-                        <Text style={styles.suggestionText}>{suggestion.purpose}</Text>
-                        <Text style={styles.suggestionReason}>{suggestion.reasoning}</Text>
-                      </View>
-                      <View style={styles.confidenceBadge}>
-                        <Text style={styles.confidenceText}>
-                          {Math.round(suggestion.confidence * 100)}%
-                        </Text>
-                      </View>
+              <TouchableOpacity
+                style={styles.purposeDropdown}
+                onPress={() => setShowPurposePickerModal(true)}
+              >
+                <Text style={[styles.purposeDropdownText, !trackingForm.purpose && styles.purposeDropdownPlaceholder]}>
+                  {trackingForm.purpose || (travelReasons.length === 0 ? 'Loading...' : 'Select purpose...')}
+                </Text>
+                <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+              </TouchableOpacity>
+              <Modal
+                visible={showPurposePickerModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowPurposePickerModal(false)}
+              >
+                <View style={styles.purposeModalOverlay}>
+                  <TouchableOpacity
+                    style={StyleSheet.absoluteFill}
+                    activeOpacity={1}
+                    onPress={() => setShowPurposePickerModal(false)}
+                  />
+                  <View style={[styles.purposeModalContent, { backgroundColor: colors.background }]}>
+                    <Text style={styles.purposeModalTitle}>Purpose</Text>
+                    <ScrollView style={styles.purposeModalList} keyboardShouldPersistTaps="handled">
+                      {travelReasons.filter((r) => r.label !== 'Other').length === 0 ? (
+                        <Text style={styles.purposeModalEmpty}>No options configured. Set up Travel Reasons in Admin Portal.</Text>
+                      ) : (
+                        travelReasons.filter((r) => r.label !== 'Other').map((r) => (
+                          <TouchableOpacity
+                            key={r.id}
+                            style={[styles.purposeModalItem, trackingForm.purpose === r.label && styles.purposeModalItemSelected]}
+                            onPress={() => {
+                              setTrackingForm(prev => ({ ...prev, purpose: r.label }));
+                              setShowPurposePickerModal(false);
+                            }}
+                          >
+                            <Text style={styles.purposeModalItemText}>{r.label}</Text>
+                            {trackingForm.purpose === r.label && (
+                              <MaterialIcons name="check" size={20} color="#4CAF50" />
+                            )}
+                          </TouchableOpacity>
+                        ))
+                      )}
+                    </ScrollView>
+                    <TouchableOpacity style={styles.purposeModalClose} onPress={() => setShowPurposePickerModal(false)}>
+                      <Text style={styles.purposeModalCloseText}>Cancel</Text>
                     </TouchableOpacity>
-                  ))}
+                  </View>
                 </View>
-              )}
+              </Modal>
             </View>
 
             <View style={styles.inputGroup}>
@@ -1194,6 +1208,111 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  purposeDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+  },
+  purposeDropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  purposeDropdownPlaceholder: {
+    color: '#999',
+  },
+  purposeModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  purposeModalContent: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  purposeModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  purposeModalList: {
+    maxHeight: 320,
+  },
+  purposeModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  purposeModalItemSelected: {
+    backgroundColor: 'rgba(76, 175, 80, 0.08)',
+  },
+  purposeModalItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  purposeModalEmpty: {
+    fontSize: 14,
+    color: '#666',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+  },
+  purposeModalClose: {
+    marginTop: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  purposeModalCloseText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  purposeOtherContainer: {
+    paddingVertical: 8,
+  },
+  purposeOtherLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  purposeOtherActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    gap: 12,
+  },
+  purposeOtherBack: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  purposeOtherBackText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  purposeOtherDone: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+  },
+  purposeOtherDoneDisabled: {
+    backgroundColor: '#ccc',
+  },
+  purposeOtherDoneText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
   },
   actionsContainer: {
     marginBottom: 20,

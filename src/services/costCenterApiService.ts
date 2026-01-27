@@ -1,6 +1,8 @@
 // Cost Center API Service for Mobile App
 // Handles fetching cost centers from the backend API
 
+import { API_BASE_URL } from '../config/api';
+
 export interface CostCenter {
   id: string;
   code: string;
@@ -12,9 +14,7 @@ export interface CostCenter {
 }
 
 class CostCenterApiService {
-  private baseUrl = __DEV__ 
-    ? 'http://localhost:3002/api' 
-    : 'https://oxford-mileage-backend.onrender.com/api';
+  private baseUrl = API_BASE_URL;
   private costCenters: CostCenter[] = [];
   private lastFetch: number = 0;
   private cacheTimeout = 5 * 60 * 1000; // 5 minutes

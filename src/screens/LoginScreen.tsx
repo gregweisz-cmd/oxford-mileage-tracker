@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'react-native';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
+import { API_BASE_URL } from '../config/api';
 
 interface LoginScreenProps {
   navigation?: any;
@@ -65,8 +66,8 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
     setLoading(true);
     try {
-      // Try backend API authentication first
-      const backendUrl = __DEV__ ? 'http://192.168.86.101:3002' : 'https://oxford-mileage-backend.onrender.com';
+      // Try backend API authentication first (uses shared config: Render when USE_PRODUCTION_FOR_TESTING)
+      const backendUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '') || 'https://oxford-mileage-backend.onrender.com';
       
       try {
         const response = await fetch(`${backendUrl}/api/employee-login`, {

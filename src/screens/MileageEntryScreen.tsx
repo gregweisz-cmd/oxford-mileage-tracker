@@ -32,6 +32,7 @@ import { DuplicateDetectionService } from '../services/duplicateDetectionService
 import { HoursEstimationService } from '../services/hoursEstimationService';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
 import { AnomalyDetectionService } from '../services/anomalyDetectionService';
+import { getTravelReasons, TravelReason } from '../services/travelReasonsService';
 import { useNotifications } from '../contexts/NotificationContext';
 import { TripChainingAiService, TripChainSuggestion } from '../services/tripChainingAiService';
 import TripChainingModal from '../components/TripChainingModal';
@@ -95,12 +96,20 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const [oxfordHouseSelectedState, setOxfordHouseSelectedState] = useState<string>('');
   const [oxfordHouseAvailableStates, setOxfordHouseAvailableStates] = useState<string[]>([]);
   const [isOxfordHouseStatePickerVisible, setIsOxfordHouseStatePickerVisible] = useState(false);
+
+  // Travel reasons dropdown (purpose)
+  const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
+  const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
   
   // TextInput refs for keyboard navigation
   const odometerInputRef = useRef<TextInput>(null);
   const purposeInputRef = useRef<TextInput>(null);
   const milesInputRef = useRef<TextInput>(null);
   const notesInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    getTravelReasons().then(setTravelReasons);
+  }, []);
 
   useEffect(() => {
     const initializeAndLoad = async () => {
@@ -1152,67 +1161,107 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         <View style={styles.inputGroup}>
           <View style={styles.purposeHeader}>
             <Text style={styles.label}>Purpose *</Text>
-            {loadingSuggestions && (
+            {travelReasons.length === 0 && loadingSuggestions && (
               <View style={styles.loadingBadge}>
                 <MaterialIcons name="auto-awesome" size={12} color="#2196F3" />
                 <Text style={styles.loadingText}>Finding suggestions...</Text>
               </View>
             )}
           </View>
-          
-          <TextInput
-            ref={purposeInputRef}
-            style={styles.input}
-            value={formData.purpose}
-            onChangeText={(value) => handleInputChange('purpose', value)}
-            placeholder="e.g., Client visit, Meeting, Training"
-            placeholderTextColor="#999"
-            returnKeyType="next"
-            blurOnSubmit={false}
-            onSubmitEditing={() => {
-              milesInputRef.current?.focus();
-            }}
-          />
-          
-          {/* AI Purpose Suggestions */}
-          {purposeSuggestions.length > 0 && !formData.purpose && (
-            <View style={styles.purposeSuggestionsContainer}>
-              <View style={styles.purposeSuggestionsHeader}>
-                <MaterialIcons name="auto-awesome" size={16} color="#FF9800" />
-                <Text style={styles.purposeSuggestionsTitle}>AI Suggestions</Text>
-              </View>
-              {purposeSuggestions.map((suggestion, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.purposeSuggestionItem,
-                    index === 0 && styles.purposeSuggestionItemTop
-                  ]}
-                  onPress={() => {
-                    handleInputChange('purpose', suggestion.purpose);
-                    TripPurposeAiService.recordPurposeSelection(
-                      formData.startLocation,
-                      formData.endLocation,
-                      suggestion.purpose,
-                      true
-                    );
-                  }}
-                >
-                  <View style={styles.purposeSuggestionContent}>
-                    <Text style={styles.purposeSuggestionText}>{suggestion.purpose}</Text>
-                    <Text style={styles.purposeSuggestionReason}>{suggestion.reasoning}</Text>
+          {travelReasons.length > 0 ? (
+            <>
+              <TouchableOpacity
+                style={styles.purposeDropdown}
+                onPress={() => setShowPurposePickerModal(true)}
+              >
+                <Text style={[styles.purposeDropdownText, !formData.purpose && styles.purposeDropdownPlaceholder]}>
+                  {formData.purpose || 'Select purpose...'}
+                </Text>
+                <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+              </TouchableOpacity>
+              <Modal
+                visible={showPurposePickerModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowPurposePickerModal(false)}
+              >
+                <View style={styles.purposeModalOverlay}>
+                  <TouchableOpacity
+                    style={StyleSheet.absoluteFill}
+                    activeOpacity={1}
+                    onPress={() => setShowPurposePickerModal(false)}
+                  />
+                  <View style={styles.purposeModalContent}>
+                    <Text style={styles.purposeModalTitle}>Purpose</Text>
+                    <ScrollView style={styles.purposeModalList} keyboardShouldPersistTaps="handled">
+                      {travelReasons.filter((r) => r.label !== 'Other').map((r) => (
+                        <TouchableOpacity
+                          key={r.id}
+                          style={[styles.purposeModalItem, formData.purpose === r.label && styles.purposeModalItemSelected]}
+                          onPress={() => {
+                            setFormData(prev => ({ ...prev, purpose: r.label }));
+                            setShowPurposePickerModal(false);
+                          }}
+                        >
+                          <Text style={styles.purposeModalItemText}>{r.label}</Text>
+                          {formData.purpose === r.label && (
+                            <MaterialIcons name="check" size={20} color="#4CAF50" />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                    <TouchableOpacity style={styles.purposeModalClose} onPress={() => setShowPurposePickerModal(false)}>
+                      <Text style={styles.purposeModalCloseText}>Cancel</Text>
+                    </TouchableOpacity>
                   </View>
-                  <View style={[
-                    styles.confidenceBadge,
-                    index === 0 && styles.confidenceBadgeTop
-                  ]}>
-                    <Text style={styles.confidenceText}>
-                      {Math.round(suggestion.confidence * 100)}%
-                    </Text>
+                </View>
+              </Modal>
+            </>
+          ) : (
+            <>
+              <TextInput
+                ref={purposeInputRef}
+                style={styles.input}
+                value={formData.purpose}
+                onChangeText={(value) => handleInputChange('purpose', value)}
+                placeholder="e.g., Client visit, Meeting, Training"
+                placeholderTextColor="#999"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => milesInputRef.current?.focus()}
+              />
+              {purposeSuggestions.length > 0 && !formData.purpose && (
+                <View style={styles.purposeSuggestionsContainer}>
+                  <View style={styles.purposeSuggestionsHeader}>
+                    <MaterialIcons name="auto-awesome" size={16} color="#FF9800" />
+                    <Text style={styles.purposeSuggestionsTitle}>AI Suggestions</Text>
                   </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  {purposeSuggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[styles.purposeSuggestionItem, index === 0 && styles.purposeSuggestionItemTop]}
+                      onPress={() => {
+                        handleInputChange('purpose', suggestion.purpose);
+                        TripPurposeAiService.recordPurposeSelection(
+                          formData.startLocation,
+                          formData.endLocation,
+                          suggestion.purpose,
+                          true
+                        );
+                      }}
+                    >
+                      <View style={styles.purposeSuggestionContent}>
+                        <Text style={styles.purposeSuggestionText}>{suggestion.purpose}</Text>
+                        <Text style={styles.purposeSuggestionReason}>{suggestion.reasoning}</Text>
+                      </View>
+                      <View style={[styles.confidenceBadge, index === 0 && styles.confidenceBadgeTop]}>
+                        <Text style={styles.confidenceText}>{Math.round(suggestion.confidence * 100)}%</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -1862,6 +1911,69 @@ const styles = StyleSheet.create({
     color: '#2196F3',
     marginLeft: 4,
     fontWeight: '500',
+  },
+  purposeDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+  },
+  purposeDropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  purposeDropdownPlaceholder: {
+    color: '#999',
+  },
+  purposeModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  purposeModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  purposeModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  purposeModalList: {
+    maxHeight: 320,
+  },
+  purposeModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  purposeModalItemSelected: {
+    backgroundColor: 'rgba(76, 175, 80, 0.08)',
+  },
+  purposeModalItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  purposeModalClose: {
+    marginTop: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  purposeModalCloseText: {
+    fontSize: 16,
+    color: '#666',
   },
   purposeSuggestionsContainer: {
     marginTop: 12,

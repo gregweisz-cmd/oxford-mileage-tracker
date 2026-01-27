@@ -305,7 +305,7 @@ export const SystemSettings: React.FC = () => {
             <FormControl fullWidth>
               <InputLabel>Default Timezone</InputLabel>
               <Select
-                value={settings.reportSchedule.defaultTimezone}
+                value={settings.reportSchedule?.defaultTimezone ?? 'America/New_York'}
                 onChange={(e) => updateSettings('reportSchedule', { defaultTimezone: e.target.value })}
                 label="Default Timezone"
               >
@@ -347,7 +347,7 @@ export const SystemSettings: React.FC = () => {
             <FormControl fullWidth>
               <InputLabel>Default Report Frequency</InputLabel>
               <Select
-                value={settings.approval.defaultFrequency}
+                value={settings.approval?.defaultFrequency ?? 'monthly'}
                 onChange={(e) => updateSettings('approval', { defaultFrequency: e.target.value })}
                 label="Default Report Frequency"
               >

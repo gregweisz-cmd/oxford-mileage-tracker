@@ -168,6 +168,20 @@ router.get('/api/stats', (req, res) => {
   });
 });
 
+// ===== API ROOT =====
+// GET /api — avoid "Cannot GET /api" when hitting the base URL
+router.get('/api', (req, res) => {
+  res.json({
+    message: 'Oxford Mileage Backend API',
+    version: '1.0.0',
+    docs: {
+      health: 'GET /api/health',
+      travelReasons: 'GET /api/travel-reasons',
+      dailyDescriptionOptions: 'GET /api/daily-description-options',
+    },
+  });
+});
+
 // ===== HEALTH CHECK =====
 
 const fs = require('fs');

@@ -349,6 +349,38 @@ function ensureTablesExist() {
         }
       });
 
+      // Travel reasons (dropdown options for trip purpose on GPS & manual entry)
+      db.run(`CREATE TABLE IF NOT EXISTS travel_reasons (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        category TEXT DEFAULT '',
+        sortOrder INTEGER DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`, (err) => {
+        if (err) {
+          debugError('❌ Error creating travel_reasons table:', err);
+        } else {
+          debugLog('✅ Travel reasons table created/verified');
+        }
+      });
+
+      // Daily description options (dropdown for daily work descriptions on Hours & Description / report grid)
+      db.run(`CREATE TABLE IF NOT EXISTS daily_description_options (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        category TEXT DEFAULT '',
+        sortOrder INTEGER DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`, (err) => {
+        if (err) {
+          debugError('❌ Error creating daily_description_options table:', err);
+        } else {
+          debugLog('✅ Daily description options table created/verified');
+        }
+      });
+
       // Add enableGoogleMaps column if it doesn't exist (for existing databases)
       db.all(`PRAGMA table_info(cost_centers)`, [], (pragmaErr, columns) => {
         if (!pragmaErr && columns) {

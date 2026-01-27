@@ -30,6 +30,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Autocomplete,
   Alert,
   AlertTitle,
   Checkbox,
@@ -266,6 +267,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingValue, setEditingValue] = useState('');
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [dailyDescriptions, setDailyDescriptions] = useState<any[]>([]);
+  const [dailyDescriptionOptions, setDailyDescriptionOptions] = useState<Array<{ id: string; label: string }>>([]);
   
   // Selected items for supervisor revision requests (only when supervisorMode is true)
   const [selectedMileageItems, setSelectedMileageItems] = useState<Set<string>>(new Set());
@@ -301,6 +303,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
     }
   }, [selectedMileageItems, selectedReceiptItems, selectedTimeTrackingItems, supervisorMode, onSelectedItemsChange]);
+
+  // Load daily description options for dropdown (shared with mobile Hours & Description)
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/daily-description-options`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d: any) => setDailyDescriptionOptions(Array.isArray(d) ? d : []))
+      .catch(() => setDailyDescriptionOptions([]));
+  }, []);
 
   // Helper function to normalize dates to YYYY-MM-DD format
   const normalizeDate = (dateValue: any): string => {
@@ -6212,116 +6222,121 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         )}
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{entry.date}</TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          <TextField
-                            value={dayDescription?.description || ''}
-                            onChange={async (e) => {
-                              try {
-                                // Update or create daily description
-                                const newDescriptions = [...dailyDescriptions];
-                                const entryDateStr = normalizeDate(entry.date);
-                                const existingIndex = newDescriptions.findIndex((desc: any) => {
-                                  const descDateStr = normalizeDate(desc.date);
-                                  return entryDateStr === descDateStr;
-                                });
-                                
-                                let descToSave: any;
-                                
-                                const hasDescription = e.target.value.trim().length > 0;
-                                
-                                if (existingIndex >= 0) {
-                                  // Update existing
-                                  newDescriptions[existingIndex] = {
-                                    ...newDescriptions[existingIndex],
-                                    description: e.target.value,
-                                    // Clear day off if description is entered
-                                    dayOff: hasDescription ? false : newDescriptions[existingIndex].dayOff,
-                                    dayOffType: hasDescription ? null : newDescriptions[existingIndex].dayOffType
-                                  };
-                                  descToSave = newDescriptions[existingIndex];
-                                } else {
-                                  // Create new - use normalized date string
-                                  descToSave = {
-                                    id: `desc-${employeeId}-${entryDateStr}`,
-                                    employeeId: employeeId,
-                                    date: entryDateStr, // Use normalized date string
-                                    description: e.target.value,
-                                    costCenter: entry.costCenter || employeeData.costCenters[0] || '',
-                                    stayedOvernight: false,
-                                    dayOff: false,
-                                    dayOffType: null,
-                                    createdAt: new Date().toISOString(),
-                                    updatedAt: new Date().toISOString()
-                                  };
-                                  newDescriptions.push(descToSave);
-                                }
-                                
-                                setDailyDescriptions(newDescriptions);
-                                
-                                // Save to backend first (debounced to avoid too many calls)
-                                const dateToSave = normalizeDate(descToSave.date);
-                                
-                                // Use a timeout to debounce the save and sync
-                                setTimeout(async () => {
-                                  try {
-                                    const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-                                      method: 'POST',
-                                      headers: {
-                                        'Content-Type': 'application/json',
-                                      },
-                                      body: JSON.stringify({
-                                        id: descToSave.id,
-                                        employeeId: descToSave.employeeId,
-                                        date: dateToSave,
-                                        description: descToSave.description || '',
-                                        costCenter: descToSave.costCenter || '',
-                                        stayedOvernight: descToSave.stayedOvernight || false,
-                                        dayOff: descToSave.dayOff || false,
-                                        dayOffType: descToSave.dayOffType || null
-                                      })
-                                    });
-                                    
-                                    if (!response.ok) {
-                                      const errorText = await response.text();
-                                      debugError('Error saving description:', response.status, errorText);
-                                    } else {
-                                      // Only sync to cost center screen AFTER successful save
-                                      // This prevents duplication from multiple onChange calls
-                                      syncDescriptionToCostCenter(descToSave, new Date(entry.date));
-                                    }
-                                  } catch (error) {
-                                    debugError('Error saving description:', error);
+                          {dailyDescriptionOptions.length > 0 && !dayDescription?.dayOff && !isAdminView ? (
+                            <Autocomplete
+                              freeSolo={false}
+                              options={dailyDescriptionOptions.map((o) => o.label).filter((l) => l !== 'Other')}
+                              value={(() => {
+                                const allowed = dailyDescriptionOptions.map((o) => o.label).filter((l) => l !== 'Other');
+                                const current = dayDescription?.description || '';
+                                return allowed.includes(current) ? current : '';
+                              })()}
+                              onChange={(_e, value) => {
+                                const val = typeof value === 'string' ? value : (value ?? '');
+                                try {
+                                  const newDescriptions = [...dailyDescriptions];
+                                  const entryDateStr = normalizeDate(entry.date);
+                                  const existingIndex = newDescriptions.findIndex((desc: any) => normalizeDate(desc.date) === entryDateStr);
+                                  const hasDescription = val.trim().length > 0;
+                                  let descToSave: any;
+                                  if (existingIndex >= 0) {
+                                    newDescriptions[existingIndex] = { ...newDescriptions[existingIndex], description: val, dayOff: hasDescription ? false : newDescriptions[existingIndex].dayOff, dayOffType: hasDescription ? null : newDescriptions[existingIndex].dayOffType };
+                                    descToSave = newDescriptions[existingIndex];
+                                  } else {
+                                    descToSave = { id: `desc-${employeeId}-${entryDateStr}`, employeeId, date: entryDateStr, description: val, costCenter: entry.costCenter || employeeData.costCenters[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+                                    newDescriptions.push(descToSave);
                                   }
-                                }, 500); // 500ms debounce
-                              } catch (error) {
-                                debugError('Error saving description:', error);
-                              }
-                            }}
-                            fullWidth
-                            multiline
-                            minRows={1}
-                            maxRows={15}
-                            size="small"
-                            sx={{
-                              '& .MuiInputBase-root': {
-                                alignItems: 'flex-start',
-                                minHeight: 'auto',
-                              },
-                              '& .MuiInputBase-input': {
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                overflowWrap: 'break-word',
-                                padding: '8px !important',
-                                lineHeight: 1.5,
-                                minHeight: 'auto',
-                              },
-                              '& .MuiInputBase-inputMultiline': {
-                                overflow: 'auto',
-                                resize: 'vertical',
-                              }
-                            }}
-                            placeholder={dayDescription?.dayOff ? `${dayDescription?.dayOffType || 'Day Off'}` : "Describe daily activities (e.g., 'Meetings, phone calls, site visits')"}
-                            disabled={isAdminView || dayDescription?.dayOff}
-                          />
+                                  setDailyDescriptions(newDescriptions);
+                                  const dateToSave = normalizeDate(descToSave.date);
+                                  setTimeout(async () => {
+                                    try {
+                                      const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: descToSave.id, employeeId: descToSave.employeeId, date: dateToSave, description: descToSave.description || '', costCenter: descToSave.costCenter || '', stayedOvernight: descToSave.stayedOvernight || false, dayOff: descToSave.dayOff || false, dayOffType: descToSave.dayOffType || null }) });
+                                      if (response.ok) syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                      else debugError('Error saving description:', await response.text());
+                                    } catch (error) { debugError('Error saving description:', error); }
+                                  }, 500);
+                                } catch (error) { debugError('Error saving description:', error); }
+                              }}
+                              renderInput={(params) => (
+                                <TextField {...params} size="small" placeholder="Select description..." />
+                              )}
+                              sx={{ minWidth: 180 }}
+                            />
+                          ) : (
+                            <TextField
+                              value={dayDescription?.description || ''}
+                              onChange={async (e) => {
+                                try {
+                                  const newDescriptions = [...dailyDescriptions];
+                                  const entryDateStr = normalizeDate(entry.date);
+                                  const existingIndex = newDescriptions.findIndex((desc: any) => normalizeDate(desc.date) === entryDateStr);
+                                  let descToSave: any;
+                                  const hasDescription = e.target.value.trim().length > 0;
+                                  if (existingIndex >= 0) {
+                                    newDescriptions[existingIndex] = {
+                                      ...newDescriptions[existingIndex],
+                                      description: e.target.value,
+                                      dayOff: hasDescription ? false : newDescriptions[existingIndex].dayOff,
+                                      dayOffType: hasDescription ? null : newDescriptions[existingIndex].dayOffType
+                                    };
+                                    descToSave = newDescriptions[existingIndex];
+                                  } else {
+                                    descToSave = {
+                                      id: `desc-${employeeId}-${entryDateStr}`,
+                                      employeeId: employeeId,
+                                      date: entryDateStr,
+                                      description: e.target.value,
+                                      costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+                                      stayedOvernight: false,
+                                      dayOff: false,
+                                      dayOffType: null,
+                                      createdAt: new Date().toISOString(),
+                                      updatedAt: new Date().toISOString()
+                                    };
+                                    newDescriptions.push(descToSave);
+                                  }
+                                  setDailyDescriptions(newDescriptions);
+                                  const dateToSave = normalizeDate(descToSave.date);
+                                  setTimeout(async () => {
+                                    try {
+                                      const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          id: descToSave.id,
+                                          employeeId: descToSave.employeeId,
+                                          date: dateToSave,
+                                          description: descToSave.description || '',
+                                          costCenter: descToSave.costCenter || '',
+                                          stayedOvernight: descToSave.stayedOvernight || false,
+                                          dayOff: descToSave.dayOff || false,
+                                          dayOffType: descToSave.dayOffType || null
+                                        })
+                                      });
+                                      if (response.ok) syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                      else debugError('Error saving description:', await response.text());
+                                    } catch (error) {
+                                      debugError('Error saving description:', error);
+                                    }
+                                  }, 500);
+                                } catch (error) {
+                                  debugError('Error saving description:', error);
+                                }
+                              }}
+                              fullWidth
+                              multiline
+                              minRows={1}
+                              maxRows={15}
+                              size="small"
+                              sx={{
+                                '& .MuiInputBase-root': { alignItems: 'flex-start', minHeight: 'auto' },
+                                '& .MuiInputBase-input': { whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word', padding: '8px !important', lineHeight: 1.5, minHeight: 'auto' },
+                                '& .MuiInputBase-inputMultiline': { overflow: 'auto', resize: 'vertical' }
+                              }}
+                              placeholder={dayDescription?.dayOff ? `${dayDescription?.dayOffType || 'Day Off'}` : "Describe daily activities (e.g., 'Meetings, phone calls, site visits')"}
+                              disabled={isAdminView || dayDescription?.dayOff}
+                            />
+                          )}
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1, textAlign: 'center', whiteSpace: 'nowrap', width: '140px' }}>
                           <Checkbox

@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { UnifiedDayData } from '../services/unifiedDataService';
 import { BackendDataService } from '../services/backendDataService';
+import { getDailyDescriptionOptions } from '../services/dailyDescriptionOptionsService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import UnifiedHeader from '../components/UnifiedHeader';
@@ -84,6 +85,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const [showDescriptionDropdown, setShowDescriptionDropdown] = useState(false);
   const [descriptionTemplates, setDescriptionTemplates] = useState<string[]>(DEFAULT_DESCRIPTION_TEMPLATES);
   const [recentDescriptions, setRecentDescriptions] = useState<string[]>([]);
+  const [descriptionOptions, setDescriptionOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [showDescriptionPickerModal, setShowDescriptionPickerModal] = useState(false);
   
   // Refs for scroll position management
   const scrollViewRef = useRef<ScrollView>(null);
@@ -95,6 +98,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     loadData();
     loadDescriptionTemplates();
   }, [currentMonth]);
+
+  useEffect(() => {
+    getDailyDescriptionOptions().then((opts) => setDescriptionOptions(opts));
+  }, []);
 
   /**
    * Loads description templates and recent descriptions from AsyncStorage
@@ -263,6 +270,69 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     setSelectedCostCenter(costCenter);
     
     setShowEditModal(true);
+  };
+
+  const handleClearDay = () => {
+    if (!selectedDay || !currentEmployee) return;
+    const dayLabel = formatDate(selectedDay.date);
+    const employeeId = currentEmployee.id;
+    const dateToClear = selectedDay.date;
+    const costCenterToUse = selectedCostCenter;
+    Alert.alert(
+      'Clear this day?',
+      `Remove all hours and description for ${dayLabel}. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear Day',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const savedScrollPosition = scrollPositionRef.current;
+              setShowEditModal(false);
+              setSelectedDay(null);
+              setDescriptionText('');
+              setTimeTrackingInputs({});
+              setIsDayOff(false);
+              setDayOffType('Day Off');
+              // Delete description (empty + not day off)
+              await BackendDataService.updateDayDescription(
+                employeeId,
+                dateToClear,
+                '',
+                costCenterToUse,
+                undefined,
+                false,
+                undefined
+              );
+              // Clear hours (all zeros deletes existing entries, creates none)
+              await BackendDataService.updateDayHours(
+                employeeId,
+                dateToClear,
+                {
+                  workingHours: 0,
+                  gahours: 0,
+                  holidayHours: 0,
+                  ptoHours: 0,
+                  stdLtdHours: 0,
+                  pflPfmlHours: 0
+                },
+                costCenterToUse
+              );
+              await loadData();
+              setTimeout(() => {
+                if (scrollViewRef.current && savedScrollPosition >= 0) {
+                  scrollViewRef.current.scrollTo({ y: savedScrollPosition, animated: false });
+                }
+              }, 150);
+            } catch (error) {
+              if (__DEV__) console.error('DailyHoursScreen: Error clearing day:', error);
+              Alert.alert('Error', 'Failed to clear day');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleSave = async () => {
@@ -556,9 +626,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
               <Text style={styles.modalTitle}>
                 {selectedDay ? formatDate(selectedDay.date) : ''}
               </Text>
-              <TouchableOpacity onPress={handleSave}>
-                <Text style={styles.saveButton}>Save</Text>
-              </TouchableOpacity>
+              <View style={styles.modalHeaderSpacer} />
             </View>
 
             <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
@@ -572,6 +640,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                       setIsDayOff(newValue);
                       if (!newValue) {
                         setDayOffType('Day Off');
+                        setDescriptionText(''); // Clear description when unchecking so the stored value is removed on save
                       }
                     }}
                   >
@@ -614,54 +683,70 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Description</Text>
                 
-                {/* Quick Menu Dropdown */}
                 {!isDayOff && (
-                  <View style={styles.quickMenuContainer}>
+                  <>
                     <TouchableOpacity
-                      style={styles.quickMenuButton}
-                      onPress={() => setShowDescriptionDropdown(!showDescriptionDropdown)}
+                      style={styles.descriptionDropdown}
+                      onPress={() => setShowDescriptionPickerModal(true)}
                     >
-                      <MaterialIcons name="menu" size={20} color="#007AFF" />
-                      <Text style={styles.quickMenuButtonText}>Quick Menu</Text>
-                      <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
+                      <Text style={[styles.descriptionDropdownText, !descriptionText && styles.descriptionDropdownPlaceholder]}>
+                        {descriptionText || (descriptionOptions.length === 0 ? 'Loading...' : 'Select description...')}
+                      </Text>
+                      <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
                     </TouchableOpacity>
-                    
-                    {showDescriptionDropdown && (
-                      <View style={styles.quickMenuDropdown}>
-                        <ScrollView style={styles.quickMenuScroll} nestedScrollEnabled>
-                          {allTemplates.map((template, idx) => (
-                            <TouchableOpacity
-                              key={idx}
-                              style={[
-                                styles.quickMenuItem,
-                                idx < recentDescriptions.length && styles.recentItem
-                              ]}
-                              onPress={() => handleDescriptionTemplateSelect(template)}
-                            >
-                              <Text style={styles.quickMenuItemText}>{template}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
+                    <Modal
+                      visible={showDescriptionPickerModal}
+                      transparent
+                      animationType="slide"
+                      onRequestClose={() => setShowDescriptionPickerModal(false)}
+                    >
+                      <View style={styles.descriptionPickerOverlay}>
+                        <TouchableOpacity
+                          style={StyleSheet.absoluteFill}
+                          activeOpacity={1}
+                          onPress={() => setShowDescriptionPickerModal(false)}
+                        />
+                        <View style={styles.descriptionPickerContent}>
+                          <Text style={styles.descriptionPickerTitle}>Description</Text>
+                          <ScrollView style={styles.descriptionPickerList} keyboardShouldPersistTaps="handled">
+                            {descriptionOptions.filter((o) => o.label !== 'Other').length === 0 ? (
+                              <Text style={styles.descriptionPickerEmpty}>No options configured. Set up Daily Description Options in Admin Portal.</Text>
+                            ) : (
+                              descriptionOptions.filter((o) => o.label !== 'Other').map((o) => (
+                                <TouchableOpacity
+                                  key={o.id}
+                                  style={[styles.descriptionPickerItem, descriptionText === o.label && styles.descriptionPickerItemSelected]}
+                                  onPress={() => {
+                                    setDescriptionText(o.label);
+                                    setShowDescriptionPickerModal(false);
+                                  }}
+                                >
+                                  <Text style={styles.descriptionPickerItemText}>{o.label}</Text>
+                                  {descriptionText === o.label && (
+                                    <MaterialIcons name="check" size={20} color="#4CAF50" />
+                                  )}
+                                </TouchableOpacity>
+                              ))
+                            )}
+                          </ScrollView>
+                          <TouchableOpacity style={styles.descriptionPickerClose} onPress={() => setShowDescriptionPickerModal(false)}>
+                            <Text style={styles.descriptionPickerCloseText}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                    )}
-                  </View>
+                    </Modal>
+                  </>
                 )}
                 
-                <TextInput
-                  style={[styles.descriptionInput, isDayOff && styles.disabledInput]}
-                  value={isDayOff ? dayOffType : descriptionText}
-                  onChangeText={(text) => {
-                    if (!isDayOff) {
-                      setDescriptionText(text);
-                    }
-                  }}
-                  placeholder={isDayOff ? "Day Off" : "Describe your activities for this day..."}
-                  placeholderTextColor="#999"
-                  multiline
-                  numberOfLines={6}
-                  textAlignVertical="top"
-                  editable={!isDayOff}
-                />
+                {isDayOff && (
+                  <TextInput
+                    style={[styles.descriptionInput, styles.disabledInput]}
+                    value={dayOffType}
+                    editable={false}
+                    placeholder="Day Off"
+                    placeholderTextColor="#999"
+                  />
+                )}
               </View>
 
               {/* Hours Section */}
@@ -722,6 +807,16 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                   </View>
                 </View>
               )}
+
+              {/* Save and Clear Day buttons at bottom of form */}
+              <View style={styles.modalSaveSection}>
+                <TouchableOpacity style={styles.modalSaveButton} onPress={handleSave} activeOpacity={0.8}>
+                  <Text style={styles.modalSaveButtonText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalClearButton} onPress={handleClearDay} activeOpacity={0.8}>
+                  <Text style={styles.modalClearButtonText}>Clear Day</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </Modal>
@@ -864,6 +959,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#007AFF',
   },
+  modalHeaderSpacer: {
+    minWidth: 56,
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -873,6 +971,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#007AFF',
     fontWeight: '600',
+  },
+  modalSaveSection: {
+    paddingHorizontal: 16,
+    paddingTop: 24,
+    paddingBottom: 32,
+    gap: 12,
+  },
+  modalSaveButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSaveButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  modalClearButton: {
+    marginTop: 12,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  modalClearButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#dc3545',
   },
   modalContent: {
     flex: 1,
@@ -939,6 +1069,76 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontSize: 16,
     color: '#333',
+  },
+  descriptionDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+  },
+  descriptionDropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  descriptionDropdownPlaceholder: {
+    color: '#999',
+  },
+  descriptionPickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  descriptionPickerContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  descriptionPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  descriptionPickerList: {
+    maxHeight: 320,
+  },
+  descriptionPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  descriptionPickerItemSelected: {
+    backgroundColor: 'rgba(76, 175, 80, 0.08)',
+  },
+  descriptionPickerItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  descriptionPickerEmpty: {
+    fontSize: 14,
+    color: '#666',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+  },
+  descriptionPickerClose: {
+    marginTop: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  descriptionPickerCloseText: {
+    fontSize: 16,
+    color: '#666',
   },
   quickMenuContainer: {
     marginBottom: 12,

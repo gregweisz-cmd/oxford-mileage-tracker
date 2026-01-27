@@ -77,15 +77,15 @@ export class BackendDataService {
   // ===== EMPLOYEES =====
 
   static async getEmployees(): Promise<Employee[]> {
-    return this.fetchFromBackend<Employee[]>('/api/employees');
+    return this.fetchFromBackend<Employee[]>('/employees');
   }
 
   static async getEmployee(employeeId: string): Promise<Employee> {
-    return this.fetchFromBackend<Employee>(`/api/employees/${employeeId}`);
+    return this.fetchFromBackend<Employee>(`/employees/${employeeId}`);
   }
 
   static async updateEmployee(employeeId: string, updates: Partial<Employee>): Promise<Employee> {
-    return this.writeToBackend<Employee>(`/api/employees/${employeeId}`, 'PUT', updates);
+    return this.writeToBackend<Employee>(`/employees/${employeeId}`, 'PUT', updates);
   }
 
   // ===== MILEAGE ENTRIES =====
@@ -95,7 +95,7 @@ export class BackendDataService {
     month?: number,
     year?: number
   ): Promise<MileageEntry[]> {
-    let endpoint = '/api/mileage-entries';
+    let endpoint = '/mileage-entries';
     const params = new URLSearchParams();
     
     if (employeeId) params.append('employeeId', employeeId);
@@ -110,19 +110,19 @@ export class BackendDataService {
   }
 
   static async getMileageEntry(entryId: string): Promise<MileageEntry> {
-    return this.fetchFromBackend<MileageEntry>(`/api/mileage-entries/${entryId}`);
+    return this.fetchFromBackend<MileageEntry>(`/mileage-entries/${entryId}`);
   }
 
   static async createMileageEntry(entry: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MileageEntry> {
-    return this.writeToBackend<MileageEntry>('/api/mileage-entries', 'POST', entry);
+    return this.writeToBackend<MileageEntry>('/mileage-entries', 'POST', entry);
   }
 
   static async updateMileageEntry(entryId: string, updates: Partial<MileageEntry>): Promise<MileageEntry> {
-    return this.writeToBackend<MileageEntry>(`/api/mileage-entries/${entryId}`, 'PUT', updates);
+    return this.writeToBackend<MileageEntry>(`/mileage-entries/${entryId}`, 'PUT', updates);
   }
 
   static async deleteMileageEntry(entryId: string): Promise<void> {
-    return this.writeToBackend<void>(`/api/mileage-entries/${entryId}`, 'DELETE');
+    return this.writeToBackend<void>(`/mileage-entries/${entryId}`, 'DELETE');
   }
 
   // ===== RECEIPTS =====
@@ -132,7 +132,7 @@ export class BackendDataService {
     month?: number,
     year?: number
   ): Promise<Receipt[]> {
-    let endpoint = '/api/receipts';
+    let endpoint = '/receipts';
     const params = new URLSearchParams();
     
     if (employeeId) params.append('employeeId', employeeId);
@@ -147,19 +147,19 @@ export class BackendDataService {
   }
 
   static async getReceipt(receiptId: string): Promise<Receipt> {
-    return this.fetchFromBackend<Receipt>(`/api/receipts/${receiptId}`);
+    return this.fetchFromBackend<Receipt>(`/receipts/${receiptId}`);
   }
 
   static async createReceipt(receipt: Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>): Promise<Receipt> {
-    return this.writeToBackend<Receipt>('/api/receipts', 'POST', receipt);
+    return this.writeToBackend<Receipt>('/receipts', 'POST', receipt);
   }
 
   static async updateReceipt(receiptId: string, updates: Partial<Receipt>): Promise<Receipt> {
-    return this.writeToBackend<Receipt>(`/api/receipts/${receiptId}`, 'PUT', updates);
+    return this.writeToBackend<Receipt>(`/receipts/${receiptId}`, 'PUT', updates);
   }
 
   static async deleteReceipt(receiptId: string): Promise<void> {
-    return this.writeToBackend<void>(`/api/receipts/${receiptId}`, 'DELETE');
+    return this.writeToBackend<void>(`/receipts/${receiptId}`, 'DELETE');
   }
 
   // ===== TIME TRACKING =====
@@ -169,7 +169,7 @@ export class BackendDataService {
     month?: number,
     year?: number
   ): Promise<TimeTracking[]> {
-    let endpoint = '/api/time-tracking';
+    let endpoint = '/time-tracking';
     const params = new URLSearchParams();
     
     if (employeeId) params.append('employeeId', employeeId);
@@ -184,13 +184,13 @@ export class BackendDataService {
   }
 
   static async getTimeTrackingEntry(entryId: string): Promise<TimeTracking> {
-    return this.fetchFromBackend<TimeTracking>(`/api/time-tracking/${entryId}`);
+    return this.fetchFromBackend<TimeTracking>(`/time-tracking/${entryId}`);
   }
 
   static async createTimeTracking(entry: Omit<TimeTracking, 'id' | 'createdAt' | 'updatedAt'>): Promise<TimeTracking> {
     // Ensure date is in YYYY-MM-DD format for backend
     const dateStr = this.toLocalDateKey(entry.date);
-    return this.writeToBackend<TimeTracking>('/api/time-tracking', 'POST', {
+    return this.writeToBackend<TimeTracking>('/time-tracking', 'POST', {
       ...entry,
       date: dateStr
     });
@@ -202,11 +202,11 @@ export class BackendDataService {
     if (formattedUpdates.date) {
       formattedUpdates.date = this.toLocalDateKey(formattedUpdates.date as any) as any;
     }
-    return this.writeToBackend<TimeTracking>(`/api/time-tracking/${entryId}`, 'PUT', formattedUpdates);
+    return this.writeToBackend<TimeTracking>(`/time-tracking/${entryId}`, 'PUT', formattedUpdates);
   }
 
   static async deleteTimeTracking(entryId: string): Promise<void> {
-    return this.writeToBackend<void>(`/api/time-tracking/${entryId}`, 'DELETE');
+    return this.writeToBackend<void>(`/time-tracking/${entryId}`, 'DELETE');
   }
 
   // ===== DAILY DESCRIPTIONS =====
@@ -216,7 +216,7 @@ export class BackendDataService {
     month?: number,
     year?: number
   ): Promise<DailyDescription[]> {
-    let endpoint = '/api/daily-descriptions';
+    let endpoint = '/daily-descriptions';
     const params = new URLSearchParams();
     
     if (employeeId) params.append('employeeId', employeeId);
@@ -231,13 +231,13 @@ export class BackendDataService {
   }
 
   static async getDailyDescription(descriptionId: string): Promise<DailyDescription> {
-    return this.fetchFromBackend<DailyDescription>(`/api/daily-descriptions/${descriptionId}`);
+    return this.fetchFromBackend<DailyDescription>(`/daily-descriptions/${descriptionId}`);
   }
 
   static async createDailyDescription(description: Omit<DailyDescription, 'id' | 'createdAt' | 'updatedAt'>): Promise<DailyDescription> {
     // Ensure date is in YYYY-MM-DD format for backend
     const dateStr = this.toLocalDateKey(description.date);
-    return this.writeToBackend<DailyDescription>('/api/daily-descriptions', 'POST', {
+    return this.writeToBackend<DailyDescription>('/daily-descriptions', 'POST', {
       ...description,
       date: dateStr
     });
@@ -249,11 +249,11 @@ export class BackendDataService {
     if (formattedUpdates.date) {
       formattedUpdates.date = this.toLocalDateKey(formattedUpdates.date as any) as any;
     }
-    return this.writeToBackend<DailyDescription>(`/api/daily-descriptions/${descriptionId}`, 'PUT', formattedUpdates);
+    return this.writeToBackend<DailyDescription>(`/daily-descriptions/${descriptionId}`, 'PUT', formattedUpdates);
   }
 
   static async deleteDailyDescription(descriptionId: string): Promise<void> {
-    return this.writeToBackend<void>(`/api/daily-descriptions/${descriptionId}`, 'DELETE');
+    return this.writeToBackend<void>(`/daily-descriptions/${descriptionId}`, 'DELETE');
   }
 
   // ===== HELPER METHODS FOR UNIFIED DATA =====

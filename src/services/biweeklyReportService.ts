@@ -4,10 +4,7 @@
  */
 
 import { Platform } from 'react-native';
-
-const API_BASE_URL = __DEV__
-  ? 'http://192.168.86.101:3002/api'
-  : 'https://oxford-mileage-backend.onrender.com/api';
+import { API_BASE_URL } from '../config/api';
 
 export interface BiweeklyReport {
   id: string;
