@@ -8,6 +8,7 @@ import {
   Modal,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import { useNavigation } from '@react-navigation/native';
 
@@ -16,6 +17,7 @@ interface GlobalGpsStopButtonProps {
 }
 
 export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopButtonProps) {
+  const insets = useSafeAreaInsets();
   const { isTracking, currentDistance, requestStopTracking, isStationaryTooLong, getStationaryDuration } = useGpsTracking();
   const navigation = useNavigation<any>();
   const [showStationaryAlert, setShowStationaryAlert] = useState(false);
@@ -153,7 +155,7 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
       </Modal>
 
       <TouchableOpacity
-        style={styles.container}
+        style={[styles.container, { top: insets.top + 8 }]}
         onPress={handleStopTracking}
         activeOpacity={0.8}
       >

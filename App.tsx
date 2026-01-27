@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { useFonts } from 'expo-font';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useReactNavigationDevTools } from '@dev-plugins/react-navigation';
@@ -13,6 +14,7 @@ import { TipsProvider } from './src/contexts/TipsContext';
 import { NotificationProvider } from './src/contexts/NotificationContext';
 import GlobalGpsStopButton from './src/components/GlobalGpsStopButton';
 import GlobalGpsReturnButton from './src/components/GlobalGpsReturnButton';
+import { useGpsTracking } from './src/contexts/GpsTrackingContext';
 import { AppInitializer } from './src/services/appInitializer';
 import { DatabaseService } from './src/services/database';
 // Removed: Using backend employee data only
@@ -41,6 +43,29 @@ import SetupWizard from './src/components/SetupWizard';
 import { RootStackParamList } from './src/types';
 
 const Stack = createStackNavigator<RootStackParamList>();
+
+/** Overlay for GPS buttons; uses pointerEvents="none" on GPS Start so scroll works */
+function GlobalGpsOverlay({ currentRouteName }: { currentRouteName: string }) {
+  const { isTracking } = useGpsTracking();
+  const passThrough = currentRouteName === 'GpsTracking' && !isTracking;
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999,
+        elevation: 9999,
+      }}
+      pointerEvents={passThrough ? 'none' : 'box-none'}
+    >
+      <GlobalGpsReturnButton currentRouteName={currentRouteName} />
+      <GlobalGpsStopButton currentRouteName={currentRouteName} />
+    </View>
+  );
+}
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -158,86 +183,95 @@ export default function App() {
 
   if (isLoading || !fontsLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
-        <ActivityIndicator size="large" color="#2196F3" />
-        <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
-          {!fontsLoaded ? 'Loading fonts...' : 'Loading...'}
-        </Text>
-      </View>
+      <SafeAreaProvider>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+          <ActivityIndicator size="large" color="#2196F3" />
+          <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
+            {!fontsLoaded ? 'Loading fonts...' : 'Loading...'}
+          </Text>
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <ThemeProvider>
-        <TipsProvider>
-          <GpsTrackingProvider>
-            <StatusBar style="light" />
-            <LoginScreen 
-              navigation={null} 
-              onLogin={handleLogin}
-            />
-          </GpsTrackingProvider>
-        </TipsProvider>
-      </ThemeProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <TipsProvider>
+            <GpsTrackingProvider>
+              <StatusBar style="light" />
+              <LoginScreen 
+                navigation={null} 
+                onLogin={handleLogin}
+              />
+            </GpsTrackingProvider>
+          </TipsProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
     );
   }
 
   // Show onboarding screen if needed
   if (showOnboarding && currentEmployee) {
     return (
-      <ThemeProvider>
-        <TipsProvider>
-          <GpsTrackingProvider>
-            <StatusBar style="light" />
-            <OnboardingScreen 
-              employeeId={currentEmployee.id}
-              onComplete={async () => {
-                setShowOnboarding(false);
-                // After onboarding, check if Setup Wizard is needed
-                if (currentEmployee) {
-                  const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(currentEmployee.id);
-                  if (!hasCompletedSetupWizard) {
-                    setShowSetupWizard(true);
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <TipsProvider>
+            <GpsTrackingProvider>
+              <StatusBar style="light" />
+              <OnboardingScreen 
+                employeeId={currentEmployee.id}
+                onComplete={async () => {
+                  setShowOnboarding(false);
+                  // After onboarding, check if Setup Wizard is needed
+                  if (currentEmployee) {
+                    const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(currentEmployee.id);
+                    if (!hasCompletedSetupWizard) {
+                      setShowSetupWizard(true);
+                    }
                   }
-                }
-              }} 
-            />
-          </GpsTrackingProvider>
-        </TipsProvider>
-      </ThemeProvider>
+                }} 
+              />
+            </GpsTrackingProvider>
+          </TipsProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
     );
   }
 
   // Show setup wizard if needed
   if (showSetupWizard && currentEmployee) {
     return (
-      <ThemeProvider>
-        <TipsProvider>
-          <GpsTrackingProvider>
-            <StatusBar style="light" />
-            <SetupWizard 
-              employee={currentEmployee} 
-              onComplete={async () => {
-                setShowSetupWizard(false);
-                // Reload employee data after setup
-                const updatedEmployee = await DatabaseService.getEmployeeById(currentEmployee.id);
-                if (updatedEmployee) {
-                  setCurrentEmployee(updatedEmployee);
-                }
-              }} 
-            />
-          </GpsTrackingProvider>
-        </TipsProvider>
-      </ThemeProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <TipsProvider>
+            <GpsTrackingProvider>
+              <StatusBar style="light" />
+              <SetupWizard 
+                employee={currentEmployee} 
+                onComplete={async () => {
+                  setShowSetupWizard(false);
+                  // Reload employee data after setup
+                  const updatedEmployee = await DatabaseService.getEmployeeById(currentEmployee.id);
+                  if (updatedEmployee) {
+                    setCurrentEmployee(updatedEmployee);
+                  }
+                }} 
+              />
+            </GpsTrackingProvider>
+          </TipsProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <ThemeProvider>
-      <TipsProvider>
-        <NotificationProvider currentEmployeeId={currentEmployee?.id}>
-          <GpsTrackingProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <TipsProvider>
+          <NotificationProvider currentEmployeeId={currentEmployee?.id}>
+            <GpsTrackingProvider>
           <NavigationContainer
             ref={navigationRef}
             onStateChange={(state) => {
@@ -279,12 +313,12 @@ export default function App() {
             />
             <Stack.Screen name="Preferences" component={PreferencesScreen} />
           </Stack.Navigator>
-          <GlobalGpsReturnButton currentRouteName={currentRouteName} />
-          {Platform.OS === 'ios' && <GlobalGpsStopButton currentRouteName={currentRouteName} />}
+          <GlobalGpsOverlay currentRouteName={currentRouteName} />
         </NavigationContainer>
-          </GpsTrackingProvider>
-        </NotificationProvider>
-      </TipsProvider>
-    </ThemeProvider>
+            </GpsTrackingProvider>
+          </NotificationProvider>
+        </TipsProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
