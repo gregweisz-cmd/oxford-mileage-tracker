@@ -9,8 +9,6 @@ import {
   ScrollView,
   Modal,
   Platform,
-  Keyboard,
-  TouchableWithoutFeedback,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -645,8 +643,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <UnifiedHeader
         title="GPS Tracking"
         showBackButton={true}
@@ -655,9 +652,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
       <ScrollView 
         style={styles.content} 
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         scrollEventThrottle={16}
+        nestedScrollEnabled={true}
       >
         {/* Tracking Status */}
         <View style={styles.statusContainer}>
@@ -1094,8 +1094,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         </View>
       </Modal>
-      </View>
-    </TouchableWithoutFeedback>
+    </View>
   );
 }
 
@@ -1120,7 +1119,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
     padding: 20,
+    paddingBottom: 40,
   },
   statusContainer: {
     marginBottom: 20,
