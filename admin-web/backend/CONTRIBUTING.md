@@ -28,6 +28,7 @@ Welcome to the Oxford House Mileage Tracker backend! This guide will help you ge
    cp .env.example .env  # If .env.example exists
    # Edit .env with your configuration
    ```
+   - **HR sync (optional):** To use "Sync from HR API" in Admin Portal → Employee Management, set `EMPLOYEE_API_TOKEN` or `APPWARMER_EMPLOYEE_API_TOKEN` in your environment to the token provided for `https://api.appwarmer.com/api/employee`. If unset, the sync endpoint returns 503. See [docs/HR_SYNC_SETUP.md](docs/HR_SYNC_SETUP.md) for step-by-step local and Render setup.
 
 4. **Start the development server**
    ```bash

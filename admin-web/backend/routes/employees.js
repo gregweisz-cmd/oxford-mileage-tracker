@@ -11,6 +11,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { asyncHandler, createError } = require('../middleware/errorHandler');
 const { validateRequired, validateEmail } = require('../middleware/validation');
 const { passwordResetLimiter } = require('../middleware/rateLimiter');
+const externalEmployeeSync = require('../services/externalEmployeeSync');
 
 /**
  * Get all employees with optional filters
@@ -212,6 +213,24 @@ router.get('/api/employees/archived', (req, res) => {
     res.json(parsedRows);
   });
 });
+
+/**
+ * Sync employees from external HR API (Appwarmer)
+ * POST /api/employees/sync-from-external
+ * Requires env: EMPLOYEE_API_TOKEN or APPWARMER_EMPLOYEE_API_TOKEN
+ */
+router.post('/api/employees/sync-from-external', asyncHandler(async (req, res) => {
+  try {
+    const stats = await externalEmployeeSync.syncFromExternal();
+    res.json(stats);
+  } catch (err) {
+    if (err.message && err.message.includes('not configured')) {
+      return res.status(503).json({ error: err.message });
+    }
+    debugError('❌ Sync from external API failed:', err);
+    res.status(500).json({ error: err.message || 'Sync failed' });
+  }
+}));
 
 /**
  * Get employee by ID

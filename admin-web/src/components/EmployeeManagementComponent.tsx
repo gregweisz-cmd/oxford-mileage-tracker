@@ -58,6 +58,8 @@ import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import { debugLog, debugError } from '../config/debug';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+
 const PORTAL_PERMISSIONS = [
   {
     id: 'admin',
@@ -209,6 +211,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null);
+  const [syncFromExternalLoading, setSyncFromExternalLoading] = useState(false);
+  const [syncFromExternalMessage, setSyncFromExternalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
@@ -474,6 +478,32 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       return values.filter(v => typeof v === 'string') as string[];
     }
     return [];
+  };
+
+  const handleSyncFromExternalApi = async () => {
+    setSyncFromExternalLoading(true);
+    setSyncFromExternalMessage(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const { synced = 0, created = 0, updated = 0, archived = 0, errors = [] } = data;
+        const parts = [`Synced ${synced} employees`];
+        if (created) parts.push(`${created} created`);
+        if (updated) parts.push(`${updated} updated`);
+        if (archived) parts.push(`${archived} archived (not in HR)`);
+        setSyncFromExternalMessage({ type: 'success', text: parts.join('; ') + (errors.length ? `. ${errors.length} issue(s) logged.` : '') });
+        if (onRefresh) onRefresh();
+      } else {
+        setSyncFromExternalMessage({ type: 'error', text: data.error || `Sync failed (${res.status})` });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Sync request failed';
+      setSyncFromExternalMessage({ type: 'error', text: msg });
+      debugError('Sync from HR API failed', e);
+    } finally {
+      setSyncFromExternalLoading(false);
+    }
   };
 
   // Individual Employee Management
@@ -891,10 +921,27 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     >
                       Add Employee
                     </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<CloudUpload />}
+                      onClick={handleSyncFromExternalApi}
+                      disabled={syncFromExternalLoading}
+                    >
+                      {syncFromExternalLoading ? 'Syncing...' : 'Sync from HR API'}
+                    </Button>
                   </>
                 )}
               </Box>
             </Box>
+            {syncFromExternalMessage && (
+              <Alert
+                severity={syncFromExternalMessage.type}
+                onClose={() => setSyncFromExternalMessage(null)}
+                sx={{ mb: 2 }}
+              >
+                {syncFromExternalMessage.text}
+              </Alert>
+            )}
             
             {/* Search Bar */}
             <TextField

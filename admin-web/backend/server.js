@@ -1,5 +1,5 @@
-// Load environment variables
-require('dotenv').config();
+// Load environment variables from backend directory (so .env is found even when started from project root)
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const express = require('express');
 const path = require('path');

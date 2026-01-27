@@ -92,6 +92,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef<number>(0);
   const selectedDayIndexRef = useRef<number>(-1);
+  const dayLayoutsRef = useRef<Record<string, number>>({});
+  const scrollToTodayPendingRef = useRef(false);
 
   // Load data when month changes
   useEffect(() => {
@@ -487,6 +489,59 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
            (dailyDesc.dayOff && dailyDesc.dayOffType);
   };
 
+  const isViewingCurrentMonth =
+    currentMonth.getMonth() === new Date().getMonth() &&
+    currentMonth.getFullYear() === new Date().getFullYear();
+
+  const scrollToToday = () => {
+    const now = new Date();
+    const todayKey = now.toISOString().split('T')[0];
+    if (!isViewingCurrentMonth) {
+      setCurrentMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+      scrollToTodayPendingRef.current = true;
+      return;
+    }
+    const idx = daysWithData.findIndex(
+      (d) => d.date.toISOString().split('T')[0] === todayKey
+    );
+    if (idx < 0) return;
+    const y = dayLayoutsRef.current[todayKey];
+    if (typeof y === 'number') {
+      scrollViewRef.current?.scrollTo({ y, animated: true });
+    } else {
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(0, idx * 88),
+        animated: true,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!scrollToTodayPendingRef.current || loading || daysWithData.length === 0) return;
+    const now = new Date();
+    const isCurrent =
+      currentMonth.getMonth() === now.getMonth() &&
+      currentMonth.getFullYear() === now.getFullYear();
+    if (!isCurrent) return;
+    scrollToTodayPendingRef.current = false;
+    const todayKey = now.toISOString().split('T')[0];
+    const id = setTimeout(() => {
+      const y = dayLayoutsRef.current[todayKey];
+      const idx = daysWithData.findIndex(
+        (d) => d.date.toISOString().split('T')[0] === todayKey
+      );
+      if (typeof y === 'number') {
+        scrollViewRef.current?.scrollTo({ y, animated: true });
+      } else if (idx >= 0) {
+        scrollViewRef.current?.scrollTo({
+          y: Math.max(0, idx * 88),
+          animated: true,
+        });
+      }
+    }, 200);
+    return () => clearTimeout(id);
+  }, [loading, daysWithData, currentMonth]);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -555,10 +610,16 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
             daysWithData.map((day, index) => {
               const dailyDesc = day as any;
               const isDayOffDay = dailyDesc.dayOff && dailyDesc.dayOffType;
-              
+              const dateKey = day.date.toISOString().split('T')[0];
               return (
-                <TouchableOpacity
+                <View
                   key={day.date.toISOString()}
+                  onLayout={(e) => {
+                    dayLayoutsRef.current[dateKey] = e.nativeEvent.layout.y;
+                  }}
+                  collapsable={false}
+                >
+                <TouchableOpacity
                   style={styles.dayCard}
                   onPress={() => handleEditDay(day, index)}
                 >
@@ -607,6 +668,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                   </View>
                   <MaterialIcons name="edit" size={20} color="#007AFF" />
                 </TouchableOpacity>
+                </View>
               );
             })
           )}

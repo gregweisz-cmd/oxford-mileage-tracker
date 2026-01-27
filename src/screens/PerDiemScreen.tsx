@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -57,6 +57,8 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [monthlyLimit, setMonthlyLimit] = useState(350);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollToTodayPendingRef = useRef(false);
 
   // Reload data when month changes
   useEffect(() => {
@@ -502,6 +504,43 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     return `${month}/${day}/${year}`;
   };
 
+  const isViewingCurrentMonth =
+    currentMonth.getMonth() === new Date().getMonth() &&
+    currentMonth.getFullYear() === new Date().getFullYear();
+
+  const scrollToToday = () => {
+    const now = new Date();
+    if (!isViewingCurrentMonth) {
+      setCurrentMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+      scrollToTodayPendingRef.current = true;
+      return;
+    }
+    const dayIndex = now.getDate() - 1;
+    const estimatedRowHeight = 100;
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(0, dayIndex * estimatedRowHeight),
+      animated: true,
+    });
+  };
+
+  useEffect(() => {
+    if (!scrollToTodayPendingRef.current || loading) return;
+    const now = new Date();
+    const isCurrent =
+      currentMonth.getMonth() === now.getMonth() &&
+      currentMonth.getFullYear() === now.getFullYear();
+    if (!isCurrent) return;
+    scrollToTodayPendingRef.current = false;
+    const dayIndex = now.getDate() - 1;
+    const id = setTimeout(() => {
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(0, dayIndex * 100),
+        animated: true,
+      });
+    }, 200);
+    return () => clearTimeout(id);
+  }, [loading, currentMonth]);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -546,9 +585,15 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           <MaterialIcons name="chevron-left" size={24} color="#007AFF" />
         </TouchableOpacity>
         <Text style={styles.monthTitle}>{getMonthName(currentMonth)}</Text>
-        <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
-          <MaterialIcons name="chevron-right" size={24} color="#007AFF" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity onPress={scrollToToday} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#007AFF', borderRadius: 8 }}>
+            <MaterialIcons name="today" size={18} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Go to today</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
+            <MaterialIcons name="chevron-right" size={24} color="#007AFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Monthly Summary */}
@@ -612,7 +657,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       )}
 
       {/* Days List */}
-      <ScrollView style={styles.daysList} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollViewRef} style={styles.daysList} showsVerticalScrollIndicator={false}>
         {daysArray.map(({ day, date, dateKey, entry }) => {
           const perDiemEntry = entry || {
             date,
