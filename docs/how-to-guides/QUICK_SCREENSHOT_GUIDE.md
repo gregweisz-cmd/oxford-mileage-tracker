@@ -1,5 +1,7 @@
 # Quick Screenshot Capture Guide
 
+**→ For a step-by-step run list, use [SCREENSHOT_SESSION.md](SCREENSHOT_SESSION.md)** (Session 1 = new features, then mobile, then Staff Portal).
+
 ## Current Status
 - ✅ 4 Staff Portal screenshots exist
 - ❌ 0 Mobile App screenshots exist
@@ -27,11 +29,11 @@
 
 4. **Daily Hours Screen** (`daily-hours-screen.png`)
    - Navigate to: Daily Hours & Descriptions screen
-   - Capture: Shows hours input and description field together
+   - Capture: Shows hours input and description field
 
 5. **Per Diem Screen** (`per-diem-screen.png`)
    - Navigate to: Per Diem screen
-   - Capture: Shows monthly summary, checkboxes, and floating "Save Changes" button
+   - Capture: Shows monthly summary, checkboxes, and floating \"Save Changes\" button
 
 6. **GPS Tracking** (`gps-tracking-screen.png`)
    - Navigate to: GPS tracking interface (when starting a trip)
@@ -114,6 +116,14 @@
 11. **Portal Switcher** (`staff-portal-portal-switcher.png`)
     - Navigate to: Click portal switcher dropdown
     - Capture: Dropdown showing available portals
+
+## Quick Start: Admin Portal (new feature screenshots)
+
+### Sync from HR API
+- **Sync from HR API** (`admin-portal-sync-from-hr.png`)
+  - Navigate to: Admin Portal → Employee Management → **Individual Management** tab
+  - Capture: The **Sync from HR API** button (cloud-upload icon) next to "Add Employee"
+  - Optional: Capture the success message after a sync (e.g. "Synced X employees; Y created; Z updated; W archived (not in HR)")
 
 ## Tips
 

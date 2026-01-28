@@ -283,6 +283,11 @@ app.get('/', (req, res) => {
   res.json({ message: 'Oxford House Mileage Tracker Backend API', status: 'running' });
 });
 
+// Catch-all 404 for unknown API paths (helps debug "404 on live")
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found', path: req.method + ' ' + req.originalUrl });
+});
+
 // Error handling middleware (extracted to middleware/errorHandler.js)
 app.use(errorHandler);
 

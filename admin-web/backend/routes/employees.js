@@ -225,7 +225,15 @@ router.post('/api/employees/sync-from-external', asyncHandler(async (req, res) =
     res.json(stats);
   } catch (err) {
     if (err.message && err.message.includes('not configured')) {
-      return res.status(503).json({ error: err.message });
+      const envCheck = {
+        EMPLOYEE_API_TOKEN: !!process.env.EMPLOYEE_API_TOKEN,
+        APPWARMER_EMPLOYEE_API_TOKEN: !!process.env.APPWARMER_EMPLOYEE_API_TOKEN,
+      };
+      return res.status(503).json({
+        error: err.message,
+        hint: 'On Render: Dashboard → your backend service (oxford-mileage-backend) → Environment → Add Variable: Key=EMPLOYEE_API_TOKEN, Value=<token>. Save, then wait for deploy to finish.',
+        envCheck,
+      });
     }
     debugError('❌ Sync from external API failed:', err);
     res.status(500).json({ error: err.message || 'Sync failed' });

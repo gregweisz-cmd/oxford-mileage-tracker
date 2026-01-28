@@ -84,10 +84,12 @@ All templates follow this structure:
 ### Comprehensive Reference
 - **Portal Overview**: All tabs (Employee Management, Supervisor Management, Cost Centers, Reports & Analytics, System Settings)
 - **Employee Management**:
+  - **Sync from HR API** (Individual Management tab): One-click sync of current employees from the external HR API (Appwarmer). Creates or updates employees by email, assigns cost centers from HR. **HR is the source of truth**—any local employee not in the HR list is archived. Requires `EMPLOYEE_API_TOKEN` (or `APPWARMER_EMPLOYEE_API_TOKEN`) in the backend environment (local `.env` or Render → backend service → Environment). See `admin-web/backend/docs/HR_SYNC_SETUP.md`.
   - Creating employees (form fields, validation)
   - Editing employee records
   - Bulk operations (import/export CSV)
   - Archiving employees
+  - Viewing archived employees (and restoring if needed)
   - Password management (reset, set)
 - **Supervisor Management**:
   - Assigning supervisors
@@ -160,6 +162,7 @@ Each template includes screenshot placeholders. Key screenshots needed:
 ### Admin Portal
 - Portal overview
 - Employee Management interface
+- **Sync from HR API** button (Individual Management tab)
 - Employee creation form
 - Bulk import interface
 - Cost Center Management

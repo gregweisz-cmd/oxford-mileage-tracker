@@ -1178,11 +1178,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.photoButton} onPress={selectFromGallery}>
                   <MaterialIcons name="photo-library" size={20} color="#2196F3" />
-                  <Text style={styles.photoButtonText}>Select Photo</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.photoButton} onPress={selectPDF}>
-                  <MaterialIcons name="picture-as-pdf" size={20} color="#2196F3" />
-                  <Text style={styles.photoButtonText}>Upload PDF</Text>
+                  <Text style={styles.photoButtonText}>Upload Photo</Text>
                 </TouchableOpacity>
               </View>
             </View>

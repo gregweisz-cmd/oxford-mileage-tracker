@@ -1,5 +1,25 @@
 # Deploy to Render
 
+## If you see 404 on live
+
+1. **Confirm the backend URL**  
+   In [Render Dashboard](https://dashboard.render.com) → your **oxford-mileage-backend** service → copy the **URL** (e.g. `https://oxford-mileage-backend.onrender.com`).
+
+2. **Test the backend**  
+   In a browser, open:
+   - `https://[your-backend-url]/health` — should return `{"status":"ok",...}`
+   - `https://[your-backend-url]/api/employees` — may ask for auth or return JSON.
+
+   If those 404, the backend isn’t running or the URL is wrong (e.g. different Render service name).
+
+3. **Point the admin at that URL**  
+   If the admin is on **Vercel**: Project → Settings → Environment Variables → set **`REACT_APP_API_URL`** = `https://[your-backend-url]` (no trailing slash). Redeploy the frontend after changing it.
+
+4. **Cold starts**  
+   On Render’s free tier the service spins down when idle. The first request after a while can take 30–60 seconds or time out; retry or wait for the instance to wake.
+
+---
+
 ## Before first deploy (HR Sync)
 
 Add the HR API token in Render so "Sync from HR API" works in production:

@@ -42,12 +42,14 @@ Screenshot placeholders are included in the templates. To add actual screenshots
 
 To update guide content:
 
-1. Edit the HTML template files in `templates/`
-2. Regenerate PDFs using the script
-3. Review the generated PDFs
-4. Distribute updated PDFs to users
+1. Check `FEATURES_UPDATE.md` for recently added/changed/removed features.
+2. Edit the HTML template files in `templates/` and `CONTENT_GUIDE.md` / `SCREENSHOT_CHECKLIST.md` / `QUICK_SCREENSHOT_GUIDE.md` as needed.
+3. Capture or refresh screenshots per `SCREENSHOT_CHECKLIST.md` and `QUICK_SCREENSHOT_GUIDE.md`.
+4. Regenerate PDFs using the script.
+5. Review the generated PDFs and distribute updated PDFs to users.
 
 ## Version
 
 Current version: 1.0
 Last updated: January 2026
+See `FEATURES_UPDATE.md` for Jan 2026 feature changes (Sync from HR API).

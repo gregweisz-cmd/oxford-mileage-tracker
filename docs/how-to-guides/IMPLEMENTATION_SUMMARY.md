@@ -93,6 +93,7 @@ All templates follow this consistent structure:
 - Report builder, PDF/Excel export, Google Maps integration, analytics, per diem rules
 
 ### Admin Portal (needs content updates)
+- **Sync from HR API** (Individual Management): one-click sync from Appwarmer, HR as source of truth, archive employees not in HR. See `FEATURES_UPDATE.md` and `admin-web/backend/docs/HR_SYNC_SETUP.md`.
 - Employee management, supervisor assignment, cost center management, system settings
 
 ### Contracts Portal (needs content updates)

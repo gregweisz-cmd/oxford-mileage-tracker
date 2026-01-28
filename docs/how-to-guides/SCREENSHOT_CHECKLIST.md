@@ -111,11 +111,12 @@ Screenshots should be saved in:
 
 ### Additional Screenshots Needed:
 14. ⏳ `admin-portal-employee-management.png` - Employee Management tab
-15. ⏳ `admin-portal-employee-form.png` - Employee creation/edit form
-16. ⏳ `admin-portal-bulk-import.png` - Bulk import interface
-17. ⏳ `admin-portal-supervisor-management.png` - Supervisor Management tab
-18. ⏳ `admin-portal-cost-centers.png` - Cost Center Management
-19. ⏳ `admin-portal-system-settings.png` - System Settings tab
+15. ⏳ `admin-portal-sync-from-hr.png` - **Sync from HR API** button in Individual Management tab (cloud-upload icon next to Add Employee)
+16. ⏳ `admin-portal-employee-form.png` - Employee creation/edit form
+17. ⏳ `admin-portal-bulk-import.png` - Bulk import interface
+18. ⏳ `admin-portal-supervisor-management.png` - Supervisor Management tab
+19. ⏳ `admin-portal-cost-centers.png` - Cost Center Management
+20. ⏳ `admin-portal-system-settings.png` - System Settings tab
 
 ## Contracts Portal How-To Guide (15 screenshots)
 
