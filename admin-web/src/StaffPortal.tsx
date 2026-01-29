@@ -2058,18 +2058,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       debugVerbose('✅ Changes auto-saved and synced to source tables');
       
-      // If we saved a description (especially if it was deleted), wait a bit before reloading
-      // This gives the backend time to process the deletion
+      // If we saved a description (especially if it was deleted), brief delay before reloading
       if (field === 'description') {
-        // Clear API cache to ensure we get fresh data after save
-        // This is critical because the API service caches responses for 60 seconds
         const { rateLimitedApi } = await import('./services/rateLimitedApi');
         rateLimitedApi.clearCacheFor('/api/daily-descriptions');
         
-        setLoading(true); // Show loading state
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second (increased from 500ms)
-        setRefreshTrigger(prev => prev + 1); // Trigger reload
-        setLoading(false); // Hide loading state (loadEmployeeData will set it appropriately)
+        setLoading(true);
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms so backend can process
+        setRefreshTrigger(prev => prev + 1);
+        setLoading(false);
       }
     } catch (error) {
       debugError('Error auto-saving changes:', error);
