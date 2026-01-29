@@ -1363,12 +1363,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               }
             }
             
+            // Include costCenter*Hours and categoryHours so sync-to-source persists time_tracking (doesn't wipe)
+            const costCenterHoursPayload: { [key: string]: number } = {};
+            costCenters.forEach((_, i) => {
+              costCenterHoursPayload[`costCenter${i}Hours`] = costCenterHours[i] || 0;
+            });
             return {
               day,
               date: dateStr,
               description: fullDescription,
               hoursWorked: dayTimeTracking?.hours || 0,
-              workingHours: dayTimeTracking?.hours || 0, // Set workingHours to match hoursWorked for existing data
+              workingHours: dayTimeTracking?.hours || 0,
+              ...costCenterHoursPayload,
+              categoryHours,
               odometerStart: Math.round(odometerStart),
               odometerEnd: Math.round(odometerEnd),
               milesTraveled: Math.round(totalDayMiles),
@@ -1388,7 +1395,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }));
           
           // Merge portal-edited values from saved expense report so Cost Ctr page edits persist.
-          // Odometer, per diem, mileage, and description are stored in reportData (sync-to-source does not write to mileage_entries).
+          // Only overlay odometer/miles when the API-built entry has mileage for that day (milesTraveled > 0).
+          // Otherwise we keep 0 so we don't restore bad values (e.g. 182702) after user cleared or deleted mileage.
           if (savedExpenseReport?.reportData?.dailyEntries && Array.isArray(savedExpenseReport.reportData.dailyEntries)) {
             const savedByDate = new Map<string, any>();
             for (const se of savedExpenseReport.reportData.dailyEntries) {
@@ -1400,10 +1408,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               const saved = key ? savedByDate.get(key) : null;
               if (saved) {
                 if (typeof saved.perDiem === 'number') entry.perDiem = saved.perDiem;
-                if (typeof saved.odometerStart === 'number') entry.odometerStart = saved.odometerStart;
-                if (typeof saved.odometerEnd === 'number') entry.odometerEnd = saved.odometerEnd;
-                if (typeof saved.milesTraveled === 'number') entry.milesTraveled = saved.milesTraveled;
-                if (typeof saved.mileageAmount === 'number') entry.mileageAmount = saved.mileageAmount;
+                // Only overlay odometer/miles when API says this day has mileage (don't restore 182702 after clear/delete)
+                const builtMiles = (entry.milesTraveled ?? 0);
+                if (builtMiles > 0) {
+                  if (typeof saved.odometerStart === 'number') entry.odometerStart = saved.odometerStart;
+                  if (typeof saved.odometerEnd === 'number') entry.odometerEnd = saved.odometerEnd;
+                  if (typeof saved.milesTraveled === 'number') entry.milesTraveled = saved.milesTraveled;
+                  if (typeof saved.mileageAmount === 'number') entry.mileageAmount = saved.mileageAmount;
+                }
+                // Merge hours from saved so Cost Ctr hours-worked edits persist (sync writes costCenter0Hours to time_tracking)
+                if (typeof saved.hoursWorked === 'number') {
+                  entry.hoursWorked = saved.hoursWorked;
+                  (entry as any).costCenter0Hours = saved.hoursWorked;
+                }
                 // Merge description from saved report so Cost Ctr description edits persist
                 if (saved.description != null && String(saved.description).trim() !== '') {
                   entry.description = saved.description;
@@ -1987,11 +2004,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       newEntries[row].milesTraveled = Math.max(0, end - start);
       newEntries[row].mileageAmount = newEntries[row].milesTraveled * 0.445;
     } else if (field === 'hoursWorked') {
-      // Hours should be saved via time tracking API, not just local state
-      // This field is deprecated - hours should be edited via the timesheet grid
-      // But if someone uses this, we'll update local state only (legacy support)
-      newEntries[row].hoursWorked = parseInt(editingValue) || 0;
-      debugWarn('⚠️ hoursWorked field is deprecated. Please use the Timesheet tab to edit hours.');
+      const value = parseFloat(editingValue) || 0;
+      newEntries[row].hoursWorked = value;
+      // Persist to time_tracking via sync-to-source: backend reads costCenter0Hours (first cost center)
+      (newEntries[row] as any).costCenter0Hours = value;
     } else if (field === 'perDiem') {
       const value = parseFloat(editingValue) || 0;
       // Cap per diem at $35 per day
