@@ -52,4 +52,4 @@ To update guide content:
 
 Current version: 1.0
 Last updated: January 2026
-See `FEATURES_UPDATE.md` for Jan 2026 feature changes (Sync from HR API).
+See `FEATURES_UPDATE.md` for Jan 2026 feature changes (Sync from HR API, Go to today).

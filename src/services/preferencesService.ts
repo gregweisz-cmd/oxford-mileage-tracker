@@ -41,10 +41,9 @@ const DEFAULT_PREFERENCES: UserPreferences = {
     'add-receipt',
     'manual-entry',
     'view-receipts',
-    'hours-worked',
-    'daily-description',
-    'cost-center-reports',
-    'view-reports'
+    'hours-description',
+    'per-diem',
+    'saved-addresses',
   ],
   
   // Notification defaults

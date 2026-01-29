@@ -316,19 +316,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         color: colors.primary,
         onPress: handleViewReceipts,
       },
-      'hours-worked': {
-        id: 'hours-worked',
+      'hours-description': {
+        id: 'hours-description',
         icon: 'access-time',
-        label: 'Hours Worked',
+        label: 'Hours & Description',
         color: colors.primary,
         onPress: handleViewHoursWorked,
-      },
-      'daily-description': {
-        id: 'daily-description',
-        icon: 'description',
-        label: 'Daily Description',
-        color: colors.primary,
-        onPress: () => navigation.navigate('DailyHours'),
       },
       'per-diem': {
         id: 'per-diem',
@@ -337,16 +330,26 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         color: colors.primary,
         onPress: () => navigation.navigate('PerDiem'),
       },
+      'saved-addresses': {
+        id: 'saved-addresses',
+        icon: 'place',
+        label: 'Saved Addresses',
+        color: colors.primary,
+        onPress: () => navigation.navigate('SavedAddresses'),
+      },
     };
 
     // Get saved order from preferences
     const prefs = await PreferencesService.getPreferences();
     const savedOrder = prefs.dashboardTileOrder;
 
-    // Build tiles array in saved order
-    const orderedTiles = savedOrder
-      .map(id => allTiles[id])
-      .filter(tile => tile !== undefined);
+    // Build tiles array in saved order; append any new tile ids not in saved order
+    const allIds = Object.keys(allTiles);
+    const order = [
+      ...savedOrder.filter(id => allTiles[id]),
+      ...allIds.filter(id => !savedOrder.includes(id)),
+    ];
+    const orderedTiles = order.map(id => allTiles[id]).filter((tile): tile is TileConfig => tile !== undefined);
 
     return orderedTiles;
   };

@@ -380,6 +380,46 @@ async function notifyFinanceApprovalNeeded(reportId, supervisorId, supervisorNam
 }
 
 /**
+ * Notify employee when their report is fully approved (weekly: after supervisor; monthly: after finance).
+ */
+async function notifyEmployeeReportApproved(reportId, approverId, approverName, employeeId, isWeeklyCheckup = false) {
+  try {
+    const report = await new Promise((resolve) => {
+      const db = dbService.getDb();
+      db.get('SELECT id, month, year FROM expense_reports WHERE id = ?', [reportId], (err, row) => {
+        if (err) resolve(null);
+        else resolve(row);
+      });
+    });
+    const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+
+    const title = isWeeklyCheckup
+      ? 'Weekly check-up approved'
+      : `Expense report approved${monthName ? ` - ${monthName}` : ''}`;
+    const message = isWeeklyCheckup
+      ? 'Your weekly check-up has been approved by your supervisor. You\'re all set.'
+      : `Your expense report${monthName ? ` for ${monthName}` : ''} has been fully approved.`;
+
+    return await createNotification({
+      recipientId: employeeId,
+      recipientRole: 'employee',
+      type: 'report_approved',
+      title,
+      message,
+      reportId,
+      employeeId,
+      actorId: approverId,
+      actorName: approverName,
+      actorRole: 'supervisor',
+      sendEmail: true,
+    });
+  } catch (error) {
+    debugError('❌ Error notifying employee report approved:', error);
+    return null;
+  }
+}
+
+/**
  * Check if employee has 50+ hours in a week and notify supervisor
  * @param {string} employeeId - Employee ID
  * @param {string} date - Date string (YYYY-MM-DD) to check the week for
@@ -487,6 +527,7 @@ module.exports = {
   notifyFinanceRevisionRequest,
   notifySupervisorRevisionRequest,
   notifyFinanceApprovalNeeded,
+  notifyEmployeeReportApproved,
   notifySundayReminder,
   notify50PlusHours,
   checkAndNotify50PlusHours,

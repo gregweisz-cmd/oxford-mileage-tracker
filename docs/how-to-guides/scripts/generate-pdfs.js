@@ -11,6 +11,7 @@ const path = require('path');
 
 const templatesDir = path.join(__dirname, '../templates');
 const outputDir = path.join(__dirname, '..');
+const imagesDir = path.join(__dirname, '../images/screenshots');
 
 // List of templates to generate
 const templates = [
@@ -64,6 +65,45 @@ async function generatePDF(templateFile, outputFile, title) {
         
         // Replace title placeholder if present
         html = html.replace(/\{\{TITLE\}\}/g, title);
+        
+        // Determine screenshot directory based on template
+        let screenshotDir = 'web-portal'; // default
+        if (templateFile.includes('mobile-app')) {
+            screenshotDir = 'mobile-app';
+        }
+        
+        // Replace screenshot placeholders with actual images (as base64 data URIs)
+        const placeholderRegex = /<div class="screenshot-placeholder" data-screenshot-name="([^"]+)"><\/div>/g;
+        let match;
+        const replacements = [];
+        
+        while ((match = placeholderRegex.exec(html)) !== null) {
+            const screenshotName = match[1];
+            const imagePath = path.join(imagesDir, screenshotDir, `${screenshotName}.png`);
+            
+            if (fs.existsSync(imagePath)) {
+                try {
+                    // Read image and convert to base64
+                    const imageBuffer = fs.readFileSync(imagePath);
+                    const base64Image = imageBuffer.toString('base64');
+                    const imageDataUri = `data:image/png;base64,${base64Image}`;
+                    
+                    replacements.push({
+                        placeholder: match[0],
+                        replacement: `<div style="text-align: center; margin: 20pt 0; page-break-inside: avoid;"><img src="${imageDataUri}" alt="${screenshotName}" style="max-width: 6.5in; max-height: 7in; width: auto; height: auto; border: 1px solid #ddd; border-radius: 4pt; box-shadow: 0 2pt 4pt rgba(0,0,0,0.1);" /></div>`
+                    });
+                } catch (err) {
+                    console.warn(`   ⚠️  Error reading screenshot ${screenshotName}.png: ${err.message}`);
+                }
+            } else {
+                console.warn(`   ⚠️  Screenshot not found: ${screenshotName}.png (keeping placeholder)`);
+            }
+        }
+        
+        // Apply all replacements
+        replacements.forEach(({ placeholder, replacement }) => {
+            html = html.replace(placeholder, replacement);
+        });
         
         // Launch browser
         const browser = await puppeteer.launch({

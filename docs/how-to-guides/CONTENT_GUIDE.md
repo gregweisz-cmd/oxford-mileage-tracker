@@ -174,6 +174,15 @@ Each template includes screenshot placeholders. Key screenshots needed:
 - Audit review interface
 - Export options
 
+## Mobile App Content (additions)
+
+### Go to today
+- **Daily Hours & Descriptions**: A “Go to today” control in the month navigation scrolls the view to today’s date. Use it when viewing another month to jump back to today.
+- **Per Diem**: A “Go to today” control in the month navigation does the same—scrolls to today’s row when viewing the current month, or switches to the current month then scrolls.
+
+### Screenshot note
+- When capturing `daily-hours-screen.png` and `per-diem-screen.png`, include the “Go to today” control in the frame so the how-to matches the current UI.
+
 ## Content Updates
 
 When updating templates:

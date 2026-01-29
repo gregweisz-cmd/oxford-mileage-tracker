@@ -576,9 +576,15 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
             <MaterialIcons name="chevron-left" size={24} color="#007AFF" />
           </TouchableOpacity>
           <Text style={styles.monthTitle}>{getMonthName(currentMonth)}</Text>
-          <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
-            <MaterialIcons name="chevron-right" size={24} color="#007AFF" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={scrollToToday} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#007AFF', borderRadius: 8 }}>
+              <MaterialIcons name="today" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Go to today</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
+              <MaterialIcons name="chevron-right" size={24} color="#007AFF" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Summary */}

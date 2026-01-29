@@ -1387,18 +1387,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             };
           }));
           
-          // Calculate totals from real data
-          const totalMiles = Math.round(currentMonthMileage.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0));
-          const totalMileageAmount = totalMiles * 0.445;
+          // Merge portal-edited values from saved expense report so Cost Ctr page edits persist.
+          // Odometer, per diem, and mileage are only stored in reportData (sync-to-source does not write to mileage_entries).
+          if (savedExpenseReport?.reportData?.dailyEntries && Array.isArray(savedExpenseReport.reportData.dailyEntries)) {
+            const savedByDate = new Map<string, any>();
+            for (const se of savedExpenseReport.reportData.dailyEntries) {
+              const key = normalizeDate(se.date);
+              if (key) savedByDate.set(key, se);
+            }
+            for (const entry of dailyEntries) {
+              const key = normalizeDate(entry.date);
+              const saved = key ? savedByDate.get(key) : null;
+              if (saved) {
+                if (typeof saved.perDiem === 'number') entry.perDiem = saved.perDiem;
+                if (typeof saved.odometerStart === 'number') entry.odometerStart = saved.odometerStart;
+                if (typeof saved.odometerEnd === 'number') entry.odometerEnd = saved.odometerEnd;
+                if (typeof saved.milesTraveled === 'number') entry.milesTraveled = saved.milesTraveled;
+                if (typeof saved.mileageAmount === 'number') entry.mileageAmount = saved.mileageAmount;
+              }
+            }
+          }
+          
+          // Calculate totals from real data (use dailyEntries so portal-edited mileage/per diem are included)
+          const totalMiles = Math.round(dailyEntries.reduce((sum: number, e: any) => sum + (e.milesTraveled || 0), 0));
+          const totalMileageAmount = dailyEntries.reduce((sum: number, e: any) => sum + (e.mileageAmount || 0), 0);
           const totalReceipts = currentMonthReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
           const totalHours = currentMonthTimeTracking.reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
           
-          // Calculate total Per Diem from receipts (separate from other receipts)
+          // Per diem total from daily entries (includes portal-edited values after merge)
+          const totalPerDiemFromDailyEntries = dailyEntries.reduce((sum: number, e: any) => sum + (e.perDiem || 0), 0);
           const totalPerDiemFromReceipts = currentMonthReceipts
             .filter((receipt: any) => receipt.category === 'Per Diem')
             .reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
-          
-          // Calculate total Per Diem from daily entries (manual entries + receipt-based)
           
           // Create employee expense data with real data
           const expenseData: EmployeeExpenseData = {
@@ -1427,7 +1447,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             parkingTolls: 0,
             groundTransportation: 0,
             hotelsAirbnb: 0,
-            perDiem: totalPerDiemFromReceipts, // Use Per Diem receipts total
+            perDiem: totalPerDiemFromDailyEntries, // Sum of daily table (includes portal-edited per diem)
             phoneInternetFax: totalReceipts - totalPerDiemFromReceipts, // Exclude Per Diem from other receipts
             shippingPostage: 0,
             printingCopying: 0,
@@ -1853,6 +1873,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     const { row, field } = editingCell;
     const newEntries = [...employeeData.dailyEntries];
+    // Use this when building reportData so sync-to-source gets the latest (state may not have updated yet)
+    let dailyDescriptionsForSync = dailyDescriptions;
     
     if (field === 'description') {
       // Allow editing all descriptions, including day off entries
@@ -1910,6 +1932,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // This ensures empty descriptions are not saved (they'll be deleted from backend)
       
       setDailyDescriptions(updatedDailyDescriptions);
+      dailyDescriptionsForSync = updatedDailyDescriptions;
       
       // Save to backend immediately to prevent syncDescriptionToCostCenter from overwriting
       try {
@@ -2025,14 +2048,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const reportData = {
         ...updatedData,
         receipts: receipts,
-        dailyDescriptions: dailyDescriptions,
+        dailyDescriptions: dailyDescriptionsForSync,
         employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState,
         employeeCertificationAcknowledged: employeeCertificationAcknowledged,
         supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
       };
 
-      // Sync to source tables (mileage_entries, time_tracking, receipts, employees)
+      // Sync to source tables and expense report (we send reportData directly so state doesn't need to be updated yet)
       await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
         method: 'POST',
         headers: {
@@ -2045,9 +2068,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           reportData: reportData
         }),
       });
-      
-      // Also save to expense report table for persistence
-      await syncReportData();
       
       debugVerbose('✅ Changes auto-saved and synced to source tables');
       
@@ -2157,6 +2177,36 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     } catch (error) {
       debugError('Error deleting mileage entry:', error);
       alert('Failed to delete mileage entry. Please try again.');
+    }
+  };
+
+  /** Delete all mileage entries for a given date (used from Cost Center tab). */
+  const handleDeleteDayMileageEntries = async (dateStr: string) => {
+    const entriesForDate = rawMileageEntries.filter((e: any) => normalizeDate(e.date) === dateStr);
+    if (entriesForDate.length === 0) {
+      alert('No mileage entries to delete for this date.');
+      return;
+    }
+    if (!window.confirm(`Delete ${entriesForDate.length} mileage entry(ies) for this date? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      for (const entry of entriesForDate) {
+        const response = await fetch(`${API_BASE_URL}/api/mileage-entries/${entry.id}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) throw new Error(`Failed to delete entry ${entry.id}`);
+      }
+      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
+      if (mileageRes.ok) {
+        const mileageEntries = await mileageRes.json();
+        setRawMileageEntries(mileageEntries);
+      }
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      debugError('Error deleting day mileage entries:', error);
+      alert('Failed to delete one or more entries. Please try again.');
     }
   };
 
@@ -6644,6 +6694,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Miles Traveled</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Mileage ($)</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Per Diem ($)</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Actions</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -6913,12 +6964,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           </Box>
                         )}
                       </TableCell>
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteDayMileageEntries(entryDateStr)}
+                          sx={{ color: 'error.main' }}
+                          title="Delete entries for this date"
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
                     </TableRow>
                     );
                   })}
                   
                   {/* Subtotals row */}
                   <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
+                    {supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1 }} />}
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{typeof employeeData.totalHours === 'number' ? employeeData.totalHours.toFixed(1) : employeeData.totalHours}</strong></TableCell>
@@ -6927,6 +6989,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{employeeData.totalMiles}</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${employeeData.totalMileageAmount.toFixed(2)}</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${employeeData.perDiem.toFixed(2)}</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

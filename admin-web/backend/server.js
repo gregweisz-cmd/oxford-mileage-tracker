@@ -299,38 +299,15 @@ debugLog('🚀 Starting server initialization...');
 debugLog(`📊 Database path: ${DB_PATH}`);
 debugLog(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 
-dbService.initDatabase().then(async () => {
+dbService.initDatabase().then(() => {
   debugLog('✅ Database initialization completed');
   
   // Set local db reference for backward compatibility
   db = dbService.getDb();
   
-  // Always ensure test accounts exist (both local and production)
-  debugLog('🔧 Creating test accounts...');
-  try {
-    await seedService.seedTestAccounts();
-    debugLog('✅ Test accounts created successfully');
-  } catch (error) {
-    debugError('❌ Error creating test accounts:', error);
-  }
-  
-  // Seed supervisor assignments if module exists
-  debugLog('🔧 Seeding supervisor assignments...');
-  try {
-    await seedService.seedSupervisorAssignments();
-  } catch (error) {
-    debugError('❌ Error seeding supervisor assignments:', error);
-  }
-  
-  debugLog('⏰ Starting report schedule runner...');
-  startReportScheduleRunner();
-  
-  debugLog('🔔 Starting Sunday reminder job...');
-  startSundayReminderJob();
-  
+  // Start HTTP server immediately so Render/health checks pass before timeout.
+  // Run seeds and scheduled jobs after listen (non-blocking).
   debugLog('🌐 Starting HTTP server...');
-  
-  // Listen on configured host/port
   server.listen(PORT, config.server.host, () => {
     const networkIPs = helpers.getNetworkIPs();
     debugLog(`🚀 Backend server running on http://localhost:${PORT}`);
@@ -348,6 +325,27 @@ dbService.initDatabase().then(async () => {
     debugLog(`📊 Database path: ${DB_PATH}`);
     debugLog(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     debugLog('✅ Server startup completed successfully!');
+
+    // Run seeds and jobs after server is up (non-blocking for deploy health checks)
+    (async () => {
+      try {
+        debugLog('🔧 Creating test accounts...');
+        await seedService.seedTestAccounts();
+        debugLog('✅ Test accounts created successfully');
+      } catch (error) {
+        debugError('❌ Error creating test accounts:', error);
+      }
+      try {
+        debugLog('🔧 Seeding supervisor assignments...');
+        await seedService.seedSupervisorAssignments();
+      } catch (error) {
+        debugError('❌ Error seeding supervisor assignments:', error);
+      }
+      debugLog('⏰ Starting report schedule runner...');
+      startReportScheduleRunner();
+      debugLog('🔔 Starting Sunday reminder job...');
+      startSundayReminderJob();
+    })();
   });
 }).catch(err => {
   debugError('❌ Failed to initialize database:', err);

@@ -31,9 +31,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  
   const passwordInputRef = useRef<TextInput>(null);
-  const [showEmployeeList, setShowEmployeeList] = useState(false);
 
   useEffect(() => {
     loadEmployees();
@@ -171,13 +169,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         Alert.alert(
           'Login Failed',
           'Invalid email or password. Please check your credentials and try again.',
-          [
-            { text: 'OK', style: 'default' },
-            { 
-              text: 'Select Existing Employee', 
-              onPress: () => setShowEmployeeList(true)
-            }
-          ]
+          [{ text: 'OK', style: 'default' }]
         );
       }
     } catch (error) {
@@ -189,24 +181,11 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   };
 
   const createNewEmployee = (emailAddress: string) => {
-    // Navigate to employee creation screen or show modal
     Alert.alert(
       'Create Employee Profile',
-      'Please contact your administrator to create your employee profile, or select an existing employee:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Select Existing', 
-          onPress: () => setShowEmployeeList(true)
-        }
-      ]
+      'Please contact your administrator to create your employee profile.',
+      [{ text: 'OK', style: 'default' }]
     );
-  };
-
-  const selectExistingEmployee = (employee: Employee) => {
-    setEmail(employee.email);
-    setPassword(employee.password);
-    setShowEmployeeList(false);
   };
 
   const isValidEmail = (email: string): boolean => {
@@ -311,48 +290,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               {loading ? 'Signing In...' : 'Sign In'}
             </Text>
           </TouchableOpacity>
-
-          {/* Divider */}
-          <TouchableOpacity
-            style={styles.helpButton}
-            onPress={() => setShowEmployeeList(true)}
-          >
-            <Text style={styles.helpButtonText}>
-              Need Help? Select from existing employees
-            </Text>
-          </TouchableOpacity>
         </View>
-
-        {/* Employee List Modal */}
-        {showEmployeeList && (
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Employee</Text>
-                <TouchableOpacity onPress={() => setShowEmployeeList(false)}>
-                  <MaterialIcons name="close" size={24} color="#666" />
-                </TouchableOpacity>
-              </View>
-              
-              <ScrollView style={styles.employeeList}>
-                {employees.map((employee) => (
-                  <TouchableOpacity
-                    key={employee.id}
-                    style={styles.employeeItem}
-                    onPress={() => selectExistingEmployee(employee)}
-                  >
-                    <View style={styles.employeeInfo}>
-                      <Text style={styles.employeeName}>{employee.name}</Text>
-                      <Text style={styles.employeeEmail}>{employee.email}</Text>
-                      <Text style={styles.employeePosition}>{employee.position}</Text>
-                    </View>
-                    <MaterialIcons name="arrow-forward-ios" size={16} color="#666" />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        )}
 
         </ScrollView>
       </WrapperComponent>
@@ -466,78 +404,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
-  },
-  helpButton: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  helpButtonText: {
-    color: '#666',
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    width: '100%',
-    maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  employeeList: {
-    maxHeight: 400,
-  },
-  employeeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  employeeInfo: {
-    flex: 1,
-  },
-  employeeName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  employeeEmail: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 2,
-  },
-  employeePosition: {
-    fontSize: 12,
-    color: '#999',
   },
 });

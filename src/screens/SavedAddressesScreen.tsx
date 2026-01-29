@@ -15,7 +15,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { SavedAddress, Employee } from '../types';
 import UnifiedHeader from '../components/UnifiedHeader';
-import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 
 interface SavedAddressesScreenProps {
@@ -33,7 +32,10 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    address: '',
+    street: '',
+    city: '',
+    state: '',
+    zip: '',
     category: 'Other',
   });
 
@@ -84,10 +86,45 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   const resetForm = () => {
     setFormData({
       name: '',
-      address: '',
+      street: '',
+      city: '',
+      state: '',
+      zip: '',
       category: 'Other',
     });
     setEditingAddress(null);
+  };
+
+  const buildAddressString = () => {
+    const { street, city, state, zip } = formData;
+    const s = street.trim();
+    const c = city.trim();
+    const st = state.trim();
+    const z = zip.trim();
+    if (!s) return '';
+    const parts = [s];
+    if (c) parts.push(c);
+    if (st || z) parts.push([st, z].filter(Boolean).join(' '));
+    return parts.join(', ');
+  };
+
+  const parseAddressToForm = (address: string) => {
+    const parts = address.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) return { street: '', city: '', state: '', zip: '' };
+    if (parts.length === 1) return { street: parts[0], city: '', state: '', zip: '' };
+    if (parts.length === 2) return { street: parts[0], city: parts[1], state: '', zip: '' };
+    const last = parts[parts.length - 1];
+    const stateZipMatch = last.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+    const street = parts.slice(0, -2).join(', ');
+    const city = parts[parts.length - 2];
+    if (stateZipMatch) {
+      return { street, city, state: stateZipMatch[1].toUpperCase(), zip: stateZipMatch[2] };
+    }
+    const lastSpace = last.lastIndexOf(' ');
+    if (lastSpace > 0) {
+      return { street, city, state: last.slice(0, lastSpace).trim().toUpperCase(), zip: last.slice(lastSpace + 1).trim() };
+    }
+    return { street, city, state: last, zip: '' };
   };
 
   const handleAddAddress = () => {
@@ -96,9 +133,13 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const handleEditAddress = (address: SavedAddress) => {
+    const { street, city, state, zip } = parseAddressToForm(address.address);
     setFormData({
       name: address.name,
-      address: address.address,
+      street,
+      city,
+      state,
+      zip,
       category: address.category || 'Other',
     });
     setEditingAddress(address);
@@ -106,35 +147,34 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const handleSaveAddress = async () => {
-    if (!formData.name.trim() || !formData.address.trim() || !currentEmployee) {
-      Alert.alert('Validation Error', 'Please fill in all required fields');
+    if (!formData.name.trim() || !formData.street.trim() || !currentEmployee) {
+      Alert.alert('Validation Error', 'Please enter a name and street address');
       return;
     }
+    const addressString = buildAddressString();
 
     try {
       if (editingAddress) {
-        // Update existing address
         await DatabaseService.updateSavedAddress(editingAddress.id, {
           name: formData.name.trim(),
-          address: formData.address.trim(),
+          address: addressString,
           category: formData.category,
         });
         Alert.alert('Success', 'Address updated successfully');
         setShowEditModal(false);
       } else {
-        // Create new address
         await DatabaseService.createSavedAddress({
           employeeId: currentEmployee.id,
           name: formData.name.trim(),
-          address: formData.address.trim(),
+          address: addressString,
           category: formData.category,
         });
         Alert.alert('Success', 'Address saved successfully');
         setShowAddModal(false);
       }
-      
+
       resetForm();
-      await loadData(); // Refresh the list
+      await loadData();
     } catch (error) {
       console.error('Error saving address:', error);
       Alert.alert('Error', 'Failed to save address');
@@ -328,7 +368,12 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           <Text style={styles.modalTitle}>
             {editingAddress ? 'Edit Address' : 'Add New Address'}
           </Text>
-          
+          <ScrollView
+            style={styles.modalScroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 8 }}
+          >
           <TextInput
             style={styles.input}
             placeholder="Address Name (e.g., Main Office)"
@@ -336,16 +381,52 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
             onChangeText={(value) => handleInputChange('name', value)}
             placeholderTextColor="#999"
           />
-          
-          <OxfordHouseSearchInput
-            value={formData.address}
-            onChangeText={(value) => handleInputChange('address', value)}
-            placeholder="Search for Oxford House or enter address manually..."
-            label="Address"
-            allowManualEntry={true}
-            employeeId={currentEmployee?.id}
+
+          <Text style={styles.fieldLabel}>Street Address</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="123 Main St"
+            value={formData.street}
+            onChangeText={(value) => handleInputChange('street', value)}
+            placeholderTextColor="#999"
           />
-          
+
+          <Text style={styles.fieldLabel}>City</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="City"
+            value={formData.city}
+            onChangeText={(value) => handleInputChange('city', value)}
+            placeholderTextColor="#999"
+          />
+
+          <View style={styles.addressRow}>
+            <View style={styles.addressHalf}>
+              <Text style={styles.fieldLabel}>State</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="NC"
+                value={formData.state}
+                onChangeText={(value) => handleInputChange('state', value.toUpperCase().slice(0, 2))}
+                placeholderTextColor="#999"
+                maxLength={2}
+                autoCapitalize="characters"
+              />
+            </View>
+            <View style={styles.addressHalf}>
+              <Text style={styles.fieldLabel}>Zip</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="28203"
+                value={formData.zip}
+                onChangeText={(value) => handleInputChange('zip', value.replace(/\D/g, '').slice(0, 10))}
+                placeholderTextColor="#999"
+                keyboardType="number-pad"
+                maxLength={10}
+              />
+            </View>
+          </View>
+
           <View style={styles.categoryContainer}>
             <Text style={styles.categoryLabel}>Category:</Text>
             <View style={styles.categoryButtons}>
@@ -391,6 +472,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
               </Text>
             </TouchableOpacity>
           </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -563,6 +645,10 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '90%',
     maxWidth: 400,
+    maxHeight: '85%',
+  },
+  modalScroll: {
+    maxHeight: 400,
   },
   modalTitle: {
     fontSize: 18,
@@ -580,6 +666,19 @@ const styles = StyleSheet.create({
     color: '#333',
     backgroundColor: '#f9f9f9',
     marginBottom: 16,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#555',
+    marginBottom: 6,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  addressHalf: {
+    flex: 1,
   },
   textArea: {
     height: 80,

@@ -318,6 +318,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         
         return {
           ...report,
+          reportData: reportData,
           totalMiles: reportData.totalMiles || 0,
           totalMileageAmount: reportData.totalMileageAmount || 0,
           totalExpenses: calculateTotalExpenses(reportData),
@@ -325,8 +326,13 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           costCenters: reportData.costCenters || [],
         };
       });
-      
-      setReports(reportsWithTotals);
+
+      // Finance only sees full-month submissions; weekly check-ups stay with supervisor and never appear here
+      const monthlyOnly = reportsWithTotals.filter(
+        (r: any) => (r.reportData?.submissionType || '') !== 'weekly_checkup'
+      );
+
+      setReports(monthlyOnly);
     } catch (error) {
       debugError('Error loading reports:', error);
     } finally {

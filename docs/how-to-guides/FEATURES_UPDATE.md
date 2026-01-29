@@ -12,6 +12,10 @@ This document tracks **added**, **changed**, and **removed** features so the how
   - Requires `EMPLOYEE_API_TOKEN` (or `APPWARMER_EMPLOYEE_API_TOKEN`) in the backend environment.
   - See `admin-web/backend/docs/HR_SYNC_SETUP.md` and `admin-web/backend/DEPLOY_RENDER.md`.
 
+### Mobile App
+- **Go to today** on **Daily Hours & Descriptions** and **Per Diem** screens.
+  - Scrolls the view to today’s date; when viewing another month, switches to current month then scrolls.
+
 ## Changed
 
 ### Admin Portal
@@ -31,6 +35,8 @@ This document tracks **added**, **changed**, and **removed** features so the how
 | Guide        | Screenshot                         | Notes                                                                 |
 |-------------|-------------------------------------|-----------------------------------------------------------------------|
 | Admin Portal| `admin-portal-sync-from-hr.png`     | Sync from HR API button in Individual Management tab                 |
+| Mobile App  | `daily-hours-screen.png`            | Include “Go to today” in frame                                        |
+| Mobile App  | `per-diem-screen.png`              | Include “Go to today” in month nav                                    |
 
 ## Related docs
 

@@ -2,27 +2,43 @@
 
 This document lists all screenshots needed for the PDF How-To guides, organized by guide.
 
+## 📊 Progress Summary
+
+- ✅ **Mobile App:** 11/11 screenshots complete
+- ✅ **Staff Portal:** 15/15 screenshots complete
+- ⏳ **Admin Portal:** 1/7 screenshots (6 remaining)
+- ⏳ **Supervisor Portal:** 0/4 screenshots needed
+- ⏳ **Finance Portal:** 0/5 screenshots needed
+- ⏳ **Contracts Portal:** 0/3 screenshots needed
+
+**Total:** 27/44 screenshots complete | **Remaining:** 18 screenshots
+
+**Next Up:** See Session 4 in `SCREENSHOT_SESSION.md` for detailed capture instructions.
+
+---
+
 ## Screenshot Directory Structure
 
 Screenshots should be saved in:
 - `images/screenshots/mobile-app/` - Mobile app screenshots
 - `images/screenshots/web-portal/` - Web portal screenshots (shared across all portals)
 
-## Mobile App How-To Guide (13 screenshots)
+## Mobile App How-To Guide (11 screenshots)
 
 ### Required Screenshots:
-1. ✅ `app-store-download.png` - App Store/Play Store download page
+1. ✅ `app-store-download.png` - App Store/Play Store download page (optional)
 2. ✅ `login-screen.png` - Mobile app login screen
 3. ✅ `home-screen.png` - Home screen overview
 4. ✅ `home-dashboard-full.png` - Full dashboard with all tiles
 5. ✅ `gps-tracking-screen.png` - GPS tracking interface
 6. ✅ `manual-entry-screen.png` - Manual mileage entry screen
 7. ✅ `receipt-capture-screen.png` - Receipt capture/upload screen
-8. ✅ `daily-hours-screen.png` - Daily Hours & Descriptions combined screen
-9. ✅ `per-diem-screen.png` - Per Diem management screen with floating save button
-10. ✅ `monthly-report-screen.png` - Monthly report view
-11. ✅ `settings-screen.png` - Settings screen
-12. ✅ `saved-addresses-screen.png` - Saved addresses screen
+8. ✅ `daily-hours-screen.png` - Daily Hours & Descriptions combined screen (include **Go to today** in frame if visible)
+9. ✅ `per-diem-screen.png` - Per Diem management screen with floating save button and **Go to today** in month nav
+10. ✅ `settings-screen.png` - Settings screen
+11. ✅ `saved-addresses-screen.png` - Saved addresses screen
+
+**Note:** `monthly-report-screen.png` removed - feature no longer exists in mobile app.
 
 ## Staff Portal How-To Guide (15 screenshots)
 
@@ -42,8 +58,10 @@ Screenshots should be saved in:
 13. ✅ `staff-portal-settings.png` - Settings/preferences
 
 ### Additional Screenshots Needed:
-14. ⏳ `staff-portal-description-edit.png` - Description editing with tall edit box
-15. ⏳ `staff-portal-portal-switcher.png` - Portal switcher dropdown
+14. ✅ `staff-portal-description-edit.png` - Description editing with tall edit box
+15. ✅ `staff-portal-portal-switcher.png` - Portal switcher dropdown
+
+**✅ Session 3 Complete!** All Staff Portal screenshots captured.
 
 ## Supervisor Portal How-To Guide (15 screenshots)
 
@@ -111,7 +129,7 @@ Screenshots should be saved in:
 
 ### Additional Screenshots Needed:
 14. ⏳ `admin-portal-employee-management.png` - Employee Management tab
-15. ⏳ `admin-portal-sync-from-hr.png` - **Sync from HR API** button in Individual Management tab (cloud-upload icon next to Add Employee)
+15. ✅ `admin-portal-sync-from-hr.png` - **Sync from HR API** button in Individual Management tab (cloud-upload icon next to Add Employee) - **Done in Session 1**
 16. ⏳ `admin-portal-employee-form.png` - Employee creation/edit form
 17. ⏳ `admin-portal-bulk-import.png` - Bulk import interface
 18. ⏳ `admin-portal-supervisor-management.png` - Supervisor Management tab

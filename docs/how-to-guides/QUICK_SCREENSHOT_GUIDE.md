@@ -29,11 +29,11 @@
 
 4. **Daily Hours Screen** (`daily-hours-screen.png`)
    - Navigate to: Daily Hours & Descriptions screen
-   - Capture: Shows hours input and description field
+   - Capture: Shows hours input, description field, and **Go to today** in the month nav
 
 5. **Per Diem Screen** (`per-diem-screen.png`)
    - Navigate to: Per Diem screen
-   - Capture: Shows monthly summary, checkboxes, and floating \"Save Changes\" button
+   - Capture: Shows monthly summary, checkboxes, floating \"Save Changes\" button, and **Go to today** in month nav
 
 6. **GPS Tracking** (`gps-tracking-screen.png`)
    - Navigate to: GPS tracking interface (when starting a trip)

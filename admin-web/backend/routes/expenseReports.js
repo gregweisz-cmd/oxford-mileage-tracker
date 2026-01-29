@@ -1658,24 +1658,40 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         let escalationDueAt = null;
         let nextStepIndex = currentStepIndex + 1;
 
+        // Weekly submissions: supervisor approval only — do not send to finance. Only full month submission goes to finance.
+        const reportDataParsed = helpers.parseJsonSafe(report.reportData, {});
+        const submissionType = reportDataParsed.submissionType || (report.submissionType ? String(report.submissionType) : null);
+        const isWeeklyCheckup = submissionType === 'weekly_checkup';
+
         if (workflow[nextStepIndex]) {
           const nextStep = workflow[nextStepIndex];
-          nextStep.status = 'pending';
-          nextStep.dueAt = helpers.computeEscalationDueAt(nextStep.role === 'finance' ? constants.FINANCE_ESCALATION_HOURS : constants.SUPERVISOR_ESCALATION_HOURS);
+          const isSupervisorApprovingAndNextIsFinance = currentStep.role === 'supervisor' && nextStep.role === 'finance';
 
-          newStatus = `pending_${nextStep.role}`;
-          nextStage = nextStep.role;
-          nextApproverId = nextStep.approverId || null;
-          nextApproverName = nextStep.approverName || null;
-          escalationDueAt = nextStep.dueAt;
+          if (isSupervisorApprovingAndNextIsFinance && isWeeklyCheckup) {
+            // Weekly submission: stop at supervisor approval; do not advance to finance
+            nextStepIndex = currentStepIndex;
+            updates.approvedAt = nowIso;
+            updates.approvedBy = approverName || currentStep.approverName || 'system';
+            updates.currentApprovalStep = currentStepIndex;
+            debugLog(`📝 Report ${id} is weekly check-up: supervisor approved, not sending to finance.`);
+          } else {
+            nextStep.status = 'pending';
+            nextStep.dueAt = helpers.computeEscalationDueAt(nextStep.role === 'finance' ? constants.FINANCE_ESCALATION_HOURS : constants.SUPERVISOR_ESCALATION_HOURS);
 
-          updates.currentApprovalStep = nextStepIndex;
-          
-          // Notify next approver (e.g., supervisor approves -> notify finance)
-          if (nextStage === 'finance' && currentStep.role === 'supervisor') {
-            notificationService.notifyFinanceApprovalNeeded(id, approverId, approverName, report.employeeId).catch(err => {
-              debugError('❌ Error sending notification to finance:', err);
-            });
+            newStatus = `pending_${nextStep.role}`;
+            nextStage = nextStep.role;
+            nextApproverId = nextStep.approverId || null;
+            nextApproverName = nextStep.approverName || null;
+            escalationDueAt = nextStep.dueAt;
+
+            updates.currentApprovalStep = nextStepIndex;
+
+            // Notify next approver (e.g., supervisor approves -> notify finance) only for monthly submissions
+            if (nextStage === 'finance' && currentStep.role === 'supervisor') {
+              notificationService.notifyFinanceApprovalNeeded(id, approverId, approverName, report.employeeId).catch(err => {
+                debugError('❌ Error sending notification to finance:', err);
+              });
+            }
           }
         } else {
           updates.approvedAt = nowIso;
@@ -1710,6 +1726,14 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           } catch (err) {
             debugWarn('⚠️ Failed to update supervisor certification acknowledgment:', err);
           }
+        }
+
+        // Notify employee when report is fully approved (weekly: supervisor only; monthly: after finance)
+        if (newStatus === 'approved') {
+          const isWeekly = currentStep.role === 'supervisor'; // approved at supervisor = weekly; approved at finance = monthly
+          notificationService.notifyEmployeeReportApproved(id, approverId, approverName, report.employeeId, isWeekly).catch(err => {
+            debugError('❌ Error notifying employee of approval:', err);
+          });
         }
 
         logAction('approved', approverId, approverName, comments);

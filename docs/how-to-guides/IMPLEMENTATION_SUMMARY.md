@@ -81,6 +81,7 @@ All templates follow this consistent structure:
 ## Key Features Documented
 
 ### Mobile App
+- **Go to today** on Daily Hours & Descriptions and Per Diem screens. See `FEATURES_UPDATE.md`.
 - GPS tracking, manual entry, receipts, hours, descriptions, reports, settings, sync, addresses
 
 ### Staff Portal

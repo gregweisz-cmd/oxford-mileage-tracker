@@ -1,5 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DatabaseService } from './database';
 import { debugLog, debugWarn } from '../config/debug';
+
+const MONTH_END_REMINDER_LAST_SHOWN_KEY = 'monthEndReminderLastShown';
 
 export interface SmartNotification {
   id: string;
@@ -196,16 +199,20 @@ export class SmartNotificationService {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      // Get entries from yesterday and today
-      const yesterdayEntries = await DatabaseService.getMileageEntries(
-        employeeId,
-        yesterday,
-        today
+      // Get entries from yesterday and today (DB uses month/year)
+      const yesterdayMonth = yesterday.getMonth() + 1;
+      const yesterdayYear = yesterday.getFullYear();
+      const todayMonth = today.getMonth() + 1;
+      const todayYear = today.getFullYear();
+      const [yesterdayRaw, todayRaw] = await Promise.all([
+        DatabaseService.getMileageEntries(employeeId, yesterdayMonth, yesterdayYear),
+        DatabaseService.getMileageEntries(employeeId, todayMonth, todayYear),
+      ]);
+      const yesterdayEntries = yesterdayRaw.filter(
+        (e) => e.date && new Date(e.date).toDateString() === yesterday.toDateString()
       );
-      const todayEntries = await DatabaseService.getMileageEntries(
-        employeeId,
-        today,
-        tomorrow
+      const todayEntries = todayRaw.filter(
+        (e) => e.date && new Date(e.date).toDateString() === today.toDateString()
       );
 
       // Check yesterday's entries ending locations (evening/end of day)
@@ -253,11 +260,24 @@ export class SmartNotificationService {
     currentDate: Date
   ): Promise<SmartNotification | null> {
     try {
-      // Get receipts from the last 7 days
+      // Get receipts from the last 7 days (DB uses month/year; fetch current and maybe prior month)
       const sevenDaysAgo = new Date(currentDate);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-      const receipts = await DatabaseService.getReceipts(employeeId, sevenDaysAgo, currentDate);
+      const curMonth = currentDate.getMonth() + 1;
+      const curYear = currentDate.getFullYear();
+      const prevMonth = sevenDaysAgo.getMonth() + 1;
+      const prevYear = sevenDaysAgo.getFullYear();
+      const [currentReceipts, priorReceipts] =
+        curMonth === prevMonth && curYear === prevYear
+          ? [await DatabaseService.getReceipts(employeeId, curMonth, curYear), []]
+          : await Promise.all([
+              DatabaseService.getReceipts(employeeId, curMonth, curYear),
+              DatabaseService.getReceipts(employeeId, prevMonth, prevYear),
+            ]);
+      const receipts = [...currentReceipts, ...priorReceipts].filter((r) => {
+        const d = new Date(r.date).getTime();
+        return d >= sevenDaysAgo.getTime() && d <= currentDate.getTime();
+      });
 
       // Check if there are any large expenses (> $50) without images
       const missingReceipts = receipts.filter(
@@ -301,10 +321,16 @@ export class SmartNotificationService {
       ).getDate();
       const daysRemaining = daysInMonth - dayOfMonth;
 
-      // Remind user 3 days before month end
+      // Remind user 3 days before month end (at most once per day)
       if (daysRemaining <= 3 && daysRemaining > 0) {
+        const todayKey = currentDate.getFullYear() + '-' + String(currentDate.getMonth() + 1).padStart(2, '0') + '-' + String(currentDate.getDate()).padStart(2, '0');
+        const storageKey = `${MONTH_END_REMINDER_LAST_SHOWN_KEY}_${employeeId}`;
+        const lastShown = await AsyncStorage.getItem(storageKey);
+        if (lastShown === todayKey) {
+          return null; // Already shown today
+        }
+
         const monthName = currentDate.toLocaleString('default', { month: 'long' });
-        const year = currentDate.getFullYear();
 
         // Check if report is already submitted
         const monthlyReports = await DatabaseService.getMonthlyReports(employeeId);
@@ -314,6 +340,7 @@ export class SmartNotificationService {
         );
 
         if (!currentMonthReport || currentMonthReport.status === 'draft') {
+          await AsyncStorage.setItem(storageKey, todayKey);
           return {
             id: `report_reminder_${currentDate.getMonth()}_${currentDate.getFullYear()}`,
             type: 'report',
@@ -352,8 +379,18 @@ export class SmartNotificationService {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      const mileageEntries = await DatabaseService.getMileageEntries(employeeId, today, tomorrow);
-      const timeEntries = await DatabaseService.getTimeTrackingEntries(employeeId, today, tomorrow);
+      const month = today.getMonth() + 1;
+      const year = today.getFullYear();
+      const [mileageRaw, timeRaw] = await Promise.all([
+        DatabaseService.getMileageEntries(employeeId, month, year),
+        DatabaseService.getTimeTrackingEntries(employeeId, month, year),
+      ]);
+      const mileageEntries = mileageRaw.filter(
+        (e) => e.date && new Date(e.date).toDateString() === currentDate.toDateString()
+      );
+      const timeEntries = timeRaw.filter(
+        (e) => e.date && new Date(e.date).toDateString() === currentDate.toDateString()
+      );
 
       // Calculate total miles for today
       const totalMiles = mileageEntries.reduce((sum, entry) => sum + (entry.miles || 0), 0);
@@ -389,7 +426,10 @@ export class SmartNotificationService {
 
       if (isEligible) {
         // Check if per diem already claimed for today
-        const receipts = await DatabaseService.getReceipts(employeeId, today, tomorrow);
+        const dayReceipts = await DatabaseService.getReceipts(employeeId, month, year);
+        const receipts = dayReceipts.filter(
+          (r) => r.date && new Date(r.date).toDateString() === currentDate.toDateString()
+        );
         const hasPerDiemReceipt = receipts.some(
           receipt =>
             receipt.category === 'Per Diem' &&

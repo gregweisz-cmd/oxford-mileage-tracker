@@ -47,6 +47,8 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   // UI state
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showPreferredNameModal, setShowPreferredNameModal] = useState(false);
+  const [preferredNameInput, setPreferredNameInput] = useState('');
 
   // Refs for keyboard handling
   const scrollViewRef = useRef<ScrollView>(null);
@@ -289,40 +291,28 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
 
   const handleEditPreferredName = () => {
     if (!currentEmployee) return;
-    
-    Alert.prompt(
-      'Edit Preferred Name',
-      'Enter your preferred name.\n\nNote: This name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Save',
-          onPress: async (preferredName: string | undefined) => {
-            if (!preferredName || !currentEmployee?.id) return;
-            
-            try {
-              await DatabaseService.updateEmployee(currentEmployee.id, {
-                preferredName: preferredName.trim()
-              } as any);
-              
-              // Refresh employee data
-              const updated = await DatabaseService.getEmployeeById(currentEmployee.id);
-              setCurrentEmployee(updated);
-              
-              Alert.alert('Success', 'Preferred name updated successfully');
-            } catch (error) {
-              console.error('❌ Error updating preferred name:', error);
-              Alert.alert('Error', 'Failed to update preferred name');
-            }
-          },
-        },
-      ],
-      'plain-text',
-      currentEmployee.preferredName || currentEmployee.name.split(' ')[0]
-    );
+    setPreferredNameInput(currentEmployee.preferredName || currentEmployee.name.split(' ')[0] || '');
+    setShowPreferredNameModal(true);
+  };
+
+  const handleSavePreferredName = async () => {
+    const trimmed = preferredNameInput.trim();
+    if (!trimmed || !currentEmployee?.id) {
+      setShowPreferredNameModal(false);
+      return;
+    }
+    try {
+      await DatabaseService.updateEmployee(currentEmployee.id, {
+        preferredName: trimmed
+      } as any);
+      const updated = await DatabaseService.getEmployeeById(currentEmployee.id);
+      setCurrentEmployee(updated);
+      setShowPreferredNameModal(false);
+      Alert.alert('Success', 'Preferred name updated successfully');
+    } catch (error) {
+      console.error('❌ Error updating preferred name:', error);
+      Alert.alert('Error', 'Failed to update preferred name');
+    }
   };
 
   const renderEssentialSettings = () => (
@@ -408,6 +398,43 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     );
   };
 
+  const renderPreferredNameModal = () => (
+    <Modal visible={showPreferredNameModal} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Edit Preferred Name</Text>
+          <Text style={styles.modalSubtitle}>
+            This name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents.
+          </Text>
+          <View style={styles.modalInputWrap}>
+            <TextInput
+              style={styles.input}
+              value={preferredNameInput}
+              onChangeText={setPreferredNameInput}
+              placeholder="Preferred name"
+              placeholderTextColor="#999"
+              autoFocus
+            />
+          </View>
+          <View style={styles.modalButtonRow}>
+            <TouchableOpacity
+              style={[styles.modalCancel, { flex: 1 }]}
+              onPress={() => setShowPreferredNameModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSaveButton}
+              onPress={handleSavePreferredName}
+            >
+              <Text style={styles.modalSaveButtonText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -446,45 +473,11 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
           contentContainerStyle={{ paddingBottom: 100 }}
         >
           {renderEssentialSettings()}
-          
-          {/* Temporary test button for Setup Wizard */}
-          {__DEV__ && currentEmployee && (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.resetButton, { marginTop: 20 }]}
-              onPress={async () => {
-                Alert.alert(
-                  'Reset Setup Data',
-                  'This will clear your base address and cost centers so you can test the Setup Wizard. Continue?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Reset',
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          await DatabaseService.resetSetupData(currentEmployee!.id);
-                          Alert.alert(
-                            'Setup Data Reset',
-                            'Your setup data has been cleared. Please log out and log back in to see the Setup Wizard.',
-                            [{ text: 'OK' }]
-                          );
-                        } catch (error) {
-                          Alert.alert('Error', `Failed to reset setup data: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <MaterialIcons name="refresh" size={20} color="#f44336" />
-              <Text style={styles.resetButtonText}>Test Setup Wizard (Dev Only)</Text>
-            </TouchableOpacity>
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
       {renderThemeModal()}
+      {renderPreferredNameModal()}
     </View>
   );
 }
@@ -671,6 +664,33 @@ const styles = StyleSheet.create({
   modalCancelText: {
     fontSize: 16,
     color: '#666',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    lineHeight: 20,
+  },
+  modalInputWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  modalSaveButton: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    backgroundColor: '#2196F3',
+  },
+  modalSaveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   input: {
     backgroundColor: '#fff',
