@@ -2058,15 +2058,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       debugVerbose('✅ Changes auto-saved and synced to source tables');
       
-      // If we saved a description (especially if it was deleted), brief delay before reloading
+      // No reload on description save: we already updated local state, so the UI shows the new value.
+      // Data is persisted via POST + sync-to-source; next manual refresh or navigation will show saved data.
       if (field === 'description') {
         const { rateLimitedApi } = await import('./services/rateLimitedApi');
         rateLimitedApi.clearCacheFor('/api/daily-descriptions');
-        
-        setLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms so backend can process
-        setRefreshTrigger(prev => prev + 1);
-        setLoading(false);
       }
     } catch (error) {
       debugError('Error auto-saving changes:', error);
