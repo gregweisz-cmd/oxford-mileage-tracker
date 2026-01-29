@@ -1388,7 +1388,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }));
           
           // Merge portal-edited values from saved expense report so Cost Ctr page edits persist.
-          // Odometer, per diem, and mileage are only stored in reportData (sync-to-source does not write to mileage_entries).
+          // Odometer, per diem, mileage, and description are stored in reportData (sync-to-source does not write to mileage_entries).
           if (savedExpenseReport?.reportData?.dailyEntries && Array.isArray(savedExpenseReport.reportData.dailyEntries)) {
             const savedByDate = new Map<string, any>();
             for (const se of savedExpenseReport.reportData.dailyEntries) {
@@ -1404,6 +1404,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 if (typeof saved.odometerEnd === 'number') entry.odometerEnd = saved.odometerEnd;
                 if (typeof saved.milesTraveled === 'number') entry.milesTraveled = saved.milesTraveled;
                 if (typeof saved.mileageAmount === 'number') entry.mileageAmount = saved.mileageAmount;
+                // Merge description from saved report so Cost Ctr description edits persist
+                if (saved.description != null && String(saved.description).trim() !== '') {
+                  entry.description = saved.description;
+                }
               }
             }
           }
@@ -1969,19 +1973,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     } else if (field === 'odometerStart') {
       const value = parseInt(editingValue) || 0;
       newEntries[row].odometerStart = value;
-      // Recalculate miles if both odometer values are present
-      if (newEntries[row].odometerEnd > 0) {
-        newEntries[row].milesTraveled = newEntries[row].odometerEnd - value;
-        newEntries[row].mileageAmount = newEntries[row].milesTraveled * 0.445;
-      }
+      // Always recalculate miles (zero when either odometer is 0)
+      const start = value;
+      const end = newEntries[row].odometerEnd || 0;
+      newEntries[row].milesTraveled = Math.max(0, end - start);
+      newEntries[row].mileageAmount = newEntries[row].milesTraveled * 0.445;
     } else if (field === 'odometerEnd') {
       const value = parseInt(editingValue) || 0;
       newEntries[row].odometerEnd = value;
-      // Recalculate miles if both odometer values are present
-      if (newEntries[row].odometerStart > 0) {
-        newEntries[row].milesTraveled = value - newEntries[row].odometerStart;
-        newEntries[row].mileageAmount = newEntries[row].milesTraveled * 0.445;
-      }
+      // Always recalculate miles (zero when either odometer is 0)
+      const start = newEntries[row].odometerStart || 0;
+      const end = value;
+      newEntries[row].milesTraveled = Math.max(0, end - start);
+      newEntries[row].mileageAmount = newEntries[row].milesTraveled * 0.445;
     } else if (field === 'hoursWorked') {
       // Hours should be saved via time tracking API, not just local state
       // This field is deprecated - hours should be edited via the timesheet grid
@@ -2180,7 +2184,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  /** Delete all mileage entries for a given date (used from Cost Center tab). */
+  /** Delete all mileage entries for a given date (used from Cost Center tab). Also clear that day's odometer/miles in saved report so merge on reload doesn't restore old values. */
   const handleDeleteDayMileageEntries = async (dateStr: string) => {
     const entriesForDate = rawMileageEntries.filter((e: any) => normalizeDate(e.date) === dateStr);
     if (entriesForDate.length === 0) {
@@ -2202,6 +2206,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (mileageRes.ok) {
         const mileageEntries = await mileageRes.json();
         setRawMileageEntries(mileageEntries);
+      }
+      // Clear this day's odometer/miles in saved reportData so reload merge doesn't restore old values
+      if (employeeData?.dailyEntries) {
+        const updatedEntries = employeeData.dailyEntries.map((e: any) => {
+          const key = normalizeDate(e.date);
+          if (key === dateStr) {
+            return { ...e, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0 };
+          }
+          return e;
+        });
+        const reportData = {
+          ...employeeData,
+          dailyEntries: updatedEntries,
+          receipts,
+          dailyDescriptions,
+          employeeSignature: signatureImage,
+          supervisorSignature: supervisorSignatureState,
+          employeeCertificationAcknowledged: employeeCertificationAcknowledged,
+          supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
+        };
+        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employeeId: employeeData.employeeId,
+            month: currentMonth,
+            year: currentYear,
+            reportData
+          })
+        });
+        setEmployeeData({ ...employeeData, dailyEntries: updatedEntries });
       }
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
