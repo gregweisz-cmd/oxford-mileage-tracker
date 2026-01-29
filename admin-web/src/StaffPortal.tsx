@@ -1394,48 +1394,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             };
           }));
           
-          // Merge portal-edited values from saved expense report so Cost Ctr page edits persist.
-          // Only overlay odometer/miles when the API-built entry has mileage for that day (milesTraveled > 0).
-          // Otherwise we keep 0 so we don't restore bad values (e.g. 182702) after user cleared or deleted mileage.
-          if (savedExpenseReport?.reportData?.dailyEntries && Array.isArray(savedExpenseReport.reportData.dailyEntries)) {
-            const savedByDate = new Map<string, any>();
-            for (const se of savedExpenseReport.reportData.dailyEntries) {
-              const key = normalizeDate(se.date);
-              if (key) savedByDate.set(key, se);
-            }
-            for (const entry of dailyEntries) {
-              const key = normalizeDate(entry.date);
-              const saved = key ? savedByDate.get(key) : null;
-              if (saved) {
-                if (typeof saved.perDiem === 'number') entry.perDiem = saved.perDiem;
-                // Only overlay odometer/miles when API says this day has mileage (don't restore 182702 after clear/delete)
-                const builtMiles = (entry.milesTraveled ?? 0);
-                if (builtMiles > 0) {
-                  if (typeof saved.odometerStart === 'number') entry.odometerStart = saved.odometerStart;
-                  if (typeof saved.odometerEnd === 'number') entry.odometerEnd = saved.odometerEnd;
-                  if (typeof saved.milesTraveled === 'number') entry.milesTraveled = saved.milesTraveled;
-                  if (typeof saved.mileageAmount === 'number') entry.mileageAmount = saved.mileageAmount;
-                }
-                // Merge hours from saved so Cost Ctr hours-worked edits persist (sync writes costCenter0Hours to time_tracking)
-                if (typeof saved.hoursWorked === 'number') {
-                  entry.hoursWorked = saved.hoursWorked;
-                  (entry as any).costCenter0Hours = saved.hoursWorked;
-                }
-                // Merge description from saved report so Cost Ctr description edits persist
-                if (saved.description != null && String(saved.description).trim() !== '') {
-                  entry.description = saved.description;
-                }
-              }
-            }
-          }
+          // No merge from saved reportData: match c1a8138 (working). Data comes only from API so reload shows what sync-to-source actually persisted (daily_descriptions, time_tracking, mileage_entries).
           
-          // Calculate totals from real data (use dailyEntries so portal-edited mileage/per diem are included)
+          // Calculate totals from real data
           const totalMiles = Math.round(dailyEntries.reduce((sum: number, e: any) => sum + (e.milesTraveled || 0), 0));
           const totalMileageAmount = dailyEntries.reduce((sum: number, e: any) => sum + (e.mileageAmount || 0), 0);
           const totalReceipts = currentMonthReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
           const totalHours = currentMonthTimeTracking.reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
           
-          // Per diem total from daily entries (includes portal-edited values after merge)
+          // Per diem total from daily entries (built from API/receipts/rules)
           const totalPerDiemFromDailyEntries = dailyEntries.reduce((sum: number, e: any) => sum + (e.perDiem || 0), 0);
           const totalPerDiemFromReceipts = currentMonthReceipts
             .filter((receipt: any) => receipt.category === 'Per Diem')
@@ -1468,7 +1435,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             parkingTolls: 0,
             groundTransportation: 0,
             hotelsAirbnb: 0,
-            perDiem: totalPerDiemFromDailyEntries, // Sum of daily table (includes portal-edited per diem)
+            perDiem: totalPerDiemFromDailyEntries, // Sum of daily table
             phoneInternetFax: totalReceipts - totalPerDiemFromReceipts, // Exclude Per Diem from other receipts
             shippingPostage: 0,
             printingCopying: 0,
