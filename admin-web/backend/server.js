@@ -130,11 +130,24 @@ app.options('*', handlePreflight);
 //   next();
 // });
 
-// Ensure uploads directory exists
-const uploadsDir = config.upload.directory;
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  debugLog('📁 Created uploads directory');
+// Ensure uploads directory exists (fallback to local if configured path not writable, e.g. free tier without disk)
+let uploadsDir = config.upload.directory;
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    debugLog('📁 Created uploads directory');
+  }
+} catch (err) {
+  if (err.code === 'EACCES' || err.code === 'ENOENT') {
+    uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    config.upload.directory = uploadsDir;
+    debugWarn('⚠️ Could not use UPLOAD_DIR (e.g. no persistent disk); using local uploads directory. Data will not persist across redeploys.');
+  } else {
+    throw err;
+  }
 }
 
 // Serve uploaded files statically

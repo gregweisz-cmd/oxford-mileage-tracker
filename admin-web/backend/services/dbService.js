@@ -9,8 +9,8 @@ const path = require('path');
 const { debugLog, debugError, debugWarn } = require('../debug');
 const constants = require('../utils/constants');
 
-// Database path
-const DB_PATH = path.join(__dirname, '..', 'expense_tracker.db');
+// Database path: use DATABASE_PATH on Render persistent disk, else default next to backend
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'expense_tracker.db');
 
 // Database connection (will be initialized)
 let db = null;

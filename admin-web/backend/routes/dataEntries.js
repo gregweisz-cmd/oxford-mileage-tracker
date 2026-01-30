@@ -13,14 +13,15 @@ const crypto = require('crypto');
 const multer = require('multer');
 const vision = require('@google-cloud/vision');
 const dbService = require('../services/dbService');
+const config = require('../config');
 const dateHelpers = require('../utils/dateHelpers');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { checkAndNotify50PlusHours } = require('../services/notificationService');
 const websocketService = require('../services/websocketService');
 
-// Set up uploads directory and multer
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+// Set up uploads directory and multer (use UPLOAD_DIR on Render persistent disk)
+const uploadsDir = config.upload.directory;
 const upload = multer({ dest: uploadsDir });
 
 // ===== MILEAGE ENTRIES ROUTES =====

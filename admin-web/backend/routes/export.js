@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
+const config = require('../config');
 const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
@@ -1540,8 +1541,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 const fs = require('fs');
                 const path = require('path');
                 
-                // Same uploads dir as dataEntries (backend/uploads), not routes/uploads
-                const uploadsDir = path.join(__dirname, '..', 'uploads');
+                // Use config.upload.directory (e.g. /data/uploads on Render persistent disk)
+                const uploadsDir = config.upload.directory;
                 if (typeof imagePath === 'string' && imagePath.startsWith('data:image/')) {
                   const base64Data = imagePath.split(',')[1];
                   const format = imagePath.includes('png') ? 'PNG' : 'JPEG';
