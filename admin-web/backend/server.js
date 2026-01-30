@@ -22,6 +22,26 @@ const { corsMiddleware, handlePreflight } = require('./middleware/cors');
 const { errorHandler } = require('./middleware/errorHandler');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const config = require('./config');
+
+// Ensure uploads directory exists before any route loads multer (fallback if UPLOAD_DIR not writable)
+let uploadsDir = config.upload.directory;
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (err) {
+  if (err.code === 'EACCES' || err.code === 'ENOENT') {
+    uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    config.upload.directory = uploadsDir;
+    debugWarn('⚠️ Could not use UPLOAD_DIR (e.g. no persistent disk); using local uploads directory.');
+  } else {
+    throw err;
+  }
+}
+
 const costCentersRoutes = require('./routes/costCenters');
 const employeesRoutes = require('./routes/employees');
 const dataEntriesRoutes = require('./routes/dataEntries');
@@ -130,24 +150,9 @@ app.options('*', handlePreflight);
 //   next();
 // });
 
-// Ensure uploads directory exists (fallback to local if configured path not writable, e.g. free tier without disk)
-let uploadsDir = config.upload.directory;
-try {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    debugLog('📁 Created uploads directory');
-  }
-} catch (err) {
-  if (err.code === 'EACCES' || err.code === 'ENOENT') {
-    uploadsDir = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-    config.upload.directory = uploadsDir;
-    debugWarn('⚠️ Could not use UPLOAD_DIR (e.g. no persistent disk); using local uploads directory. Data will not persist across redeploys.');
-  } else {
-    throw err;
-  }
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  debugLog('📁 Created uploads directory');
 }
 
 // Serve uploaded files statically

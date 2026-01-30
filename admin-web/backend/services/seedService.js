@@ -5,6 +5,7 @@
  */
 
 const dbService = require('./dbService');
+const helpers = require('../utils/helpers');
 const { debugLog, debugError } = require('../debug');
 
 /**
@@ -18,8 +19,40 @@ const { debugLog, debugError } = require('../debug');
  * await seedService.seedTestAccounts();
  * console.log('Test accounts ready');
  */
+/**
+ * Wait for employees table to exist (handles startup race on fresh disk)
+ */
+function waitForEmployeesTable(db, maxWaitMs = 5000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    function check() {
+      db.get('SELECT 1 FROM employees LIMIT 1', [], (err) => {
+        if (!err) {
+          resolve(true);
+          return;
+        }
+        if (err.message && err.message.includes('no such table')) {
+          if (Date.now() - start < maxWaitMs) {
+            setTimeout(check, 500);
+            return;
+          }
+          resolve(false);
+          return;
+        }
+        resolve(false);
+      });
+    }
+    check();
+  });
+}
+
 async function seedTestAccounts() {
   const db = dbService.getDb();
+  const ready = await waitForEmployeesTable(db);
+  if (!ready) {
+    debugLog('⚠️ Database tables not ready yet (e.g. fresh disk); skipping test account seed.');
+    return;
+  }
   const testAccounts = [
     {
       id: 'greg-weisz-001',
@@ -83,6 +116,9 @@ async function seedTestAccounts() {
 
   for (const account of testAccounts) {
     try {
+      // Hash password so auth (bcrypt compare) works
+      const hashedPassword = await helpers.hashPassword(account.password);
+
       // Check if account already exists
       const existingAccount = await new Promise((resolve, reject) => {
         db.get(
@@ -121,7 +157,7 @@ async function seedTestAccounts() {
               account.name,
               account.preferredName,
               account.email,
-              account.password,
+              hashedPassword,
               account.oxfordHouseId,
               account.position,
               account.phoneNumber,
@@ -154,7 +190,7 @@ async function seedTestAccounts() {
               account.name,
               account.preferredName,
               account.email,
-              account.password,
+              hashedPassword,
               account.oxfordHouseId,
               account.position,
               account.phoneNumber,
@@ -195,6 +231,11 @@ async function seedTestAccounts() {
  */
 async function seedSupervisorAssignments() {
   const db = dbService.getDb();
+  const ready = await waitForEmployeesTable(db);
+  if (!ready) {
+    debugLog('⚠️ Database tables not ready yet; skipping supervisor assignment seed.');
+    return;
+  }
   // Try to load supervisor assignments module
   let SUPERVISOR_ASSIGNMENTS = [];
   
