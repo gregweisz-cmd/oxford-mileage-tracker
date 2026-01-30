@@ -310,6 +310,13 @@ app.use(errorHandler);
 // Initialize database and start server
 debugLog('🚀 Starting server initialization...');
 debugLog(`📊 Database path: ${DB_PATH}`);
+if (process.env.DATABASE_PATH) {
+  debugLog('💾 Persistent disk: database will persist across redeploys');
+}
+debugLog(`📁 Uploads directory: ${uploadsDir}`);
+if (uploadsDir.startsWith('/data')) {
+  debugLog('💾 Persistent disk: uploads will persist across redeploys');
+}
 debugLog(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 
 dbService.initDatabase().then(() => {
