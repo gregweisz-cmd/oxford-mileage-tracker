@@ -7731,14 +7731,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           if (showUploadOnly) {
                             return renderUploadBox(imageFailed ? 'Upload image' : 'No image');
                           }
-                          const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-                          const isDataUrl = raw.startsWith('data:');
-                          const imageSrc = isDataUrl
-                            ? raw
-                            : (() => {
-                                const path = raw.startsWith('/uploads') ? raw : (raw.startsWith('uploads') ? `/${raw}` : `/uploads/${raw}`);
-                                return path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
-                              })();
                           return (
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
