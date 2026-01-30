@@ -101,7 +101,7 @@ interface NotificationsDialogProps {
   onClose: () => void;
   employeeId: string;
   role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
-  onUpdate?: () => void;
+  onUpdate?: (options?: { markAllAsRead?: boolean }) => void;
   onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
 }
 
@@ -189,7 +189,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
           prev.map(n => ({ ...n, isRead: true, readAt: new Date().toISOString() }))
         );
         showSuccess('All notifications marked as read');
-        onUpdate?.();
+        onUpdate?.({ markAllAsRead: true });
       }
     } catch (error) {
       showError('Error marking all notifications as read');

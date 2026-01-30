@@ -36,13 +36,62 @@ interface SetupWizardProps {
   onComplete: () => void;
 }
 
+/** Parse a single-line base address into street, city, state, zip. */
+function parseBaseAddress(full: string): { street: string; city: string; state: string; zip: string } {
+  let street = '';
+  let city = '';
+  let state = '';
+  let zip = '';
+  const raw = (full || '').trim();
+  if (!raw) return { street, city, state, zip };
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 3) {
+    const last = parts[parts.length - 1];
+    const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
+    if (match) {
+      state = match[1];
+      zip = match[2];
+      city = parts[parts.length - 2];
+      street = parts.slice(0, -2).join(', ');
+      return { street, city, state, zip };
+    }
+  }
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1];
+    const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
+    if (match) {
+      state = match[1];
+      zip = match[2];
+      street = parts[0];
+      return { street, city, state, zip };
+    }
+  }
+  street = raw;
+  return { street, city, state, zip };
+}
+
+/** Build single-line base address from street, city, state, zip. */
+function formatBaseAddress(street: string, city: string, state: string, zip: string): string {
+  const s = (street || '').trim();
+  const c = (city || '').trim();
+  const st = (state || '').trim();
+  const z = (zip || '').trim();
+  if (!s) return '';
+  if (c && st && z) return `${s}, ${c}, ${st} ${z}`;
+  if (st && z) return `${s}, ${st} ${z}`;
+  return s;
+}
+
 const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string>('');
   
-  // Form data
-  const [baseAddress, setBaseAddress] = useState(employee?.baseAddress || '');
+  const parsedBase = parseBaseAddress(employee?.baseAddress || '');
+  const [baseAddressStreet, setBaseAddressStreet] = useState(parsedBase.street);
+  const [baseAddressCity, setBaseAddressCity] = useState(parsedBase.city);
+  const [baseAddressState, setBaseAddressState] = useState(parsedBase.state);
+  const [baseAddressZip, setBaseAddressZip] = useState(parsedBase.zip);
   const [defaultCostCenter, setDefaultCostCenter] = useState(employee?.defaultCostCenter || '');
   const [typicalWorkStartHour, setTypicalWorkStartHour] = useState<string>(
     employee?.typicalWorkStartHour !== undefined && employee?.typicalWorkStartHour !== null
@@ -107,8 +156,20 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
     
     switch (step) {
       case 0: // Base Address
-        if (!baseAddress.trim()) {
-          setError('Please enter your base address.');
+        if (!baseAddressStreet.trim()) {
+          setError('Please enter your street address.');
+          return false;
+        }
+        if (!baseAddressCity.trim()) {
+          setError('Please enter your city.');
+          return false;
+        }
+        if (!baseAddressState.trim()) {
+          setError('Please enter your state.');
+          return false;
+        }
+        if (!baseAddressZip.trim()) {
+          setError('Please enter your ZIP code.');
           return false;
         }
         break;
@@ -233,7 +294,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
       }
 
       await EmployeeApiService.updateEmployee(employee.id, {
-        baseAddress: baseAddress.trim(),
+        baseAddress: formatBaseAddress(baseAddressStreet, baseAddressCity, baseAddressState, baseAddressZip),
         defaultCostCenter: defaultCostCenter.trim() || undefined,
         typicalWorkStartHour: parseInt(typicalWorkStartHour, 10),
         typicalWorkEndHour: parseInt(typicalWorkEndHour, 10),
@@ -261,14 +322,42 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
             </Typography>
             <TextField
               fullWidth
-              label="Base Address"
-              value={baseAddress}
-              onChange={(e) => setBaseAddress(e.target.value)}
-              placeholder="e.g., 123 Main St, City, State ZIP"
-              multiline
-              rows={3}
+              label="Street Address"
+              value={baseAddressStreet}
+              onChange={(e) => setBaseAddressStreet(e.target.value)}
+              placeholder="e.g., 123 Main St"
               required
+              sx={{ mb: 2 }}
             />
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <TextField
+                fullWidth
+                sx={{ flex: '1 1 200px' }}
+                label="City"
+                value={baseAddressCity}
+                onChange={(e) => setBaseAddressCity(e.target.value)}
+                placeholder="e.g., Troutman"
+                required
+              />
+              <TextField
+                sx={{ width: 100 }}
+                label="State"
+                value={baseAddressState}
+                onChange={(e) => setBaseAddressState(e.target.value.toUpperCase().slice(0, 2))}
+                placeholder="NC"
+                required
+                inputProps={{ maxLength: 2 }}
+              />
+              <TextField
+                sx={{ width: 120 }}
+                label="ZIP Code"
+                value={baseAddressZip}
+                onChange={(e) => setBaseAddressZip(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="28166"
+                required
+                inputProps={{ maxLength: 10 }}
+              />
+            </Box>
           </Box>
         );
 

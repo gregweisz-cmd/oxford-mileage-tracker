@@ -13,39 +13,18 @@ const templatesDir = path.join(__dirname, '../templates');
 const outputDir = path.join(__dirname, '..');
 const imagesDir = path.join(__dirname, '../images/screenshots');
 
-// List of templates to generate
-const templates = [
-    { 
-        template: 'mobile-app-template.html', 
-        output: 'Mobile-App-How-To.pdf',
-        title: 'Mobile App How-To Guide'
-    },
-    { 
-        template: 'staff-portal-template.html', 
-        output: 'Staff-Portal-How-To.pdf',
-        title: 'Staff Portal How-To Guide'
-    },
-    { 
-        template: 'supervisor-portal-template.html', 
-        output: 'Supervisor-Portal-How-To.pdf',
-        title: 'Supervisor Portal How-To Guide'
-    },
-    { 
-        template: 'finance-portal-template.html', 
-        output: 'Finance-Portal-How-To.pdf',
-        title: 'Finance Portal How-To Guide'
-    },
-    { 
-        template: 'admin-portal-template.html', 
-        output: 'Admin-Portal-How-To.pdf',
-        title: 'Admin Portal How-To Guide'
-    },
-    { 
-        template: 'contracts-portal-template.html', 
-        output: 'Contracts-Portal-How-To.pdf',
-        title: 'Contracts Portal How-To Guide'
-    }
+// All templates (Finance & Contracts deferred until portals are tuned)
+const allTemplates = [
+    { template: 'mobile-app-template.html', output: 'Mobile-App-How-To.pdf', title: 'Mobile App How-To Guide' },
+    { template: 'staff-portal-template.html', output: 'Staff-Portal-How-To.pdf', title: 'Staff Portal How-To Guide' },
+    { template: 'supervisor-portal-template.html', output: 'Supervisor-Portal-How-To.pdf', title: 'Supervisor Portal How-To Guide' },
+    { template: 'admin-portal-template.html', output: 'Admin-Portal-How-To.pdf', title: 'Admin Portal How-To Guide' },
+    { template: 'finance-portal-template.html', output: 'Finance-Portal-How-To.pdf', title: 'Finance Portal How-To Guide' },
+    { template: 'contracts-portal-template.html', output: 'Contracts-Portal-How-To.pdf', title: 'Contracts Portal How-To Guide' }
 ];
+
+// Only generate PDFs that are "ready" (screenshots complete). Finance & Contracts deferred.
+const templates = allTemplates.filter((_, i) => i < 4);
 
 async function generatePDF(templateFile, outputFile, title) {
     const templatePath = path.join(templatesDir, templateFile);
@@ -88,9 +67,10 @@ async function generatePDF(templateFile, outputFile, title) {
                     const base64Image = imageBuffer.toString('base64');
                     const imageDataUri = `data:image/png;base64,${base64Image}`;
                     
+                    // Resize so screenshot fits on one page (Letter 8.5x11, ~0.75in margins => content ~7x9.5in)
                     replacements.push({
                         placeholder: match[0],
-                        replacement: `<div style="text-align: center; margin: 20pt 0; page-break-inside: avoid;"><img src="${imageDataUri}" alt="${screenshotName}" style="max-width: 6.5in; max-height: 7in; width: auto; height: auto; border: 1px solid #ddd; border-radius: 4pt; box-shadow: 0 2pt 4pt rgba(0,0,0,0.1);" /></div>`
+                        replacement: `<div style="text-align: center; margin: 16pt 0; page-break-inside: avoid;"><img src="${imageDataUri}" alt="${screenshotName}" style="max-width: 6.25in; max-height: 5.75in; width: auto; height: auto; object-fit: contain; border: 1px solid #ddd; border-radius: 4pt; box-shadow: 0 2pt 4pt rgba(0,0,0,0.1);" /></div>`
                     });
                 } catch (err) {
                     console.warn(`   ⚠️  Error reading screenshot ${screenshotName}.png: ${err.message}`);

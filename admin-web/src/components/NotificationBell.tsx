@@ -53,8 +53,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
     }, 500);
   };
 
-  const handleNotificationsUpdate = () => {
-    // Refresh count when notifications are updated
+  const handleNotificationsUpdate = (options?: { markAllAsRead?: boolean }) => {
+    if (options?.markAllAsRead) {
+      setUnreadCount(0);
+    }
     fetchUnreadCount();
   };
 

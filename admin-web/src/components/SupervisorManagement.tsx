@@ -43,6 +43,9 @@ interface SupervisorWithStaff {
   type: 'supervisor' | 'senior-staff';
 }
 
+/** Emails of employees who do not require a supervisor (excluded from "needs supervisor" list). */
+const EXCLUDED_FROM_SUPERVISOR_REQUIREMENT = ['kathleen.gibson@oxfordhouse.org'];
+
 export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   employees,
   onUpdateEmployee,
@@ -150,7 +153,8 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const getUnassignedStaff = () => {
     return employees.filter(emp =>
       !emp.supervisorId &&
-      emp.id !== selectedSupervisor?.id
+      emp.id !== selectedSupervisor?.id &&
+      !EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())
     );
   };
 

@@ -6,7 +6,6 @@ import {
   CardContent,
   Typography,
   Alert,
-  LinearProgress,
   Table,
   TableBody,
   TableCell,
@@ -36,7 +35,6 @@ import {
 } from '@mui/material';
 import {
   CloudUpload,
-  Download,
   Delete,
   Edit,
   Add,
@@ -52,7 +50,6 @@ import {
   ArrowDownward,
   FilterList,
 } from '@mui/icons-material';
-import { BulkImportService, BulkImportResult, EmployeeImportData } from '../services/bulkImportService';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
@@ -124,7 +121,6 @@ const getDefaultPermissions = (role: string, position: string): Array<'admin' | 
 };
 
 interface EmployeeManagementProps {
-  onImportComplete: (result: BulkImportResult) => void;
   existingEmployees: Employee[];
   onCreateEmployee: (employee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Employee>;
   onUpdateEmployee: (id: string, employee: Partial<Employee>) => Promise<void>;
@@ -156,7 +152,6 @@ function TabPanel(props: TabPanelProps) {
 }
 
 export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
-  onImportComplete,
   existingEmployees,
   onCreateEmployee,
   onUpdateEmployee,
@@ -167,11 +162,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
-  const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [csvData, setCsvData] = useState<string>('');
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewData, setPreviewData] = useState<EmployeeImportData[]>([]);
   const [showEmployeeDialog, setShowEmployeeDialog] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [showBulkEditDialog, setShowBulkEditDialog] = useState(false);
@@ -213,7 +203,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null);
   const [syncFromExternalLoading, setSyncFromExternalLoading] = useState(false);
   const [syncFromExternalMessage, setSyncFromExternalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -506,83 +495,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     }
   };
 
-  // Individual Employee Management
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        setCsvData(text);
-        setShowPreview(true);
-        setPreviewData(BulkImportService.parseCSVData(text));
-      };
-      reader.readAsText(file);
-    }
-  };
-
-  const handleImport = async () => {
-    if (!csvData) return;
-
-    setIsImporting(true);
-    try {
-      // Parse CSV data first
-      const importData = BulkImportService.parseCSVData(csvData);
-      
-      // Convert to employee format
-      const employees = importData.map(data => BulkImportService.convertToEmployee(data, existingEmployees));
-      
-      // Use bulk create endpoint instead of individual creates
-      const result = await EmployeeApiService.bulkCreateEmployees({ employees });
-      
-      // Convert result to BulkImportResult format
-      const bulkResult = {
-        success: result.success,
-        totalProcessed: result.totalProcessed || employees.length,
-        successful: result.successful || 0,
-        failed: result.failed || 0,
-        errors: result.errors || [],
-        createdEmployees: result.createdEmployees || []
-      };
-      
-      setImportResult(bulkResult);
-      onImportComplete(bulkResult);
-    } catch (error: any) {
-      setImportResult({
-        success: false,
-        totalProcessed: 0,
-        successful: 0,
-        failed: 0,
-        errors: [error?.message || 'Import failed'],
-        createdEmployees: []
-      });
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
-  const handleDownloadTemplate = () => {
-    const template = BulkImportService.generateCSVTemplate();
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'employee_import_template.csv';
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const handleExportEmployees = () => {
-    const csv = BulkImportService.exportEmployeesToCSV(existingEmployees);
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'employees_export.csv';
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
   // Multi-Select Management
   const handleSelectEmployee = (employeeId: string) => {
     setSelectedEmployees(prev => 
@@ -873,7 +785,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab label="Individual Management" />
-          <Tab label="Bulk Import" />
           <Tab label="Mass Operations" />
         </Tabs>
       </Box>
@@ -1458,148 +1369,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         </Card>
       </TabPanel>
 
-      {/* Bulk Import Tab */}
-      <TabPanel value={activeTab} index={1}>
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Import Employees from CSV
-            </Typography>
-            
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-              <Button
-                variant="contained"
-                startIcon={<CloudUpload />}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Upload CSV File
-              </Button>
-              
-              <Button
-                variant="outlined"
-                startIcon={<Download />}
-                onClick={handleDownloadTemplate}
-              >
-                Download Template
-              </Button>
-              
-              <Button
-                variant="outlined"
-                startIcon={<Download />}
-                onClick={handleExportEmployees}
-              >
-                Export Current Employees
-              </Button>
-            </Box>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-
-            {csvData && (
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  variant="contained"
-                  onClick={handleImport}
-                  disabled={isImporting}
-                  sx={{ mb: 2 }}
-                >
-                  {isImporting ? 'Importing...' : 'Import Employees'}
-                </Button>
-                
-                {isImporting && <LinearProgress sx={{ mb: 2 }} />}
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Preview Section */}
-        {showPreview && previewData.length > 0 && (
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Preview ({previewData.length} employees)
-              </Typography>
-              
-              <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
-                <Table stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Position</TableCell>
-                      <TableCell>Phone</TableCell>
-                      <TableCell>Supervisor</TableCell>
-                      <TableCell>Cost Centers</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {previewData.slice(0, 10).map((employee, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{employee.FULL_NAME}</TableCell>
-                        <TableCell>{employee.WORK_EMAIL}</TableCell>
-                        <TableCell>{employee.EMPLOYEE_TITLE}</TableCell>
-                        <TableCell>{employee.PHONE}</TableCell>
-                        <TableCell>{employee.SUPERVISOR_EMAIL || 'No Supervisor'}</TableCell>
-                        <TableCell>
-                          {BulkImportService.parseCostCenters(employee.COST_CENTER).map(center => (
-                            <Chip key={center} label={center} size="small" sx={{ mr: 0.5 }} />
-                          ))}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              
-              {previewData.length > 10 && (
-                <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
-                  Showing first 10 employees. Total: {previewData.length}
-                </Typography>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Import Results */}
-        {importResult && (
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Import Results
-              </Typography>
-              
-              <Alert 
-                severity={importResult.success ? 'success' : 'warning'}
-                sx={{ mb: 2 }}
-              >
-                Processed {importResult.totalProcessed} employees. 
-                {importResult.successful} successful, {importResult.failed} failed.
-              </Alert>
-
-              {importResult.errors.length > 0 && (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Errors:
-                  </Typography>
-                  {importResult.errors.map((error, index) => (
-                    <Alert key={index} severity="error" sx={{ mb: 1 }}>
-                      {error}
-                    </Alert>
-                  ))}
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        )}
-      </TabPanel>
-
       {/* Mass Operations Tab */}
-      <TabPanel value={activeTab} index={2}>
+      <TabPanel value={activeTab} index={1}>
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>

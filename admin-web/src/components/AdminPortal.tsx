@@ -16,7 +16,6 @@ import { SystemSettings } from './SystemSettings';
 import { TravelReasonsManagement } from './TravelReasonsManagement';
 import { DailyDescriptionOptionsManagement } from './DailyDescriptionOptionsManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
-import { BulkImportResult } from '../services/bulkImportService';
 import { debugLog, debugError, debugVerbose } from '../config/debug';
 import { Employee } from '../types';
 import { NotificationBell } from './NotificationBell';
@@ -148,16 +147,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     }
   };
 
-  const handleImportComplete = (result: BulkImportResult) => {
-    if (result.success) {
-      showSnackbar(`Successfully imported ${result.successful} employees`, 'success');
-      loadEmployees(); // Refresh the list
-    } else {
-      showSnackbar(`Import completed with ${result.failed} errors`, 'warning');
-      loadEmployees(); // Refresh the list anyway
-    }
-  };
-
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
@@ -195,7 +184,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
 
         <TabPanel value={activeTab} index={0}>
           <EmployeeManagementComponent
-            onImportComplete={handleImportComplete}
             existingEmployees={employees}
             onCreateEmployee={handleCreateEmployee}
             onUpdateEmployee={handleUpdateEmployee}

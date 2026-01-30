@@ -6,14 +6,14 @@ This document lists all screenshots needed for the PDF How-To guides, organized 
 
 - ✅ **Mobile App:** 11/11 screenshots complete
 - ✅ **Staff Portal:** 15/15 screenshots complete
-- ⏳ **Admin Portal:** 1/7 screenshots (6 remaining)
-- ⏳ **Supervisor Portal:** 0/4 screenshots needed
-- ⏳ **Finance Portal:** 0/5 screenshots needed
-- ⏳ **Contracts Portal:** 0/3 screenshots needed
+- ✅ **Admin Portal:** 6/6 screenshots complete
+- ✅ **Supervisor Portal:** 4/4 screenshots complete
+- ⏸️ **Finance Portal:** 0/5 — *Deferred until portal is tuned to Finance team needs*
+- ⏸️ **Contracts Portal:** 0/3 — *Deferred until portal is tuned to Contracts team needs*
 
-**Total:** 27/44 screenshots complete | **Remaining:** 18 screenshots
+**Total:** 36/43 screenshots complete | **Remaining:** 8 (Finance 5, Contracts 3) — *on hold*
 
-**Next Up:** See Session 4 in `SCREENSHOT_SESSION.md` for detailed capture instructions.
+**Status:** Finance and Contracts how-to’s and screenshots are deferred until those portals are fine-tuned to match what the teams want. No action needed until then.
 
 ---
 
@@ -81,10 +81,12 @@ Screenshots should be saved in:
 13. ✅ `supervisor-portal-settings.png` - Settings
 
 ### Additional Screenshots Needed:
-14. ⏳ `supervisor-portal-approvals-tab.png` - Approvals tab with pending reports
-15. ⏳ `supervisor-portal-approval-dialog.png` - Report approval dialog
-16. ⏳ `supervisor-portal-revision-dialog.png` - Revision request dialog
-17. ⏳ `supervisor-portal-team-dashboard.png` - Team dashboard with KPIs
+14. ✅ `supervisor-portal-approvals-tab.png` - Approvals tab with pending reports
+15. ✅ `supervisor-portal-approval-dialog.png` - Report approval dialog
+16. ✅ `supervisor-portal-revision-dialog.png` - Revision request dialog
+17. ✅ `supervisor-portal-team-dashboard.png` - Team dashboard with KPIs
+
+**✅ Supervisor Portal Complete!** All 4 Supervisor Portal screenshots captured.
 
 ## Finance Portal How-To Guide (15 screenshots)
 
@@ -128,13 +130,15 @@ Screenshots should be saved in:
 13. ✅ `admin-portal-settings.png` - Settings
 
 ### Additional Screenshots Needed:
-14. ⏳ `admin-portal-employee-management.png` - Employee Management tab
+14. ✅ `admin-portal-employee-management.png` - Employee Management tab
 15. ✅ `admin-portal-sync-from-hr.png` - **Sync from HR API** button in Individual Management tab (cloud-upload icon next to Add Employee) - **Done in Session 1**
-16. ⏳ `admin-portal-employee-form.png` - Employee creation/edit form
-17. ⏳ `admin-portal-bulk-import.png` - Bulk import interface
-18. ⏳ `admin-portal-supervisor-management.png` - Supervisor Management tab
-19. ⏳ `admin-portal-cost-centers.png` - Cost Center Management
-20. ⏳ `admin-portal-system-settings.png` - System Settings tab
+16. ✅ `admin-portal-employee-form.png` - Employee creation/edit form
+17. ~~`admin-portal-bulk-import.png`~~ - **Removed** (Bulk import removed; use Sync from HR API)
+18. ✅ `admin-portal-supervisor-management.png` - Supervisor Management tab
+19. ✅ `admin-portal-cost-centers.png` - Cost Center Management
+20. ✅ `admin-portal-system-settings.png` - System Settings tab
+
+**✅ Admin Portal Complete!** All Admin Portal screenshots captured.
 
 ## Contracts Portal How-To Guide (15 screenshots)
 

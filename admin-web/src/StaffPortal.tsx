@@ -45,6 +45,7 @@ import {
   CloudUpload as UploadIcon,
   CloudDownload as CloudDownloadIcon,
   Check as CheckIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 
 // PDF generation imports
@@ -266,6 +267,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
+  /** Receipt IDs whose image failed to load (404, etc.) - show upload UI instead of broken link */
+  const [receiptImageLoadErrors, setReceiptImageLoadErrors] = useState<Set<string>>(new Set());
   const [dailyDescriptions, setDailyDescriptions] = useState<any[]>([]);
   const [dailyDescriptionOptions, setDailyDescriptionOptions] = useState<Array<{ id: string; label: string }>>([]);
   
@@ -2846,6 +2849,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             : receipt
         );
         setReceipts(updatedReceipts);
+        setReceiptImageLoadErrors(prev => {
+          const next = new Set(prev);
+          next.delete(receiptId);
+          return next;
+        });
         
         // Update employeeData for status indicator
         if (employeeData) {
@@ -7692,111 +7700,61 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
                         {(() => {
                           const raw = receipt.imageUri || '';
-                          // Only render if it's a backend-served path, not a local file URI
-                          if (!raw || raw.startsWith('file://')) {
-                            return (
-                              <Box sx={{ 
-                                width: 40, 
-                                height: 40, 
-                                borderRadius: 1, 
-                                border: '1px solid #ddd',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                bgcolor: 'grey.100',
-                                cursor: 'pointer',
-                                '&:hover': {
-                                  bgcolor: 'grey.200'
-                                }
-                              }}>
-                                <input
-                                  type="file"
-                                  accept="image/*,application/pdf"
-                                  style={{ display: 'none' }}
-                                  id={`receipt-upload-${receipt.id}`}
-                                  onChange={(e) => handleReceiptImageUpload(receipt.id, e)}
-                                />
-                                <label htmlFor={`receipt-upload-${receipt.id}`} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
-                                  <div style={{ 
-                                    width: '20px', 
-                                    height: '20px', 
-                                    borderRadius: '50%',
-                                    border: '2px dashed #999',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '12px',
-                                    color: '#999'
-                                  }}>
-                                    +
-                                  </div>
-                                </label>
-                              </Box>
-                            );
+                          const imageFailed = receiptImageLoadErrors.has(receipt.id);
+                          const showUploadOnly = !raw || raw.startsWith('file://') || imageFailed;
+                          const renderUploadBox = (label: string) => (
+                            <Box sx={{ 
+                              width: 40, 
+                              height: 40, 
+                              borderRadius: 1, 
+                              border: '1px solid #ddd',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              bgcolor: 'grey.100',
+                              cursor: 'pointer',
+                              '&:hover': { bgcolor: 'grey.200' }
+                            }}>
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                style={{ display: 'none' }}
+                                id={`receipt-upload-${receipt.id}`}
+                                onChange={(e) => handleReceiptImageUpload(receipt.id, e)}
+                              />
+                              <label htmlFor={`receipt-upload-${receipt.id}`} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                                <div style={{ fontSize: '10px', color: '#666', textAlign: 'center', padding: 2 }}>{label}</div>
+                                <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px dashed #999', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: '#999' }}>+</div>
+                              </label>
+                            </Box>
+                          );
+                          if (showUploadOnly) {
+                            return renderUploadBox(imageFailed ? 'Upload image' : 'No image');
                           }
-                          // Construct proper backend URL for the image
                           const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-                          const path = raw.startsWith('/uploads')
+                          const isDataUrl = raw.startsWith('data:');
+                          const imageSrc = isDataUrl
                             ? raw
-                            : (raw.startsWith('uploads')
-                              ? `/${raw}`
-                              : (`/uploads/${raw}`));
-                          const imageSrc = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
-                          const isPDF = receipt.imageUri && (receipt.imageUri.toLowerCase().endsWith('.pdf') || (receipt as any).fileType === 'pdf');
-                          
+                            : (() => {
+                                const path = raw.startsWith('/uploads') ? raw : (raw.startsWith('uploads') ? `/${raw}` : `/uploads/${raw}`);
+                                return path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+                              })();
                           return (
-                            <Box 
-                              component="a"
-                              href={imageSrc}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              sx={{ 
-                                width: 40, 
-                                height: 40, 
-                                borderRadius: 1, 
-                                overflow: 'hidden',
-                                border: '1px solid #ddd',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                bgcolor: 'grey.50',
-                                cursor: 'pointer',
-                                textDecoration: 'none',
-                                '&:hover': {
-                                  borderColor: 'primary.main',
-                                  boxShadow: 1
-                                }
-                              }}
-                            >
-                              {isPDF ? (
-                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 1 }}>
-                                  <Box sx={{ color: '#F44336', mb: 0.5 }}>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                                    </svg>
-                                  </Box>
-                                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: '#666' }}>PDF</Typography>
-                                </Box>
-                              ) : (
-                                <img 
-                                  src={imageSrc} 
-                                  alt="Receipt - Click to view full size" 
-                                  style={{ 
-                                    maxWidth: '100%', 
-                                    maxHeight: '100%',
-                                    objectFit: 'cover'
-                                  }}
-                                  onError={(e) => {
-                                    // If image fails to load, show placeholder
-                                    const target = e.target as HTMLImageElement;
-                                    target.style.display = 'none';
-                                    const parent = target.parentElement;
-                                    if (parent) {
-                                      parent.innerHTML = '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">No image</div>';
-                                    }
-                                  }}
-                                />
-                              )}
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} titleAccess="Image uploaded" />
+                                <Typography variant="caption" color="text.secondary">Image uploaded</Typography>
+                              </Box>
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} id={`receipt-change-${receipt.id}`} onChange={(e) => handleReceiptImageUpload(receipt.id, e)} />
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<UploadIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => document.getElementById(`receipt-change-${receipt.id}`)?.click()}
+                                sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                              >
+                                Upload new
+                              </Button>
                             </Box>
                           );
                         })()}

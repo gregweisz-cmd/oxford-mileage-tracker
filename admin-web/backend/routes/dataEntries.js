@@ -383,6 +383,11 @@ router.get('/api/receipts', (req, res) => {
  * Create new receipt
  */
 router.post('/api/receipts', (req, res) => {
+  // Validate required fields
+  if (!req.body.employeeId || String(req.body.employeeId).trim() === '') {
+    debugError('❌ Missing employeeId for receipt');
+    return res.status(400).json({ error: 'employeeId is required.' });
+  }
   // Validate that "Other" category receipts have descriptions
   if (req.body.category === 'Other' && (!req.body.description || !req.body.description.trim())) {
     return res.status(400).json({ 
@@ -393,6 +398,12 @@ router.post('/api/receipts', (req, res) => {
   const receiptId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
   const db = dbService.getDb();
+  if (imageUri) {
+    const kind = imageUri.startsWith('data:application/pdf') ? 'PDF (data URL)' : imageUri.startsWith('data:image/') ? 'image (data URL)' : 'path';
+    debugLog(`📥 POST /receipts: receipt ${receiptId} imageUri type=${kind}, length=${String(imageUri).length}`);
+  } else {
+    debugLog(`📥 POST /receipts: receipt ${receiptId} has no imageUri`);
+  }
 
   // Normalize date to YYYY-MM-DD format to avoid timezone issues with month/year filtering
   const dateHelpers = require('../utils/dateHelpers');
@@ -446,9 +457,13 @@ router.put('/api/receipts/:id', (req, res) => {
   }
 
   const { id } = req.params;
-  const { employeeId, date, amount, vendor, description, category, imageUri, fileType } = req.body;
+  const { date, amount, vendor, description, category, imageUri, fileType } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
+  if (imageUri !== undefined) {
+    const kind = typeof imageUri === 'string' && imageUri.startsWith('data:application/pdf') ? 'PDF (data URL)' : typeof imageUri === 'string' && imageUri.startsWith('data:image/') ? 'image (data URL)' : 'path';
+    debugLog(`📥 PUT /receipts/${id}: imageUri type=${kind}, length=${String(imageUri).length}`);
+  }
 
   // Normalize date to YYYY-MM-DD format to avoid timezone issues with month/year filtering
   const normalizedDate = dateHelpers.normalizeDateString(date);
@@ -460,21 +475,40 @@ router.put('/api/receipts/:id', (req, res) => {
   // Determine fileType if not provided
   const finalFileType = fileType || (imageUri && imageUri.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
 
-  db.run(
-    'UPDATE receipts SET employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, fileType = ?, updatedAt = ? WHERE id = ?',
-    [employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', finalFileType, now, id],
-    function(err) {
-      if (err) {
-        debugError('Database error:', err.message);
-        res.status(500).json({ error: err.message });
-        return;
+  // Resolve employeeId: use body if present, otherwise keep existing (avoid NOT NULL constraint)
+  const bodyEmployeeId = req.body.employeeId;
+  const hasValidEmployeeId = bodyEmployeeId !== undefined && bodyEmployeeId !== null && String(bodyEmployeeId).trim() !== '';
+
+  const runUpdate = (employeeId) => {
+    db.run(
+      'UPDATE receipts SET employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, fileType = ?, updatedAt = ? WHERE id = ?',
+      [employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', finalFileType, now, id],
+      function(err) {
+        if (err) {
+          debugError('Database error:', err.message);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        websocketService.broadcastDataChange('receipt', 'update', { id, employeeId, date: normalizedDate, amount, category }, employeeId);
+        res.json({ message: 'Receipt updated successfully' });
       }
-      // Broadcast WebSocket update
-      websocketService.broadcastDataChange('receipt', 'update', { id, employeeId, date: normalizedDate, amount, category }, employeeId);
-      
-      res.json({ message: 'Receipt updated successfully' });
-    }
-  );
+    );
+  };
+
+  if (hasValidEmployeeId) {
+    runUpdate(bodyEmployeeId);
+  } else {
+    db.get('SELECT employeeId FROM receipts WHERE id = ?', [id], (err, row) => {
+      if (err) {
+        debugError('❌ Error fetching receipt for update:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Receipt not found.' });
+      }
+      runUpdate(row.employeeId);
+    });
+  }
 });
 
 /**
@@ -503,9 +537,10 @@ router.post('/api/receipts/upload-image', uploadLimiter, (req, res, next) => {
   // Handle base64 image in JSON body
   if (req.body && (req.body.image || req.body.imageData || req.body.base64)) {
     try {
-      debugLog('📸 Processing base64 image upload...');
       const base64Data = req.body.image || req.body.imageData || req.body.base64;
       const receiptId = req.body.receiptId || 'unknown';
+      const isPdf = base64Data && (String(base64Data).includes('data:application/pdf') || req.body.extension === '.pdf');
+      debugLog(`📸 POST /receipts/upload-image: receiptId=${receiptId}, type=${isPdf ? 'PDF' : 'image'}, base64 length=${base64Data ? String(base64Data).length : 0}`);
       
       if (!base64Data || base64Data.length === 0) {
         debugError('❌ Empty base64 data received');

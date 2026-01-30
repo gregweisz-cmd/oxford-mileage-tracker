@@ -1027,19 +1027,25 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
                           <TableCell>
                             {(() => {
                               const raw = receipt.imageUri || '';
-                              // Only render if it's a backend-served path, not a local file URI
+                              // Only render if it's a backend-served path, data URL, or valid URI (not local file)
                               if (!raw || raw.startsWith('file://')) {
                                 return <Typography variant="caption" color="text.secondary">No image</Typography>;
                               }
-                              const path = raw.startsWith('/uploads')
+                              // Data URLs (base64) must not be sent to server as path - would cause 431 Request Header Too Large
+                              const isDataUrl = raw.startsWith('data:');
+                              const src = isDataUrl
                                 ? raw
-                                : (raw.startsWith('uploads')
-                                  ? `/${raw}`
-                                  : (`/uploads/${raw}`));
-                              if (!path) {
+                                : (() => {
+                                    const path = raw.startsWith('/uploads')
+                                      ? raw
+                                      : (raw.startsWith('uploads')
+                                        ? `/${raw}`
+                                        : (`/uploads/${raw}`));
+                                    return path ? `${API_BASE_URL}${path}` : '';
+                                  })();
+                              if (!src) {
                                 return <Typography variant="caption" color="text.secondary">No image</Typography>;
                               }
-                              const src = `${API_BASE_URL}${path}`;
                               return (
                                 <Box
                                   component="a"

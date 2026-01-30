@@ -15,7 +15,8 @@ Use this doc as your run list while capturing screenshots. Paths are relative to
 - ✅ **Session 1:** Complete (Admin sync, Daily Hours, Per Diem)
 - ✅ **Session 2:** Complete (9 mobile app screenshots)
 - ✅ **Session 3:** Complete (11 Staff Portal screenshots)
-- ⏳ **Session 4:** Ready to start (Other portals - see below)
+- ✅ **Session 4 (Supervisor):** Complete (4 Supervisor Portal screenshots)
+- ⏸️ **Finance & Contracts:** Deferred until portals are tuned to team needs (Finance 5, Contracts 3 screenshots when ready)
 
 ---
 
@@ -87,29 +88,28 @@ Save to `docs/how-to-guides/images/screenshots/web-portal/`. All screenshots cap
 
 Save all screenshots to `docs/how-to-guides/images/screenshots/web-portal/`.
 
-### Admin Portal (6 screenshots needed)
+### Admin Portal ✅ COMPLETE
 
-**Note:** `admin-portal-sync-from-hr.png` is already done from Session 1.
+**Note:** `admin-portal-sync-from-hr.png` was done in Session 1.
+
+| # | Filename | Where to capture | Status |
+|---|----------|------------------|--------|
+| 1 | `admin-portal-employee-management.png` | Admin Portal → Employee Management → **Individual Management** tab | ✅ |
+| 2 | `admin-portal-employee-form.png` | Admin Portal → Employee Management → **Add Employee** or edit existing | ✅ |
+| 3 | `admin-portal-supervisor-management.png` | Admin Portal → Employee Management → **Supervisor Management** tab | ✅ |
+| 4 | `admin-portal-cost-centers.png` | Admin Portal → **Cost Center Management** tab | ✅ |
+| 5 | `admin-portal-system-settings.png` | Admin Portal → **System Settings** tab | ✅ |
+
+### Supervisor Portal (4 screenshots) ✅ COMPLETE
 
 | # | Filename | Where to capture | Details |
 |---|----------|------------------|---------|
-| 1 | `admin-portal-employee-management.png` | Admin Portal → Employee Management → **Individual Management** tab | Show the full tab with employee list and Add Employee button |
-| 2 | `admin-portal-employee-form.png` | Admin Portal → Employee Management → Click **Add Employee** or edit existing | Show the employee creation/edit form with all fields |
-| 3 | `admin-portal-bulk-import.png` | Admin Portal → Employee Management → **Bulk Import** tab or button | Show the bulk import interface/upload dialog |
-| 4 | `admin-portal-supervisor-management.png` | Admin Portal → Employee Management → **Supervisor Management** tab | Show supervisor assignment/management interface |
-| 5 | `admin-portal-cost-centers.png` | Admin Portal → **Cost Center Management** (or Settings → Cost Centers) | Show cost center list/management interface |
-| 6 | `admin-portal-system-settings.png` | Admin Portal → **System Settings** tab | Show system settings/configuration options |
+| 1 | `supervisor-portal-approvals-tab.png` | Supervisor Portal → **Approvals** tab | ✅ |
+| 2 | `supervisor-portal-approval-dialog.png` | Supervisor Portal → Click **Approve** on a report | ✅ |
+| 3 | `supervisor-portal-revision-dialog.png` | Supervisor Portal → Click **Request Revision** on a report | ✅ |
+| 4 | `supervisor-portal-team-dashboard.png` | Supervisor Portal → Dashboard/Overview | ✅ |
 
-### Supervisor Portal (4 screenshots needed)
-
-| # | Filename | Where to capture | Details |
-|---|----------|------------------|---------|
-| 1 | `supervisor-portal-approvals-tab.png` | Supervisor Portal → **Approvals** tab | Show pending reports list with approval actions |
-| 2 | `supervisor-portal-approval-dialog.png` | Supervisor Portal → Click **Approve** on a report | Show the approval dialog/confirmation |
-| 3 | `supervisor-portal-revision-dialog.png` | Supervisor Portal → Click **Request Revision** on a report | Show the revision request dialog with comments |
-| 4 | `supervisor-portal-team-dashboard.png` | Supervisor Portal → Dashboard/Overview | Show team dashboard with KPIs, metrics, team overview |
-
-### Finance Portal (5 screenshots needed)
+### Finance Portal (5 screenshots) — ⏸️ Deferred until portal tuned to Finance team
 
 | # | Filename | Where to capture | Details |
 |---|----------|------------------|---------|
@@ -119,7 +119,7 @@ Save all screenshots to `docs/how-to-guides/images/screenshots/web-portal/`.
 | 4 | `finance-portal-analytics.png` | Finance Portal → **Analytics** tab or dashboard | Show analytics dashboard with charts/metrics |
 | 5 | `finance-portal-per-diem-rules.png` | Finance Portal → **Per Diem Rules** or Settings → Per Diem | Show per diem rules management interface |
 
-### Contracts Portal (3 screenshots needed)
+### Contracts Portal (3 screenshots) — ⏸️ Deferred until portal tuned to Contracts team
 
 | # | Filename | Where to capture | Details |
 |---|----------|------------------|---------|
@@ -129,7 +129,7 @@ Save all screenshots to `docs/how-to-guides/images/screenshots/web-portal/`.
 
 ---
 
-**Total Remaining:** 18 screenshots across 4 portals
+**Total Remaining:** 8 screenshots (Finance 5, Contracts 3) — deferred until portals are tuned
 
 ---
 

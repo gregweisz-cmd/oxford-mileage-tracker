@@ -1116,6 +1116,9 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       
       // Function to generate timesheet and finalize PDF (called after all cost center sheets are done)
       const generateTimesheetAndFinalizePDF = async () => {
+        // Collectors for receipt media (must be in scope for async IIFE below)
+        const pdfsToEmbed = [];
+        const imagesToAdd = [];
         // Page Last: Timesheet (with grid layout showing cost centers and categories)
         debugLog(`📄 Starting timesheet section: yPos=${yPos}, pageHeight=${pageHeight}`);
         // Calculate estimated space needed for timesheet (title + table with multiple rows)
@@ -1492,8 +1495,14 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           
           // Data rows
           debugLog(`📄 Starting receipts section: yPos=${yPos}, receipts count=${reportData.receipts?.length || 0}`);
-          const imagesToAdd = [];
           reportData.receipts.forEach((receipt, idx) => {
+            const rawUri = receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri;
+            if (rawUri) {
+              const uriType = typeof rawUri === 'string' && rawUri.startsWith('data:application/pdf') ? 'PDF data URL' : typeof rawUri === 'string' && rawUri.startsWith('data:image/') ? 'image data URL' : 'path';
+              debugLog(`📄 Receipt ${idx + 1} (id=${receipt.id}): imageUri type=${uriType}, length=${String(rawUri).length}`);
+            } else {
+              debugLog(`📄 Receipt ${idx + 1} (id=${receipt.id}): no imageUri`);
+            }
             // Check if we need a new page for the receipt row
             if (yPos > pageHeight - 150) {
               debugLog(`📄 Adding page in receipts loop (receipt ${idx + 1}, yPos ${yPos} > ${pageHeight - 150})`);
@@ -1531,9 +1540,15 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 const fs = require('fs');
                 const path = require('path');
                 
+                // Same uploads dir as dataEntries (backend/uploads), not routes/uploads
+                const uploadsDir = path.join(__dirname, '..', 'uploads');
                 if (typeof imagePath === 'string' && imagePath.startsWith('data:image/')) {
                   const base64Data = imagePath.split(',')[1];
-                  imagesToAdd.push({ type: 'base64', data: base64Data });
+                  const format = imagePath.includes('png') ? 'PNG' : 'JPEG';
+                  imagesToAdd.push({ type: 'base64', data: base64Data, format });
+                } else if (typeof imagePath === 'string' && imagePath.startsWith('data:application/pdf')) {
+                  const base64Data = imagePath.split(',')[1];
+                  if (base64Data) pdfsToEmbed.push({ type: 'base64', data: base64Data });
                 } else {
                   let cleanPath = imagePath;
                   if (typeof imagePath === 'string' && imagePath.startsWith('file://')) {
@@ -1541,32 +1556,38 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   }
                   let fullImagePath = null;
                   if (typeof cleanPath === 'string' && cleanPath.startsWith('/uploads/')) {
-                    fullImagePath = path.join(__dirname, 'uploads', path.basename(cleanPath));
+                    fullImagePath = path.join(uploadsDir, path.basename(cleanPath));
                   } else if (path.isAbsolute(cleanPath)) {
                     fullImagePath = cleanPath;
                   } else {
-                    const uploadsPath = path.join(__dirname, 'uploads', cleanPath);
-                    const uploadsSubPath = path.join(__dirname, 'uploads', 'test-receipts', cleanPath);
-                    const hashPath = path.join(__dirname, 'uploads', path.basename(cleanPath));
-                    const receiptsPath = path.join(__dirname, 'receipts', cleanPath);
+                    const uploadsPath = path.join(uploadsDir, cleanPath);
+                    const uploadsSubPath = path.join(uploadsDir, 'test-receipts', cleanPath);
+                    const hashPath = path.join(uploadsDir, path.basename(cleanPath));
+                    const receiptsPath = path.join(__dirname, '..', 'receipts', cleanPath);
                     if (fs.existsSync(uploadsPath)) fullImagePath = uploadsPath;
                     else if (fs.existsSync(uploadsSubPath)) fullImagePath = uploadsSubPath;
                     else if (fs.existsSync(hashPath)) fullImagePath = hashPath;
                     else if (fs.existsSync(receiptsPath)) fullImagePath = receiptsPath;
                     else {
                       const filename = path.basename(cleanPath);
-                      const filenamePath = path.join(__dirname, 'uploads', filename);
+                      const filenamePath = path.join(uploadsDir, filename);
                       if (fs.existsSync(filenamePath)) fullImagePath = filenamePath;
                     }
                   }
                   if (fullImagePath && fs.existsSync(fullImagePath)) {
-                    imagesToAdd.push({ type: 'file', path: fullImagePath });
+                    const ext = (path.extname(fullImagePath) || '').toLowerCase();
+                    if (ext === '.pdf') {
+                      pdfsToEmbed.push({ type: 'file', path: fullImagePath });
+                    } else {
+                      const format = ext === '.png' ? 'PNG' : 'JPEG';
+                      imagesToAdd.push({ type: 'file', path: fullImagePath, format });
+                    }
                   } else {
                     const triedPaths = [
-                      path.isAbsolute(cleanPath) ? cleanPath : path.join(__dirname, 'uploads', cleanPath),
-                      path.join(__dirname, 'uploads', 'test-receipts', cleanPath),
-                      path.join(__dirname, 'uploads', path.basename(cleanPath)),
-                      path.join(__dirname, 'receipts', cleanPath)
+                      path.isAbsolute(cleanPath) ? cleanPath : path.join(uploadsDir, cleanPath),
+                      path.join(uploadsDir, 'test-receipts', cleanPath),
+                      path.join(uploadsDir, path.basename(cleanPath)),
+                      path.join(__dirname, '..', 'receipts', cleanPath)
                     ];
                     debugLog(`⚠️ Receipt image not found for receipt ${idx + 1} (deferring):`);
                     debugLog(`   Original path: ${imagePath}`);
@@ -1579,6 +1600,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
               }
             }
           });
+          debugLog(`📄 Receipt media: ${imagesToAdd.length} image(s) to render, ${pdfsToEmbed.length} PDF(s) to embed`);
           // After table, render all images
           if (imagesToAdd.length > 0) {
             doc.addPage();
@@ -1601,10 +1623,17 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 xCursor = startX;
               }
               try {
-                if (img.type === 'base64') {
-                  doc.addImage(img.data, 'JPEG', xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
+                if (img.type === 'placeholder') {
+                  doc.setFillColor(240, 240, 240);
+                  doc.rect(xCursor, yPos, maxImageWidth, maxImageHeight, 'F');
+                  doc.setFontSize(10);
+                  doc.text(img.label || 'Receipt', xCursor + maxImageWidth / 2, yPos + maxImageHeight / 2, { align: 'center' });
+                } else if (img.type === 'base64') {
+                  const format = img.format || 'JPEG';
+                  doc.addImage(img.data, format, xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
                 } else {
-                  doc.addImage(img.path, 'JPEG', xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
+                  const format = img.format || 'JPEG';
+                  doc.addImage(img.path, format, xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
                 }
               } catch (e) {
                 debugError('❌ Error drawing receipt image:', e);
@@ -1699,13 +1728,39 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           }
         };
         
-        // Post-process PDF for better printer compatibility (HP/Brother)
-        // Load and optimize the PDF using pdf-lib to ensure printer-compatible structure
-        // Use IIFE to handle async operations inside callback
+        // Post-process PDF: embed receipt PDFs as actual pages, then optimize for printer compatibility
         (async () => {
           debugLog(`🔧 Post-processing PDF for printer compatibility...`);
           try {
             const pdfDoc = await PDFDocument.load(Buffer.from(pdfArrayBuffer));
+            
+            // Embed receipt PDFs as actual pages (so the uploaded PDF receipt appears in the report)
+            const path = require('path');
+            const fs = require('fs');
+            for (let i = 0; i < (pdfsToEmbed || []).length; i++) {
+              const item = pdfsToEmbed[i];
+              try {
+                debugLog(`📎 Embedding PDF receipt ${i + 1}/${pdfsToEmbed.length} (${item.type})...`);
+                const receiptPdfBytes = item.type === 'base64'
+                  ? Buffer.from(item.data, 'base64')
+                  : fs.readFileSync(item.path);
+                if (!receiptPdfBytes || receiptPdfBytes.length === 0) {
+                  debugError(`⚠️ PDF receipt ${i + 1}: empty buffer`);
+                  continue;
+                }
+                const receiptDoc = await PDFDocument.load(receiptPdfBytes);
+                const pageIndices = receiptDoc.getPageIndices();
+                if (pageIndices.length > 0) {
+                  const copiedPages = await pdfDoc.copyPages(receiptDoc, pageIndices);
+                  copiedPages.forEach(p => pdfDoc.addPage(p));
+                  debugLog(`✅ Embedded PDF receipt ${i + 1}: ${pageIndices.length} page(s), ${receiptPdfBytes.length} bytes`);
+                } else {
+                  debugError(`⚠️ PDF receipt ${i + 1}: no pages in document`);
+                }
+              } catch (embedErr) {
+                debugError(`⚠️ Could not embed PDF receipt ${i + 1}:`, embedErr.message);
+              }
+            }
             
             // Set PDF metadata for printer compatibility
             pdfDoc.setTitle(`Expense Report - ${report.month}/${report.year}`);
@@ -1716,9 +1771,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             pdfDoc.setKeywords(['expense report', 'mileage', 'receipts']);
             pdfDoc.setLanguage('en-US');
             
-            // Generate optimized PDF bytes with printer-compatible settings
             const optimizedPdfBytes = await pdfDoc.save({ 
-              useObjectStreams: false, // Disable object streams for better printer compatibility
+              useObjectStreams: false,
               addDefaultPage: false,
               updateFieldAppearances: false
             });
@@ -1726,11 +1780,9 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             const optimizedPdfBuffer = Buffer.from(optimizedPdfBytes);
             debugLog(`✅ PDF optimized for printer compatibility: ${optimizedPdfBuffer.length} bytes (was ${pdfArrayBuffer.byteLength} bytes)`);
             
-            // Continue with optimized buffer
             sendOptimizedPdf(optimizedPdfBuffer);
           } catch (optimizationError) {
             debugError('⚠️ Error optimizing PDF, using original:', optimizationError);
-            // Fall back to original PDF if optimization fails
             sendOptimizedPdf(Buffer.from(pdfArrayBuffer));
           }
         })();
