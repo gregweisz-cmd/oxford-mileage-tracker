@@ -71,9 +71,10 @@ const CORS_CONFIG = {
 
 /**
  * File Upload Configuration
+ * Set UPLOAD_DIR (e.g. /data/uploads) to persist uploads on a Render persistent disk.
  */
 const UPLOAD_CONFIG = {
-  directory: path.join(__dirname, '..', 'uploads'),
+  directory: process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads'),
   maxFileSize: '50mb', // For JSON payloads with base64 images
   allowedMimeTypes: [
     'image/jpeg',
