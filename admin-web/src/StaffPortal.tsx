@@ -3994,11 +3994,65 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
     try {
       startLoading('Saving and syncing report...');
-      
+
+      // Flush any in-progress cell edit so we send the latest typed value (user may click Save without blurring the cell)
+      let dataForSave = { ...employeeData };
+      let dailyDescriptionsForSave = dailyDescriptions || [];
+      if (editingCell && employeeData.dailyEntries && employeeData.dailyEntries[editingCell.row]) {
+        const { row, field } = editingCell;
+        const entries = [...employeeData.dailyEntries];
+        const entry = entries[row];
+        if (field === 'description') {
+          entries[row] = { ...entry, description: editingValue };
+          const dateStr = normalizeDate(entry.date);
+          const userDesc = (editingValue && editingValue.trim()) ? extractUserDescription(editingValue) : '';
+          const existingIdx = dailyDescriptionsForSave.findIndex((d: any) => normalizeDate(d.date) === dateStr);
+          if (userDesc) {
+            const descEntry = { id: `desc-${employeeData.employeeId}-${dateStr}`, employeeId: employeeData.employeeId, date: dateStr, description: userDesc, costCenter: entry.costCenter || employeeData.costCenters?.[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+            if (existingIdx >= 0) dailyDescriptionsForSave = [...dailyDescriptionsForSave.slice(0, existingIdx), { ...dailyDescriptionsForSave[existingIdx], description: userDesc, updatedAt: descEntry.updatedAt }, ...dailyDescriptionsForSave.slice(existingIdx + 1)];
+            else dailyDescriptionsForSave = [...dailyDescriptionsForSave, descEntry];
+          } else if (existingIdx >= 0) dailyDescriptionsForSave = dailyDescriptionsForSave.filter((_: any, i: number) => i !== existingIdx);
+        } else if (field === 'odometerStart') {
+          const v = parseInt(editingValue, 10) || 0;
+          const end = entry.odometerEnd || 0;
+          entries[row] = { ...entry, odometerStart: v, milesTraveled: Math.max(0, end - v), mileageAmount: Math.max(0, end - v) * 0.445 };
+        } else if (field === 'odometerEnd') {
+          const v = parseInt(editingValue, 10) || 0;
+          const start = entry.odometerStart || 0;
+          entries[row] = { ...entry, odometerEnd: v, milesTraveled: Math.max(0, v - start), mileageAmount: Math.max(0, v - start) * 0.445 };
+        } else if (field === 'hoursWorked') {
+          const v = parseFloat(editingValue) || 0;
+          entries[row] = { ...entry, hoursWorked: v };
+          (entries[row] as any).costCenter0Hours = v;
+        } else if (field === 'perDiem') {
+          entries[row] = { ...entry, perDiem: Math.min(parseFloat(editingValue) || 0, 35) };
+        }
+        dataForSave = { ...dataForSave, dailyEntries: entries };
+      }
+
+      // Ensure we send exactly what's in the table: derive dailyDescriptions from dailyEntries so nothing is lost
+      const entriesToSave = dataForSave.dailyEntries || [];
+      const byDate = new Map<string, { id: string; employeeId: string; date: string; description: string; costCenter: string; stayedOvernight: boolean; dayOff: boolean; dayOffType: string | null; createdAt: string; updatedAt: string }>();
+      dailyDescriptionsForSave.forEach((d: any) => {
+        const dateStr = normalizeDate(d.date);
+        if (dateStr) byDate.set(dateStr, { id: d.id || `desc-${dataForSave.employeeId}-${dateStr}`, employeeId: d.employeeId || dataForSave.employeeId, date: dateStr, description: d.description || '', costCenter: d.costCenter || '', stayedOvernight: !!d.stayedOvernight, dayOff: !!d.dayOff, dayOffType: d.dayOffType || null, createdAt: d.createdAt || new Date().toISOString(), updatedAt: d.updatedAt || new Date().toISOString() });
+      });
+      entriesToSave.forEach((entry: any) => {
+        const dateStr = normalizeDate(entry.date);
+        if (!dateStr) return;
+        const userDesc = (entry.description && String(entry.description).trim()) ? extractUserDescription(entry.description) : '';
+        if (userDesc) {
+          byDate.set(dateStr, { id: `desc-${dataForSave.employeeId}-${dateStr}`, employeeId: dataForSave.employeeId, date: dateStr, description: userDesc, costCenter: entry.costCenter || dataForSave.costCenters?.[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        } else if (byDate.has(dateStr) && !(byDate.get(dateStr)!.dayOff)) {
+          byDate.delete(dateStr);
+        }
+      });
+      dailyDescriptionsForSave = Array.from(byDate.values());
+
       const reportData = {
-        ...employeeData,
+        ...dataForSave,
         receipts: receipts,
-        dailyDescriptions: dailyDescriptions,
+        dailyDescriptions: dailyDescriptionsForSave,
         employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState,
         employeeCertificationAcknowledged: employeeCertificationAcknowledged,
@@ -4026,6 +4080,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       await response.json();
+
+      // Optimistic update: show exactly what we just saved so the table never flashes empty
+      // (e.g. if refetch runs before backend has committed or returns empty on cold start)
+      if (employeeData) {
+        setEmployeeData({ ...employeeData, dailyEntries: reportData.dailyEntries || employeeData.dailyEntries });
+      }
+      setDailyDescriptions(reportData.dailyDescriptions || []);
       
       // Clear API cache to ensure we get fresh data after save
       // This is critical because the API service caches responses for 60 seconds
