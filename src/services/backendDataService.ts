@@ -318,6 +318,7 @@ export class BackendDataService {
       timeTracking: TimeTracking[];
       receipts: Receipt[];
       description?: string;
+      descriptionId?: string;
       dayOff?: boolean;
       dayOffType?: string;
     }>();
@@ -359,12 +360,13 @@ export class BackendDataService {
       }
     });
 
-    // Add daily descriptions
+    // Add daily descriptions (include id for reliable delete/update from mobile)
     dailyDescriptions.forEach(description => {
       const dateKey = this.toLocalDateKey(description.date);
       const dayData = daysMap.get(dateKey);
       if (dayData) {
         dayData.description = description.description;
+        dayData.descriptionId = description.id;
         dayData.dayOff = description.dayOff;
         dayData.dayOffType = description.dayOffType;
       }
@@ -456,6 +458,7 @@ export class BackendDataService {
         costCenter: dayData.timeTracking[0]?.costCenter || dayData.mileage[0]?.costCenter || '',
         notes: dayData.mileage[0]?.notes || '',
         description: dayData.description || '',
+        descriptionId: dayData.descriptionId,
         dayOff: dayData.dayOff || false,
         dayOffType: dayData.dayOffType || undefined
       });
@@ -593,6 +596,7 @@ export class BackendDataService {
 
   /**
    * Update daily description - writes directly to backend
+   * @param descriptionId If provided and we're deleting, use this id directly (avoids date-matching issues)
    */
   static async updateDayDescription(
     employeeId: string,
@@ -601,31 +605,43 @@ export class BackendDataService {
     costCenter?: string,
     stayedOvernight?: boolean,
     dayOff?: boolean,
-    dayOffType?: string
+    dayOffType?: string,
+    descriptionId?: string
   ): Promise<void> {
-    // Get existing description for this day
+    const isEmpty = !description || description.trim() === '';
+
+    // If empty and user is not setting it as a day off, delete it
+    // Use descriptionId when available (from the day we're editing) for reliable delete
+    if (isEmpty && !dayOff) {
+      if (descriptionId) {
+        await this.deleteDailyDescription(descriptionId);
+        return;
+      }
+      // Fallback: find by date (can fail with timezone/format mismatches)
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+      const existingDescriptions = await this.getDailyDescriptions(employeeId, month, year);
+      const dayStr = this.toLocalDateKey(date);
+      const existing = existingDescriptions.find(desc => {
+        const descDayStr = this.toLocalDateKey(desc.date);
+        return descDayStr === dayStr;
+      });
+      if (existing) {
+        await this.deleteDailyDescription(existing.id);
+        return;
+      }
+      return;
+    }
+
+    // Get existing description for update/create
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
     const existingDescriptions = await this.getDailyDescriptions(employeeId, month, year);
-    
     const dayStr = this.toLocalDateKey(date);
     const existing = existingDescriptions.find(desc => {
       const descDayStr = this.toLocalDateKey(desc.date);
       return descDayStr === dayStr;
     });
-
-    const isEmpty = !description || description.trim() === '';
-
-    // If empty and user is not setting it as a day off, delete it
-    // This allows deletion even if the existing entry was previously a day off
-    if (isEmpty && !dayOff) {
-      if (existing) {
-        await this.deleteDailyDescription(existing.id);
-        return;
-      }
-      // If no existing entry and empty, nothing to do
-      return;
-    }
 
     // Update or create
     if (existing) {

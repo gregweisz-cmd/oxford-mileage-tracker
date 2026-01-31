@@ -34,6 +34,8 @@ export interface UnifiedDayData {
   costCenter?: string;
   notes?: string;
   description?: string;
+  /** Backend id of daily description row; used for reliable delete/update */
+  descriptionId?: string;
   dayOff?: boolean;
   dayOffType?: string;
 }

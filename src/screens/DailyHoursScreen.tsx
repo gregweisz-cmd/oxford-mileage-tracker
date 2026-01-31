@@ -359,8 +359,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         originalDescription: selectedDay.description
       });
       
-      // Save description directly to backend
-      // If shouldDelete is true, updateDayDescription will delete the entry
+      // Save description directly to backend (pass descriptionId for reliable delete/update)
       await BackendDataService.updateDayDescription(
         currentEmployee.id,
         selectedDay.date,
@@ -368,7 +367,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         selectedCostCenter,
         undefined, // stayedOvernight
         isDayOff, // Only set dayOff if user explicitly checked it
-        isDayOff ? dayOffType : undefined
+        isDayOff ? dayOffType : undefined,
+        selectedDay.descriptionId // use id when available so delete/update always targets the right row
       );
       
       // Save hours directly to backend (only if not day off)
