@@ -1,6 +1,6 @@
 // Staff Portal - Expense Report Management Interface
 // Designed to mirror the uploaded spreadsheet layout for easy transition
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { debugLog, debugError, debugWarn, debugVerbose } from './config/debug';
 
 // Material-UI components for spreadsheet-like interface
@@ -381,6 +381,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [supervisorSignatureState, setSupervisorSignatureState] = useState<string | null>(supervisorSignature || null);
   const [employeeCertificationAcknowledged, setEmployeeCertificationAcknowledged] = useState<boolean>(false);
   const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
+  // Refs so Save always sends latest checkbox value (state updates async; clicking Save right after checking can otherwise send stale false)
+  const employeeCertificationAcknowledgedRef = useRef(employeeCertificationAcknowledged);
+  const supervisorCertificationAcknowledgedRef = useRef(supervisorCertificationAcknowledged);
+  employeeCertificationAcknowledgedRef.current = employeeCertificationAcknowledged;
+  supervisorCertificationAcknowledgedRef.current = supervisorCertificationAcknowledged;
   const [editingTimesheetCell, setEditingTimesheetCell] = useState<{costCenter: number, day: number, type: string} | null>(null);
   const [editingTimesheetValue, setEditingTimesheetValue] = useState('');
   const [editingCategoryCell, setEditingCategoryCell] = useState<{category: string, day: number} | null>(null);
@@ -4049,14 +4054,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       });
       dailyDescriptionsForSave = Array.from(byDate.values());
 
+      // Use refs so we always send latest checkbox values (user may click Save right after checking; state can still be stale)
+      const certAck = employeeCertificationAcknowledgedRef.current;
+      const superCertAck = supervisorCertificationAcknowledgedRef.current;
       const reportData = {
         ...dataForSave,
         receipts: receipts,
         dailyDescriptions: dailyDescriptionsForSave,
         employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState,
-        employeeCertificationAcknowledged: employeeCertificationAcknowledged,
-        supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
+        employeeCertificationAcknowledged: certAck,
+        supervisorCertificationAcknowledged: superCertAck
       };
 
       // Use the sync endpoint to save AND sync to source tables
@@ -4087,6 +4095,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setEmployeeData({ ...employeeData, dailyEntries: reportData.dailyEntries || employeeData.dailyEntries });
       }
       setDailyDescriptions(reportData.dailyDescriptions || []);
+      // Keep certification checkboxes in sync with what we just saved
+      setEmployeeCertificationAcknowledged(certAck);
+      setSupervisorCertificationAcknowledged(superCertAck);
       
       // Clear API cache to ensure we get fresh data after save
       // This is critical because the API service caches responses for 60 seconds
