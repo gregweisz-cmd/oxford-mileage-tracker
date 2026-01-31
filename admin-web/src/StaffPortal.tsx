@@ -4906,6 +4906,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onMonthYearChange={(month, year) => {
           setCurrentMonth(month);
           setCurrentYear(year);
+          startLoading('Loading report...');
         }}
         onReportClick={async (reportId: string, employeeId?: string, month?: number, year?: number) => {
           // Navigate to the report's month/year if provided
@@ -5108,7 +5109,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       </Typography>
                     </Tooltip>
                   )}
-                  <Typography variant="body1" component="div"><strong>Month:</strong> {monthName}, {reportYear}</Typography>
+                  <Typography variant="body1" component="div"><strong>Month:</strong> {monthName}, {currentYear}</Typography>
                   <Typography variant="body1" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
                 <Box sx={{ flex: 1 }}>
@@ -5441,7 +5442,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Box sx={{ display: 'flex', gap: 6 }}>
                 <Box sx={{ flex: 0.5 }}>
                   <Typography variant="body1"><strong>Name:</strong> {employeeData.name}</Typography>
-                  <Typography variant="body1"><strong>Month:</strong> {monthName}, {reportYear}</Typography>
+                  <Typography variant="body1"><strong>Month:</strong> {monthName}, {currentYear}</Typography>
                   <Typography variant="body1"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
                 <Box sx={{ flex: 2 }}>
@@ -6664,7 +6665,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Typography variant="h6" component="div"><strong>Cost Center:</strong> {employeeData.costCenters[0] || 'EMPLOYEE_COST_CENTER_1'}</Typography>
               </Box>
               <Box>
-                <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {reportYear}</Typography>
+                <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {currentYear}</Typography>
                 <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
               </Box>
             </Box>
@@ -7135,10 +7136,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             {/* Header matching spreadsheet */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
               <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-                {monthName} / {reportYear}
+                {monthName} / {currentYear}
               </Typography>
               <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-                {monthName} / {reportYear}
+                {monthName} / {currentYear}
               </Typography>
             </Box>
 
@@ -7276,7 +7277,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                         editingTimesheetCell?.type === 'costCenter';
                         
                         // Check if any time entries for this day need revision
-                        const entryDate = new Date(reportYear, reportMonth - 1, day);
+                        const entryDate = new Date(currentYear, currentMonth - 1, day);
                         const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
                           const tDate = new Date(t.date);
                           return tDate.getUTCDate() === entryDate.getUTCDate() && 
@@ -7370,7 +7371,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       editingTimesheetCell?.type === 'billable';
                       
                       // Check if any time entries for this day need revision
-                      const entryDate = new Date(reportYear, reportMonth - 1, day);
+                      const entryDate = new Date(currentYear, currentMonth - 1, day);
                       const needsRevision = rawTimeEntries.some((t: any) => {
                         const tDate = new Date(t.date);
                         return tDate.getUTCDate() === entryDate.getUTCDate() && 
@@ -7454,7 +7455,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                         editingCategoryCell?.day === day;
                         
                         // Check if any time entries for this day need revision
-                        const entryDate = new Date(reportYear, reportMonth - 1, day);
+                        const entryDate = new Date(currentYear, currentMonth - 1, day);
                         const needsRevision = rawTimeEntries.some((t: any) => {
                           const tDate = new Date(t.date);
                           return tDate.getUTCDate() === entryDate.getUTCDate() && 
@@ -7544,7 +7545,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       const totalHoursForDay = costCenterHours + categoryHours;
                       
                       // Check if any time entries for this day need revision
-                      const entryDate = new Date(reportYear, reportMonth - 1, day);
+                      const entryDate = new Date(currentYear, currentMonth - 1, day);
                       const needsRevision = rawTimeEntries.some((t: any) => {
                         const tDate = new Date(t.date);
                         return tDate.getUTCDate() === entryDate.getUTCDate() && 
@@ -7587,7 +7588,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Typography variant="h5" gutterBottom>
-                Receipt Management - {monthName} {reportYear}
+                Receipt Management - {monthName} {currentYear}
               </Typography>
               <Button
                 variant="contained"
