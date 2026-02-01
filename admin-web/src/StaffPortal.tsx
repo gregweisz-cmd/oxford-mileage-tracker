@@ -823,9 +823,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Function to sync daily description changes to the cost center screen
   /**
+   * Prepares description for saving: remove odometer readings (auto-generated, would duplicate),
+   * but keep all user content including descriptions AND driving summaries.
+   * User can enter both or none; tab can also populate from mileage entries and daily descriptions.
+   */
+  const prepareDescriptionForSave = useCallback((fullDescription: string): string => {
+    if (!fullDescription) return '';
+    return fullDescription
+      .replace(/Odometer:\s*\d+/gi, '')
+      .replace(/\s+to\s+Odometer:\s*\d+/gi, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .trim();
+  }, []);
+
+  /**
    * Extracts user-entered description by removing any existing driving summary
    * Driving summary patterns: "to [Location]" sequences, odometer readings, etc.
-   * This prevents duplication when descriptions are saved and then rebuilt from mileage entries.
+   * Used when building display (to separate user part from driving summary for merging).
    */
   const extractUserDescription = useCallback((fullDescription: string): string => {
     if (!fullDescription) return '';
@@ -1239,14 +1254,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               drivingSummary = tripSegments.join(' ');
             }
             
-            // Extract user-entered description (removing any existing driving summary)
-            // This prevents duplication when rebuilding the description
+            // Use saved description as-is (can include user narrative + driving summary)
+            // Append driving summary from mileage only if not already in saved
             const userDescription = dayDescription && dayDescription.description 
-              ? extractUserDescription(dayDescription.description)
+              ? dayDescription.description
               : '';
             
-            // Concatenate user description + driving summary (NO odometer readings)
-            // Only append driving summary if it's not already in the user description
+            // Concatenate user description + driving summary from mileage
+            // Only append driving summary if it's not already in the saved content
             let fullDescription = '';
             if (userDescription) {
               fullDescription = userDescription;
@@ -1903,10 +1918,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         return descDateStr === dateStr;
       });
       
-      // Extract user description (remove any existing driving summary) before saving
-      // This prevents the driving summary from being saved and then duplicated on reload
+      // Save full content (description + driving summary) - user can enter both or none
       const userDescriptionToSave = hasDescription 
-        ? extractUserDescription(editingValue)
+        ? prepareDescriptionForSave(editingValue)
         : '';
       
       if (existingDescIndex >= 0) {
@@ -4024,7 +4038,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         if (field === 'description') {
           entries[row] = { ...entry, description: editingValue };
           const dateStr = normalizeDate(entry.date);
-          const userDesc = (editingValue && editingValue.trim()) ? extractUserDescription(editingValue) : '';
+          const userDesc = (editingValue && editingValue.trim()) ? prepareDescriptionForSave(editingValue) : '';
           const existingIdx = dailyDescriptionsForSave.findIndex((d: any) => normalizeDate(d.date) === dateStr);
           if (userDesc) {
             const descEntry = { id: `desc-${employeeData.employeeId}-${dateStr}`, employeeId: employeeData.employeeId, date: dateStr, description: userDesc, costCenter: entry.costCenter || employeeData.costCenters?.[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
@@ -4059,7 +4073,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       entriesToSave.forEach((entry: any) => {
         const dateStr = normalizeDate(entry.date);
         if (!dateStr) return;
-        const userDesc = (entry.description && String(entry.description).trim()) ? extractUserDescription(entry.description) : '';
+        const userDesc = (entry.description && String(entry.description).trim()) ? prepareDescriptionForSave(entry.description) : '';
         if (userDesc) {
           byDate.set(dateStr, { id: `desc-${dataForSave.employeeId}-${dateStr}`, employeeId: dataForSave.employeeId, date: dateStr, description: userDesc, costCenter: entry.costCenter || dataForSave.costCenters?.[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
         } else if (byDate.has(dateStr) && !(byDate.get(dateStr)!.dayOff)) {
@@ -6285,19 +6299,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               hoursWorked: editingMileageEntry.hoursWorked || 0,
               isGpsTracked: editingMileageEntry.isGpsTracked || false,
               costCenter: editingMileageEntry.costCenter || employeeData.costCenters[0] || ''
-            } : {
-              employeeId: employeeData.employeeId,
-              date: new Date(currentYear, currentMonth - 1, new Date().getDate()).toISOString().split('T')[0],
-              startLocation: '',
-              endLocation: '',
-              purpose: '',
-              miles: 0,
-              startingOdometer: 0,
-              notes: '',
-              hoursWorked: 0,
-              isGpsTracked: false,
-              costCenter: employeeData.costCenters[0] || ''
-            }}
+            } : undefined}
             mode={editingMileageEntry ? 'edit' : 'create'}
           />
         )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -116,21 +116,33 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const [addressSelectorOpen, setAddressSelectorOpen] = useState(false);
   const [addressSelectorType, setAddressSelectorType] = useState<'start' | 'end'>('start');
 
-  // Initialize form data only when dialog first opens or initialData changes
+  // Initialize form data only when dialog first opens for edit (not on every re-render; parent passes new object each render)
+  const hasInitializedFromEditRef = useRef(false);
   useEffect(() => {
-    if (initialData) {
-      // Ensure cost center is populated, fallback to employee's default if missing
+    if (!open) {
+      hasInitializedFromEditRef.current = false;
+      return;
+    }
+    if (initialData && mode === 'edit' && !hasInitializedFromEditRef.current) {
+      hasInitializedFromEditRef.current = true;
       setFormData({
         ...initialData,
         costCenter: initialData.costCenter || employee.defaultCostCenter || employee.selectedCostCenters?.[0] || ''
       });
     }
-    // Don't reset to empty form if we already have data entered
-  }, [initialData, employee.defaultCostCenter, employee.selectedCostCenters]);
+  }, [open, initialData, mode, employee.defaultCostCenter, employee.selectedCostCenters]);
 
-  // Reset form when dialog opens for new entry (no initialData)
+  // Track whether we've reset for this open session - prevents clearing user input when parent re-renders
+  const hasResetForOpenRef = useRef(false);
+
+  // Reset form ONLY when dialog first opens for new entry (not when employee/other deps change while open)
   useEffect(() => {
-    if (open && !initialData && mode === 'create') {
+    if (!open) {
+      hasResetForOpenRef.current = false;
+      return;
+    }
+    if (!initialData && mode === 'create' && !hasResetForOpenRef.current) {
+      hasResetForOpenRef.current = true;
       setFormData({
         employeeId: employee.id,
         date: new Date().toISOString().split('T')[0],
@@ -146,7 +158,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       });
       setErrors({});
     }
-  }, [open, mode, employee?.defaultCostCenter, employee?.id, employee?.selectedCostCenters, initialData]);
+  }, [open, mode, initialData, employee?.id, employee?.defaultCostCenter, employee?.selectedCostCenters]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
