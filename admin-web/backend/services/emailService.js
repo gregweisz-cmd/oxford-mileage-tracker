@@ -22,7 +22,8 @@ const EMAIL_PASS = process.env.EMAIL_PASS || process.env.SMTP_PASSWORD || proces
 
 const EMAIL_FROM = process.env.EMAIL_FROM || 'greg.weisz@oxfordhouse.org';
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tracker';
-const EMAIL_ENABLED = process.env.EMAIL_ENABLED !== 'false'; // Default to true unless explicitly disabled
+// Email notifications disabled until SES is ready (see docs/deployment/AWS_SES_PRODUCTION_ACCESS.md). To re-enable: change to process.env.EMAIL_ENABLED === 'true' and set EMAIL_ENABLED=true on Render.
+const EMAIL_ENABLED = false;
 
 // Create AWS SES client (will be initialized lazily)
 let sesClient = null;
