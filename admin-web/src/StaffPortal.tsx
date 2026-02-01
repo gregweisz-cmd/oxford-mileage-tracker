@@ -7021,7 +7021,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         )}
                       </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{Math.round(entry.milesTraveled || 0)}</TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${entry.mileageAmount.toFixed(2)}</TableCell>
+                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${(entry.mileageAmount ?? 0).toFixed(2)}</TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
                         {editingCell?.row === index && editingCell?.field === 'perDiem' ? (
                           <TextField
@@ -7068,7 +7068,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               '&:hover': { bgcolor: 'grey.100' } 
                             }}
                           >
-                            ${entry.perDiem.toFixed(2)}
+                            ${(entry.perDiem ?? 0).toFixed(2)}
                           </Box>
                         )}
                       </TableCell>
@@ -7091,12 +7091,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     {supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1 }} />}
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{typeof employeeData.totalHours === 'number' ? employeeData.totalHours.toFixed(1) : employeeData.totalHours}</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{typeof employeeData.totalHours === 'number' ? employeeData.totalHours.toFixed(1) : (employeeData.totalHours ?? 0)}</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{employeeData.totalMiles}</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${employeeData.totalMileageAmount.toFixed(2)}</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${employeeData.perDiem.toFixed(2)}</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${(employeeData.totalMileageAmount ?? 0).toFixed(2)}</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${(employeeData.perDiem ?? 0).toFixed(2)}</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                   </TableRow>
                 </TableBody>
@@ -7141,11 +7141,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     </TableRow>
                     <TableRow>
                       <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>Per Diem (meals while traveling) * $35 max / day</TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${employeeData.perDiem.toFixed(2)}</TableCell>
+                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${(employeeData.perDiem ?? 0).toFixed(2)}</TableCell>
                     </TableRow>
                     <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
                       <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>TRAVEL TOTAL:</strong></TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${(employeeData.totalMileageAmount + employeeData.perDiem).toFixed(2)}</strong></TableCell>
+                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${((employeeData.totalMileageAmount ?? 0) + (employeeData.perDiem ?? 0)).toFixed(2)}</strong></TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
