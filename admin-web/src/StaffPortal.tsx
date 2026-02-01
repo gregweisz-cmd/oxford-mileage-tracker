@@ -835,6 +835,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       .replace(/Odometer:\s*\d+/gi, '')
       .replace(/\s+to\s+Odometer:\s*\d+/gi, '')
       .trim();
+
+    // Early exit: if this doesn't look like a driving summary, treat as user content (e.g. Excel paste)
+    // Driving summaries have: Odometer:, "to X (address)", or BA/BA1/BA2 location codes
+    const hasAddressPattern = /\bto\s+(?:OH\s+)?[^(]+\([^)]+\)/i.test(cleaned);
+    const hasBALocation = /\bto\s+(?:BA|BA1|BA2)\b/i.test(cleaned);
+    if (!hasAddressPattern && !hasBALocation) {
+      // User content - normalize line endings and spaces; preserve newlines
+      return cleaned
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
     
     // Split by double newlines (driving summary is typically separated by \n\n)
     const parts = cleaned.split(/\n\n+/);
