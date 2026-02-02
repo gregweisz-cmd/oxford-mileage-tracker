@@ -29,6 +29,8 @@ import {
   Edit as EditIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
+import { formatAddressFromParts, emptyAddressParts } from '../utils/addressFormatter';
+import type { AddressParts } from '../utils/addressFormatter';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -293,7 +295,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   };
 
   const handleClose = () => {
-    setManualAddress('');
+    setManualAddressParts({ ...emptyAddressParts });
     setSearchQuery('');
     setActiveTab(0);
     onClose();
@@ -496,23 +498,46 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           )}
         </TabPanel>
 
-        {/* Manual Entry Tab */}
+        {/* Manual Entry Tab - Street, City, State, Zip */}
         <TabPanel value={activeTab} index={4}>
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            label="Enter Address Manually"
-            placeholder="123 Main St, City, State ZIP"
-            value={manualAddress}
-            onChange={(e) => setManualAddress(e.target.value)}
-            helperText="Enter the full address including street, city, state, and ZIP code"
-          />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              fullWidth
+              label="Street Address"
+              value={manualAddressParts.street}
+              onChange={(e) => setManualAddressParts(prev => ({ ...prev, street: e.target.value }))}
+              placeholder="123 Main St"
+            />
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <TextField
+                label="City"
+                value={manualAddressParts.city}
+                onChange={(e) => setManualAddressParts(prev => ({ ...prev, city: e.target.value }))}
+                placeholder="Raleigh"
+                sx={{ flex: '1 1 140px', minWidth: 120 }}
+              />
+              <TextField
+                label="State"
+                value={manualAddressParts.state}
+                onChange={(e) => setManualAddressParts(prev => ({ ...prev, state: e.target.value.toUpperCase().slice(0, 2) }))}
+                placeholder="NC"
+                inputProps={{ maxLength: 2 }}
+                sx={{ width: 80 }}
+              />
+              <TextField
+                label="ZIP Code"
+                value={manualAddressParts.zip}
+                onChange={(e) => setManualAddressParts(prev => ({ ...prev, zip: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                placeholder="27601"
+                sx={{ width: 100 }}
+              />
+            </Box>
+          </Box>
           <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
               variant="contained"
-              onClick={() => handleSelectAddress(manualAddress)}
-              disabled={!manualAddress.trim()}
+              onClick={() => handleSelectAddress(formatAddressFromParts(manualAddressParts))}
+              disabled={!manualAddressParts.street.trim() && !manualAddressParts.city.trim() && !manualAddressParts.zip.trim()}
             >
               Use This Address
             </Button>

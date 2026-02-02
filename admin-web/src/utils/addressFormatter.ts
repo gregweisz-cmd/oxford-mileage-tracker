@@ -11,6 +11,69 @@ export interface AddressData {
   zip?: string;
 }
 
+/** Street, City, State, Zip parts for structured address entry */
+export interface AddressParts {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+export const emptyAddressParts: AddressParts = {
+  street: '',
+  city: '',
+  state: '',
+  zip: '',
+};
+
+/**
+ * Format address parts into a single string for storage/API (e.g. "123 Main St, Raleigh, NC 27601")
+ */
+export function formatAddressFromParts(parts: AddressParts): string {
+  const { street, city, state, zip } = parts;
+  if (!street.trim() && !city.trim() && !state.trim() && !zip.trim()) return '';
+  const cityStateZip = [city.trim(), state.trim(), zip.trim()].filter(Boolean).join(', ');
+  if (!cityStateZip) return street.trim();
+  return street.trim() ? `${street.trim()}, ${cityStateZip}` : cityStateZip;
+}
+
+/**
+ * Parse a full address string into Street, City, State, Zip (best-effort).
+ * Handles formats like "123 Main St, Raleigh, NC 27601" or "123 Main St, City, ST 27601".
+ */
+export function parseAddressToParts(fullAddress: string): AddressParts {
+  const trimmed = (fullAddress || '').trim();
+  if (!trimmed) return { ...emptyAddressParts };
+
+  // Extract optional "Name (address)" - use address part for parsing
+  let addressPart = trimmed;
+  const parenMatch = trimmed.match(/\(([^)]+)\)$/);
+  if (parenMatch) {
+    addressPart = parenMatch[1].trim();
+  }
+
+  const parts = addressPart.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return { street: trimmed, city: '', state: '', zip: '' };
+  if (parts.length === 1) return { street: parts[0], city: '', state: '', zip: '' };
+
+  // Last part: try "ST 12345" or "12345" or "12345-6789"
+  const last = parts[parts.length - 1];
+  const zipMatch = last.match(/([A-Za-z]{2})?\s*(\d{5}(-\d{4})?)/);
+  let state = '';
+  let zip = '';
+  if (zipMatch) {
+    state = (zipMatch[1] || '').trim().toUpperCase();
+    zip = (zipMatch[2] || '').trim();
+  } else {
+    zip = last;
+  }
+
+  const city = parts.length >= 3 ? parts[parts.length - 2] : '';
+  const street = parts.length >= 3 ? parts.slice(0, -2).join(', ') : parts[0] || '';
+
+  return { street, city, state, zip };
+}
+
 /**
  * Format an address for display
  * For base addresses (employee's home), just returns "BA"

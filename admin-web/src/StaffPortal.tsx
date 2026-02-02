@@ -6254,7 +6254,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               oxfordHouseId: '',
               position: '',
               phoneNumber: '',
-              baseAddress: '',
+              baseAddress: employeeData.baseAddress || '',
+              baseAddress2: employeeData.baseAddress2,
               defaultCostCenter: employeeData.costCenters[0] || '',
               selectedCostCenters: employeeData.costCenters || [],
               costCenters: employeeData.costCenters || []

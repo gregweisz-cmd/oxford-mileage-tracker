@@ -8,7 +8,28 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const emailService = require('../services/emailService');
+const distanceService = require('../services/distanceService');
 const { debugLog, debugWarn, debugError } = require('../debug');
+
+// ===== DISTANCE (Google Maps - Calculate miles) =====
+
+router.get('/api/distance', async (req, res) => {
+  const from = req.query.from;
+  const to = req.query.to;
+  if (!from || !to) {
+    return res.status(400).json({ error: 'Query params "from" and "to" are required' });
+  }
+  if (!distanceService.isConfigured()) {
+    return res.status(503).json({ error: 'Google Maps API key is not configured' });
+  }
+  try {
+    const miles = await distanceService.calculateDistance(from, to);
+    return res.json({ miles });
+  } catch (err) {
+    debugError('Distance calculation failed:', err.message);
+    return res.status(400).json({ error: err.message || 'Failed to calculate distance' });
+  }
+});
 
 // ===== SAVED ADDRESSES =====
 

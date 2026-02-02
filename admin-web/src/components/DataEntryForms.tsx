@@ -9,9 +9,11 @@ import {
   Box,
   Typography,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
+  Checkbox,
   // Chip, // Currently unused
   // Alert, // Currently unused
   CircularProgress,
@@ -31,7 +33,9 @@ import {
   DirectionsCar as CarIcon,
   Receipt as ReceiptIcon,
   Schedule as ScheduleIcon,
-  AttachMoney as MoneyIcon
+  AttachMoney as MoneyIcon,
+  Home as HomeIcon,
+  Route as RouteIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -42,6 +46,10 @@ import { Employee } from '../types';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import AddressSelector from './AddressSelector';
 import { debugLog, debugError } from '../config/debug';
+import { formatAddressFromParts, parseAddressToParts, emptyAddressParts } from '../utils/addressFormatter';
+import type { AddressParts } from '../utils/addressFormatter';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 // Form interfaces
 export interface MileageEntryFormData {
@@ -110,6 +118,11 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [returnToBA, setReturnToBA] = useState(false);
+  const [startAddressParts, setStartAddressParts] = useState<AddressParts>({ ...emptyAddressParts });
+  const [endAddressParts, setEndAddressParts] = useState<AddressParts>({ ...emptyAddressParts });
+  const [calculatingMiles, setCalculatingMiles] = useState(false);
+  const [distanceError, setDistanceError] = useState<string | null>(null);
   const { notifyDataChange } = useRealtimeSync();
   const [addressSelectorOpen, setAddressSelectorOpen] = useState(false);
   const [addressSelectorType, setAddressSelectorType] = useState<'start' | 'end'>('start');
@@ -127,8 +140,15 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         ...initialData,
         costCenter: initialData.costCenter || employee.defaultCostCenter || employee.selectedCostCenters?.[0] || ''
       });
+      setStartAddressParts(parseAddressToParts(initialData.startLocation || ''));
+      setEndAddressParts(parseAddressToParts(initialData.endLocation || ''));
+      const isReturnToBase =
+        (initialData.purpose?.toLowerCase().trim() === 'return to base') ||
+        (employee.baseAddress && initialData.endLocation?.trim() === employee.baseAddress.trim()) ||
+        (employee.baseAddress2 && initialData.endLocation?.trim() === employee.baseAddress2.trim());
+      setReturnToBA(!!isReturnToBase);
     }
-  }, [open, initialData, mode, employee.defaultCostCenter, employee.selectedCostCenters]);
+  }, [open, initialData, mode, employee.defaultCostCenter, employee.selectedCostCenters, employee.baseAddress, employee.baseAddress2]);
 
   // Track whether we've reset for this open session - prevents clearing user input when parent re-renders
   const hasResetForOpenRef = useRef(false);
@@ -154,7 +174,11 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         isGpsTracked: false,
         costCenter: employee.defaultCostCenter || employee.selectedCostCenters?.[0] || ''
       });
+      setStartAddressParts({ ...emptyAddressParts });
+      setEndAddressParts({ ...emptyAddressParts });
+      setReturnToBA(false);
       setErrors({});
+      setDistanceError(null);
     }
   }, [open, mode, initialData, employee?.id, employee?.defaultCostCenter, employee?.selectedCostCenters]);
 
@@ -167,7 +191,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     if (!formData.endLocation.trim()) {
       newErrors.endLocation = 'End location is required';
     }
-    if (!formData.purpose.trim()) {
+    if (!returnToBA && !formData.purpose.trim()) {
       newErrors.purpose = 'Purpose is required';
     }
     if (formData.miles <= 0) {
@@ -184,14 +208,19 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const handleSave = async () => {
     if (!validateForm()) return;
 
+    const payload = { ...formData };
+    if (returnToBA && !payload.purpose.trim()) {
+      payload.purpose = 'Return to base';
+    }
+
     try {
-      await onSave(formData);
+      await onSave(payload);
       
       // Notify real-time sync
       notifyDataChange({
         type: 'mileage',
         action: mode === 'edit' ? 'update' : 'create',
-        data: formData,
+        data: payload,
         timestamp: new Date(),
         employeeId: employee.id
       });
@@ -217,20 +246,60 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
 
   const handleSelectAddress = (address: string, locationData?: any) => {
     debugLog('📍 MileageEntryForm: Address selected:', address, 'Type:', addressSelectorType);
-    
-    // Update form data directly to ensure it persists
-    setFormData(prev => {
-      const updated = addressSelectorType === 'start'
-        ? { ...prev, startLocation: address }
-        : { ...prev, endLocation: address };
-      debugLog('📍 MileageEntryForm: Updated form data:', updated);
-      return updated;
+    const parts = parseAddressToParts(address);
+    if (addressSelectorType === 'start') {
+      setFormData(prev => ({ ...prev, startLocation: address }));
+      setStartAddressParts(parts);
+      setErrors(prev => ({ ...prev, startLocation: '' }));
+    } else {
+      setFormData(prev => ({ ...prev, endLocation: address }));
+      setEndAddressParts(parts);
+      setErrors(prev => ({ ...prev, endLocation: '' }));
+    }
+    setTimeout(() => setAddressSelectorOpen(false), 100);
+  };
+
+  const updateStartAddressPart = (field: keyof AddressParts, value: string) => {
+    setStartAddressParts(prev => {
+      const next = { ...prev, [field]: value };
+      setFormData(f => ({ ...f, startLocation: formatAddressFromParts(next) }));
+      return next;
     });
-    
-    // Close the address selector after a brief delay
-    setTimeout(() => {
-      setAddressSelectorOpen(false);
-    }, 100);
+    if (errors.startLocation) setErrors(prev => ({ ...prev, startLocation: '' }));
+  };
+
+  const updateEndAddressPart = (field: keyof AddressParts, value: string) => {
+    setEndAddressParts(prev => {
+      const next = { ...prev, [field]: value };
+      setFormData(f => ({ ...f, endLocation: formatAddressFromParts(next) }));
+      return next;
+    });
+    if (errors.endLocation) setErrors(prev => ({ ...prev, endLocation: '' }));
+  };
+
+  const handleCalculateMiles = async () => {
+    const from = formData.startLocation?.trim() || formatAddressFromParts(startAddressParts);
+    const to = formData.endLocation?.trim() || formatAddressFromParts(endAddressParts);
+    if (!from || !to) {
+      setDistanceError('Please enter both start and end addresses.');
+      return;
+    }
+    setDistanceError(null);
+    setCalculatingMiles(true);
+    try {
+      const base = API_BASE_URL || '';
+      const res = await fetch(`${base}/api/distance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to calculate distance');
+      setFormData(prev => ({ ...prev, miles: data.miles ?? 0 }));
+      setErrors(prev => ({ ...prev, miles: '' }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to calculate distance.';
+      setDistanceError(msg);
+      debugError('Calculate miles failed:', err);
+    } finally {
+      setCalculatingMiles(false);
+    }
   };
 
   return (
@@ -308,65 +377,135 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
               </FormControl>
             </Box>
 
-            {/* Start Location */}
+            {/* Start Location - Street, City, State, Zip */}
             <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Start Location"
-                value={formData.startLocation}
-                onChange={(e) => handleInputChange('startLocation', e.target.value)}
-                error={!!errors.startLocation}
-                helperText={errors.startLocation || 'Click the location button to select from saved addresses'}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LocationIcon />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => handleOpenAddressSelector('start')}
-                      >
-                        Select Address
-                      </Button>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <LocationIcon fontSize="small" /> Start Location
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
+                <TextField
+                  label="Street Address"
+                  value={startAddressParts.street}
+                  onChange={(e) => updateStartAddressPart('street', e.target.value)}
+                  error={!!errors.startLocation}
+                  helperText={errors.startLocation}
+                  size="small"
+                  sx={{ flex: '1 1 200px', minWidth: 180 }}
+                />
+                <TextField
+                  label="City"
+                  value={startAddressParts.city}
+                  onChange={(e) => updateStartAddressPart('city', e.target.value)}
+                  size="small"
+                  sx={{ flex: '0 1 140px', minWidth: 100 }}
+                />
+                <TextField
+                  label="State"
+                  value={startAddressParts.state}
+                  onChange={(e) => updateStartAddressPart('state', e.target.value.toUpperCase().slice(0, 2))}
+                  size="small"
+                  placeholder="NC"
+                  inputProps={{ maxLength: 2 }}
+                  sx={{ width: 80 }}
+                />
+                <TextField
+                  label="ZIP Code"
+                  value={startAddressParts.zip}
+                  onChange={(e) => updateStartAddressPart('zip', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  size="small"
+                  placeholder="27601"
+                  sx={{ width: 100 }}
+                />
+                <Button size="small" variant="outlined" onClick={() => handleOpenAddressSelector('start')} sx={{ alignSelf: 'center' }}>
+                  Select Address
+                </Button>
+              </Box>
             </Box>
 
-            {/* End Location */}
+            {/* End Location - Street, City, State, Zip */}
             <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="End Location"
-                value={formData.endLocation}
-                onChange={(e) => handleInputChange('endLocation', e.target.value)}
-                error={!!errors.endLocation}
-                helperText={errors.endLocation || 'Click the location button to select from saved addresses'}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LocationIcon />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => handleOpenAddressSelector('end')}
-                      >
-                        Select Address
-                      </Button>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <LocationIcon fontSize="small" /> End Location
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
+                <TextField
+                  label="Street Address"
+                  value={endAddressParts.street}
+                  onChange={(e) => updateEndAddressPart('street', e.target.value)}
+                  error={!!errors.endLocation}
+                  helperText={errors.endLocation}
+                  size="small"
+                  sx={{ flex: '1 1 200px', minWidth: 180 }}
+                  disabled={returnToBA}
+                />
+                <TextField
+                  label="City"
+                  value={endAddressParts.city}
+                  onChange={(e) => updateEndAddressPart('city', e.target.value)}
+                  size="small"
+                  sx={{ flex: '0 1 140px', minWidth: 100 }}
+                  disabled={returnToBA}
+                />
+                <TextField
+                  label="State"
+                  value={endAddressParts.state}
+                  onChange={(e) => updateEndAddressPart('state', e.target.value.toUpperCase().slice(0, 2))}
+                  size="small"
+                  placeholder="NC"
+                  inputProps={{ maxLength: 2 }}
+                  sx={{ width: 80 }}
+                  disabled={returnToBA}
+                />
+                <TextField
+                  label="ZIP Code"
+                  value={endAddressParts.zip}
+                  onChange={(e) => updateEndAddressPart('zip', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  size="small"
+                  placeholder="27601"
+                  sx={{ width: 100 }}
+                  disabled={returnToBA}
+                />
+                {!returnToBA && (
+                  <Button size="small" variant="outlined" onClick={() => handleOpenAddressSelector('end')} sx={{ alignSelf: 'center' }}>
+                    Select Address
+                  </Button>
+                )}
+              </Box>
             </Box>
+
+            {/* Return to BA - purpose not required when checked */}
+            {employee.baseAddress && (
+              <Box sx={{ width: '100%' }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={returnToBA}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setReturnToBA(checked);
+                        if (checked) {
+                          const baseAddr = employee.baseAddress || '';
+                          setFormData(prev => ({ ...prev, endLocation: baseAddr }));
+                          setEndAddressParts(parseAddressToParts(baseAddr));
+                          setErrors(prev => ({ ...prev, purpose: '', endLocation: '' }));
+                        }
+                      }}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Box component="span" display="flex" alignItems="center" gap={0.5}>
+                      <HomeIcon fontSize="small" /> Return to BA
+                    </Box>
+                  }
+                />
+                {returnToBA && (
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: -0.5, ml: 4 }}>
+                    Purpose is not required for return-to-base entries.
+                  </Typography>
+                )}
+              </Box>
+            )}
 
             {/* Purpose */}
             <Box sx={{ width: '100%' }}>
@@ -379,21 +518,35 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                 helperText={errors.purpose}
                 multiline
                 rows={2}
+                disabled={returnToBA}
+                placeholder={returnToBA ? 'Return to base (optional)' : undefined}
               />
             </Box>
 
-            {/* Miles - primary field; hours/odometer controlled from timesheet per policy */}
+            {/* Miles - primary field; Calculate miles using Google Maps */}
             <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Miles"
-                type="number"
-                value={formData.miles}
-                onChange={(e) => handleInputChange('miles', parseFloat(e.target.value) || 0)}
-                error={!!errors.miles}
-                helperText={errors.miles}
-                inputProps={{ min: 0, step: 0.1 }}
-              />
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
+                <TextField
+                  label="Miles"
+                  type="number"
+                  value={formData.miles}
+                  onChange={(e) => { handleInputChange('miles', parseFloat(e.target.value) || 0); setDistanceError(null); }}
+                  error={!!errors.miles || !!distanceError}
+                  helperText={errors.miles || distanceError || 'Enter manually or use Calculate miles (Google Maps)'}
+                  inputProps={{ min: 0, step: 0.1 }}
+                  sx={{ flex: '0 1 140px', minWidth: 100 }}
+                />
+                <Button
+                  variant="outlined"
+                  size="medium"
+                  onClick={handleCalculateMiles}
+                  disabled={calculatingMiles}
+                  startIcon={calculatingMiles ? <CircularProgress size={18} /> : <RouteIcon />}
+                  sx={{ alignSelf: 'flex-start', mt: 0.5 }}
+                >
+                  {calculatingMiles ? 'Calculating...' : 'Calculate miles'}
+                </Button>
+              </Box>
             </Box>
 
             {/* Notes */}
