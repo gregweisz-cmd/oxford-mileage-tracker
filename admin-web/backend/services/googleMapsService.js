@@ -27,6 +27,19 @@ function isValidLocationString(str) {
 }
 
 /**
+ * Returns true if lat/lng are valid for mapping (not 0,0 and within world bounds).
+ * (0,0) is used as default when unset and would show in the ocean.
+ */
+function isValidLatLng(lat, lng) {
+  const la = parseFloat(lat);
+  const ln = parseFloat(lng);
+  if (isNaN(la) || isNaN(ln)) return false;
+  if (la === 0 && ln === 0) return false;
+  if (la < -90 || la > 90 || ln < -180 || ln > 180) return false;
+  return true;
+}
+
+/**
  * Collect map points from mileage entries for a specific day.
  * Each point is { lat, lng } (preferred) or { address }. Invalid/odometer-only strings are skipped.
  * Returns array in chronological order: [start1, end1, start2, end2, ...] so the path draws the route.
@@ -48,14 +61,14 @@ function collectPointsForDay(mileageEntries) {
     const startAddress = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
     const endAddress = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
 
-    // Start point: prefer lat/lng so the map actually draws the route
-    if (!isNaN(startLat) && !isNaN(startLng)) {
+    // Start point: use lat/lng only when valid (not 0,0); else use address
+    if (isValidLatLng(startLat, startLng)) {
       points.push({ lat: startLat, lng: startLng });
     } else if (isValidLocationString(startAddress)) {
       points.push({ address: startAddress });
     }
 
-    if (!isNaN(endLat) && !isNaN(endLng)) {
+    if (isValidLatLng(endLat, endLng)) {
       points.push({ lat: endLat, lng: endLng });
     } else if (isValidLocationString(endAddress)) {
       points.push({ address: endAddress });
@@ -63,6 +76,51 @@ function collectPointsForDay(mileageEntries) {
   });
 
   return points;
+}
+
+/**
+ * Collect one route (start→end) per mileage entry for a specific day.
+ * Each route is [startPoint, endPoint] with points as { lat, lng } or { address }.
+ * Only includes a route when both start and end have at least one valid point.
+ * Use this to draw separate paths for each trip (e.g. 2 entries → 2 routes).
+ */
+function collectRoutesForDay(mileageEntries) {
+  const routes = [];
+
+  const sortedEntries = [...(mileageEntries || [])].sort((a, b) => {
+    const timeA = new Date(a.createdAt || a.date).getTime();
+    const timeB = new Date(b.createdAt || b.date).getTime();
+    return timeA - timeB;
+  });
+
+  sortedEntries.forEach(entry => {
+    const startLat = parseFloat(entry.startLocationLat);
+    const startLng = parseFloat(entry.startLocationLng);
+    const endLat = parseFloat(entry.endLocationLat);
+    const endLng = parseFloat(entry.endLocationLng);
+    const startAddress = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
+    const endAddress = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
+
+    let startPoint = null;
+    if (isValidLatLng(startLat, startLng)) {
+      startPoint = { lat: startLat, lng: startLng };
+    } else if (isValidLocationString(startAddress)) {
+      startPoint = { address: startAddress };
+    }
+
+    let endPoint = null;
+    if (isValidLatLng(endLat, endLng)) {
+      endPoint = { lat: endLat, lng: endLng };
+    } else if (isValidLocationString(endAddress)) {
+      endPoint = { address: endAddress };
+    }
+
+    if (startPoint && endPoint) {
+      routes.push([startPoint, endPoint]);
+    }
+  });
+
+  return routes;
 }
 
 /**
@@ -204,6 +262,114 @@ function generateStaticMapUrl(addressesOrPoints, options = {}) {
 }
 
 /**
+ * Generate Google Maps Static API URL from multiple routes (one path per route).
+ * @param {Array<Array<{lat?, lng?, address?}>>} routes - Array of [startPoint, endPoint] per mileage entry
+ * @param {Object} options - size, maptype, zoom
+ * @returns {string} Google Maps Static API URL
+ */
+function generateStaticMapUrlFromRoutes(routes, options = {}) {
+  if (!isConfigured()) {
+    throw new Error('Google Maps API key is not configured');
+  }
+  if (!routes || routes.length === 0) {
+    throw new Error('No routes provided for map');
+  }
+
+  const allPoints = [];
+  routes.forEach(route => {
+    route.forEach(p => {
+      if ((p.lat != null && p.lng != null) || isValidLocationString(p.address)) {
+        allPoints.push(p);
+      }
+    });
+  });
+  if (allPoints.length === 0) {
+    throw new Error('No valid points in routes for map');
+  }
+
+  const size = options.size || '600x400';
+  const maptype = options.maptype || 'roadmap';
+  const baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
+  const params = new URLSearchParams();
+
+  params.append('size', size);
+  params.append('maptype', maptype);
+  params.append('key', GOOGLE_MAPS_API_KEY);
+
+  if (allPoints.length === 1) {
+    const p = allPoints[0];
+    if (p.lat != null && p.lng != null) {
+      params.append('center', `${p.lat},${p.lng}`);
+    } else if (p.address) {
+      params.append('center', p.address);
+    }
+    params.append('zoom', String(options.zoom != null ? options.zoom : 14));
+  }
+
+  allPoints.forEach((p, index) => {
+    const label = (index + 1).toString();
+    const loc = (p.lat != null && p.lng != null)
+      ? `${p.lat},${p.lng}`
+      : encodeURIComponent(p.address || '');
+    params.append('markers', `color:blue|label:${label}|${loc}`);
+  });
+
+  routes.forEach(route => {
+    const pathPoints = route.filter(p => (p.lat != null && p.lng != null) || isValidLocationString(p.address));
+    if (pathPoints.length >= 2) {
+      const pathPart = pathPoints
+        .map(p => (p.lat != null && p.lng != null) ? `${p.lat},${p.lng}` : encodeURIComponent(p.address || ''))
+        .join('|');
+      params.append('path', `color:0x0000ff|weight:5|${pathPart}`);
+    }
+  });
+
+  const url = `${baseUrl}?${params.toString()}`;
+  if (url.length > 8192) {
+    debugLog('⚠️ Static Map URL length exceeds 8192; request may fail.');
+  }
+  return url;
+}
+
+/**
+ * Download static map image for multiple routes (one path per mileage entry).
+ * @param {Array<Array<{lat?, lng?, address?}>>} routes - From collectRoutesForDay(mileageEntries)
+ * @param {Object} options - size, maptype, etc.
+ * @returns {Promise<Buffer>} Image buffer
+ */
+async function downloadStaticMapImageFromRoutes(routes, options = {}) {
+  if (!routes || routes.length === 0) {
+    throw new Error('No routes provided for map');
+  }
+  try {
+    const url = generateStaticMapUrlFromRoutes(routes, options);
+    const pointCount = routes.reduce((sum, r) => sum + r.length, 0);
+    debugLog(`🗺️ Downloading Google Maps static image for ${routes.length} routes (${pointCount} points)`);
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 10000
+    });
+    const buffer = Buffer.from(response.data);
+    if (buffer.length < 500) {
+      debugError('❌ Google Maps returned very small image (likely error image)');
+      throw new Error('Map image failed (g.co/staticmaperror). Check API key and that Static Maps API is enabled.');
+    }
+    return buffer;
+  } catch (error) {
+    debugError('❌ Error downloading Google Maps static image:', error);
+    if (error.response) {
+      let errorMessage = error.response.data;
+      if (Buffer.isBuffer(errorMessage)) {
+        errorMessage = errorMessage.toString('utf-8');
+      }
+      debugError('❌ Google Maps API error:', error.response.status, errorMessage);
+      throw new Error(`Failed to download Google Maps image: ${errorMessage || error.message}`);
+    }
+    throw new Error(`Failed to download Google Maps image: ${error.message}`);
+  }
+}
+
+/**
  * Download static map image from Google Maps API
  * @param {Array<string|{lat?, lng?, address?}>} addressesOrPoints - Address strings or points (use collectPointsForDay for routes)
  * @param {Object} options - Additional options
@@ -255,14 +421,18 @@ function imageBufferToDataUrl(imageBuffer, mimeType = 'image/png') {
 module.exports = {
   isConfigured,
   isValidLocationString,
+  isValidLatLng,
   collectPointsForDay,
+  collectRoutesForDay,
   collectPointsForCostCenter,
   collectAddressesForDay,
   collectAddressesForCostCenter,
   buildWaypointsParam,
   buildMarkersParam,
   generateStaticMapUrl,
+  generateStaticMapUrlFromRoutes,
   downloadStaticMapImage,
+  downloadStaticMapImageFromRoutes,
   imageBufferToDataUrl
 };
 

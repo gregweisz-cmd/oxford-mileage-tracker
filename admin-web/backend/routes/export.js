@@ -2404,14 +2404,14 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     
                     debugLog(`🗺️ Grouped ${mileageEntries.length} entries into ${Object.keys(entriesByDate).length} days`);
                     
-                    // Generate maps for each day
+                    // Generate maps for each day: one route (start→end) per mileage entry
                     const sortedDates = Object.keys(entriesByDate).sort();
                     for (const date of sortedDates) {
-                      const dayPoints = googleMapsService.collectPointsForDay(entriesByDate[date]);
-                      debugLog(`🗺️ Day ${date}: Found ${dayPoints.length} map points`);
-                      if (dayPoints.length > 0) {
+                      const dayRoutes = googleMapsService.collectRoutesForDay(entriesByDate[date]);
+                      debugLog(`🗺️ Day ${date}: Found ${dayRoutes.length} routes`);
+                      if (dayRoutes.length > 0) {
                         try {
-                          const mapImage = await googleMapsService.downloadStaticMapImage(dayPoints, { size: '600x400' });
+                          const mapImage = await googleMapsService.downloadStaticMapImageFromRoutes(dayRoutes, { size: '600x400' });
                           const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
                           
                           // Add new page for map
