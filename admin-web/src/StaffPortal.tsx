@@ -2156,7 +2156,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       return;
     }
     try {
-      const monthStr = currentMonth.toString().padStart(2, '0');
       const isCurrentMonth = (d: any) => {
         const norm = normalizeDate(d.date);
         if (!norm) return false;
