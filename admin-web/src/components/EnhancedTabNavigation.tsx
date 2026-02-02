@@ -14,7 +14,7 @@ import {
   DirectionsCar as TravelIcon,
   Schedule as TimesheetIcon,
   Receipt as ReceiptIcon,
-  Edit as DataEntryIcon,
+  Restaurant as PerDiemIcon,
   Settings as SettingsIcon,
   CheckCircle as CheckIcon,
   Warning as WarningIcon,
@@ -153,7 +153,7 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
       <TravelIcon />,
       <TimesheetIcon />,
       <ReceiptIcon />,
-      <DataEntryIcon />,
+      <PerDiemIcon />,
       <SettingsIcon />
     ];
     return icons[tabIndex] || <ArticleIcon />;
@@ -401,9 +401,9 @@ export const createTabConfig = (employeeData: any): EnhancedTab[] => {
       tooltip: 'Receipt uploads and management'
     },
     {
-      label: 'Data Entry',
-      icon: <DataEntryIcon />,
-      tooltip: 'Create and edit entries directly'
+      label: 'Per Diem',
+      icon: <PerDiemIcon />,
+      tooltip: 'Select days and claim per diem up to monthly limit'
     },
     {
       label: 'Settings',

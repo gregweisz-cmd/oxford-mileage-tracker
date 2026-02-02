@@ -62,9 +62,8 @@ import { useRealtimeSync, useRealtimeStatus } from './hooks/useRealtimeSync';
 // Per Diem Rules imports
 import { PerDiemRulesService } from './services/perDiemRulesService';
 
-// Data entry imports
-import { DataEntryManager } from './components/DataEntryManager';
 import { MileageEntryForm, MileageEntryFormData } from './components/DataEntryForms';
+import { PerDiemTab } from './components/PerDiemTab';
 
 // UI Enhancement imports
 import { ToastProvider, useToast } from './contexts/ToastContext';
@@ -6219,7 +6218,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableRow>
                       <TableCell colSpan={8} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
                         <Typography variant="body2" color="textSecondary">
-                          No mileage entries found. Use the mobile app or Data Entry tab to add mileage.
+                          No mileage entries found. Use the mobile app to add mileage.
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -8614,27 +8613,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         title={`Keyboard Shortcuts - ${employeeData?.preferredName ? `${employeeData.preferredName.split(' ')[0]}'s Portal` : employeeData?.name ? `${employeeData.name.split(' ')[0]}'s Portal` : 'Staff Portal'}`}
       />
 
-      {/* Data Entry Tab */}
+      {/* Per Diem Tab */}
       <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 6 : 6}>
         {employeeData ? (
-          <DataEntryManager 
-            employee={{
-              id: employeeData.employeeId,
-              name: employeeData.name,
-              email: '', // Not needed for data entry
-              password: '', // Not needed for data entry
-              oxfordHouseId: '',
-              position: '',
-              phoneNumber: '',
-              baseAddress: '',
-              costCenters: employeeData.costCenters,
-              selectedCostCenters: employeeData.costCenters,
-              defaultCostCenter: employeeData.costCenters[0] || '',
-              createdAt: new Date(),
-              updatedAt: new Date()
-            }}
+          <PerDiemTab
+            employeeId={employeeData.employeeId}
+            employeeName={employeeData.name}
+            costCenters={employeeData.costCenters || []}
             month={reportMonth}
             year={reportYear}
+            onDataChange={() => setRefreshTrigger((prev) => prev + 1)}
           />
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
