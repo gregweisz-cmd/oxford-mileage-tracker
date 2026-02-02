@@ -33,6 +33,8 @@ const generalLimiter = rateLimit({
     if (process.env.NODE_ENV !== 'production') {
       return true; // Disable rate limiting entirely in development
     }
+    // Skip OPTIONS (preflight) so CORS preflight always gets through
+    if (req.method === 'OPTIONS') return true;
     // Skip rate limiting for health checks and auth verify (frequently called)
     return req.path === '/api/health' || req.path === '/health' || req.path === '/api/auth/verify';
   }

@@ -5,6 +5,7 @@
  */
 
 const { debugError } = require('../debug');
+const { setCorsHeaders } = require('./cors');
 
 /**
  * Standard error handler middleware
@@ -17,7 +18,10 @@ const { debugError } = require('../debug');
  */
 function errorHandler(err, req, res, next) {
   const timestamp = new Date().toISOString();
-  
+
+  // Ensure CORS headers on error response so browser doesn't block (e.g. CORS rejection)
+  setCorsHeaders(req, res);
+
   // Log error details
   debugError(`[${timestamp}] Error:`, err.stack || err.message);
   

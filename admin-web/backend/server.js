@@ -92,6 +92,14 @@ app.use(corsMiddleware);
 app.use(express.json({ limit: config.upload.maxFileSize })); // Increase JSON payload limit for large base64 images
 app.use(express.static('public'));
 
+// Handle preflight OPTIONS for all paths before rate limiting (so CORS preflight always succeeds)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return handlePreflight(req, res);
+  }
+  next();
+});
+
 // Rate limiting - Apply general rate limiting to all API routes
 // Specific routes (auth, admin, uploads) have stricter limits applied in their route files
 app.use('/api', generalLimiter);
@@ -134,9 +142,6 @@ app.get('/.well-known/apple-app-site-association', (req, res) => {
   res.json(aasa);
   debugLog('✅ Served Apple App Site Association file');
 });
-
-// Handle preflight OPTIONS requests (extracted to middleware/cors.js)
-app.options('*', handlePreflight);
 
 // Health check endpoint moved to routes/utility.js (available at /api/health)
 

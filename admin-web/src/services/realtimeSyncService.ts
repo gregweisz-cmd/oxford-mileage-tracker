@@ -67,45 +67,55 @@ export class RealtimeSyncService {
   }
 
   /**
-   * Connect to WebSocket server
+   * Connect to WebSocket server.
+   * Resolves even on failure so the app works when WS is unavailable (e.g. Render free tier).
    */
   private async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       try {
         const wsUrl = this.getWebSocketUrl();
         debugLog(`🔄 RealtimeSync: Connecting to ${wsUrl}`);
-        
+
+        const connectionTimeout = window.setTimeout(() => {
+          if (!this.isConnected) {
+            debugWarn('⚠️ RealtimeSync: Connection timeout; continuing without real-time sync.');
+            resolve();
+          }
+        }, 8000);
+
         this.ws = new WebSocket(wsUrl);
-        
+
         this.ws.onopen = () => {
+          window.clearTimeout(connectionTimeout);
           debugLog('✅ RealtimeSync: Connected to WebSocket server');
           this.isConnected = true;
           this.reconnectAttempts = 0;
           this.startHeartbeat();
           resolve();
         };
-        
+
         this.ws.onmessage = (event) => {
           this.handleMessage(event);
         };
-        
+
         this.ws.onclose = (event) => {
           debugVerbose('🔌 RealtimeSync: WebSocket connection closed:', event.code, event.reason);
           this.isConnected = false;
           this.stopHeartbeat();
-          
+          window.clearTimeout(connectionTimeout);
           if (this.config.enabled && this.reconnectAttempts < this.config.maxReconnectAttempts) {
             this.scheduleReconnect();
           }
         };
-        
-        this.ws.onerror = (error) => {
-          debugError('❌ RealtimeSync: WebSocket error:', error);
-          reject(error);
+
+        this.ws.onerror = () => {
+          debugWarn('⚠️ RealtimeSync: WebSocket error; app will work without real-time sync.');
+          window.clearTimeout(connectionTimeout);
+          resolve();
         };
-        
       } catch (error) {
-        reject(error);
+        debugWarn('⚠️ RealtimeSync: Failed to connect:', error);
+        resolve();
       }
     });
   }
