@@ -16,6 +16,22 @@ function isConfigured() {
 }
 
 /**
+ * Detect if buffer is Google's static map error image (100x100 PNG).
+ * Google returns 200 OK with a small error tile when the request fails.
+ * We request 600x400, so 100x100 or very small dimensions = error image.
+ */
+function isStaticMapErrorImage(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 24) return false;
+  const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  for (let i = 0; i < 8; i++) {
+    if (buffer[i] !== sig[i]) return false;
+  }
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  return width <= 200 && height <= 200;
+}
+
+/**
  * Returns true if a string is a valid location for the Static Map (not empty, not "Odometer:...")
  */
 function isValidLocationString(str) {
@@ -349,10 +365,19 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
       responseType: 'arraybuffer',
       timeout: 10000
     });
+    const warning = response.headers && response.headers['x-staticmap-api-warning'];
+    if (warning) {
+      debugError('❌ Google Maps API warning (do not embed):', warning);
+      throw new Error(`Map image failed (g.co/staticmaperror). ${warning}`);
+    }
     const buffer = Buffer.from(response.data);
     if (buffer.length < 500) {
       debugError('❌ Google Maps returned very small image (likely error image)');
       throw new Error('Map image failed (g.co/staticmaperror). Check API key and that Static Maps API is enabled.');
+    }
+    if (isStaticMapErrorImage(buffer)) {
+      debugError('❌ Google Maps returned 100x100 error tile (staticmaperror)');
+      throw new Error('Map image failed (g.co/staticmaperror). Check API key, billing, and that Static Maps API is enabled.');
     }
     return buffer;
   } catch (error) {
@@ -387,10 +412,19 @@ async function downloadStaticMapImage(addressesOrPoints, options = {}) {
       responseType: 'arraybuffer',
       timeout: 10000
     });
+    const warning = response.headers && response.headers['x-staticmap-api-warning'];
+    if (warning) {
+      debugError('❌ Google Maps API warning (do not embed):', warning);
+      throw new Error(`Map image failed (g.co/staticmaperror). ${warning}`);
+    }
     const buffer = Buffer.from(response.data);
     if (buffer.length < 500) {
       debugError('❌ Google Maps returned very small image (likely error image)');
       throw new Error('Map image failed (g.co/staticmaperror). Check API key and that Static Maps API is enabled.');
+    }
+    if (isStaticMapErrorImage(buffer)) {
+      debugError('❌ Google Maps returned 100x100 error tile (staticmaperror)');
+      throw new Error('Map image failed (g.co/staticmaperror). Check API key, billing, and that Static Maps API is enabled.');
     }
     return buffer;
   } catch (error) {

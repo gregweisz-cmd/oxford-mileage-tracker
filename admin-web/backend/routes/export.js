@@ -2404,34 +2404,38 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     
                     debugLog(`🗺️ Grouped ${mileageEntries.length} entries into ${Object.keys(entriesByDate).length} days`);
                     
-                    // Generate maps for each day: one route (start→end) per mileage entry
+                    // One map per route: each trip gets its own page, zoomed to show just that route
                     const sortedDates = Object.keys(entriesByDate).sort();
                     for (const date of sortedDates) {
                       const dayRoutes = googleMapsService.collectRoutesForDay(entriesByDate[date]);
-                      debugLog(`🗺️ Day ${date}: Found ${dayRoutes.length} routes`);
-                      if (dayRoutes.length > 0) {
+                      debugLog(`🗺️ Day ${date}: Found ${dayRoutes.length} routes (one map per route)`);
+                      for (let tripIndex = 0; tripIndex < dayRoutes.length; tripIndex++) {
+                        const singleRoute = [dayRoutes[tripIndex]];
+                        const tripNum = tripIndex + 1;
                         try {
-                          const mapImage = await googleMapsService.downloadStaticMapImageFromRoutes(dayRoutes, { size: '600x400' });
+                          const mapImage = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400' });
                           const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
-                          
-                          // Add new page for map
                           doc.addPage();
                           yPos = margin + 20;
-                          
-                          // Add title
                           doc.setFontSize(14);
                           doc.setFont('helvetica', 'bold');
-                          safeText(`Daily Routes - ${date}`, pageWidth / 2, yPos, { align: 'center' });
+                          safeText(`Daily Routes - ${date} - Trip ${tripNum}`, pageWidth / 2, yPos, { align: 'center' });
                           yPos += 30;
-                          
-                          // Add map image (600x400, scaled to fit page width)
                           const imageWidth = pageWidth - (margin * 2);
-                          const imageHeight = (imageWidth * 400) / 600; // Maintain aspect ratio
+                          const imageHeight = (imageWidth * 400) / 600;
                           doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
                           yPos += imageHeight + 20;
                         } catch (mapError) {
-                          debugError(`❌ Error generating map for date ${date}:`, mapError);
-                          debugError(`❌ Map error details:`, mapError.message, mapError.stack);
+                          debugError(`❌ Error generating map for date ${date} trip ${tripNum}:`, mapError);
+                          doc.addPage();
+                          yPos = margin + 20;
+                          doc.setFontSize(14);
+                          doc.setFont('helvetica', 'bold');
+                          safeText(`Daily Routes - ${date} - Trip ${tripNum}`, pageWidth / 2, yPos, { align: 'center' });
+                          yPos += 30;
+                          doc.setFontSize(10);
+                          doc.setFont('helvetica', 'normal');
+                          safeText('Map unavailable. Check API key, billing, and that Static Maps API is enabled (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
                         }
                       }
                     }
@@ -2469,6 +2473,15 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     } catch (mapError) {
                       debugError(`❌ Error generating map for cost center ${costCenter}:`, mapError);
                       debugError(`❌ Map error details:`, mapError.message, mapError.stack);
+                      doc.addPage();
+                      yPos = margin + 20;
+                      doc.setFontSize(14);
+                      doc.setFont('helvetica', 'bold');
+                      safeText(`Cost Center Routes - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
+                      yPos += 30;
+                      doc.setFontSize(10);
+                      doc.setFont('helvetica', 'normal');
+                      safeText('Map unavailable. Check API key, billing, and that Static Maps API is enabled (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
                     }
                   } else {
                     debugLog(`⚠️ No map points found for cost center ${costCenter}`);
