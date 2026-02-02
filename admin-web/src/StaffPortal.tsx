@@ -2149,102 +2149,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  /** Clear all manual Cost Center entries for the current month (descriptions + zero out odometer/miles). Use to remove data entered when Cost Center was editable. */
-  const clearAllCostCenterManualEntries = async () => {
-    if (!employeeData) return;
-    if (!window.confirm('Clear ALL manual Cost Center entries for this month? Descriptions and mileage data for every day will be cleared. Data from Mileage Entries and Daily Descriptions tabs will repopulate on next load. This cannot be undone.')) {
-      return;
-    }
-    try {
-      const isCurrentMonth = (d: any) => {
-        const norm = normalizeDate(d.date);
-        if (!norm) return false;
-        const [y, m] = norm.split('-').map(Number);
-        return y === currentYear && m === currentMonth;
-      };
-      const newDescriptions = dailyDescriptions.filter((d: any) => !isCurrentMonth(d));
-      const newEntries = employeeData.dailyEntries.map((e: any) => ({
-        ...e,
-        description: '',
-        odometerStart: 0,
-        odometerEnd: 0,
-        milesTraveled: 0,
-        mileageAmount: 0,
-        perDiem: 0
-      }));
-      setDailyDescriptions(newDescriptions);
-      setEmployeeData({ ...employeeData, dailyEntries: newEntries });
-      const reportData = {
-        ...employeeData,
-        dailyEntries: newEntries,
-        dailyDescriptions: newDescriptions,
-        receipts,
-        employeeSignature: signatureImage,
-        supervisorSignature: supervisorSignatureState,
-        employeeCertificationAcknowledged: employeeCertificationAcknowledged,
-        supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
-      };
-      const res = await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId: employeeData.employeeId,
-          month: currentMonth,
-          year: currentYear,
-          reportData
-        })
-      });
-      if (!res.ok) throw new Error('Sync failed');
-      setRefreshTrigger(prev => prev + 1);
-    } catch (error) {
-      debugError('Error clearing all Cost Center manual entries:', error);
-      alert('Failed to clear. Please try again.');
-    }
-  };
-
-  /** Clear a single day's data on the Cost Center tab (description + odometer/miles). Use when a row was manually entered and needs to be removed. */
-  const clearCostCenterDay = async (dateStr: string) => {
-    if (!employeeData) return;
-    if (!window.confirm('Clear this day\'s description and mileage data on the Cost Center? This cannot be undone.')) {
-      return;
-    }
-    try {
-      const newDescriptions = dailyDescriptions.filter((d: any) => normalizeDate(d.date) !== dateStr);
-      const newEntries = employeeData.dailyEntries.map((e: any) =>
-        normalizeDate(e.date) === dateStr
-          ? { ...e, description: '', odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, perDiem: 0 }
-          : e
-      );
-      setDailyDescriptions(newDescriptions);
-      setEmployeeData({ ...employeeData, dailyEntries: newEntries });
-      const reportData = {
-        ...employeeData,
-        dailyEntries: newEntries,
-        dailyDescriptions: newDescriptions,
-        receipts,
-        employeeSignature: signatureImage,
-        supervisorSignature: supervisorSignatureState,
-        employeeCertificationAcknowledged: employeeCertificationAcknowledged,
-        supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
-      };
-      const res = await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId: employeeData.employeeId,
-          month: currentMonth,
-          year: currentYear,
-          reportData
-        })
-      });
-      if (!res.ok) throw new Error('Sync failed');
-      setRefreshTrigger(prev => prev + 1);
-    } catch (error) {
-      debugError('Error clearing Cost Center day:', error);
-      alert('Failed to clear day. Please try again.');
-    }
-  };
-
   /** Delete all mileage entries for a given date (Cost Center tab is read-only; kept for possible future use). */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteDayMileageEntries = async (dateStr: string) => {
@@ -6816,26 +6720,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <Card variant="outlined">
           <CardContent>
             {/* Header matching spreadsheet */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
               <Box>
                 <Typography variant="h6" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
                 <Typography variant="h6" component="div"><strong>Cost Center:</strong> {employeeData.costCenters[0] || 'EMPLOYEE_COST_CENTER_1'}</Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box>
-                  <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {currentYear}</Typography>
-                  <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
-                </Box>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  size="small"
-                  startIcon={<DeleteIcon />}
-                  onClick={clearAllCostCenterManualEntries}
-                  title="Remove all manual Cost Center entries for this month"
-                >
-                  Clear all manual entries
-                </Button>
+              <Box>
+                <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {currentYear}</Typography>
+                <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
               </Box>
             </Box>
 
@@ -6883,7 +6775,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Miles Traveled</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Mileage ($)</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Per Diem ($)</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '6%' }}><strong>Clear</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -6988,16 +6879,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
                         <Box sx={{ cursor: 'default' }}>${(entry.perDiem ?? 0).toFixed(2)}</Box>
                       </TableCell>
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => clearCostCenterDay(entryDateStr)}
-                          sx={{ color: 'error.main' }}
-                          title="Clear this day's data (description and mileage)"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
                     </TableRow>
                     );
                   })}
@@ -7013,7 +6894,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{employeeData.totalMiles}</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${(employeeData.totalMileageAmount ?? 0).toFixed(2)}</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${(employeeData.perDiem ?? 0).toFixed(2)}</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }} />
                   </TableRow>
                 </TableBody>
               </Table>
