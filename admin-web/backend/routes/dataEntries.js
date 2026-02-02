@@ -90,7 +90,7 @@ router.get('/api/mileage-entries', (req, res) => {
     query += ' WHERE ' + conditions.join(' AND ');
   }
 
-  query += ' ORDER BY me.date DESC';
+  query += ' ORDER BY me.date DESC, COALESCE(me.sortOrder, 0) ASC';
 
   // Debug logging
   debugLog('🔍 GET /api/mileage-entries - Query:', query);
@@ -336,6 +336,50 @@ router.delete('/api/mileage-entries/:id', (req, res) => {
       
       res.json({ message: 'Mileage entry deleted successfully' });
     });
+  });
+});
+
+/**
+ * Reorder mileage entries (set sortOrder by array index)
+ * POST /api/mileage-entries/reorder
+ * @body {string} employeeId - Employee ID (required, for auth)
+ * @body {string[]} orderedIds - Array of mileage entry IDs in desired order
+ */
+router.post('/api/mileage-entries/reorder', (req, res) => {
+  const { employeeId, orderedIds } = req.body;
+  const db = dbService.getDb();
+  if (!db) {
+    return res.status(500).json({ error: 'Database not available' });
+  }
+  if (!employeeId || !Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return res.status(400).json({ error: 'employeeId and non-empty orderedIds array are required' });
+  }
+  let completed = 0;
+  let hadError = false;
+  const total = orderedIds.length;
+  const checkDone = (err) => {
+    if (err) {
+      if (!hadError) {
+        hadError = true;
+        debugError('Reorder mileage error:', err);
+        res.status(500).json({ error: err.message });
+      }
+      return;
+    }
+    completed++;
+    if (completed === total && !hadError) {
+      websocketService.broadcastDataChange('mileage_entry', 'reorder', { employeeId }, employeeId);
+      res.json({ message: 'Mileage entries reordered successfully' });
+    }
+  };
+  orderedIds.forEach((id, index) => {
+    db.run(
+      'UPDATE mileage_entries SET sortOrder = ?, updatedAt = ? WHERE id = ? AND employeeId = ?',
+      [index, new Date().toISOString(), id, employeeId],
+      function(err) {
+        checkDone(err);
+      }
+    );
   });
 });
 

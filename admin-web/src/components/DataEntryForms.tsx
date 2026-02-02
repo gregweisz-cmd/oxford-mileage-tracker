@@ -175,9 +175,6 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     if (formData.miles <= 0) {
       newErrors.miles = 'Miles must be greater than 0';
     }
-    if (formData.hoursWorked < 0) {
-      newErrors.hoursWorked = 'Hours worked cannot be negative';
-    }
     if (!formData.costCenter) {
       newErrors.costCenter = 'Cost center is required';
     }
@@ -387,28 +384,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
               />
             </Box>
 
-            {/* Starting Odometer */}
-            <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Starting Odometer"
-                type="number"
-                value={formData.startingOdometer || ''}
-                onChange={(e) => handleInputChange('startingOdometer', parseFloat(e.target.value) || 0)}
-                error={!!errors.startingOdometer}
-                helperText={errors.startingOdometer || 'Enter the starting odometer reading'}
-                inputProps={{ min: 0, step: 0.1 }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CarIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Box>
-
-            {/* Miles */}
+            {/* Miles - primary field; hours/odometer controlled from timesheet per policy */}
             <Box sx={{ width: '100%' }}>
               <TextField
                 fullWidth
@@ -419,33 +395,6 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                 error={!!errors.miles}
                 helperText={errors.miles}
                 inputProps={{ min: 0, step: 0.1 }}
-              />
-            </Box>
-
-            {/* Hours Worked */}
-            <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Hours Worked"
-                type="number"
-                value={formData.hoursWorked}
-                onChange={(e) => handleInputChange('hoursWorked', parseFloat(e.target.value) || 0)}
-                error={!!errors.hoursWorked}
-                helperText={errors.hoursWorked}
-                inputProps={{ min: 0, step: 0.25 }}
-              />
-            </Box>
-
-            {/* GPS Tracked */}
-            <Box sx={{ width: '100%' }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.isGpsTracked}
-                    onChange={(e) => handleInputChange('isGpsTracked', e.target.checked)}
-                  />
-                }
-                label="GPS Tracked"
               />
             </Box>
 

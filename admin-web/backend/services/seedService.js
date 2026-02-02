@@ -134,40 +134,14 @@ async function seedTestAccounts() {
       const now = new Date().toISOString();
 
       if (existingAccount) {
-        debugLog(`🔄 ${account.name} already exists, updating...`);
-        
-        // Update existing account by email (since ID might be different)
+        // Existing account: only update password so login still works. Do NOT overwrite
+        // preferredName, costCenters, or other user-editable fields (they persist across redeploys).
+        const updateId = existingAccount.id;
+        debugLog(`🔄 ${account.name} already exists (id=${updateId}), updating password only (preserving preferred name & cost centers)...`);
         await new Promise((resolve, reject) => {
           db.run(
-            `UPDATE employees SET 
-              name = ?,
-              preferredName = ?,
-              email = ?,
-              password = ?,
-              oxfordHouseId = ?,
-              position = ?,
-              phoneNumber = ?,
-              baseAddress = ?,
-              costCenters = ?,
-              selectedCostCenters = ?,
-              defaultCostCenter = ?,
-              updatedAt = ?
-            WHERE email = ?`,
-            [
-              account.name,
-              account.preferredName,
-              account.email,
-              hashedPassword,
-              account.oxfordHouseId,
-              account.position,
-              account.phoneNumber,
-              account.baseAddress,
-              account.costCenters,
-              account.selectedCostCenters,
-              account.defaultCostCenter,
-              now,
-              account.email
-            ],
+            'UPDATE employees SET password = ?, updatedAt = ? WHERE id = ?',
+            [hashedPassword, now, updateId],
             (err) => {
               if (err) reject(err);
               else resolve();

@@ -46,6 +46,8 @@ import {
   CloudDownload as CloudDownloadIcon,
   Check as CheckIcon,
   CheckCircle as CheckCircleIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
 } from '@mui/icons-material';
 
 // PDF generation imports
@@ -2119,6 +2121,39 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     } catch (error) {
       debugError('Error deleting mileage entry:', error);
       alert('Failed to delete mileage entry. Please try again.');
+    }
+  };
+
+  // Current-month mileage list for display and reorder (same order as API: date DESC, sortOrder ASC)
+  const currentMonthMileageList = React.useMemo(() => {
+    return rawMileageEntries.filter((entry: any) => {
+      const entryDateStr = normalizeDate(entry.date);
+      const parts = entryDateStr.split('-');
+      if (parts.length !== 3) return false;
+      const entryYear = parseInt(parts[0], 10);
+      const entryMonth = parseInt(parts[1], 10);
+      return entryMonth === currentMonth && entryYear === currentYear;
+    });
+  }, [rawMileageEntries, currentMonth, currentYear]);
+
+  const handleMileageReorder = async (newOrderedIds: string[]) => {
+    if (newOrderedIds.length === 0) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/mileage-entries/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: effectiveEmployeeId, orderedIds: newOrderedIds })
+      });
+      if (!response.ok) throw new Error('Failed to reorder');
+      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
+      if (mileageRes.ok) {
+        const mileageEntries = await mileageRes.json();
+        setRawMileageEntries(mileageEntries);
+      }
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      debugError('Error reordering mileage entries:', error);
+      alert('Failed to reorder mileage entries. Please try again.');
     }
   };
 
@@ -6062,6 +6097,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 56 }}><strong>Order</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Date</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Start Location</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>End Location</strong></TableCell>
@@ -6072,23 +6108,45 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {rawMileageEntries
-                    .filter((entry: any) => {
-                      // Use string-based date comparison to avoid timezone issues
-                      const entryDateStr = normalizeDate(entry.date);
-                      const entryDateParts = entryDateStr.split('-');
-                      if (entryDateParts.length !== 3) return false;
-                      const entryYear = parseInt(entryDateParts[0], 10);
-                      const entryMonth = parseInt(entryDateParts[1], 10);
-                      return entryMonth === currentMonth && entryYear === currentYear;
-                    })
-                    .map((entry: any) => {
+                  {currentMonthMileageList.map((entry: any, index: number) => {
                       const mileageAmount = (entry.miles || 0) * 0.445; // Standard mileage rate ($0.445 per mile)
                       const startLocation = entry.startLocationName || entry.startLocation || '';
                       const endLocation = entry.endLocationName || entry.endLocation || '';
                       
                       return (
                         <TableRow key={entry.id} sx={{ bgcolor: entry.needsRevision ? 'warning.light' : 'transparent' }}>
+                          <TableCell sx={{ border: '1px solid #ccc', p: 0.5, verticalAlign: 'middle' }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  if (index <= 0) return;
+                                  const newOrder = [...currentMonthMileageList];
+                                  [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+                                  handleMileageReorder(newOrder.map((e: any) => e.id));
+                                }}
+                                disabled={index === 0}
+                                sx={{ p: 0.25 }}
+                                title="Move up"
+                              >
+                                <ArrowUpwardIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  if (index >= currentMonthMileageList.length - 1) return;
+                                  const newOrder = [...currentMonthMileageList];
+                                  [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+                                  handleMileageReorder(newOrder.map((e: any) => e.id));
+                                }}
+                                disabled={index === currentMonthMileageList.length - 1}
+                                sx={{ p: 0.25 }}
+                                title="Move down"
+                              >
+                                <ArrowDownwardIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          </TableCell>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                             {(() => {
                               // Use normalizeDate to get YYYY-MM-DD format, then parse and format consistently
@@ -6160,17 +6218,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </TableRow>
                       );
                     })}
-                  {rawMileageEntries.filter((entry: any) => {
-                    // Use string-based date comparison to avoid timezone issues (same as main filter)
-                    const entryDateStr = normalizeDate(entry.date);
-                    const entryDateParts = entryDateStr.split('-');
-                    if (entryDateParts.length !== 3) return false;
-                    const entryYear = parseInt(entryDateParts[0], 10);
-                    const entryMonth = parseInt(entryDateParts[1], 10);
-                    return entryMonth === currentMonth && entryYear === currentYear;
-                  }).length === 0 && (
+                  {currentMonthMileageList.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
+                      <TableCell colSpan={8} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
                         <Typography variant="body2" color="textSecondary">
                           No mileage entries found. Use the mobile app or Data Entry tab to add mileage.
                         </Typography>
@@ -6806,207 +6856,35 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           )}
                         </TableCell>
                       <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>
+                        {/* Cost Center tab is read-only: edit on Daily Descriptions and Mileage Entries tabs only */}
                         {isDayOff ? (
-                          // Day off - show day off type and make it uneditable
-                          <Box 
-                            sx={{ 
-                              minHeight: '24px',
-                              whiteSpace: 'pre-wrap',
-                              color: 'text.secondary',
-                              fontStyle: 'italic'
-                            }}
-                          >
+                          <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap', color: 'text.secondary', fontStyle: 'italic' }}>
                             {dayDescription?.dayOffType || 'Day Off'}
                           </Box>
-                        ) : editingCell?.row === index && editingCell?.field === 'description' ? (
-                          <TextField
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onBlur={handleCellSave}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                                // Ctrl+Enter or Cmd+Enter to save
-                                handleCellSave();
-                              } else if (e.key === 'Escape') {
-                                handleTimesheetCellCancel();
-                              }
-                              // Allow Enter to create new lines
-                            }}
-                            autoFocus
-                            multiline
-                            minRows={6}
-                            maxRows={20}
-                            fullWidth
-                            sx={{
-                              '& .MuiInputBase-root': {
-                                minHeight: '150px',
-                                alignItems: 'flex-start',
-                                paddingTop: '8px',
-                              },
-                              '& .MuiInputBase-input': {
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                overflowWrap: 'break-word',
-                                lineHeight: '1.5',
-                              }
-                            }}
-                          />
                         ) : (
-                          <Box 
-                            onClick={() => handleCellEdit(index, 'description', entry.description)}
-                            sx={{ 
-                              cursor: 'pointer', 
-                              '&:hover': { bgcolor: 'grey.100' },
-                              minHeight: '24px', // Ensure clickable area even when empty
-                              whiteSpace: 'pre-wrap' // Preserve newlines and whitespace
-                            }}
-                          >
-                            {entry.description || <span style={{ color: '#999', fontStyle: 'italic' }}>Click to add description</span>}
+                          <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap' }} tabIndex={-1} aria-readonly="true">
+                            {entry.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}
                           </Box>
                         )}
                       </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {editingCell?.row === index && editingCell?.field === 'hoursWorked' ? (
-                          <TextField
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onBlur={handleCellSave}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleCellSave();
-                              if (e.key === 'Escape') handleTimesheetCellCancel();
-                            }}
-                            autoFocus
-                            size="small"
-                            type="number"
-                            sx={{ width: 60 }}
-                          />
-                        ) : (
-                          <Box 
-                            onClick={() => handleCellEdit(index, 'hoursWorked', entry.hoursWorked)}
-                            sx={{ 
-                              cursor: 'pointer', 
-                              '&:hover': { bgcolor: 'grey.100' } 
-                            }}
-                          >
-                            {typeof entry.hoursWorked === 'number' ? entry.hoursWorked.toFixed(1) : entry.hoursWorked}
-                          </Box>
-                        )}
+                        <Box sx={{ cursor: 'default' }}>
+                          {typeof entry.hoursWorked === 'number' ? entry.hoursWorked.toFixed(1) : (entry.hoursWorked ?? '')}
+                        </Box>
                       </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {editingCell?.row === index && editingCell?.field === 'odometerStart' ? (
-                          <TextField
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onBlur={handleCellSave}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleCellSave();
-                              if (e.key === 'Escape') handleTimesheetCellCancel();
-                            }}
-                            autoFocus
-                            size="small"
-                            type="number"
-                            sx={{ width: 80 }}
-                          />
-                        ) : (
-                          <Box 
-                            onClick={() => handleCellEdit(index, 'odometerStart', entry.odometerStart)}
-                            sx={{ 
-                              cursor: 'pointer', 
-                              '&:hover': { bgcolor: 'grey.100' } 
-                            }}
-                          >
-                            {entry.odometerStart || 0}
-                          </Box>
-                        )}
+                        <Box sx={{ cursor: 'default' }}>{entry.odometerStart || 0}</Box>
                       </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {editingCell?.row === index && editingCell?.field === 'odometerEnd' ? (
-                          <TextField
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onBlur={handleCellSave}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleCellSave();
-                              if (e.key === 'Escape') handleTimesheetCellCancel();
-                            }}
-                            autoFocus
-                            size="small"
-                            type="number"
-                            sx={{ width: 80 }}
-                          />
-                        ) : (
-                          <Box 
-                            onClick={() => handleCellEdit(index, 'odometerEnd', entry.odometerEnd)}
-                            sx={{ 
-                              cursor: 'pointer', 
-                              '&:hover': { bgcolor: 'grey.100' } 
-                            }}
-                          >
-                            {entry.odometerEnd || 0}
-                          </Box>
-                        )}
+                        <Box sx={{ cursor: 'default' }}>{entry.odometerEnd || 0}</Box>
                       </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{Math.round(entry.milesTraveled || 0)}</TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${(entry.mileageAmount ?? 0).toFixed(2)}</TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        {editingCell?.row === index && editingCell?.field === 'perDiem' ? (
-                          <TextField
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onBlur={handleCellSave}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleCellSave();
-                              if (e.key === 'Escape') handleTimesheetCellCancel();
-                            }}
-                            autoFocus
-                            size="small"
-                            type="number"
-                            inputProps={{ 
-                              min: 0, 
-                              max: 35, 
-                              step: 0.01,
-                              style: { 
-                                MozAppearance: 'textfield',
-                                WebkitAppearance: 'none',
-                                appearance: 'none'
-                              }
-                            }}
-                            sx={{ 
-                              width: 60,
-                              '& input[type=number]': {
-                                MozAppearance: 'textfield',
-                              },
-                              '& input[type=number]::-webkit-outer-spin-button': {
-                                WebkitAppearance: 'none',
-                                margin: 0,
-                              },
-                              '& input[type=number]::-webkit-inner-spin-button': {
-                                WebkitAppearance: 'none',
-                                margin: 0,
-                              },
-                            }}
-                          />
-                        ) : (
-                          <Box 
-                            onClick={() => handleCellEdit(index, 'perDiem', entry.perDiem)}
-                            sx={{ 
-                              cursor: 'pointer', 
-                              '&:hover': { bgcolor: 'grey.100' } 
-                            }}
-                          >
-                            ${(entry.perDiem ?? 0).toFixed(2)}
-                          </Box>
-                        )}
+                        <Box sx={{ cursor: 'default' }}>${(entry.perDiem ?? 0).toFixed(2)}</Box>
                       </TableCell>
                       <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteDayMileageEntries(entryDateStr)}
-                          sx={{ color: 'error.main' }}
-                          title="Delete entries for this date"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        {/* No actions on Cost Center tab - read-only; edit on Daily Descriptions / Mileage Entries tabs */}
                       </TableCell>
                     </TableRow>
                     );

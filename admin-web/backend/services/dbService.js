@@ -761,6 +761,11 @@ function ensureTablesExist() {
               if (err) debugLog('Note: endLocationLng column may already exist');
             });
           }
+          if (!columnNames.includes('sortOrder')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN sortOrder INTEGER DEFAULT 0`, (err) => {
+              if (err) debugLog('Note: sortOrder column may already exist');
+            });
+          }
         }
       });
 
