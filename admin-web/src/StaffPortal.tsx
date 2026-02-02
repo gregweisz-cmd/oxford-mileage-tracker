@@ -892,6 +892,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (!effectiveEmployeeId) {
         debugWarn('⚠️ StaffPortal: No employeeId provided and none found in localStorage');
         setLoading(false);
+        stopLoading();
         return;
       }
       
@@ -1621,6 +1622,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         await refreshTimesheetData();
       } finally {
         setLoading(false);
+        stopLoading(); // Clear overlay (e.g. "Refreshing data..." / "Loading report..." after month change)
       }
     };
     
