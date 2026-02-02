@@ -897,6 +897,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
       
       setLoading(true);
+      // Capture month/year so we only apply this load if user hasn't changed month meanwhile (stale load guard)
+      const loadForMonth = currentMonth;
+      const loadForYear = currentYear;
       let employee: any = null;
       let costCenters: string[] = ['NC.F-SAPTBG']; // Default fallback
       
@@ -1507,35 +1510,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Set employeeCertificationAcknowledged from saved expense report or current state
           (expenseData as any).employeeCertificationAcknowledged = savedExpenseReport?.reportData?.employeeCertificationAcknowledged || employeeCertificationAcknowledged || false;
           
-          setEmployeeData(expenseData);
-          const formattedReceipts = currentMonthReceipts.map((receipt: any) => ({
-            id: receipt.id,
-            date: new Date(receipt.date).toLocaleDateString('en-US', { 
-              month: '2-digit', 
-              day: '2-digit', 
-              year: '2-digit' 
-            }),
-            amount: receipt.amount,
-            vendor: receipt.vendor,
-            description: receipt.description,
-            category: receipt.category,
-            imageUri: receipt.imageUri
-          }));
-          setReceipts(formattedReceipts);
-          
-          // Also set receipts on expenseData for status indicator
-          (expenseData as any).receipts = currentMonthReceipts;
-          setDailyDescriptions(dailyDescriptions);
-          
-          // Load signature from employee data
-          if (employee.signature) {
-            setSavedSignature(employee.signature); // Save as the saved signature
-            setSignatureImage(employee.signature); // Also set as current for this report
+          // Only apply if user hasn't changed month/year meanwhile (stale load guard)
+          if (loadForMonth === currentMonth && loadForYear === currentYear) {
+            setEmployeeData(expenseData);
+            const formattedReceipts = currentMonthReceipts.map((receipt: any) => ({
+              id: receipt.id,
+              date: new Date(receipt.date).toLocaleDateString('en-US', { 
+                month: '2-digit', 
+                day: '2-digit', 
+                year: '2-digit' 
+              }),
+              amount: receipt.amount,
+              vendor: receipt.vendor,
+              description: receipt.description,
+              category: receipt.category,
+              imageUri: receipt.imageUri
+            }));
+            setReceipts(formattedReceipts);
+            
+            // Also set receipts on expenseData for status indicator
+            (expenseData as any).receipts = currentMonthReceipts;
+            setDailyDescriptions(dailyDescriptions);
+            
+            // Load signature from employee data
+            if (employee.signature) {
+              setSavedSignature(employee.signature); // Save as the saved signature
+              setSignatureImage(employee.signature); // Also set as current for this report
+            }
+            
+            // Refresh timesheet data immediately using the data we just loaded
+            // Pass expenseData directly since React state updates are async
+            await refreshTimesheetData(expenseData);
           }
-          
-          // Refresh timesheet data immediately using the data we just loaded
-          // Pass expenseData directly since React state updates are async
-          await refreshTimesheetData(expenseData);
       } catch (error) {
         debugError('Error loading employee data:', error);
         // Create dynamic fallback data instead of using hardcoded mock data
@@ -1613,13 +1619,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           baseAddress2: employee?.baseAddress2
         };
         
-        setEmployeeData(fallbackData);
-        setReceipts([]); // Start with empty receipts
-        
-        // Wait for state to be set, then refresh timesheet data to load actual hours from database
-        await new Promise(resolve => setTimeout(resolve, 50));
-        // Call refresh without parameters so it uses the current state (which should now be set)
-        await refreshTimesheetData();
+        // Only apply fallback if user hasn't changed month/year meanwhile (stale load guard)
+        if (loadForMonth === currentMonth && loadForYear === currentYear) {
+          setEmployeeData(fallbackData);
+          setReceipts([]); // Start with empty receipts
+          
+          // Wait for state to be set, then refresh timesheet data to load actual hours from database
+          await new Promise(resolve => setTimeout(resolve, 50));
+          // Call refresh without parameters so it uses the current state (which should now be set)
+          await refreshTimesheetData();
+        }
       } finally {
         setLoading(false);
         stopLoading(); // Clear overlay (e.g. "Refreshing data..." / "Loading report..." after month change)

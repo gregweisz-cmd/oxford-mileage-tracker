@@ -316,17 +316,31 @@ app.use(errorHandler);
 debugLog('🚀 Starting server initialization...');
 debugLog(`📊 Database path: ${DB_PATH}`);
 if (process.env.DATABASE_PATH) {
-  debugLog('💾 Persistent disk: database will persist across redeploys');
+  debugLog('💾 Persistent disk: database will persist across redeploys (DATABASE_PATH is set)');
+} else {
+  debugWarn('⚠️ DATABASE_PATH is not set. Database is using default path (ephemeral). Data will NOT persist across redeploys. Set DATABASE_PATH=/data/expense_tracker.db and add a persistent disk on Render (see docs/RENDER_PERSISTENT_DISK_CHECKLIST.md).');
 }
 debugLog(`📁 Uploads directory: ${uploadsDir}`);
-if (uploadsDir.startsWith('/data')) {
+if (process.env.UPLOAD_DIR) {
+  debugLog('💾 Persistent disk: uploads will persist (UPLOAD_DIR is set)');
+} else if (uploadsDir.startsWith('/data')) {
   debugLog('💾 Persistent disk: uploads will persist across redeploys');
+} else {
+  debugWarn('⚠️ UPLOAD_DIR is not set. Uploads use default path (ephemeral). Set UPLOAD_DIR=/data/uploads with a persistent disk on Render.');
 }
 debugLog(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 
 dbService.initDatabase().then(() => {
   debugLog('✅ Database initialization completed');
-  
+  // Log DB file size so redeploy logs show whether we're using existing data or a fresh DB
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const stat = fs.statSync(DB_PATH);
+      debugLog(`📊 Database file size: ${stat.size} bytes ${stat.size < 50000 ? '(small - may be fresh/empty)' : '(has data)'}`);
+    }
+  } catch (e) {
+    debugWarn('⚠️ Could not stat database file:', e.message);
+  }
   // Set local db reference for backward compatibility
   db = dbService.getDb();
   
