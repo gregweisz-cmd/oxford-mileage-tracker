@@ -168,6 +168,17 @@ function generateStaticMapUrl(addressesOrPoints, options = {}) {
   params.append('maptype', maptype);
   params.append('key', GOOGLE_MAPS_API_KEY);
 
+  // With only one point, set explicit center and zoom so the map doesn't default to a wide/water view
+  if (points.length === 1) {
+    const p = points[0];
+    if (p.lat != null && p.lng != null) {
+      params.append('center', `${p.lat},${p.lng}`);
+    } else if (p.address) {
+      params.append('center', p.address);
+    }
+    params.append('zoom', String(options.zoom != null ? options.zoom : 14));
+  }
+
   // Markers: use lat,lng when available (more reliable), else address
   points.forEach((p, index) => {
     const label = (index + 1).toString();
@@ -177,7 +188,7 @@ function generateStaticMapUrl(addressesOrPoints, options = {}) {
     params.append('markers', `color:blue|label:${label}|${loc}`);
   });
 
-  // Path: use lat,lng when available so the route actually draws
+  // Path: use lat,lng when available so the route actually draws (need 2+ points)
   if (points.length > 1) {
     const pathPart = points
       .map(p => (p.lat != null && p.lng != null) ? `${p.lat},${p.lng}` : encodeURIComponent(p.address || ''))
