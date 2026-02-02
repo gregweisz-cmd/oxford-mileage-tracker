@@ -1799,28 +1799,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
 
-  // Handle cell editing
+  // Cost Center tab is read-only; these handlers are kept for save-flush logic but not called from UI
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleCellEdit = (rowIndex: number, field: string, currentValue: any) => {
-    // Don't allow editing description if it's a day off
     if (field === 'description' && employeeData) {
       const entry = employeeData.dailyEntries[rowIndex];
-      const entryDateStr = normalizeDate(entry.date);
-      const dayDescription = dailyDescriptions.find((desc: any) => {
-        const descDateStr = normalizeDate(desc.date);
-        return entryDateStr === descDateStr;
-      });
-      
-      if (dayDescription?.dayOff) {
-        // Day off - don't allow editing
-        return;
-      }
+      const entryDateStr = normalizeDate(entry?.date);
+      const dayDescription = dailyDescriptions.find((desc: any) => normalizeDate(desc.date) === entryDateStr);
+      if (dayDescription?.dayOff) return;
     }
-    
     setEditingCell({ row: rowIndex, field });
     setEditingValue(currentValue.toString());
   };
 
-  // Save cell edit
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleCellSave = async () => {
     if (!editingCell || !employeeData) return;
     
@@ -2157,7 +2149,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  /** Delete all mileage entries for a given date (used from Cost Center tab). Also clear that day's odometer/miles in saved report so merge on reload doesn't restore old values. */
+  /** Delete all mileage entries for a given date (Cost Center tab is read-only; kept for possible future use). */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteDayMileageEntries = async (dateStr: string) => {
     const entriesForDate = rawMileageEntries.filter((e: any) => normalizeDate(e.date) === dateStr);
     if (entriesForDate.length === 0) {

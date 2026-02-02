@@ -18,8 +18,6 @@ import {
   IconButton,
   // Divider, // Currently unused
   Paper,
-  FormControlLabel,
-  Switch,
   InputAdornment
 } from '@mui/material';
 import {
