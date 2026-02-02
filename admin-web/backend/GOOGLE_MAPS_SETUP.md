@@ -1,10 +1,19 @@
-# Google Maps Static API Setup
+# Google Maps API Setup
 
-This document describes how to configure Google Maps Static API for route visualization in expense reports.
+This document describes how to configure Google Maps APIs used by the app and web portal.
+
+## Which APIs Are Used Where
+
+| Feature | API(s) | Purpose |
+|--------|--------|--------|
+| **Calculate miles** (web + app) | Geocoding API, Distance Matrix API | Turn addresses into coordinates and get driving distance |
+| **PDF route maps** (export) | **Maps Static API** | Generate map images for each trip in the report |
+
+They are **separate APIs**. If "Calculate" works, Geocoding and Distance Matrix are enabled. PDF maps will still show "Map unavailable" until **Maps Static API** is enabled in the same project (see below).
 
 ## Overview
 
-The Google Maps feature allows finance team members to view route maps in PDF expense reports. Maps show all addresses an employee visited during their work day, organized either by day or by cost center.
+The Google Maps feature allows finance team members to view route maps in PDF expense reports. Maps show one map per trip, zoomed to that route.
 
 ## Prerequisites
 
@@ -92,13 +101,15 @@ After this, static maps in PDF export and the **Calculate miles** button on the 
 
 ## Troubleshooting
 
-### Maps Not Appearing
+### Maps Not Appearing (PDF reports)
 
-1. Check that `GOOGLE_MAPS_API_KEY` is set in environment variables
-2. Verify the API key is valid and not restricted incorrectly
-3. Check that Maps Static API is enabled in Google Cloud Console
-4. Verify billing is enabled on the Google Cloud project
-5. Check backend logs for error messages
+PDF maps use **Maps Static API**, which is different from the APIs used by the "Calculate miles" button (Geocoding + Distance Matrix). You must enable it separately:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Library**, search for **"Maps Static API"** and click **Enable**.
+2. If your API key is restricted, add "Maps Static API" to the allowed APIs for that key.
+3. Check that `GOOGLE_MAPS_API_KEY` is set in environment variables (e.g. on Render).
+4. Verify billing is enabled on the Google Cloud project (Static Maps requires billing).
+5. Check backend logs for the exact error (e.g. `X-Staticmap-API-Warning` or geocoding errors).
 
 ### API Errors
 

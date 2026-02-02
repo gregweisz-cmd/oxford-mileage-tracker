@@ -2435,7 +2435,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           yPos += 30;
                           doc.setFontSize(10);
                           doc.setFont('helvetica', 'normal');
-                          safeText('Map unavailable. Check API key, billing, and that Static Maps API is enabled (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
+                          safeText('Map unavailable. PDF maps use Maps Static API (different from the Calculate button). Enable "Maps Static API" in Google Cloud and check billing (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
                         }
                       }
                     }
@@ -2481,7 +2481,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       yPos += 30;
                       doc.setFontSize(10);
                       doc.setFont('helvetica', 'normal');
-                      safeText('Map unavailable. Check API key, billing, and that Static Maps API is enabled (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
+                      safeText('Map unavailable. PDF maps use Maps Static API (different from the Calculate button). Enable "Maps Static API" in Google Cloud and check billing (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
                     }
                   } else {
                     debugLog(`⚠️ No map points found for cost center ${costCenter}`);

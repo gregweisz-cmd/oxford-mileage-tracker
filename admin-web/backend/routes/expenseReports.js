@@ -1618,27 +1618,22 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         if (currentStep.approverId) allowedApproverIds.add(currentStep.approverId);
         if (currentStep.delegatedToId) allowedApproverIds.add(currentStep.delegatedToId);
 
-        if (currentStep.role === 'finance' && (!currentStep.approverId || currentStep.approverId === 'finance-team')) {
+        // For finance step: allow any employee with finance role (not just the designated approver)
+        if (currentStep.role === 'finance') {
           const approver = await dbService.getEmployeeById(approverId);
-          // Check both role field and position (for backward compatibility)
           if (approver && (helpers.isFinanceRole(approver) || helpers.isFinancePosition(approver.position))) {
             allowedApproverIds.add(approverId);
-            currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
-          }
-        }
-
-        if (allowedApproverIds.size === 0 && currentStep.role === 'finance') {
-          // If finance step without designated approver, allow provided approver if finance role
-          const approver = await dbService.getEmployeeById(approverId);
-          // Check both role field and position (for backward compatibility)
-          if (approver && (helpers.isFinanceRole(approver) || helpers.isFinancePosition(approver.position))) {
-            allowedApproverIds.add(approverId);
-            currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
+            if (!currentStep.approverName || currentStep.approverName === 'Finance Team') {
+              currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
+            }
           }
         }
 
         if (!allowedApproverIds.has(approverId)) {
-          res.status(403).json({ error: 'Approver is not authorized for this step' });
+          const hint = currentStep.role === 'finance'
+            ? ' Ensure you are logged in as a finance employee (role or position).'
+            : '';
+          res.status(403).json({ error: `Approver is not authorized for this step.${hint}` });
           return;
         }
 
