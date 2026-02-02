@@ -87,6 +87,8 @@ export class DatabaseService {
         entityType = 'timeTracking';
       } else if (operation === 'addDailyDescription' || operation === 'updateDailyDescription') {
         entityType = 'dailyDescription';
+      } else if (operation === 'addDailyOdometerReading') {
+        entityType = 'dailyOdometerReading';
       } else {
         entityType = operation.replace('add', '').replace('update', '').toLowerCase();
       }
@@ -1670,8 +1672,8 @@ export class DatabaseService {
   }
 
   // Daily Odometer Reading methods
-  static async createDailyOdometerReading(reading: Omit<DailyOdometerReading, 'id' | 'createdAt' | 'updatedAt'>): Promise<DailyOdometerReading> {
-    const id = this.generateId();
+  static async createDailyOdometerReading(reading: Omit<DailyOdometerReading, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }, skipSync = false): Promise<DailyOdometerReading> {
+    const id = reading.id || this.generateId();
     const now = new Date().toISOString();
     const database = await getDatabase();
     
@@ -1709,8 +1711,9 @@ export class DatabaseService {
       updatedAt: new Date(now)
     };
 
-    // Sync to API service
-    await this.syncToApi('addDailyOdometerReading', newReading);
+    if (!skipSync) {
+      await this.syncToApi('addDailyOdometerReading', newReading);
+    }
 
     return newReading;
   }

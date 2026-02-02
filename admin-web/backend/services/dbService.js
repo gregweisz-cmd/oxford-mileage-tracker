@@ -251,6 +251,16 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
+      db.run(`CREATE TABLE IF NOT EXISTS daily_odometer_readings (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        date TEXT NOT NULL,
+        odometerReading REAL NOT NULL,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+
       // Create monthly reports table for approval workflow
       db.run(`CREATE TABLE IF NOT EXISTS monthly_reports (
         id TEXT PRIMARY KEY,
@@ -900,7 +910,8 @@ function ensureTablesExist() {
       // Daily descriptions indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_descriptions_employee ON daily_descriptions(employeeId)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_descriptions_employee_date ON daily_descriptions(employeeId, date)`);
-      
+      db.run(`CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_date ON daily_odometer_readings(employeeId, date)`);
+
       // Notifications indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recipientId ON notifications(recipientId)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recipientRole ON notifications(recipientRole)`);

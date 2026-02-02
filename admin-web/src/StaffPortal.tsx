@@ -985,11 +985,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Fetch real data from backend APIs using rate-limited API
           const { apiFetch } = await import('./services/rateLimitedApi');
-          const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, reportResponse, expenseReportResponse] = await Promise.all([
+          const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, dailyOdometerResponse, reportResponse, expenseReportResponse] = await Promise.all([
             apiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/daily-descriptions?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            apiFetch(`/api/daily-odometer-readings?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/monthly-reports?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
             apiFetch(`/api/expense-reports/${effectiveEmployeeId}/${currentMonth}/${currentYear}`).catch(() => ({ ok: false } as Response)) // Load expense report if it exists
           ]);
@@ -998,6 +999,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const receipts = receiptsResponse.ok ? await receiptsResponse.json() : [];
           const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
           const dailyDescriptionsRaw = dailyDescriptionsResponse.ok ? await dailyDescriptionsResponse.json() : [];
+          const dailyOdometerReadings = dailyOdometerResponse.ok ? await dailyOdometerResponse.json() : [];
+          const dailyOdometerMap: Record<string, number> = {};
+          (dailyOdometerReadings || []).forEach((r: any) => {
+            const d = normalizeDate(r.date);
+            if (d) dailyOdometerMap[d] = Number(r.odometerReading) || 0;
+          });
           
           // Set raw mileage entries for the mileage entries tab
           setRawMileageEntries(mileageEntries);
@@ -1198,10 +1205,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             // Calculate total miles for the day
             const totalDayMiles = dayMileageEntries.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0);
             
-            // Get odometer start from first entry's odometerReading (this is the starting odometer for the day)
+            // Get odometer start: prefer daily_odometer_readings for this date, else first entry's odometerReading
             const firstEntry = dayMileageEntries.length > 0 ? dayMileageEntries[0] : null;
             const lastEntry = dayMileageEntries.length > 0 ? dayMileageEntries[dayMileageEntries.length - 1] : null;
-            const odometerStart = firstEntry?.odometerReading || 0;
+            const odometerStart = (dailyOdometerMap[dateStr] != null && dailyOdometerMap[dateStr] > 0)
+              ? dailyOdometerMap[dateStr]
+              : (firstEntry?.odometerReading || 0);
             
             // Calculate odometer end = start + total miles for the day
             const odometerEnd = odometerStart + totalDayMiles;
@@ -2010,6 +2019,28 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           reportData: reportData
         }),
       });
+
+      // Persist starting odometer for the day when user edits odometerStart (so it survives reload and syncs to mobile)
+      if (field === 'odometerStart' && newEntries[row]) {
+        const dayDate = newEntries[row].date;
+        const startVal = newEntries[row].odometerStart ?? 0;
+        try {
+          await fetch(`${API_BASE_URL}/api/daily-odometer-readings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              employeeId: updatedData.employeeId,
+              date: dayDate,
+              odometerReading: startVal,
+              notes: ''
+            }),
+          });
+          const { rateLimitedApi } = await import('./services/rateLimitedApi');
+          rateLimitedApi.clearCacheFor('/api/daily-odometer-readings');
+        } catch (odometerErr) {
+          debugError('Error saving daily odometer reading:', odometerErr);
+        }
+      }
       
       debugVerbose('✅ Changes auto-saved and synced to source tables');
       

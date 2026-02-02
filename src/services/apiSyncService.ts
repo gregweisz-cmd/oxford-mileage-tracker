@@ -236,6 +236,7 @@ export class ApiSyncService {
     receipts?: Receipt[];
     timeTracking?: TimeTracking[];
     dailyDescriptions?: DailyDescription[];
+    dailyOdometerReadings?: DailyOdometerReading[];
   }): Promise<SyncResult> {
     try {
       debugLog('📤 ApiSync: Syncing data to backend...');
@@ -278,7 +279,13 @@ export class ApiSyncService {
       if (data.dailyDescriptions && data.dailyDescriptions.length > 0) {
         const descriptionResult = await this.syncDailyDescriptions(data.dailyDescriptions);
         results.push(descriptionResult);
-        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // Sync daily odometer readings
+      if (data.dailyOdometerReadings && data.dailyOdometerReadings.length > 0) {
+        const odometerResult = await this.syncDailyOdometerReadings(data.dailyOdometerReadings);
+        results.push(odometerResult);
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
@@ -398,10 +405,23 @@ export class ApiSyncService {
         );
         syncData.dailyDescriptions = mappedDailyDescriptions;
       } catch (error) {
-        // Log error but continue sync - daily descriptions are optional
         console.error(`⚠️ ApiSync: Failed to fetch daily descriptions (continuing sync):`, error);
-        debugWarn(`⚠️ ApiSync: Daily descriptions fetch failed, but continuing with other data. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         syncData.dailyDescriptions = [];
+      }
+
+      // Fetch daily odometer readings (starting odometer per day)
+      let mappedDailyOdometer: DailyOdometerReading[] = [];
+      try {
+        const dailyOdometerReadings = await this.fetchDailyOdometerReadings(effectiveEmployeeId);
+        mappedDailyOdometer = this.mapEmployeeIdForLocal(
+          dailyOdometerReadings,
+          employeeId,
+          backendEmployeeId
+        ) as DailyOdometerReading[];
+        syncData.dailyOdometerReadings = mappedDailyOdometer;
+      } catch (error) {
+        debugWarn(`⚠️ ApiSync: Failed to fetch daily odometer readings (continuing):`, error);
+        syncData.dailyOdometerReadings = [];
       }
       
       // Note: Per Diem rules are fetched on-demand in AddReceiptScreen
@@ -422,6 +442,7 @@ export class ApiSyncService {
       await this.syncTimeTrackingToLocal(mappedTimeTracking, effectiveEmployeeId);
       // Always sync daily descriptions (even if empty array) to handle deletions
       await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, effectiveEmployeeId);
+      await this.syncDailyOdometerReadingsToLocal(mappedDailyOdometer, effectiveEmployeeId);
       
       // Per Diem rules sync removed - now loaded on-demand in AddReceiptScreen
       
@@ -430,10 +451,11 @@ export class ApiSyncService {
       
       debugLog('📥 ApiSync: Backend sync completed:', {
         employees: employees.length,
-        mileageEntries: 0, // Not synced from backend (mobile is source of truth)
-        receipts: 0, // Not synced from backend (mobile is source of truth)
+        mileageEntries: 0,
+        receipts: 0,
         timeTracking: mappedTimeTracking.length,
-        dailyDescriptions: mappedDailyDescriptions.length
+        dailyDescriptions: mappedDailyDescriptions.length,
+        dailyOdometerReadings: mappedDailyOdometer.length
       });
       
       return {
@@ -1233,6 +1255,65 @@ export class ApiSyncService {
   }
 
   /**
+   * Sync daily odometer readings to backend
+   */
+  private static async syncDailyOdometerReadings(readings: DailyOdometerReading[]): Promise<SyncResult> {
+    try {
+      const results = [];
+      for (const r of readings) {
+        try {
+          if (results.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+          const backendEmployeeId = await this.resolveBackendEmployeeId(r.employeeId);
+          const employeeIdToSend = backendEmployeeId || r.employeeId;
+          let dateToSend: string;
+          if (r.date instanceof Date) {
+            const year = r.date.getFullYear();
+            const month = String(r.date.getMonth() + 1).padStart(2, '0');
+            const day = String(r.date.getDate()).padStart(2, '0');
+            dateToSend = `${year}-${month}-${day}`;
+          } else {
+            const dateStr = (r.date as unknown) as string;
+            dateToSend = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+          }
+          const response = await fetch(`${this.config.baseUrl}/daily-odometer-readings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: r.id,
+              employeeId: employeeIdToSend,
+              date: dateToSend,
+              odometerReading: r.odometerReading,
+              notes: r.notes || ''
+            })
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || response.statusText);
+          }
+          results.push({ success: true, id: r.id });
+        } catch (error) {
+          results.push({ success: false, id: r.id, error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+      }
+      const allSuccessful = results.every((x: any) => x.success);
+      return {
+        success: allSuccessful,
+        data: results,
+        error: allSuccessful ? undefined : 'One or more daily odometer reading syncs failed',
+        timestamp: new Date()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
    * Sync time tracking to backend
    */
   private static async syncTimeTracking(entries: TimeTracking[]): Promise<SyncResult> {
@@ -1583,6 +1664,64 @@ export class ApiSyncService {
       createdAt: new Date(desc.createdAt),
       updatedAt: new Date(desc.updatedAt)
     }));
+  }
+
+  /**
+   * Fetch daily odometer readings from backend
+   */
+  private static async fetchDailyOdometerReadings(employeeId?: string): Promise<DailyOdometerReading[]> {
+    const url = employeeId
+      ? `${this.config.baseUrl}/daily-odometer-readings?employeeId=${encodeURIComponent(employeeId)}`
+      : `${this.config.baseUrl}/daily-odometer-readings`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch daily odometer readings: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return (data || []).map((r: any) => ({
+      id: r.id,
+      employeeId: r.employeeId,
+      date: this.parseDateSafe(r.date),
+      odometerReading: Number(r.odometerReading) || 0,
+      notes: r.notes || undefined,
+      createdAt: r.createdAt ? new Date(r.createdAt) : new Date(),
+      updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date()
+    }));
+  }
+
+  /**
+   * Sync daily odometer readings from backend to local database
+   */
+  private static async syncDailyOdometerReadingsToLocal(
+    readings: DailyOdometerReading[],
+    employeeId?: string | null
+  ): Promise<void> {
+    try {
+      debugLog(`📥 ApiSync: Syncing ${readings.length} daily odometer readings to local...`);
+      for (const r of readings) {
+        try {
+          const dateObj = r.date instanceof Date ? r.date : new Date(r.date);
+          const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+          const existing = await DatabaseService.getDailyOdometerReading(r.employeeId, dateObj);
+          if (existing) {
+            await DatabaseService.updateDailyOdometerReadingByEmployeeAndDate(r.employeeId, dateStr, {
+              odometerReading: r.odometerReading,
+              notes: r.notes
+            });
+          } else {
+            await DatabaseService.createDailyOdometerReading(
+              { id: r.id, employeeId: r.employeeId, date: dateObj, odometerReading: r.odometerReading, notes: r.notes },
+              true
+            );
+          }
+        } catch (err) {
+          debugWarn(`⚠️ ApiSync: Failed to sync daily odometer reading ${r.id}:`, err);
+        }
+      }
+      debugLog(`✅ ApiSync: Synced ${readings.length} daily odometer readings to local`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing daily odometer readings to local:', error);
+    }
   }
 
   /**

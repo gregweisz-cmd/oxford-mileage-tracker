@@ -165,7 +165,7 @@ router.post('/api/mileage-entries', (req, res) => {
   const normalizedEndLocationAddress = endLocationAddress || (endLocationName ? endLocationName : endLocation) || '';
 
   // Check if entry with this ID already exists
-  db.get('SELECT id FROM mileage_entries WHERE id = ?', [entryId], (checkErr, existingRow) => {
+  db.get('SELECT id, sortOrder FROM mileage_entries WHERE id = ?', [entryId], (checkErr, existingRow) => {
     if (checkErr) {
       debugError('❌ Error checking for existing mileage entry:', checkErr);
       return res.status(500).json({ error: checkErr.message });
@@ -174,50 +174,70 @@ router.post('/api/mileage-entries', (req, res) => {
     const isUpdate = !!existingRow;
     const action = isUpdate ? 'updated' : 'created';
 
-    // Use INSERT OR REPLACE to handle both create and update cases
-    // This ensures entries with the same ID are updated, not duplicated
-    db.run(
-      'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
-      [
-        entryId,
-        employeeId,
-        oxfordHouseId || '',
-        normalizedDate,
-        finalOdometerReading,
-        startLocation || '',
-        endLocation || '',
-        normalizedStartLocationName,
-        normalizedStartLocationAddress,
-        startLocationLat || 0,
-        startLocationLng || 0,
-        normalizedEndLocationName,
-        normalizedEndLocationAddress,
-        endLocationLat || 0,
-        endLocationLng || 0,
-        purpose,
-        miles,
-        notes || '',
-        hoursWorked || 0,
-        isGpsTracked ? 1 : 0,
-        costCenter || '',
-        entryId,
-        now,
-        now
-      ],
-      function(err) {
-        if (err) {
-          debugError('Database error:', err.message);
-          res.status(500).json({ error: err.message });
-          return;
+    const runInsert = (sortOrderVal) => {
+      db.run(
+        'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
+        [
+          entryId,
+          employeeId,
+          oxfordHouseId || '',
+          normalizedDate,
+          finalOdometerReading,
+          startLocation || '',
+          endLocation || '',
+          normalizedStartLocationName,
+          normalizedStartLocationAddress,
+          startLocationLat || 0,
+          startLocationLng || 0,
+          normalizedEndLocationName,
+          normalizedEndLocationAddress,
+          endLocationLat || 0,
+          endLocationLng || 0,
+          purpose,
+          miles,
+          notes || '',
+          hoursWorked || 0,
+          isGpsTracked ? 1 : 0,
+          costCenter || '',
+          sortOrderVal,
+          entryId,
+          now,
+          now
+        ],
+        function(err) {
+          if (err) {
+            debugError('Database error:', err.message);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          debugLog(`✅ Mileage entry ${action} successfully:`, entryId);
+
+          websocketService.broadcastDataChange('mileage_entry', isUpdate ? 'update' : 'create', { id: entryId, employeeId, date: normalizedDate }, employeeId);
+
+          res.json({ id: entryId, message: `Mileage entry ${action} successfully`, isUpdate });
         }
-        debugLog(`✅ Mileage entry ${action} successfully:`, entryId);
-        
-        // Broadcast WebSocket update
-        websocketService.broadcastDataChange('mileage_entry', isUpdate ? 'update' : 'create', { id: entryId, employeeId, date: normalizedDate }, employeeId);
-        
-        res.json({ id: entryId, message: `Mileage entry ${action} successfully`, isUpdate });
-      }
-    );
+      );
+    };
+
+    if (isUpdate) {
+      // Preserve existing sortOrder when updating
+      const existingSortOrder = existingRow.sortOrder != null ? existingRow.sortOrder : 0;
+      runInsert(existingSortOrder);
+    } else {
+      // New entry: put at bottom (max sortOrder + 1 for this employee on this date)
+      db.get(
+        'SELECT COALESCE(MAX(sortOrder), -1) + 1 as nextSortOrder FROM mileage_entries WHERE employeeId = ? AND date = ?',
+        [employeeId, normalizedDate],
+        (maxErr, maxRow) => {
+          if (maxErr) {
+            debugError('❌ Error getting next sortOrder:', maxErr);
+            return res.status(500).json({ error: maxErr.message });
+          }
+          const nextSortOrder = maxRow && maxRow.nextSortOrder != null ? maxRow.nextSortOrder : 0;
+          runInsert(nextSortOrder);
+        }
+      );
+    }
   });
 });
 
@@ -1356,6 +1376,149 @@ router.delete('/api/daily-descriptions/:id', (req, res) => {
       return;
     }
     res.json({ message: 'Daily description deleted successfully' });
+  });
+});
+
+// ===== DAILY ODOMETER READINGS ROUTES =====
+
+/**
+ * Get daily odometer readings (by employee + month/year or single date)
+ */
+router.get('/api/daily-odometer-readings', (req, res) => {
+  const { employeeId, month, year, date } = req.query;
+  const db = dbService.getDb();
+  let query = `SELECT * FROM daily_odometer_readings WHERE 1=1`;
+  const params = [];
+
+  if (employeeId) {
+    query += ' AND employeeId = ?';
+    params.push(employeeId);
+  }
+  if (date) {
+    const normalized = dateHelpers.normalizeDateString(date);
+    if (normalized) {
+      query += ' AND date = ?';
+      params.push(normalized);
+    }
+  } else if (month && year) {
+    query += ' AND strftime("%m", date) = ? AND strftime("%Y", date) = ?';
+    params.push(month.toString().padStart(2, '0'), year.toString());
+  }
+
+  query += ' ORDER BY date DESC';
+
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+/**
+ * Create or update daily odometer reading (upsert by employeeId + date)
+ */
+router.post('/api/daily-odometer-readings', (req, res) => {
+  const { id, employeeId, date, odometerReading, notes } = req.body;
+  const db = dbService.getDb();
+
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (!normalizedDate) {
+    return res.status(400).json({ error: 'Invalid date format.' });
+  }
+  if (employeeId == null || employeeId === '') {
+    return res.status(400).json({ error: 'employeeId is required.' });
+  }
+  const reading = parseFloat(odometerReading);
+  if (isNaN(reading) || reading < 0) {
+    return res.status(400).json({ error: 'Valid odometerReading is required.' });
+  }
+
+  const now = new Date().toISOString();
+
+  db.get('SELECT id FROM daily_odometer_readings WHERE employeeId = ? AND date = ?', [employeeId, normalizedDate], (err, existing) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (existing) {
+      db.run(
+        'UPDATE daily_odometer_readings SET odometerReading = ?, notes = ?, updatedAt = ? WHERE id = ?',
+        [reading, notes || '', now, existing.id],
+        function(upErr) {
+          if (upErr) return res.status(500).json({ error: upErr.message });
+          debugLog(`✅ Daily odometer reading updated: ${existing.id}`);
+          res.json({ id: existing.id, message: 'Daily odometer reading saved' });
+        }
+      );
+    } else {
+      const readingId = id || `odor-${employeeId}-${normalizedDate}`;
+      db.run(
+        'INSERT INTO daily_odometer_readings (id, employeeId, date, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [readingId, employeeId, normalizedDate, reading, notes || '', now, now],
+        function(insErr) {
+          if (insErr) return res.status(500).json({ error: insErr.message });
+          debugLog(`✅ Daily odometer reading created: ${readingId}`);
+          res.json({ id: readingId, message: 'Daily odometer reading saved' });
+        }
+      );
+    }
+  });
+});
+
+/**
+ * Update daily odometer reading by id
+ */
+router.put('/api/daily-odometer-readings/:id', (req, res) => {
+  const { id } = req.params;
+  const { odometerReading, notes } = req.body;
+  const db = dbService.getDb();
+
+  const reading = parseFloat(odometerReading);
+  if (odometerReading != null && (isNaN(reading) || reading < 0)) {
+    return res.status(400).json({ error: 'Valid odometerReading is required.' });
+  }
+
+  const now = new Date().toISOString();
+  const updates = [];
+  const params = [];
+  if (odometerReading != null) {
+    updates.push('odometerReading = ?');
+    params.push(reading);
+  }
+  if (notes !== undefined) {
+    updates.push('notes = ?');
+    params.push(notes);
+  }
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No fields to update.' });
+  }
+  updates.push('updatedAt = ?');
+  params.push(now, id);
+
+  db.run(`UPDATE daily_odometer_readings SET ${updates.join(', ')} WHERE id = ?`, params, function(err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Daily odometer reading not found.' });
+    }
+    res.json({ message: 'Daily odometer reading updated.' });
+  });
+});
+
+/**
+ * Delete daily odometer reading
+ */
+router.delete('/api/daily-odometer-readings/:id', (req, res) => {
+  const { id } = req.params;
+  const db = dbService.getDb();
+  db.run('DELETE FROM daily_odometer_readings WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Daily odometer reading deleted.' });
   });
 });
 

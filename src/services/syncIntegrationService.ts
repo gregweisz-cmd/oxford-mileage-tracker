@@ -7,7 +7,7 @@ import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 export interface SyncQueueItem {
   id: string;
   operation: 'create' | 'update' | 'delete';
-  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription';
+  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading';
   data: any;
   timestamp: Date;
   retryCount: number;
@@ -109,7 +109,7 @@ export class SyncIntegrationService {
    */
   static queueSyncOperation(
     operation: 'create' | 'update' | 'delete',
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
     data: any
   ): void {
     // Validate data before queuing
@@ -271,7 +271,7 @@ export class SyncIntegrationService {
    * Process a group of operations for a specific entity type
    */
   private static async processEntityGroup(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
     operations: SyncQueueItem[]
   ): Promise<void> {
     try {
@@ -317,15 +317,17 @@ export class SyncIntegrationService {
    * Process create/update operations
    */
   private static async processCreateUpdateOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
     operations: SyncQueueItem[]
   ): Promise<void> {
     const entities = operations.map(op => op.data);
     
     const syncData: any = {};
-    syncData[entityType === 'mileageEntry' ? 'mileageEntries' : 
-             entityType === 'timeTracking' ? 'timeTracking' : 
-             `${entityType}s`] = entities;
+    const key = entityType === 'mileageEntry' ? 'mileageEntries' :
+                entityType === 'timeTracking' ? 'timeTracking' :
+                entityType === 'dailyOdometerReading' ? 'dailyOdometerReadings' :
+                `${entityType}s`;
+    syncData[key] = entities;
     
     debugLog(`🔄 SyncIntegration: Processing ${operations.length} ${entityType} operations:`, {
       entityType,
@@ -348,7 +350,7 @@ export class SyncIntegrationService {
    * Process delete operations
    */
   private static async processDeleteOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
     operations: SyncQueueItem[]
   ): Promise<void> {
     // For delete operations, we need to make individual API calls
@@ -389,6 +391,8 @@ export class SyncIntegrationService {
         return `${baseUrl}/time-tracking/${id}`;
       case 'dailyDescription':
         return `${baseUrl}/daily-descriptions/${id}`;
+      case 'dailyOdometerReading':
+        return `${baseUrl}/daily-odometer-readings/${id}`;
       default:
         throw new Error(`Unknown entity type: ${entityType}`);
     }
@@ -507,7 +511,7 @@ export class SyncIntegrationService {
   /**
    * Get IDs of items pending deletion for a specific entity type
    */
-  static getPendingDeletionIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription'): Set<string> {
+  static getPendingDeletionIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading'): Set<string> {
     const pendingIds = new Set<string>();
     this.syncQueue.forEach(item => {
       if (item.operation === 'delete' && item.entityType === entityType && item.data?.id) {

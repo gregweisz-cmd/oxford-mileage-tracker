@@ -2388,10 +2388,9 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 if (userIsFinance && mapsEnabled && apiConfigured && mapViewMode) {
                   debugLog(`🗺️ Generating Google Maps for cost center: ${costCenter}, mode: ${mapViewMode}`);
                   
-                  let addresses = [];
+                  let mapPoints = [];
                   if (mapViewMode === 'costCenter') {
-                    // Collect all addresses for this cost center across all days
-                    addresses = googleMapsService.collectAddressesForCostCenter(mileageEntries);
+                    mapPoints = googleMapsService.collectPointsForCostCenter(mileageEntries);
                   } else if (mapViewMode === 'day') {
                     // Group by day and generate one map per day
                     const entriesByDate = {};
@@ -2408,11 +2407,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     // Generate maps for each day
                     const sortedDates = Object.keys(entriesByDate).sort();
                     for (const date of sortedDates) {
-                      const dayAddresses = googleMapsService.collectAddressesForDay(entriesByDate[date]);
-                      debugLog(`🗺️ Day ${date}: Found ${dayAddresses.length} addresses`);
-                      if (dayAddresses.length > 0) {
+                      const dayPoints = googleMapsService.collectPointsForDay(entriesByDate[date]);
+                      debugLog(`🗺️ Day ${date}: Found ${dayPoints.length} map points`);
+                      if (dayPoints.length > 0) {
                         try {
-                          const mapImage = await googleMapsService.downloadStaticMapImage(dayAddresses, { size: '600x400' });
+                          const mapImage = await googleMapsService.downloadStaticMapImage(dayPoints, { size: '600x400' });
                           const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
                           
                           // Add new page for map
@@ -2442,12 +2441,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     return;
                   }
                   
-                  // For cost center mode, collect all addresses
-                  debugLog(`🗺️ Cost center mode: Collected ${addresses.length} addresses`);
-                  if (addresses.length > 0) {
+                  debugLog(`🗺️ Cost center mode: Collected ${mapPoints.length} map points`);
+                  if (mapPoints.length > 0) {
                     try {
-                      debugLog(`🗺️ Downloading map image for ${addresses.length} addresses...`);
-                      const mapImage = await googleMapsService.downloadStaticMapImage(addresses, { size: '600x400' });
+                      debugLog(`🗺️ Downloading map image for ${mapPoints.length} points...`);
+                      const mapImage = await googleMapsService.downloadStaticMapImage(mapPoints, { size: '600x400' });
                       debugLog(`🗺️ Map image downloaded: ${mapImage.length} bytes`);
                       const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
                       debugLog(`🗺️ Adding map image to PDF...`);
@@ -2473,7 +2471,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       debugError(`❌ Map error details:`, mapError.message, mapError.stack);
                     }
                   } else {
-                    debugLog(`⚠️ No addresses found for cost center ${costCenter}`);
+                    debugLog(`⚠️ No map points found for cost center ${costCenter}`);
                   }
                 } else {
                   debugLog(`⚠️ Map generation conditions not met for ${costCenter}`);
