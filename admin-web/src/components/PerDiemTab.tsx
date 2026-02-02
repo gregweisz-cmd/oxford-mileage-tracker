@@ -97,11 +97,12 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           const d = new Date(r.date);
           return d.getUTCDate() === day && d.getUTCMonth() === currentMonth - 1 && d.getUTCFullYear() === currentYear;
         });
+        const dailyMax = perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT;
         if (existing) {
           entriesMap.set(dateKey, {
             date,
             dateKey,
-            amount: existing.amount ?? dailyMaxAmount,
+            amount: existing.amount ?? dailyMax,
             isEligible: true,
             receiptId: existing.id,
           });
@@ -109,7 +110,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           entriesMap.set(dateKey, {
             date,
             dateKey,
-            amount: perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT,
+            amount: dailyMax,
             isEligible: false,
           });
         }
@@ -221,8 +222,6 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
     setCurrentMonth(now.getMonth() + 1);
     setCurrentYear(now.getFullYear());
   };
-
-  const isViewingCurrentMonth = currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear();
 
   if (loading) {
     return (
