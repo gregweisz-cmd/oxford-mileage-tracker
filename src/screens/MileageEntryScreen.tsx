@@ -585,6 +585,17 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       return;
     }
 
+    // In dev: log the Google Maps API key source so you can copy it to Render (GOOGLE_MAPS_API_KEY)
+    if (__DEV__) {
+      const { source, key } = DistanceService.getGoogleMapsApiKeySource();
+      console.log('[Calculate] Google Maps API key source:', source);
+      if (key) {
+        console.log('[Calculate] API key (copy this to Render env GOOGLE_MAPS_API_KEY):', key);
+      } else {
+        console.log('[Calculate] No API key set (app.json expo.extra.googleMapsApiKey is placeholder or missing).');
+      }
+    }
+
     setCalculatingDistance(true);
     try {
       // Get actual addresses - use location details if available, otherwise use the location string

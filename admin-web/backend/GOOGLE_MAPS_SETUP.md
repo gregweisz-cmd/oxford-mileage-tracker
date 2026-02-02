@@ -30,19 +30,41 @@ The Google Maps feature allows finance team members to view route maps in PDF ex
 1. Navigate to **APIs & Services** > **Credentials**
 2. Click **Create Credentials** > **API Key**
 3. Copy the generated API key
-4. (Recommended) Click **Restrict Key** to:
-   - Restrict to "Maps Static API" only
-   - Add HTTP referrer restrictions for your domain
+4. (Recommended) Click **Restrict Key** to limit usage:
+   - **Application restrictions**: None (backend server) or IP if you know Render’s IPs
+   - **API restrictions**: Restrict key → choose "Maps Static API" (for PDF maps). If you use **Calculate miles** on the web portal, also allow "Geocoding API" and "Distance Matrix API"
 
-### 4. Configure Environment Variable
+### 4. Enable APIs for Web Portal "Calculate miles" (optional)
 
-Add the following to your `.env` file or environment configuration:
+The web portal **Calculate miles** button uses the same key and needs:
+
+1. **Geocoding API** – **APIs & Services** > **Library** > search "Geocoding API" > **Enable**
+2. **Distance Matrix API** – **APIs & Services** > **Library** > search "Distance Matrix API" > **Enable**
+
+If you only use static maps in PDF reports, you can skip this. If "Calculate miles" is used, enable both.
+
+### 5. Configure Environment Variable
+
+**Local / .env**
+
+Add the following to your `.env` file:
 
 ```bash
 GOOGLE_MAPS_API_KEY=your_api_key_here
 ```
 
 **Important**: Never commit the API key to version control. Add `.env` to `.gitignore` if not already present.
+
+**Web portal backend on Render**
+
+1. Open [Render Dashboard](https://dashboard.render.com/) and select your **backend** service (e.g. `oxford-mileage-backend`).
+2. Go to **Environment** (left sidebar).
+3. Click **Add Environment Variable**.
+4. **Key**: `GOOGLE_MAPS_API_KEY`
+5. **Value**: paste the same API key you use for the app (from Google Cloud Console > Credentials).
+6. Save. Render will redeploy so the new variable is picked up.
+
+After this, static maps in PDF export and the **Calculate miles** button on the web portal will use the key. The key is only used on the backend (Render); it is never sent to the browser.
 
 ## Usage
 

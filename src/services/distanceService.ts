@@ -181,6 +181,19 @@ export class DistanceService {
   /**
    * Get information about the current distance calculation setup
    */
+  /**
+   * Where the app gets the Google Maps API key when Calculate is pressed.
+   * Key is read once at load from: app.json → expo.extra.googleMapsApiKey (via Constants.expoConfig.extra).
+   */
+  static getGoogleMapsApiKeySource(): { source: string; key: string | undefined } {
+    const key = Constants.expoConfig?.extra?.googleMapsApiKey;
+    const isPlaceholder = !key || key === 'YOUR_GOOGLE_MAPS_API_KEY_HERE';
+    return {
+      source: 'app.json → expo.extra.googleMapsApiKey (built into app at build time)',
+      key: isPlaceholder ? undefined : key,
+    };
+  }
+
   static getDistanceCalculationInfo(): {
     hasGoogleMapsApi: boolean;
     method: 'google-maps' | 'free-geocoding' | 'estimation';
