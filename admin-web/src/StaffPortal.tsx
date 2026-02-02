@@ -532,10 +532,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Function to refresh timesheet data after saving - NEW APPROACH: Daily Hours Distribution
   const refreshTimesheetData = useCallback(async (dataToUse?: any) => {
-    // Reduced logging for performance - only log errors
-    // Prefer current employeeData from state, but use dataToUse if state is not available
-    // This is needed during initial load when state hasn't been set yet
-    const data = employeeData || dataToUse;
+    // Prefer explicitly passed data (e.g. from loadEmployeeData) so we don't use stale state.
+    // When user changes month, loadEmployeeData sets state then calls refreshTimesheetData(expenseData);
+    // React state hasn't updated yet, so employeeData can still be the previous month—we must use dataToUse.
+    const data = dataToUse ?? employeeData;
     if (!data) {
       // Silently skip if no data available (will retry when data is loaded)
       return;
@@ -684,9 +684,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         });
       }
       
+      // Only use daily entries that belong to the selected month (avoid stale/wrong-month data)
+      const entryInCurrentMonth = (e: any) => {
+        const norm = normalizeDate(e.date);
+        if (!norm) return false;
+        const [y, m, d] = norm.split('-').map(Number);
+        return y === currentYear && m === currentMonth && d >= 1 && d <= daysInMonth;
+      };
+      const currentMonthEntries = (data.dailyEntries || []).filter(entryInCurrentMonth);
+      if (currentMonthEntries.length < (data.dailyEntries || []).length) {
+        debugLog(`🔍 Filtered daily entries to current month: ${currentMonthEntries.length} of ${(data.dailyEntries || []).length}`);
+      }
+
       // Ensure we have entries for all days - create missing ones if needed
       const allDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-      const existingDays = new Set(data.dailyEntries.map((e: any) => e.day));
+      const existingDays = new Set(currentMonthEntries.map((e: any) => e.day));
       const missingDays = allDays.filter(day => !existingDays.has(day));
       
       if (missingDays.length > 0) {
@@ -711,8 +723,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         };
       });
       
-      // Combine existing entries with missing day entries
-      const allDailyEntries = [...data.dailyEntries, ...entriesForMissingDays].sort((a: any, b: any) => a.day - b.day);
+      // Combine existing entries (current month only) with missing day entries
+      const allDailyEntries = [...currentMonthEntries, ...entriesForMissingDays].sort((a: any, b: any) => a.day - b.day);
       
       // Reduced logging for performance
       // debugLog(`🔍 Total daily entries to process: ${allDailyEntries.length} (${data.dailyEntries.length} existing + ${entriesForMissingDays.length} new)`);
