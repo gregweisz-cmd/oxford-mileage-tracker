@@ -1,8 +1,7 @@
 /**
  * API Configuration
  * 
- * Currently set to use LOCAL backend for development.
- * Set USE_PRODUCTION_FOR_TESTING to true to use Render.com backend.
+ * Set USE_PRODUCTION_FOR_TESTING to true to use Render.com backend; false for local backend.
  */
 
 // Production backend URL (Render.com deployment)
