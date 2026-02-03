@@ -389,6 +389,8 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
     date: entry.date instanceof Date ? entry.date.toISOString().split('T')[0] : entry.date,
     startLocation: entry.startLocation,
     endLocation: entry.endLocation,
+    startLocationName: entry.startLocationName || '',
+    endLocationName: entry.endLocationName || '',
     purpose: entry.purpose,
     miles: entry.miles,
     startingOdometer: entry.odometerReading || 0,

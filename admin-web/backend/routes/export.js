@@ -2388,11 +2388,12 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 if (userIsFinance && mapsEnabled && apiConfigured && mapViewMode) {
                   debugLog(`🗺️ Generating Google Maps for cost center: ${costCenter}, mode: ${mapViewMode}`);
                   
+                  // mapViewMode: 'day' = one map per trip (one page per route); 'costCenter' = one map for all routes
                   let mapPoints = [];
                   if (mapViewMode === 'costCenter') {
                     mapPoints = googleMapsService.collectPointsForCostCenter(mileageEntries);
                   } else if (mapViewMode === 'day') {
-                    // Group by day and generate one map per day
+                    // Day mode: one map per trip (one page per mileage entry), zoomed to that route
                     const entriesByDate = {};
                     mileageEntries.forEach(entry => {
                       const dateKey = entry.date.split('T')[0] || entry.date.split(' ')[0];
@@ -2404,7 +2405,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     
                     debugLog(`🗺️ Grouped ${mileageEntries.length} entries into ${Object.keys(entriesByDate).length} days`);
                     
-                    // One map per route: each trip gets its own page, zoomed to show just that route
+                    // Generate one map per route; API auto-fits zoom when we omit center/zoom
                     const sortedDates = Object.keys(entriesByDate).sort();
                     for (const date of sortedDates) {
                       const dayRoutes = googleMapsService.collectRoutesForDay(entriesByDate[date]);
@@ -2427,6 +2428,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           yPos += imageHeight + 20;
                         } catch (mapError) {
                           debugError(`❌ Error generating map for date ${date} trip ${tripNum}:`, mapError);
+                          // Fallback: show page with message instead of embedding error image
                           doc.addPage();
                           yPos = margin + 20;
                           doc.setFontSize(14);

@@ -30,9 +30,6 @@ import {
   Tab,
   CircularProgress,
   Alert,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -101,10 +98,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [revisionComments, setRevisionComments] = useState('');
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
-  const [mapViewDialogOpen, setMapViewDialogOpen] = useState(false);
-  const [selectedReportForExport, setSelectedReportForExport] = useState<ExpenseReport | null>(null);
-  const [mapViewMode, setMapViewMode] = useState<'day' | 'costCenter' | 'none'>('none');
-  
   // Filter states
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth() + 1);
@@ -1336,20 +1329,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                         size="small"
                         color="success"
                         onClick={() => {
-                          debugLog('🗺️ Export button clicked for report:', report.id);
-                          debugLog('🗺️ Report cost centers:', report.costCenters);
-                          debugLog('🗺️ Report reportData.costCenters:', report.reportData?.costCenters);
                           const mapsEnabled = hasMapsEnabled(report);
-                          debugLog('🗺️ Maps enabled result:', mapsEnabled);
-                          if (mapsEnabled) {
-                            setSelectedReportForExport(report);
-                            setMapViewMode('none');
-                            setMapViewDialogOpen(true);
-                            debugLog('🗺️ Opening map view dialog');
-                          } else {
-                            debugLog('🗺️ Maps not enabled, exporting directly');
-                            handleExportToExcel(report);
-                          }
+                          handleExportToExcel(report, mapsEnabled ? 'day' : undefined);
                         }}
                         title="Export to PDF"
                       >
@@ -1678,40 +1659,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         title="Keyboard Shortcuts - Finance Portal"
       />
 
-      {/* Map View Mode Selection Dialog */}
-      <Dialog open={mapViewDialogOpen} onClose={() => setMapViewDialogOpen(false)}>
-        <DialogTitle>Select Map View Mode</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            This report contains cost centers with Google Maps enabled. Choose how you want to view the routes:
-          </Typography>
-          <FormControl component="fieldset">
-            <RadioGroup
-              value={mapViewMode}
-              onChange={(e) => setMapViewMode(e.target.value as 'day' | 'costCenter' | 'none')}
-            >
-              <FormControlLabel value="day" control={<Radio />} label="By Day (one map per day showing all routes)" />
-              <FormControlLabel value="costCenter" control={<Radio />} label="By Cost Center (one map per cost center showing all routes)" />
-              <FormControlLabel value="none" control={<Radio />} label="No Maps" />
-            </RadioGroup>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMapViewDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              if (selectedReportForExport) {
-                handleExportToExcel(selectedReportForExport, mapViewMode);
-                setMapViewDialogOpen(false);
-                setSelectedReportForExport(null);
-              }
-            }}
-          >
-            Export
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Container>
   );
 };

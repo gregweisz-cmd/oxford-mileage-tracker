@@ -1,6 +1,10 @@
 /**
  * Google Maps Static API Service
- * Handles generation of Google Maps static images for route visualization
+ *
+ * Generates static map images for PDF expense reports (one map per trip, zoomed to route).
+ * Uses Maps Static API only — separate from Geocoding/Distance Matrix used by the
+ * "Calculate miles" button. All use the same GOOGLE_MAPS_API_KEY; Static API must be
+ * enabled in Google Cloud for PDF maps to work.
  */
 
 const axios = require('axios');
@@ -17,8 +21,8 @@ function isConfigured() {
 
 /**
  * Detect if buffer is Google's static map error image (100x100 PNG).
- * Google returns 200 OK with a small error tile when the request fails.
- * We request 600x400, so 100x100 or very small dimensions = error image.
+ * Google returns 200 OK with a small error tile when the request fails (e.g. API key/billing).
+ * We request 600x400; 100x100 or very small dimensions = error image — do not embed in PDF.
  */
 function isStaticMapErrorImage(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 24) return false;
@@ -26,6 +30,7 @@ function isStaticMapErrorImage(buffer) {
   for (let i = 0; i < 8; i++) {
     if (buffer[i] !== sig[i]) return false;
   }
+  // PNG IHDR: width at offset 16, height at 20 (4 bytes each, big-endian)
   const width = buffer.readUInt32BE(16);
   const height = buffer.readUInt32BE(20);
   return width <= 200 && height <= 200;
@@ -242,7 +247,7 @@ function generateStaticMapUrl(addressesOrPoints, options = {}) {
   params.append('maptype', maptype);
   params.append('key', GOOGLE_MAPS_API_KEY);
 
-  // With only one point, set explicit center and zoom so the map doesn't default to a wide/water view
+  // Single point: set center and zoom explicitly so we don't get a wide ocean view
   if (points.length === 1) {
     const p = points[0];
     if (p.lat != null && p.lng != null) {
@@ -312,6 +317,7 @@ function generateStaticMapUrlFromRoutes(routes, options = {}) {
   params.append('maptype', maptype);
   params.append('key', GOOGLE_MAPS_API_KEY);
 
+  // Single point: center and zoom; otherwise API auto-fits to path/markers
   if (allPoints.length === 1) {
     const p = allPoints[0];
     if (p.lat != null && p.lng != null) {
@@ -365,6 +371,7 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
       responseType: 'arraybuffer',
       timeout: 10000
     });
+    // Google can return 200 with X-Staticmap-API-Warning (e.g. geocoding failed) — do not embed
     const warning = response.headers && response.headers['x-staticmap-api-warning'];
     if (warning) {
       debugError('❌ Google Maps API warning (do not embed):', warning);
@@ -375,6 +382,7 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
       debugError('❌ Google Maps returned very small image (likely error image)');
       throw new Error('Map image failed (g.co/staticmaperror). Check API key and that Static Maps API is enabled.');
     }
+    // Error tile is 100x100 PNG; we request 600x400 — reject so PDF shows fallback text
     if (isStaticMapErrorImage(buffer)) {
       debugError('❌ Google Maps returned 100x100 error tile (staticmaperror)');
       throw new Error('Map image failed (g.co/staticmaperror). Check API key, billing, and that Static Maps API is enabled.');
@@ -442,7 +450,7 @@ async function downloadStaticMapImage(addressesOrPoints, options = {}) {
 }
 
 /**
- * Convert image buffer to base64 data URL for PDF embedding
+ * Convert image buffer to base64 data URL for PDF embedding.
  * @param {Buffer} imageBuffer - Image buffer
  * @param {string} mimeType - MIME type (default: image/png)
  * @returns {string} Base64 data URL

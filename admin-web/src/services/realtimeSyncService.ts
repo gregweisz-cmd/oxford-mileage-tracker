@@ -129,7 +129,7 @@ export class RealtimeSyncService {
                   window.location.hostname === '127.0.0.1';
     
     if (isDev) {
-      return 'ws://localhost:3002/ws';
+      return 'ws://localhost:3003/ws';
     } else {
       // Production WebSocket URL (Render.com)
       const baseUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';

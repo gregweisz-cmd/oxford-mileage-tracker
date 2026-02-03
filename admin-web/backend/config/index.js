@@ -11,7 +11,7 @@ require('dotenv').config();
  * Server Configuration
  */
 const SERVER_CONFIG = {
-  port: process.env.PORT || 3002,
+  port: process.env.PORT || 3003,
   host: process.env.HOST || '0.0.0.0', // Listen on all interfaces for mobile access
   timeout: 60000, // 60 seconds for large file uploads
   keepAliveTimeout: 60000,

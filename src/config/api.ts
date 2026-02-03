@@ -12,13 +12,11 @@ const PRODUCTION_API_URL = 'https://oxford-mileage-backend.onrender.com/api';
 // Use localhost for simulator/emulator/web, or your computer's local IP for physical device
 // To find your IP: Windows: ipconfig | findstr IPv4, Mac/Linux: ifconfig | grep inet
 // For physical device testing, update the IP address below to your computer's local IP
-const LOCAL_API_URL = 'http://localhost:3002/api';  // For simulator/emulator/web
-// const LOCAL_API_URL = 'http://192.168.86.101:3002/api';  // Uncomment and update IP for physical device
+const LOCAL_API_URL = 'http://localhost:3003/api';  // For simulator/emulator/web
+// const LOCAL_API_URL = 'http://192.168.86.101:3003/api';  // Uncomment and update IP for physical device
 
-// Production mode: Always use Render.com backend
-// This ensures the app works from anywhere and syncs with the web portal
-// Set to false only for local development (requires backend running locally)
-const USE_PRODUCTION_FOR_TESTING = true; // Production: Always use Render backend
+// Production mode: Set to true to use Render.com backend; false for local backend (localhost:3003)
+const USE_PRODUCTION_FOR_TESTING = true; // Production: use Render backend
 
 // Determine which API URL to use
 export const API_BASE_URL = USE_PRODUCTION_FOR_TESTING

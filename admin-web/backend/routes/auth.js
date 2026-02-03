@@ -38,7 +38,7 @@ try {
   // Initialize Google OAuth client if credentials are available
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || 
-      `${process.env.API_BASE_URL || 'http://localhost:3002'}/api/auth/google/callback`;
+      `${process.env.API_BASE_URL || 'http://localhost:3003'}/api/auth/google/callback`;
     
     googleClient = new OAuth2Client(
       process.env.GOOGLE_CLIENT_ID,
@@ -1475,7 +1475,7 @@ router.post('/api/auth/google/mobile', async (req, res) => {
     // Create a new OAuth client with the mobile redirect URI
     // The redirect URI must match what was used in the authorization request
     // For External apps, use backend proxy HTTPS redirect URI
-    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3002';
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3003';
     const mobileRedirectUri = redirectUri || `${baseUrl}/api/auth/google/mobile/callback`;
     
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);

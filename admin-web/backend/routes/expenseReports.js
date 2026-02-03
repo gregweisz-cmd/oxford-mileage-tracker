@@ -1424,7 +1424,9 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
 });
 
 /**
- * Handle approval workflow actions (approve, reject, delegate, remind, comment)
+ * Handle approval workflow actions (approve, reject, delegate, remind, comment).
+ * For finance steps, any employee with finance role or finance-related position may approve
+ * (not only the designated approver), so multiple finance users can act on reports.
  */
 router.put('/api/expense-reports/:id/approval', async (req, res) => {
   const { id } = req.params;
@@ -1636,6 +1638,8 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           res.status(403).json({ error: `Approver is not authorized for this step.${hint}` });
           return;
         }
+
+        // Mark step approved and advance workflow
 
         currentStep.status = 'approved';
         currentStep.actedAt = nowIso;

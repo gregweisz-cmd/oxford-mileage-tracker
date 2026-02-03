@@ -26,11 +26,9 @@ import {
   Home as HomeIcon,
   Bookmark as BookmarkIcon,
   Business as BusinessIcon,
-  Edit as EditIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
-import { formatAddressFromParts, emptyAddressParts } from '../utils/addressFormatter';
-import type { AddressParts } from '../utils/addressFormatter';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -86,10 +84,9 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   onClose,
   onSelectAddress,
   employeeId,
-  title = 'Select Address',
+  title = 'Search Address',
 }) => {
   const [activeTab, setActiveTab] = useState(0);
-  const [manualAddressParts, setManualAddressParts] = useState<AddressParts>({ ...emptyAddressParts });
   const [searchQuery, setSearchQuery] = useState('');
   const [baseAddresses, setBaseAddresses] = useState<string[]>([]);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -98,7 +95,10 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const [filteredOxfordHouses, setFilteredOxfordHouses] = useState<OxfordHouse[]>([]);
   const [selectedState, setSelectedState] = useState<string>('');
   const [availableStates, setAvailableStates] = useState<string[]>([]);
-  // const [employeeBaseAddress, setEmployeeBaseAddress] = useState<string>(''); // Currently unused
+  const [recentAddresses, setRecentAddresses] = useState<Array<{ address: string; name?: string }>>([]);
+
+  const RECENT_STORAGE_KEY = `recentAddresses_${employeeId}`;
+  const RECENT_MAX = 15;
 
   const loadEmployeeData = useCallback(async () => {
     try {
@@ -132,10 +132,17 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
-  // Load employee data
+  // Load employee data and recent addresses when modal opens
   useEffect(() => {
     if (open && employeeId) {
       loadEmployeeData();
+      try {
+        const stored = localStorage.getItem(RECENT_STORAGE_KEY);
+        const list = stored ? JSON.parse(stored) : [];
+        setRecentAddresses(Array.isArray(list) ? list.slice(0, RECENT_MAX) : []);
+      } catch {
+        setRecentAddresses([]);
+      }
     }
   }, [open, employeeId, loadEmployeeData]);
 
@@ -288,14 +295,25 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
     setSearchQuery(''); // Clear search when changing state
   };
 
+  const addToRecent = useCallback((address: string, name?: string) => {
+    if (!address?.trim()) return;
+    setRecentAddresses((prev) => {
+      const next = [{ address: address.trim(), name: name?.trim() }, ...prev.filter((r) => r.address.trim() !== address.trim())].slice(0, RECENT_MAX);
+      try {
+        localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, [RECENT_STORAGE_KEY]);
+
   const handleSelectAddress = (address: string, locationData?: any) => {
-    // Call the parent's onSelectAddress function
-    // The parent will handle closing the dialog after updating state
+    addToRecent(address, locationData?.name);
     onSelectAddress(address, locationData);
   };
 
   const handleClose = () => {
-    setManualAddressParts({ ...emptyAddressParts });
     setSearchQuery('');
     setActiveTab(0);
     onClose();
@@ -336,7 +354,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           <Tab icon={<BookmarkIcon />} label="Saved" />
           <Tab icon={<LocationIcon />} label="Frequent" />
           <Tab icon={<BusinessIcon />} label="Oxford Houses" />
-          <Tab icon={<EditIcon />} label="Manual Entry" />
+          <Tab icon={<HistoryIcon />} label="Recent" />
         </Tabs>
 
         {/* Base Addresses Tab */}
@@ -349,7 +367,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
             <List>
               {baseAddresses.map((address, index) => (
                 <ListItem key={index} disablePadding>
-                  <ListItemButton onClick={() => handleSelectAddress(address)}>
+                  <ListItemButton onClick={() => handleSelectAddress(address, { name: 'BA' })}>
                     <ListItemText
                       primary="BA"
                       secondary={address}
@@ -498,50 +516,26 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           )}
         </TabPanel>
 
-        {/* Manual Entry Tab - Street, City, State, Zip */}
+        {/* Recent Tab - Last 15 addresses used by this user (manual entry is done in the form fields) */}
         <TabPanel value={activeTab} index={4}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              fullWidth
-              label="Street Address"
-              value={manualAddressParts.street}
-              onChange={(e) => setManualAddressParts(prev => ({ ...prev, street: e.target.value }))}
-              placeholder="123 Main St"
-            />
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              <TextField
-                label="City"
-                value={manualAddressParts.city}
-                onChange={(e) => setManualAddressParts(prev => ({ ...prev, city: e.target.value }))}
-                placeholder="Raleigh"
-                sx={{ flex: '1 1 140px', minWidth: 120 }}
-              />
-              <TextField
-                label="State"
-                value={manualAddressParts.state}
-                onChange={(e) => setManualAddressParts(prev => ({ ...prev, state: e.target.value.toUpperCase().slice(0, 2) }))}
-                placeholder="NC"
-                inputProps={{ maxLength: 2 }}
-                sx={{ width: 80 }}
-              />
-              <TextField
-                label="ZIP Code"
-                value={manualAddressParts.zip}
-                onChange={(e) => setManualAddressParts(prev => ({ ...prev, zip: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                placeholder="27601"
-                sx={{ width: 100 }}
-              />
-            </Box>
-          </Box>
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              variant="contained"
-              onClick={() => handleSelectAddress(formatAddressFromParts(manualAddressParts))}
-              disabled={!manualAddressParts.street.trim() && !manualAddressParts.city.trim() && !manualAddressParts.zip.trim()}
-            >
-              Use This Address
-            </Button>
-          </Box>
+          {recentAddresses.length === 0 ? (
+            <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+              No recent addresses. Select an address from another tab or type in the form; it will appear here next time.
+            </Typography>
+          ) : (
+            <List>
+              {recentAddresses.map((recent, index) => (
+                <ListItem key={`${recent.address}-${index}`} disablePadding>
+                  <ListItemButton onClick={() => handleSelectAddress(recent.address, recent.name ? { name: recent.name } : undefined)}>
+                    <ListItemText
+                      primary={recent.name || recent.address}
+                      secondary={recent.name ? recent.address : undefined}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          )}
         </TabPanel>
       </DialogContent>
 

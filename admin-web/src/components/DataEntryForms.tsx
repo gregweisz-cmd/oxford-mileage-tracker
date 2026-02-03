@@ -58,6 +58,8 @@ export interface MileageEntryFormData {
   date: string;
   startLocation: string;
   endLocation: string;
+  startLocationName?: string;
+  endLocationName?: string;
   purpose: string;
   miles: number;
   startingOdometer?: number;
@@ -108,6 +110,8 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     date: new Date().toISOString().split('T')[0],
     startLocation: '',
     endLocation: '',
+    startLocationName: '',
+    endLocationName: '',
     purpose: '',
     miles: 0,
     startingOdometer: 0,
@@ -126,6 +130,36 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const { notifyDataChange } = useRealtimeSync();
   const [addressSelectorOpen, setAddressSelectorOpen] = useState(false);
   const [addressSelectorType, setAddressSelectorType] = useState<'start' | 'end'>('start');
+  const [dailyOdometerForDate, setDailyOdometerForDate] = useState<number | null>(null);
+  const [dailyOdometerLoading, setDailyOdometerLoading] = useState(false);
+
+  // Fetch daily odometer for selected date (mandatory once per day; if set, field is greyed out)
+  const normalizedFormDate = formData.date ? String(formData.date).split('T')[0] : '';
+  useEffect(() => {
+    if (!open || !employee?.id || !normalizedFormDate) {
+      setDailyOdometerForDate(null);
+      return;
+    }
+    let cancelled = false;
+    setDailyOdometerLoading(true);
+    fetch(`${API_BASE_URL}/api/daily-odometer-readings?employeeId=${encodeURIComponent(employee.id)}&date=${encodeURIComponent(normalizedFormDate)}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: { date: string; odometerReading: number }[]) => {
+        if (cancelled) return;
+        const reading = rows && rows.length > 0 ? Number(rows[0].odometerReading) : null;
+        setDailyOdometerForDate(reading != null && !isNaN(reading) ? reading : null);
+        if (reading != null && !isNaN(reading)) {
+          setFormData((prev) => ({ ...prev, startingOdometer: reading }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDailyOdometerForDate(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDailyOdometerLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, employee?.id, normalizedFormDate]);
 
   // Initialize form data only when dialog first opens for edit (not on every re-render; parent passes new object each render)
   const hasInitializedFromEditRef = useRef(false);
@@ -166,6 +200,8 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         date: new Date().toISOString().split('T')[0],
         startLocation: '',
         endLocation: '',
+        startLocationName: '',
+        endLocationName: '',
         purpose: '',
         miles: 0,
         startingOdometer: 0,
@@ -200,6 +236,10 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     if (!formData.costCenter) {
       newErrors.costCenter = 'Cost center is required';
     }
+    // Starting odometer is mandatory once per day; if not already set for this date, user must enter it
+    if (dailyOdometerForDate == null && (formData.startingOdometer == null || Number(formData.startingOdometer) <= 0)) {
+      newErrors.startingOdometer = 'Starting odometer is required once per day for this date';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -212,11 +252,41 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     if (returnToBA && !payload.purpose.trim()) {
       payload.purpose = 'Return to base';
     }
+    const effectiveOdometer = dailyOdometerForDate != null ? dailyOdometerForDate : (payload.startingOdometer ?? 0);
+    payload.startingOdometer = effectiveOdometer;
 
     try {
+      if (dailyOdometerForDate == null && effectiveOdometer > 0) {
+        await fetch(`${API_BASE_URL}/api/daily-odometer-readings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employeeId: employee.id,
+            date: normalizedFormDate,
+            odometerReading: effectiveOdometer,
+          }),
+        });
+      }
       await onSave(payload);
-      
-      // Notify real-time sync
+      // Push start/end addresses to Recent list (same key as AddressSelector) so they appear next time
+      const key = `recentAddresses_${employee.id}`;
+      const max = 15;
+      try {
+        const stored = localStorage.getItem(key);
+        const list: Array<{ address: string; name?: string }> = stored ? JSON.parse(stored) : [];
+        const push = (addr: string, name?: string) => {
+          if (!addr?.trim()) return;
+          const entry = { address: addr.trim(), name: name?.trim() };
+          const without = list.filter((r) => r.address.trim() !== entry.address);
+          list.length = 0;
+          list.push(entry, ...without);
+        };
+        push(payload.startLocation, payload.startLocationName);
+        push(payload.endLocation, payload.endLocationName);
+        localStorage.setItem(key, JSON.stringify(list.slice(0, max)));
+      } catch {
+        // ignore
+      }
       notifyDataChange({
         type: 'mileage',
         action: mode === 'edit' ? 'update' : 'create',
@@ -224,7 +294,6 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         timestamp: new Date(),
         employeeId: employee.id
       });
-      
       onClose();
     } catch (error) {
       debugError('Error saving mileage entry:', error);
@@ -244,15 +313,16 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     setAddressSelectorOpen(true);
   };
 
-  const handleSelectAddress = (address: string, locationData?: any) => {
+  const handleSelectAddress = (address: string, locationData?: { name?: string }) => {
     debugLog('📍 MileageEntryForm: Address selected:', address, 'Type:', addressSelectorType);
     const parts = parseAddressToParts(address);
+    const name = locationData?.name?.trim() || '';
     if (addressSelectorType === 'start') {
-      setFormData(prev => ({ ...prev, startLocation: address }));
+      setFormData(prev => ({ ...prev, startLocation: address, startLocationName: name || prev.startLocationName }));
       setStartAddressParts(parts);
       setErrors(prev => ({ ...prev, startLocation: '' }));
     } else {
-      setFormData(prev => ({ ...prev, endLocation: address }));
+      setFormData(prev => ({ ...prev, endLocation: address, endLocationName: name || prev.endLocationName }));
       setEndAddressParts(parts);
       setErrors(prev => ({ ...prev, endLocation: '' }));
     }
@@ -417,9 +487,17 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                   sx={{ width: 100 }}
                 />
                 <Button size="small" variant="outlined" onClick={() => handleOpenAddressSelector('start')} sx={{ alignSelf: 'center' }}>
-                  Select Address
+                  Search Address
                 </Button>
               </Box>
+              <TextField
+                label="Start location name (optional)"
+                value={formData.startLocationName ?? ''}
+                onChange={(e) => handleInputChange('startLocationName', e.target.value)}
+                placeholder="e.g. BA, Office"
+                size="small"
+                sx={{ mt: 1, maxWidth: 280 }}
+              />
             </Box>
 
             {/* End Location - Street, City, State, Zip */}
@@ -467,10 +545,19 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                 />
                 {!returnToBA && (
                   <Button size="small" variant="outlined" onClick={() => handleOpenAddressSelector('end')} sx={{ alignSelf: 'center' }}>
-                    Select Address
+                    Search Address
                   </Button>
                 )}
               </Box>
+              <TextField
+                label="End location name (optional)"
+                value={formData.endLocationName ?? ''}
+                onChange={(e) => handleInputChange('endLocationName', e.target.value)}
+                placeholder="e.g. BA, Client"
+                size="small"
+                sx={{ mt: 1, maxWidth: 280 }}
+                disabled={returnToBA}
+              />
             </Box>
 
             {/* Return to BA - purpose not required when checked */}
@@ -523,9 +610,20 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
               />
             </Box>
 
-            {/* Miles - primary field; Calculate miles using Google Maps */}
+            {/* Starting odometer: mandatory once per day; greyed out if already set for this date */}
             <Box sx={{ width: '100%' }}>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
+                <TextField
+                  label="Starting odometer"
+                  type="number"
+                  value={dailyOdometerLoading ? '…' : (formData.startingOdometer ?? '')}
+                  onChange={(e) => handleInputChange('startingOdometer', parseInt(e.target.value, 10) || 0)}
+                  error={!!errors.startingOdometer}
+                  helperText={errors.startingOdometer || (dailyOdometerForDate != null ? 'Set once per day (already entered for this date)' : 'Required once per day for this date')}
+                  inputProps={{ min: 0, step: 1 }}
+                  disabled={dailyOdometerLoading || dailyOdometerForDate != null}
+                  sx={{ flex: '0 1 140px', minWidth: 100 }}
+                />
                 <TextField
                   label="Miles"
                   type="number"
@@ -585,7 +683,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         onClose={() => setAddressSelectorOpen(false)}
         onSelectAddress={handleSelectAddress}
         employeeId={employee.id}
-        title={`Select ${addressSelectorType === 'start' ? 'Start' : 'End'} Location`}
+        title={`Search ${addressSelectorType === 'start' ? 'Start' : 'End'} Location`}
       />
     </Dialog>
   );
