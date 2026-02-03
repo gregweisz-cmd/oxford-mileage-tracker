@@ -144,7 +144,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         setRecentAddresses([]);
       }
     }
-  }, [open, employeeId, loadEmployeeData]);
+  }, [open, employeeId, loadEmployeeData, RECENT_STORAGE_KEY]);
 
   const loadSavedAddresses = async () => {
     try {
