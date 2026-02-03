@@ -11,6 +11,26 @@ This document describes how to configure Google Maps APIs used by the app and we
 
 They are **separate APIs**. If "Calculate" works, Geocoding and Distance Matrix are enabled. PDF maps will still show "Map unavailable" until **Maps Static API** is enabled in the same project (see below).
 
+## If GitHub or Google flagged your API key (revoke and rotate)
+
+If GitHub secret scanning or Google notified you that a Maps API key was exposed:
+
+1. **Revoke the exposed key**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials**.
+   - Find the exposed API key and either **Delete** it or **Regenerate** it (if your provider offers that).
+   - Treat the old key as compromised; do not use it again.
+
+2. **Create a new API key**
+   - In **Credentials**, click **Create Credentials** → **API Key**.
+   - Copy the new key. Optionally restrict it (Maps Static API, Geocoding API, Distance Matrix API) and set application restrictions.
+
+3. **Set the new key everywhere (never commit it)**
+   - **Render (backend)**: Environment → add or update `GOOGLE_MAPS_API_KEY` with the new key. Save so the service redeploys.
+   - **Mobile app (EAS builds)**: In [Expo Dashboard](https://expo.dev) → your project → **Secrets**, add `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` with the new key. The repo uses `app.config.js` to read this at build time so the key is not in source control.
+   - **Mobile app (local dev)**: Either set `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` in your shell before running, or temporarily put the key in `app.json` under `expo.extra.googleMapsApiKey` and **do not commit** that change (the repo keeps a placeholder there).
+
+After rotating, the repo should only ever contain the placeholder `YOUR_GOOGLE_MAPS_API_KEY_HERE` in `app.json`; the real key lives only in env vars and secrets.
+
 ## Overview
 
 The Google Maps feature allows finance team members to view route maps in PDF expense reports. Maps show one map per trip, zoomed to that route.
@@ -74,6 +94,13 @@ GOOGLE_MAPS_API_KEY=your_api_key_here
 6. Save. Render will redeploy so the new variable is picked up.
 
 After this, static maps in PDF export and the **Calculate miles** button on the web portal will use the key. The key is only used on the backend (Render); it is never sent to the browser.
+
+**Mobile app (Expo / EAS)**
+
+The mobile app reads the Google Maps key from `expo.extra.googleMapsApiKey` at build time. The repo uses `app.config.js` to inject the key from the environment so it is never committed:
+
+- **EAS Build**: In Expo Dashboard → your project → **Secrets**, add `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` with your API key. Each EAS build will use this.
+- **Local dev**: Set `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` in your environment before running (e.g. in `.env` if you load it, or in your shell). Do not put the real key in `app.json` and commit it; the repo keeps the placeholder `YOUR_GOOGLE_MAPS_API_KEY_HERE` there.
 
 ## Usage
 
