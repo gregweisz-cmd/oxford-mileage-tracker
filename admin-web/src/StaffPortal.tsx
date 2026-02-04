@@ -271,6 +271,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   /** Receipt IDs whose image failed to load (404, etc.) - show upload UI instead of broken link */
   const [receiptImageLoadErrors, setReceiptImageLoadErrors] = useState<Set<string>>(new Set());
   const [dailyDescriptions, setDailyDescriptions] = useState<any[]>([]);
+  /** Ref so sync report always has latest daily descriptions (avoids stale state when user checks Day off then clicks Save) */
+  const dailyDescriptionsRef = React.useRef<any[]>([]);
+  const setDailyDescriptionsWithRef = React.useCallback((value: any[] | ((prev: any[]) => any[])) => {
+    if (typeof value === 'function') {
+      setDailyDescriptions(prev => {
+        const next = value(prev);
+        dailyDescriptionsRef.current = next;
+        return next;
+      });
+    } else {
+      dailyDescriptionsRef.current = value;
+      setDailyDescriptions(value);
+    }
+  }, []);
   const [dailyDescriptionOptions, setDailyDescriptionOptions] = useState<Array<{ id: string; label: string }>>([]);
   
   // Selected items for supervisor revision requests (only when supervisorMode is true)
@@ -1552,7 +1566,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             
             // Also set receipts on expenseData for status indicator
             (expenseData as any).receipts = currentMonthReceipts;
-            setDailyDescriptions(dailyDescriptions);
+            setDailyDescriptionsWithRef(dailyDescriptions);
             
             // Load signature from employee data
             if (employee.signature) {
@@ -1883,7 +1897,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // If empty and no existing entry, don't add anything to the array
       // This ensures empty descriptions are not saved (they'll be deleted from backend)
       
-      setDailyDescriptions(updatedDailyDescriptions);
+      setDailyDescriptionsWithRef(updatedDailyDescriptions);
       dailyDescriptionsForSync = updatedDailyDescriptions;
       
       // Save to backend immediately to prevent syncDescriptionToCostCenter from overwriting
@@ -2696,10 +2710,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const buildReportData = (overrides: Record<string, unknown> = {}) => {
     if (!employeeData) return null;
     
+    // Use ref when it has at least as many items as state (latest from Day off/description edits); otherwise state (e.g. before ref populated on load)
+    const refDescriptions = dailyDescriptionsRef.current ?? [];
+    const descriptionsSource = refDescriptions.length >= dailyDescriptions.length ? refDescriptions : dailyDescriptions;
     // Normalize all dates in dailyDescriptions array to ensure consistent YYYY-MM-DD format
     // Filter to only include descriptions for the current month/year being saved
     // This prevents descriptions from other months from being saved to wrong dates
-    const normalizedDailyDescriptions = dailyDescriptions
+    const normalizedDailyDescriptions = descriptionsSource
       .map((desc: any) => ({
         ...desc,
         date: normalizeDate(desc.date) // Ensure all dates are in YYYY-MM-DD format
@@ -4106,7 +4123,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (employeeData) {
         setEmployeeData({ ...employeeData, dailyEntries: reportData.dailyEntries || employeeData.dailyEntries });
       }
-      setDailyDescriptions(reportData.dailyDescriptions || []);
+      setDailyDescriptionsWithRef(reportData.dailyDescriptions || []);
       // Keep certification checkboxes in sync with what we just saved
       setEmployeeCertificationAcknowledged(certAck);
       setSupervisorCertificationAcknowledged(superCertAck);
@@ -6408,7 +6425,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                     descToSave = { id: `desc-${employeeId}-${entryDateStr}`, employeeId, date: entryDateStr, description: val, costCenter: entry.costCenter || employeeData.costCenters[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
                                     newDescriptions.push(descToSave);
                                   }
-                                  setDailyDescriptions(newDescriptions);
+                                  setDailyDescriptionsWithRef(newDescriptions);
                                   const dateToSave = normalizeDate(descToSave.date);
                                   setTimeout(async () => {
                                     try {
@@ -6457,7 +6474,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                     };
                                     newDescriptions.push(descToSave);
                                   }
-                                  setDailyDescriptions(newDescriptions);
+                                  setDailyDescriptionsWithRef(newDescriptions);
                                   const dateToSave = normalizeDate(descToSave.date);
                                   setTimeout(async () => {
                                     try {
@@ -6538,7 +6555,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   newDescriptions.push(descToSave);
                                 }
                                 
-                                setDailyDescriptions(newDescriptions);
+                                setDailyDescriptionsWithRef(newDescriptions);
                                 
                                 // Save to backend first
                                 const dateToSave = normalizeDate(descToSave.date);
@@ -6625,7 +6642,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   }
                                   
                                   // Update state first for immediate UI feedback
-                                  setDailyDescriptions(newDescriptions);
+                                  setDailyDescriptionsWithRef(newDescriptions);
                                   
                                   // Also update the corresponding entry in dailyEntries (for cost center screen)
                                   syncDescriptionToCostCenter(descToSave, new Date(entry.date));
@@ -6679,7 +6696,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                           description: dayOffType // Update description to match day off type
                                         };
                                         
-                                        setDailyDescriptions(newDescriptions);
+                                        setDailyDescriptionsWithRef(newDescriptions);
                                         
                                         // Also update the corresponding entry in dailyEntries (for cost center screen)
                                         const descToSave = newDescriptions[existingIndex];

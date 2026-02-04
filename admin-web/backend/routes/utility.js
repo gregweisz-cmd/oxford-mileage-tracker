@@ -13,6 +13,11 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 
 // ===== DISTANCE (Google Maps - Calculate miles) =====
 
+// Safe check: is the Google Maps API key configured? (no key value exposed)
+router.get('/api/distance/status', (req, res) => {
+  res.json({ configured: distanceService.isConfigured() });
+});
+
 router.get('/api/distance', async (req, res) => {
   const from = req.query.from;
   const to = req.query.to;
