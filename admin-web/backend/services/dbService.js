@@ -1063,7 +1063,7 @@ function createSampleDatabase() {
           updatedAt TEXT NOT NULL
         )`);
 
-        // Time tracking table
+        // Time tracking table (must include costCenter for sync-to-source INSERTs)
         db.run(`CREATE TABLE IF NOT EXISTS time_tracking (
           id TEXT PRIMARY KEY,
           employeeId TEXT NOT NULL,
@@ -1071,6 +1071,7 @@ function createSampleDatabase() {
           category TEXT NOT NULL,
           hours REAL NOT NULL,
           description TEXT,
+          costCenter TEXT DEFAULT '',
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);
