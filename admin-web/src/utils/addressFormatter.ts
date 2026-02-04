@@ -256,3 +256,57 @@ export function formatLocationForDescription(
   return location;
 }
 
+/**
+ * Abbreviate common street suffixes for display (e.g. "Road" -> "Rd").
+ */
+function abbreviateAddressForDisplay(address: string): string {
+  if (!address || typeof address !== 'string') return address;
+  return address
+    .replace(/\bRoad\b/gi, 'Rd')
+    .replace(/\bStreet\b/gi, 'St')
+    .replace(/\bAvenue\b/gi, 'Ave')
+    .replace(/\bBoulevard\b/gi, 'Blvd')
+    .replace(/\bDrive\b/gi, 'Dr')
+    .replace(/\bLane\b/gi, 'Ln')
+    .replace(/\bCourt\b/gi, 'Ct')
+    .replace(/\bCircle\b/gi, 'Cir')
+    .trim();
+}
+
+/**
+ * Format a location as "Name (address)" for display in Cost Center and Mileage Entries.
+ * Base addresses show as "BA", "BA1", "BA2". Other locations show as "Name (address)".
+ *
+ * @param name - Optional location name (e.g. "Coworker's house")
+ * @param address - Full address string (e.g. "2061 Jamestown Road, Morganton, NC 28655")
+ * @param baseAddress - Employee's primary base address (optional)
+ * @param baseAddress2 - Employee's secondary base address (optional)
+ * @returns Formatted string e.g. "Coworker's house (2061 Jamestown Rd, Morganton, NC 28655)" or "BA"
+ */
+export function formatLocationNameAndAddress(
+  name: string | undefined,
+  address: string,
+  baseAddress?: string,
+  baseAddress2?: string
+): string {
+  const addr = (address || '').trim();
+  const displayName = (name || '').trim();
+  if (!addr) return displayName || '';
+
+  const baLabel = getBaseAddressLabel(addr, baseAddress, baseAddress2);
+  if (baLabel) {
+    return baLabel;
+  }
+
+  // If "address" is the same as the name, don't show "Name (Name)" — show only the name
+  if (displayName && addr.toLowerCase() === displayName.toLowerCase()) {
+    return displayName;
+  }
+
+  const displayAddress = abbreviateAddressForDisplay(addr);
+  if (displayName) {
+    return `${displayName} (${displayAddress})`;
+  }
+  return displayAddress;
+}
+

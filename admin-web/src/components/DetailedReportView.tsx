@@ -26,6 +26,7 @@ import {
   Alert,
 } from '@mui/material';
 import { debugError } from '../config/debug';
+import { formatLocationNameAndAddress } from '../utils/addressFormatter';
 import {
   Close as CloseIcon,
   Receipt as ReceiptIcon,
@@ -45,6 +46,10 @@ interface MileageEntry {
   date: string;
   startLocation: string;
   endLocation: string;
+  startLocationName?: string;
+  startLocationAddress?: string;
+  endLocationName?: string;
+  endLocationAddress?: string;
   miles: number;
   purpose: string;
   costCenter?: string;
@@ -328,9 +333,18 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
       if (!entriesByDate[date]) {
         entriesByDate[date] = { dailyDesc: [], mileageDesc: [], hours: 0, miles: 0, mileageAmt: 0, receiptAmt: 0, costCenters: new Set() };
       }
-      // Format as "location name (address)"
-      const startLoc = entry.startLocation.includes('(') ? entry.startLocation : `${entry.startLocation} (${entry.startLocation})`;
-      const endLoc = entry.endLocation.includes('(') ? entry.endLocation : `${entry.endLocation} (${entry.endLocation})`;
+      const startName = (entry.startLocationName || '').trim();
+      const startAddrRaw = entry.startLocationAddress || entry.startLocation || '';
+      const startAddr = (startAddrRaw.trim().toLowerCase() === startName.toLowerCase())
+        ? (entry.startLocation || entry.startLocationAddress || '')
+        : startAddrRaw;
+      const endName = (entry.endLocationName || '').trim();
+      const endAddrRaw = entry.endLocationAddress || entry.endLocation || '';
+      const endAddr = (endAddrRaw.trim().toLowerCase() === endName.toLowerCase())
+        ? (entry.endLocation || entry.endLocationAddress || '')
+        : endAddrRaw;
+      const startLoc = formatLocationNameAndAddress(entry.startLocationName, startAddr);
+      const endLoc = formatLocationNameAndAddress(entry.endLocationName, endAddr);
       const mileageText = `${startLoc} → ${endLoc}`;
       entriesByDate[date].mileageDesc.push(mileageText);
       entriesByDate[date].miles += entry.miles;
@@ -838,8 +852,26 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
                           </TableCell>
                           <TableCell>{formatDate(entry.date)}</TableCell>
                           <TableCell>
-                            <Typography variant="body2">{entry.startLocation}</Typography>
-                            <Typography variant="caption" color="text.secondary">↓ {entry.endLocation}</Typography>
+                            <Typography variant="body2">
+                              {(() => {
+                                const startName = (entry.startLocationName || '').trim();
+                                const startAddrRaw = entry.startLocationAddress || entry.startLocation || '';
+                                const startAddr = (startAddrRaw.trim().toLowerCase() === startName.toLowerCase())
+                                  ? (entry.startLocation || entry.startLocationAddress || '')
+                                  : startAddrRaw;
+                                return formatLocationNameAndAddress(entry.startLocationName, startAddr);
+                              })()}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ↓ {(() => {
+                                const endName = (entry.endLocationName || '').trim();
+                                const endAddrRaw = entry.endLocationAddress || entry.endLocation || '';
+                                const endAddr = (endAddrRaw.trim().toLowerCase() === endName.toLowerCase())
+                                  ? (entry.endLocation || entry.endLocationAddress || '')
+                                  : endAddrRaw;
+                                return formatLocationNameAndAddress(entry.endLocationName, endAddr);
+                              })()}
+                            </Typography>
                           </TableCell>
                           <TableCell align="right">{entry.miles.toFixed(1)}</TableCell>
                           <TableCell>{entry.purpose || '-'}</TableCell>

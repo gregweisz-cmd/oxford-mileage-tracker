@@ -51,7 +51,6 @@ export default function ReceiptCropScreen() {
   const clampCropRef = useRef<(c: { x: number; y: number; width: number; height: number }) => { x: number; y: number; width: number; height: number }>((c) => c);
   lastCropRef.current = crop;
   containerLayoutRef.current = containerLayout;
-  clampCropRef.current = clampCrop;
 
   // Compute the rect where the image is actually drawn (contain mode)
   const updateImageDisplayRect = useCallback(() => {
@@ -80,8 +79,9 @@ export default function ReceiptCropScreen() {
 
   useEffect(() => {
     updateImageDisplayRect();
-    if (imageDisplayRect.current && !crop) {
-      const r = imageDisplayRect.current;
+    const r = imageDisplayRect.current;
+    // Only set initial crop when we have a valid display rect (avoids wrong crop from stale layout)
+    if (r && r.width >= 50 && r.height >= 50 && !crop) {
       setCrop({ x: r.x, y: r.y, width: r.width, height: r.height });
     }
   }, [containerLayout, imageSize, updateImageDisplayRect]);
@@ -96,6 +96,7 @@ export default function ReceiptCropScreen() {
     height = Math.max(MIN_CROP, Math.min(r.y + r.height - y, height));
     return { x, y, width, height };
   }, []);
+  clampCropRef.current = clampCrop;
 
   const hitTest = useCallback((px: number, py: number) => {
     const current = lastCropRef.current;
@@ -182,15 +183,33 @@ export default function ReceiptCropScreen() {
     });
   }, []);
 
+  /** Use the original image without cropping (best for OCR so the full receipt is visible). */
+  const handleUseFullImage = () => {
+    if (returnTo === 'AddReceipt') {
+      navigation.navigate('AddReceipt', { croppedImageUri: imageUri }, { merge: true });
+    } else {
+      navigation.navigate('Receipts', { croppedImageUri: imageUri, receiptIdToUpdate: receiptIdToUpdate ?? undefined }, { merge: true });
+    }
+  };
+
   const handleDone = async () => {
-    if (!crop || !imageDisplayRect.current || !imageSize || !imageUri) return;
     const r = imageDisplayRect.current;
+    const cropToUse = crop ?? (r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null);
+    if (!cropToUse || !r || !imageSize || !imageUri) {
+      if (!cropToUse || !r) Alert.alert('Please wait', 'Crop area is still loading.');
+      return;
+    }
     const scaleX = imageSize.width / r.width;
     const scaleY = imageSize.height / r.height;
-    const originX = Math.round((crop.x - r.x) * scaleX);
-    const originY = Math.round((crop.y - r.y) * scaleY);
-    const width = Math.round(crop.width * scaleX);
-    const height = Math.round(crop.height * scaleY);
+    let originX = Math.round((cropToUse.x - r.x) * scaleX);
+    let originY = Math.round((cropToUse.y - r.y) * scaleY);
+    let width = Math.round(cropToUse.width * scaleX);
+    let height = Math.round(cropToUse.height * scaleY);
+    // Clamp to image bounds (avoids wrong crop when display coords don't match image)
+    originX = Math.max(0, Math.min(originX, imageSize.width - 1));
+    originY = Math.max(0, Math.min(originY, imageSize.height - 1));
+    width = Math.max(1, Math.min(width, imageSize.width - originX));
+    height = Math.max(1, Math.min(height, imageSize.height - originY));
     if (width < 1 || height < 1) {
       Alert.alert('Invalid crop', 'Crop area is too small.');
       return;
@@ -203,9 +222,9 @@ export default function ReceiptCropScreen() {
         { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
       if (returnTo === 'AddReceipt') {
-        navigation.navigate('AddReceipt', { croppedImageUri: result.uri });
+        navigation.navigate('AddReceipt', { croppedImageUri: result.uri }, { merge: true });
       } else {
-        navigation.navigate('Receipts', { croppedImageUri: result.uri, receiptIdToUpdate: receiptIdToUpdate ?? undefined });
+        navigation.navigate('Receipts', { croppedImageUri: result.uri, receiptIdToUpdate: receiptIdToUpdate ?? undefined }, { merge: true });
       }
     } catch (e) {
       Alert.alert('Error', 'Failed to crop image.');
@@ -231,11 +250,23 @@ export default function ReceiptCropScreen() {
             <Text style={styles.headerButtonText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Crop receipt</Text>
-          <TouchableOpacity onPress={handleDone} disabled={saving} style={styles.headerButton}>
-            {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.headerButtonText}>Done</Text>}
+          <TouchableOpacity
+            onPress={handleDone}
+            disabled={saving || !crop}
+            style={styles.headerButton}
+          >
+            {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={[styles.headerButtonText, !crop && styles.headerButtonTextDisabled]}>Done</Text>}
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <View style={styles.useFullImageRow}>
+        <TouchableOpacity onPress={handleUseFullImage} style={styles.useFullImageButton}>
+          <MaterialIcons name="fullscreen" size={20} color="#fff" />
+          <Text style={styles.useFullImageText}>Use full image (no crop)</Text>
+        </TouchableOpacity>
+        <Text style={styles.useFullImageHint}>Best for OCR – keeps entire receipt visible</Text>
+      </View>
 
       <View ref={containerRef} style={styles.imageContainer} onLayout={onContainerLayout} {...panResponder.panHandlers}>
         <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
@@ -262,7 +293,7 @@ export default function ReceiptCropScreen() {
           </>
         )}
       </View>
-      <Text style={styles.hint}>Drag the box to move. Drag corners or edges to resize.</Text>
+      <Text style={styles.hint}>Drag the box to move. Drag corners or edges to resize. Or use “Use full image” above for OCR.</Text>
     </View>
   );
 }
@@ -281,7 +312,25 @@ const styles = StyleSheet.create({
   },
   headerButton: { minWidth: 70, flexDirection: 'row', alignItems: 'center' },
   headerButtonText: { color: '#fff', fontSize: 16 },
+  headerButtonTextDisabled: { opacity: 0.6 },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  useFullImageRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    alignItems: 'center',
+  },
+  useFullImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(33, 150, 243, 0.9)',
+    gap: 8,
+  },
+  useFullImageText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  useFullImageHint: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 6 },
   imageContainer: { flex: 1, overflow: 'hidden' },
   dim: { position: 'absolute', backgroundColor: DIM_COLOR },
   cropBox: {

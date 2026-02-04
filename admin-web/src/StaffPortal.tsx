@@ -85,7 +85,7 @@ import { DashboardNotifications } from './components/DashboardNotifications';
 import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistoryEntry } from './components/EmployeeApprovalStatusCard';
 
 // Address formatting utility
-import { formatLocationForDescription } from './utils/addressFormatter';
+import { formatLocationForDescription, formatLocationNameAndAddress } from './utils/addressFormatter';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
@@ -1023,11 +1023,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Set raw mileage entries for the mileage entries tab
           setRawMileageEntries(mileageEntries);
           setRawTimeEntries(timeTracking);
-          // Normalize all dates in dailyDescriptions to ensure consistent format
-          const dailyDescriptions = dailyDescriptionsRaw.map((desc: any) => ({
-            ...desc,
-            date: normalizeDate(desc.date) // Normalize date to YYYY-MM-DD format
-          }));
+          // Normalize all dates in dailyDescriptions; when dayOff is true, keep description in sync with dayOffType for display
+          const dailyDescriptions = dailyDescriptionsRaw.map((desc: any) => {
+            const normalized = { ...desc, date: normalizeDate(desc.date) };
+            if (normalized.dayOff && normalized.dayOffType && !(normalized.description || '').trim()) {
+              normalized.description = normalized.dayOffType;
+            }
+            return normalized;
+          });
           
           // Parse monthly report status
           let currentReport: any = null;
@@ -1160,28 +1163,42 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               const baseAddress2 = employee?.baseAddress2;
               
               dayMileageEntries.forEach((entry: any, index: number) => {
-                // For the first trip, include the starting location
+                // Use the field that has the actual street address (not the name again)
+                const startName = (entry.startLocationName || '').trim();
+                const startAddrRaw = entry.startLocationAddress || entry.startLocation || '';
+                const startAddr = (startAddrRaw.trim().toLowerCase() === startName.toLowerCase())
+                  ? (entry.startLocation || entry.startLocationAddress || '')
+                  : startAddrRaw;
+                const endName = (entry.endLocationName || '').trim();
+                const endAddrRaw = entry.endLocationAddress || entry.endLocation || '';
+                const endAddr = (endAddrRaw.trim().toLowerCase() === endName.toLowerCase())
+                  ? (entry.endLocation || entry.endLocationAddress || '')
+                  : endAddrRaw;
+                // For the first trip, include the starting location as "Name (address)" or "BA"
                 if (index === 0) {
-                  const startLocation = entry.startLocation || '';
-                  const formattedStart = formatLocationForDescription(startLocation, baseAddress, baseAddress2);
+                  const formattedStart = formatLocationNameAndAddress(
+                    entry.startLocationName,
+                    startAddr,
+                    baseAddress,
+                    baseAddress2
+                  );
                   if (formattedStart) {
                     tripSegments.push(formattedStart);
                   }
                 }
-                
                 // Add the trip segment: "to [EndLocation]" or "to BA"
-                const endLocation = entry.endLocation || '';
+                const formattedEnd = formatLocationNameAndAddress(
+                  entry.endLocationName,
+                  endAddr,
+                  baseAddress,
+                  baseAddress2
+                );
                 const purpose = entry.purpose || 'Travel';
-                const formattedEnd = formatLocationForDescription(endLocation, baseAddress, baseAddress2);
-                
-                // Check if endLocation is BA - don't add purpose for base address returns
                 const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
-                
                 if (formattedEnd) {
                   if (isBaseAddress) {
                     tripSegments.push(`to ${formattedEnd}`);
                   } else {
-                    // Only add purpose if it's not a generic "Travel"
                     if (purpose && purpose.toLowerCase() !== 'travel' && purpose.trim() !== '') {
                       tripSegments.push(`to ${formattedEnd} for ${purpose}`);
                     } else {
@@ -6166,16 +6183,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableBody>
                   {currentMonthMileageList.map((entry: any, index: number) => {
                       const mileageAmount = (entry.miles || 0) * 0.445; // Standard mileage rate ($0.445 per mile)
-                      const startLocationRaw = entry.startLocationName || entry.startLocation || '';
-                      const endLocationRaw = entry.endLocationName || entry.endLocation || '';
                       const baseAddress = employeeData?.baseAddress;
                       const baseAddress2 = employeeData?.baseAddress2;
-                      const startLocation = startLocationRaw.toLowerCase().includes('odometer:')
+                      const startName = (entry.startLocationName || '').trim();
+                      const startAddrRaw = entry.startLocationAddress || entry.startLocation || '';
+                      const startAddr = (startAddrRaw.trim().toLowerCase() === startName.toLowerCase())
+                        ? (entry.startLocation || entry.startLocationAddress || '')
+                        : startAddrRaw;
+                      const endName = (entry.endLocationName || '').trim();
+                      const endAddrRaw = entry.endLocationAddress || entry.endLocation || '';
+                      const endAddr = (endAddrRaw.trim().toLowerCase() === endName.toLowerCase())
+                        ? (entry.endLocation || entry.endLocationAddress || '')
+                        : endAddrRaw;
+                      const startLocation = startAddr.toLowerCase().includes('odometer:')
                         ? (entry.startLocationName || 'N/A')
-                        : (formatLocationForDescription(startLocationRaw, baseAddress, baseAddress2) || startLocationRaw || 'N/A');
-                      const endLocation = endLocationRaw.toLowerCase().includes('odometer:')
+                        : (formatLocationNameAndAddress(entry.startLocationName, startAddr, baseAddress, baseAddress2) || entry.startLocationName || startAddr || 'N/A');
+                      const endLocation = endAddr.toLowerCase().includes('odometer:')
                         ? (entry.endLocationName || 'N/A')
-                        : (formatLocationForDescription(endLocationRaw, baseAddress, baseAddress2) || endLocationRaw || 'N/A');
+                        : (formatLocationNameAndAddress(entry.endLocationName, endAddr, baseAddress, baseAddress2) || entry.endLocationName || endAddr || 'N/A');
                       
                       return (
                         <TableRow key={entry.id} sx={{ bgcolor: entry.needsRevision ? 'warning.light' : 'transparent' }}>
@@ -6459,7 +6484,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             />
                           ) : (
                             <TextField
-                              value={dayDescription?.description || ''}
+                              value={dayDescription?.dayOff ? (dayDescription?.dayOffType || '') : (dayDescription?.description || '')}
                               onChange={async (e) => {
                                 try {
                                   const newDescriptions = [...dailyDescriptions];

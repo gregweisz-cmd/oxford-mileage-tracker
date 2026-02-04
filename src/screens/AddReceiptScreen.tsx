@@ -35,7 +35,7 @@ import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 import { useNotifications } from '../contexts/NotificationContext';
 import { CategoryAiService, CategorySuggestion } from '../services/categoryAiService';
 import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiService';
-import { ReceiptOcrService } from '../services/receiptOcrService';
+import { ReceiptOcrService, OcrError } from '../services/receiptOcrService';
 import { COST_CENTERS } from '../constants/costCenters';
 import { ReceiptPhotoQualityService, PhotoQualityResult } from '../services/receiptPhotoQualityService';
 
@@ -121,20 +121,30 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }, [])
   );
 
-  // When returning from ReceiptCrop with cropped image, set it and run quality/OCR
-  useEffect(() => {
-    const croppedUri = route.params?.croppedImageUri;
-    if (!croppedUri) return;
-    setImageUri(croppedUri);
-    setFileType('image');
-    setDismissedQualityWarning(false);
-    (async () => {
-      const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(croppedUri);
-      setPhotoQualityResult(qualityResult);
-      await processOcrOnImage(croppedUri);
-    })();
-    navigation.setParams({ croppedImageUri: undefined });
-  }, [route.params?.croppedImageUri]);
+  // When returning from ReceiptCrop with cropped image, set it and run quality/OCR.
+  // useFocusEffect ensures we apply the crop when the screen gains focus (e.g. after navigate back),
+  // in case the params effect doesn't fire due to navigator behavior.
+  const applyCroppedImage = React.useCallback(
+    (croppedUri: string) => {
+      setImageUri(croppedUri);
+      setFileType('image');
+      setDismissedQualityWarning(false);
+      (async () => {
+        const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(croppedUri);
+        setPhotoQualityResult(qualityResult);
+        await processOcrOnImage(croppedUri);
+      })();
+      navigation.setParams({ croppedImageUri: undefined });
+    },
+    [navigation]
+  );
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const croppedUri = route.params?.croppedImageUri;
+      if (croppedUri) applyCroppedImage(croppedUri);
+    }, [route.params?.croppedImageUri, applyCroppedImage])
+  );
 
   // Load category suggestions when vendor and amount are entered
   useEffect(() => {
@@ -570,8 +580,10 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       }
     } catch (error) {
       console.error('❌ OCR error:', error);
-      // Don't show error to user, just silently fail
-      // OCR is a convenience feature, not essential
+      const userMessage = error instanceof OcrError
+        ? error.userMessage
+        : 'Receipt OCR failed. You can still enter the details manually.';
+      Alert.alert('OCR Unavailable', userMessage, [{ text: 'OK' }]);
     } finally {
       setProcessingOcr(false);
     }
