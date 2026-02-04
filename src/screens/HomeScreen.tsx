@@ -631,31 +631,26 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         console.error('❌ Real-time sync error:', error);
       });
 
-      // Sync data from backend on app startup
-      // Make this non-blocking - don't show errors during initial sync
+      // Sync from backend first so new devices (e.g. Android after login) have full data before we show the screen
       if (!homeScreenIsSyncing) {
         homeScreenIsSyncing = true;
-        // Run sync in background without blocking UI
-        (async () => {
-          try {
-            const { ApiSyncService } = await import('../services/apiSyncService');
-            const syncResult = await ApiSyncService.syncFromBackend(employee.id);
-            if (syncResult.success) {
-              setLastSyncTime(new Date());
-            } else {
-              // Only log errors during initial sync, don't show alerts
-              debugWarn('⚠️ Initial sync completed with some errors (this is normal):', syncResult.error);
-            }
-          } catch (syncError) {
-            // Silently log errors during initial sync - don't show alerts
-            debugWarn('⚠️ Error during initial backend sync (non-blocking):', syncError instanceof Error ? syncError.message : 'Unknown error');
-          } finally {
-            homeScreenIsSyncing = false;
+        setIsSyncing(true);
+        try {
+          const { ApiSyncService } = await import('../services/apiSyncService');
+          const syncResult = await ApiSyncService.syncFromBackend(employee.id);
+          if (syncResult.success) {
+            setLastSyncTime(new Date());
+          } else {
+            debugWarn('⚠️ Initial sync completed with some errors (this is normal):', syncResult.error);
           }
-        })();
+        } catch (syncError) {
+          debugWarn('⚠️ Error during initial backend sync:', syncError instanceof Error ? syncError.message : 'Unknown error');
+        } finally {
+          homeScreenIsSyncing = false;
+          setIsSyncing(false);
+        }
       }
-      
-      // Load data for the viewing employee
+
       await loadEmployeeData(employee.id, employee);
       
       // Check for base address suggestions
@@ -1453,7 +1448,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         </View>
 
 
-        {/* Sync Status Indicator */}
+        {/* Sync status (automatic; no manual sync button) */}
         <View 
           style={[styles.syncStatusContainer, isSyncing && styles.syncStatusContainerSyncing]}
         >

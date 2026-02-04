@@ -6,7 +6,7 @@
   Updates URL: https://u.expo.dev/d303cc80-9dcf-4d5c-952b-d50df5cb04f0  
   Dashboard: https://expo.dev/accounts/goosew27/projects/oh-staff-tracker/updates
 
-- **admin-web** has its own `app.json` with a different projectId (`29c7c213-...`). Running `eas update` from inside `admin-web` publishes to that other project, so the installed mobile app (which checks the first project) will not receive those updates.
+- **admin-web** no longer has EAS project config; run `eas update` only from the repo root so updates go to `oh-staff-tracker`.
 
 **From repo root:**
 

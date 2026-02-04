@@ -64,7 +64,6 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
     setLoading(true);
     try {
-      // Try backend API authentication first (uses shared config: Render when USE_PRODUCTION_FOR_TESTING)
       const backendUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '') || 'https://oxford-mileage-backend.onrender.com';
       
       try {
@@ -83,16 +82,15 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
         if (response.ok) {
           const employeeData = data;
-          // Create or update employee in local database with backend ID
           const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
-          
+
           if (existingEmployee) {
-            // Update existing employee from backend (Render is source of truth for HR/assignments)
+            // Backend (Render) is source of truth: overwrite local with API data
             try {
               await DatabaseService.updateEmployee(existingEmployee.id, {
                 name: employeeData.name,
                 email: employeeData.email,
-                password: password, // Keep local password for re-auth
+                password: password,
                 oxfordHouseId: employeeData.oxfordHouseId ?? existingEmployee.oxfordHouseId ?? '',
                 position: employeeData.position ?? existingEmployee.position ?? '',
                 phoneNumber: employeeData.phoneNumber ?? existingEmployee.phoneNumber ?? '',
@@ -102,7 +100,6 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
                 defaultCostCenter: employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? ''
               });
               
-              // Reload the employee to get the merged data
               const updatedEmployee = await DatabaseService.getEmployeeById(existingEmployee.id);
               if (!updatedEmployee) {
                 Alert.alert('Error', 'Failed to load updated employee data');
@@ -126,7 +123,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               id: employeeData.id,
               name: employeeData.name,
               email: employeeData.email,
-              password: password, // Store password locally
+              password: password,
               oxfordHouseId: employeeData.oxfordHouseId || '',
               position: employeeData.position || '',
               phoneNumber: employeeData.phoneNumber || '',
@@ -154,12 +151,9 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       );
 
       if (employee) {
-        // Employee exists and password matches, log them in
         await DatabaseService.setCurrentEmployee(employee.id, stayLoggedIn);
-        
         onLogin(employee);
       } else {
-        // Employee doesn't exist or password is wrong
         Alert.alert(
           'Login Failed',
           'Invalid email or password. Please check your credentials and try again.',

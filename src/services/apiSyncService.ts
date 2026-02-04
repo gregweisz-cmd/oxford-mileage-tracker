@@ -375,16 +375,24 @@ export class ApiSyncService {
       // Fetch employees
       const employees = await this.fetchEmployees();
       syncData.employees = employees;
-      
-      // NOTE: Mileage entries and receipts are NOT synced FROM backend
-      // Mobile app is the source of truth for these - they only sync TO backend
-      // This prevents old/deleted data from being restored from backend
-      const mappedMileageEntries: MileageEntry[] = [];
+
+      // Fetch mileage and receipts from backend so new devices (e.g. second phone) get full data
+      const mileageEntries = await this.fetchMileageEntries(effectiveEmployeeId);
+      const mappedMileageEntries = this.mapEmployeeIdForLocal(
+        mileageEntries,
+        employeeId,
+        backendEmployeeId
+      );
       syncData.mileageEntries = mappedMileageEntries;
-      
-      const mappedReceipts: Receipt[] = [];
+
+      const receipts = await this.fetchReceipts(effectiveEmployeeId);
+      const mappedReceipts = this.mapEmployeeIdForLocal(
+        receipts,
+        employeeId,
+        backendEmployeeId
+      );
       syncData.receipts = mappedReceipts;
-      
+
       // Fetch time tracking
       const timeTracking = await this.fetchTimeTracking(effectiveEmployeeId);
       const mappedTimeTracking = this.mapEmployeeIdForLocal(
@@ -430,17 +438,9 @@ export class ApiSyncService {
       // Sync all data to local database
       // Backend is source of truth for employee assignments (cost centers, etc.)
       await this.syncEmployeesToLocal(employees);
-      // NOTE: Mileage entries and receipts are NOT synced FROM backend
-      // Mobile app is the source of truth - they only sync TO backend
-      // This prevents deleted data from being restored
-      
-      // if (mappedMileageEntries.length > 0) {
-      //   await this.syncMileageEntriesToLocal(mappedMileageEntries);
-      // }
-      // if (mappedReceipts.length > 0) {
-      //   await this.syncReceiptsToLocal(mappedReceipts);
-      // }
-      // Always sync time tracking (even if empty array) to handle deletions
+      await this.syncMileageEntriesToLocal(mappedMileageEntries);
+      await this.syncReceiptsToLocal(mappedReceipts);
+      // Time tracking, daily descriptions, odometer (even if empty) to handle deletions
       await this.syncTimeTrackingToLocal(mappedTimeTracking, effectiveEmployeeId);
       // Always sync daily descriptions (even if empty array) to handle deletions
       await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, effectiveEmployeeId);
@@ -453,8 +453,8 @@ export class ApiSyncService {
       
       debugLog('📥 ApiSync: Backend sync completed:', {
         employees: employees.length,
-        mileageEntries: 0,
-        receipts: 0,
+        mileageEntries: mappedMileageEntries.length,
+        receipts: mappedReceipts.length,
         timeTracking: mappedTimeTracking.length,
         dailyDescriptions: mappedDailyDescriptions.length,
         dailyOdometerReadings: mappedDailyOdometer.length
@@ -2116,11 +2116,7 @@ export class ApiSyncService {
     }
   }
 
-  /**
-   * Sync employee profile/assignments from backend to local database.
-   * Backend is source of truth for cost centers and related fields so the app
-   * shows the same assignments as the web portal (e.g. after admin changes).
-   */
+  /** Sync employee profiles from backend to local. Render is source of truth for cost centers and assignments. */
   private static async syncEmployeesToLocal(employees: Employee[]): Promise<void> {
     try {
       if (!employees || employees.length === 0) return;
