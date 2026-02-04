@@ -378,7 +378,7 @@ export class BackendDataService {
       const [y, m, d] = dateKey.split('-').map(Number);
       const date = new Date(y, m - 1, d);
 
-      // Calculate hours breakdown with deduplication
+      const costCenterHours: Record<string, number> = {};
       const hoursBreakdown = {
         workingHours: 0,
         gahours: 0,
@@ -388,40 +388,29 @@ export class BackendDataService {
         pflPfmlHours: 0
       };
 
-      // IMPORTANT: For "Working Hours" entries, we need to handle cost center-specific entries
-      // The web portal stores cost center hours as separate "Working Hours" entries with different costCenters
-      // The mobile app aggregates them into a single "Working Hours" field
-      // 
-      // Strategy:
-      // 1. For "Working Hours" entries WITH a costCenter: Sum them all into workingHours
-      // 2. For "Working Hours" entries WITHOUT a costCenter: Add to workingHours
-      // 3. For other categories: Sum normally (they don't have cost centers)
-      
-      // Deduplicate time tracking entries by category AND costCenter (keep most recent)
-      // Use composite key: "category|costCenter" to handle both category-only and cost-center entries
-      const entryMap = new Map<string, TimeTracking>();
       dayData.timeTracking.forEach(entry => {
-        const category = entry.category || '';
-        const costCenter = entry.costCenter || '';
-        // Create composite key: category and costCenter together
-        // This ensures entries with same category but different costCenters are kept separate
-        const key = `${category}|${costCenter}`;
-        const existing = entryMap.get(key);
-        if (!existing || (entry.updatedAt && existing.updatedAt && 
-            new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
-          entryMap.set(key, entry);
+        const category = (entry.category || '').trim();
+        const cc = (entry.costCenter || '').trim();
+        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
+        if (isWorking && entry.hours > 0) {
+          const key = cc || 'Unassigned';
+          costCenterHours[key] = (costCenterHours[key] || 0) + entry.hours;
         }
       });
+      hoursBreakdown.workingHours = Object.values(costCenterHours).reduce((s, h) => s + h, 0);
 
-      // Process deduplicated entries
-      // For "Working Hours", sum ALL entries (regardless of costCenter) since mobile app shows one field
-      entryMap.forEach(entry => {
+      const categoryMap = new Map<string, TimeTracking>();
+      dayData.timeTracking.forEach(entry => {
+        const category = entry.category || '';
+        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
+        if (isWorking) return;
+        const existing = categoryMap.get(category);
+        if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
+          categoryMap.set(category, entry);
+        }
+      });
+      categoryMap.forEach(entry => {
         switch (entry.category) {
-          case 'Working Hours':
-            // Sum all "Working Hours" entries together (including cost center-specific ones)
-            // This matches how the mobile app displays a single "Working Hours" field
-            hoursBreakdown.workingHours += entry.hours;
-            break;
           case 'G&A Hours':
             hoursBreakdown.gahours += entry.hours;
             break;
@@ -440,7 +429,7 @@ export class BackendDataService {
         }
       });
 
-      const totalHours = Object.values(hoursBreakdown).reduce((sum, hours) => sum + hours, 0);
+      const totalHours = hoursBreakdown.workingHours + Object.values(hoursBreakdown).slice(1).reduce((s, h) => s + h, 0);
       const totalMiles = dayData.mileage.reduce((sum, entry) => sum + entry.miles, 0);
       const totalReceipts = dayData.receipts
         .filter(receipt => receipt.category !== 'Per Diem')
@@ -450,6 +439,7 @@ export class BackendDataService {
         date,
         employeeId,
         totalHours,
+        costCenterHours,
         hoursBreakdown,
         totalMiles,
         mileageEntries: dayData.mileage,
@@ -468,24 +458,25 @@ export class BackendDataService {
   }
 
   /**
-   * Update hours for a specific day - writes directly to backend
+   * Update hours for a specific day - writes directly to backend.
+   * Supports per-cost-center working hours (matches web portal) and category hours.
    */
   static async updateDayHours(
     employeeId: string,
     date: Date,
-    hoursBreakdown: Partial<UnifiedDayData['hoursBreakdown']>,
-    costCenter?: string
+    options: {
+      costCenterHours?: Record<string, number>;
+      hoursBreakdown?: Partial<UnifiedDayData['hoursBreakdown']>;
+      costCenter?: string;
+    }
   ): Promise<void> {
-    // Get existing entries for this day from backend
+    const { costCenterHours, hoursBreakdown = {}, costCenter: targetCostCenter = '' } = options;
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
-    const existingEntries = await this.getTimeTracking(employeeId, month, year);
-
-    // Filter entries for this specific day - use multiple date comparison methods to catch all duplicates
     const dayStr = this.toLocalDateKey(date);
+    const existingEntries = await this.getTimeTracking(employeeId, month, year);
     const dayEntries = existingEntries.filter(entry => {
       const entryDayStr = this.toLocalDateKey(entry.date);
-      // Also check if dates match by comparing year, month, day directly
       const entryDate = new Date(entry.date);
       const targetDate = new Date(date);
       const sameDay = entryDate.getFullYear() === targetDate.getFullYear() &&
@@ -494,103 +485,61 @@ export class BackendDataService {
       return entryDayStr === dayStr || sameDay;
     });
 
-    // IMPORTANT: Handle "Working Hours" differently from other categories
-    // - "Working Hours" on mobile app represents the TOTAL for all cost centers
-    // - Web portal stores cost center hours as separate "Working Hours" entries with different costCenters
-    // - When mobile app saves "Working Hours", it should replace ALL "Working Hours" entries (all cost centers)
-    // - For other categories (G&A, Holiday, etc.), only delete entries for the selected costCenter
-    const targetCostCenter = costCenter || '';
-    
-    // List of categories we might be updating
-    const categoryMap: { [key: string]: string } = {
-      'workingHours': 'Working Hours',
-      'gahours': 'G&A Hours',
-      'holidayHours': 'Holiday Hours',
-      'ptoHours': 'PTO Hours',
-      'stdLtdHours': 'STD/LTD Hours',
-      'pflPfmlHours': 'PFL/PFML Hours'
-    };
-    
-    // Determine which categories are being updated (have values in hoursBreakdown)
-    const categoriesBeingUpdated = Object.keys(hoursBreakdown)
-      .filter(key => hoursBreakdown[key as keyof typeof hoursBreakdown] !== undefined)
-      .map(key => categoryMap[key] || key);
-    
-    // Check if "Working Hours" is being updated
-    const isUpdatingWorkingHours = categoriesBeingUpdated.includes('Working Hours');
-    
-    // Filter entries to delete
-    const entriesToDelete = dayEntries.filter(entry => {
-      const entryCostCenter = entry.costCenter || '';
-      const entryCategory = entry.category || '';
-      
-      // Special handling for "Working Hours":
-      // - If updating "Working Hours", delete ALL "Working Hours" entries (all cost centers)
-      // - This is because mobile app shows a single "Working Hours" field that represents the total
-      if (isUpdatingWorkingHours && entryCategory === 'Working Hours') {
-        return true; // Delete all "Working Hours" entries regardless of costCenter
-      }
-      
-      // For other categories, only delete if costCenter matches
-      if (targetCostCenter && categoriesBeingUpdated.includes(entryCategory)) {
-        return entryCostCenter === targetCostCenter;
-      }
-      
-      // If no costCenter specified, delete all entries for categories being updated (legacy behavior)
-      if (!targetCostCenter && categoriesBeingUpdated.includes(entryCategory)) {
-        return true;
-      }
-      
-      return false;
-    });
-
-    // Delete matching entries
-    console.log(`🗑️ BackendDataService: Deleting ${entriesToDelete.length} time tracking entries for ${dayStr} (costCenter: ${targetCostCenter || 'all'})`);
-    for (const entry of entriesToDelete) {
+    for (const entry of dayEntries) {
       try {
         await this.deleteTimeTracking(entry.id);
-        console.log(`✅ BackendDataService: Deleted entry ${entry.id} (${entry.category}, ${entry.costCenter || 'no costCenter'}, ${entry.hours} hours)`);
       } catch (error) {
         console.error(`❌ BackendDataService: Error deleting entry ${entry.id}:`, error);
-        // Continue deleting other entries even if one fails
       }
     }
 
-    // Create new entries for each category with hours > 0
-    // Only create entries for the costCenter being updated
+    let entriesCreated = 0;
+    if (costCenterHours && Object.keys(costCenterHours).length > 0) {
+      for (const [ccName, hours] of Object.entries(costCenterHours)) {
+        if (hours > 0) {
+          await this.createTimeTracking({
+            employeeId,
+            date,
+            category: 'Working Hours',
+            hours,
+            description: '',
+            costCenter: ccName === 'Unassigned' ? '' : ccName
+          });
+          entriesCreated++;
+        }
+      }
+    } else if (hoursBreakdown.workingHours != null && hoursBreakdown.workingHours > 0) {
+      await this.createTimeTracking({
+        employeeId,
+        date,
+        category: 'Working Hours',
+        hours: hoursBreakdown.workingHours,
+        description: '',
+        costCenter: targetCostCenter
+      });
+      entriesCreated++;
+    }
+
     const categories = [
-      { key: 'workingHours', category: 'Working Hours' },
       { key: 'gahours', category: 'G&A Hours' },
       { key: 'holidayHours', category: 'Holiday Hours' },
       { key: 'ptoHours', category: 'PTO Hours' },
       { key: 'stdLtdHours', category: 'STD/LTD Hours' },
       { key: 'pflPfmlHours', category: 'PFL/PFML Hours' }
     ];
-
-    let entriesCreated = 0;
     for (const { key, category } of categories) {
       const hours = hoursBreakdown[key as keyof typeof hoursBreakdown];
-      // Only create if hours is explicitly set (not undefined) and > 0
-      if (hours !== undefined && hours !== null && hours > 0) {
-        // Special handling for "Working Hours":
-        // - Mobile app's "Working Hours" represents total hours for the selected costCenter
-        // - Create a single entry with the selected costCenter (replacing all previous cost center entries)
-        // - For other categories, use the selected costCenter
+      if (hours != null && hours > 0) {
         await this.createTimeTracking({
           employeeId,
           date,
           category: category as any,
           hours,
           description: '',
-          costCenter: targetCostCenter
+          costCenter: ''
         });
         entriesCreated++;
-        console.log(`✅ BackendDataService: Created ${category} entry: ${hours} hours (costCenter: ${targetCostCenter || 'none'})`);
       }
-    }
-    
-    if (entriesCreated === 0) {
-      console.log(`✅ BackendDataService: All hours cleared for ${dayStr} (costCenter: ${targetCostCenter || 'all'}) - no entries created`);
     }
   }
 

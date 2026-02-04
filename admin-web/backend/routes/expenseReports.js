@@ -442,9 +442,19 @@ router.get('/api/expense-reports/:employeeId/:month/:year', (req, res) => {
  * Comprehensive save endpoint that syncs web portal changes back to source tables
  */
 router.post('/api/expense-reports/sync-to-source', async (req, res) => {
+  // Always log so Render shows the request (debugLog is off in production)
+  console.log('[sync-to-source] Request received', {
+    hasBody: !!req.body,
+    employeeId: req.body?.employeeId,
+    month: req.body?.month,
+    year: req.body?.year,
+    hasReportData: !!req.body?.reportData,
+    dailyEntriesCount: req.body?.reportData?.dailyEntries?.length ?? 0
+  });
+
   const { employeeId, month, year, reportData } = req.body;
   const db = dbService.getDb();
-  
+
   // Validate required fields
   if (!employeeId) {
     return res.status(400).json({ error: 'employeeId is required' });
@@ -452,7 +462,7 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
   if (!reportData) {
     return res.status(400).json({ error: 'reportData is required' });
   }
-  
+
   debugLog('🔄 Syncing report data back to source tables for employee:', employeeId);
   
   try {
@@ -607,8 +617,8 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
               
               await new Promise((resolve, reject) => {
                 db.run(
-                  'INSERT INTO time_tracking (id, employeeId, date, category, hours, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                  [id, employeeId, dateStr, '', hours, costCenterName, now, now],
+                  'INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  [id, employeeId, dateStr, '', hours, '', costCenterName, now, now],
                   (insertErr) => {
                     if (insertErr) {
                       debugError(`❌ Error saving time tracking for ${costCenterName} on ${dateStr}:`, insertErr);
@@ -635,8 +645,8 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
                 
                 await new Promise((resolve, reject) => {
                   db.run(
-                    'INSERT INTO time_tracking (id, employeeId, date, category, hours, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    [id, employeeId, dateStr, category, hours, '', now, now],
+                    'INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [id, employeeId, dateStr, category, hours, '', '', now, now],
                     (insertErr) => {
                       if (insertErr) {
                         debugError(`❌ Error saving time tracking for ${category} on ${dateStr}:`, insertErr);
@@ -742,15 +752,20 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
       timestamp: new Date().toISOString()
     });
     
-    res.json({ 
+    console.log('[sync-to-source] Success');
+    res.json({
       success: true,
-      message: 'Report data synced successfully to source tables' 
+      message: 'Report data synced successfully to source tables'
     });
-    
+
   } catch (error) {
     const errorMessage = error?.message || String(error);
     const errorStack = error?.stack;
-    
+
+    // Always log to stdout so Render shows it
+    console.error('[sync-to-source] ERROR:', errorMessage);
+    console.error('[sync-to-source] Stack:', errorStack);
+
     debugError('❌ Error syncing report data:', errorMessage);
     debugError('❌ Error stack:', errorStack);
     debugError('❌ Report data structure:', {

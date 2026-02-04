@@ -1,21 +1,23 @@
 /**
  * API Configuration
- * 
+ *
  * Set USE_PRODUCTION_FOR_TESTING to true to use Render.com backend; false for local backend.
+ * On a physical device (Expo Go), localhost won't work — set LOCAL_IP to your computer's IP.
  */
 
 // Production backend URL (Render.com deployment)
 const PRODUCTION_API_URL = 'https://oxford-mileage-backend.onrender.com/api';
 
-// Local development backend URL (for testing on same network)
-// Use localhost for simulator/emulator/web, or your computer's local IP for physical device
-// To find your IP: Windows: ipconfig | findstr IPv4, Mac/Linux: ifconfig | grep inet
-// For physical device testing, update the IP address below to your computer's local IP
-const LOCAL_API_URL = 'http://localhost:3003/api';  // For simulator/emulator/web
-// const LOCAL_API_URL = 'http://192.168.86.101:3003/api';  // Uncomment and update IP for physical device
+// Your computer's IP on the local network (for Expo Go on physical device).
+// Leave empty to use localhost (simulator/emulator only). Find IP: Expo shows it as "exp://192.168.x.x:8081", or: ipconfig (Windows) / ifconfig (Mac)
+const LOCAL_IP = '192.168.86.32';
 
-// Production mode: Set to true to use Render.com backend; false for local backend (localhost:3003)
-const USE_PRODUCTION_FOR_TESTING = true; // Production: use Render backend
+const LOCAL_API_URL = LOCAL_IP
+  ? `http://${LOCAL_IP}:3003/api`
+  : 'http://localhost:3003/api';
+
+// Production mode: true = Render backend; false = local backend (must be running on port 3003)
+const USE_PRODUCTION_FOR_TESTING = true;
 
 // Determine which API URL to use
 export const API_BASE_URL = USE_PRODUCTION_FOR_TESTING

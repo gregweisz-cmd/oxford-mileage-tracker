@@ -46,12 +46,14 @@ function normalizeDateString(dateValue) {
     debugWarn(`⚠️ Invalid date value: ${dateValue}`);
     return '';
   }
-  
-  // Format as YYYY-MM-DD
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+
+  // For ISO strings (e.g. "2025-01-15T00:00:00.000Z"), use UTC components so the
+  // calendar day is preserved regardless of server timezone
+  const isIsoString = typeof dateValue === 'string' && dateValue.indexOf('T') !== -1;
+  const year = isIsoString ? date.getUTCFullYear() : date.getFullYear();
+  const month = isIsoString ? date.getUTCMonth() + 1 : date.getMonth() + 1;
+  const day = isIsoString ? date.getUTCDate() : date.getDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 module.exports = {

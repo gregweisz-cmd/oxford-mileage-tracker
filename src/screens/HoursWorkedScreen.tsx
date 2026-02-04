@@ -16,20 +16,18 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataService';
 import { Employee } from '../types';
-import { COST_CENTERS } from '../constants/costCenters';
 
 interface HoursWorkedScreenProps {
   navigation: any;
 }
 
-const TIME_CATEGORIES = [
-  'Working Hours',
+const CATEGORY_HOURS_LABELS = [
   'G&A Hours',
   'Holiday Hours',
   'PTO Hours',
   'STD/LTD Hours',
   'PFL/PFML Hours'
-];
+] as const;
 
 export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
@@ -38,8 +36,8 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<UnifiedDayData | null>(null);
+  /** Keys: 'cc:Cost Center Name' for cost center hours, or category name for G&A, PTO, etc. */
   const [timeTrackingInputs, setTimeTrackingInputs] = useState<{[key: string]: number}>({});
-  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -85,73 +83,43 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
 
   const handleEditHours = (day: UnifiedDayData) => {
     setSelectedDay(day);
-    
-    // Initialize inputs with existing hours breakdown
+    const costCenters = currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || [];
     const inputs: {[key: string]: number} = {};
-    TIME_CATEGORIES.forEach(category => {
-      let categoryKey: keyof typeof day.hoursBreakdown;
-      switch (category) {
-        case 'Working Hours':
-          categoryKey = 'workingHours';
-          break;
-        case 'G&A Hours':
-          categoryKey = 'gahours';
-          break;
-        case 'Holiday Hours':
-          categoryKey = 'holidayHours';
-          break;
-        case 'PTO Hours':
-          categoryKey = 'ptoHours';
-          break;
-        case 'STD/LTD Hours':
-          categoryKey = 'stdLtdHours';
-          break;
-        case 'PFL/PFML Hours':
-          categoryKey = 'pflPfmlHours';
-          break;
-        default:
-          categoryKey = 'workingHours';
-      }
-      inputs[category] = day.hoursBreakdown[categoryKey] || 0;
+    costCenters.forEach(cc => {
+      inputs[`cc:${cc}`] = day.costCenterHours?.[cc] ?? 0;
     });
-    
-    // Initialize cost center - use existing or default
-    const costCenter = day.costCenter || currentEmployee?.defaultCostCenter || currentEmployee?.selectedCostCenters?.[0] || '';
-    setSelectedCostCenter(costCenter);
-    
+    CATEGORY_HOURS_LABELS.forEach(category => {
+      const key = category === 'G&A Hours' ? 'gahours' : category === 'Holiday Hours' ? 'holidayHours' : category === 'PTO Hours' ? 'ptoHours' : category === 'STD/LTD Hours' ? 'stdLtdHours' : 'pflPfmlHours';
+      inputs[category] = day.hoursBreakdown[key] || 0;
+    });
     setTimeTrackingInputs(inputs);
     setShowEditModal(true);
   };
 
   const handleSaveHours = async () => {
     if (!selectedDay || !currentEmployee) return;
-
+    const costCenters = currentEmployee.selectedCostCenters || currentEmployee.costCenters || [];
+    const costCenterHours: Record<string, number> = {};
+    costCenters.forEach(cc => {
+      const h = timeTrackingInputs[`cc:${cc}`];
+      if (h != null && h > 0) costCenterHours[cc] = h;
+    });
+    const hoursBreakdown = {
+      gahours: timeTrackingInputs['G&A Hours'] ?? 0,
+      holidayHours: timeTrackingInputs['Holiday Hours'] ?? 0,
+      ptoHours: timeTrackingInputs['PTO Hours'] ?? 0,
+      stdLtdHours: timeTrackingInputs['STD/LTD Hours'] ?? 0,
+      pflPfmlHours: timeTrackingInputs['PFL/PFML Hours'] ?? 0
+    };
     try {
-      // Convert inputs to hours breakdown format
-      const hoursBreakdown = {
-        workingHours: timeTrackingInputs['Working Hours'] || 0,
-        gahours: timeTrackingInputs['G&A Hours'] || 0,
-        holidayHours: timeTrackingInputs['Holiday Hours'] || 0,
-        ptoHours: timeTrackingInputs['PTO Hours'] || 0,
-        stdLtdHours: timeTrackingInputs['STD/LTD Hours'] || 0,
-        pflPfmlHours: timeTrackingInputs['PFL/PFML Hours'] || 0
-      };
-      
-      // Use unified service to update hours
-      await UnifiedDataService.updateDayHours(
-        currentEmployee.id,
-        selectedDay.date,
-        hoursBreakdown,
-        selectedCostCenter
-      );
-      
+      await UnifiedDataService.updateDayHours(currentEmployee.id, selectedDay.date, {
+        costCenterHours,
+        hoursBreakdown
+      });
       setShowEditModal(false);
       setSelectedDay(null);
       setTimeTrackingInputs({});
-      
-      // Reload data to reflect changes
       await loadData();
-      
     } catch (error) {
       console.error('❌ HoursWorkedScreen: Error saving hours:', error);
       Alert.alert('Error', 'Failed to save hours');
@@ -250,9 +218,9 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
               <View style={styles.dayDetails}>
                 {getTotalHoursForDay(day) > 0 ? (
                   <>
-                    {day.hoursBreakdown.workingHours > 0 && (
-                      <Text style={styles.hourDetail}>Working: {day.hoursBreakdown.workingHours}h</Text>
-                    )}
+                    {day.costCenterHours && Object.entries(day.costCenterHours).map(([cc, h]) => h > 0 ? (
+                      <Text key={cc} style={styles.hourDetail}>{cc}: {h}h</Text>
+                    ) : null)}
                     {day.hoursBreakdown.gahours > 0 && (
                       <Text style={styles.hourDetail}>G&A: {day.hoursBreakdown.gahours}h</Text>
                     )}
@@ -299,58 +267,48 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
           </View>
 
           <ScrollView style={styles.modalContent}>
-            {TIME_CATEGORIES.map((category) => (
+            <Text style={styles.sectionLabel}>Hours per cost center</Text>
+            {(currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || []).map((cc) => (
+              <View key={cc} style={styles.inputRow}>
+                <Text style={styles.inputLabel} numberOfLines={1}>{cc}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={timeTrackingInputs[`cc:${cc}`]?.toString() ?? '0'}
+                  onChangeText={(text) => {
+                    const value = parseFloat(text) || 0;
+                    setTimeTrackingInputs(prev => ({ ...prev, [`cc:${cc}`]: value }));
+                  }}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  selectTextOnFocus
+                  returnKeyType="done"
+                  blurOnSubmit
+                />
+              </View>
+            ))}
+            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Other</Text>
+            {CATEGORY_HOURS_LABELS.map((category) => (
               <View key={category} style={styles.inputRow}>
                 <Text style={styles.inputLabel}>{category}</Text>
                 <TextInput
                   style={styles.input}
-                  value={timeTrackingInputs[category]?.toString() || '0'}
+                  value={timeTrackingInputs[category]?.toString() ?? '0'}
                   onChangeText={(text) => {
                     const value = parseFloat(text) || 0;
-                    setTimeTrackingInputs(prev => ({
-                      ...prev,
-                      [category]: value
-                    }));
+                    setTimeTrackingInputs(prev => ({ ...prev, [category]: value }));
                   }}
                   keyboardType="numeric"
                   placeholder="0"
-                  selectTextOnFocus={true}
+                  selectTextOnFocus
                   returnKeyType="done"
-                  blurOnSubmit={true}
+                  blurOnSubmit
                 />
               </View>
             ))}
-
-            {/* Cost Center Selector - only show if user has multiple cost centers */}
-            {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
-              <View style={styles.costCenterSection}>
-                <Text style={styles.costCenterLabel}>Cost Center</Text>
-                <View style={styles.costCenterSelector}>
-                  {currentEmployee.selectedCostCenters.map((costCenter) => (
-                    <TouchableOpacity
-                      key={costCenter}
-                      style={[
-                        styles.costCenterOption,
-                        selectedCostCenter === costCenter && styles.costCenterOptionSelected
-                      ]}
-                      onPress={() => setSelectedCostCenter(costCenter)}
-                    >
-                      <Text style={[
-                        styles.costCenterOptionText,
-                        selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
-                      ]}>
-                        {costCenter}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-
             <View style={styles.totalSection}>
               <Text style={styles.totalLabel}>Total Hours:</Text>
               <Text style={styles.totalValue}>
-                {Object.values(timeTrackingInputs).reduce((sum, hours) => sum + hours, 0)}
+                {Object.values(timeTrackingInputs).reduce((sum, hours) => sum + (typeof hours === 'number' ? hours : 0), 0)}
               </Text>
             </View>
           </ScrollView>
@@ -550,6 +508,12 @@ const styles = StyleSheet.create({
   modalContent: {
     flex: 1,
     padding: 16,
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
   },
   inputRow: {
     flexDirection: 'row',

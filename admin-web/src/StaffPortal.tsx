@@ -4119,8 +4119,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Use refs so we always send latest checkbox values (user may click Save right after checking; state can still be stale)
       const certAck = employeeCertificationAcknowledgedRef.current;
       const superCertAck = supervisorCertificationAcknowledgedRef.current;
+      // Ensure every dailyEntry has date as YYYY-MM-DD so backend normalizes correctly
+      const dailyEntriesForSync = (dataForSave.dailyEntries || []).map((entry: any) => {
+        let dateStr = normalizeDate(entry.date);
+        if (!dateStr && entry.day != null && currentYear != null && currentMonth != null) {
+          dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(entry.day).padStart(2, '0')}`;
+        }
+        return { ...entry, date: dateStr || entry.date };
+      });
       const reportData = {
         ...dataForSave,
+        dailyEntries: dailyEntriesForSync,
         receipts: receipts,
         dailyDescriptions: dailyDescriptionsForSave,
         employeeSignature: signatureImage,
@@ -4130,7 +4139,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
 
       // Use the sync endpoint to save AND sync to source tables
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
+      const syncUrl = `${API_BASE_URL}/api/expense-reports/sync-to-source`;
+      const response = await fetch(syncUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -4143,13 +4153,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }),
       });
 
+      const responseText = await response.text();
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        debugError('❌ Save error response:', errorData);
-        throw new Error(`Failed to save expense report: ${errorData.error || errorData.message || 'Unknown error'}`);
+        let errorMsg = `Server returned ${response.status}`;
+        try {
+          const errorData = responseText ? JSON.parse(responseText) : {};
+          const msg = errorData.error || errorData.message || errorData.details;
+          if (msg) errorMsg = typeof msg === 'string' ? msg : JSON.stringify(msg);
+        } catch {
+          if (responseText && responseText.length < 200) errorMsg = responseText;
+        }
+        debugError('❌ Save error response:', response.status, responseText?.slice(0, 500));
+        throw new Error(`${errorMsg} (${response.status})`);
       }
 
-      await response.json();
+      try {
+        JSON.parse(responseText);
+      } catch {
+        // ignore if body is empty or not JSON
+      }
 
       // Optimistic update: show exactly what we just saved so the table never flashes empty
       // (e.g. if refetch runs before backend has committed or returns empty on cold start)
@@ -4182,7 +4204,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
     } catch (error) {
       debugError('Error saving report:', error);
-      showError(`Error saving report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const message = error instanceof Error ? error.message : String(error);
+      // Surface network vs server errors so user can tell if request never reached backend
+      const isNetworkError = message.includes('Failed to fetch') || message.includes('NetworkError') || message.includes('Load failed');
+      const fullMessage = isNetworkError
+        ? `Could not reach server. Check your connection and that the backend is running. (${message})`
+        : `Save failed: ${message}`;
+      showError(fullMessage);
     } finally {
       stopLoading();
     }

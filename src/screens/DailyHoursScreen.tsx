@@ -27,14 +27,13 @@ interface DailyHoursScreenProps {
   navigation: any;
 }
 
-const TIME_CATEGORIES = [
-  'Working Hours',
+const CATEGORY_HOURS_LABELS = [
   'G&A Hours',
   'Holiday Hours',
   'PTO Hours',
   'STD/LTD Hours',
   'PFL/PFML Hours'
-];
+] as const;
 
 const DAY_OFF_TYPES = [
   'Day Off',
@@ -237,37 +236,16 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     setIsDayOff(dailyDesc.dayOff || false);
     setDayOffType(dailyDesc.dayOffType || 'Day Off');
     
-    // Initialize hours inputs
+    const costCenters = currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || [];
     const inputs: {[key: string]: number} = {};
-    TIME_CATEGORIES.forEach(category => {
-      let categoryKey: keyof typeof day.hoursBreakdown;
-      switch (category) {
-        case 'Working Hours':
-          categoryKey = 'workingHours';
-          break;
-        case 'G&A Hours':
-          categoryKey = 'gahours';
-          break;
-        case 'Holiday Hours':
-          categoryKey = 'holidayHours';
-          break;
-        case 'PTO Hours':
-          categoryKey = 'ptoHours';
-          break;
-        case 'STD/LTD Hours':
-          categoryKey = 'stdLtdHours';
-          break;
-        case 'PFL/PFML Hours':
-          categoryKey = 'pflPfmlHours';
-          break;
-        default:
-          categoryKey = 'workingHours';
-      }
-      inputs[category] = day.hoursBreakdown[categoryKey] || 0;
+    costCenters.forEach(cc => {
+      inputs[`cc:${cc}`] = day.costCenterHours?.[cc] ?? 0;
+    });
+    CATEGORY_HOURS_LABELS.forEach(category => {
+      const key = category === 'G&A Hours' ? 'gahours' : category === 'Holiday Hours' ? 'holidayHours' : category === 'PTO Hours' ? 'ptoHours' : category === 'STD/LTD Hours' ? 'stdLtdHours' : 'pflPfmlHours';
+      inputs[category] = day.hoursBreakdown[key] || 0;
     });
     setTimeTrackingInputs(inputs);
-    
-    // Initialize cost center
     const costCenter = day.costCenter || currentEmployee?.defaultCostCenter || currentEmployee?.selectedCostCenters?.[0] || '';
     setSelectedCostCenter(costCenter);
     
@@ -307,20 +285,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                 false,
                 undefined
               );
-              // Clear hours (all zeros deletes existing entries, creates none)
-              await BackendDataService.updateDayHours(
-                employeeId,
-                dateToClear,
-                {
-                  workingHours: 0,
-                  gahours: 0,
-                  holidayHours: 0,
-                  ptoHours: 0,
-                  stdLtdHours: 0,
-                  pflPfmlHours: 0
-                },
-                costCenterToUse
-              );
+              await BackendDataService.updateDayHours(employeeId, dateToClear, {
+                costCenterHours: {},
+                hoursBreakdown: { gahours: 0, holidayHours: 0, ptoHours: 0, stdLtdHours: 0, pflPfmlHours: 0 }
+              });
               await loadData();
               setTimeout(() => {
                 if (scrollViewRef.current && savedScrollPosition >= 0) {
@@ -371,23 +339,24 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         selectedDay.descriptionId // use id when available so delete/update always targets the right row
       );
       
-      // Save hours directly to backend (only if not day off)
       if (!isDayOff) {
+        const costCenters = currentEmployee.selectedCostCenters || currentEmployee.costCenters || [];
+        const costCenterHours: Record<string, number> = {};
+        costCenters.forEach(cc => {
+          const h = timeTrackingInputs[`cc:${cc}`];
+          if (h != null && h > 0) costCenterHours[cc] = h;
+        });
         const hoursBreakdown = {
-          workingHours: timeTrackingInputs['Working Hours'] || 0,
-          gahours: timeTrackingInputs['G&A Hours'] || 0,
-          holidayHours: timeTrackingInputs['Holiday Hours'] || 0,
-          ptoHours: timeTrackingInputs['PTO Hours'] || 0,
-          stdLtdHours: timeTrackingInputs['STD/LTD Hours'] || 0,
-          pflPfmlHours: timeTrackingInputs['PFL/PFML Hours'] || 0
+          gahours: timeTrackingInputs['G&A Hours'] ?? 0,
+          holidayHours: timeTrackingInputs['Holiday Hours'] ?? 0,
+          ptoHours: timeTrackingInputs['PTO Hours'] ?? 0,
+          stdLtdHours: timeTrackingInputs['STD/LTD Hours'] ?? 0,
+          pflPfmlHours: timeTrackingInputs['PFL/PFML Hours'] ?? 0
         };
-        
-        await BackendDataService.updateDayHours(
-          currentEmployee.id,
-          selectedDay.date,
-          hoursBreakdown,
-          selectedCostCenter
-        );
+        await BackendDataService.updateDayHours(currentEmployee.id, selectedDay.date, {
+          costCenterHours,
+          hoursBreakdown
+        });
       }
       
       // Save recent description if not day off and has content
@@ -644,9 +613,9 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                       <Text style={styles.dayOffText}>Day Off</Text>
                     ) : getTotalHoursForDay(day) > 0 ? (
                       <>
-                        {day.hoursBreakdown.workingHours > 0 && (
-                          <Text style={styles.hourDetail}>Working: {day.hoursBreakdown.workingHours}h</Text>
-                        )}
+                        {day.costCenterHours && Object.entries(day.costCenterHours).map(([cc, h]) => h > 0 ? (
+                          <Text key={cc} style={styles.hourDetail}>{cc}: {h}h</Text>
+                        ) : null)}
                         {day.hoursBreakdown.gahours > 0 && (
                           <Text style={styles.hourDetail}>G&A: {day.hoursBreakdown.gahours}h</Text>
                         )}
@@ -817,61 +786,48 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                 )}
               </View>
 
-              {/* Hours Section */}
+              {/* Hours Section - per cost center (matches web portal) */}
               {!isDayOff && (
                 <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Hours Worked</Text>
-                  {TIME_CATEGORIES.map((category) => (
+                  <Text style={styles.sectionLabel}>Hours per cost center</Text>
+                  {(currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || []).map((cc) => (
+                    <View key={cc} style={styles.inputRow}>
+                      <Text style={styles.inputLabel} numberOfLines={1}>{cc}</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={timeTrackingInputs[`cc:${cc}`]?.toString() ?? '0'}
+                        onChangeText={(text) => {
+                          const value = parseFloat(text) || 0;
+                          setTimeTrackingInputs(prev => ({ ...prev, [`cc:${cc}`]: value }));
+                        }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        selectTextOnFocus
+                      />
+                    </View>
+                  ))}
+                  <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Other</Text>
+                  {CATEGORY_HOURS_LABELS.map((category) => (
                     <View key={category} style={styles.inputRow}>
                       <Text style={styles.inputLabel}>{category}</Text>
                       <TextInput
                         style={styles.input}
-                        value={timeTrackingInputs[category]?.toString() || '0'}
+                        value={timeTrackingInputs[category]?.toString() ?? '0'}
                         onChangeText={(text) => {
                           const value = parseFloat(text) || 0;
-                          setTimeTrackingInputs(prev => ({
-                            ...prev,
-                            [category]: value
-                          }));
+                          setTimeTrackingInputs(prev => ({ ...prev, [category]: value }));
                         }}
                         keyboardType="numeric"
                         placeholder="0"
-                        selectTextOnFocus={true}
+                        selectTextOnFocus
                       />
                     </View>
                   ))}
-                  
                   <View style={styles.totalSection}>
                     <Text style={styles.totalLabel}>Total Hours:</Text>
                     <Text style={styles.totalValue}>
-                      {Object.values(timeTrackingInputs).reduce((sum, hours) => sum + hours, 0)}
+                      {Object.values(timeTrackingInputs).reduce((sum, hours) => sum + (typeof hours === 'number' ? hours : 0), 0)}
                     </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Cost Center Selector */}
-              {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Cost Center</Text>
-                  <View style={styles.costCenterSelector}>
-                    {currentEmployee.selectedCostCenters.map((costCenter) => (
-                      <TouchableOpacity
-                        key={costCenter}
-                        style={[
-                          styles.costCenterOption,
-                          selectedCostCenter === costCenter && styles.costCenterOptionSelected
-                        ]}
-                        onPress={() => setSelectedCostCenter(costCenter)}
-                      >
-                        <Text style={[
-                          styles.costCenterOptionText,
-                          selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
-                        ]}>
-                          {costCenter}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
                   </View>
                 </View>
               )}

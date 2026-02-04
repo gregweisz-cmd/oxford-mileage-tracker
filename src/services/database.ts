@@ -348,7 +348,7 @@ export class DatabaseService {
         );
       `);
 
-      // Create time_tracking table
+      // Create time_tracking table (costCenter included so INSERT succeeds on fresh installs)
       await database.execAsync(`
         CREATE TABLE IF NOT EXISTS time_tracking (
           id TEXT PRIMARY KEY,
@@ -357,6 +357,7 @@ export class DatabaseService {
           category TEXT NOT NULL,
           hours REAL NOT NULL,
           description TEXT,
+          costCenter TEXT DEFAULT '',
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );
@@ -2161,17 +2162,21 @@ export class DatabaseService {
     const now = new Date().toISOString();
     const database = await getDatabase();
     
+    // Store date as YYYY-MM-DD to match backend and avoid timezone/strftime issues
+    const dateObj = tracking.date instanceof Date ? tracking.date : new Date(tracking.date);
+    const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+
     await database.runAsync(
       'INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
-        id, 
-        tracking.employeeId, 
-        tracking.date.toISOString(), 
+        id,
+        tracking.employeeId,
+        dateStr,
         tracking.category,
         tracking.hours,
         tracking.description || '',
-        tracking.costCenter || '', 
-        now, 
+        tracking.costCenter || '',
+        now,
         now
       ]
     );

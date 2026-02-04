@@ -10,26 +10,28 @@ import { MileageEntry, TimeTracking, Receipt, Employee } from '../types';
 export interface UnifiedDayData {
   date: Date;
   employeeId: string;
-  
+
   // Single source of truth for hours
   totalHours: number;
+  /** Hours per cost center (matches web portal). Key = cost center name, value = hours. */
+  costCenterHours: Record<string, number>;
   hoursBreakdown: {
-    workingHours: number;
+    workingHours: number; // Sum of costCenterHours (for backward compat)
     gahours: number;
     holidayHours: number;
     ptoHours: number;
     stdLtdHours: number;
     pflPfmlHours: number;
   };
-  
+
   // Single source of truth for mileage
   totalMiles: number;
   mileageEntries: MileageEntry[];
-  
+
   // Single source of truth for receipts
   totalReceipts: number;
   receipts: Receipt[];
-  
+
   // Metadata
   costCenter?: string;
   notes?: string;
@@ -77,7 +79,7 @@ export class UnifiedDataService {
       this.toLocalDateKey(receipt.date) === dateStr
     );
     
-    // Calculate unified hours breakdown
+    const costCenterHours: Record<string, number> = {};
     const hoursBreakdown = {
       workingHours: 0,
       gahours: 0,
@@ -86,24 +88,32 @@ export class UnifiedDataService {
       stdLtdHours: 0,
       pflPfmlHours: 0
     };
-    
-    // Deduplicate time tracking entries by category
-    // Keep only the most recent entry for each category (by updatedAt)
+
+    // Working-hours entries: category '' or 'Working Hours' or 'Regular Hours' — group by costCenter
+    dayTimeTracking.forEach(entry => {
+      const category = (entry.category || '').trim();
+      const cc = (entry.costCenter || '').trim();
+      const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
+      if (isWorking && entry.hours > 0) {
+        const key = cc || 'Unassigned';
+        costCenterHours[key] = (costCenterHours[key] || 0) + entry.hours;
+      }
+    });
+    hoursBreakdown.workingHours = Object.values(costCenterHours).reduce((s, h) => s + h, 0);
+
+    // Other categories (dedupe by category, keep most recent)
     const categoryMap = new Map<string, any>();
     dayTimeTracking.forEach(entry => {
       const category = entry.category || '';
+      const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
+      if (isWorking) return;
       const existing = categoryMap.get(category);
       if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
         categoryMap.set(category, entry);
       }
     });
-    
-    // Process deduplicated entries
     categoryMap.forEach(entry => {
       switch (entry.category) {
-        case 'Working Hours':
-          hoursBreakdown.workingHours += entry.hours;
-          break;
         case 'G&A Hours':
           hoursBreakdown.gahours += entry.hours;
           break;
@@ -121,18 +131,18 @@ export class UnifiedDataService {
           break;
       }
     });
-    
-    // Calculate totals (exclude Per Diem receipts from regular receipts total)
-    const totalHours = Object.values(hoursBreakdown).reduce((sum, hours) => sum + hours, 0);
+
+    const totalHours = hoursBreakdown.workingHours + Object.values(hoursBreakdown).slice(1).reduce((s, h) => s + h, 0);
     const totalMiles = dayMileage.reduce((sum, entry) => sum + entry.miles, 0);
     const totalReceipts = dayReceipts
       .filter(receipt => receipt.category !== 'Per Diem')
       .reduce((sum, receipt) => sum + receipt.amount, 0);
-    
+
     return {
       date,
       employeeId,
       totalHours,
+      costCenterHours,
       hoursBreakdown,
       totalMiles,
       mileageEntries: dayMileage,
@@ -226,7 +236,7 @@ export class UnifiedDataService {
       const [year, month, day] = dateKey.split('-').map(Number);
       const date = new Date(year, month - 1, day);
       
-      // Calculate hours breakdown
+      const costCenterHours: Record<string, number> = {};
       const hoursBreakdown = {
         workingHours: 0,
         gahours: 0,
@@ -235,24 +245,30 @@ export class UnifiedDataService {
         stdLtdHours: 0,
         pflPfmlHours: 0
       };
-      
-      // Deduplicate time tracking entries by category and date
-      // Keep only the most recent entry for each category (by updatedAt)
+
+      dayData.timeTracking.forEach(entry => {
+        const category = (entry.category || '').trim();
+        const cc = (entry.costCenter || '').trim();
+        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
+        if (isWorking && entry.hours > 0) {
+          const key = cc || 'Unassigned';
+          costCenterHours[key] = (costCenterHours[key] || 0) + entry.hours;
+        }
+      });
+      hoursBreakdown.workingHours = Object.values(costCenterHours).reduce((s, h) => s + h, 0);
+
       const categoryMap = new Map<string, any>();
       dayData.timeTracking.forEach(entry => {
         const category = entry.category || '';
+        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
+        if (isWorking) return;
         const existing = categoryMap.get(category);
         if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
           categoryMap.set(category, entry);
         }
       });
-      
-      // Process deduplicated entries
       categoryMap.forEach(entry => {
         switch (entry.category) {
-          case 'Working Hours':
-            hoursBreakdown.workingHours += entry.hours;
-            break;
           case 'G&A Hours':
             hoursBreakdown.gahours += entry.hours;
             break;
@@ -270,18 +286,18 @@ export class UnifiedDataService {
             break;
         }
       });
-      
-      const totalHours = Object.values(hoursBreakdown).reduce((sum, hours) => sum + hours, 0);
+
+      const totalHours = hoursBreakdown.workingHours + Object.values(hoursBreakdown).slice(1).reduce((s, h) => s + h, 0);
       const totalMiles = dayData.mileage.reduce((sum, entry) => sum + entry.miles, 0);
-      // Exclude Per Diem receipts from regular receipts total
       const totalReceipts = dayData.receipts
         .filter(receipt => receipt.category !== 'Per Diem')
         .reduce((sum, receipt) => sum + receipt.amount, 0);
-      
+
       days.push({
         date,
         employeeId,
         totalHours,
+        costCenterHours,
         hoursBreakdown,
         totalMiles,
         mileageEntries: dayData.mileage,
@@ -299,53 +315,68 @@ export class UnifiedDataService {
   }
   
   /**
-   * Update hours for a specific day
-   * This is the ONLY way to modify hours data
+   * Update hours for a specific day.
+   * Supports per-cost-center working hours (matches web portal) and category hours (PTO, G&A, etc.).
    */
   static async updateDayHours(
-    employeeId: string, 
-    date: Date, 
-    hoursBreakdown: Partial<UnifiedDayData['hoursBreakdown']>,
-    costCenter?: string
+    employeeId: string,
+    date: Date,
+    options: {
+      /** Hours per cost center (key = cost center name). Replaces single "Working Hours" with one entry per center. */
+      costCenterHours?: Record<string, number>;
+      /** Category hours (PTO, G&A, etc.). If costCenterHours not provided, workingHours + costCenter used for one entry (legacy). */
+      hoursBreakdown?: Partial<UnifiedDayData['hoursBreakdown']>;
+      /** Used only when costCenterHours is not provided (legacy). */
+      costCenter?: string;
+    }
   ): Promise<void> {
-    // Delete existing time tracking entries for this day
-    // Use local date string to avoid timezone issues
+    const { costCenterHours, hoursBreakdown = {}, costCenter } = options;
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const dayStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-    
-    const existingEntries = await DatabaseService.getTimeTrackingEntries(
-      employeeId, 
-      month, 
-      year
-    );
-    
-    // Filter entries for this specific day using local date comparison
+    const dayStr = `${year}-${String(month).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+    const existingEntries = await DatabaseService.getTimeTrackingEntries(employeeId, month, year);
     const dayEntries = existingEntries.filter(entry => {
-      const entryDate = new Date(entry.date);
-      const entryYear = entryDate.getFullYear();
-      const entryMonth = entryDate.getMonth() + 1;
-      const entryDay = entryDate.getDate();
-      const entryDayStr = `${entryYear}-${entryMonth.toString().padStart(2, '0')}-${entryDay.toString().padStart(2, '0')}`;
+      const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
+      const entryDayStr = `${entryDate.getUTCFullYear()}-${String(entryDate.getUTCMonth() + 1).padStart(2, '0')}-${String(entryDate.getUTCDate()).padStart(2, '0')}`;
       return entryDayStr === dayStr;
     });
-    
-    // Delete existing entries
+
     for (const entry of dayEntries) {
       await DatabaseService.deleteTimeTracking(entry.id);
     }
-    
-    // Create new entries for each category with hours > 0
+
+    if (costCenterHours && Object.keys(costCenterHours).length > 0) {
+      for (const [ccName, hours] of Object.entries(costCenterHours)) {
+        if (hours > 0) {
+          await DatabaseService.createTimeTracking({
+            employeeId,
+            date,
+            category: 'Working Hours',
+            hours,
+            description: '',
+            costCenter: ccName === 'Unassigned' ? '' : ccName
+          });
+        }
+      }
+    } else if (hoursBreakdown.workingHours != null && hoursBreakdown.workingHours > 0) {
+      await DatabaseService.createTimeTracking({
+        employeeId,
+        date,
+        category: 'Working Hours',
+        hours: hoursBreakdown.workingHours,
+        description: '',
+        costCenter: costCenter || ''
+      });
+    }
+
     const categories = [
-      { key: 'workingHours', category: 'Working Hours' },
       { key: 'gahours', category: 'G&A Hours' },
       { key: 'holidayHours', category: 'Holiday Hours' },
       { key: 'ptoHours', category: 'PTO Hours' },
       { key: 'stdLtdHours', category: 'STD/LTD Hours' },
       { key: 'pflPfmlHours', category: 'PFL/PFML Hours' }
     ];
-    
     for (const { key, category } of categories) {
       const hours = hoursBreakdown[key as keyof typeof hoursBreakdown] || 0;
       if (hours > 0) {
@@ -355,7 +386,7 @@ export class UnifiedDataService {
           category: category as any,
           hours,
           description: '',
-          costCenter: costCenter || ''
+          costCenter: ''
         });
       }
     }

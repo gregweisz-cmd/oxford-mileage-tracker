@@ -1613,6 +1613,7 @@ export class ApiSyncService {
       category: entry.category,
       hours: entry.hours,
       description: entry.description,
+      costCenter: entry.costCenter ?? '',
       createdAt: new Date(entry.createdAt),
       updatedAt: new Date(entry.updatedAt)
     }));

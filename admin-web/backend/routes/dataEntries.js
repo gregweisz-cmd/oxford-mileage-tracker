@@ -1371,6 +1371,48 @@ router.post('/api/daily-descriptions', (req, res) => {
 });
 
 /**
+ * Update daily description by id (partial updates supported; used by mobile app)
+ */
+router.put('/api/daily-descriptions/:id', (req, res) => {
+  const { id } = req.params;
+  const { description, costCenter, stayedOvernight, dayOff, dayOffType } = req.body;
+  const db = dbService.getDb();
+
+  db.get('SELECT * FROM daily_descriptions WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      debugError('❌ Error fetching daily description:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    if (!row) {
+      return res.status(404).json({ error: 'Not found', path: `PUT /api/daily-descriptions/${id}` });
+    }
+
+    const normalizedDate = dateHelpers.normalizeDateString(row.date) || row.date;
+    const now = new Date().toISOString();
+    const merged = {
+      description: description !== undefined ? description : row.description,
+      costCenter: costCenter !== undefined ? (costCenter || '') : (row.costCenter || ''),
+      stayedOvernight: stayedOvernight !== undefined ? (stayedOvernight ? 1 : 0) : (row.stayedOvernight || 0),
+      dayOff: dayOff !== undefined ? (dayOff ? 1 : 0) : (row.dayOff || 0),
+      dayOffType: dayOffType !== undefined ? (dayOffType || null) : (row.dayOffType || null)
+    };
+
+    db.run(
+      'UPDATE daily_descriptions SET description = ?, costCenter = ?, stayedOvernight = ?, dayOff = ?, dayOffType = ?, updatedAt = ? WHERE id = ?',
+      [merged.description, merged.costCenter, merged.stayedOvernight, merged.dayOff, merged.dayOffType, now, id],
+      function(updateErr) {
+        if (updateErr) {
+          debugError('❌ Database error updating daily description:', updateErr.message);
+          return res.status(500).json({ error: updateErr.message });
+        }
+        debugLog('✅ Daily description updated successfully:', id);
+        res.json({ id, message: 'Daily description updated successfully' });
+      }
+    );
+  });
+});
+
+/**
  * Delete daily description
  */
 router.delete('/api/daily-descriptions/:id', (req, res) => {
