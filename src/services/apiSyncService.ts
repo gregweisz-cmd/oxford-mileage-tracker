@@ -428,6 +428,8 @@ export class ApiSyncService {
       // to avoid unnecessary API calls during general sync
       
       // Sync all data to local database
+      // Backend is source of truth for employee assignments (cost centers, etc.)
+      await this.syncEmployeesToLocal(employees);
       // NOTE: Mileage entries and receipts are NOT synced FROM backend
       // Mobile app is the source of truth - they only sync TO backend
       // This prevents deleted data from being restored
@@ -2111,6 +2113,42 @@ export class ApiSyncService {
       debugLog(`✅ ApiSync: Receipts sync completed`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing receipts to local database:', error);
+    }
+  }
+
+  /**
+   * Sync employee profile/assignments from backend to local database.
+   * Backend is source of truth for cost centers and related fields so the app
+   * shows the same assignments as the web portal (e.g. after admin changes).
+   */
+  private static async syncEmployeesToLocal(employees: Employee[]): Promise<void> {
+    try {
+      if (!employees || employees.length === 0) return;
+      debugLog(`📥 ApiSync: Syncing ${employees.length} employee profile(s) from backend to local...`);
+      for (const backendEmp of employees) {
+        try {
+          const local = await DatabaseService.getEmployeeById(backendEmp.id);
+          if (!local) continue;
+          await DatabaseService.updateEmployee(backendEmp.id, {
+            costCenters: backendEmp.costCenters ?? [],
+            selectedCostCenters: (backendEmp.selectedCostCenters?.length ? backendEmp.selectedCostCenters : (backendEmp.costCenters ?? [])),
+            defaultCostCenter: backendEmp.defaultCostCenter ?? backendEmp.costCenters?.[0] ?? '',
+            name: backendEmp.name,
+            preferredName: backendEmp.preferredName ?? '',
+            baseAddress: backendEmp.baseAddress ?? '',
+            baseAddress2: backendEmp.baseAddress2 ?? '',
+            position: backendEmp.position ?? '',
+            phoneNumber: backendEmp.phoneNumber ?? '',
+            oxfordHouseId: backendEmp.oxfordHouseId ?? ''
+          });
+          debugLog(`🔄 ApiSync: Updated local employee ${backendEmp.id} (${backendEmp.name}) from backend`);
+        } catch (err) {
+          debugWarn(`⚠️ ApiSync: Failed to sync employee ${backendEmp.id} to local:`, err);
+        }
+      }
+      debugLog(`✅ ApiSync: Employee profile sync completed`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing employees to local database:', error);
     }
   }
 

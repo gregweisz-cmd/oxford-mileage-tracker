@@ -87,25 +87,19 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
           const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
           
           if (existingEmployee) {
-            // Update existing employee with backend data, preserving local selections if backend values are empty
+            // Update existing employee from backend (Render is source of truth for HR/assignments)
             try {
               await DatabaseService.updateEmployee(existingEmployee.id, {
                 name: employeeData.name,
                 email: employeeData.email,
-                password: password, // Update password with new value
-                oxfordHouseId: employeeData.oxfordHouseId || existingEmployee.oxfordHouseId || '',
-                position: employeeData.position || existingEmployee.position || '',
-                phoneNumber: employeeData.phoneNumber || existingEmployee.phoneNumber || '',
-                baseAddress: employeeData.baseAddress || existingEmployee.baseAddress || '',
-                costCenters: employeeData.costCenters || existingEmployee.costCenters || [],
-                // Preserve existing selections if backend doesn't have them
-                selectedCostCenters: (employeeData.selectedCostCenters && employeeData.selectedCostCenters.length > 0) 
-                  ? employeeData.selectedCostCenters 
-                  : (existingEmployee.selectedCostCenters || employeeData.costCenters || []),
-                defaultCostCenter: employeeData.defaultCostCenter 
-                  || existingEmployee.defaultCostCenter 
-                  || employeeData.costCenters?.[0] 
-                  || ''
+                password: password, // Keep local password for re-auth
+                oxfordHouseId: employeeData.oxfordHouseId ?? existingEmployee.oxfordHouseId ?? '',
+                position: employeeData.position ?? existingEmployee.position ?? '',
+                phoneNumber: employeeData.phoneNumber ?? existingEmployee.phoneNumber ?? '',
+                baseAddress: employeeData.baseAddress ?? existingEmployee.baseAddress ?? '',
+                costCenters: employeeData.costCenters ?? [],
+                selectedCostCenters: (employeeData.selectedCostCenters?.length ? employeeData.selectedCostCenters : (employeeData.costCenters ?? [])),
+                defaultCostCenter: employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? ''
               });
               
               // Reload the employee to get the merged data
