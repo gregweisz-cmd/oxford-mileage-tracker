@@ -4031,7 +4031,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       // Flush any in-progress cell edit so we send the latest typed value (user may click Save without blurring the cell)
       let dataForSave = { ...employeeData };
-      let dailyDescriptionsForSave = dailyDescriptions || [];
+      // Use ref so we have latest Day off checkboxes (user may click Save right after checking; state can be stale)
+      const refDescriptions = dailyDescriptionsRef.current ?? [];
+      let dailyDescriptionsForSave = (refDescriptions.length >= (dailyDescriptions?.length || 0) ? refDescriptions : dailyDescriptions) || [];
       if (editingCell && employeeData.dailyEntries && employeeData.dailyEntries[editingCell.row]) {
         const { row, field } = editingCell;
         const entries = [...employeeData.dailyEntries];
@@ -4071,12 +4073,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const dateStr = normalizeDate(d.date);
         if (dateStr) byDate.set(dateStr, { id: d.id || `desc-${dataForSave.employeeId}-${dateStr}`, employeeId: d.employeeId || dataForSave.employeeId, date: dateStr, description: d.description || '', costCenter: d.costCenter || '', stayedOvernight: !!d.stayedOvernight, dayOff: !!d.dayOff, dayOffType: d.dayOffType || null, createdAt: d.createdAt || new Date().toISOString(), updatedAt: d.updatedAt || new Date().toISOString() });
       });
+      const dayOffTypeLabels = ['Day Off', 'PTO', 'Sick Day', 'Holiday', 'Unpaid Leave'];
       entriesToSave.forEach((entry: any) => {
         const dateStr = normalizeDate(entry.date);
         if (!dateStr) return;
         const userDesc = (entry.description && String(entry.description).trim()) ? prepareDescriptionForSave(entry.description) : '';
         if (userDesc) {
-          byDate.set(dateStr, { id: `desc-${dataForSave.employeeId}-${dateStr}`, employeeId: dataForSave.employeeId, date: dateStr, description: userDesc, costCenter: entry.costCenter || dataForSave.costCenters?.[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+          const isDayOffType = dayOffTypeLabels.includes(userDesc);
+          const existing = byDate.get(dateStr);
+          byDate.set(dateStr, {
+            id: existing?.id || `desc-${dataForSave.employeeId}-${dateStr}`,
+            employeeId: dataForSave.employeeId,
+            date: dateStr,
+            description: userDesc,
+            costCenter: entry.costCenter || dataForSave.costCenters?.[0] || '',
+            stayedOvernight: existing?.stayedOvernight ?? false,
+            dayOff: isDayOffType || !!(existing?.dayOff),
+            dayOffType: isDayOffType ? userDesc : (existing?.dayOff ? existing.dayOffType : null),
+            createdAt: existing?.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
         } else if (byDate.has(dateStr) && !(byDate.get(dateStr)!.dayOff)) {
           byDate.delete(dateStr);
         }

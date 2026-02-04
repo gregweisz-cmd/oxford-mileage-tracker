@@ -17,7 +17,8 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
+import { RootStackParamList } from '../types';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
@@ -61,6 +62,7 @@ const EES_NOTE_TEXT = 'Not for reimbursement';
 const EES_NOTE_SUFFIX = ` - ${EES_NOTE_TEXT}`;
 
 export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) {
+  const route = useRoute<RouteProp<RootStackParamList, 'AddReceipt'>>();
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const { showAnomalyAlert } = useNotifications();
   const lastNonPerDiemCategoryRef = useRef<string>('Other');
@@ -118,6 +120,21 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       loadEmployee();
     }, [])
   );
+
+  // When returning from ReceiptCrop with cropped image, set it and run quality/OCR
+  useEffect(() => {
+    const croppedUri = route.params?.croppedImageUri;
+    if (!croppedUri) return;
+    setImageUri(croppedUri);
+    setFileType('image');
+    setDismissedQualityWarning(false);
+    (async () => {
+      const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(croppedUri);
+      setPhotoQualityResult(qualityResult);
+      await processOcrOnImage(croppedUri);
+    })();
+    navigation.setParams({ croppedImageUri: undefined });
+  }, [route.params?.croppedImageUri]);
 
   // Load category suggestions when vendor and amount are entered
   useEffect(() => {
@@ -574,8 +591,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       console.log('📸 Launching camera...');
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true, // Enable built-in cropping
-        aspect: [4, 3],
+        allowsEditing: false, // We use ReceiptCropScreen for freeform crop
         quality: 0.8,
       });
 
@@ -584,23 +600,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📸 Image captured:', uri);
-        setImageUri(uri);
-        setFileType('image');
-        setDismissedQualityWarning(false); // Reset warning dismissal when new image is selected
-        
-        // Check photo quality
-        const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(uri);
-        console.log('📊 Photo quality analysis:', {
-          score: qualityResult.score,
-          issues: qualityResult.issues.length,
-          warnings: qualityResult.warnings.length,
-          isValid: qualityResult.isValid,
-          issuesDetail: qualityResult.issues.map(i => `${i.type} (${i.severity})`)
-        });
-        setPhotoQualityResult(qualityResult);
-        
-        // Run OCR on the captured image
-        await processOcrOnImage(uri);
+        (navigation as any).navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
       } else {
         console.log('📸 Camera was canceled or no image captured');
       }
@@ -615,8 +615,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       console.log('📷 Selecting from gallery...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true, // Enable built-in cropping
-        aspect: [4, 3],
+        allowsEditing: false, // We use ReceiptCropScreen for freeform crop
         quality: 0.8,
       });
 
@@ -625,23 +624,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📷 Image selected:', uri);
-        setImageUri(uri);
-        setFileType('image');
-        setDismissedQualityWarning(false); // Reset warning dismissal when new image is selected
-        
-        // Check photo quality
-        const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(uri);
-        console.log('📊 Photo quality analysis:', {
-          score: qualityResult.score,
-          issues: qualityResult.issues.length,
-          warnings: qualityResult.warnings.length,
-          isValid: qualityResult.isValid,
-          issuesDetail: qualityResult.issues.map(i => `${i.type} (${i.severity})`)
-        });
-        setPhotoQualityResult(qualityResult);
-        
-        // Run OCR on the selected image
-        await processOcrOnImage(uri);
+        (navigation as any).navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
       } else {
         console.log('📷 Gallery selection was canceled or no image selected');
       }

@@ -207,8 +207,9 @@ export type RootStackParamList = {
   Home: undefined;
   MileageEntry: { entryId?: string };
   GpsTracking: { showEndModal?: boolean };
-  Receipts: undefined;
-  AddReceipt: undefined;
+  Receipts: { croppedImageUri?: string; receiptIdToUpdate?: string } | undefined;
+  AddReceipt: { croppedImageUri?: string } | undefined;
+  ReceiptCrop: { imageUri: string; returnTo: 'AddReceipt' | 'Receipts'; receiptIdToUpdate?: string };
   DailyHours: undefined;
   Admin: undefined;
   ManagerDashboard: undefined;
@@ -218,4 +219,5 @@ export type RootStackParamList = {
   Settings: { currentEmployeeId?: string };
   Preferences: undefined;
   PerDiem: undefined;
+  MileageEntries: undefined;
 };

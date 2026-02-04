@@ -780,11 +780,17 @@ router.post('/api/receipts/ocr', async (req, res) => {
         detections = [];
       }
     } else {
-      // Use service account credentials with client library
-      debugLog('📸 OCR: Using service account authentication');
-      const client = new vision.ImageAnnotatorClient();
-      const [result] = await client.textDetection({ image: { content: imageContent } });
-      detections = result.textAnnotations;
+      // No API key and no service account credentials on Render → don't use Vision client (would crash with "Could not load default credentials")
+      debugWarn('📸 OCR: GOOGLE_VISION_API_KEY not set; OCR disabled. Set it on Render to enable receipt OCR.');
+      return res.status(503).json({
+        success: false,
+        text: '',
+        lines: [],
+        vendor: '',
+        amount: null,
+        date: null,
+        message: 'Receipt OCR is not configured. Set GOOGLE_VISION_API_KEY in the backend environment to enable OCR.'
+      });
     }
     
     if (!detections || detections.length === 0) {

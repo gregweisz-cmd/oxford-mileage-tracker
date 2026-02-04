@@ -29,6 +29,7 @@ import MileageEntryScreen from './src/screens/MileageEntryScreen';
 import GpsTrackingScreen from './src/screens/GpsTrackingScreen';
 import ReceiptsScreen from './src/screens/ReceiptsScreen';
 import AddReceiptScreen from './src/screens/AddReceiptScreen';
+import ReceiptCropScreen from './src/screens/ReceiptCropScreen';
 import DailyHoursScreen from './src/screens/DailyHoursScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import ManagerDashboardScreen from './src/screens/ManagerDashboardScreen';
@@ -297,6 +298,7 @@ export default function App() {
             <Stack.Screen name="GpsTracking" component={GpsTrackingScreen} />
             <Stack.Screen name="Receipts" component={ReceiptsScreen} />
             <Stack.Screen name="AddReceipt" component={AddReceiptScreen} />
+            <Stack.Screen name="ReceiptCrop" component={ReceiptCropScreen} />
             <Stack.Screen name="DailyHours" component={DailyHoursScreen} />
             <Stack.Screen name="Admin" component={AdminScreen} />
             <Stack.Screen name="ManagerDashboard" component={ManagerDashboardScreen} />

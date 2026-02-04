@@ -44,6 +44,8 @@ interface ReceiptsScreenProps {
       selectedMonth?: number;
       selectedYear?: number;
       filterCategory?: string;
+      croppedImageUri?: string;
+      receiptIdToUpdate?: string;
     };
   };
 }
@@ -87,6 +89,18 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   useEffect(() => {
     loadData();
   }, [selectedMonth, selectedYear]);
+
+  // When returning from ReceiptCrop with cropped image, update the receipt
+  useEffect(() => {
+    const croppedUri = route?.params?.croppedImageUri;
+    const receiptId = route?.params?.receiptIdToUpdate;
+    if (!croppedUri || !receiptId) return;
+    const receipt = receipts.find(r => r.id === receiptId) ?? allReceipts.find(r => r.id === receiptId);
+    if (receipt) {
+      updateReceiptImage(receipt, croppedUri);
+    }
+    navigation.setParams({ croppedImageUri: undefined, receiptIdToUpdate: undefined });
+  }, [route?.params?.croppedImageUri, route?.params?.receiptIdToUpdate]);
 
   // Filter receipts based on search query and all filters
   useEffect(() => {
@@ -366,13 +380,15 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
               }
               const result = await ImagePicker.launchCameraAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
+                allowsEditing: false,
                 quality: 0.8,
-                aspect: [4, 3],
               });
-              
               if (!result.canceled && result.assets[0]) {
-                await updateReceiptImage(receipt, result.assets[0].uri);
+                navigation.navigate('ReceiptCrop', {
+                  imageUri: result.assets[0].uri,
+                  returnTo: 'Receipts',
+                  receiptIdToUpdate: receipt.id,
+                });
               }
             },
           },
@@ -381,13 +397,15 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
             onPress: async () => {
               const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
+                allowsEditing: false,
                 quality: 0.8,
-                aspect: [4, 3],
               });
-              
               if (!result.canceled && result.assets[0]) {
-                await updateReceiptImage(receipt, result.assets[0].uri);
+                navigation.navigate('ReceiptCrop', {
+                  imageUri: result.assets[0].uri,
+                  returnTo: 'Receipts',
+                  receiptIdToUpdate: receipt.id,
+                });
               }
             },
           },
