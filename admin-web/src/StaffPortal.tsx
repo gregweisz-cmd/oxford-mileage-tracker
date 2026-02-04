@@ -85,7 +85,7 @@ import { DashboardNotifications } from './components/DashboardNotifications';
 import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistoryEntry } from './components/EmployeeApprovalStatusCard';
 
 // Address formatting utility
-import { formatLocationForDescription, formatLocationNameAndAddress } from './utils/addressFormatter';
+import { formatLocationNameAndAddress } from './utils/addressFormatter';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
