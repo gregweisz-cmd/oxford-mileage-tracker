@@ -80,6 +80,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [availableEmployees, setAvailableEmployees] = useState<Employee[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const initialLoadDoneRef = useRef(false);
   const [perDiemStats, setPerDiemStats] = useState<any>(null);
   const [isEditingTiles, setIsEditingTiles] = useState(false);
   const [dashboardTiles, setDashboardTiles] = useState<TileConfig[]>([]);
@@ -366,10 +367,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   }, [selectedMonth, selectedYear]);
 
-  // Refresh data when screen comes into focus (but DON'T sync again)
+  // When returning to this screen, refresh from local DB. Skip on first focus so loadData (sync then load) runs without being overwritten by empty local data.
   useFocusEffect(
     React.useCallback(() => {
-      // Only refresh local data, don't sync from backend
+      if (!initialLoadDoneRef.current) return;
       refreshLocalDataOnly();
     }, [])
   );
@@ -578,16 +579,17 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const loadData = async () => {
     try {
       setLoading(true);
-      
-      
-      // Database should already be initialized by AppInitializer
-      // Small delay to ensure any async operations from app startup are complete
+      initialLoadDoneRef.current = false;
+
       await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Get the current logged-in employee
-      const employee = await DatabaseService.getCurrentEmployee();
-      
+
+      let employee = await DatabaseService.getCurrentEmployee();
       if (!employee) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        employee = await DatabaseService.getCurrentEmployee();
+      }
+      if (!employee) {
+        setLoading(false);
         return;
       }
       
@@ -652,19 +654,17 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       }
 
       await loadEmployeeData(employee.id, employee);
-      
-      // Check for base address suggestions
+
       await checkBaseAddressSuggestion(employee);
-      
-      // Check for smart notifications
       await checkSmartNotifications(employee.id);
-      
+
+      initialLoadDoneRef.current = true;
     } catch (error) {
       console.error('Error loading data:', error);
-      // Don't show alert on initial load, just log the error
       if (currentEmployee) {
         Alert.alert('Error', 'Failed to load data');
       }
+      initialLoadDoneRef.current = true;
     } finally {
       setLoading(false);
     }
