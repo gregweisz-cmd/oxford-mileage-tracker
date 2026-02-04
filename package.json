@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "update-deps": "node scripts/update-dependencies.js",
     "update-deps:dry": "node scripts/update-dependencies.js --dry-run",
-    "update-deps:safe": "node scripts/update-dependencies.js --no-backup --no-tests"
+    "update-deps:safe": "node scripts/update-dependencies.js --no-backup --no-tests",
+    "eas-update": "eas update --branch production --non-interactive"
   },
   "dependencies": {
     "@dev-plugins/react-navigation": "^0.4.0",
