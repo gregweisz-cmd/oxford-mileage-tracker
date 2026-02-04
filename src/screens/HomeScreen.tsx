@@ -575,134 +575,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     });
   };
 
-  const handleSyncNow = async () => {
-    if (!currentEmployee || isSyncing) return;
-    setIsSyncing(true);
-    try {
-      console.log('🔄 HomeScreen: Starting bi-directional sync...');
-      const { ApiSyncService } = await import('../services/apiSyncService');
-      const { DatabaseService } = await import('../services/database');
-      
-      // Step 1: Sync local changes TO backend (one data type at a time to avoid rate limits)
-      console.log('📤 HomeScreen: Syncing local data to backend...');
-      let syncSuccesses = 0;
-      let syncFailures = 0;
-      const errors: string[] = [];
-      
-      // Sync daily descriptions
-      try {
-        const localDescriptions = await DatabaseService.getDailyDescriptions(currentEmployee.id);
-        if (localDescriptions.length > 0) {
-          const result = await ApiSyncService.syncToBackend({ dailyDescriptions: localDescriptions });
-          if (result.success) {
-            syncSuccesses++;
-          } else {
-            syncFailures++;
-            if (result.error) errors.push(`Daily descriptions: ${result.error}`);
-          }
-          // Small delay between data types
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-      } catch (error) {
-        syncFailures++;
-        console.error('❌ HomeScreen: Error syncing daily descriptions:', error);
-      }
-      
-      // Sync mileage entries
-      try {
-        const localMileage = await DatabaseService.getMileageEntries(currentEmployee.id);
-        if (localMileage.length > 0) {
-          const result = await ApiSyncService.syncToBackend({ mileageEntries: localMileage });
-          if (result.success) {
-            syncSuccesses++;
-          } else {
-            syncFailures++;
-            if (result.error) errors.push(`Mileage entries: ${result.error}`);
-          }
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-      } catch (error) {
-        syncFailures++;
-        console.error('❌ HomeScreen: Error syncing mileage entries:', error);
-      }
-      
-      // Sync receipts
-      try {
-        const localReceipts = await DatabaseService.getReceipts(currentEmployee.id);
-        if (localReceipts.length > 0) {
-          const result = await ApiSyncService.syncToBackend({ receipts: localReceipts });
-          if (result.success) {
-            syncSuccesses++;
-          } else {
-            syncFailures++;
-            if (result.error) errors.push(`Receipts: ${result.error}`);
-          }
-          // Longer delay after receipts (images take time)
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      } catch (error) {
-        syncFailures++;
-        console.error('❌ HomeScreen: Error syncing receipts:', error);
-      }
-      
-      // Sync time tracking
-      try {
-        const allTimeTracking = await DatabaseService.getAllTimeTrackingEntries();
-        const localTimeTracking = allTimeTracking.filter(t => t.employeeId === currentEmployee.id);
-        if (localTimeTracking.length > 0) {
-          const result = await ApiSyncService.syncToBackend({ timeTracking: localTimeTracking });
-          if (result.success) {
-            syncSuccesses++;
-          } else {
-            syncFailures++;
-            if (result.error) errors.push(`Time tracking: ${result.error}`);
-          }
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-      } catch (error) {
-        syncFailures++;
-        console.error('❌ HomeScreen: Error syncing time tracking:', error);
-      }
-      
-      // Step 2: Sync FROM backend to get latest data
-      console.log('📥 HomeScreen: Pulling updates from backend...');
-      const syncFromResult = await ApiSyncService.syncFromBackend(currentEmployee.id);
-      
-      if (syncFromResult.success) {
-        console.log('✅ HomeScreen: Sync from backend successful');
-        setLastSyncTime(new Date());
-        // Refresh data after sync
-        await loadEmployeeData(currentEmployee.id, currentEmployee);
-        
-        // Show success/warning message
-        if (syncFailures > 0 && syncSuccesses > 0) {
-          Alert.alert('Sync Completed with Warnings', 
-            `Some data synced successfully, but ${syncFailures} type(s) had errors:\n${errors.join('\n')}`);
-        } else if (syncFailures === 0) {
-          Alert.alert('Success', 'All data synced successfully!');
-        } else {
-          Alert.alert('Sync Completed', 
-            `Pulled updates from server, but had issues syncing local changes:\n${errors.join('\n')}`);
-        }
-      } else {
-        console.error('❌ HomeScreen: Sync from backend failed:', syncFromResult.error);
-        if (syncSuccesses > 0) {
-          Alert.alert('Partial Sync', 
-            `Local changes synced, but couldn't pull updates from server. ${syncFromResult.error}`);
-        } else {
-          Alert.alert('Sync Failed', 
-            syncFromResult.error || 'Unable to sync right now. Please try again.');
-        }
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('❌ HomeScreen: Error syncing now:', error);
-      Alert.alert('Sync Failed', `Unable to sync right now: ${errorMessage}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const loadData = async () => {
     try {
       setLoading(true);
@@ -1599,14 +1471,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                   : "Never synced"}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.syncNowButton}
-            onPress={handleSyncNow}
-            disabled={isSyncing}
-          >
-            <MaterialIcons name="sync" size={18} color={isSyncing ? "#999" : "#2196F3"} />
-            <Text style={[styles.syncNowText, isSyncing && { color: '#999' }]}>Sync Now</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Quick Actions */}
@@ -2836,20 +2700,6 @@ const styles = StyleSheet.create({
   syncStatusTextSyncing: {
     color: '#1976d2',
     fontWeight: '600',
-  },
-  syncNowButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#e3f2fd',
-  },
-  syncNowText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#2196F3',
   },
   // Draggable Tiles Styles
   actionsHeader: {
