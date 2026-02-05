@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import { ChevronLeft, ChevronRight, Today as TodayIcon } from '@mui/icons-material';
 import { PerDiemRulesService } from '../services/perDiemRulesService';
-import { apiGet, apiPost, apiPut, apiDelete } from '../services/rateLimitedApi';
+import { apiGet, apiPost, apiPut, apiDelete, rateLimitedApi } from '../services/rateLimitedApi';
 
 const DEFAULT_DAILY_AMOUNT = 35;
 const DEFAULT_MONTHLY_LIMIT = 350;
@@ -90,13 +90,18 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       const perDiemReceipts = (receipts || []).filter((r: any) => r.category === 'Per Diem');
       const entriesMap = new Map<string, PerDiemEntry>();
 
+      // Normalize receipt date to YYYY-MM-DD for reliable matching (avoids timezone "shift back a day")
+      const receiptDateKey = (r: any): string => {
+        if (!r?.date) return '';
+        const s = typeof r.date === 'string' ? r.date : new Date(r.date).toISOString();
+        const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
+      };
+
       for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(currentYear, currentMonth - 1, day);
         const dateKey = toDateKey(date);
-        const existing = perDiemReceipts.find((r: any) => {
-          const d = new Date(r.date);
-          return d.getUTCDate() === day && d.getUTCMonth() === currentMonth - 1 && d.getUTCFullYear() === currentYear;
-        });
+        const existing = perDiemReceipts.find((r: any) => receiptDateKey(r) === dateKey);
         const dailyMax = perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT;
         if (existing) {
           entriesMap.set(dateKey, {
@@ -209,6 +214,8 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       setSaveMessage('success');
       onDataChange?.();
       setTimeout(() => setSaveMessage(null), 3000);
+      // Clear all GET cache so refetch returns fresh data (avoids stale checkboxes / "shifting back a day")
+      rateLimitedApi.clearCache();
       await loadData();
     } catch (err: any) {
       setError(err?.message || 'Failed to save per diem.');
