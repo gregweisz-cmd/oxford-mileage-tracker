@@ -93,7 +93,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       };
 
       for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(currentYear, currentMonth - 1, day);
+        const date = new Date(year, month - 1, day);
         const dateKey = toDateKey(date);
         const existing = perDiemReceipts.find((r: any) => receiptDateKey(r) === dateKey);
         const dailyMax = perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT;
