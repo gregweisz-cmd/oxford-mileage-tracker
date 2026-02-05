@@ -8,9 +8,8 @@ import {
   LinearProgress,
   Paper,
   Alert,
-  IconButton,
 } from '@mui/material';
-import { ChevronLeft, ChevronRight, Today as TodayIcon } from '@mui/icons-material';
+import { Today as TodayIcon } from '@mui/icons-material';
 import { PerDiemRulesService } from '../services/perDiemRulesService';
 import { apiGet, apiPost, apiPut, apiDelete, rateLimitedApi } from '../services/rateLimitedApi';
 
@@ -32,6 +31,8 @@ export interface PerDiemTabProps {
   month: number;
   year: number;
   onDataChange?: () => void;
+  /** When user clicks "Go to today", parent should set its month/year to current month/year */
+  onGoToToday?: () => void;
 }
 
 function getDaysInMonth(year: number, month: number): number {
@@ -52,15 +53,8 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
   month,
   year,
   onDataChange,
+  onGoToToday,
 }) => {
-  const [currentMonth, setCurrentMonth] = useState(month);
-  const [currentYear, setCurrentYear] = useState(year);
-
-  // Sync to props when they change (e.g. user switched report month in portal)
-  useEffect(() => {
-    setCurrentMonth(month);
-    setCurrentYear(year);
-  }, [month, year]);
   const [entries, setEntries] = useState<Map<string, PerDiemEntry>>(new Map());
   const [dailyMaxAmount, setDailyMaxAmount] = useState(DEFAULT_DAILY_AMOUNT);
   const [monthlyLimit, setMonthlyLimit] = useState(DEFAULT_MONTHLY_LIMIT);
@@ -71,7 +65,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
   const [saveMessage, setSaveMessage] = useState<'success' | null>(null);
 
   const costCenter = costCenters?.[0] || 'Program Services';
-  const daysInMonth = getDaysInMonth(currentYear, currentMonth);
+  const daysInMonth = getDaysInMonth(year, month);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -80,7 +74,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       const [perDiemRule, monthlyRules, receipts] = await Promise.all([
         PerDiemRulesService.getPerDiemRule(costCenter),
         apiGet<{ costCenter: string; maxAmount: number }[]>('/api/per-diem-monthly-rules'),
-        apiGet<any[]>(`/api/receipts?employeeId=${encodeURIComponent(employeeId)}&month=${currentMonth}&year=${currentYear}`),
+        apiGet<any[]>(`/api/receipts?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
       ]);
 
       setDailyMaxAmount(perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT);
@@ -127,7 +121,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [employeeId, costCenter, currentMonth, currentYear, daysInMonth]);
+  }, [employeeId, costCenter, month, year, daysInMonth]);
 
   useEffect(() => {
     loadData();
@@ -201,6 +195,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           description: 'Per Diem',
           category: 'Per Diem',
           imageUri: '',
+          fileType: 'image',
         };
         if (entry.receiptId) {
           await apiPut(`/api/receipts/${entry.receiptId}`, { ...body, id: entry.receiptId });
@@ -214,20 +209,18 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       setSaveMessage('success');
       onDataChange?.();
       setTimeout(() => setSaveMessage(null), 3000);
-      // Clear all GET cache so refetch returns fresh data (avoids stale checkboxes / "shifting back a day")
+      // Clear all caches so refetch uses fresh data (receipts + per diem rules for dailyMax/eligibility)
       rateLimitedApi.clearCache();
+      PerDiemRulesService.clearCache();
+      // Brief delay so backend commit is visible to the next GET
+      await new Promise((r) => setTimeout(r, 150));
       await loadData();
     } catch (err: any) {
-      setError(err?.message || 'Failed to save per diem.');
+      const msg = err?.message || (typeof err?.error === 'string' ? err.error : 'Failed to save per diem.');
+      setError(msg);
     } finally {
       setSaving(false);
     }
-  };
-
-  const goToToday = () => {
-    const now = new Date();
-    setCurrentMonth(now.getMonth() + 1);
-    setCurrentYear(now.getFullYear());
   };
 
   if (loading) {
@@ -249,40 +242,16 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
         )}
       </Typography>
 
-      {/* Month navigation */}
+      {/* Month follows global header dropdown; optional "Go to today" jumps to current month */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton
-          size="small"
-          onClick={() => {
-            if (currentMonth <= 1) {
-              setCurrentYear((y) => y - 1);
-              setCurrentMonth(12);
-            } else {
-              setCurrentMonth((m) => m - 1);
-            }
-          }}
-        >
-          <ChevronLeft />
-        </IconButton>
-        <Typography variant="subtitle1" sx={{ minWidth: 160, textAlign: 'center' }}>
-          {new Date(currentYear, currentMonth - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        <Typography variant="subtitle1" sx={{ minWidth: 160 }}>
+          {new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </Typography>
-        <IconButton
-          size="small"
-          onClick={() => {
-            if (currentMonth >= 12) {
-              setCurrentYear((y) => y + 1);
-              setCurrentMonth(1);
-            } else {
-              setCurrentMonth((m) => m + 1);
-            }
-          }}
-        >
-          <ChevronRight />
-        </IconButton>
-        <Button size="small" startIcon={<TodayIcon />} onClick={goToToday} sx={{ ml: 1 }}>
-          Go to today
-        </Button>
+        {onGoToToday && (
+          <Button size="small" startIcon={<TodayIcon />} onClick={onGoToToday} sx={{ ml: 1 }}>
+            Go to today
+          </Button>
+        )}
       </Box>
 
       {/* Summary */}
@@ -325,7 +294,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       {/* Days list */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
-          const date = new Date(currentYear, currentMonth - 1, day);
+          const date = new Date(year, month - 1, day);
           const dateKey = toDateKey(date);
           const entry = entries.get(dateKey);
           if (!entry) return null;

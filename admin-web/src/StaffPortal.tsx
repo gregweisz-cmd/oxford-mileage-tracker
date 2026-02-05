@@ -8733,16 +8733,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         title={`Keyboard Shortcuts - ${employeeData?.preferredName ? `${employeeData.preferredName.split(' ')[0]}'s Portal` : employeeData?.name ? `${employeeData.name.split(' ')[0]}'s Portal` : 'Staff Portal'}`}
       />
 
-      {/* Per Diem Tab */}
+      {/* Per Diem Tab - uses global month/year from header dropdown */}
       <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 6 : 6}>
         {employeeData ? (
           <PerDiemTab
             employeeId={employeeData.employeeId}
             employeeName={employeeData.name}
             costCenters={employeeData.costCenters || []}
-            month={reportMonth}
-            year={reportYear}
+            month={currentMonth}
+            year={currentYear}
             onDataChange={() => setRefreshTrigger((prev) => prev + 1)}
+            onGoToToday={() => {
+              const now = new Date();
+              setCurrentMonth(now.getMonth() + 1);
+              setCurrentYear(now.getFullYear());
+            }}
           />
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
