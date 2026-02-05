@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { debugLog, debugError, debugWarn } from '../config/debug';
+import { API_BASE_URL } from '../config/api';
 
 export class DistanceService {
   private static readonly GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
@@ -8,16 +9,35 @@ export class DistanceService {
     debugLog('DistanceService: Starting calculation');
     debugLog(`From: ${startAddress}`);
     debugLog(`To: ${endAddress}`);
-    
-    // Check API key status
+
+    // Prefer backend distance API (same as web portal) so mobile and web get identical results
+    try {
+      const fromEnc = encodeURIComponent((startAddress || '').trim());
+      const toEnc = encodeURIComponent((endAddress || '').trim());
+      if (fromEnc && toEnc) {
+        const url = `${API_BASE_URL}/distance?from=${fromEnc}&to=${toEnc}`;
+        debugLog('DistanceService: Trying backend /api/distance (same as web portal)');
+        const res = await fetch(url, { method: 'GET' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && typeof data.miles === 'number' && data.miles >= 0) {
+          const miles = Math.round(data.miles);
+          debugLog(`✅ Backend distance: ${miles} miles`);
+          return miles;
+        }
+      }
+    } catch (err) {
+      debugWarn('Backend distance request failed, using in-app calculation:', err);
+    }
+
+    // Check API key status (in-app Google Maps)
     if (!this.GOOGLE_MAPS_API_KEY || this.GOOGLE_MAPS_API_KEY === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
       debugLog('⚠️ Google Maps API key not configured - using estimation method');
       debugLog('💡 To get accurate route-based distances, configure a Google Maps API key');
     } else {
       debugLog('✅ Google Maps API key found - attempting route calculation');
     }
-    
-    // Try Google Maps API first if configured
+
+    // Try Google Maps API first if configured (in-app)
     if (this.GOOGLE_MAPS_API_KEY && this.GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
       try {
         debugLog('🚗 Using Google Maps API for accurate route calculation');
@@ -29,7 +49,7 @@ export class DistanceService {
         debugLog('🔄 Falling back to estimation method');
       }
     }
-    
+
     // Fallback: Use improved estimation method
     try {
       debugLog('📏 Using estimation method (straight-line distance with buffer)');
@@ -38,7 +58,7 @@ export class DistanceService {
       return distance;
     } catch (error) {
       console.error('❌ Error calculating distance:', error);
-      
+
       // Provide more specific error messages
       if (error instanceof Error) {
         if (error.message.includes('Could not find coordinates')) {
@@ -47,7 +67,7 @@ export class DistanceService {
           throw new Error('Could not calculate route between these addresses. Please check if they are accessible by car.');
         }
       }
-      
+
       throw new Error('Failed to calculate distance. Please check your addresses and try again.');
     }
   }
