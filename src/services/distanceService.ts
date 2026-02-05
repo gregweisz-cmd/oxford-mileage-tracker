@@ -12,11 +12,22 @@ export class DistanceService {
 
     // Prefer backend distance API (same as web portal) so mobile and web get identical results
     try {
-      const fromEnc = encodeURIComponent((startAddress || '').trim());
-      const toEnc = encodeURIComponent((endAddress || '').trim());
-      if (fromEnc && toEnc) {
+      // Normalize like backend: use address inside parentheses when present
+      // e.g. "Oxford House 37th Street (1105 Longview Dr New Bern, NC 28562)" -> "1105 Longview Dr New Bern, NC 28562"
+      const normalizeForBackend = (s: string): string => {
+        const t = (s || '').trim();
+        if (!t || t === 'BA') return t;
+        const m = t.match(/\(([^)]+)\)/);
+        return (m && m[1] ? m[1].trim() : t);
+      };
+      const from = normalizeForBackend(startAddress);
+      const to = normalizeForBackend(endAddress);
+      if (from && to) {
+        const fromEnc = encodeURIComponent(from);
+        const toEnc = encodeURIComponent(to);
         const url = `${API_BASE_URL}/distance?from=${fromEnc}&to=${toEnc}`;
         debugLog('DistanceService: Trying backend /api/distance (same as web portal)');
+        debugLog(`DistanceService: Normalized from="${from}" to="${to}"`);
         const res = await fetch(url, { method: 'GET' });
         const data = await res.json().catch(() => ({}));
         if (res.ok && typeof data.miles === 'number' && data.miles >= 0) {

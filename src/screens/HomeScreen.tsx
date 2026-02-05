@@ -412,6 +412,31 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  /** Manual sync (tap sync bar): push pending then pull from backend. Helps when server was unreachable (e.g. cold start on Android). */
+  const handleManualSync = async () => {
+    const employee = currentEmployee;
+    if (!employee?.id || isSyncing || homeScreenIsSyncing) return;
+    homeScreenIsSyncing = true;
+    setIsSyncing(true);
+    try {
+      const { ApiSyncService } = await import('../services/apiSyncService');
+      await SyncIntegrationService.processSyncQueue();
+      const syncResult = await ApiSyncService.syncFromBackend(employee.id);
+      if (syncResult.success) {
+        setLastSyncTime(new Date());
+        await loadEmployeeData(employee.id, employee);
+      } else {
+        Alert.alert('Sync failed', syncResult.error || 'Could not reach server. Check connection and try again.');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      Alert.alert('Sync failed', msg);
+    } finally {
+      homeScreenIsSyncing = false;
+      setIsSyncing(false);
+    }
+  };
+
   const calculateDistanceFromBA = async () => {
     if (!currentEmployee || !currentEmployee.baseAddress) {
       setDistanceFromBA(null);
@@ -1537,9 +1562,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         </View>
 
 
-        {/* Sync status (automatic; no manual sync button) */}
-        <View 
+        {/* Sync status - tappable to retry when never synced or to refresh */}
+        <TouchableOpacity
           style={[styles.syncStatusContainer, isSyncing && styles.syncStatusContainerSyncing]}
+          onPress={handleManualSync}
+          disabled={isSyncing}
+          activeOpacity={0.7}
         >
           <View style={styles.syncStatusLeft}>
             <MaterialIcons 
@@ -1551,11 +1579,11 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               {isSyncing 
                 ? "Syncing..." 
                 : lastSyncTime 
-                  ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` 
-                  : "Never synced"}
+                  ? `Last synced: ${lastSyncTime.toLocaleTimeString()} • Tap to refresh` 
+                  : "Tap to sync"}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Quick Actions */}
         <View style={styles.actionsHeader}>

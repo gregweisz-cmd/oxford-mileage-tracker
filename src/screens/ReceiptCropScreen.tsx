@@ -44,6 +44,7 @@ export default function ReceiptCropScreen() {
   const [containerLayout, setContainerLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [crop, setCrop] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const imageDisplayRect = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const containerRef = useRef<View>(null);
   const lastCropRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -65,15 +66,17 @@ export default function ReceiptCropScreen() {
     imageDisplayRect.current = { x, y, width: dw, height: dh };
   }, [containerLayout, imageSize]);
 
+  // Load image dimensions (no blocking normalize so crop screen appears immediately)
   useEffect(() => {
     if (!imageUri) {
       navigation.goBack();
       return;
     }
+    setLoadError(null);
     Image.getSize(
       imageUri,
       (w, h) => setImageSize({ width: w, height: h }),
-      () => Alert.alert('Error', 'Could not load image')
+      () => setLoadError('Could not load image')
     );
   }, [imageUri, navigation]);
 
@@ -185,6 +188,7 @@ export default function ReceiptCropScreen() {
 
   /** Use the original image without cropping (best for OCR so the full receipt is visible). */
   const handleUseFullImage = () => {
+    if (!imageUri) return;
     if (returnTo === 'AddReceipt') {
       navigation.navigate('AddReceipt', { croppedImageUri: imageUri }, { merge: true });
     } else {
@@ -195,7 +199,7 @@ export default function ReceiptCropScreen() {
   const handleDone = async () => {
     const r = imageDisplayRect.current;
     const cropToUse = crop ?? (r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null);
-    if (!cropToUse || !r || !imageSize || !imageUri) {
+    if (!imageUri || !cropToUse || !r || !imageSize) {
       if (!cropToUse || !r) Alert.alert('Please wait', 'Crop area is still loading.');
       return;
     }
@@ -233,10 +237,22 @@ export default function ReceiptCropScreen() {
     }
   };
 
-  if (!imageSize || !imageUri) {
+  if (loadError) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <Text style={styles.errorText}>{loadError}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.retryButtonText}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!imageSize) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={styles.loadingText}>Loading image…</Text>
       </View>
     );
   }
@@ -302,6 +318,10 @@ export default function ReceiptCropScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  loadingText: { color: 'rgba(255,255,255,0.8)', marginTop: 12, fontSize: 16 },
+  errorText: { color: '#fff', fontSize: 16, textAlign: 'center', marginHorizontal: 24 },
+  retryButton: { marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: 'rgba(33, 150, 243, 0.9)', borderRadius: 8 },
+  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   headerSafeArea: { backgroundColor: '#000' },
   header: {
     flexDirection: 'row',

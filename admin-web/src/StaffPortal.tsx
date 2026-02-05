@@ -399,8 +399,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Refs so Save always sends latest checkbox value (state updates async; clicking Save right after checking can otherwise send stale false)
   const employeeCertificationAcknowledgedRef = useRef(employeeCertificationAcknowledged);
   const supervisorCertificationAcknowledgedRef = useRef(supervisorCertificationAcknowledged);
+  const receiptsRef = useRef<ReceiptData[]>(receipts);
   employeeCertificationAcknowledgedRef.current = employeeCertificationAcknowledged;
   supervisorCertificationAcknowledgedRef.current = supervisorCertificationAcknowledged;
+  receiptsRef.current = receipts;
   const [editingTimesheetCell, setEditingTimesheetCell] = useState<{costCenter: number, day: number, type: string} | null>(null);
   const [editingTimesheetValue, setEditingTimesheetValue] = useState('');
   const [editingCategoryCell, setEditingCategoryCell] = useState<{category: string, day: number} | null>(null);
@@ -4116,9 +4118,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       });
       dailyDescriptionsForSave = Array.from(byDate.values());
 
-      // Use refs so we always send latest checkbox values (user may click Save right after checking; state can still be stale)
+      // Use refs so we always send latest checkbox values and receipts (user may click Save right after delete; state can still be stale)
       const certAck = employeeCertificationAcknowledgedRef.current;
       const superCertAck = supervisorCertificationAcknowledgedRef.current;
+      const receiptsToSync = receiptsRef.current ?? receipts;
       // Ensure every dailyEntry has date as YYYY-MM-DD so backend normalizes correctly
       const dailyEntriesForSync = (dataForSave.dailyEntries || []).map((entry: any) => {
         let dateStr = normalizeDate(entry.date);
@@ -4130,7 +4133,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const reportData = {
         ...dataForSave,
         dailyEntries: dailyEntriesForSync,
-        receipts: receipts,
+        receipts: receiptsToSync,
         dailyDescriptions: dailyDescriptionsForSave,
         employeeSignature: signatureImage,
         supervisorSignature: supervisorSignatureState,

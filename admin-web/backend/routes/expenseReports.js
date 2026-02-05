@@ -675,27 +675,89 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
     // The web portal should only display mileage, not create/update it
     // This prevents deleted mileage entries from being restored when Save is clicked
     
-    // 3. Sync receipts
+    // 3. Sync receipts - backend matches what the user sent (same as daily descriptions / time tracking)
+    // Step 1: Delete receipts for this employee in this month that are NOT in the payload
+    const receiptIdsToKeep = (reportData.receipts || [])
+      .map((r) => r.id)
+      .filter(Boolean);
+    await new Promise((resolve, reject) => {
+      if (receiptIdsToKeep.length === 0) {
+        db.run(
+          'DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ?',
+          [employeeId, startDate, endDate],
+          function (deleteErr) {
+            if (deleteErr) {
+              debugError('❌ Error deleting receipts for month:', deleteErr);
+              reject(deleteErr);
+            } else {
+              debugLog(`🗑️ Deleted ${this.changes} receipts for month ${month}/${year} (user removed all)`);
+              resolve();
+            }
+          }
+        );
+      } else {
+        const placeholders = receiptIdsToKeep.map(() => '?').join(',');
+        db.run(
+          `DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ? AND id NOT IN (${placeholders})`,
+          [employeeId, startDate, endDate, ...receiptIdsToKeep],
+          function (deleteErr) {
+            if (deleteErr) {
+              debugError('❌ Error deleting removed receipts:', deleteErr);
+              reject(deleteErr);
+            } else {
+              if (this.changes > 0) {
+                debugLog(`🗑️ Deleted ${this.changes} receipt(s) removed by user in UI`);
+              }
+              resolve();
+            }
+          }
+        );
+      }
+    });
+
+    // Step 2: Upsert each receipt in the payload (insert or update)
     if (reportData.receipts && reportData.receipts.length > 0) {
       for (const receipt of reportData.receipts) {
-        if (receipt.id) {
-          // Update existing receipt
-          await new Promise((resolve, reject) => {
-            db.run(
-              `UPDATE receipts 
-               SET amount = ?, vendor = ?, category = ?, description = ?, updatedAt = datetime('now')
-               WHERE id = ?`,
-              [receipt.amount, receipt.vendor, receipt.category, receipt.description || '', receipt.id],
-              (err) => {
-                if (err) reject(err);
-                else {
-                  debugLog(`✅ Updated receipt ${receipt.id}`);
-                  resolve();
-                }
+        if (!receipt.id) continue;
+        const dateStr = dateHelpers.normalizeDateString(receipt.date) || receipt.date;
+        const now = new Date().toISOString();
+        await new Promise((resolve, reject) => {
+          db.run(
+            `INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'image', ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, updatedAt = ?`,
+            [
+              receipt.id,
+              employeeId,
+              dateStr || startDate,
+              receipt.amount ?? 0,
+              receipt.vendor || '',
+              receipt.description || '',
+              receipt.category || '',
+              receipt.imageUri || '',
+              receipt.costCenter || '',
+              now,
+              now,
+              employeeId,
+              dateStr || startDate,
+              receipt.amount ?? 0,
+              receipt.vendor || '',
+              receipt.description || '',
+              receipt.category || '',
+              now
+            ],
+            (err) => {
+              if (err) {
+                debugError(`❌ Error upserting receipt ${receipt.id}:`, err);
+                reject(err);
+              } else {
+                debugLog(`✅ Upserted receipt ${receipt.id}`);
+                resolve();
               }
-            );
-          });
-        }
+            }
+          );
+        });
       }
     }
     

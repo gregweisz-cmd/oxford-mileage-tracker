@@ -453,7 +453,7 @@ export class SmartNotificationService {
             title: 'Per Diem eligible today',
             message: message,
             actionLabel: 'Add Per Diem',
-            actionRoute: 'Receipts',
+            actionRoute: 'PerDiem',
             timestamp: currentDate,
           };
         }

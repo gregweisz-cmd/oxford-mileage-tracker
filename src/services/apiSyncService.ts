@@ -152,76 +152,66 @@ export class ApiSyncService {
     }
   }
 
+  /** Connection test timeout: long enough for Render.com cold start (~30–60s possible; we use 20s + one retry). */
+  private static readonly CONNECTION_TEST_TIMEOUT_MS = 20000;
+
   /**
-   * Test connection to the backend API with timeout
+   * Test connection to the backend API with timeout and one retry.
+   * Uses a longer timeout so Render.com (and other hosted backends) can wake from cold start on Android/iOS.
    */
   static async testConnection(): Promise<boolean> {
-    try {
-      debugLog('🔄 ApiSync: Testing connection to cloud backend...');
-      
-      // Add timeout to prevent hanging
+    const tryOnce = async (): Promise<boolean> => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-      }, 3000); // 3 second timeout - don't wait too long
-      
+      const timeoutId = setTimeout(() => controller.abort(), this.CONNECTION_TEST_TIMEOUT_MS);
       try {
-        // Try /api/health first, fallback to root if that doesn't exist
         const healthUrl = `${this.config.baseUrl}/health`;
         const response = await fetch(healthUrl, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           signal: controller.signal
         });
-        
         clearTimeout(timeoutId);
-        
         if (response.ok) {
           debugLog('✅ ApiSync: Successfully connected to cloud backend');
           return true;
-        } else {
-          debugLog('⚠️ ApiSync: Cloud backend responded with status:', response.status);
+        }
+        debugLog('⚠️ ApiSync: Cloud backend responded with status:', response.status);
+        return false;
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        if (e?.name === 'AbortError' || e?.message?.includes('aborted')) {
+          debugLog('⏱️ ApiSync: Health check timed out');
           return false;
         }
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId);
-        
-        // If timeout or abort, try root endpoint as fallback
-        if (fetchError.name === 'AbortError' || fetchError.message?.includes('aborted')) {
-          debugLog('⏱️ ApiSync: Health check timed out, trying root endpoint...');
-          
-          const rootController = new AbortController();
-          const rootTimeoutId = setTimeout(() => {
-            rootController.abort();
-          }, 3000); // Shorter timeout for fallback
-          
-          try {
-            // Try root endpoint as fallback
-            const rootUrl = this.config.baseUrl.replace('/api', '') || this.config.baseUrl;
-            const rootResponse = await fetch(rootUrl, {
-              method: 'GET',
-              signal: rootController.signal
-            });
-            
-            clearTimeout(rootTimeoutId);
-            
-            if (rootResponse.ok || rootResponse.status < 500) {
-              debugLog('✅ ApiSync: Backend is reachable (via root endpoint)');
-              return true;
-            }
-          } catch (rootError) {
-            clearTimeout(rootTimeoutId);
-            debugLog('⚠️ ApiSync: Backend connection test failed (timeout)');
-            return false;
+        // Try root endpoint as fallback for non-timeout errors
+        const rootUrl = this.config.baseUrl.replace(/\/api\/?$/, '') || this.config.baseUrl;
+        const rootController = new AbortController();
+        const rootTimeoutId = setTimeout(() => rootController.abort(), this.CONNECTION_TEST_TIMEOUT_MS);
+        try {
+          const rootResponse = await fetch(rootUrl, { method: 'GET', signal: rootController.signal });
+          clearTimeout(rootTimeoutId);
+          if (rootResponse.ok || rootResponse.status < 500) {
+            debugLog('✅ ApiSync: Backend reachable (via root)');
+            return true;
           }
+        } catch {
+          clearTimeout(rootTimeoutId);
         }
-        
-        throw fetchError;
+        return false;
       }
+    };
+
+    try {
+      debugLog('🔄 ApiSync: Testing connection to cloud backend...');
+      let ok = await tryOnce();
+      if (!ok) {
+        debugLog('🔄 ApiSync: Retrying connection once after 2s (e.g. cold start)...');
+        await new Promise(r => setTimeout(r, 2000));
+        ok = await tryOnce();
+      }
+      if (!ok) debugLog('⚠️ ApiSync: Backend not reachable (will work offline)');
+      return ok;
     } catch (error) {
-      // Connection failed - this is expected if backend is offline
       debugLog('⚠️ ApiSync: Backend not reachable (will work offline)');
       return false;
     }

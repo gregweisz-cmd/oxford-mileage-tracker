@@ -598,22 +598,26 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
     setCalculatingDistance(true);
     try {
-      // Get actual addresses - use location details if available, otherwise use the location string
-      // Handle "BA" (base address) specially
+      // Prefer raw location string when it contains parentheses so backend extracts same address as web
+      // e.g. "Oxford House 37th Street (1105 Longview Dr...)" -> backend uses "1105 Longview Dr..."
+      // Only use locationDetails?.address for "BA" or when there's no parenthetical address
+      const hasAddressInParens = (s: string) => (s || '').trim().includes('(');
       let startAddress = formData.startLocation.trim();
-      if (startAddress === 'BA' && startLocationDetails?.address) {
-        startAddress = startLocationDetails.address;
-      } else if (startLocationDetails?.address) {
-        startAddress = startLocationDetails.address;
+      if (!hasAddressInParens(startAddress)) {
+        if (startAddress === 'BA' && startLocationDetails?.address) {
+          startAddress = startLocationDetails.address;
+        } else if (startLocationDetails?.address) {
+          startAddress = startLocationDetails.address;
+        }
       }
-      
       let endAddress = formData.endLocation.trim();
-      if (endAddress === 'BA' && endLocationDetails?.address) {
-        endAddress = endLocationDetails.address;
-      } else if (endLocationDetails?.address) {
-        endAddress = endLocationDetails.address;
+      if (!hasAddressInParens(endAddress)) {
+        if (endAddress === 'BA' && endLocationDetails?.address) {
+          endAddress = endLocationDetails.address;
+        } else if (endLocationDetails?.address) {
+          endAddress = endLocationDetails.address;
+        }
       }
-      
       const distance = await DistanceService.calculateDistance(
         startAddress,
         endAddress
