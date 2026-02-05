@@ -186,6 +186,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
         }
       }
 
+      const nextEntries = new Map(entries);
       for (const entry of toSave) {
         const body = {
           employeeId,
@@ -202,19 +203,20 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
         } else {
           const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
           await apiPost('/api/receipts', { ...body, id });
+          nextEntries.set(entry.dateKey, { ...entry, receiptId: id });
         }
       }
 
+      setEntries(nextEntries);
       setHasUnsavedChanges(false);
       setSaveMessage('success');
       onDataChange?.();
       setTimeout(() => setSaveMessage(null), 3000);
-      // Clear all caches so refetch uses fresh data (receipts + per diem rules for dailyMax/eligibility)
+      // Clear caches so next load (e.g. change month or refresh) gets fresh data. Do NOT refetch
+      // here—keeping current UI state so the user's selections stay visible instead of being
+      // overwritten by a possibly empty or delayed GET response.
       rateLimitedApi.clearCache();
       PerDiemRulesService.clearCache();
-      // Brief delay so backend commit is visible to the next GET
-      await new Promise((r) => setTimeout(r, 150));
-      await loadData();
     } catch (err: any) {
       const msg = err?.message || (typeof err?.error === 'string' ? err.error : 'Failed to save per diem.');
       setError(msg);
