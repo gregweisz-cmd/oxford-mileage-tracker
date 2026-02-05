@@ -2125,14 +2125,21 @@ export class ApiSyncService {
         try {
           const local = await DatabaseService.getEmployeeById(backendEmp.id);
           if (!local) continue;
+          // Preserve local base address(es) when backend doesn't return them (e.g. API omits or returns empty)
+          const baseAddress = (backendEmp.baseAddress != null && String(backendEmp.baseAddress).trim() !== '')
+            ? backendEmp.baseAddress
+            : (local.baseAddress ?? '');
+          const baseAddress2 = (backendEmp.baseAddress2 != null && String(backendEmp.baseAddress2).trim() !== '')
+            ? backendEmp.baseAddress2
+            : (local.baseAddress2 ?? '');
           await DatabaseService.updateEmployee(backendEmp.id, {
             costCenters: backendEmp.costCenters ?? [],
             selectedCostCenters: (backendEmp.selectedCostCenters?.length ? backendEmp.selectedCostCenters : (backendEmp.costCenters ?? [])),
             defaultCostCenter: backendEmp.defaultCostCenter ?? backendEmp.costCenters?.[0] ?? '',
             name: backendEmp.name,
             preferredName: backendEmp.preferredName ?? '',
-            baseAddress: backendEmp.baseAddress ?? '',
-            baseAddress2: backendEmp.baseAddress2 ?? '',
+            baseAddress,
+            baseAddress2,
             position: backendEmp.position ?? '',
             phoneNumber: backendEmp.phoneNumber ?? '',
             oxfordHouseId: backendEmp.oxfordHouseId ?? ''

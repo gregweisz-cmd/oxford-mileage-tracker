@@ -102,19 +102,23 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   const loadEmployeeData = useCallback(async () => {
     try {
-      // Load employee's base addresses
-      const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
+      // Load employee's base addresses (no-cache so we always get latest after User Settings save)
+      const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
+        cache: 'no-store',
+        headers: { Pragma: 'no-cache', 'Cache-Control': 'no-cache' },
+      });
       let baseAddress = '';
       
       if (employeeResponse.ok) {
         const employee = await employeeResponse.json();
-        const addresses = [];
-        if (employee.baseAddress) {
-          addresses.push(employee.baseAddress);
-          baseAddress = employee.baseAddress;
-          // setEmployeeBaseAddress(employee.baseAddress); // Currently unused
+        const addresses: string[] = [];
+        const ba1 = (employee.baseAddress != null && String(employee.baseAddress).trim()) ? String(employee.baseAddress).trim() : '';
+        const ba2 = (employee.baseAddress2 != null && String(employee.baseAddress2).trim()) ? String(employee.baseAddress2).trim() : '';
+        if (ba1) {
+          addresses.push(ba1);
+          baseAddress = ba1;
         }
-        if (employee.baseAddress2) addresses.push(employee.baseAddress2);
+        if (ba2) addresses.push(ba2);
         setBaseAddresses(addresses);
       }
       
