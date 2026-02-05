@@ -94,8 +94,8 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       };
 
       for (let day = 1; day <= daysInMonth; day++) {
+        const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const date = new Date(year, month - 1, day);
-        const dateKey = toDateKey(date);
         const existing = perDiemReceipts.find((r: any) => receiptDateKey(r) === dateKey);
         const dailyMax = perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT;
         if (existing) {
@@ -203,7 +203,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       for (const entry of toSave) {
         const body = {
           employeeId,
-          date: toDateKey(entry.date),
+          date: entry.dateKey,
           amount: entry.amount,
           vendor: 'Per Diem',
           description: 'Per Diem',
@@ -241,7 +241,8 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       setEntries(nextEntries);
       setHasUnsavedChanges(false);
       setSaveMessage('success');
-      onDataChange?.();
+      // Do not call onDataChange() here: it triggers parent refreshTrigger and refetch,
+      // which can overwrite our state with backend data and cause date-shift bugs.
       setTimeout(() => setSaveMessage(null), 3000);
       // Clear caches so next load (e.g. change month or refresh) gets fresh data. Do NOT refetch
       // here—keeping current UI state so the user's selections stay visible instead of being
@@ -325,11 +326,11 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
         ${dailyMaxAmount} max per day · ${monthlyLimit} max per month. Check the days you are claiming; receipt is optional for per diem.
       </Typography>
 
-      {/* Days list */}
+      {/* Days list - use calendar dateKey (YYYY-MM-DD) only, no Date-derived key */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+          const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const date = new Date(year, month - 1, day);
-          const dateKey = toDateKey(date);
           const entry = entries.get(dateKey);
           if (!entry) return null;
           return (
