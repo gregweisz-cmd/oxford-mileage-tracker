@@ -201,9 +201,9 @@ export class SyncIntegrationService {
       }
       
       this.lastSyncOnActiveTime = now;
-      debugLog('🔄 SyncIntegration: App foregrounded, syncing from backend');
-      await ApiSyncService.syncFromBackend(currentEmployee.id);
+      debugLog('🔄 SyncIntegration: App foregrounded (push then pull)');
       await this.processSyncQueue();
+      await ApiSyncService.syncFromBackend(currentEmployee.id);
     } catch (error) {
       debugWarn('⚠️ SyncIntegration: Error syncing on app foreground:', error);
     }

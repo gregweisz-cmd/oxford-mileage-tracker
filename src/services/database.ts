@@ -1658,18 +1658,19 @@ export class DatabaseService {
   static async deleteReceipt(id: string): Promise<void> {
     const database = await getDatabase();
     debugLog('🗑️ Database: Deleting receipt with ID:', id);
-    
-    const result = await database.runAsync('DELETE FROM receipts WHERE id = ?', [id]);
-    debugLog('✅ Database: Receipt deleted, rows affected:', result.changes);
-    
-    // Remove from sync queue to prevent it from being uploaded to backend
+
+    // Queue backend DELETE so next sync doesn't re-pull this receipt and re-insert it
     try {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
-      SyncIntegrationService.removeFromQueue('receipt', id);
-      debugLog('✅ Database: Removed receipt from sync queue');
+      SyncIntegrationService.removeFromQueue('receipt', id); // clear any pending create/update
+      SyncIntegrationService.queueSyncOperation('delete', 'receipt', { id });
+      debugLog('✅ Database: Queued receipt delete for backend');
     } catch (error) {
-      console.error('⚠️ Database: Could not remove from sync queue:', error);
+      console.error('⚠️ Database: Could not queue receipt delete:', error);
     }
+
+    const result = await database.runAsync('DELETE FROM receipts WHERE id = ?', [id]);
+    debugLog('✅ Database: Receipt deleted, rows affected:', result.changes);
   }
 
   // Daily Odometer Reading methods

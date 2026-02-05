@@ -70,6 +70,13 @@ export class PerDiemDashboardService {
         status = 'safe';
       }
 
+      // Only show "Eligible today" if they haven't already claimed per diem for today
+      const today = new Date();
+      const hasPerDiemForToday = perDiemReceipts.some(
+        (r) => r.date && new Date(r.date).toDateString() === today.toDateString()
+      );
+      const isEligibleTodayUnclaimed = todayEligibility.isEligible && !hasPerDiemForToday;
+
       // Calculate averages and projections
       const dayOfMonth = new Date().getDate();
       const averagePerDay = dayOfMonth > 0 ? currentMonthTotal / dayOfMonth : 0;
@@ -83,7 +90,7 @@ export class PerDiemDashboardService {
         percentUsed,
         daysEligible: eligibilityAnalysis.eligibleDays,
         daysClaimed: perDiemReceipts.length,
-        isEligibleToday: todayEligibility.isEligible,
+        isEligibleToday: isEligibleTodayUnclaimed,
         todayEligibilityReason: todayEligibility.reason,
         receipts: perDiemReceipts.length,
         averagePerDay,

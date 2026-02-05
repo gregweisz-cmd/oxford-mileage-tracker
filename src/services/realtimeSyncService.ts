@@ -45,6 +45,8 @@ export type WebSocketEventType =
   | 'heartbeat_response'
   | 'error';
 
+const DATA_UPDATE_SYNC_DEBOUNCE_MS = 800;
+
 export class RealtimeSyncService {
   private static instance: RealtimeSyncService;
   private ws: WebSocket | null = null;
@@ -54,6 +56,8 @@ export class RealtimeSyncService {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private currentEmployeeId: string | null = null;
   private eventListeners: Map<WebSocketEventType, ((data: any) => void)[]> = new Map();
+  private dataUpdateSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  private dataUpdateSyncInProgress = false;
 
   private constructor() {
     this.initializeEventListeners();
@@ -215,15 +219,28 @@ export class RealtimeSyncService {
   }
 
   private triggerSyncIfNeeded(data: any): void {
-    // Import ApiSyncService dynamically to avoid circular dependencies
-    import('./apiSyncService').then(({ ApiSyncService }) => {
-      if (this.currentEmployeeId) {
-        debugLog('🔄 Triggering sync due to real-time update');
-        ApiSyncService.syncFromBackend(this.currentEmployeeId).catch(error => {
-          console.error('❌ Error syncing after real-time update:', error);
-        });
+    if (!this.currentEmployeeId) return;
+    // Debounce rapid data_update messages so we run push-then-pull once after activity settles
+    if (this.dataUpdateSyncTimer) {
+      clearTimeout(this.dataUpdateSyncTimer);
+    }
+    const runPushThenPull = async () => {
+      if (this.dataUpdateSyncInProgress) return;
+      this.dataUpdateSyncInProgress = true;
+      this.dataUpdateSyncTimer = null;
+      try {
+        debugLog('🔄 Triggering sync due to real-time update (push then pull)');
+        const { SyncIntegrationService } = await import('./syncIntegrationService');
+        const { ApiSyncService } = await import('./apiSyncService');
+        await SyncIntegrationService.processSyncQueue();
+        await ApiSyncService.syncFromBackend(this.currentEmployeeId);
+      } catch (error) {
+        console.error('❌ Error syncing after real-time update:', error);
+      } finally {
+        this.dataUpdateSyncInProgress = false;
       }
-    });
+    };
+    this.dataUpdateSyncTimer = setTimeout(runPushThenPull, DATA_UPDATE_SYNC_DEBOUNCE_MS);
   }
 
   private startHeartbeat(): void {

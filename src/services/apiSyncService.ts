@@ -228,7 +228,8 @@ export class ApiSyncService {
   }
 
   /**
-   * Sync all data from mobile to backend
+   * Push data from mobile to backend. Used when the user taps Save (or equivalent).
+   * RULE: First load = pull from backend. Save buttons = push to backend only (no pull after save).
    */
   static async syncToBackend(data: {
     employees?: Employee[];
@@ -350,7 +351,8 @@ export class ApiSyncService {
   }
 
   /**
-   * Sync data from backend to mobile
+   * Pull data from backend (source of truth). Use on first load (web or mobile), app foreground,
+   * or realtime data_update — never right after a Save (Save = push only).
    */
   static async syncFromBackend(employeeId?: string): Promise<SyncResult> {
     try {
@@ -439,7 +441,7 @@ export class ApiSyncService {
       // Backend is source of truth for employee assignments (cost centers, etc.)
       await this.syncEmployeesToLocal(employees);
       await this.syncMileageEntriesToLocal(mappedMileageEntries);
-      await this.syncReceiptsToLocal(mappedReceipts);
+      await this.syncReceiptsToLocal(mappedReceipts, employeeId ?? undefined);
       // Time tracking, daily descriptions, odometer (even if empty) to handle deletions
       await this.syncTimeTrackingToLocal(mappedTimeTracking, effectiveEmployeeId);
       // Always sync daily descriptions (even if empty array) to handle deletions
@@ -2031,9 +2033,11 @@ export class ApiSyncService {
   }
 
   /**
-   * Sync receipts from backend to local database
+   * Sync receipts from backend to local database.
+   * Upserts all backend receipts; if localEmployeeId is provided, deletes local receipts
+   * for that employee that are not in the backend list (so web-portal deletes stay deleted).
    */
-  private static async syncReceiptsToLocal(receipts: Receipt[]): Promise<void> {
+  private static async syncReceiptsToLocal(receipts: Receipt[], localEmployeeId?: string): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
       
@@ -2059,7 +2063,6 @@ export class ApiSyncService {
           
           // Get receipt's updatedAt timestamp for comparison
           const receiptUpdatedAt = receipt.updatedAt instanceof Date ? receipt.updatedAt.toISOString() : (receipt.updatedAt || new Date().toISOString());
-          const existingUpdatedAt = existing?.updatedAt ? (existing.updatedAt instanceof Date ? existing.updatedAt.toISOString() : existing.updatedAt) : null;
           
           // If receipt exists, update it; otherwise create it
           if (existing) {
@@ -2107,6 +2110,26 @@ export class ApiSyncService {
           }
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing receipt ${receipt.id}:`, error);
+        }
+      }
+
+      // Remove local receipts for this employee that are not on the backend (e.g. deleted on web portal)
+      if (localEmployeeId) {
+        const backendIds = receipts.map(r => r.id).filter(Boolean);
+        if (backendIds.length === 0) {
+          const del = await database.runAsync('DELETE FROM receipts WHERE employeeId = ?', [localEmployeeId]);
+          if (del.changes > 0) {
+            debugLog(`🗑️ ApiSync: Removed ${del.changes} local receipt(s) not on backend (employee ${localEmployeeId})`);
+          }
+        } else {
+          const placeholders = backendIds.map(() => '?').join(',');
+          const del = await database.runAsync(
+            `DELETE FROM receipts WHERE employeeId = ? AND id NOT IN (${placeholders})`,
+            [localEmployeeId, ...backendIds]
+          );
+          if (del.changes > 0) {
+            debugLog(`🗑️ ApiSync: Removed ${del.changes} local receipt(s) not on backend (employee ${localEmployeeId})`);
+          }
         }
       }
       
@@ -2338,9 +2361,7 @@ export class ApiSyncService {
         backendEmployeeId
       );
       
-      if (mappedReceipts.length > 0) {
-        await this.syncReceiptsToLocal(mappedReceipts);
-      }
+      await this.syncReceiptsToLocal(mappedReceipts, employeeId);
       
       debugLog(`✅ ApiSync: Receipts sync completed for employee ${employeeId}: ${mappedReceipts.length} receipts`);
       

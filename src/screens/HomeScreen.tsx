@@ -35,9 +35,12 @@ import LogoutService from '../services/logoutService';
 import { useTheme } from '../contexts/ThemeContext';
 import { BaseAddressDetectionService } from '../services/baseAddressDetectionService';
 import { CostCenterImportService } from '../services/costCenterImportService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
 import { DistanceService } from '../services/distanceService';
 import * as Location from 'expo-location';
+
+const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 
 interface HomeScreenProps {
   navigation: any;
@@ -396,6 +399,19 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  /**
+   * After user save/delete: push local changes to backend, then refresh UI from local only.
+   * Backend is source of truth; we never pull immediately after a save (avoids overwriting what the user just did).
+   */
+  const refreshAfterLocalChange = async () => {
+    try {
+      await SyncIntegrationService.processSyncQueue();
+      await refreshLocalDataOnly();
+    } catch (error) {
+      console.error('Error pushing changes and refreshing:', error);
+    }
+  };
+
   const calculateDistanceFromBA = async () => {
     if (!currentEmployee || !currentEmployee.baseAddress) {
       setDistanceFromBA(null);
@@ -546,12 +562,15 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
-  const checkSmartNotifications = async (employeeId: string) => {
+  const checkSmartNotifications = async (
+    employeeId: string,
+    dismissedSet?: Set<string>
+  ) => {
     try {
       const notifications = await SmartNotificationService.checkNotifications(employeeId);
-      // Filter out dismissed notifications
+      const dismissed = dismissedSet ?? dismissedNotifications;
       const activeNotifications = notifications.filter(
-        notification => !dismissedNotifications.has(notification.id)
+        notification => !dismissed.has(notification.id)
       );
       setSmartNotifications(activeNotifications);
     } catch (error) {
@@ -559,9 +578,39 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
+  const loadDismissedNotificationIds = async (
+    employeeId: string
+  ): Promise<Set<string>> => {
+    try {
+      const key = `${DISMISSED_NOTIFICATIONS_KEY_PREFIX}${employeeId}`;
+      const raw = await AsyncStorage.getItem(key);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw) as string[];
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch {
+      return new Set();
+    }
+  };
+
+  const persistDismissedNotificationIds = async (
+    employeeId: string,
+    ids: Set<string>
+  ) => {
+    try {
+      const key = `${DISMISSED_NOTIFICATIONS_KEY_PREFIX}${employeeId}`;
+      await AsyncStorage.setItem(key, JSON.stringify([...ids]));
+    } catch (e) {
+      console.error('Error persisting dismissed notifications:', e);
+    }
+  };
+
   const handleDismissNotification = (notificationId: string) => {
-    setDismissedNotifications(prev => new Set(prev).add(notificationId));
+    const next = new Set(dismissedNotifications).add(notificationId);
+    setDismissedNotifications(next);
     setSmartNotifications(prev => prev.filter(n => n.id !== notificationId));
+    if (currentEmployee?.id) {
+      persistDismissedNotificationIds(currentEmployee.id, next);
+    }
   };
 
   const handleNotificationAction = (notification: SmartNotification) => {
@@ -579,6 +628,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     });
   };
 
+  /**
+   * First load only: pull from backend (source of truth) then show data.
+   * Do not call after user save/delete — use refreshAfterLocalChange (push only) instead.
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -659,7 +712,9 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       await loadEmployeeData(employee.id, employee);
 
       await checkBaseAddressSuggestion(employee);
-      await checkSmartNotifications(employee.id);
+      const loadedDismissed = await loadDismissedNotificationIds(employee.id);
+      setDismissedNotifications(loadedDismissed);
+      await checkSmartNotifications(employee.id, loadedDismissed);
 
       initialLoadDoneRef.current = true;
     } catch (error) {
@@ -720,7 +775,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           onPress: async () => {
             try {
               await DatabaseService.deleteReceipt(id);
-              loadData();
+              await refreshAfterLocalChange();
             } catch (error) {
               console.error('Error deleting receipt:', error);
               Alert.alert('Error', 'Failed to delete receipt');
@@ -1058,7 +1113,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 await DatabaseService.deleteMileageEntry(entryId);
               }
               setSelectedMileageEntries([]);
-              loadData(); // Reload data to reflect changes
+              await refreshAfterLocalChange();
               Alert.alert('Success', 'Selected entries deleted successfully');
             } catch (error) {
               console.error('Error deleting entries:', error);
@@ -1088,7 +1143,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 await DatabaseService.deleteReceipt(receiptId);
               }
               setSelectedReceipts([]);
-              loadData(); // Reload data to reflect changes
+              await refreshAfterLocalChange();
               Alert.alert('Success', 'Selected receipts deleted successfully');
             } catch (error) {
               console.error('Error deleting receipts:', error);
@@ -1163,7 +1218,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
             try {
               await DatabaseService.deleteMileageEntry(entryId);
               Alert.alert('Success', 'Mileage entry deleted successfully');
-              loadData(); // Refresh the data
+              await refreshAfterLocalChange();
             } catch (error) {
               console.error('Error deleting entry:', error);
               Alert.alert('Error', 'Failed to delete mileage entry');
@@ -1246,7 +1301,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       </View>
 
       {/* Smart Notifications */}
-      {smartNotifications.length > 0 && (
+      {smartNotifications.length > 0 ? (
         <View style={styles.notificationsContainer}>
           {smartNotifications.map((notification) => {
             const priorityColor = 
@@ -1282,22 +1337,22 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 <Text style={[styles.notificationMessage, { color: colors.textSecondary }]}>
                   {notification.message}
                 </Text>
-                {notification.actionLabel && (
+                {notification.actionLabel ? (
                   <TouchableOpacity 
                     onPress={() => handleNotificationAction(notification)}
                     style={[styles.notificationAction, { backgroundColor: priorityColor }]}
                   >
                     <Text style={styles.notificationActionText}>{notification.actionLabel}</Text>
                   </TouchableOpacity>
-                )}
+                ) : null}
               </View>
             );
           })}
         </View>
-      )}
+      ) : null}
 
       {/* Batch Mode Indicator */}
-      {isBatchMode && (
+      {isBatchMode ? (
         <View style={styles.batchModeIndicator}>
           <MaterialIcons name="checklist" size={20} color="#fff" />
           <Text style={styles.batchModeText}>Batch Selection Mode</Text>
@@ -1305,10 +1360,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
             Tap checkboxes to select items, then use Delete button
           </Text>
         </View>
-      )}
+      ) : null}
 
       {/* Employee Selector */}
-      {availableEmployees.length > 1 && (
+      {availableEmployees.length > 1 ? (
         <View style={styles.employeeSelectorSection}>
           <Text style={styles.employeeSelectorLabel}>Viewing Data For:</Text>
           <View style={styles.employeeSelectorContainer}>
@@ -1327,19 +1382,19 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 ]}>
                   {employee.name}
                 </Text>
-                {employee.position && (
+                {employee.position ? (
                   <Text style={[
                     styles.employeeOptionSubtext,
                     viewingEmployee?.id === employee.id && styles.employeeOptionSubtextSelected
                   ]}>
                     {employee.position}
                   </Text>
-                )}
+                ) : null}
               </TouchableOpacity>
             ))}
           </View>
         </View>
-      )}
+      ) : null}
 
       <View style={styles.contentContainer}>
         <ScrollView 
@@ -1350,7 +1405,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           keyboardShouldPersistTaps="handled"
         >
         {/* Sync Status Indicator (for debugging) */}
-        {__DEV__ && (
+        {__DEV__ ? (
           <View style={styles.syncStatusBar}>
             <MaterialIcons 
               name={isSyncing ? "sync" : "cloud-done"} 
@@ -1364,7 +1419,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               {API_BASE_URL?.includes('onrender') ? 'Production' : 'Local'}
             </Text>
           </View>
-        )}
+        ) : null}
         
         {/* Tips Display */}
         
@@ -1417,7 +1472,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         </View>
 
         {/* Distance from BA Widget */}
-        {currentEmployee?.baseAddress && (
+        {currentEmployee?.baseAddress ? (
           <View style={styles.distanceBAContainer}>
             <View style={dynamicStyles.statCard}>
               <MaterialIcons name="location-on" size={24} color="#2196F3" />
@@ -1439,7 +1494,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
-        )}
+        ) : null}
 
         {/* Total Expenses Card */}
         <View style={styles.statsContainer}>
@@ -1520,22 +1575,22 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           </TouchableOpacity>
         </View>
 
-        {isEditingTiles && (
+        {isEditingTiles ? (
           <View style={styles.editHint}>
             <MaterialIcons name="info" size={16} color="#2196F3" />
             <Text style={styles.editHintText}>
               Use ↑ ↓ arrows to rearrange tiles
             </Text>
           </View>
-        )}
+        ) : null}
 
         <View style={styles.actionsContainer}>
           {dashboardTiles.map((tile, index) => (
             <View key={tile.id}>
               <DashboardTile tile={tile} isDragging={false} />
-              {isEditingTiles && index < dashboardTiles.length - 1 && (
+              {isEditingTiles && index < dashboardTiles.length - 1 ? (
                 <View style={styles.reorderButtons}>
-                  {index > 0 && (
+                  {index > 0 ? (
                     <TouchableOpacity
                       style={styles.reorderButton}
                       onPress={async () => {
@@ -1549,8 +1604,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                     >
                       <MaterialIcons name="arrow-upward" size={16} color="#2196F3" />
                     </TouchableOpacity>
-                  )}
-                  {index < dashboardTiles.length - 1 && (
+                  ) : null}
+                  {index < dashboardTiles.length - 1 ? (
                     <TouchableOpacity
                       style={styles.reorderButton}
                       onPress={async () => {
@@ -1564,9 +1619,9 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                     >
                       <MaterialIcons name="arrow-downward" size={16} color="#2196F3" />
                     </TouchableOpacity>
-                  )}
+                  ) : null}
                 </View>
-              )}
+              ) : null}
             </View>
           ))}
         </View>
@@ -1610,14 +1665,14 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                     <Text style={styles.quickActionsEntryRoute}>
                       {formatLocationRoute(entry)}
                     </Text>
-                    <Text style={styles.quickActionsEntryPurpose}>{entry.purpose}</Text>
-                    <Text style={styles.quickActionsEntryMiles}>{entry.miles.toFixed(1)} mi</Text>
-                    {entry.isGpsTracked && (
+                    <Text style={styles.quickActionsEntryPurpose}>{entry.purpose ?? ''}</Text>
+                    <Text style={styles.quickActionsEntryMiles}>{entry.miles != null ? entry.miles.toFixed(1) : '0'} mi</Text>
+                    {entry.isGpsTracked ? (
                       <View style={styles.quickActionsGpsBadge}>
                         <MaterialIcons name="gps-fixed" size={12} color="#4CAF50" />
                         <Text style={styles.quickActionsGpsText}>GPS Tracked</Text>
                       </View>
-                    )}
+                    ) : null}
                   </View>
                   <View style={styles.quickActionsButtonContainer}>
                     <TouchableOpacity
@@ -1747,7 +1802,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                       </View>
                       
                       {/* Only show default selector if more than one cost center */}
-                      {selectedCostCenters.length > 1 && (
+                      {selectedCostCenters.length > 1 ? (
                         <TouchableOpacity
                           style={styles.defaultButton}
                           onPress={() => setDefaultCostCenter(
@@ -1766,7 +1821,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                             Default
                           </Text>
                         </TouchableOpacity>
-                      )}
+                      ) : null}
                     </View>
                   ))}
                 </View>
@@ -1787,14 +1842,14 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               >
                 <Text style={styles.costCentersModalCancelButtonText}>Close</Text>
               </TouchableOpacity>
-              {selectedCostCenters.length > 1 && (
+              {selectedCostCenters.length > 1 ? (
                 <TouchableOpacity 
                   style={styles.costCentersModalConfirmButton} 
                   onPress={handleSaveCostCenters}
                 >
                   <Text style={styles.costCentersModalConfirmButtonText}>Save Default</Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
           </View>
         </View>
