@@ -11,8 +11,9 @@ import {
 } from '@mui/material';
 import { Today as TodayIcon } from '@mui/icons-material';
 import { PerDiemRulesService } from '../services/perDiemRulesService';
-import { apiGet, apiPost, apiPut, apiDelete, rateLimitedApi } from '../services/rateLimitedApi';
+import { apiGet, rateLimitedApi } from '../services/rateLimitedApi';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 const DEFAULT_DAILY_AMOUNT = 35;
 const DEFAULT_MONTHLY_LIMIT = 350;
 
@@ -173,6 +174,10 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
 
   const handleSave = async () => {
     if (!hasUnsavedChanges) return;
+    if (!employeeId?.trim()) {
+      setError('Cannot save: employee not loaded. Refresh the page and try again.');
+      return;
+    }
     setSaving(true);
     setError(null);
     setSaveMessage(null);
@@ -182,7 +187,15 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
 
       for (const entry of toDelete) {
         if (entry.receiptId) {
-          await apiDelete(`/api/receipts/${entry.receiptId}`);
+          const res = await fetch(`${API_BASE_URL}/api/receipts/${entry.receiptId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (!res.ok) {
+            const errText = await res.text().catch(() => res.statusText);
+            throw new Error(`Delete failed: ${res.status} ${errText}`);
+          }
         }
       }
 
@@ -199,10 +212,28 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           fileType: 'image',
         };
         if (entry.receiptId) {
-          await apiPut(`/api/receipts/${entry.receiptId}`, { ...body, id: entry.receiptId });
+          const res = await fetch(`${API_BASE_URL}/api/receipts/${entry.receiptId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, id: entry.receiptId }),
+          });
+          if (!res.ok) {
+            const errText = await res.text().catch(() => res.statusText);
+            throw new Error(`Update failed: ${res.status} ${errText}`);
+          }
         } else {
           const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-          await apiPost('/api/receipts', { ...body, id });
+          const res = await fetch(`${API_BASE_URL}/api/receipts`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, id }),
+          });
+          if (!res.ok) {
+            const errText = await res.text().catch(() => res.statusText);
+            throw new Error(`Save failed: ${res.status} ${errText}`);
+          }
           nextEntries.set(entry.dateKey, { ...entry, receiptId: id });
         }
       }
@@ -220,6 +251,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
     } catch (err: any) {
       const msg = err?.message || (typeof err?.error === 'string' ? err.error : 'Failed to save per diem.');
       setError(msg);
+      console.error('[PerDiemTab] Save failed:', msg, err);
     } finally {
       setSaving(false);
     }

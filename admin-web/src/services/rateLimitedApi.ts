@@ -127,6 +127,7 @@ class RateLimitedApiService {
     
     const response = await fetch(fullUrl, {
       ...item.options,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...item.options.headers,
