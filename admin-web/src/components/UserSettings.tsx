@@ -36,6 +36,7 @@ import {
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
+import { parseBaseAddress, formatBaseAddress } from '../utils/addressParse';
 
 interface UserSettingsProps {
   employeeId: string;
@@ -53,8 +54,8 @@ interface UserProfile {
   oxfordHouseId?: string;
   costCenters: string[];
   baseAddresses: {
-    address1: string;
-    address2: string;
+    address1: { street: string; city: string; state: string; zip: string };
+    address2: { street: string; city: string; state: string; zip: string };
   };
   preferences: {
     autoSaveInterval: number;
@@ -79,8 +80,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
     password: '',
     costCenters: ['NC.F-SAPTBG'],
     baseAddresses: {
-      address1: '',
-      address2: '',
+      address1: { street: '', city: '', state: '', zip: '' },
+      address2: { street: '', city: '', state: '', zip: '' },
     },
     preferences: {
       autoSaveInterval: 30,
@@ -174,8 +175,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           phoneNumber: employeeData.phoneNumber || '555-0123',
           costCenters: selectedCostCenters,
           baseAddresses: {
-            address1: employeeData.baseAddress || '',
-            address2: employeeData.baseAddress2 || '',
+            address1: parseBaseAddress(employeeData.baseAddress || ''),
+            address2: parseBaseAddress(employeeData.baseAddress2 || ''),
           },
           signature: employeeData.signature || '',
           oxfordHouseId: employeeData.oxfordHouseId || '',
@@ -272,8 +273,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         oxfordHouseId: profile.oxfordHouseId || '',
         position: profile.position,
         phoneNumber: formattedPhoneNumber,
-        baseAddress: profile.baseAddresses.address1,
-        baseAddress2: profile.baseAddresses.address2,
+        baseAddress: formatBaseAddress(profile.baseAddresses.address1.street, profile.baseAddresses.address1.city, profile.baseAddresses.address1.state, profile.baseAddresses.address1.zip),
+        baseAddress2: formatBaseAddress(profile.baseAddresses.address2.street, profile.baseAddresses.address2.city, profile.baseAddresses.address2.state, profile.baseAddresses.address2.zip),
         costCenters: JSON.stringify(profile.costCenters),
         selectedCostCenters: JSON.stringify(profile.costCenters),
         defaultCostCenter: profile.costCenters[0] || '',
@@ -497,34 +498,108 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               Set your default addresses for easier expense tracking and GPS functionality
             </Typography>
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <Box>
                 <Typography variant="subtitle2" gutterBottom>Base Address 1</Typography>
-                <TextField
-                  value={profile.baseAddresses.address1}
-                  onChange={(e) => setProfile(prev => ({
-                    ...prev,
-                    baseAddresses: { ...prev.baseAddresses, address1: e.target.value }
-                  }))}
-                  fullWidth
-                  multiline
-                  rows={2}
-                  placeholder="Enter your primary base address"
-                />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <TextField
+                    label="Street Address"
+                    value={profile.baseAddresses.address1.street}
+                    onChange={(e) => setProfile(prev => ({
+                      ...prev,
+                      baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, street: e.target.value } }
+                    }))}
+                    fullWidth
+                    size="small"
+                    placeholder="e.g. 230 Wagner St"
+                  />
+                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                    <TextField
+                      label="City"
+                      value={profile.baseAddresses.address1.city}
+                      onChange={(e) => setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, city: e.target.value } }
+                      }))}
+                      size="small"
+                      sx={{ flex: 1, minWidth: 120 }}
+                      placeholder="e.g. Troutman"
+                    />
+                    <TextField
+                      label="State"
+                      value={profile.baseAddresses.address1.state}
+                      onChange={(e) => setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, state: e.target.value.toUpperCase().slice(0, 2) } }
+                      }))}
+                      size="small"
+                      sx={{ width: 80 }}
+                      placeholder="NC"
+                    />
+                    <TextField
+                      label="ZIP Code"
+                      value={profile.baseAddresses.address1.zip}
+                      onChange={(e) => setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, zip: e.target.value.replace(/\D/g, '').slice(0, 10) } }
+                      }))}
+                      size="small"
+                      sx={{ width: 100 }}
+                      placeholder="28166"
+                    />
+                  </Box>
+                </Box>
               </Box>
               <Box>
-                <Typography variant="subtitle2" gutterBottom>Base Address 2</Typography>
-                <TextField
-                  value={profile.baseAddresses.address2}
-                  onChange={(e) => setProfile(prev => ({
-                    ...prev,
-                    baseAddresses: { ...prev.baseAddresses, address2: e.target.value }
-                  }))}
-                  fullWidth
-                  multiline
-                  rows={2}
-                  placeholder="Enter your secondary base address (optional)"
-                />
+                <Typography variant="subtitle2" gutterBottom>Base Address 2 (optional)</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <TextField
+                    label="Street Address"
+                    value={profile.baseAddresses.address2.street}
+                    onChange={(e) => setProfile(prev => ({
+                      ...prev,
+                      baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, street: e.target.value } }
+                    }))}
+                    fullWidth
+                    size="small"
+                    placeholder="e.g. 123 Main St"
+                  />
+                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                    <TextField
+                      label="City"
+                      value={profile.baseAddresses.address2.city}
+                      onChange={(e) => setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, city: e.target.value } }
+                      }))}
+                      size="small"
+                      sx={{ flex: 1, minWidth: 120 }}
+                      placeholder="City"
+                    />
+                    <TextField
+                      label="State"
+                      value={profile.baseAddresses.address2.state}
+                      onChange={(e) => setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, state: e.target.value.toUpperCase().slice(0, 2) } }
+                      }))}
+                      size="small"
+                      sx={{ width: 80 }}
+                      placeholder="ST"
+                    />
+                    <TextField
+                      label="ZIP Code"
+                      value={profile.baseAddresses.address2.zip}
+                      onChange={(e) => setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, zip: e.target.value.replace(/\D/g, '').slice(0, 10) } }
+                      }))}
+                      size="small"
+                      sx={{ width: 100 }}
+                      placeholder="ZIP"
+                    />
+                  </Box>
+                </Box>
               </Box>
             </Box>
           </CardContent>

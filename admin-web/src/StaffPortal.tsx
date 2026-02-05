@@ -6124,8 +6124,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Box sx={{ display: 'flex', gap: 4 }}>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body1"><strong>Payable to:</strong> {employeeData.name}</Typography>
-                  <Typography variant="body1"><strong>Base Address #1:</strong> {employeeData.baseAddress.split(',')[0]}</Typography>
-                  <Typography variant="body1"><strong>City, State Zip:</strong> {employeeData.baseAddress.split(',')[1]?.trim()}</Typography>
+                  <Typography variant="body1"><strong>Base Address #1:</strong> {(employeeData.baseAddress || '').split(',')[0]?.trim() || '—'}</Typography>
+                  <Typography variant="body1"><strong>City, State Zip:</strong> {(employeeData.baseAddress || '').split(',').slice(1).join(',').trim() || '—'}</Typography>
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1, minHeight: 80 }}>

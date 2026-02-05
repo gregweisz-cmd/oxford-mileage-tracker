@@ -63,7 +63,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [totalHoursThisMonth, setTotalHoursThisMonth] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showBaseAddressModal, setShowBaseAddressModal] = useState(false);
-  const [baseAddressInput, setBaseAddressInput] = useState('');
+  const [baseAddressStreet, setBaseAddressStreet] = useState('');
+  const [baseAddressCity, setBaseAddressCity] = useState('');
+  const [baseAddressState, setBaseAddressState] = useState('');
+  const [baseAddressZip, setBaseAddressZip] = useState('');
   const [showCostCenterSelector, setShowCostCenterSelector] = useState(false);
   const [showCostCentersModal, setShowCostCentersModal] = useState(false);
   const [selectedCostCenters, setSelectedCostCenters] = useState<string[]>([]);
@@ -874,9 +877,39 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     return isPlaceholder ? '' : value;
   };
 
+  const parseBaseAddressForMobile = (full: string): { street: string; city: string; state: string; zip: string } => {
+    const raw = (full || '').trim();
+    if (!raw) return { street: '', city: '', state: '', zip: '' };
+    const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 3) {
+      const last = parts[parts.length - 1];
+      const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
+      if (match) {
+        return {
+          street: parts.slice(0, -2).join(', '),
+          city: parts[parts.length - 2],
+          state: match[1],
+          zip: match[2],
+        };
+      }
+    }
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
+      if (match) {
+        return { street: parts[0], city: '', state: match[1], zip: match[2] };
+      }
+    }
+    return { street: raw, city: '', state: '', zip: '' };
+  };
+
   const handleEditBaseAddress = () => {
     if (currentEmployee) {
-      setBaseAddressInput(filterPlaceholderText(currentEmployee.baseAddress || ''));
+      const parsed = parseBaseAddressForMobile(filterPlaceholderText(currentEmployee.baseAddress || ''));
+      setBaseAddressStreet(parsed.street);
+      setBaseAddressCity(parsed.city);
+      setBaseAddressState(parsed.state);
+      setBaseAddressZip(parsed.zip);
       setShowBaseAddressModal(true);
     }
   };
@@ -1068,30 +1101,33 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const handleSaveBaseAddress = async () => {
-    console.log('🏠 HomeScreen: Saving base address');
-    console.log('🏠 HomeScreen: Current employee:', currentEmployee?.name);
-    console.log('🏠 HomeScreen: Base address input:', baseAddressInput);
-    
-    if (!currentEmployee || !baseAddressInput.trim()) {
-      console.log('❌ HomeScreen: Missing employee or base address');
-      Alert.alert('Error', 'Please enter a valid base address');
+    const street = (baseAddressStreet || '').trim();
+    if (!currentEmployee || !street) {
+      Alert.alert('Error', 'Please enter at least a street address');
       return;
     }
+    const city = (baseAddressCity || '').trim();
+    const state = (baseAddressState || '').trim().toUpperCase().slice(0, 2);
+    const zip = (baseAddressZip || '').trim().replace(/\D/g, '').slice(0, 10);
+    const combined = city && state && zip
+      ? `${street}, ${city}, ${state} ${zip}`
+      : state && zip
+        ? `${street}, ${state} ${zip}`
+        : street;
 
     try {
-      console.log('💾 HomeScreen: Updating base address in database...');
       await DatabaseService.updateEmployee(currentEmployee.id, {
-        baseAddress: baseAddressInput.trim()
+        baseAddress: combined
       });
-      
-      // Update the local state
       setCurrentEmployee({
         ...currentEmployee,
-        baseAddress: baseAddressInput.trim()
+        baseAddress: combined
       });
-      
-      console.log('✅ HomeScreen: Base address updated successfully');
       setShowBaseAddressModal(false);
+      setBaseAddressStreet('');
+      setBaseAddressCity('');
+      setBaseAddressState('');
+      setBaseAddressZip('');
       Alert.alert('Success', 'Base address updated successfully');
     } catch (error) {
       console.error('❌ HomeScreen: Error updating base address:', error);
@@ -1179,17 +1215,15 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         }}
       />
       
-      {/* Base Address Section */}
-      {currentEmployee?.baseAddress && (
-        <View style={dynamicStyles.baseAddressSection}>
-          <TouchableOpacity onPress={handleEditBaseAddress} style={styles.baseAddressContainer}>
-            <Text style={dynamicStyles.baseAddressText}>
-              Base Address (BA): {currentEmployee.baseAddress}
-            </Text>
-            <MaterialIcons name="edit" size={16} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Base Address Section - always show so user can set or edit */}
+      <View style={dynamicStyles.baseAddressSection}>
+        <TouchableOpacity onPress={handleEditBaseAddress} style={styles.baseAddressContainer}>
+          <Text style={dynamicStyles.baseAddressText}>
+            Base Address (BA): {currentEmployee?.baseAddress?.trim() || 'Not set — tap to add'}
+          </Text>
+          <MaterialIcons name="edit" size={16} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
 
       {/* Cost Centers Section */}
       <View style={dynamicStyles.costCenterSection}>
@@ -1621,12 +1655,33 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
             
             <TextInput
               style={dynamicStyles.textInput}
-              value={filterPlaceholderText(baseAddressInput)}
-              onChangeText={setBaseAddressInput}
-              placeholder="Enter your base address..."
-              multiline={true}
-              numberOfLines={3}
+              value={baseAddressStreet}
+              onChangeText={setBaseAddressStreet}
+              placeholder="Street Address"
             />
+            <TextInput
+              style={dynamicStyles.textInput}
+              value={baseAddressCity}
+              onChangeText={setBaseAddressCity}
+              placeholder="City"
+            />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TextInput
+                style={[dynamicStyles.textInput, { flex: 1 }]}
+                value={baseAddressState}
+                onChangeText={(t) => setBaseAddressState(t.toUpperCase().slice(0, 2))}
+                placeholder="State (e.g. NC)"
+                maxLength={2}
+              />
+              <TextInput
+                style={[dynamicStyles.textInput, { flex: 1 }]}
+                value={baseAddressZip}
+                onChangeText={(t) => setBaseAddressZip(t.replace(/\D/g, '').slice(0, 10))}
+                placeholder="ZIP Code"
+                keyboardType="number-pad"
+                maxLength={10}
+              />
+            </View>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity
