@@ -2653,6 +2653,9 @@ export class DatabaseService {
       date: this.parseDateSafe(result.date),
       description: result.description,
       costCenter: result.costCenter,
+      stayedOvernight: result.stayedOvernight === 1 || result.stayedOvernight === true,
+      dayOff: result.dayOff === 1 || result.dayOff === true,
+      dayOffType: result.dayOffType || undefined,
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt)
     };

@@ -80,6 +80,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [isDayOff, setIsDayOff] = useState(false);
   const [dayOffType, setDayOffType] = useState<string>('Day Off');
+  const [stayedOvernight, setStayedOvernight] = useState(false);
   const [showDayOffDropdown, setShowDayOffDropdown] = useState(false);
   const [showDescriptionDropdown, setShowDescriptionDropdown] = useState(false);
   const [descriptionTemplates, setDescriptionTemplates] = useState<string[]>(DEFAULT_DESCRIPTION_TEMPLATES);
@@ -231,10 +232,11 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     const existingDescription = day.description || '';
     setDescriptionText(existingDescription);
     
-    // Initialize day off state
+    // Initialize day off and stayed overnight state
     const dailyDesc = day as any;
     setIsDayOff(dailyDesc.dayOff || false);
     setDayOffType(dailyDesc.dayOffType || 'Day Off');
+    setStayedOvernight(dailyDesc.stayedOvernight ?? false);
     
     const costCenters = currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || [];
     const inputs: {[key: string]: number} = {};
@@ -283,7 +285,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                 costCenterToUse,
                 undefined,
                 false,
-                undefined
+                undefined,
+                selectedDay?.descriptionId
               );
               await BackendDataService.updateDayHours(employeeId, dateToClear, {
                 costCenterHours: {},
@@ -333,7 +336,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
         selectedDay.date,
         descriptionToSave,
         selectedCostCenter,
-        undefined, // stayedOvernight
+        stayedOvernight,
         isDayOff, // Only set dayOff if user explicitly checked it
         isDayOff ? dayOffType : undefined,
         selectedDay.descriptionId // use id when available so delete/update always targets the right row
@@ -370,6 +373,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       setTimeTrackingInputs({});
       setIsDayOff(false);
       setDayOffType('Day Off');
+      setStayedOvernight(false);
       
       // Reload data from backend (no sync needed - already saved directly)
       await loadData();
@@ -715,6 +719,21 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                   </View>
                 )}
               </View>
+
+              {/* Stayed out of town - for per diem eligibility (50+ mi from base) */}
+              {!isDayOff && (
+                <View style={styles.section}>
+                  <View style={styles.checkboxRow}>
+                    <TouchableOpacity
+                      style={styles.checkbox}
+                      onPress={() => setStayedOvernight(!stayedOvernight)}
+                    >
+                      {stayedOvernight && <MaterialIcons name="check" size={20} color="#007AFF" />}
+                    </TouchableOpacity>
+                    <Text style={styles.checkboxLabel}>Stayed out of town (50+ miles from base)</Text>
+                  </View>
+                </View>
+              )}
 
               {/* Description Section */}
               <View style={styles.section}>

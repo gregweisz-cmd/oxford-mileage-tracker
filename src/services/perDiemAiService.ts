@@ -68,29 +68,37 @@ export class PerDiemAiService {
         entry.date.toDateString() === date.toDateString()
       );
 
-      // Calculate totals
-      const hoursWorked = dayTimeTracking.reduce((sum: number, entry: any) => sum + entry.hours, 0);
+      // Get daily description for stayedOvernight (stayed out of town)
+      const dailyDescription = await DatabaseService.getDailyDescriptionByDate(employeeId, date);
+      const stayedOvernight = dailyDescription?.stayedOvernight ?? false;
+
+      // Calculate working hours only (exclude PTO, G&A, etc.)
+      const hoursWorked = dayTimeTracking
+        .filter((e: any) => {
+          const cat = (e.category || '').trim();
+          return cat === '' || cat === 'Working Hours' || cat === 'Regular Hours';
+        })
+        .reduce((sum: number, entry: any) => sum + entry.hours, 0);
       const milesDriven = dayMileageEntries.reduce((sum: number, entry: any) => sum + entry.miles, 0);
       const distanceFromBase = await this.calculateDistanceFromBase(
         dayMileageEntries,
         employee.baseAddress
       );
 
-      // Check eligibility criteria
+      // Eligibility: 8+ hours AND (100+ miles OR (stayed overnight AND 50+ mi from base))
       const criteria = {
         hoursWorked: hoursWorked >= this.MIN_HOURS,
         milesDriven: milesDriven >= this.MIN_MILES,
         distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
       };
+      const isEligible = criteria.hoursWorked && (criteria.milesDriven || (stayedOvernight && criteria.distanceFromBase));
 
-      const isEligible = criteria.hoursWorked || criteria.milesDriven || criteria.distanceFromBase;
-
-      // Generate reason
+      // Generate reason (reflects 8h AND (100mi OR stayed 50+ from base))
       const reason = this.generateEligibilityReason(criteria, {
         hoursWorked,
         milesDriven,
         distanceFromBase
-      });
+      }, stayedOvernight, isEligible);
 
       // Calculate confidence
       const confidence = this.calculateConfidence(criteria, {
@@ -120,6 +128,70 @@ export class PerDiemAiService {
       console.error('❌ PerDiemAI: Error checking eligibility:', error);
       return this.createIneligibleResponse('Error checking eligibility');
     }
+  }
+
+  /**
+   * Get per-diem eligibility for every day in a month (for Per Diem screen labels).
+   * Rule: 8+ hours AND (100+ miles OR (stayed overnight AND 50+ mi from base)).
+   */
+  static async getEligibilityForMonth(
+    employeeId: string,
+    month: number,
+    year: number
+  ): Promise<Map<string, { isEligible: boolean; reason: string }>> {
+    const result = new Map<string, { isEligible: boolean; reason: string }>();
+    try {
+      const employees = await DatabaseService.getEmployees();
+      const employee = employees.find(emp => emp.id === employeeId);
+      if (!employee) return result;
+
+      const [dailyDescriptions, timeTracking, mileageEntries] = await Promise.all([
+        DatabaseService.getDailyDescriptions(employeeId, month, year),
+        DatabaseService.getTimeTrackingEntries(employeeId, month, year),
+        DatabaseService.getMileageEntries(employeeId, month, year)
+      ]);
+
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const descByDate = new Map<string, { stayedOvernight: boolean }>();
+      dailyDescriptions.forEach(d => {
+        const key = d.date.toISOString().split('T')[0];
+        descByDate.set(key, { stayedOvernight: d.stayedOvernight ?? false });
+      });
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dateKey = date.toISOString().split('T')[0];
+
+        const dayTime = timeTracking.filter(e => e.date.toDateString() === date.toDateString());
+        const dayMileage = mileageEntries.filter(e => e.date.toDateString() === date.toDateString());
+        const hoursWorked = dayTime
+          .filter((e: any) => {
+            const cat = (e.category || '').trim();
+            return cat === '' || cat === 'Working Hours' || cat === 'Regular Hours';
+          })
+          .reduce((s, e: any) => s + e.hours, 0);
+        const milesDriven = dayMileage.reduce((s, e: any) => s + e.miles, 0);
+        const { stayedOvernight } = descByDate.get(dateKey) || { stayedOvernight: false };
+        const distanceFromBase = await this.calculateDistanceFromBase(dayMileage, employee.baseAddress || '');
+
+        const criteria = {
+          hoursWorked: hoursWorked >= this.MIN_HOURS,
+          milesDriven: milesDriven >= this.MIN_MILES,
+          distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
+        };
+        const isEligible = criteria.hoursWorked && (criteria.milesDriven || (stayedOvernight && criteria.distanceFromBase));
+        const reason = this.generateEligibilityReason(
+          criteria,
+          { hoursWorked, milesDriven, distanceFromBase },
+          stayedOvernight,
+          isEligible
+        );
+        result.set(dateKey, { isEligible, reason });
+      }
+    } catch (error) {
+      debugError('PerDiemAI: getEligibilityForMonth error', error);
+    }
+    return result;
   }
 
   /**
@@ -196,31 +268,27 @@ export class PerDiemAiService {
   }
 
   /**
-   * Generate eligibility reason
+   * Generate eligibility reason (rule: 8+ hours AND (100+ mi OR stayed overnight 50+ mi from base))
    */
   private static generateEligibilityReason(
     criteria: { hoursWorked: boolean; milesDriven: boolean; distanceFromBase: boolean },
-    details: { hoursWorked: number; milesDriven: number; distanceFromBase: number }
+    details: { hoursWorked: number; milesDriven: number; distanceFromBase: number },
+    stayedOvernight?: boolean,
+    isEligible?: boolean
   ): string {
-    const reasons = [];
-
-    if (criteria.hoursWorked) {
-      reasons.push(`${details.hoursWorked} hours worked (≥${this.MIN_HOURS} required)`);
+    if (isEligible) {
+      const parts = [`${details.hoursWorked.toFixed(1)}h worked`];
+      if (criteria.milesDriven) parts.push(`${details.milesDriven} mi`);
+      if (stayedOvernight && criteria.distanceFromBase) parts.push('stayed 50+ mi from base');
+      return `Eligible: ${parts.join(', ')}`;
     }
-
-    if (criteria.milesDriven) {
-      reasons.push(`${details.milesDriven} miles driven (≥${this.MIN_MILES} required)`);
+    if (!criteria.hoursWorked) {
+      return `Not eligible: Need ${this.MIN_HOURS}+ hours worked`;
     }
-
-    if (criteria.distanceFromBase) {
-      reasons.push(`${details.distanceFromBase.toFixed(1)} miles from base (≥${this.MIN_DISTANCE_FROM_BASE} required)`);
+    if (!criteria.milesDriven && !(stayedOvernight && criteria.distanceFromBase)) {
+      return `Not eligible: Need ${this.MIN_MILES}+ miles OR stayed out of town 50+ mi from base`;
     }
-
-    if (reasons.length === 0) {
-      return `Not eligible: Need ${this.MIN_HOURS}+ hours OR ${this.MIN_MILES}+ miles OR ${this.MIN_DISTANCE_FROM_BASE}+ miles from base`;
-    }
-
-    return `Eligible: ${reasons.join(' OR ')}`;
+    return 'Not eligible';
   }
 
   /**

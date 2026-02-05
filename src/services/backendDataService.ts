@@ -319,6 +319,7 @@ export class BackendDataService {
       receipts: Receipt[];
       description?: string;
       descriptionId?: string;
+      stayedOvernight?: boolean;
       dayOff?: boolean;
       dayOffType?: string;
     }>();
@@ -367,6 +368,7 @@ export class BackendDataService {
       if (dayData) {
         dayData.description = description.description;
         dayData.descriptionId = description.id;
+        dayData.stayedOvernight = description.stayedOvernight;
         dayData.dayOff = description.dayOff;
         dayData.dayOffType = description.dayOffType;
       }
@@ -449,6 +451,7 @@ export class BackendDataService {
         notes: dayData.mileage[0]?.notes || '',
         description: dayData.description || '',
         descriptionId: dayData.descriptionId,
+        stayedOvernight: dayData.stayedOvernight || false,
         dayOff: dayData.dayOff || false,
         dayOffType: dayData.dayOffType || undefined
       });

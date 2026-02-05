@@ -1,10 +1,12 @@
 /**
  * Per Diem Dashboard Service
  * Provides Per Diem statistics and eligibility information for dashboard widgets
+ * Eligibility rule: 8+ hours AND (100+ miles OR stayed overnight 50+ mi from base)
  */
 
 import { DatabaseService } from './database';
 import { PerDiemRulesService } from './perDiemRulesService';
+import { PerDiemAiService } from './perDiemAiService';
 import { Employee } from '../types';
 
 export interface PerDiemDashboardStats {
@@ -95,7 +97,8 @@ export class PerDiemDashboardService {
   }
 
   /**
-   * Analyze Per Diem eligibility for the entire month
+   * Analyze Per Diem eligibility for the entire month.
+   * Uses same rule as Per Diem screen: 8+ hours AND (100+ miles OR stayed overnight 50+ mi from base).
    */
   private static async analyzeEligibilityForMonth(
     employee: Employee,
@@ -103,50 +106,14 @@ export class PerDiemDashboardService {
     year: number
   ): Promise<{ eligibleDays: number; unclaimedDays: number }> {
     try {
-      // Get mileage and time tracking for the month
-      const [mileageEntries, timeTracking] = await Promise.all([
-        DatabaseService.getMileageEntries(employee.id, month, year),
-        DatabaseService.getTimeTrackingEntries(employee.id, month, year)
-      ]);
-
-      // Group by date
-      const dayActivity = new Map<string, { miles: number; hours: number }>();
-
-      mileageEntries.forEach(entry => {
-        const dateKey = entry.date.toISOString().split('T')[0];
-        const existing = dayActivity.get(dateKey) || { miles: 0, hours: 0 };
-        existing.miles += entry.miles;
-        existing.hours += entry.hoursWorked || 0;
-        dayActivity.set(dateKey, existing);
-      });
-
-      timeTracking.forEach(entry => {
-        const dateKey = entry.date.toISOString().split('T')[0];
-        const existing = dayActivity.get(dateKey) || { miles: 0, hours: 0 };
-        if (entry.category === 'Working Hours') {
-          existing.hours += entry.hours;
-        }
-        dayActivity.set(dateKey, existing);
-      });
-
-      // Get employee's cost center for Per Diem rules
-      const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
-      const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
-
-      const minHours = rule?.minHours || 8;
-      const minMiles = rule?.minMiles || 100;
-
-      // Count eligible days
+      const eligibilityMap = await PerDiemAiService.getEligibilityForMonth(employee.id, month, year);
       let eligibleDays = 0;
-      dayActivity.forEach(activity => {
-        if (activity.hours >= minHours || activity.miles >= minMiles) {
-          eligibleDays++;
-        }
+      eligibilityMap.forEach(({ isEligible }) => {
+        if (isEligible) eligibleDays++;
       });
-
       return {
         eligibleDays,
-        unclaimedDays: 0 // Could calculate this by comparing with claimed days
+        unclaimedDays: 0
       };
     } catch (error) {
       console.error('❌ PerDiemDashboard: Error analyzing eligibility:', error);
@@ -155,61 +122,20 @@ export class PerDiemDashboardService {
   }
 
   /**
-   * Check if employee is eligible for Per Diem today
+   * Check if employee is eligible for Per Diem today.
+   * Uses same rule: 8+ hours AND (100+ miles OR stayed overnight 50+ mi from base).
    */
   private static async checkEligibilityForToday(
     employee: Employee
   ): Promise<{ isEligible: boolean; reason: string }> {
     try {
       const today = new Date();
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-      // Get today's activity
-      const [mileageEntries, timeTracking] = await Promise.all([
-        DatabaseService.getMileageEntries(employee.id),
-        DatabaseService.getTimeTrackingEntries(employee.id)
-      ]);
-
-      // Filter for today
-      const todayMileage = mileageEntries.filter(entry => {
-        const entryDate = new Date(entry.date);
-        return entryDate.toISOString().split('T')[0] === todayStart.toISOString().split('T')[0];
-      });
-
-      const todayTimeTracking = timeTracking.filter(entry => {
-        const entryDate = new Date(entry.date);
-        return entryDate.toISOString().split('T')[0] === todayStart.toISOString().split('T')[0];
-      });
-
-      const totalMiles = todayMileage.reduce((sum, entry) => sum + entry.miles, 0);
-      const totalHours = todayTimeTracking
-        .filter(entry => entry.category === 'Working Hours')
-        .reduce((sum, entry) => sum + entry.hours, 0);
-
-      // Get Per Diem rules
-      const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
-      const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
-
-      const minHours = rule?.minHours || 8;
-      const minMiles = rule?.minMiles || 100;
-
-      // Check eligibility
-      if (totalHours >= minHours) {
-        return {
-          isEligible: true,
-          reason: `${totalHours.toFixed(1)}h worked (≥${minHours}h required)`
-        };
-      } else if (totalMiles >= minMiles) {
-        return {
-          isEligible: true,
-          reason: `${totalMiles.toFixed(1)} miles (≥${minMiles} miles required)`
-        };
-      } else {
-        return {
-          isEligible: false,
-          reason: `Need ${minHours}h worked OR ${minMiles}+ miles`
-        };
-      }
+      const year = today.getFullYear();
+      const month = today.getMonth() + 1;
+      const eligibilityMap = await PerDiemAiService.getEligibilityForMonth(employee.id, month, year);
+      const dateKey = today.toISOString().split('T')[0];
+      const dayResult = eligibilityMap.get(dateKey);
+      return dayResult ?? { isEligible: false, reason: 'Unable to determine eligibility' };
     } catch (error) {
       console.error('❌ PerDiemDashboard: Error checking today eligibility:', error);
       return {

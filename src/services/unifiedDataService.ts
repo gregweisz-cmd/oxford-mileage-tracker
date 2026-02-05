@@ -38,6 +38,8 @@ export interface UnifiedDayData {
   description?: string;
   /** Backend id of daily description row; used for reliable delete/update */
   descriptionId?: string;
+  /** Whether employee stayed out of town (50+ mi from base) for per diem eligibility */
+  stayedOvernight?: boolean;
   dayOff?: boolean;
   dayOffType?: string;
 }
@@ -151,6 +153,8 @@ export class UnifiedDataService {
       costCenter: dayTimeTracking[0]?.costCenter || dayMileage[0]?.costCenter || dailyDescription?.costCenter || '',
       notes: dayMileage[0]?.notes || '',
       description: dailyDescription?.description || '',
+      descriptionId: dailyDescription?.id,
+      stayedOvernight: dailyDescription?.stayedOvernight || false,
       dayOff: dailyDescription?.dayOff || false,
       dayOffType: dailyDescription?.dayOffType || undefined
     };
@@ -174,6 +178,8 @@ export class UnifiedDataService {
       timeTracking: any[],
       receipts: any[],
       description?: string,
+      descriptionId?: string,
+      stayedOvernight?: boolean,
       dayOff?: boolean,
       dayOffType?: string
     }>();
@@ -224,6 +230,8 @@ export class UnifiedDataService {
       const dayData = daysMap.get(dateKey);
       if (dayData) {
         dayData.description = description.description;
+        dayData.descriptionId = description.id;
+        dayData.stayedOvernight = description.stayedOvernight;
         dayData.dayOff = description.dayOff;
         dayData.dayOffType = description.dayOffType;
       }
@@ -306,6 +314,8 @@ export class UnifiedDataService {
         costCenter: dayData.timeTracking[0]?.costCenter || dayData.mileage[0]?.costCenter || '',
         notes: dayData.mileage[0]?.notes || '',
         description: dayData.description || '',
+        descriptionId: dayData.descriptionId,
+        stayedOvernight: dayData.stayedOvernight || false,
         dayOff: dayData.dayOff || false,
         dayOffType: dayData.dayOffType || undefined
       });

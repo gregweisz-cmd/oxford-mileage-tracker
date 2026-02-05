@@ -57,6 +57,8 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [monthlyLimit, setMonthlyLimit] = useState(350);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** Per-day eligibility from rule: 8+ hours AND (100+ mi OR stayed overnight 50+ mi from base) */
+  const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollToTodayPendingRef = useRef(false);
 
@@ -108,6 +110,14 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       );
       setMonthlyTotal(stats.currentMonthTotal);
       setMonthlyLimit(stats.monthlyLimit);
+
+      // Per-day eligibility for labels (8+ hours AND (100+ mi OR stayed overnight 50+ mi from base))
+      const eligibilityMap = await PerDiemAiService.getEligibilityForMonth(
+        employee.id,
+        currentMonth.getMonth() + 1,
+        currentMonth.getFullYear()
+      );
+      setEligibilityByDay(eligibilityMap);
       
       // Load existing per diem receipts for the month
       const receipts = await DatabaseService.getReceipts(
@@ -623,39 +633,6 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
         </Text>
       </View>
 
-      {/* Add Receipt Button */}
-      <View style={styles.addReceiptContainer}>
-        <TouchableOpacity
-          style={styles.addReceiptButton}
-          onPress={() => {
-            navigation.navigate('Receipts', {
-              filterCategory: 'Per Diem',
-              selectedMonth: currentMonth.getMonth() + 1,
-              selectedYear: currentMonth.getFullYear()
-            });
-          }}
-        >
-          <MaterialIcons name="receipt" size={20} color="#fff" />
-          <Text style={styles.addReceiptText}>Add Receipt</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Per Diem Rules Reminder */}
-      {currentPerDiemRule && (
-        <View style={styles.rulesContainer}>
-          <Text style={styles.rulesTitle}>Per Diem Rules</Text>
-          <Text style={styles.rulesText}>
-            • Amount: ${currentPerDiemRule.maxAmount}
-            {currentPerDiemRule.minHours > 0 && ` • Min Hours: ${currentPerDiemRule.minHours}`}
-            {currentPerDiemRule.minMiles > 0 && ` • Min Miles: ${currentPerDiemRule.minMiles}`}
-            {currentPerDiemRule.minDistanceFromBase > 0 && ` • Min Distance from BA: ${currentPerDiemRule.minDistanceFromBase} mi`}
-          </Text>
-          <Text style={styles.rulesNote}>
-            Note: Receipt photo is optional for per diem entries.
-          </Text>
-        </View>
-      )}
-
       {/* Days List */}
       <ScrollView ref={scrollViewRef} style={styles.daysList} showsVerticalScrollIndicator={false}>
         {daysArray.map(({ day, date, dateKey, entry }) => {
@@ -664,11 +641,18 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
             amount: currentPerDiemRule?.maxAmount || 35,
             isEligible: false,
           };
+          const dayEligibility = eligibilityByDay.get(dateKey);
+          const isEligibleByRule = dayEligibility?.isEligible ?? false;
           
           return (
             <View key={dateKey} style={styles.dayCard}>
               <View style={styles.dayHeader}>
-                <Text style={styles.dayDate}>{formatDate(date)}</Text>
+                <View>
+                  <Text style={styles.dayDate}>{formatDate(date)}</Text>
+                  <Text style={[styles.eligibilityLabel, isEligibleByRule ? styles.eligibilityLabelEligible : styles.eligibilityLabelNotEligible]}>
+                    {isEligibleByRule ? 'Eligible' : 'Not eligible'}
+                  </Text>
+                </View>
                 <TouchableOpacity
                   style={styles.checkbox}
                   onPress={() => handleToggleEligible(dateKey)}
@@ -766,30 +750,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  rulesContainer: {
-    backgroundColor: '#E3F2FD',
-    padding: 16,
-    margin: 16,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#2196F3',
-  },
-  rulesTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1976D2',
-    marginBottom: 8,
-  },
-  rulesText: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 8,
-  },
-  rulesNote: {
-    fontSize: 12,
-    color: '#666',
-    fontStyle: 'italic',
-  },
   daysList: {
     flex: 1,
     padding: 16,
@@ -815,6 +775,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
+  },
+  eligibilityLabel: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  eligibilityLabelEligible: {
+    color: '#2E7D32',
+    fontWeight: '600',
+  },
+  eligibilityLabelNotEligible: {
+    color: '#666',
   },
   checkbox: {
     width: 24,
@@ -931,28 +902,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     textAlign: 'right',
-  },
-  addReceiptContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  addReceiptButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#007AFF',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    gap: 8,
-  },
-  addReceiptText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   saveButtonContainer: {
     position: 'absolute',
