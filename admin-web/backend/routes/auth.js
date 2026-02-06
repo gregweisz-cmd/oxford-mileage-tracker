@@ -11,6 +11,17 @@ const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { authLimiter } = require('../middleware/rateLimiter');
 
+// Permanent super admin: this account always has full admin access (e.g. after restores).
+const SUPER_ADMIN_EMAIL = 'greg.weisz@oxfordhouse.org';
+const ALLOWED_ROLES = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
+
+function getEffectiveRole(employee, allowedRoles = ALLOWED_ROLES) {
+  const email = (employee && employee.email || '').trim().toLowerCase();
+  if (email === SUPER_ADMIN_EMAIL) return 'admin';
+  const userRole = (employee && employee.role) || 'employee';
+  return allowedRoles.includes(userRole) ? userRole : 'employee';
+}
+
 // Google OAuth support
 let OAuth2Client = null;
 let googleClient = null;
@@ -152,13 +163,9 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
       // Don't send password back to client
       const { password: _, ...employeeData } = employee;
       
-      // Get role from database (defaults to 'employee' if not set)
-      // Role is stored separately from position - it's the login role, not job title
-      const userRole = employee.role || 'employee';
-      
-      // Validate role is one of the allowed values
+      // Get role (super admin email always gets admin; else from DB)
       const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-      const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+      const validRole = getEffectiveRole(employee, allowedRoles);
       
       // Create session token (simple for now - use JWT in production)
       const sessionToken = `session_${employee.id}_${Date.now()}`;
@@ -268,10 +275,9 @@ router.get('/api/auth/verify', (req, res) => {
       
       const { password: _, ...employeeData } = employee;
       
-      // Get role from database (defaults to 'employee' if not set)
-      const userRole = employee.role || 'employee';
+      // Get role (super admin email always gets admin; else from DB)
       const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-      const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+      const validRole = getEffectiveRole(employee, allowedRoles);
       
       res.json({
         valid: true,
@@ -618,9 +624,8 @@ router.get('/api/auth/google/callback', async (req, res) => {
           // Don't send password back
           const { password: _, ...employeeData } = userToReturn;
 
-          const userRole = userToReturn.role || 'employee';
           const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-          const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+          const validRole = getEffectiveRole(userToReturn, allowedRoles);
 
           debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
 
@@ -1255,9 +1260,8 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
           }
 
           const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
-          const userRole = userToReturn.role || 'employee';
           const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-          const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+          const validRole = getEffectiveRole(userToReturn, allowedRoles);
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}, serving redirect page...`);
 
@@ -1676,9 +1680,8 @@ router.post('/api/auth/google/mobile', async (req, res) => {
 
           const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
           const { password: _, ...employeeData } = userToReturn;
-          const userRole = userToReturn.role || 'employee';
           const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-          const validRole = allowedRoles.includes(userRole) ? userRole : 'employee';
+          const validRole = getEffectiveRole(userToReturn, allowedRoles);
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}`);
 

@@ -138,6 +138,28 @@ PDF maps use **Maps Static API**, which is different from the APIs used by the "
 4. Verify billing is enabled on the Google Cloud project (Static Maps requires billing).
 5. Check backend logs for the exact error (e.g. `X-Staticmap-API-Warning` or geocoding errors).
 
+### "Maps Static API is enabled" but PDF maps still show "Map unavailable"
+
+If the API is enabled and the key is set, the usual cause is one of the following:
+
+1. **Billing not enabled**
+   - Maps Static API requires **billing to be enabled** on the Google Cloud project, even for the free tier ($200/month credit).
+   - In [Google Cloud Console](https://console.cloud.google.com/) → **Billing** → confirm the project is linked to a billing account. See [g.co/staticmaperror](https://g.co/staticmaperror) for Google’s checklist.
+
+2. **API key application restriction blocking the backend**
+   - The PDF is generated on the **backend** (e.g. Render). The request has **no HTTP referrer** (it’s server-to-Google).
+   - If the key is restricted to **HTTP referrers (websites)** only, Google will reject server requests and return the small error image.
+   - **Fix:** In **APIs & Services** → **Credentials** → your key → **Application restrictions**, use **None** (for development) or **IP addresses** and add your server’s IPs (e.g. Render’s outbound IPs if you use them). Do not use “HTTP referrers” only for a key that the backend uses.
+
+3. **API key API restrictions**
+   - Under **API restrictions**, the key must allow **Maps Static API**. If you only added “Geocoding API” and “Distance Matrix API” (for the Calculate button), add **Maps Static API** to the same key (or use a separate key for the backend that includes Maps Static API).
+
+4. **Key not set where the PDF runs**
+   - The report PDF is built by the **backend** service. Ensure `GOOGLE_MAPS_API_KEY` is set in that service’s environment (e.g. Render → your **backend** service → **Environment**), not only in the frontend or in a different service.
+
+5. **Backend logs**
+   - On the next failed PDF export, check the backend logs. The code now logs the exact failure (e.g. “Google returned 100x100 error tile” and suggests billing/restrictions). The PDF may also show a short “Details: …” line with the error message.
+
 ### API Errors
 
 - **403 Forbidden**: API key may be invalid or restricted

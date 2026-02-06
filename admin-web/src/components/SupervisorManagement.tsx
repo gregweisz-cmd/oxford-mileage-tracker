@@ -33,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { Tabs, Tab } from '@mui/material';
 import { Employee } from '../types';
+import { formatNameForDisplay } from '../utils/employeeUtils';
 import { debugLog, debugError } from '../config/debug';
 
 interface SupervisorManagementProps {
@@ -445,7 +446,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             <strong>{unassignedStaff.length} staff member(s) without a supervisor</strong>
           </Typography>
           <Typography variant="body2">
-            {unassignedStaff.map(s => s.name).join(', ')}
+            {unassignedStaff.map(s => formatNameForDisplay(s.name)).join(', ')}
           </Typography>
         </Alert>
       )}
@@ -463,7 +464,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                   }
                   <Box sx={{ flexGrow: 1 }}>
                     <Typography variant="h6">
-                      {supervisor.name}
+                      {formatNameForDisplay(supervisor.name)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       {supervisor.position}
@@ -511,7 +512,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                     {staffMembers.map(staff => (
                       <Chip
                         key={staff.id}
-                        label={staff.name}
+                        label={formatNameForDisplay(staff.name)}
                         size="small"
                         onClick={() => handleOpenEditDialog(staff)}
                         onDelete={() => handleRemoveStaff(staff)}
@@ -562,7 +563,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         fullWidth
       >
         <DialogTitle>
-          Assign Staff to {selectedSupervisor?.name}
+          Assign Staff to {formatNameForDisplay(selectedSupervisor?.name)}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
@@ -607,7 +608,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                     >
                       <Checkbox checked={isSelected} size="small" sx={{ mr: 1 }} />
                       <ListItemText
-                        primary={`${emp.name} - ${emp.position}`}
+                        primary={`${formatNameForDisplay(emp.name)} - ${emp.position}`}
                         primaryTypographyProps={{ variant: 'body2' }}
                       />
                     </ListItemButton>
@@ -620,7 +621,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                 {selectedStaff.map((emp) => (
                   <Chip
                     key={emp.id}
-                    label={emp.name}
+                    label={formatNameForDisplay(emp.name)}
                     size="small"
                     onDelete={() => setSelectedStaff((prev) => prev.filter((s) => s.id !== emp.id))}
                   />
@@ -666,7 +667,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             <FormControl fullWidth>
               <Autocomplete
                 options={employees}
-                getOptionLabel={(option) => `${option.name} - ${option.position}`}
+                getOptionLabel={(option) => `${formatNameForDisplay(option.name)} - ${option.position}`}
                 value={employeeToPromote}
                 onChange={(_, newValue) => setEmployeeToPromote(newValue)}
                 filterOptions={(options, { inputValue }) => {
@@ -689,7 +690,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             
             {employeeToPromote && (
               <Alert severity="info" sx={{ mt: 2 }}>
-                This will update {employeeToPromote.name}'s position to include "{promoteType === 'senior-staff' ? 'Senior Staff' : 'Supervisor'}"
+                This will update {formatNameForDisplay(employeeToPromote.name)}'s position to include "{promoteType === 'senior-staff' ? 'Senior Staff' : 'Supervisor'}"
                 {promoteType === 'supervisor' && ' and allow them to have staff assigned'}.
                 {promoteType === 'senior-staff' && '. Senior Staff can approve reports but do not manage staff members'}.
               </Alert>
@@ -734,7 +735,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             return (
               <Alert severity="warning" sx={{ mb: 2 }}>
                 <Typography variant="body1" gutterBottom>
-                  <strong>Are you sure you want to remove the designation from {supervisorToDelete.name}?</strong>
+                  <strong>Are you sure you want to remove the designation from {formatNameForDisplay(supervisorToDelete?.name)}?</strong>
                 </Typography>
             <Typography variant="body2">
               This will:
@@ -779,7 +780,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         fullWidth
       >
         <DialogTitle>
-          Edit Employee - {employeeToEdit?.name}
+          Edit Employee - {formatNameForDisplay(employeeToEdit?.name)}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>

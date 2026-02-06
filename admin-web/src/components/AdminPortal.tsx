@@ -133,20 +133,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
     }
   };
 
-  const handleBulkDeleteEmployees = async (employeeIds: string[]): Promise<void> => {
-    try {
-      debugLog(`🗑️ Deleting ${employeeIds.length} employees:`, employeeIds);
-      const result = await EmployeeApiService.bulkDeleteEmployees({ employeeIds });
-      debugLog(`✅ Delete result:`, result);
-      await loadEmployees(true); // Refresh the list, skip cache
-      showSnackbar(`Successfully deleted ${result.deletedCount} employees`, 'success');
-    } catch (error) {
-      debugError('Error bulk deleting employees:', error);
-      showSnackbar('Failed to bulk delete employees', 'error');
-      throw error;
-    }
-  };
-
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
@@ -189,7 +175,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
             onUpdateEmployee={handleUpdateEmployee}
             onDeleteEmployee={handleDeleteEmployee}
             onBulkUpdateEmployees={handleBulkUpdateEmployees}
-            onBulkDeleteEmployees={handleBulkDeleteEmployees}
             onRefresh={() => loadEmployees(true)}
           />
         </TabPanel>

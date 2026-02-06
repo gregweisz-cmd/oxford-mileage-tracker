@@ -87,7 +87,7 @@ All templates follow this structure:
   - **Sync from HR API** (Individual Management tab): One-click sync of current employees from the external HR API (Appwarmer). Creates or updates employees by email, assigns cost centers from HR. **HR is the source of truth**—any local employee not in the HR list is archived. Requires `EMPLOYEE_API_TOKEN` (or `APPWARMER_EMPLOYEE_API_TOKEN`) in the backend environment (local `.env` or Render → backend service → Environment). See `admin-web/backend/docs/HR_SYNC_SETUP.md`.
   - Creating employees (form fields, validation)
   - Editing employee records
-  - Bulk operations (import/export CSV)
+  - **Bulk CSV import has been removed**; use Sync from HR API to keep the employee list current.
   - Archiving employees
   - Viewing archived employees (and restoring if needed)
   - Password management (reset, set)
@@ -106,7 +106,7 @@ All templates follow this structure:
 ### Tips & Best Practices
 - Best practices for employee management
 - Cost center organization
-- Bulk import tips
+- Sync from HR API usage (recommended over manual adds for large updates)
 - Supervisor assignment strategies
 
 ### Troubleshooting
@@ -159,12 +159,15 @@ Each template includes screenshot placeholders. Key screenshots needed:
 - Analytics dashboard
 - Per diem rules management
 
+### Staff Portal
+- Receipts tab: **Crop** on a receipt image to adjust the visible area; cropped image is saved back to the receipt.
+
 ### Admin Portal
 - Portal overview
 - Employee Management interface
 - **Sync from HR API** button (Individual Management tab)
 - Employee creation form
-- Bulk import interface
+- (Bulk import removed; use Sync from HR.)
 - Cost Center Management
 - System Settings
 
@@ -180,8 +183,12 @@ Each template includes screenshot placeholders. Key screenshots needed:
 - **Daily Hours & Descriptions**: A “Go to today” control in the month navigation scrolls the view to today’s date. Use it when viewing another month to jump back to today.
 - **Per Diem**: A “Go to today” control in the month navigation does the same—scrolls to today’s row when viewing the current month, or switches to the current month then scrolls.
 
+### Receipt capture (Add Receipt)
+- After taking or selecting a receipt photo, a **“Reading receipt image to fill in the data…”** popup appears while the app runs a quality check and OCR. When finished, the popup closes and vendor, amount, date, and category may be pre-filled for the user to confirm or edit. Optional screenshot: capture this popup during the few seconds it is visible.
+
 ### Screenshot note
 - When capturing `daily-hours-screen.png` and `per-diem-screen.png`, include the “Go to today” control in the frame so the how-to matches the current UI.
+- **Monthly Report screen** has been removed from the mobile app; do not include a monthly report screenshot. Staff use the Staff Portal (web) for monthly reports.
 
 ## Content Updates
 

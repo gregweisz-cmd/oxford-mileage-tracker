@@ -46,6 +46,34 @@ function normalizeResponse(body) {
 }
 
 /**
+ * Format name with proper Mc, Mac, O' capitalization (e.g. Mckinney -> McKinney).
+ * @param {string} name
+ * @returns {string}
+ */
+function formatNameForDisplay(name) {
+  if (!name || typeof name !== 'string') return '';
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((word) => {
+      const mcMatch = word.match(/^([Mm]c)(.+)$/);
+      if (mcMatch) {
+        return 'Mc' + mcMatch[2].charAt(0).toUpperCase() + mcMatch[2].slice(1).toLowerCase();
+      }
+      const macMatch = word.match(/^([Mm]ac)(.+)$/);
+      if (macMatch && macMatch[2].length > 0) {
+        return 'Mac' + macMatch[2].charAt(0).toUpperCase() + macMatch[2].slice(1).toLowerCase();
+      }
+      const oMatch = word.match(/^[oO]'(.+)$/);
+      if (oMatch) {
+        return "O'" + oMatch[1].charAt(0).toUpperCase() + oMatch[1].slice(1).toLowerCase();
+      }
+      return word;
+    })
+    .join(' ');
+}
+
+/**
  * Derive display name from email (e.g. greg.weisz@oxfordhouse.org -> Greg Weisz)
  */
 function nameFromEmail(email) {
@@ -104,6 +132,7 @@ function mapExternalToOur(ext) {
   let name = (ext.name || ext.Name || ext.fullName || ext.full_name || ext.displayName || ext.DisplayName || '').toString().trim();
   if (!name) name = nameFromEmail(email);
   if (!name) return null;
+  name = formatNameForDisplay(name);
 
   let costCenters = parseCostCenters(ext);
   if (costCenters.length === 0) costCenters = ['Program Services'];

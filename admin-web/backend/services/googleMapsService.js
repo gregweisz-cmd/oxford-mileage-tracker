@@ -13,10 +13,14 @@ const { debugLog, debugError } = require('../debug');
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 /**
- * Check if Google Maps API is configured
+ * Check if Google Maps API is configured (set and not the placeholder)
  */
 function isConfigured() {
-  return !!GOOGLE_MAPS_API_KEY;
+  if (!GOOGLE_MAPS_API_KEY || typeof GOOGLE_MAPS_API_KEY !== 'string') return false;
+  const trimmed = GOOGLE_MAPS_API_KEY.trim();
+  if (!trimmed) return false;
+  if (trimmed === 'YOUR_GOOGLE_MAPS_API_KEY_HERE' || /^your[_-]?api[_-]?key/i.test(trimmed)) return false;
+  return true;
 }
 
 /**
@@ -384,8 +388,8 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
     }
     // Error tile is 100x100 PNG; we request 600x400 — reject so PDF shows fallback text
     if (isStaticMapErrorImage(buffer)) {
-      debugError('❌ Google Maps returned 100x100 error tile (staticmaperror)');
-      throw new Error('Map image failed (g.co/staticmaperror). Check API key, billing, and that Static Maps API is enabled.');
+      debugError('❌ Google Maps returned 200 OK but body is the 100x100 error tile (staticmaperror). Common causes: (1) Billing not enabled on the GCP project, (2) API key has application restriction that blocks server requests e.g. HTTP referrer only, (3) API key restriction does not include Maps Static API.');
+      throw new Error('Google returned map error tile. Usually: billing not enabled on GCP project, or key restrictions block server (use None or IP), or Maps Static API not in key’s allowed APIs. See g.co/staticmaperror.');
     }
     return buffer;
   } catch (error) {
@@ -396,7 +400,7 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
         errorMessage = errorMessage.toString('utf-8');
       }
       debugError('❌ Google Maps API error:', error.response.status, errorMessage);
-      throw new Error(`Failed to download Google Maps image: ${errorMessage || error.message}`);
+      throw new Error(`Google Maps API ${error.response.status}: ${errorMessage || error.message}`);
     }
     throw new Error(`Failed to download Google Maps image: ${error.message}`);
   }
@@ -431,8 +435,8 @@ async function downloadStaticMapImage(addressesOrPoints, options = {}) {
       throw new Error('Map image failed (g.co/staticmaperror). Check API key and that Static Maps API is enabled.');
     }
     if (isStaticMapErrorImage(buffer)) {
-      debugError('❌ Google Maps returned 100x100 error tile (staticmaperror)');
-      throw new Error('Map image failed (g.co/staticmaperror). Check API key, billing, and that Static Maps API is enabled.');
+      debugError('❌ Google Maps returned 200 OK but body is the 100x100 error tile (staticmaperror). Common causes: (1) Billing not enabled on the GCP project, (2) API key has application restriction that blocks server requests e.g. HTTP referrer only, (3) API key restriction does not include Maps Static API.');
+      throw new Error('Google returned map error tile. Usually: billing not enabled on GCP project, or key restrictions block server (use None or IP), or Maps Static API not in key’s allowed APIs. See g.co/staticmaperror.');
     }
     return buffer;
   } catch (error) {
@@ -443,7 +447,7 @@ async function downloadStaticMapImage(addressesOrPoints, options = {}) {
         errorMessage = errorMessage.toString('utf-8');
       }
       debugError('❌ Google Maps API error:', error.response.status, errorMessage);
-      throw new Error(`Failed to download Google Maps image: ${errorMessage || error.message}`);
+      throw new Error(`Google Maps API ${error.response.status}: ${errorMessage || error.message}`);
     }
     throw new Error(`Failed to download Google Maps image: ${error.message}`);
   }

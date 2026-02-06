@@ -126,7 +126,6 @@ interface EmployeeManagementProps {
   onUpdateEmployee: (id: string, employee: Partial<Employee>) => Promise<void>;
   onDeleteEmployee: (id: string) => Promise<void>;
   onBulkUpdateEmployees: (employeeIds: string[], updates: Partial<Employee>) => Promise<void>;
-  onBulkDeleteEmployees: (employeeIds: string[]) => Promise<void>;
   onRefresh?: () => void;
 }
 
@@ -157,7 +156,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   onUpdateEmployee,
   onDeleteEmployee,
   onBulkUpdateEmployees,
-  onBulkDeleteEmployees,
   onRefresh
 }) => {
   const [activeTab, setActiveTab] = useState(0);
@@ -516,19 +514,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     if (selectedEmployees.length === 0) return;
     setBulkEditData({});
     setShowBulkEditDialog(true);
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedEmployees.length === 0) return;
-    if (window.confirm(`Are you sure you want to delete ${selectedEmployees.length} employees?`)) {
-      try {
-        await onBulkDeleteEmployees(selectedEmployees);
-        setSelectedEmployees([]);
-      } catch (error) {
-        console.error('Error in bulk delete:', error);
-        alert('Failed to delete employees. Please try again.');
-      }
-    }
   };
 
   const handleSaveBulkEdit = async () => {
@@ -1385,16 +1370,6 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 disabled={selectedEmployees.length === 0}
               >
                 Bulk Edit Selected
-              </Button>
-              
-              <Button
-                variant="outlined"
-                startIcon={<Delete />}
-                onClick={handleBulkDelete}
-                disabled={selectedEmployees.length === 0}
-                color="error"
-              >
-                Delete Selected
               </Button>
               
               <Button

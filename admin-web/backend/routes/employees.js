@@ -355,29 +355,74 @@ router.put('/api/employees/bulk-update', (req, res) => {
 
 /**
  * Bulk delete employees
+ * Safeguards: cannot delete all employees; cannot delete so that no admins remain.
  */
 router.delete('/api/employees/bulk-delete', (req, res) => {
   const { employeeIds } = req.body;
   const db = dbService.getDb();
-  
+
   if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
     return res.status(400).json({ error: 'Employee IDs array is required' });
   }
-  
-  const placeholders = employeeIds.map(() => '?').join(',');
-  const query = `DELETE FROM employees WHERE id IN (${placeholders})`;
-  
-  db.run(query, employeeIds, function(err) {
-    if (err) {
-      debugError('Error bulk deleting employees:', err);
-      res.status(500).json({ error: 'Failed to delete employees' });
-    } else {
-      res.json({ 
-        success: true, 
-        deletedCount: this.changes,
-        message: `Successfully deleted ${this.changes} employees`
+
+  db.get('SELECT COUNT(*) AS total FROM employees WHERE (archived IS NULL OR archived = 0)', [], (countErr, totalRow) => {
+    if (countErr) {
+      debugError('Error counting employees:', countErr);
+      return res.status(500).json({ error: 'Failed to validate request' });
+    }
+    const totalEmployees = totalRow?.total ?? 0;
+    if (totalEmployees <= 0) {
+      return res.status(400).json({ error: 'No employees to delete' });
+    }
+    if (employeeIds.length >= totalEmployees) {
+      return res.status(400).json({
+        error: 'Cannot delete all employees. At least one employee must remain.',
       });
     }
+
+    db.get(
+      'SELECT COUNT(*) AS admins FROM employees WHERE (archived IS NULL OR archived = 0) AND LOWER(role) = ?',
+      ['admin'],
+      (adminErr, adminRow) => {
+        if (adminErr) {
+          debugError('Error counting admins:', adminErr);
+          return res.status(500).json({ error: 'Failed to validate request' });
+        }
+        const adminCount = adminRow?.admins ?? 0;
+        const placeholders = employeeIds.map(() => '?').join(',');
+        db.get(
+          `SELECT COUNT(*) AS deletingAdmins FROM employees WHERE id IN (${placeholders}) AND LOWER(role) = ?`,
+          [...employeeIds, 'admin'],
+          (delAdminErr, delAdminRow) => {
+            if (delAdminErr) {
+              debugError('Error checking admins in delete list:', delAdminErr);
+              return res.status(500).json({ error: 'Failed to validate request' });
+            }
+            const adminsBeingDeleted = delAdminRow?.deletingAdmins ?? 0;
+            if (adminCount > 0 && adminsBeingDeleted >= adminCount) {
+              return res.status(400).json({
+                error: 'Cannot delete the last admin(s). At least one admin must remain.',
+              });
+            }
+
+            const deletePlaceholders = employeeIds.map(() => '?').join(',');
+            const query = `DELETE FROM employees WHERE id IN (${deletePlaceholders})`;
+            db.run(query, employeeIds, function (err) {
+              if (err) {
+                debugError('Error bulk deleting employees:', err);
+                res.status(500).json({ error: 'Failed to delete employees' });
+              } else {
+                res.json({
+                  success: true,
+                  deletedCount: this.changes,
+                  message: `Successfully deleted ${this.changes} employees`,
+                });
+              }
+            });
+          }
+        );
+      }
+    );
   });
 });
 

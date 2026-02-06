@@ -2427,8 +2427,9 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
                           yPos += imageHeight + 20;
                         } catch (mapError) {
+                          const errMsg = (mapError && mapError.message) ? String(mapError.message) : '';
                           debugError(`❌ Error generating map for date ${date} trip ${tripNum}:`, mapError);
-                          // Fallback: show page with message instead of embedding error image
+                          // Fallback: show page with message and actual error so Finance can troubleshoot
                           doc.addPage();
                           yPos = margin + 20;
                           doc.setFontSize(14);
@@ -2438,6 +2439,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           doc.setFontSize(10);
                           doc.setFont('helvetica', 'normal');
                           safeText('Map unavailable. PDF maps use Maps Static API (different from the Calculate button). Enable "Maps Static API" in Google Cloud and check billing (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
+                          if (errMsg && errMsg.length < 280 && !/AIza[A-Za-z0-9_-]{30,}/.test(errMsg)) {
+                            yPos += 24;
+                            safeText(`Details: ${errMsg}`, margin, yPos, { maxWidth: pageWidth - margin * 2 });
+                          }
                         }
                       }
                     }
@@ -2473,6 +2478,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       yPos += imageHeight + 20;
                       debugLog(`✅ Map added to PDF for cost center ${costCenter}`);
                     } catch (mapError) {
+                      const errMsg = (mapError && mapError.message) ? String(mapError.message) : '';
                       debugError(`❌ Error generating map for cost center ${costCenter}:`, mapError);
                       debugError(`❌ Map error details:`, mapError.message, mapError.stack);
                       doc.addPage();
@@ -2484,6 +2490,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       doc.setFontSize(10);
                       doc.setFont('helvetica', 'normal');
                       safeText('Map unavailable. PDF maps use Maps Static API (different from the Calculate button). Enable "Maps Static API" in Google Cloud and check billing (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
+                      if (errMsg && errMsg.length < 280 && !/AIza[A-Za-z0-9_-]{30,}/.test(errMsg)) {
+                        yPos += 24;
+                        safeText(`Details: ${errMsg}`, margin, yPos, { maxWidth: pageWidth - margin * 2 });
+                      }
                     }
                   } else {
                     debugLog(`⚠️ No map points found for cost center ${costCenter}`);

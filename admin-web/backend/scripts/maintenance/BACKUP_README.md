@@ -82,7 +82,31 @@ Compressed backups: `expense_tracker_YYYY-MM-DD_HH-MM-SS.db.gz`
 
 ## Restoring from Backup
 
-### Manual Restore
+### Restoring from Render disk snapshot (production)
+
+If your backend uses a **Render persistent disk** (e.g. for `DATABASE_PATH`), Render automatically snapshots that disk about once every 24 hours. You can restore the **entire disk** to a snapshot to recover data (including employees) from before an accidental delete.
+
+1. Go to [Render Dashboard](https://dashboard.render.com) → your **backend** service.
+2. Open the **Disks** tab (or the disk attached to the service).
+3. Find the list of **Snapshots** and pick one from **before** the data loss (snapshots are kept at least 7 days).
+4. Use **Restore** for that snapshot.
+
+**Important:**
+
+- Restoring a snapshot is **irreversible** and overwrites all current disk data. Any changes after the snapshot (new employees, new reports, etc.) will be lost.
+- You cannot restore only the database file; it’s a full-disk restore. Prefer this when the loss is severe (e.g. all employees deleted).
+
+After restore, redeploy or restart the service so it uses the restored disk. Your `expense_tracker.db` (and employees) will be as they were at snapshot time.
+
+To restore **only** the `employees` table from a backup file (e.g. a DB you copied from a snapshot) without replacing the whole disk, use:
+
+```bash
+node scripts/maintenance/restore-employees-from-git.js --from-file /path/to/backup.db
+```
+
+Set `DATABASE_PATH` to your current production DB path so employees are re-inserted into the live DB.
+
+### Manual Restore (local or copied backup)
 
 ```bash
 # Stop the server first
