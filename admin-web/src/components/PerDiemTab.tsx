@@ -301,20 +301,9 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
   }
 
   return (
-    <Box sx={{ p: 2, maxWidth: 720, mx: 'auto' }}>
-      {/* Sticky top bar: title, month, summary, and Save button so it's always visible when there are changes */}
-      <Box
-        sx={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-          bgcolor: 'background.paper',
-          pb: 2,
-          mb: 2,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
+    <Box sx={{ p: 2, maxWidth: 720, mx: 'auto', pb: hasUnsavedChanges ? 14 : 2 }}>
+      {/* Top bar: title, month, summary (no sticky - scrolls with content) */}
+      <Box sx={{ pb: 2, mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Typography variant="h6" sx={{ mb: 1 }}>
           Per Diem
           {employeeName && (
@@ -324,20 +313,13 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           )}
         </Typography>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="subtitle1" sx={{ minWidth: 160 }}>
-              {new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </Typography>
-            {onGoToToday && (
-              <Button size="small" startIcon={<TodayIcon />} onClick={onGoToToday}>
-                Go to today
-              </Button>
-            )}
-          </Box>
-          {hasUnsavedChanges && (
-            <Button variant="contained" onClick={handleSave} disabled={saving} size="medium">
-              {saving ? 'Saving...' : 'Save per diem'}
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ minWidth: 160 }}>
+            {new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </Typography>
+          {onGoToToday && (
+            <Button size="small" startIcon={<TodayIcon />} onClick={onGoToToday}>
+              Go to today
             </Button>
           )}
         </Box>
@@ -424,6 +406,31 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           );
         })}
       </Box>
+
+      {/* Fixed Save bar at bottom of viewport so it stays visible when user scrolls */}
+      {hasUnsavedChanges && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1300,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            py: 1.5,
+            bgcolor: 'background.paper',
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 -2px 8px rgba(0,0,0,0.1)',
+          }}
+        >
+          <Button variant="contained" onClick={handleSave} disabled={saving} size="large">
+            {saving ? 'Saving...' : 'Save per diem'}
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 };
