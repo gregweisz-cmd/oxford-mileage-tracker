@@ -74,6 +74,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const [bulkImportEmails, setBulkImportEmails] = useState<string>('');
   const [bulkImportType, setBulkImportType] = useState<'supervisor' | 'senior-staff'>('supervisor');
   const [bulkImportResult, setBulkImportResult] = useState<{success: number; failed: number; errors: string[]} | null>(null);
+  const [assignStaffSearchInput, setAssignStaffSearchInput] = useState('');
 
   // Save excluded list to localStorage whenever it changes
   useEffect(() => {
@@ -161,6 +162,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const handleOpenAssignDialog = (supervisor: Employee) => {
     setSelectedSupervisor(supervisor);
     setSelectedStaff([]);
+    setAssignStaffSearchInput('');
     setAssignDialogOpen(true);
   };
 
@@ -360,7 +362,27 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   };
 
   const unassignedStaff = getUnassignedStaff();
-  
+  // Deduplicate by id so the same person never appears multiple times (e.g. duplicate data)
+  const unassignedStaffUnique = React.useMemo(() => {
+    const seen = new Set<string>();
+    return unassignedStaff.filter((emp) => {
+      if (seen.has(emp.id)) return false;
+      seen.add(emp.id);
+      return true;
+    });
+  }, [unassignedStaff]);
+  // Filter assign-dialog options by search input (we control this so search always works)
+  const assignStaffOptions = React.useMemo(() => {
+    const q = assignStaffSearchInput.trim().toLowerCase();
+    if (!q) return unassignedStaffUnique;
+    return unassignedStaffUnique.filter((opt) => {
+      const name = (opt.name ?? '').toLowerCase();
+      const position = (opt.position ?? '').toLowerCase();
+      const email = (opt.email ?? '').toLowerCase();
+      return name.includes(q) || position.includes(q) || email.includes(q);
+    });
+  }, [unassignedStaffUnique, assignStaffSearchInput]);
+
   // Filter supervisors by type based on active tab
   const filteredSupervisors = supervisors.filter(s => 
     activeTab === 0 ? s.type === 'supervisor' : s.type === 'senior-staff'
@@ -527,7 +549,10 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       {/* Assign Staff Dialog */}
       <Dialog 
         open={assignDialogOpen} 
-        onClose={() => setAssignDialogOpen(false)}
+        onClose={() => {
+          setAssignDialogOpen(false);
+          setAssignStaffSearchInput('');
+        }}
         maxWidth="sm"
         fullWidth
       >
@@ -538,23 +563,18 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
           <Box sx={{ mt: 2 }}>
             <Autocomplete
               multiple
-              options={unassignedStaff}
+              options={assignStaffOptions}
               getOptionLabel={(option) => `${option.name} - ${option.position}`}
               value={selectedStaff}
               onChange={(_, newValue) => setSelectedStaff(newValue)}
-              filterOptions={(options, { inputValue }) => {
-                if (!inputValue || !inputValue.trim()) return options;
-                const q = inputValue.trim().toLowerCase();
-                return options.filter((opt) => {
-                  const label = `${opt.name ?? ''} - ${opt.position ?? ''}`.toLowerCase();
-                  return label.includes(q);
-                });
-              }}
+              inputValue={assignStaffSearchInput}
+              onInputChange={(_, value) => setAssignStaffSearchInput(value)}
+              filterOptions={(x) => x}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   label="Select Staff Members"
-                  placeholder="Search by name or position..."
+                  placeholder="Search by name, position, or email..."
                 />
               )}
               renderTags={(value, getTagProps) =>
