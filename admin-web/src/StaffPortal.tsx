@@ -2738,7 +2738,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCategoryValue('');
   };
 
-  const buildReportData = (overrides: Record<string, unknown> = {}) => {
+  const buildReportData = useCallback((overrides: Record<string, unknown> = {}) => {
     if (!employeeData) return null;
     
     // Use ref when it has at least as many items as state (latest from Day off/description edits); otherwise state (e.g. before ref populated on load)
@@ -2770,9 +2770,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
       ...overrides,
     };
-  };
+  }, [employeeData, dailyDescriptions, currentMonth, currentYear, receipts, signatureImage, supervisorSignatureState, employeeCertificationAcknowledged, supervisorCertificationAcknowledged]);
 
-  const syncReportData = async (overrides: Record<string, unknown> = {}) => {
+  const syncReportData = useCallback(async (overrides: Record<string, unknown> = {}) => {
     if (!employeeData) return;
     const reportData = buildReportData(overrides);
     if (!reportData) return;
@@ -2794,7 +2794,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
       throw new Error(`Failed to sync report data: ${errorData.error || errorData.message || 'Unknown error'}`);
     }
-  };
+  }, [employeeData, currentMonth, currentYear, buildReportData]);
 
   // Handle signature file upload
   const handleSignatureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
