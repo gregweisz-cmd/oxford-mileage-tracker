@@ -6665,6 +6665,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '80px' }}>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
+                            <Tooltip
+                              title={
+                                isAdminView
+                                  ? 'Day off cannot be changed in admin view'
+                                  : hasMileageForDay
+                                    ? 'Day off cannot be selected when there are mileage entries for this day'
+                                    : !dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0
+                                      ? 'Clear the daily description first to mark as day off'
+                                      : 'Mark as day off'
+                              }
+                            >
+                              <span>
                             <Checkbox
                               checked={dayDescription?.dayOff || false}
                               disabled={isAdminView || hasMileageForDay || (!dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0)}
@@ -6745,6 +6757,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 }
                               }}
                             />
+                              </span>
+                            </Tooltip>
                             {Boolean(dayDescription?.dayOff) && (
                               <FormControl size="small" sx={{ minWidth: 120 }}>
                                 <Select
