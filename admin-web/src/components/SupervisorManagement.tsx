@@ -542,11 +542,19 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
               getOptionLabel={(option) => `${option.name} - ${option.position}`}
               value={selectedStaff}
               onChange={(_, newValue) => setSelectedStaff(newValue)}
+              filterOptions={(options, { inputValue }) => {
+                if (!inputValue || !inputValue.trim()) return options;
+                const q = inputValue.trim().toLowerCase();
+                return options.filter((opt) => {
+                  const label = `${opt.name ?? ''} - ${opt.position ?? ''}`.toLowerCase();
+                  return label.includes(q);
+                });
+              }}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   label="Select Staff Members"
-                  placeholder="Choose employees..."
+                  placeholder="Search by name or position..."
                 />
               )}
               renderTags={(value, getTagProps) =>
@@ -601,11 +609,19 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                 getOptionLabel={(option) => `${option.name} - ${option.position}`}
                 value={employeeToPromote}
                 onChange={(_, newValue) => setEmployeeToPromote(newValue)}
+                filterOptions={(options, { inputValue }) => {
+                  if (!inputValue || !inputValue.trim()) return options;
+                  const q = inputValue.trim().toLowerCase();
+                  return options.filter((opt) => {
+                    const label = `${opt.name ?? ''} - ${opt.position ?? ''}`.toLowerCase();
+                    return label.includes(q);
+                  });
+                }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     label="Select Employee"
-                    placeholder="Choose employee..."
+                    placeholder="Search by name or position..."
                   />
                 )}
               />
