@@ -6448,6 +6448,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       const descDateStr = normalizeDate(desc.date);
                       return entryDateStr === descDateStr;
                     });
+                    const hasMileageForDay = rawMileageEntries.some((e: any) => normalizeDate(e.date) === entryDateStr);
                     
                     const timeItemId = `time-${index}`;
                     const isTimeSelected = selectedTimeTrackingItems.has(timeItemId);
@@ -6666,7 +6667,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
                             <Checkbox
                               checked={dayDescription?.dayOff || false}
-                              disabled={isAdminView || (!dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0)}
+                              disabled={isAdminView || hasMileageForDay || (!dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0)}
                               onChange={async (e) => {
                                 try {
                                   // Update or create daily description
