@@ -57,18 +57,26 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<'success' | null>(null);
+  /** Per-day rule eligibility: 8+ hours AND (100+ mi OR stayed overnight). Same rule as app. */
+  const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
 
   const costCenter = costCenters?.[0] || 'Program Services';
   const daysInMonth = getDaysInMonth(year, month);
+
+  const MIN_HOURS = 8;
+  const MIN_MILES = 100;
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [perDiemRule, monthlyRules, receipts] = await Promise.all([
+      const [perDiemRule, monthlyRules, receipts, timeTracking, mileageEntries, dailyDescriptions] = await Promise.all([
         PerDiemRulesService.getPerDiemRule(costCenter),
         apiGet<{ costCenter: string; maxAmount: number }[]>('/api/per-diem-monthly-rules'),
         apiGet<any[]>(`/api/receipts?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
+        apiGet<any[]>(`/api/time-tracking?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
+        apiGet<any[]>(`/api/mileage-entries?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
+        apiGet<any[]>(`/api/daily-descriptions?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
       ]);
 
       setDailyMaxAmount(perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT);
@@ -78,13 +86,46 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       const perDiemReceipts = (receipts || []).filter((r: any) => r.category === 'Per Diem');
       const entriesMap = new Map<string, PerDiemEntry>();
 
-      // Normalize receipt date to YYYY-MM-DD for reliable matching (avoids timezone "shift back a day")
-      const receiptDateKey = (r: any): string => {
+      // Normalize date to YYYY-MM-DD for reliable matching (avoids timezone "shift back a day")
+      const toDateKey = (r: any): string => {
         if (!r?.date) return '';
         const s = typeof r.date === 'string' ? r.date : new Date(r.date).toISOString();
         const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
         return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
       };
+
+      // Build per-day eligibility: 8+ hours AND (100+ miles OR stayed overnight) — same rule as app
+      const eligibilityMap = new Map<string, { isEligible: boolean; reason: string }>();
+      const descByDate = new Map<string, { stayedOvernight: boolean }>();
+      (dailyDescriptions || []).forEach((d: any) => {
+        const key = toDateKey(d);
+        if (key) descByDate.set(key, { stayedOvernight: !!(d.stayedOvernight) });
+      });
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayTime = (timeTracking || []).filter((e: any) => toDateKey(e) === dateKey);
+        const dayMileage = (mileageEntries || []).filter((e: any) => toDateKey(e) === dateKey);
+        const hoursWorked = dayTime
+          .filter((e: any) => {
+            const cat = (e.category || '').trim();
+            return cat === '' || cat === 'Working Hours' || cat === 'Regular Hours';
+          })
+          .reduce((s: number, e: any) => s + (e.hours || 0), 0);
+        const milesDriven = dayMileage.reduce((s: number, e: any) => s + (e.miles || 0), 0);
+        const { stayedOvernight } = descByDate.get(dateKey) || { stayedOvernight: false };
+        const meetsHours = hoursWorked >= MIN_HOURS;
+        const meetsMiles = milesDriven >= MIN_MILES;
+        const isEligible = meetsHours && (meetsMiles || stayedOvernight);
+        let reason = '';
+        if (!meetsHours) reason = `Under ${MIN_HOURS} hours`;
+        else if (meetsMiles) reason = `${hoursWorked.toFixed(1)}h, ${milesDriven} mi`;
+        else if (stayedOvernight) reason = `${hoursWorked.toFixed(1)}h, stayed overnight`;
+        else reason = `Need ${MIN_HOURS}+ hours and (${MIN_MILES}+ mi or overnight)`;
+        eligibilityMap.set(dateKey, { isEligible, reason });
+      }
+      setEligibilityByDay(eligibilityMap);
+
+      const receiptDateKey = toDateKey;
 
       for (let day = 1; day <= daysInMonth; day++) {
         const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -261,70 +302,90 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
 
   return (
     <Box sx={{ p: 2, maxWidth: 720, mx: 'auto' }}>
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Per Diem
-        {employeeName && (
-          <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-            — {employeeName}
-          </Typography>
-        )}
-      </Typography>
-
-      {/* Month follows global header dropdown; optional "Go to today" jumps to current month */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Typography variant="subtitle1" sx={{ minWidth: 160 }}>
-          {new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+      {/* Sticky top bar: title, month, summary, and Save button so it's always visible when there are changes */}
+      <Box
+        sx={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          bgcolor: 'background.paper',
+          pb: 2,
+          mb: 2,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Per Diem
+          {employeeName && (
+            <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+              — {employeeName}
+            </Typography>
+          )}
         </Typography>
-        {onGoToToday && (
-          <Button size="small" startIcon={<TodayIcon />} onClick={onGoToToday} sx={{ ml: 1 }}>
-            Go to today
-          </Button>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle1" sx={{ minWidth: 160 }}>
+              {new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </Typography>
+            {onGoToToday && (
+              <Button size="small" startIcon={<TodayIcon />} onClick={onGoToToday}>
+                Go to today
+              </Button>
+            )}
+          </Box>
+          {hasUnsavedChanges && (
+            <Button variant="contained" onClick={handleSave} disabled={saving} size="medium">
+              {saving ? 'Saving...' : 'Save per diem'}
+            </Button>
+          )}
+        </Box>
+
+        <Paper sx={{ p: 2, mb: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Monthly total
+            </Typography>
+            <Typography variant="body1" fontWeight={600} color={monthlyTotal >= monthlyLimit ? 'error.main' : 'text.primary'}>
+              ${monthlyTotal.toFixed(2)} / ${monthlyLimit.toFixed(2)}
+            </Typography>
+          </Box>
+          <LinearProgress
+            variant="determinate"
+            value={Math.min(100, (monthlyTotal / monthlyLimit) * 100)}
+            color={monthlyTotal >= monthlyLimit ? 'error' : monthlyTotal >= monthlyLimit * 0.85 ? 'warning' : 'primary'}
+            sx={{ height: 8, borderRadius: 1 }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>
+            Remaining: ${Math.max(0, monthlyLimit - monthlyTotal).toFixed(2)}
+          </Typography>
+        </Paper>
+
+        {error && (
+          <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 1 }}>
+            {error}
+          </Alert>
         )}
+        {saveMessage === 'success' && (
+          <Alert severity="success" sx={{ mb: 1 }}>
+            Per diem saved successfully.
+          </Alert>
+        )}
+
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          ${dailyMaxAmount} max per day · ${monthlyLimit} max per month. Eligible = 8+ hours and (100+ mi or stayed overnight). Check the days you are claiming; receipt is optional.
+        </Typography>
       </Box>
 
-      {/* Summary */}
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Monthly total
-          </Typography>
-          <Typography variant="body1" fontWeight={600} color={monthlyTotal >= monthlyLimit ? 'error.main' : 'text.primary'}>
-            ${monthlyTotal.toFixed(2)} / ${monthlyLimit.toFixed(2)}
-          </Typography>
-        </Box>
-        <LinearProgress
-          variant="determinate"
-          value={Math.min(100, (monthlyTotal / monthlyLimit) * 100)}
-          color={monthlyTotal >= monthlyLimit ? 'error' : monthlyTotal >= monthlyLimit * 0.85 ? 'warning' : 'primary'}
-          sx={{ height: 8, borderRadius: 1 }}
-        />
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}>
-          Remaining: ${Math.max(0, monthlyLimit - monthlyTotal).toFixed(2)}
-        </Typography>
-      </Paper>
-
-      {error && (
-        <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-      {saveMessage === 'success' && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          Per diem saved successfully.
-        </Alert>
-      )}
-
-      {/* Rules note */}
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-        ${dailyMaxAmount} max per day · ${monthlyLimit} max per month. Check the days you are claiming; receipt is optional for per diem.
-      </Typography>
-
-      {/* Days list - use calendar dateKey (YYYY-MM-DD) only, no Date-derived key */}
+      {/* Days list - use calendar dateKey (YYYY-MM-DD) only; show Eligible / Not eligible like app */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
           const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const date = new Date(year, month - 1, day);
           const entry = entries.get(dateKey);
+          const dayEligibility = eligibilityByDay.get(dateKey);
+          const isEligibleByRule = dayEligibility?.isEligible ?? false;
           if (!entry) return null;
           return (
             <Paper key={dateKey} variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -333,9 +394,21 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
                 onChange={() => handleToggleEligible(dateKey)}
                 color="primary"
               />
-              <Typography sx={{ minWidth: 100 }}>
-                {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              </Typography>
+              <Box sx={{ minWidth: 140 }}>
+                <Typography>
+                  {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: isEligibleByRule ? 'success.main' : 'text.secondary',
+                    fontWeight: isEligibleByRule ? 600 : 400,
+                  }}
+                  title={dayEligibility?.reason}
+                >
+                  {isEligibleByRule ? 'Eligible' : 'Not eligible'}
+                </Typography>
+              </Box>
               {entry.isEligible && (
                 <TextField
                   type="number"
@@ -351,14 +424,6 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           );
         })}
       </Box>
-
-      {hasUnsavedChanges && (
-        <Box sx={{ mt: 2 }}>
-          <Button variant="contained" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save per diem'}
-          </Button>
-        </Box>
-      )}
     </Box>
   );
 };
