@@ -16,6 +16,11 @@ import {
   Alert,
   Autocomplete,
   Divider,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Checkbox,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -561,32 +566,67 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
-            <Autocomplete
-              multiple
-              options={assignStaffOptions}
-              getOptionLabel={(option) => `${option.name} - ${option.position}`}
-              value={selectedStaff}
-              onChange={(_, newValue) => setSelectedStaff(newValue)}
-              inputValue={assignStaffSearchInput}
-              onInputChange={(_, value) => setAssignStaffSearchInput(value)}
-              filterOptions={(x) => x}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Select Staff Members"
-                  placeholder="Search by name, position, or email..."
-                />
-              )}
-              renderTags={(value, getTagProps) =>
-                value.map((option, index) => (
-                  <Chip
-                    label={option.name}
-                    {...getTagProps({ index })}
-                    size="small"
-                  />
-                ))
-              }
+            <TextField
+              fullWidth
+              label="Search staff"
+              placeholder="Type name, position, or email..."
+              value={assignStaffSearchInput}
+              onChange={(e) => setAssignStaffSearchInput(e.target.value)}
+              size="small"
+              sx={{ mb: 2 }}
             />
+            <List
+              dense
+              sx={{
+                maxHeight: 320,
+                overflow: 'auto',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+              }}
+            >
+              {assignStaffOptions.length === 0 ? (
+                <ListItem sx={{ py: 2 }}>
+                  <ListItemText
+                    primary={assignStaffSearchInput.trim() ? 'No staff match your search.' : 'No unassigned staff.'}
+                  />
+                </ListItem>
+              ) : (
+                assignStaffOptions.map((emp) => {
+                  const isSelected = selectedStaff.some((s) => s.id === emp.id);
+                  return (
+                    <ListItemButton
+                      key={emp.id}
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedStaff((prev) => prev.filter((s) => s.id !== emp.id));
+                        } else {
+                          setSelectedStaff((prev) => [...prev, emp]);
+                        }
+                      }}
+                    >
+                      <Checkbox checked={isSelected} size="small" sx={{ mr: 1 }} />
+                      <ListItemText
+                        primary={`${emp.name} - ${emp.position}`}
+                        primaryTypographyProps={{ variant: 'body2' }}
+                      />
+                    </ListItemButton>
+                  );
+                })
+              )}
+            </List>
+            {selectedStaff.length > 0 && (
+              <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {selectedStaff.map((emp) => (
+                  <Chip
+                    key={emp.id}
+                    label={emp.name}
+                    size="small"
+                    onDelete={() => setSelectedStaff((prev) => prev.filter((s) => s.id !== emp.id))}
+                  />
+                ))}
+              </Box>
+            )}
             {unassignedStaff.length === 0 && (
               <Alert severity="info" sx={{ mt: 2 }}>
                 All staff members are already assigned to supervisors.
