@@ -108,6 +108,7 @@ export default function MileageEntriesScreen({ navigation, route }: MileageEntri
         title="Mileage Entries"
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
         rightButton={{
           icon: 'add',
           onPress: () => navigation.navigate('MileageEntry'),

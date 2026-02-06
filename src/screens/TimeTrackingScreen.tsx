@@ -451,6 +451,7 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
         title="Time Tracking"
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
         rightButton={{
           icon: 'add',
           onPress: () => setShowAddModal(true),

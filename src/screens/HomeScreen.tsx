@@ -483,8 +483,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         currentAddress = `${location.coords.latitude},${location.coords.longitude}`;
       }
 
-      // Calculate distance using DistanceService
-      const distance = await DistanceService.calculateDistance(
+      // Straight-line distance "as the crow flies" from current location to base address
+      const distance = await DistanceService.calculateDistanceAsCrowFlies(
         currentAddress,
         currentEmployee.baseAddress
       );
@@ -1265,7 +1265,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <UnifiedHeader 
+      <UnifiedHeader
+        showHomeButton={false}
         title={viewingEmployee?.id === currentEmployee?.id 
           ? `Welcome,\n${currentEmployee?.name || 'User'}`
           : `Viewing:\n${viewingEmployee?.name || 'Employee'}`
@@ -1511,6 +1512,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
                 <Text style={[dynamicStyles.statValue, { fontSize: 14, color: '#999' }]}>N/A</Text>
               )}
               <Text style={dynamicStyles.statLabel}>Distance from BA</Text>
+              <Text style={[dynamicStyles.statLabel, { fontSize: 10, opacity: 0.8, marginTop: 0 }]}>(as the crow flies)</Text>
               <TouchableOpacity 
                 onPress={calculateDistanceFromBA}
                 style={{ marginTop: 8 }}

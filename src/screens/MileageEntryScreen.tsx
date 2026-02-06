@@ -1001,6 +1001,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         title={isEditing ? 'Edit Entry' : 'Add Mileage Entry'}
         showBackButton={true}
         onBackPress={handleCancel}
+        onHomePress={() => navigation.navigate('Home')}
         rightButton={isEditing ? {
           icon: 'delete',
           onPress: handleDelete,

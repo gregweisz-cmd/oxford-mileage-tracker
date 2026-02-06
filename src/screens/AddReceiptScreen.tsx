@@ -14,6 +14,7 @@ import {
   Dimensions,
   Keyboard,
   TouchableWithoutFeedback,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -38,6 +39,8 @@ import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiServi
 import { ReceiptOcrService, OcrError } from '../services/receiptOcrService';
 import { COST_CENTERS } from '../constants/costCenters';
 import { ReceiptPhotoQualityService, PhotoQualityResult } from '../services/receiptPhotoQualityService';
+import { useTheme } from '../contexts/ThemeContext';
+import UnifiedHeader from '../components/UnifiedHeader';
 
 interface AddReceiptScreenProps {
   navigation: any;
@@ -62,6 +65,7 @@ const EES_NOTE_TEXT = 'Not for reimbursement';
 const EES_NOTE_SUFFIX = ` - ${EES_NOTE_TEXT}`;
 
 export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) {
+  const { colors } = useTheme();
   const route = useRoute<RouteProp<RootStackParamList, 'AddReceipt'>>();
   const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const { showAnomalyAlert } = useNotifications();
@@ -103,10 +107,68 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   
   // OCR state
   const [processingOcr, setProcessingOcr] = useState(false);
+  // Popup shown while reading receipt image to fill in data (quality + OCR)
+  const [readingImageToFillData, setReadingImageToFillData] = useState(false);
   
   // Photo quality state
   const [photoQualityResult, setPhotoQualityResult] = useState<PhotoQualityResult | null>(null);
   const [dismissedQualityWarning, setDismissedQualityWarning] = useState(false);
+
+  const dynamicStyles = React.useMemo(() => StyleSheet.create({
+    container: { backgroundColor: colors.background },
+    header: { backgroundColor: colors.primary },
+    headerTitle: { color: colors.surface },
+    label: { color: colors.text },
+    receiptPhotoHint: { color: colors.textSecondary },
+    input: { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
+    dateButton: { backgroundColor: colors.surface, borderColor: colors.border },
+    dateText: { color: colors.text },
+    categoryButton: { backgroundColor: colors.surface, borderColor: colors.border },
+    categoryButtonSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    categoryButtonText: { color: colors.text },
+    categoryButtonTextSelected: { color: colors.surface },
+    saveButton: { backgroundColor: colors.secondary },
+    saveButtonText: { color: colors.surface },
+    modalContent: { backgroundColor: colors.surface },
+    modalTitle: { color: colors.text },
+    modalCancelButton: { backgroundColor: colors.background },
+    modalCancelButtonText: { color: colors.textSecondary },
+    modalConfirmButton: { backgroundColor: colors.primary },
+    modalConfirmButtonText: { color: colors.surface },
+    photoPlaceholder: { backgroundColor: colors.surface, borderColor: colors.border },
+    photoPlaceholderText: { color: colors.textSecondary },
+    photoButton: { backgroundColor: colors.background },
+    photoButtonText: { color: colors.primary },
+    changePhotoText: { color: colors.surface },
+    suggestionsContainer: { backgroundColor: colors.surface, borderColor: colors.border },
+    suggestionsTitle: { color: colors.text },
+    suggestionVendor: { color: colors.text },
+    suggestionDetails: { color: colors.textSecondary },
+    suggestionReason: { color: colors.textSecondary },
+    suggestionAddress: { color: colors.textSecondary },
+    confidenceBadge: { backgroundColor: colors.secondary },
+    confidenceText: { color: colors.surface },
+    tipsContainer: { backgroundColor: colors.card },
+    aiSuggestionsTitle: { color: colors.text },
+    categorySuggestionChip: { backgroundColor: colors.surface, borderColor: colors.border },
+    categorySuggestionText: { color: colors.text },
+    categorySuggestionReason: { color: colors.textSecondary },
+    costCenterOption: { backgroundColor: colors.surface, borderColor: colors.border },
+    costCenterOptionSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    costCenterOptionText: { color: colors.text },
+    costCenterOptionTextSelected: { color: colors.surface },
+    perDiemTitle: { color: colors.text },
+    perDiemReason: { color: colors.textSecondary },
+    perDiemDetails: { backgroundColor: colors.surface },
+    perDiemDetailsTitle: { color: colors.text },
+    perDiemDetailsText: { color: colors.textSecondary },
+    perDiemToggleText: { color: colors.text },
+    perDiemQuickToggleLabel: { color: colors.textSecondary },
+    eesNoticeDescription: { color: colors.textSecondary },
+    receiptImage: { backgroundColor: colors.surface },
+    qualityWarningSuggestion: { color: colors.textSecondary },
+    nearbyButtonText: { color: colors.primary },
+  }), [colors]);
 
   useEffect(() => {
     loadEmployee();
@@ -129,10 +191,15 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       setImageUri(croppedUri);
       setFileType('image');
       setDismissedQualityWarning(false);
+      setReadingImageToFillData(true);
       (async () => {
-        const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(croppedUri);
-        setPhotoQualityResult(qualityResult);
-        await processOcrOnImage(croppedUri);
+        try {
+          const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(croppedUri);
+          setPhotoQualityResult(qualityResult);
+          await processOcrOnImage(croppedUri);
+        } finally {
+          setReadingImageToFillData(false);
+        }
       })();
       navigation.setParams({ croppedImageUri: undefined });
     },
@@ -612,7 +679,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📸 Image captured:', uri);
-        (navigation as any).navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
+        applyCroppedImage(uri);
       } else {
         console.log('📸 Camera was canceled or no image captured');
       }
@@ -636,7 +703,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📷 Image selected:', uri);
-        (navigation as any).navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
+        applyCroppedImage(uri);
       } else {
         console.log('📷 Gallery selection was canceled or no image selected');
       }
@@ -1031,19 +1098,38 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }
   };
 
+  const isEditMode = !!(route.params as any)?.receipt;
+  const headerTitle = isEditMode ? 'Edit Receipt' : 'Add Receipt';
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
-        <StatusBar style="auto" />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Receipt</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <View style={[styles.container, dynamicStyles.container]}>
+        <UnifiedHeader
+          title={headerTitle}
+          showBackButton
+          onBackPress={() => navigation.goBack()}
+          onHomePress={() => navigation.navigate('Home')}
+        />
+
+        {/* Reading image popup - shown while quality check + OCR run */}
+        <Modal
+          visible={readingImageToFillData}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <View style={styles.readingImageOverlay}>
+            <View style={[styles.readingImageCard, { backgroundColor: colors.surface }]}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.readingImageMessage, { color: colors.text }]}>
+                Reading receipt image to fill in the data…
+              </Text>
+              <Text style={[styles.readingImageSubtext, { color: colors.textSecondary }]}>
+                This may take a few seconds
+              </Text>
+            </View>
+          </View>
+        </Modal>
 
       <ScrollView 
         style={styles.content} 
@@ -1052,7 +1138,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       >
         {/* Tips Display */}
         {showTips && tips.length > 0 && (
-          <View style={styles.tipsContainer}>
+          <View style={[styles.tipsContainer, dynamicStyles.tipsContainer]}>
             <ScrollView 
               style={styles.tipsScrollView} 
               showsVerticalScrollIndicator={false}
@@ -1073,22 +1159,25 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         {/* Receipt Photo */}
         <View style={styles.photoContainer}>
           <View style={styles.labelRow}>
-            <Text style={styles.label}>
+            <Text style={[styles.label, dynamicStyles.label]}>
               Receipt Photo {formData.category === 'Per Diem' ? '(Optional)' : '*'}
             </Text>
           </View>
+          <Text style={[styles.receiptPhotoHint, dynamicStyles.receiptPhotoHint]}>
+            Capture the entire receipt in the frame so all text can be read.
+          </Text>
           
           {imageUri ? (
             <View style={styles.imageContainer}>
               {fileType === 'pdf' ? (
-                <View style={[styles.receiptImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
+                <View style={[styles.receiptImage, dynamicStyles.receiptImage, { justifyContent: 'center', alignItems: 'center' }]}>
                   <MaterialIcons name="picture-as-pdf" size={64} color="#F44336" />
-                  <Text style={{ marginTop: 8, color: '#666', fontSize: 14 }}>PDF Receipt</Text>
+                  <Text style={{ marginTop: 8, color: colors.textSecondary, fontSize: 14 }}>PDF Receipt</Text>
                 </View>
               ) : (
                 <Image 
                   source={{ uri: imageUri || '' }} 
-                  style={styles.receiptImage}
+                  style={[styles.receiptImage, dynamicStyles.receiptImage]}
                   onError={(error) => {
                     console.error('❌ Error loading receipt image:', error.nativeEvent.error);
                     Alert.alert('Image Error', 'Failed to load receipt image. Please try selecting a new image.');
@@ -1116,7 +1205,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                         {ReceiptPhotoQualityService.getQualityMessage(photoQualityResult) || 'Photo quality could be improved'}
                       </Text>
                       {ReceiptPhotoQualityService.getPrimarySuggestion(photoQualityResult) && (
-                        <Text style={styles.qualityWarningSuggestion}>
+                        <Text style={[styles.qualityWarningSuggestion, dynamicStyles.qualityWarningSuggestion]}>
                           {ReceiptPhotoQualityService.getPrimarySuggestion(photoQualityResult)}
                         </Text>
                       )}
@@ -1126,7 +1215,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                     onPress={() => setDismissedQualityWarning(true)}
                     style={styles.qualityWarningDismiss}
                   >
-                    <MaterialIcons name="close" size={18} color="#666" />
+                    <MaterialIcons name="close" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
                 </View>
               )}
@@ -1142,38 +1231,26 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                       { text: 'Take Photo', onPress: takePicture },
                       { text: 'Select from Gallery', onPress: selectFromGallery },
                       { text: 'Upload PDF', onPress: selectPDF },
-                      fileType === 'image' && { text: 'Crop Photo', onPress: () => {
-                        // Re-crop the existing photo
-                        Alert.alert(
-                          'Crop Photo',
-                          'How would you like to crop the photo?',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Take New Photo', onPress: takePicture },
-                            { text: 'Select from Gallery', onPress: selectFromGallery },
-                          ]
-                        );
-                      }},
-                    ].filter(Boolean)
+                    ]
                   );
                 }}
               >
-                <MaterialIcons name="edit" size={20} color="#fff" />
-                <Text style={styles.changePhotoText}>Change {fileType === 'pdf' ? 'PDF' : 'Photo'}</Text>
+                <MaterialIcons name="edit" size={20} color={colors.surface} />
+                <Text style={[styles.changePhotoText, dynamicStyles.changePhotoText]}>Change {fileType === 'pdf' ? 'PDF' : 'Photo'}</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.photoPlaceholder}>
-              <MaterialIcons name="camera-alt" size={48} color="#ccc" />
-              <Text style={styles.photoPlaceholderText}>No photo selected</Text>
+            <View style={[styles.photoPlaceholder, dynamicStyles.photoPlaceholder]}>
+              <MaterialIcons name="camera-alt" size={48} color={colors.border} />
+              <Text style={[styles.photoPlaceholderText, dynamicStyles.photoPlaceholderText]}>No photo selected</Text>
               <View style={styles.photoButtons}>
-                <TouchableOpacity style={styles.photoButton} onPress={takePicture}>
-                  <MaterialIcons name="camera-alt" size={20} color="#2196F3" />
-                  <Text style={styles.photoButtonText}>Take Photo</Text>
+                <TouchableOpacity style={[styles.photoButton, dynamicStyles.photoButton]} onPress={takePicture}>
+                  <MaterialIcons name="camera-alt" size={20} color={colors.primary} />
+                  <Text style={[styles.photoButtonText, dynamicStyles.photoButtonText]}>Take Photo</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.photoButton} onPress={selectFromGallery}>
-                  <MaterialIcons name="photo-library" size={20} color="#2196F3" />
-                  <Text style={styles.photoButtonText}>Upload Photo</Text>
+                <TouchableOpacity style={[styles.photoButton, dynamicStyles.photoButton]} onPress={selectFromGallery}>
+                  <MaterialIcons name="photo-library" size={20} color={colors.primary} />
+                  <Text style={[styles.photoButtonText, dynamicStyles.photoButtonText]}>Upload Photo</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1182,15 +1259,15 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
         {/* Date */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Date</Text>
+          <Text style={[styles.label, dynamicStyles.label]}>Date</Text>
           <TouchableOpacity
-            style={styles.dateButton}
+            style={[styles.dateButton, dynamicStyles.dateButton]}
             onPress={handleDatePickerOpen}
           >
-            <Text style={styles.dateText}>
+            <Text style={[styles.dateText, dynamicStyles.dateText]}>
               {formData.date.toLocaleDateString()}
             </Text>
-            <MaterialIcons name="calendar-today" size={20} color="#666" />
+            <MaterialIcons name="calendar-today" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -1202,11 +1279,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           onRequestClose={() => setShowDatePicker(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, dynamicStyles.modalContent]}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Date</Text>
+                <Text style={[styles.modalTitle, dynamicStyles.modalTitle]}>Select Date</Text>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <MaterialIcons name="close" size={24} color="#666" />
+                  <MaterialIcons name="close" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
               
@@ -1220,16 +1297,16 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               
               <View style={styles.modalButtons}>
                 <TouchableOpacity 
-                  style={styles.modalCancelButton} 
+                  style={[styles.modalCancelButton, dynamicStyles.modalCancelButton]} 
                   onPress={() => setShowDatePicker(false)}
                 >
-                  <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                  <Text style={[styles.modalCancelButtonText, dynamicStyles.modalCancelButtonText]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  style={styles.modalConfirmButton} 
+                  style={[styles.modalConfirmButton, dynamicStyles.modalConfirmButton]} 
                   onPress={handleDatePickerConfirm}
                 >
-                  <Text style={styles.modalConfirmButtonText}>Select</Text>
+                  <Text style={[styles.modalConfirmButtonText, dynamicStyles.modalConfirmButtonText]}>Select</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1239,7 +1316,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         {/* Vendor */}
         <View style={styles.inputGroup}>
           <View style={styles.vendorHeader}>
-            <Text style={styles.label}>
+            <Text style={[styles.label, dynamicStyles.label]}>
               Vendor {formData.category === 'Per Diem' ? '(Optional)' : '*'}
             </Text>
             {nearbyVendors.length > 0 && (
@@ -1247,8 +1324,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 style={styles.nearbyButton}
                 onPress={() => setShowNearbyVendors(!showNearbyVendors)}
               >
-                <MaterialIcons name="location-on" size={16} color="#2196F3" />
-                <Text style={styles.nearbyButtonText}>
+                <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                <Text style={[styles.nearbyButtonText, dynamicStyles.nearbyButtonText]}>
                   {showNearbyVendors ? 'Hide' : 'Nearby'} ({nearbyVendors.length})
                 </Text>
               </TouchableOpacity>
@@ -1257,7 +1334,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           
           <TextInput
             ref={vendorInputRef}
-            style={styles.input}
+            style={[styles.input, dynamicStyles.input]}
             value={formData.vendor}
             onChangeText={(value) => handleInputChange('vendor', value)}
             placeholder="e.g., Shell Gas Station, McDonald's"
@@ -1280,8 +1357,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
           {/* Vendor Suggestions */}
           {showVendorSuggestions && vendorSuggestions.length > 0 && (
-            <View style={styles.suggestionsContainer}>
-              <Text style={styles.suggestionsTitle}>Smart Suggestions</Text>
+            <View style={[styles.suggestionsContainer, dynamicStyles.suggestionsContainer]}>
+              <Text style={[styles.suggestionsTitle, dynamicStyles.suggestionsTitle]}>Smart Suggestions</Text>
               <FlatList
                 data={vendorSuggestions}
                 keyExtractor={(item, index) => `${item.vendorName}-${index}`}
@@ -1291,14 +1368,14 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                     onPress={() => handleVendorSuggestionSelect(item)}
                   >
                     <View style={styles.suggestionContent}>
-                      <Text style={styles.suggestionVendor}>{item.vendorName}</Text>
-                      <Text style={styles.suggestionDetails}>
+                      <Text style={[styles.suggestionVendor, dynamicStyles.suggestionVendor]}>{item.vendorName}</Text>
+                      <Text style={[styles.suggestionDetails, dynamicStyles.suggestionDetails]}>
                         {item.suggestedCategory}
                       </Text>
-                      <Text style={styles.suggestionReason}>{item.reason}</Text>
+                      <Text style={[styles.suggestionReason, dynamicStyles.suggestionReason]}>{item.reason}</Text>
                     </View>
-                    <View style={styles.confidenceBadge}>
-                      <Text style={styles.confidenceText}>
+                    <View style={[styles.confidenceBadge, dynamicStyles.confidenceBadge]}>
+                      <Text style={[styles.confidenceText, dynamicStyles.confidenceText]}>
                         {Math.round(item.confidence * 100)}%
                       </Text>
                     </View>
@@ -1312,8 +1389,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
           {/* Nearby Vendors */}
           {showNearbyVendors && nearbyVendors.length > 0 && (
-            <View style={styles.suggestionsContainer}>
-              <Text style={styles.suggestionsTitle}>Nearby Vendors</Text>
+            <View style={[styles.suggestionsContainer, dynamicStyles.suggestionsContainer]}>
+              <Text style={[styles.suggestionsTitle, dynamicStyles.suggestionsTitle]}>Nearby Vendors</Text>
               <FlatList
                 data={nearbyVendors}
                 keyExtractor={(item, index) => `nearby-${item.vendorName}-${index}`}
@@ -1323,13 +1400,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                     onPress={() => handleNearbyVendorSelect(item)}
                   >
                     <View style={styles.suggestionContent}>
-                      <Text style={styles.suggestionVendor}>{item.vendorName}</Text>
-                      <Text style={styles.suggestionDetails}>
+                      <Text style={[styles.suggestionVendor, dynamicStyles.suggestionVendor]}>{item.vendorName}</Text>
+                      <Text style={[styles.suggestionDetails, dynamicStyles.suggestionDetails]}>
                         {item.category} • {item.distance} miles away
                       </Text>
-                      <Text style={styles.suggestionAddress}>{item.vendorAddress}</Text>
+                      <Text style={[styles.suggestionAddress, dynamicStyles.suggestionAddress]}>{item.vendorAddress}</Text>
                     </View>
-                    <MaterialIcons name="location-on" size={20} color="#666" />
+                    <MaterialIcons name="location-on" size={20} color={colors.textSecondary} />
                   </TouchableOpacity>
                 )}
                 showsVerticalScrollIndicator={false}
@@ -1341,10 +1418,10 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
         {/* Amount */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Amount *</Text>
+          <Text style={[styles.label, dynamicStyles.label]}>Amount *</Text>
           <TextInput
             ref={amountInputRef}
-            style={styles.input}
+            style={[styles.input, dynamicStyles.input]}
             value={formData.amount}
             onChangeText={(value) => handleInputChange('amount', value)}
             placeholder="0.00"
@@ -1360,17 +1437,17 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
         {/* Description/Notes */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>
+          <Text style={[styles.label, dynamicStyles.label]}>
             Description {formData.category === 'Other' ? '*' : '(Optional)'}
           </Text>
           {formData.category === 'Other' && (
-            <Text style={[styles.label, { fontSize: 12, color: '#666', marginTop: -5, marginBottom: 5 }]}>
+            <Text style={[styles.label, { fontSize: 12, color: colors.textSecondary, marginTop: -5, marginBottom: 5 }]}>
               Required for Other Expenses so Finance knows what the money was spent on
             </Text>
           )}
           <TextInput
             ref={descriptionInputRef}
-            style={[styles.input, styles.textArea]}
+            style={[styles.input, styles.textArea, dynamicStyles.input]}
             value={formData.description}
             onChangeText={(value) => handleInputChange('description', value)}
             placeholder={formData.category === 'Other' ? 'Describe what this expense was for...' : 'Add notes about this receipt...'}
@@ -1384,9 +1461,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
         {/* Category */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Category</Text>
+          <Text style={[styles.label, dynamicStyles.label]}>Category</Text>
           <View style={styles.perDiemQuickToggle}>
-            <Text style={styles.perDiemQuickToggleLabel}>Per Diem Receipt</Text>
+            <Text style={[styles.perDiemQuickToggleLabel, dynamicStyles.perDiemQuickToggleLabel]}>Per Diem Receipt</Text>
             <TouchableOpacity
               style={styles.perDiemQuickToggleButton}
               onPress={() => handlePerDiemReceiptToggle(formData.category !== 'Per Diem')}
@@ -1394,7 +1471,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               <MaterialIcons
                 name={formData.category === 'Per Diem' ? 'check-box' : 'check-box-outline-blank'}
                 size={24}
-                color={formData.category === 'Per Diem' ? '#1C75BC' : '#999'}
+                color={formData.category === 'Per Diem' ? colors.primary : colors.textSecondary}
               />
             </TouchableOpacity>
           </View>
@@ -1404,14 +1481,18 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 key={category}
                 style={[
                   styles.categoryButton,
+                  dynamicStyles.categoryButton,
                   formData.category === category && styles.categoryButtonSelected,
+                  formData.category === category && dynamicStyles.categoryButtonSelected,
                 ]}
                 onPress={async () => await handleInputChange('category', category)}
               >
                 <Text
                   style={[
                     styles.categoryButtonText,
+                    dynamicStyles.categoryButtonText,
                     formData.category === category && styles.categoryButtonTextSelected,
+                    formData.category === category && dynamicStyles.categoryButtonTextSelected,
                   ]}
                 >
                   {category}
@@ -1427,7 +1508,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               <MaterialIcons name="info" size={20} color="#d84315" style={styles.eesNoticeIcon} />
               <View style={styles.eesNoticeTextContainer}>
                 <Text style={styles.eesNoticeTitle}>Not for reimbursement</Text>
-                <Text style={styles.eesNoticeDescription}>
+                <Text style={[styles.eesNoticeDescription, dynamicStyles.eesNoticeDescription]}>
                   EES payments are required self-pay contributions. Log them here for tracking only - we do not reimburse these charges.
                 </Text>
               </View>
@@ -1438,20 +1519,24 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         {/* Cost Center Selector - show if user has cost centers assigned */}
         {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 0 && (
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Cost Center</Text>
+            <Text style={[styles.label, dynamicStyles.label]}>Cost Center</Text>
             <View style={styles.costCenterSelector}>
               {currentEmployee.selectedCostCenters.map((costCenter) => (
                 <TouchableOpacity
                   key={costCenter}
                   style={[
                     styles.costCenterOption,
-                    selectedCostCenter === costCenter && styles.costCenterOptionSelected
+                    dynamicStyles.costCenterOption,
+                    selectedCostCenter === costCenter && styles.costCenterOptionSelected,
+                    selectedCostCenter === costCenter && dynamicStyles.costCenterOptionSelected
                   ]}
                   onPress={() => setSelectedCostCenter(costCenter)}
                 >
                   <Text style={[
                     styles.costCenterOptionText,
-                    selectedCostCenter === costCenter && styles.costCenterOptionTextSelected
+                    dynamicStyles.costCenterOptionText,
+                    selectedCostCenter === costCenter && styles.costCenterOptionTextSelected,
+                    selectedCostCenter === costCenter && dynamicStyles.costCenterOptionTextSelected
                   ]}>
                     {costCenter}
                   </Text>
@@ -1466,9 +1551,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           <View style={styles.inputGroup}>
             <View style={styles.aiSuggestionsHeader}>
               <MaterialIcons name="lightbulb" size={20} color="#FF9800" />
-              <Text style={styles.aiSuggestionsTitle}>AI Category Suggestions</Text>
+              <Text style={[styles.aiSuggestionsTitle, dynamicStyles.aiSuggestionsTitle]}>AI Category Suggestions</Text>
               {loadingCategorySuggestions && (
-                <MaterialIcons name="refresh" size={16} color="#999" />
+                <MaterialIcons name="refresh" size={16} color={colors.textSecondary} />
               )}
             </View>
             <View style={styles.categorySuggestionsContainer}>
@@ -1477,19 +1562,21 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                   key={suggestion.category}
                   style={[
                     styles.categorySuggestionChip,
+                    dynamicStyles.categorySuggestionChip,
                     index === 0 && styles.categorySuggestionChipTop
                   ]}
                   onPress={() => handleCategorySuggestionSelect(suggestion)}
                 >
                   <View style={styles.categorySuggestionContent}>
-                    <Text style={styles.categorySuggestionText}>{suggestion.category}</Text>
-                    <Text style={styles.categorySuggestionReason}>{suggestion.reasoning}</Text>
+                    <Text style={[styles.categorySuggestionText, dynamicStyles.categorySuggestionText]}>{suggestion.category}</Text>
+                    <Text style={[styles.categorySuggestionReason, dynamicStyles.categorySuggestionReason]}>{suggestion.reasoning}</Text>
                   </View>
                   <View style={[
                     styles.confidenceBadge,
+                    dynamicStyles.confidenceBadge,
                     index === 0 && styles.confidenceBadgeTop
                   ]}>
-                    <Text style={styles.confidenceText}>
+                    <Text style={[styles.confidenceText, dynamicStyles.confidenceText]}>
                       {Math.round(suggestion.confidence)}%
                     </Text>
                   </View>
@@ -1507,24 +1594,24 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                 <MaterialIcons 
                   name={perDiemEligibility.isEligible ? "check-circle" : "cancel"} 
                   size={20} 
-                  color={perDiemEligibility.isEligible ? "#4CAF50" : "#F44336"} 
+                  color={perDiemEligibility.isEligible ? colors.secondary : "#F44336"} 
                 />
-                <Text style={styles.perDiemTitle}>
+                <Text style={[styles.perDiemTitle, dynamicStyles.perDiemTitle]}>
                   Per Diem Eligibility: {perDiemEligibility.isEligible ? 'Eligible' : 'Not Eligible'}
                 </Text>
               </View>
-              <Text style={styles.perDiemReason}>{perDiemEligibility.reason}</Text>
+              <Text style={[styles.perDiemReason, dynamicStyles.perDiemReason]}>{perDiemEligibility.reason}</Text>
               
               {perDiemEligibility.isEligible && (
-                <View style={styles.perDiemDetails}>
-                  <Text style={styles.perDiemDetailsTitle}>Details:</Text>
-                  <Text style={styles.perDiemDetailsText}>
+                <View style={[styles.perDiemDetails, dynamicStyles.perDiemDetails]}>
+                  <Text style={[styles.perDiemDetailsTitle, dynamicStyles.perDiemDetailsTitle]}>Details:</Text>
+                  <Text style={[styles.perDiemDetailsText, dynamicStyles.perDiemDetailsText]}>
                     • Hours Worked: {perDiemEligibility.details.hoursWorked.toFixed(1)}h
                   </Text>
                   <Text style={styles.perDiemDetailsText}>
                     • Miles Driven: {perDiemEligibility.details.milesDriven.toFixed(1)} mi
                   </Text>
-                  <Text style={styles.perDiemDetailsText}>
+                  <Text style={[styles.perDiemDetailsText, dynamicStyles.perDiemDetailsText]}>
                     • Distance from Base: {perDiemEligibility.details.distanceFromBase.toFixed(1)} mi
                   </Text>
                 </View>
@@ -1533,7 +1620,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               {/* Only show toggle if NOT using actual amount */}
               {currentPerDiemRule && !currentPerDiemRule.useActualAmount && (
                 <View style={styles.perDiemToggle}>
-                  <Text style={styles.perDiemToggleText}>
+                  <Text style={[styles.perDiemToggleText, dynamicStyles.perDiemToggleText]}>
                     Auto-set amount to ${currentPerDiemRule.maxAmount}
                   </Text>
                   <TouchableOpacity
@@ -1555,13 +1642,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               {/* Show message if using actual amount */}
               {currentPerDiemRule && currentPerDiemRule.useActualAmount && (
                 <View style={styles.perDiemToggle}>
-                  <Text style={[styles.perDiemToggleText, { color: '#2196F3' }]}>
+                  <Text style={[styles.perDiemToggleText, dynamicStyles.perDiemToggleText, { color: colors.primary }]}>
                     Enter your actual expenses (max ${currentPerDiemRule.maxAmount})
                   </Text>
                   <MaterialIcons 
                     name="info" 
                     size={24} 
-                    color="#2196F3" 
+                    color={colors.primary} 
                   />
                 </View>
               )}
@@ -1571,11 +1658,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
         {/* Save Button */}
         <TouchableOpacity
-          style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+          style={[styles.saveButton, dynamicStyles.saveButton, loading && styles.saveButtonDisabled]}
           onPress={handleSave}
           disabled={loading}
         >
-          <Text style={styles.saveButtonText}>
+          <Text style={[styles.saveButtonText, dynamicStyles.saveButtonText]}>
             {loading ? 'Saving...' : 'Save Receipt'}
           </Text>
         </TouchableOpacity>
@@ -1621,6 +1708,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
+  },
+  receiptPhotoHint: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 10,
+    fontStyle: 'italic',
   },
   imageContainer: {
     position: 'relative',
@@ -1792,6 +1885,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   // Modal styles
+  readingImageOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  readingImageCard: {
+    borderRadius: 16,
+    padding: 28,
+    alignItems: 'center',
+    minWidth: 280,
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  readingImageMessage: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  readingImageSubtext: {
+    fontSize: 13,
+    marginTop: 6,
+    textAlign: 'center',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

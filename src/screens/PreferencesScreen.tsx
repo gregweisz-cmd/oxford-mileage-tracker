@@ -140,6 +140,7 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
         title="App Preferences"
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
       />
 
       <ScrollView style={styles.content}>

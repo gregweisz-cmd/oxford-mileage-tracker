@@ -492,6 +492,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
         title="Saved Addresses"
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
         rightButton={{
           icon: 'add',
           onPress: handleAddAddress,

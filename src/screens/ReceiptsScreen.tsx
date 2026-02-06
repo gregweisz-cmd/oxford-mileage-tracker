@@ -20,6 +20,7 @@ import { PdfService } from '../services/pdfService';
 import { Receipt, Employee } from '../types';
 import { API_BASE_URL } from '../config/api';
 import * as ImagePicker from 'expo-image-picker';
+import UnifiedHeader from '../components/UnifiedHeader';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -384,11 +385,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                 quality: 0.8,
               });
               if (!result.canceled && result.assets[0]) {
-                navigation.navigate('ReceiptCrop', {
-                  imageUri: result.assets[0].uri,
-                  returnTo: 'Receipts',
-                  receiptIdToUpdate: receipt.id,
-                });
+                await updateReceiptImage(receipt, result.assets[0].uri);
               }
             },
           },
@@ -401,11 +398,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                 quality: 0.8,
               });
               if (!result.canceled && result.assets[0]) {
-                navigation.navigate('ReceiptCrop', {
-                  imageUri: result.assets[0].uri,
-                  returnTo: 'Receipts',
-                  receiptIdToUpdate: receipt.id,
-                });
+                await updateReceiptImage(receipt, result.assets[0].uri);
               }
             },
           },
@@ -627,33 +620,19 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     );
   }
 
+  const headerTitle = multiSelectMode
+    ? `Select Receipts (${selectedReceiptIds.size})`
+    : `Receipts${filterCategory ? ` - ${filterCategory}` : ''} (${new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`;
+
   return (
     <View style={styles.container}>
-      <StatusBar style="auto" />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {multiSelectMode 
-            ? `Select Receipts (${selectedReceiptIds.size})` 
-            : `Receipts${filterCategory ? ` - ${filterCategory}` : ''} (${new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`}
-        </Text>
-        <View style={styles.headerRight}>
-          {multiSelectMode && (
-            <>
-              <TouchableOpacity onPress={clearSelection} style={styles.headerButton}>
-                <MaterialIcons name="clear" size={24} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={deleteSelectedReceipts} style={styles.headerButton}>
-                <MaterialIcons name="delete" size={24} color="#fff" />
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
+      <UnifiedHeader
+        title={headerTitle}
+        showBackButton
+        onBackPress={multiSelectMode ? clearSelection : () => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
+        rightButton={multiSelectMode ? { icon: 'delete', onPress: deleteSelectedReceipts } : undefined}
+      />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Search Bar */}
@@ -1282,20 +1261,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  header: {
-    backgroundColor: '#2196F3',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
   content: {
     flex: 1,
     padding: 20,
@@ -1635,13 +1600,6 @@ const styles = StyleSheet.create({
   },
   
   // Multi-select styles
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerButton: {
-    marginLeft: 12,
-  },
   multiSelectContainer: {
     backgroundColor: '#fff',
     borderRadius: 12,

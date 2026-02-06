@@ -522,6 +522,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           title="Hours & Description"
           showBackButton
           onBackPress={() => navigation.goBack()}
+          onHomePress={() => navigation.navigate('Home')}
         />
         <View style={styles.loadingContainer}>
           <Text>Loading data...</Text>
@@ -541,6 +542,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           title="Hours & Description"
           showBackButton
           onBackPress={() => navigation.goBack()}
+          onHomePress={() => navigation.navigate('Home')}
         />
 
         {/* Month Navigation */}

@@ -648,6 +648,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         title="GPS Tracking"
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
       />
 
       <ScrollView 

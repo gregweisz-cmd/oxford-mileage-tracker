@@ -210,6 +210,32 @@ export class DistanceService {
   }
 
   /**
+   * Straight-line distance "as the crow flies" in miles (no driving buffer).
+   * Use for dashboard "Distance from BA" and anywhere true distance-from-point is needed.
+   */
+  static async calculateDistanceAsCrowFlies(fromAddress: string, toAddress: string): Promise<number> {
+    const fromCoords = await this.getCoordinatesForAddress(fromAddress);
+    const toCoords = await this.getCoordinatesForAddress(toAddress);
+    const miles = this.calculateHaversineDistance(fromCoords, toCoords);
+    return Math.round(miles * 10) / 10;
+  }
+
+  private static async getCoordinatesForAddress(address: string): Promise<{ lat: number; lng: number }> {
+    const cleaned = this.extractAddressFromLocation((address || '').trim());
+    if (!cleaned || cleaned === 'BA') {
+      throw new Error('Address is required');
+    }
+    if (this.GOOGLE_MAPS_API_KEY && this.GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
+      try {
+        return await this.geocodeAddress(cleaned);
+      } catch (_) {
+        // fallback to Nominatim
+      }
+    }
+    return await this.geocodeWithNominatim(cleaned);
+  }
+
+  /**
    * Get information about the current distance calculation setup
    */
   /**

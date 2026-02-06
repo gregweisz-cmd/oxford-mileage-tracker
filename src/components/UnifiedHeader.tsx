@@ -15,6 +15,9 @@ interface UnifiedHeaderProps {
   subtitle?: string;
   showBackButton?: boolean;
   onBackPress?: () => void;
+  /** Show home icon; use onHomePress to navigate to Home (e.g. from any screen). */
+  showHomeButton?: boolean;
+  onHomePress?: () => void;
   leftButton?: {
     icon: string;
     onPress: () => void;
@@ -34,6 +37,8 @@ export default function UnifiedHeader({
   subtitle = 'Oxford House Staff Tracker',
   showBackButton = false,
   onBackPress,
+  showHomeButton = true,
+  onHomePress,
   leftButton,
   rightButton,
   backgroundColor = '#E6E6E6',
@@ -77,10 +82,15 @@ export default function UnifiedHeader({
             <Text style={styles.headerSubtitle}>{subtitle}</Text>
           </View>
 
-          <View style={styles.sideSection}>
+          <View style={[styles.sideSection, styles.rightRow]}>
+            {showHomeButton && onHomePress ? (
+              <TouchableOpacity style={styles.iconButton} onPress={onHomePress}>
+                <MaterialIcons name="home" size={22} color="#1C75BC" />
+              </TouchableOpacity>
+            ) : null}
             {rightButton ? (
               <TouchableOpacity
-                style={rightButton.text ? styles.iconButtonWithText : styles.iconButton}
+                style={[rightButton.text ? styles.iconButtonWithText : styles.iconButton, showHomeButton && onHomePress && styles.rightButtonSpacing]}
                 onPress={rightButton.onPress}
               >
                 <MaterialIcons
@@ -92,9 +102,10 @@ export default function UnifiedHeader({
                   <Text style={styles.rightButtonText}>{rightButton.text}</Text>
                 ) : null}
               </TouchableOpacity>
-            ) : (
+            ) : null}
+            {!showHomeButton && !rightButton ? (
               <View style={styles.iconPlaceholder} />
-            )}
+            ) : null}
           </View>
         </View>
       </View>
@@ -124,6 +135,16 @@ const styles = StyleSheet.create({
   sideSection: {
     width: 52,
     alignItems: 'center',
+  },
+  rightRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    width: undefined,
+    minWidth: 52,
+  },
+  rightButtonSpacing: {
+    marginLeft: 0,
   },
   centerSection: {
     flex: 1,

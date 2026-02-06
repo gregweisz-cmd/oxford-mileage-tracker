@@ -442,6 +442,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
           title="Settings"
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
+          onHomePress={() => navigation.navigate('Home')}
         />
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: colors.text }]}>Loading settings...</Text>
@@ -456,6 +457,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
         title="Settings"
         showBackButton={true}
         onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
       />
 
       <KeyboardAvoidingView 

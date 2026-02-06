@@ -48,6 +48,7 @@ import {
   CheckCircle as CheckCircleIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
+  Crop as CropIcon,
 } from '@mui/icons-material';
 
 // PDF generation imports
@@ -90,6 +91,7 @@ import { formatLocationNameAndAddress } from './utils/addressFormatter';
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
+import ReceiptImageCropModal from './components/ReceiptImageCropModal';
 
 // Date picker imports
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -99,6 +101,15 @@ import dayjs, { Dayjs } from 'dayjs';
 
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+
+/** Resolve receipt imageUri to a URL the browser can load (data URLs and backend /uploads/ paths). */
+function getReceiptImageUrl(uri: string | undefined): string {
+  const raw = (uri || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  if (raw.startsWith('/')) return `${API_BASE_URL}${raw}`;
+  return `${API_BASE_URL}/uploads/${raw}`;
+}
 
 // Props interface for the StaffPortal component
 interface StaffPortalProps {
@@ -389,6 +400,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
+  const [cropModalReceipt, setCropModalReceipt] = useState<{ id: string; imageUri: string } | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null); // Signature saved in Settings
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
@@ -2941,6 +2953,44 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       alert('Please upload an image file or PDF.');
     }
   };
+
+  // Handle applying cropped receipt image (from crop modal)
+  const handleCropApply = useCallback(async (croppedDataUrl: string) => {
+    if (!cropModalReceipt) return;
+    const receiptId = cropModalReceipt.id;
+    const updatedReceipts = receipts.map(receipt =>
+      receipt.id === receiptId ? { ...receipt, imageUri: croppedDataUrl } : receipt
+    );
+    setReceipts(updatedReceipts);
+    setReceiptImageLoadErrors(prev => {
+      const next = new Set(prev);
+      next.delete(receiptId);
+      return next;
+    });
+    if (employeeData) {
+      setEmployeeData({ ...employeeData, receipts: updatedReceipts } as any);
+    }
+    setCropModalReceipt(null);
+    try {
+      const receipt = updatedReceipts.find(r => r.id === receiptId);
+      if (receipt) {
+        const response = await fetch(`${API_BASE_URL}/api/receipts/${receiptId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...receipt, imageUri: croppedDataUrl })
+        });
+        if (response.ok) {
+          await syncReportData();
+          showSuccess('Receipt image updated');
+        } else {
+          showError('Failed to save cropped image. Please try again.');
+        }
+      }
+    } catch (error) {
+      debugError('Error saving cropped receipt image:', error);
+      showError('Failed to save cropped image. Please try again.');
+    }
+  }, [cropModalReceipt, receipts, employeeData, syncReportData, showSuccess, showError]);
 
   // Report Completeness Checker
   const handleCheckCompleteness = async () => {
@@ -7754,15 +7804,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 <Typography variant="caption" color="text.secondary">Image uploaded</Typography>
                               </Box>
                               <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} id={`receipt-change-${receipt.id}`} onChange={(e) => handleReceiptImageUpload(receipt.id, e)} />
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<UploadIcon sx={{ fontSize: 14 }} />}
-                                onClick={() => document.getElementById(`receipt-change-${receipt.id}`)?.click()}
-                                sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
-                              >
-                                Upload new
-                              </Button>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<CropIcon sx={{ fontSize: 14 }} />}
+                                  onClick={() => setCropModalReceipt({ id: receipt.id, imageUri: getReceiptImageUrl(raw) })}
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                >
+                                  Crop
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<UploadIcon sx={{ fontSize: 14 }} />}
+                                  onClick={() => document.getElementById(`receipt-change-${receipt.id}`)?.click()}
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                >
+                                  Upload new
+                                </Button>
+                              </Box>
                             </Box>
                           );
                         })()}
@@ -8280,6 +8341,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ReceiptImageCropModal
+        open={!!cropModalReceipt}
+        imageSrc={cropModalReceipt?.imageUri ?? ''}
+        onClose={() => setCropModalReceipt(null)}
+        onApply={handleCropApply}
+      />
 
       {/* Summary Sheet Edit Dialog */}
       <Dialog open={summaryEditDialogOpen} onClose={() => {

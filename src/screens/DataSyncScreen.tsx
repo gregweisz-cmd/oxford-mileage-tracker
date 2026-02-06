@@ -235,8 +235,9 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
       <StatusBar style="dark" />
       <UnifiedHeader
         title="Data Sync"
-        onBackPress={() => navigation.goBack()}
         showBackButton={true}
+        onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
       />
       
       <ScrollView style={styles.content}>

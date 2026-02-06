@@ -558,6 +558,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           title="Per Diem"
           showBackButton
           onBackPress={() => navigation.goBack()}
+          onHomePress={() => navigation.navigate('Home')}
         />
         <View style={styles.loadingContainer}>
           <Text>Loading...</Text>
@@ -587,6 +588,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
         title="Per Diem"
         showBackButton
         onBackPress={() => navigation.goBack()}
+        onHomePress={() => navigation.navigate('Home')}
       />
 
       {/* Month Navigation */}

@@ -261,10 +261,15 @@ export default function ReceiptCropScreen() {
     <View style={styles.container}>
       <SafeAreaView style={styles.headerSafeArea} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-            <MaterialIcons name="close" size={24} color="#fff" />
-            <Text style={styles.headerButtonText}>Cancel</Text>
-          </TouchableOpacity>
+          <View style={styles.headerLeftRow}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+              <MaterialIcons name="close" size={24} color="#fff" />
+              <Text style={styles.headerButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.headerButton}>
+              <MaterialIcons name="home" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerTitle}>Crop receipt</Text>
           <TouchableOpacity
             onPress={handleDone}
@@ -329,6 +334,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  headerLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   headerButton: { minWidth: 70, flexDirection: 'row', alignItems: 'center' },
   headerButtonText: { color: '#fff', fontSize: 16 },
