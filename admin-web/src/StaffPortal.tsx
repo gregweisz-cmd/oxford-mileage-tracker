@@ -3468,7 +3468,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Instructions - compact
     pdf.setFontSize(6);
     pdf.setFont('helvetica', 'normal');
-    pdf.text('Enter locations, full physical addresses (in parentheses), and brief description of all work-related travel. Also, list any work done from BA or current location.', 20, 45, { maxWidth: 170 });
+    pdf.text('Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.', 20, 45, { maxWidth: 170 });
     
     // Table Headers - compact layout
     const headerY = 55;
@@ -6683,16 +6683,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   if (existingIndex >= 0) {
                                     // Update existing
                                     const dayOffType = e.target.checked ? (newDescriptions[existingIndex].dayOffType || 'Day Off') : null;
-                                    // Check if the current description is a day off type
-                                    const currentDesc = newDescriptions[existingIndex].description || '';
-                                    const isDayOffType = currentDesc === 'Day Off' || currentDesc === 'PTO' || currentDesc === 'Sick Day' || currentDesc === 'Holiday' || currentDesc === 'Unpaid Leave';
-                                    
+                                    // When user unchecks Day off, always clear the description so it doesn't persist on Cost Center tab.
+                                    // Mileage entries for that day are unchanged (RM can decide if they keep mileage).
                                     newDescriptions[existingIndex] = {
                                       ...newDescriptions[existingIndex],
                                       dayOff: e.target.checked,
                                       dayOffType: dayOffType,
-                                      // Clear description if unchecking, or if it was a day off type
-                                      description: e.target.checked ? (dayOffType || 'Day Off') : (isDayOffType ? '' : newDescriptions[existingIndex].description)
+                                      description: e.target.checked ? (dayOffType || 'Day Off') : ''
                                     };
                                     descToSave = newDescriptions[existingIndex];
                                   } else {
@@ -6854,8 +6851,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
               <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                * Enter locations, full physical addresses (in parentheses), and brief description of all work-related travel. 
-                Also, list any work done from BA or current location.
+                * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
               </Typography>
               <Typography variant="body2" color="textSecondary">
                 * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
