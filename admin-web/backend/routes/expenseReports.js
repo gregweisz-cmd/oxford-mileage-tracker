@@ -676,21 +676,22 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
     // This prevents deleted mileage entries from being restored when Save is clicked
     
     // 3. Sync receipts - backend matches what the user sent (same as daily descriptions / time tracking)
-    // Step 1: Delete receipts for this employee in this month that are NOT in the payload
-    const receiptIdsToKeep = (reportData.receipts || [])
-      .map((r) => r.id)
-      .filter(Boolean);
+    // Per Diem receipts are owned only by the Per Diem tab; header Save must not delete or upsert them.
+    // Otherwise unchecking a day in Per Diem then clicking header Save would re-insert the receipt (from stale parent state).
+    const allReceipts = reportData.receipts || [];
+    const nonPerDiemReceipts = allReceipts.filter((r) => (r.category || '') !== 'Per Diem');
+    const receiptIdsToKeep = nonPerDiemReceipts.map((r) => r.id).filter(Boolean);
     await new Promise((resolve, reject) => {
       if (receiptIdsToKeep.length === 0) {
         db.run(
-          'DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ?',
+          "DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ? AND (category IS NULL OR category != 'Per Diem')",
           [employeeId, startDate, endDate],
           function (deleteErr) {
             if (deleteErr) {
               debugError('❌ Error deleting receipts for month:', deleteErr);
               reject(deleteErr);
             } else {
-              debugLog(`🗑️ Deleted ${this.changes} receipts for month ${month}/${year} (user removed all)`);
+              debugLog(`🗑️ Deleted ${this.changes} non-Per-Diem receipts for month ${month}/${year}`);
               resolve();
             }
           }
@@ -698,7 +699,7 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
       } else {
         const placeholders = receiptIdsToKeep.map(() => '?').join(',');
         db.run(
-          `DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ? AND id NOT IN (${placeholders})`,
+          `DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ? AND (category IS NULL OR category != 'Per Diem') AND id NOT IN (${placeholders})`,
           [employeeId, startDate, endDate, ...receiptIdsToKeep],
           function (deleteErr) {
             if (deleteErr) {
@@ -715,9 +716,9 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
       }
     });
 
-    // Step 2: Upsert each receipt in the payload (insert or update)
-    if (reportData.receipts && reportData.receipts.length > 0) {
-      for (const receipt of reportData.receipts) {
+    // Step 2: Upsert only non-Per-Diem receipts (Per Diem is managed only by the Per Diem tab)
+    if (nonPerDiemReceipts.length > 0) {
+      for (const receipt of nonPerDiemReceipts) {
         if (!receipt.id) continue;
         const dateStr = dateHelpers.normalizeDateString(receipt.date) || receipt.date;
         const now = new Date().toISOString();
