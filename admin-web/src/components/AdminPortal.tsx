@@ -16,7 +16,7 @@ import { SystemSettings } from './SystemSettings';
 import { TravelReasonsManagement } from './TravelReasonsManagement';
 import { DailyDescriptionOptionsManagement } from './DailyDescriptionOptionsManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
-import { debugLog, debugError, debugVerbose } from '../config/debug';
+import { debugError, debugVerbose } from '../config/debug';
 import { Employee } from '../types';
 import { NotificationBell } from './NotificationBell';
 // import OxfordHouseLogo from './OxfordHouseLogo'; // Logo is in PortalSwitcher
