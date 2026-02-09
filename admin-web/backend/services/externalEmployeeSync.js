@@ -141,7 +141,11 @@ function mapExternalToOur(ext) {
   const position = (ext.position || ext.Position || ext.title || ext.jobTitle || 'Staff').toString().trim() || 'Staff';
   const phoneNumber = (ext.phoneNumber || ext.phone || ext.Phone || ext.telephone || '').toString().trim() || '';
   const baseAddress = (ext.baseAddress || ext.base_address || ext.address || ext.Address || '').toString().trim() || '';
-  const externalId = (ext.id || ext.Id || ext.userName || ext.employeeId || '').toString().trim() || undefined;
+  // Employee ID from API (id, Id, userName, employeeId, employee_id) – assign for everyone when present
+  const externalId = (
+    ext.id || ext.Id || ext.userName || ext.employeeId || ext.employee_id || ''
+  ).toString().trim() || undefined;
+  const oxfordHouseId = externalId || '';
 
   return {
     name,
@@ -151,6 +155,7 @@ function mapExternalToOur(ext) {
     phoneNumber,
     baseAddress,
     externalId,
+    oxfordHouseId,
   };
 }
 
@@ -205,11 +210,16 @@ async function upsertOne(mapped, existing) {
 
   if (existing) {
     const id = existing.id;
+    // Always assign Employee ID from API when the API provides one; otherwise keep existing
+    const oxfordHouseId =
+      mapped.oxfordHouseId !== undefined && String(mapped.oxfordHouseId || '').trim() !== ''
+        ? String(mapped.oxfordHouseId).trim()
+        : (existing.oxfordHouseId || '');
     await new Promise((resolve, reject) => {
       db.run(
         `UPDATE employees SET
           name = ?, preferredName = ?, position = ?, phoneNumber = ?, baseAddress = ?,
-          costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, updatedAt = ?
+          costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, oxfordHouseId = ?, updatedAt = ?
         WHERE id = ?`,
         [
           mapped.name,
@@ -220,6 +230,7 @@ async function upsertOne(mapped, existing) {
           JSON.stringify(mapped.costCenters),
           JSON.stringify(existing.selectedCostCenters ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters) : mapped.costCenters),
           existing.defaultCostCenter || (mapped.costCenters[0] || ''),
+          oxfordHouseId,
           now,
           id,
         ],
@@ -249,6 +260,11 @@ async function upsertOne(mapped, existing) {
     throw new Error(`Failed to hash password: ${e.message}`);
   }
 
+  // Assign Employee ID from API when present (everyone from HR gets it)
+  const oxfordHouseId =
+    mapped.oxfordHouseId !== undefined && String(mapped.oxfordHouseId || '').trim() !== ''
+      ? String(mapped.oxfordHouseId).trim()
+      : '';
   await new Promise((resolve, reject) => {
     db.run(
       `INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt)
@@ -259,7 +275,7 @@ async function upsertOne(mapped, existing) {
         '',
         mapped.email,
         hashedPassword,
-        '',
+        oxfordHouseId,
         mapped.position,
         'employee',
         '[]',
@@ -378,28 +394,65 @@ async function previewSyncFromExternal() {
   return { creates, updates, archives };
 }
 
+/** Tables that reference employees.id via employeeId (reassign to keepId before deleting duplicate) */
+const EMPLOYEE_ID_TABLES = [
+  'mileage_entries',
+  'receipts',
+  'time_tracking',
+  'daily_descriptions',
+  'daily_odometer_readings',
+  'monthly_reports',
+  'weekly_reports',
+  'biweekly_reports',
+  'expense_reports',
+  'staff_notifications',
+];
+
 /**
- * For each email that has multiple active employees, keep the oldest (by createdAt) and archive the rest.
- * @param {Set<string>} syncedEmails - lowercase emails we consider "canonical" from this sync
- * @returns {Promise<number>} count of archived duplicate rows
+ * Reassign all rows referencing duplicateId to keepId, then delete the duplicate employee.
+ * @param {string} keepId - employee id to keep
+ * @param {string} duplicateId - employee id to remove
+ * @returns {Promise<void>}
  */
-async function archiveDuplicateEmails(syncedEmails) {
-  let archived = 0;
-  const now = new Date().toISOString();
+async function reassignAndDeleteDuplicate(keepId, duplicateId) {
+  const db = dbService.getDb();
+  for (const table of EMPLOYEE_ID_TABLES) {
+    await new Promise((resolve, reject) => {
+      db.run(`UPDATE ${table} SET employeeId = ? WHERE employeeId = ?`, [keepId, duplicateId], (err) => (err ? reject(err) : resolve()));
+    });
+  }
+  await new Promise((resolve, reject) => {
+    db.run('UPDATE employees SET supervisorId = ? WHERE supervisorId = ?', [keepId, duplicateId], (err) => (err ? reject(err) : resolve()));
+  });
+  await new Promise((resolve, reject) => {
+    db.run('DELETE FROM employees WHERE id = ?', [duplicateId], (err) => (err ? reject(err) : resolve()));
+  });
+}
+
+/**
+ * For each email that has multiple active employees, keep the oldest (by createdAt) and remove the rest:
+ * reassign their data to the kept employee, then delete the duplicate rows.
+ * @param {Set<string>} syncedEmails - lowercase emails we consider "canonical" from this sync
+ * @returns {Promise<number>} count of removed (deleted) duplicate rows
+ */
+async function removeDuplicateEmails(syncedEmails) {
+  let removed = 0;
   const db = dbService.getDb();
   for (const email of syncedEmails) {
     const rows = await getActiveEmployeeIdsByEmail(email);
     if (rows.length <= 1) continue;
-    const [keep, ...toArchive] = rows;
-    for (const row of toArchive) {
-      await new Promise((resolve, reject) => {
-        db.run('UPDATE employees SET archived = 1, updatedAt = ? WHERE id = ?', [now, row.id], (err) => (err ? reject(err) : resolve()));
-      });
-      archived++;
-      debugLog('ExternalEmployeeSync: archived duplicate email', email, 'kept', keep.id, 'archived', row.id);
+    const [keep, ...toRemove] = rows;
+    for (const row of toRemove) {
+      try {
+        await reassignAndDeleteDuplicate(keep.id, row.id);
+        removed++;
+        debugLog('ExternalEmployeeSync: removed duplicate email', email, 'kept', keep.id, 'deleted', row.id);
+      } catch (err) {
+        debugError('ExternalEmployeeSync: failed to remove duplicate', row.id, err);
+      }
     }
   }
-  return archived;
+  return removed;
 }
 
 /**
@@ -457,10 +510,10 @@ async function applySyncFromExternal(body) {
     }
   }
   try {
-    const dupArchived = await archiveDuplicateEmails(appliedEmails);
-    stats.archived += dupArchived;
+    const dupRemoved = await removeDuplicateEmails(appliedEmails);
+    stats.archived += dupRemoved;
   } catch (err) {
-    stats.errors.push(`Archive-duplicates: ${err.message}`);
+    stats.errors.push(`Remove-duplicates: ${err.message}`);
   }
 
   return stats;
@@ -489,13 +542,13 @@ async function syncFromExternal() {
     }
   }
 
-  // Archive duplicate local rows (same email): keep oldest, archive the rest
+  // Remove duplicate local rows (same email): keep oldest, reassign their data, then delete
   try {
-    const dupArchived = await archiveDuplicateEmails(syncedEmails);
-    stats.archived += dupArchived;
-    if (dupArchived > 0) debugLog('ExternalEmployeeSync: archived', dupArchived, 'duplicate-by-email rows');
+    const dupRemoved = await removeDuplicateEmails(syncedEmails);
+    stats.archived += dupRemoved;
+    if (dupRemoved > 0) debugLog('ExternalEmployeeSync: removed', dupRemoved, 'duplicate-by-email rows');
   } catch (err) {
-    stats.errors.push(`Archive-duplicates: ${err.message}`);
+    stats.errors.push(`Remove-duplicates: ${err.message}`);
   }
 
   // Archive any local employee whose email is not in the HR response (HR is source of truth)
