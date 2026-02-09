@@ -87,10 +87,11 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
     });
   }
   
-  // Find employee by email
+  // Find employee by email (case-insensitive so mobile and web match)
+  const emailTrim = (email || '').toString().trim();
   db.get(
-    'SELECT * FROM employees WHERE email = ?',
-    [email],
+    'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ?',
+    [emailTrim.toLowerCase()],
     async (err, employee) => {
       if (err) {
         debugError('Login error:', err);
@@ -315,10 +316,11 @@ router.post('/api/employee-login', async (req, res) => {
     });
   }
   
-  // Find employee by email
+  // Find employee by email (case-insensitive so mobile and web always get the same record)
+  const emailTrim = (email || '').toString().trim();
   db.get(
-    'SELECT * FROM employees WHERE email = ?',
-    [email],
+    'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ?',
+    [emailTrim.toLowerCase()],
     async (err, employee) => {
       if (err) {
         debugError('Employee login error:', err);

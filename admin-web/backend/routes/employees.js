@@ -241,6 +241,47 @@ router.post('/api/employees/sync-from-external', asyncHandler(async (req, res) =
 }));
 
 /**
+ * Preview HR sync: return proposed creates, updates, archives (no DB write).
+ * POST /api/employees/sync-from-external/preview
+ */
+router.post('/api/employees/sync-from-external/preview', asyncHandler(async (req, res) => {
+  try {
+    const plan = await externalEmployeeSync.previewSyncFromExternal();
+    res.json(plan);
+  } catch (err) {
+    if (err.message && err.message.includes('not configured')) {
+      return res.status(503).json({
+        error: err.message,
+        hint: 'Set EMPLOYEE_API_TOKEN or APPWARMER_EMPLOYEE_API_TOKEN in the environment.',
+      });
+    }
+    debugError('❌ Sync preview failed:', err);
+    res.status(500).json({ error: err.message || 'Preview failed' });
+  }
+}));
+
+/**
+ * Apply only approved HR sync changes.
+ * POST /api/employees/sync-from-external/apply
+ * Body: { toCreate: string[] (emails), toUpdate: string[] (emails), toArchive: string[] (ids) }
+ */
+router.post('/api/employees/sync-from-external/apply', asyncHandler(async (req, res) => {
+  try {
+    const stats = await externalEmployeeSync.applySyncFromExternal(req.body || {});
+    res.json(stats);
+  } catch (err) {
+    if (err.message && err.message.includes('not configured')) {
+      return res.status(503).json({
+        error: err.message,
+        hint: 'Set EMPLOYEE_API_TOKEN or APPWARMER_EMPLOYEE_API_TOKEN in the environment.',
+      });
+    }
+    debugError('❌ Sync apply failed:', err);
+    res.status(500).json({ error: err.message || 'Apply failed' });
+  }
+}));
+
+/**
  * Get employee by ID
  */
 router.get('/api/employees/:id', (req, res) => {

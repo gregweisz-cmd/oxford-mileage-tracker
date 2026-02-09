@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -191,6 +191,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [showQuickCostCenterEdit, setShowQuickCostCenterEdit] = useState(false);
   const [quickEditEmployee, setQuickEditEmployee] = useState<Employee | null>(null);
   const [quickEditCostCenters, setQuickEditCostCenters] = useState<string[]>([]);
+  const [quickEditCostCenterSearch, setQuickEditCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [showEmployeeCostCenterDropdown, setShowEmployeeCostCenterDropdown] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -200,6 +201,18 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null);
   const [syncFromExternalLoading, setSyncFromExternalLoading] = useState(false);
   const [syncFromExternalMessage, setSyncFromExternalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [syncPreviewOpen, setSyncPreviewOpen] = useState(false);
+  const [syncPreviewPlan, setSyncPreviewPlan] = useState<{
+    creates: Array<{ email: string; name: string; position: string; costCenters: string[] }>;
+    updates: Array<{ email: string; name: string; position: string; costCenters: string[]; previous: { name: string; position: string; costCenters: string[] } }>;
+    archives: Array<{ id: string; name: string; email: string }>;
+  } | null>(null);
+  const [syncPreviewApproved, setSyncPreviewApproved] = useState<{
+    creates: Set<string>;
+    updates: Set<string>;
+    archives: Set<string>;
+  }>({ creates: new Set(), updates: new Set(), archives: new Set() });
+  const [syncApplyLoading, setSyncApplyLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -245,6 +258,14 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showCostCenterDropdown, showEmployeeCostCenterDropdown]);
+
+  // Filtered available cost centers for quick-edit dialog (excludes selected, filters by search)
+  const quickEditAvailableCostCenters = useMemo(() => {
+    const available = COST_CENTERS.filter(cc => !quickEditCostCenters.includes(cc));
+    const q = quickEditCostCenterSearch.trim().toLowerCase();
+    const filtered = q ? available.filter(cc => cc.toLowerCase().includes(q)) : available;
+    return filtered.sort((a, b) => a.localeCompare(b));
+  }, [quickEditCostCenters, quickEditCostCenterSearch]);
 
   // Load archived employees when viewing archived section
   React.useEffect(() => {
@@ -470,25 +491,73 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setSyncFromExternalLoading(true);
     setSyncFromExternalMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/preview`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const { synced = 0, created = 0, updated = 0, archived = 0, errors = [] } = data;
-        const parts = [`Synced ${synced} employees`];
-        if (created) parts.push(`${created} created`);
-        if (updated) parts.push(`${updated} updated`);
-        if (archived) parts.push(`${archived} archived (not in HR)`);
-        setSyncFromExternalMessage({ type: 'success', text: parts.join('; ') + (errors.length ? `. ${errors.length} issue(s) logged.` : '') });
-        if (onRefresh) onRefresh();
+        const plan = data as { creates: Array<{ email: string; name: string; position: string; costCenters: string[] }>; updates: Array<{ email: string; name: string; position: string; costCenters: string[]; previous: { name: string; position: string; costCenters: string[] } }>; archives: Array<{ id: string; name: string; email: string }> };
+        setSyncPreviewPlan(plan);
+        setSyncPreviewApproved({
+          creates: new Set((plan.creates || []).map((c: { email: string }) => c.email)),
+          updates: new Set((plan.updates || []).map((u: { email: string }) => u.email)),
+          archives: new Set((plan.archives || []).map((a: { id: string }) => a.id)),
+        });
+        setSyncPreviewOpen(true);
       } else {
-        setSyncFromExternalMessage({ type: 'error', text: data.error || `Sync failed (${res.status})` });
+        setSyncFromExternalMessage({ type: 'error', text: data.error || `Preview failed (${res.status})` });
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Sync request failed';
+      const msg = e instanceof Error ? e.message : 'Preview request failed';
       setSyncFromExternalMessage({ type: 'error', text: msg });
-      debugError('Sync from HR API failed', e);
+      debugError('Sync from HR API preview failed', e);
     } finally {
       setSyncFromExternalLoading(false);
+    }
+  };
+
+  const handleSyncPreviewToggle = (kind: 'creates' | 'updates' | 'archives', key: string, checked: boolean) => {
+    setSyncPreviewApproved((prev) => {
+      const next = new Set(prev[kind]);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return { ...prev, [kind]: next };
+    });
+  };
+
+  const handleSyncPreviewApply = async () => {
+    if (!syncPreviewPlan) return;
+    setSyncApplyLoading(true);
+    setSyncFromExternalMessage(null);
+    try {
+      const toCreate = syncPreviewPlan.creates.filter((c) => syncPreviewApproved.creates.has(c.email)).map((c) => c.email);
+      const toUpdate = syncPreviewPlan.updates.filter((u) => syncPreviewApproved.updates.has(u.email)).map((u) => u.email);
+      const toArchive = syncPreviewPlan.archives.filter((a) => syncPreviewApproved.archives.has(a.id)).map((a) => a.id);
+      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toCreate, toUpdate, toArchive }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const { created = 0, updated = 0, archived = 0, errors = [] } = data;
+        const parts = [];
+        if (created) parts.push(`${created} created`);
+        if (updated) parts.push(`${updated} updated`);
+        if (archived) parts.push(`${archived} archived`);
+        setSyncFromExternalMessage({
+          type: 'success',
+          text: parts.length ? parts.join('; ') + (errors.length ? `. ${errors.length} issue(s) logged.` : '') : 'No changes applied.',
+        });
+        setSyncPreviewOpen(false);
+        setSyncPreviewPlan(null);
+        if (onRefresh) onRefresh();
+      } else {
+        setSyncFromExternalMessage({ type: 'error', text: data.error || `Apply failed (${res.status})` });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Apply request failed';
+      setSyncFromExternalMessage({ type: 'error', text: msg });
+    } finally {
+      setSyncApplyLoading(false);
     }
   };
 
@@ -727,6 +796,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     const costCenters = parseCostCenters(employee.costCenters);
     setQuickEditEmployee(employee);
     setQuickEditCostCenters(costCenters);
+    setQuickEditCostCenterSearch('');
     setShowQuickCostCenterEdit(true);
     setShowCostCenterDropdown(true); // Open dropdown by default
   };
@@ -2015,7 +2085,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       {/* Quick Cost Center Edit Dialog */}
       <Dialog 
         open={showQuickCostCenterEdit} 
-        onClose={() => setShowQuickCostCenterEdit(false)}
+        onClose={() => {
+          setShowQuickCostCenterEdit(false);
+          setQuickEditCostCenterSearch('');
+        }}
         maxWidth="md"
         fullWidth
         PaperProps={{
@@ -2111,6 +2184,20 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       overflow: 'auto',
                       minHeight: 0
                     }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="Search cost centers..."
+                        value={quickEditCostCenterSearch}
+                        onChange={(e) => setQuickEditCostCenterSearch(e.target.value)}
+                        sx={{ 
+                          px: 1, 
+                          pt: 1, 
+                          pb: 0.5,
+                          '& .MuiOutlinedInput-root': { backgroundColor: 'background.default' }
+                        }}
+                        inputProps={{ 'aria-label': 'Search cost centers' }}
+                      />
                       <Typography variant="subtitle2" sx={{ 
                         p: 1, 
                         fontWeight: 'bold', 
@@ -2119,12 +2206,14 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         backgroundColor: 'background.paper',
                         zIndex: 1
                       }}>
-                        Available ({COST_CENTERS.length - quickEditCostCenters.length})
+                        Available ({quickEditAvailableCostCenters.length})
                       </Typography>
-                      {COST_CENTERS
-                        .filter(costCenter => !quickEditCostCenters.includes(costCenter))
-                        .sort((a, b) => a.localeCompare(b))
-                        .map((costCenter: string) => (
+                      {quickEditAvailableCostCenters.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+                          {quickEditCostCenterSearch.trim() ? 'No cost centers match your search.' : 'All cost centers are selected.'}
+                        </Typography>
+                      ) : (
+                        quickEditAvailableCostCenters.map((costCenter: string) => (
                           <MenuItem 
                             key={costCenter}
                             divider={false}
@@ -2141,7 +2230,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             <Checkbox checked={false} />
                             <ListItemText primary={costCenter} />
                           </MenuItem>
-                        ))}
+                        ))
+                      )}
                     </Box>
                   </Box>
                 </Paper>
@@ -2159,6 +2249,90 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
             disabled={quickEditCostCenters.length === 0}
           >
             Save Cost Centers
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Sync from HR API – Preview & Approve/Deny */}
+      <Dialog
+        open={syncPreviewOpen}
+        onClose={() => {
+          setSyncPreviewOpen(false);
+          setSyncPreviewPlan(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { maxHeight: '85vh' } }}
+      >
+        <DialogTitle>Sync from HR API – Review changes</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Select which changes to apply. Uncheck any you want to skip.
+          </Typography>
+          {syncPreviewPlan && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {syncPreviewPlan.creates.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'success.main' }}>
+                    Create ({syncPreviewPlan.creates.length})
+                  </Typography>
+                  <Box sx={{ maxHeight: 160, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 0.5 }}>
+                    {syncPreviewPlan.creates.map((c) => (
+                      <Box key={c.email} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                        <Checkbox size="small" checked={syncPreviewApproved.creates.has(c.email)} onChange={(e) => handleSyncPreviewToggle('creates', c.email, e.target.checked)} />
+                        <ListItemText primary={`${c.name} (${c.email})`} secondary={`${c.position} · ${(c.costCenters || []).join(', ')}`} primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {syncPreviewPlan.updates.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'info.main' }}>
+                    Update ({syncPreviewPlan.updates.length})
+                  </Typography>
+                  <Box sx={{ maxHeight: 160, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 0.5 }}>
+                    {syncPreviewPlan.updates.map((u) => (
+                      <Box key={u.email} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                        <Checkbox size="small" checked={syncPreviewApproved.updates.has(u.email)} onChange={(e) => handleSyncPreviewToggle('updates', u.email, e.target.checked)} />
+                        <ListItemText
+                          primary={`${u.name} (${u.email})`}
+                          secondary={u.previous ? `Name/position/cost centers will update from HR` : `${u.position} · ${(u.costCenters || []).join(', ')}`}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {syncPreviewPlan.archives.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'warning.main' }}>
+                    Archive – not in HR ({syncPreviewPlan.archives.length})
+                  </Typography>
+                  <Box sx={{ maxHeight: 160, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 0.5 }}>
+                    {syncPreviewPlan.archives.map((a) => (
+                      <Box key={a.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                        <Checkbox size="small" checked={syncPreviewApproved.archives.has(a.id)} onChange={(e) => handleSyncPreviewToggle('archives', a.id, e.target.checked)} />
+                        <ListItemText primary={`${a.name} (${a.email})`} secondary="Will be archived" primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {syncPreviewPlan.creates.length === 0 && syncPreviewPlan.updates.length === 0 && syncPreviewPlan.archives.length === 0 && (
+                <Typography variant="body2" color="text.secondary">No changes from HR.</Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setSyncPreviewOpen(false); setSyncPreviewPlan(null); }}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleSyncPreviewApply} disabled={syncApplyLoading || !syncPreviewPlan}>
+            {syncApplyLoading ? 'Applying...' : 'Apply selected'}
           </Button>
         </DialogActions>
       </Dialog>

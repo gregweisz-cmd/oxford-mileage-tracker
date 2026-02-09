@@ -242,10 +242,10 @@ async function upsertOne(mapped, existing) {
 }
 
 /**
- * Fetch from external API and sync into local DB
- * @returns {Promise<{ synced: number, created: number, updated: number, errors: string[] }>}
+ * Fetch from external API and return deduped list of mapped employee records (no DB write).
+ * @returns {Promise<Array<{ name, email, position, costCenters, phoneNumber, baseAddress }>>}
  */
-async function syncFromExternal() {
+async function fetchAndMapExternal() {
   const token = getToken();
   if (!token) {
     throw new Error(
@@ -253,45 +253,13 @@ async function syncFromExternal() {
       'Use a .env file in the backend directory (admin-web/backend/.env), then restart the server.'
     );
   }
-
   const res = await fetch(EXTERNAL_API_URL, {
     method: 'GET',
-    headers: {
-      token,
-      Accept: 'application/json',
-    },
+    headers: { token, Accept: 'application/json' },
   });
-
-  if (!res.ok) {
-    throw new Error(`External API returned ${res.status}: ${res.statusText}`);
-  }
-
+  if (!res.ok) throw new Error(`External API returned ${res.status}: ${res.statusText}`);
   const body = await res.json().catch(() => ({}));
   const rawList = normalizeResponse(body);
-  const stats = { synced: 0, created: 0, updated: 0, archived: 0, errors: [] };
-  const syncedEmails = new Set();
-
-  // Debug: log API response shape (no sensitive values) so we can fix normalizer if needed
-  const shape =
-    body == null
-      ? 'null'
-      : Array.isArray(body)
-        ? `array(${body.length})`
-        : typeof body === 'object'
-          ? `object keys [${Object.keys(body).join(', ')}]`
-          : typeof body;
-  debugLog('ExternalEmployeeSync: API response', shape, 'normalized list length=', rawList.length);
-  if (rawList.length === 0 && body && typeof body === 'object' && !Array.isArray(body)) {
-    const arrKeys = Object.keys(body).filter((k) => Array.isArray(body[k]));
-    if (arrKeys.length) {
-      debugLog('ExternalEmployeeSync: found array keys but not used:', arrKeys.map((k) => `${k}(${body[k].length})`).join(', '));
-    }
-  }
-  if (rawList.length > 0) {
-    debugLog('ExternalEmployeeSync: first record keys (for cost-center mapping):', Object.keys(rawList[0]).join(', '));
-  }
-
-  // Dedupe: one person per external id (or per email if no id). Merge cost centers from all rows for that person.
   const personKey = (ext) => (ext.id || ext.Id || '').toString().trim() || (ext.userName || ext.email || ext.Email || '').toString().trim().toLowerCase();
   const byPerson = new Map();
   for (const ext of rawList) {
@@ -306,16 +274,126 @@ async function syncFromExternal() {
     const combined = [...new Set(group.flatMap((e) => parseCostCenters(e)))];
     mergedList.push(combined.length ? { ...first, costCenters: combined } : first);
   }
-  debugLog('ExternalEmployeeSync: deduped', rawList.length, 'rows ->', mergedList.length, 'people');
-
+  const mappedList = [];
   for (const ext of mergedList) {
-    let mapped = null;
-    try {
-      mapped = mapExternalToOur(ext);
-      if (!mapped) {
-        stats.errors.push(`Skipped record (missing name/email): ${JSON.stringify(ext).slice(0, 80)}`);
-        continue;
+    const mapped = mapExternalToOur(ext);
+    if (mapped) mappedList.push(mapped);
+  }
+  return mappedList;
+}
+
+/**
+ * Preview what sync would do: returns creates, updates, and archives without writing.
+ * @returns {Promise<{ creates: Array<{email,name,position,costCenters}>, updates: Array<{email,name,position,costCenters,previous}>, archives: Array<{id,name,email}> }>}
+ */
+async function previewSyncFromExternal() {
+  const mappedList = await fetchAndMapExternal();
+  const syncedEmails = new Set(mappedList.map((m) => m.email.toLowerCase().trim()));
+  const creates = [];
+  const updates = [];
+  for (const mapped of mappedList) {
+    const existing = await getEmployeeByEmail(mapped.email);
+    const prevCC = existing && existing.costCenters
+      ? (typeof existing.costCenters === 'string' ? JSON.parse(existing.costCenters || '[]') : existing.costCenters)
+      : [];
+    const prevSelected = existing && existing.selectedCostCenters
+      ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters)
+      : [];
+    if (!existing) {
+      creates.push({ email: mapped.email, name: mapped.name, position: mapped.position, costCenters: mapped.costCenters });
+    } else {
+      const same =
+        (existing.name || '') === (mapped.name || '') &&
+        (existing.position || '') === (mapped.position || '') &&
+        JSON.stringify(prevCC.sort()) === JSON.stringify((mapped.costCenters || []).sort()) &&
+        (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
+        (existing.baseAddress || '') === (mapped.baseAddress || '');
+      if (!same) {
+        updates.push({
+          email: mapped.email,
+          name: mapped.name,
+          position: mapped.position,
+          costCenters: mapped.costCenters,
+          previous: {
+            name: existing.name,
+            position: existing.position,
+            costCenters: prevCC,
+            selectedCostCenters: prevSelected,
+          },
+        });
       }
+    }
+  }
+  const db = dbService.getDb();
+  const rows = await new Promise((resolve, reject) => {
+    db.all('SELECT id, name, email FROM employees WHERE (archived IS NULL OR archived = 0)', [], (err, r) => (err ? reject(err) : resolve(r || [])));
+  });
+  const archives = rows
+    .filter((r) => !syncedEmails.has((r.email || '').toLowerCase().trim()))
+    .map((r) => ({ id: r.id, name: r.name, email: r.email }));
+  return { creates, updates, archives };
+}
+
+/**
+ * Apply only approved sync changes.
+ * @param {{ toCreate: string[], toUpdate: string[], toArchive: string[] }} body - emails for create/update, ids for archive
+ * @returns {Promise<{ synced: number, created: number, updated: number, archived: number, errors: string[] }>}
+ */
+async function applySyncFromExternal(body) {
+  const toCreate = Array.isArray(body.toCreate) ? body.toCreate.map((e) => String(e).trim().toLowerCase()) : [];
+  const toUpdate = Array.isArray(body.toUpdate) ? body.toUpdate.map((e) => String(e).trim().toLowerCase()) : [];
+  const toArchive = Array.isArray(body.toArchive) ? body.toArchive.map((id) => String(id).trim()) : [];
+  const mappedList = await fetchAndMapExternal();
+  const stats = { synced: 0, created: 0, updated: 0, archived: 0, errors: [] };
+  const createSet = new Set(toCreate);
+  const updateSet = new Set(toUpdate);
+  for (const mapped of mappedList) {
+    const emailKey = mapped.email.toLowerCase().trim();
+    const existing = await getEmployeeByEmail(mapped.email);
+    if (!existing && createSet.has(emailKey)) {
+      try {
+        await upsertOne(mapped, null);
+        stats.created++;
+        stats.synced++;
+      } catch (err) {
+        stats.errors.push(`${mapped.email}: ${err.message}`);
+      }
+    } else if (existing && updateSet.has(emailKey)) {
+      try {
+        await upsertOne(mapped, existing);
+        stats.updated++;
+        stats.synced++;
+      } catch (err) {
+        stats.errors.push(`${mapped.email}: ${err.message}`);
+      }
+    }
+  }
+  const archiveSet = new Set(toArchive);
+  const db = dbService.getDb();
+  for (const id of archiveSet) {
+    try {
+      await new Promise((resolve, reject) => {
+        db.run('UPDATE employees SET archived = 1, updatedAt = ? WHERE id = ?', [new Date().toISOString(), id], (err) => (err ? reject(err) : resolve()));
+      });
+      stats.archived++;
+    } catch (err) {
+      stats.errors.push(`Archive ${id}: ${err.message}`);
+    }
+  }
+  return stats;
+}
+
+/**
+ * Fetch from external API and sync into local DB (apply all changes; used when no preview flow).
+ * @returns {Promise<{ synced: number, created: number, updated: number, archived: number, errors: string[] }>}
+ */
+async function syncFromExternal() {
+  const mappedList = await fetchAndMapExternal();
+  const stats = { synced: 0, created: 0, updated: 0, archived: 0, errors: [] };
+  const syncedEmails = new Set();
+
+  for (const mapped of mappedList) {
+    try {
       const existing = await getEmployeeByEmail(mapped.email);
       const result = await upsertOne(mapped, existing);
       stats.synced++;
@@ -323,7 +401,7 @@ async function syncFromExternal() {
       if (result.updated) stats.updated++;
       syncedEmails.add(mapped.email.toLowerCase().trim());
     } catch (err) {
-      stats.errors.push(`${mapped ? mapped.email : 'unknown'}: ${err.message}`);
+      stats.errors.push(`${mapped.email}: ${err.message}`);
       debugError('ExternalEmployeeSync: error for record', err);
     }
   }
@@ -357,6 +435,8 @@ async function syncFromExternal() {
 module.exports = {
   getToken,
   syncFromExternal,
+  previewSyncFromExternal,
+  applySyncFromExternal,
   normalizeResponse,
   mapExternalToOur,
 };
