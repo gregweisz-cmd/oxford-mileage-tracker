@@ -266,6 +266,7 @@ router.post('/api/employees/sync-from-external/preview', asyncHandler(async (req
  * Body: { toCreate: string[] (emails), toUpdate: string[] (emails), toArchive: string[] (ids) }
  */
 router.post('/api/employees/sync-from-external/apply', asyncHandler(async (req, res) => {
+  console.log('[HR Sync] Apply requested', { toCreate: (req.body?.toCreate?.length ?? 0), toUpdate: (req.body?.toUpdate?.length ?? 0), toArchive: (req.body?.toArchive?.length ?? 0) });
   try {
     const stats = await externalEmployeeSync.applySyncFromExternal(req.body || {});
     res.json(stats);

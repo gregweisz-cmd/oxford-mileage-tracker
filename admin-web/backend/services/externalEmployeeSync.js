@@ -410,6 +410,7 @@ const EMPLOYEE_ID_TABLES = [
 
 /**
  * Reassign all rows referencing duplicateId to keepId, then delete the duplicate employee.
+ * Skips tables that don't exist so old DBs don't break.
  * @param {string} keepId - employee id to keep
  * @param {string} duplicateId - employee id to remove
  * @returns {Promise<void>}
@@ -417,9 +418,16 @@ const EMPLOYEE_ID_TABLES = [
 async function reassignAndDeleteDuplicate(keepId, duplicateId) {
   const db = dbService.getDb();
   for (const table of EMPLOYEE_ID_TABLES) {
-    await new Promise((resolve, reject) => {
-      db.run(`UPDATE ${table} SET employeeId = ? WHERE employeeId = ?`, [keepId, duplicateId], (err) => (err ? reject(err) : resolve()));
-    });
+    try {
+      await new Promise((resolve, reject) => {
+        db.run(`UPDATE ${table} SET employeeId = ? WHERE employeeId = ?`, [keepId, duplicateId], (err) => (err ? reject(err) : resolve()));
+      });
+    } catch (err) {
+      if (!err.message || !err.message.includes('no such table')) {
+        throw err;
+      }
+      debugLog('ExternalEmployeeSync: skip table', table, '(not found)');
+    }
   }
   await new Promise((resolve, reject) => {
     db.run('UPDATE employees SET supervisorId = ? WHERE supervisorId = ?', [keepId, duplicateId], (err) => (err ? reject(err) : resolve()));
@@ -430,6 +438,29 @@ async function reassignAndDeleteDuplicate(keepId, duplicateId) {
 }
 
 /**
+ * Find all emails that have more than one active employee in the DB (for logging).
+ * @returns {Promise<Set<string>>}
+ */
+async function findDuplicateEmailsInDb() {
+  const db = dbService.getDb();
+  const rows = await new Promise((resolve, reject) => {
+    db.all('SELECT id, email, createdAt FROM employees WHERE (archived IS NULL OR archived = 0)', [], (err, r) => (err ? reject(err) : resolve(r || [])));
+  });
+  const byEmail = new Map();
+  for (const r of rows) {
+    const key = (r.email || '').toLowerCase().trim();
+    if (!key) continue;
+    if (!byEmail.has(key)) byEmail.set(key, []);
+    byEmail.get(key).push(r);
+  }
+  const duplicateEmails = new Set();
+  for (const [email, list] of byEmail.entries()) {
+    if (list.length > 1) duplicateEmails.add(email);
+  }
+  return duplicateEmails;
+}
+
+/**
  * For each email that has multiple active employees, keep the oldest (by createdAt) and remove the rest:
  * reassign their data to the kept employee, then delete the duplicate rows.
  * @param {Set<string>} syncedEmails - lowercase emails we consider "canonical" from this sync
@@ -437,21 +468,26 @@ async function reassignAndDeleteDuplicate(keepId, duplicateId) {
  */
 async function removeDuplicateEmails(syncedEmails) {
   let removed = 0;
-  const db = dbService.getDb();
-  for (const email of syncedEmails) {
+  const emailList = Array.from(syncedEmails);
+  console.log('[HR Sync] Checking for duplicates: %d emails from HR', emailList.length);
+  for (const email of emailList) {
     const rows = await getActiveEmployeeIdsByEmail(email);
     if (rows.length <= 1) continue;
+    console.log('[HR Sync] Duplicate email "%s": %d rows (keeping oldest, removing %d)', email, rows.length, rows.length - 1);
     const [keep, ...toRemove] = rows;
     for (const row of toRemove) {
       try {
         await reassignAndDeleteDuplicate(keep.id, row.id);
         removed++;
+        console.log('[HR Sync] Removed duplicate: kept %s, deleted %s', keep.id, row.id);
         debugLog('ExternalEmployeeSync: removed duplicate email', email, 'kept', keep.id, 'deleted', row.id);
       } catch (err) {
+        console.error('[HR Sync] Failed to remove duplicate', row.id, err.message);
         debugError('ExternalEmployeeSync: failed to remove duplicate', row.id, err);
       }
     }
   }
+  console.log('[HR Sync] Duplicate removal done: %d rows removed', removed);
   return removed;
 }
 
@@ -465,7 +501,7 @@ async function applySyncFromExternal(body) {
   const toUpdate = Array.isArray(body.toUpdate) ? body.toUpdate.map((e) => String(e).trim().toLowerCase()) : [];
   const toArchive = Array.isArray(body.toArchive) ? body.toArchive.map((id) => String(id).trim()) : [];
   const mappedList = await fetchAndMapExternal();
-  const stats = { synced: 0, created: 0, updated: 0, archived: 0, errors: [] };
+  const stats = { synced: 0, created: 0, updated: 0, archived: 0, duplicatesRemoved: 0, errors: [] };
   const createSet = new Set(toCreate);
   const updateSet = new Set(toUpdate);
   for (const mapped of mappedList) {
@@ -502,17 +538,24 @@ async function applySyncFromExternal(body) {
     }
   }
 
-  // Build set of emails we touched (from mappedList) and archive any duplicate local rows
-  const appliedEmails = new Set();
-  for (const m of mappedList) {
-    if (createSet.has(m.email.toLowerCase().trim()) || updateSet.has(m.email.toLowerCase().trim())) {
-      appliedEmails.add(m.email.toLowerCase().trim());
-    }
-  }
+  // Remove duplicate local rows: (1) for everyone in the HR feed, (2) then any remaining duplicates in DB
+  const allEmailsFromHr = new Set(mappedList.map((m) => m.email.toLowerCase().trim()));
+  console.log('[HR Sync] Apply: removing duplicates for %d emails from HR', allEmailsFromHr.size);
   try {
-    const dupRemoved = await removeDuplicateEmails(appliedEmails);
+    let dupRemoved = await removeDuplicateEmails(allEmailsFromHr);
+    const duplicateEmailsInDb = await findDuplicateEmailsInDb();
+    if (duplicateEmailsInDb.size > 0) {
+      console.log('[HR Sync] Found %d more email(s) with duplicates in DB (not only from HR):', duplicateEmailsInDb.size, Array.from(duplicateEmailsInDb).slice(0, 5).join(', '));
+      dupRemoved += await removeDuplicateEmails(duplicateEmailsInDb);
+    }
     stats.archived += dupRemoved;
+    stats.duplicatesRemoved = dupRemoved;
+    if (dupRemoved > 0) {
+      console.log('[HR Sync] Apply complete: %d duplicate(s) removed', dupRemoved);
+      debugLog('ExternalEmployeeSync (apply): removed', dupRemoved, 'duplicate-by-email rows');
+    }
   } catch (err) {
+    console.error('[HR Sync] Remove-duplicates error:', err.message);
     stats.errors.push(`Remove-duplicates: ${err.message}`);
   }
 
@@ -544,7 +587,11 @@ async function syncFromExternal() {
 
   // Remove duplicate local rows (same email): keep oldest, reassign their data, then delete
   try {
-    const dupRemoved = await removeDuplicateEmails(syncedEmails);
+    let dupRemoved = await removeDuplicateEmails(syncedEmails);
+    const duplicateEmailsInDb = await findDuplicateEmailsInDb();
+    if (duplicateEmailsInDb.size > 0) {
+      dupRemoved += await removeDuplicateEmails(duplicateEmailsInDb);
+    }
     stats.archived += dupRemoved;
     if (dupRemoved > 0) debugLog('ExternalEmployeeSync: removed', dupRemoved, 'duplicate-by-email rows');
   } catch (err) {

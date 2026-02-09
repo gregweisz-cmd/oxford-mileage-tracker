@@ -538,11 +538,12 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const { created = 0, updated = 0, archived = 0, errors = [] } = data;
+        const { created = 0, updated = 0, archived = 0, duplicatesRemoved = 0, errors = [] } = data;
         const parts = [];
         if (created) parts.push(`${created} created`);
         if (updated) parts.push(`${updated} updated`);
         if (archived) parts.push(`${archived} archived`);
+        if (duplicatesRemoved) parts.push(`${duplicatesRemoved} duplicate(s) removed`);
         setSyncFromExternalMessage({
           type: 'success',
           text: parts.length ? parts.join('; ') + (errors.length ? `. ${errors.length} issue(s) logged.` : '') : 'No changes applied.',
