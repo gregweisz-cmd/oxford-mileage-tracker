@@ -122,8 +122,9 @@ function parseCostCenters(ext) {
 /**
  * Map one external record to our employee shape.
  * Tolerates: name, email, userName (Appwarmer), cost_center, cost_centers, position, phone, address, base_address, etc.
+ * Includes externalId so we can use a stable employee ID and avoid duplicates.
  * @param {object} ext
- * @returns {{ name: string, email: string, position: string, costCenters: string[], phoneNumber?: string, baseAddress?: string }|null}
+ * @returns {{ name: string, email: string, position: string, costCenters: string[], phoneNumber?: string, baseAddress?: string, externalId?: string }|null}
  */
 function mapExternalToOur(ext) {
   if (!ext || typeof ext !== 'object') return null;
@@ -140,6 +141,7 @@ function mapExternalToOur(ext) {
   const position = (ext.position || ext.Position || ext.title || ext.jobTitle || 'Staff').toString().trim() || 'Staff';
   const phoneNumber = (ext.phoneNumber || ext.phone || ext.Phone || ext.telephone || '').toString().trim() || '';
   const baseAddress = (ext.baseAddress || ext.base_address || ext.address || ext.Address || '').toString().trim() || '';
+  const externalId = (ext.id || ext.Id || ext.userName || ext.employeeId || '').toString().trim() || undefined;
 
   return {
     name,
@@ -148,21 +150,46 @@ function mapExternalToOur(ext) {
     costCenters,
     phoneNumber,
     baseAddress,
+    externalId,
   };
 }
 
 /**
- * Find employee by email (case-insensitive)
+ * Find the canonical employee by email (case-insensitive).
+ * If multiple rows exist, returns the oldest by createdAt so we consistently update the same record.
  * @param {string} email
  * @returns {Promise<object|null>}
  */
 function getEmployeeByEmail(email) {
   return new Promise((resolve, reject) => {
     const db = dbService.getDb();
-    db.get('SELECT * FROM employees WHERE LOWER(TRIM(email)) = ?', [email.trim().toLowerCase()], (err, row) => {
-      if (err) reject(err);
-      else resolve(row || null);
-    });
+    db.get(
+      'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ? AND (archived IS NULL OR archived = 0) ORDER BY createdAt ASC, id ASC LIMIT 1',
+      [email.trim().toLowerCase()],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
+/**
+ * Find all active employees with this email (for dedupe/archive step).
+ * @param {string} email
+ * @returns {Promise<Array<{ id: string, createdAt: string }>>}
+ */
+function getActiveEmployeeIdsByEmail(email) {
+  return new Promise((resolve, reject) => {
+    const db = dbService.getDb();
+    db.all(
+      'SELECT id, createdAt FROM employees WHERE LOWER(TRIM(email)) = ? AND (archived IS NULL OR archived = 0) ORDER BY createdAt ASC, id ASC',
+      [email.trim().toLowerCase()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
   });
 }
 
@@ -202,7 +229,18 @@ async function upsertOne(mapped, existing) {
     return { created: false, updated: true, id };
   }
 
-  const id = helpers.generateEmployeeId(mapped.name);
+  // Re-check: another row with this email may exist (e.g. duplicate in same batch)
+  const existingAgain = await getEmployeeByEmail(mapped.email);
+  if (existingAgain) {
+    await upsertOne(mapped, existingAgain);
+    return { created: false, updated: true, id: existingAgain.id };
+  }
+
+  // Use stable ID from HR when available so we never create a second row for the same person
+  const rawExternalId = mapped.externalId && String(mapped.externalId).trim();
+  const id = rawExternalId
+    ? 'hr-' + rawExternalId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 100)
+    : helpers.generateEmployeeId(mapped.name);
   const plainPassword = helpers.generateDefaultPassword(mapped.name);
   let hashedPassword;
   try {
@@ -279,7 +317,13 @@ async function fetchAndMapExternal() {
     const mapped = mapExternalToOur(ext);
     if (mapped) mappedList.push(mapped);
   }
-  return mappedList;
+  // One person per email: HR may return same email under different external ids; keep first only
+  const byEmail = new Map();
+  for (const m of mappedList) {
+    const key = m.email.toLowerCase().trim();
+    if (!byEmail.has(key)) byEmail.set(key, m);
+  }
+  return Array.from(byEmail.values());
 }
 
 /**
@@ -335,6 +379,30 @@ async function previewSyncFromExternal() {
 }
 
 /**
+ * For each email that has multiple active employees, keep the oldest (by createdAt) and archive the rest.
+ * @param {Set<string>} syncedEmails - lowercase emails we consider "canonical" from this sync
+ * @returns {Promise<number>} count of archived duplicate rows
+ */
+async function archiveDuplicateEmails(syncedEmails) {
+  let archived = 0;
+  const now = new Date().toISOString();
+  const db = dbService.getDb();
+  for (const email of syncedEmails) {
+    const rows = await getActiveEmployeeIdsByEmail(email);
+    if (rows.length <= 1) continue;
+    const [keep, ...toArchive] = rows;
+    for (const row of toArchive) {
+      await new Promise((resolve, reject) => {
+        db.run('UPDATE employees SET archived = 1, updatedAt = ? WHERE id = ?', [now, row.id], (err) => (err ? reject(err) : resolve()));
+      });
+      archived++;
+      debugLog('ExternalEmployeeSync: archived duplicate email', email, 'kept', keep.id, 'archived', row.id);
+    }
+  }
+  return archived;
+}
+
+/**
  * Apply only approved sync changes.
  * @param {{ toCreate: string[], toUpdate: string[], toArchive: string[] }} body - emails for create/update, ids for archive
  * @returns {Promise<{ synced: number, created: number, updated: number, archived: number, errors: string[] }>}
@@ -380,6 +448,21 @@ async function applySyncFromExternal(body) {
       stats.errors.push(`Archive ${id}: ${err.message}`);
     }
   }
+
+  // Build set of emails we touched (from mappedList) and archive any duplicate local rows
+  const appliedEmails = new Set();
+  for (const m of mappedList) {
+    if (createSet.has(m.email.toLowerCase().trim()) || updateSet.has(m.email.toLowerCase().trim())) {
+      appliedEmails.add(m.email.toLowerCase().trim());
+    }
+  }
+  try {
+    const dupArchived = await archiveDuplicateEmails(appliedEmails);
+    stats.archived += dupArchived;
+  } catch (err) {
+    stats.errors.push(`Archive-duplicates: ${err.message}`);
+  }
+
   return stats;
 }
 
@@ -406,6 +489,15 @@ async function syncFromExternal() {
     }
   }
 
+  // Archive duplicate local rows (same email): keep oldest, archive the rest
+  try {
+    const dupArchived = await archiveDuplicateEmails(syncedEmails);
+    stats.archived += dupArchived;
+    if (dupArchived > 0) debugLog('ExternalEmployeeSync: archived', dupArchived, 'duplicate-by-email rows');
+  } catch (err) {
+    stats.errors.push(`Archive-duplicates: ${err.message}`);
+  }
+
   // Archive any local employee whose email is not in the HR response (HR is source of truth)
   const db = dbService.getDb();
   try {
@@ -419,7 +511,7 @@ async function syncFromExternal() {
         db.run('UPDATE employees SET archived = 1, updatedAt = ? WHERE id = ?', [now, row.id], (err) => (err ? reject(err) : resolve()));
       });
     }
-    stats.archived = toArchive.length;
+    stats.archived += toArchive.length;
     if (toArchive.length > 0) {
       debugLog('ExternalEmployeeSync: archived', toArchive.length, 'local employees not in HR');
     }
