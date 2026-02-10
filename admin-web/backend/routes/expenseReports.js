@@ -2244,18 +2244,26 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 });
 
 /**
- * Delete expense report
+ * Delete expense report (and its revision notes)
  */
 router.delete('/api/expense-reports/:id', (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
-  
-  db.run('DELETE FROM expense_reports WHERE id = ?', [id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json({ message: 'Expense report deleted successfully' });
+
+  db.serialize(() => {
+    db.run('DELETE FROM report_revision_notes WHERE reportId = ?', [id], function(notesErr) {
+      if (notesErr) {
+        res.status(500).json({ error: notesErr.message });
+        return;
+      }
+      db.run('DELETE FROM expense_reports WHERE id = ?', [id], function(reportErr) {
+        if (reportErr) {
+          res.status(500).json({ error: reportErr.message });
+          return;
+        }
+        res.json({ message: 'Expense report deleted successfully' });
+      });
+    });
   });
 });
 

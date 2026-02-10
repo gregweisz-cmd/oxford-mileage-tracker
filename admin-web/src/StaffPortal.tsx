@@ -92,6 +92,7 @@ import { formatLocationNameAndAddress } from './utils/addressFormatter';
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 import ReceiptImageCropModal from './components/ReceiptImageCropModal';
+import { ConfirmDeleteDialog } from './components/ConfirmDeleteDialog';
 
 // Date picker imports
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -467,6 +468,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Keyboard shortcuts state
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  // Start fresh report (current month only) - confirm dialog
+  const [startFreshDialogOpen, setStartFreshDialogOpen] = useState(false);
 
   // Real-time sync
   useRealtimeStatus();
@@ -1725,14 +1728,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipts.length]); // Only update when count changes to avoid infinite loops
 
-  // Initialize tips when employee data is loaded
+  // Set tips user when employee is known, and load tips with that userId so persist matches
   useEffect(() => {
-    if (effectiveEmployeeId && !loading) {
+    if (effectiveEmployeeId) {
       setCurrentUserId(effectiveEmployeeId);
-      loadTipsForScreen('staff_portal', 'on_load');
+    }
+  }, [effectiveEmployeeId, setCurrentUserId]);
+
+  // Load tips only after we have a stable userId, passing it explicitly so localStorage key is correct
+  useEffect(() => {
+    if (effectiveEmployeeId && !loading && showTips) {
+      loadTipsForScreen('staff_portal', 'on_load', effectiveEmployeeId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveEmployeeId, loading]);
+  }, [effectiveEmployeeId, loading, showTips]);
 
   // Check for revision requests
   useEffect(() => {
@@ -4347,6 +4356,39 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
+  // Start fresh report: open confirm dialog (only for current month; handler passed to header)
+  const handleStartFreshReport = () => {
+    setStartFreshDialogOpen(true);
+  };
+
+  const handleStartFreshConfirm = async () => {
+    if (currentReportId) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Delete failed (${res.status})`);
+        }
+      } catch (e) {
+        debugError('Start fresh delete error:', e);
+        alert(e instanceof Error ? e.message : 'Failed to delete report');
+        throw e;
+      }
+    }
+    setCurrentReportId(null);
+    setReportStatus('draft');
+    setApprovalWorkflow([]);
+    setApprovalHistory([]);
+    setReportSubmittedAt(null);
+    setCurrentApprovalStage(null);
+    setCurrentApproverName(null);
+    setStartFreshDialogOpen(false);
+    setRefreshTrigger((prev) => prev + 1);
+    if (typeof showSuccess === 'function') {
+      showSuccess('Report cleared. You can start fresh for this month.');
+    }
+  };
+
   // Submit expense report (change status to submitted)
   const handleSubmitReport = async () => {
     if (!employeeData) {
@@ -5103,6 +5145,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onApproveReport={onApproveReport}
         onRequestRevision={onRequestRevision}
         onViewAllReports={fetchAllReports}
+        onStartFreshReport={
+          currentMonth === new Date().getMonth() + 1 &&
+          currentYear === new Date().getFullYear() &&
+          !isAdminView
+            ? handleStartFreshReport
+            : undefined
+        }
         onCheckCompleteness={handleCheckCompleteness}
         onRefresh={() => {
           debugVerbose('🔄 StaffPortal: Refreshing data from backend...');
@@ -5193,16 +5242,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }}
       />
 
-      {/* Tips Display */}
-      {showTips && tips.length > 0 && (
+      {/* Tips Display - pass effectiveEmployeeId so dismiss persists across logins */}
+      {showTips && tips.length > 0 && effectiveEmployeeId && (
         <div className="tips-container">
           <div className="tips-scroll-view">
             {tips.map((tip) => (
               <TipCard
                 key={tip.id}
                 tip={tip}
-                onDismiss={dismissTip}
-                onMarkSeen={markTipAsSeen}
+                onDismiss={(tipId) => dismissTip(tipId, effectiveEmployeeId)}
+                onMarkSeen={(tipId) => markTipAsSeen(tipId, effectiveEmployeeId)}
               />
             ))}
           </div>
@@ -5230,6 +5279,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       />
 
       {/* Enhanced Tab Navigation - Now in header */}
+
+      {/* Start fresh report confirmation */}
+      <ConfirmDeleteDialog
+        open={startFreshDialogOpen}
+        onClose={() => setStartFreshDialogOpen(false)}
+        onConfirm={handleStartFreshConfirm}
+        title="Start fresh report?"
+        message={`This will permanently delete your ${new Date(currentYear, currentMonth - 1).toLocaleString('default', { month: 'long' })} ${currentYear} report. You will need to re-enter data. This cannot be undone.`}
+        confirmButtonLabel="Start fresh"
+      />
 
       <Dialog 
         open={approvalCommentDialogOpen} 

@@ -46,7 +46,7 @@ import {
 import {
   // Save as SaveIcon, // Currently unused
   Edit as EditIcon,
-  // Delete as DeleteIcon, // Currently unused
+  Delete as DeleteIcon,
   // Add as AddIcon, // Currently unused
   Visibility as VisibilityIcon,
   CheckCircle as CheckCircleIcon,
@@ -75,6 +75,7 @@ import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
 import { NotificationBell } from './NotificationBell';
 import DetailedReportView from './DetailedReportView';
+import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
@@ -221,6 +222,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [selectedDelegateId, setSelectedDelegateId] = useState<string>('');
   const [availableDelegates, setAvailableDelegates] = useState<Employee[]>([]);
   const [loadingDelegates, setLoadingDelegates] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<TeamReport | null>(null);
 
   // Memoize the employee object to prevent SupervisorDashboard from re-rendering unnecessarily
   const currentEmployee = useMemo(() => ({ id: supervisorId, name: supervisorName }), [supervisorId, supervisorName]);
@@ -765,6 +768,33 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       alert('Failed to add comment. Please try again.');
     } finally {
       setSavingAction(false);
+    }
+  };
+
+  const handleDeleteReportClick = (report: TeamReport) => {
+    setReportToDelete(report);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteReportConfirm = async () => {
+    if (!reportToDelete) return;
+    const id = reportToDelete.id;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/expense-reports/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Delete failed (${res.status})`);
+      }
+      setReportToDelete(null);
+      setDeleteDialogOpen(false);
+      if (selectedReport?.id === id) setSelectedReport(null);
+      if (selectedReportId === id) setSelectedReportId(null);
+      setDetailedReportViewOpen(false);
+      await loadTeamReports();
+    } catch (e) {
+      debugError('Delete report error:', e);
+      alert(e instanceof Error ? e.message : 'Failed to delete report');
+      throw e;
     }
   };
 
@@ -1315,6 +1345,15 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                                 <CommentIcon />
                               </IconButton>
                             </Tooltip>
+                            <Tooltip title="Delete report">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeleteReportClick(report)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Tooltip>
                           </Box>
                         </TableCell>
                       </TableRow>
@@ -1620,6 +1659,23 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Delete report confirmation */}
+      <ConfirmDeleteDialog
+        open={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setReportToDelete(null);
+        }}
+        onConfirm={handleDeleteReportConfirm}
+        title="Delete expense report?"
+        message={
+          reportToDelete
+            ? `This will permanently delete the report for ${reportToDelete.employeeName} – ${new Date(reportToDelete.year, reportToDelete.month - 1).toLocaleString('default', { month: 'long' })} ${reportToDelete.year}. This cannot be undone.`
+            : 'This will permanently delete the report. This cannot be undone.'
+        }
+        confirmButtonLabel="Delete report"
+      />
 
       {/* Delegate Dialog */}
       <Dialog

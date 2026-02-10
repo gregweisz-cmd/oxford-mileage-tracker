@@ -43,7 +43,9 @@ import {
   ArrowDownward as ArrowDownwardIcon,
   UnfoldMore as UnfoldMoreIcon,
   CheckCircle as CheckCircleIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
+import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { getEmployeeDisplayName } from '../utils/employeeUtils';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import DetailedReportView from './DetailedReportView';
@@ -112,6 +114,8 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
   
   // Keyboard shortcuts state
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<ExpenseReport | null>(null);
   
   // Sorting state
   const [sortField, setSortField] = useState<keyof ExpenseReport | ''>('');
@@ -404,6 +408,35 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
     setSelectedReport(report);
     setSelectedReportId(report.id);
     setDetailedReportViewOpen(true);
+  };
+
+  const handleDeleteReportClick = (report: ExpenseReport) => {
+    setReportToDelete(report);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteReportConfirm = async () => {
+    if (!reportToDelete) return;
+    const id = reportToDelete.id;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/expense-reports/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Delete failed (${res.status})`);
+      }
+      setReportToDelete(null);
+      setDeleteDialogOpen(false);
+      if (selectedReport?.id === id) {
+        setSelectedReport(null);
+        setSelectedReportId(null);
+        setDetailedReportViewOpen(false);
+      }
+      loadReports();
+    } catch (e) {
+      debugError('Delete report error:', e);
+      alert(e instanceof Error ? e.message : 'Failed to delete report');
+      throw e;
+    }
   };
 
   const handleReportClickFromNotification = async (
@@ -1207,7 +1240,14 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
                       >
                         <DownloadIcon />
                       </IconButton>
-                      {/* Contracts portal is review-only - no approval actions */}
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteReportClick(report)}
+                        title="Delete report"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1260,7 +1300,14 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
                       >
                         <ViewIcon />
                       </IconButton>
-                      {/* Note: Contracts portal is review-only, no revision request functionality */}
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteReportClick(report)}
+                        title="Delete report"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1313,6 +1360,14 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
                       >
                         <DownloadIcon />
                       </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteReportClick(report)}
+                        title="Delete report"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1351,6 +1406,14 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
                       >
                         <ViewIcon />
                       </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteReportClick(report)}
+                        title="Delete report"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1359,6 +1422,23 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
           </TableContainer>
         )}
       </TabPanel>
+
+      {/* Delete report confirmation */}
+      <ConfirmDeleteDialog
+        open={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setReportToDelete(null);
+        }}
+        onConfirm={handleDeleteReportConfirm}
+        title="Delete expense report?"
+        message={
+          reportToDelete
+            ? `This will permanently delete the report for ${getDisplayName(reportToDelete)} – ${monthNames[reportToDelete.month - 1]} ${reportToDelete.year}. This cannot be undone.`
+            : 'This will permanently delete the report. This cannot be undone.'
+        }
+        confirmButtonLabel="Delete report"
+      />
 
       {/* Detailed Report View - Replaces simple View dialog */}
       {selectedReportId && (

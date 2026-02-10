@@ -13,9 +13,9 @@ interface TipsContextType {
   tips: WebTip[];
   isLoading: boolean;
   showTips: boolean;
-  loadTipsForScreen: (screen: string, trigger?: string) => Promise<void>;
-  dismissTip: (tipId: string) => Promise<void>;
-  markTipAsSeen: (tipId: string) => Promise<void>;
+  loadTipsForScreen: (screen: string, trigger?: string, userIdOverride?: string | null) => Promise<void>;
+  dismissTip: (tipId: string, userIdOverride?: string | null) => Promise<void>;
+  markTipAsSeen: (tipId: string, userIdOverride?: string | null) => Promise<void>;
   resetAllTips: () => Promise<void>;
   setShowTips: (show: boolean) => void;
   currentUserId: string | null;
@@ -35,16 +35,17 @@ export const TipsProvider: React.FC<TipsProviderProps> = ({ children }) => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [tipsService] = useState(() => WebTipsService.getInstance());
 
-  // Load tips for a specific screen
-  const loadTipsForScreen = async (screen: string, trigger?: string) => {
-    if (!currentUserId || !showTips) {
+  // Load tips for a specific screen. Use userIdOverride when provided so we use a stable userId even before context state updates.
+  const loadTipsForScreen = async (screen: string, trigger?: string, userIdOverride?: string | null) => {
+    const userId = userIdOverride ?? currentUserId;
+    if (!userId || !showTips) {
       setTips([]);
       return;
     }
 
     setIsLoading(true);
     try {
-      const screenTips = tipsService.getTipsForScreen(screen, currentUserId, trigger);
+      const screenTips = tipsService.getTipsForScreen(screen, userId, trigger);
       setTips(screenTips);
       debugLog(`✅ WebTipsProvider: Loaded ${screenTips.length} tips for ${screen}`);
     } catch (error) {
@@ -55,12 +56,13 @@ export const TipsProvider: React.FC<TipsProviderProps> = ({ children }) => {
     }
   };
 
-  // Dismiss a specific tip
-  const dismissTip = async (tipId: string) => {
-    if (!currentUserId) return;
+  // Dismiss a specific tip. Use userIdOverride so dismiss is always persisted with the same userId used when loading.
+  const dismissTip = async (tipId: string, userIdOverride?: string | null) => {
+    const userId = userIdOverride ?? currentUserId;
+    if (!userId) return;
 
     try {
-      await tipsService.dismissTip(currentUserId, tipId);
+      await tipsService.dismissTip(userId, tipId);
       setTips(prevTips => prevTips.filter(tip => tip.id !== tipId));
       debugLog('✅ WebTipsProvider: Tip dismissed:', tipId);
     } catch (error) {
@@ -69,11 +71,12 @@ export const TipsProvider: React.FC<TipsProviderProps> = ({ children }) => {
   };
 
   // Mark a tip as seen
-  const markTipAsSeen = async (tipId: string) => {
-    if (!currentUserId) return;
+  const markTipAsSeen = async (tipId: string, userIdOverride?: string | null) => {
+    const userId = userIdOverride ?? currentUserId;
+    if (!userId) return;
 
     try {
-      await tipsService.markTipAsSeen(currentUserId, tipId);
+      await tipsService.markTipAsSeen(userId, tipId);
       debugLog('✅ WebTipsProvider: Tip marked as seen:', tipId);
     } catch (error) {
       debugError('❌ WebTipsProvider: Error marking tip as seen:', error);

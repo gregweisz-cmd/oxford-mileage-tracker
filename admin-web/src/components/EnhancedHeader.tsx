@@ -27,6 +27,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Today as TodayIcon,
+  Replay as ReplayIcon,
 } from '@mui/icons-material';
 import { RealtimeStatusIndicator } from './RealtimeStatusIndicator';
 import { NotificationBell } from './NotificationBell';
@@ -50,6 +51,7 @@ interface EnhancedHeaderProps {
   onApproveReport?: () => void;
   onRequestRevision?: () => void;
   onViewAllReports?: () => void;
+  onStartFreshReport?: () => void;
   onCheckCompleteness?: () => void;
   onRefresh?: () => void;
   onSettings?: () => void;
@@ -78,6 +80,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   onApproveReport,
   onRequestRevision,
   onViewAllReports,
+  onStartFreshReport,
   onCheckCompleteness,
   onRefresh,
   onSettings,
@@ -283,6 +286,24 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   }}
                 >
                   <ListIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {onStartFreshReport && (
+              <Tooltip title="Start fresh report for this month (deletes current report)">
+                <IconButton
+                  onClick={onStartFreshReport}
+                  disabled={loading}
+                  size="small"
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    color: 'warning.main',
+                    '&:hover': { bgcolor: 'warning.light', color: 'warning.dark' }
+                  }}
+                >
+                  <ReplayIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             )}
