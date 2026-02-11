@@ -304,13 +304,22 @@ export class BackendDataService {
     month: number,
     year: number
   ): Promise<UnifiedDayData[]> {
-    // Fetch all data from backend in parallel
-    const [timeTrackingEntries, dailyDescriptions, mileageEntries, receipts] = await Promise.all([
+    // Fetch all data from backend in parallel; use allSettled so one failing request
+    // (e.g. mileage/receipts timeout on Android) doesn't zero out the whole dashboard.
+    const [timeResult, descResult, mileageResult, receiptsResult] = await Promise.allSettled([
       this.getTimeTracking(employeeId, month, year),
       this.getDailyDescriptions(employeeId, month, year),
       this.getMileageEntries(employeeId, month, year),
       this.getReceipts(employeeId, month, year)
     ]);
+    const timeTrackingEntries = timeResult.status === 'fulfilled' ? timeResult.value : [];
+    const dailyDescriptions = descResult.status === 'fulfilled' ? descResult.value : [];
+    const mileageEntries = mileageResult.status === 'fulfilled' ? mileageResult.value : [];
+    const receipts = receiptsResult.status === 'fulfilled' ? receiptsResult.value : [];
+    if (timeResult.status === 'rejected') console.warn('BackendDataService: getTimeTracking failed', timeResult.reason);
+    if (descResult.status === 'rejected') console.warn('BackendDataService: getDailyDescriptions failed', descResult.reason);
+    if (mileageResult.status === 'rejected') console.warn('BackendDataService: getMileageEntries failed', mileageResult.reason);
+    if (receiptsResult.status === 'rejected') console.warn('BackendDataService: getReceipts failed', receiptsResult.reason);
 
     // Group data by date
     const daysMap = new Map<string, {

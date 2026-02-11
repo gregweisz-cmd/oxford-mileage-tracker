@@ -1,5 +1,7 @@
 import { MileageEntry, TimeTracking, Employee } from '../types';
 import { DatabaseService } from './database';
+import { BackendDataService } from './backendDataService';
+import { DistanceService } from './distanceService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 
 export interface PerDiemEligibility {
@@ -39,8 +41,17 @@ export class PerDiemAiService {
   private static readonly MIN_MILES = 100;
   private static readonly MIN_DISTANCE_FROM_BASE = 50;
 
+  /** Format date as YYYY-MM-DD in local time (avoid UTC shift from toISOString). */
+  private static toLocalDateKey(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
   /**
-   * Check if an employee is eligible for per diem on a specific date
+   * Check if an employee is eligible for per diem on a specific date.
+   * Uses same backend-first logic as getEligibilityForMonth so results stay in sync.
    */
   static async checkPerDiemEligibility(
     employeeId: string,
@@ -49,58 +60,57 @@ export class PerDiemAiService {
     try {
       debugLog('💵 PerDiemAI: Checking eligibility for:', { employeeId, date });
 
-      // Get employee data
       const employees = await DatabaseService.getEmployees();
       const employee = employees.find(emp => emp.id === employeeId);
       if (!employee) {
         return this.createIneligibleResponse('Employee not found');
       }
 
-      // Get time tracking for the date
-      const timeTrackingEntries = await DatabaseService.getTimeTrackingEntries(employeeId);
-      const dayTimeTracking = timeTrackingEntries.filter(entry => 
-        entry.date.toDateString() === date.toDateString()
-      );
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+      const dateKey = this.toLocalDateKey(date);
+      const eligibilityMap = await this.getEligibilityForMonth(employeeId, month, year);
+      const dayResult = eligibilityMap.get(dateKey);
 
-      // Get mileage entries for the date
-      const mileageEntries = await DatabaseService.getMileageEntries(employeeId);
-      const dayMileageEntries = mileageEntries.filter(entry => 
-        entry.date.toDateString() === date.toDateString()
-      );
+      if (!dayResult) {
+        return this.createIneligibleResponse('No data for this day');
+      }
 
-      // Get daily description for stayedOvernight (stayed out of town)
-      const dailyDescription = await DatabaseService.getDailyDescriptionByDate(employeeId, date);
-      const stayedOvernight = dailyDescription?.stayedOvernight ?? false;
+      // Recompute details for this day for the full PerDiemEligibility response (hours, miles, distance)
+      let hoursWorked = 0;
+      let milesDriven = 0;
+      let distanceFromBase = 0;
+      try {
+        const monthlyData = await BackendDataService.getMonthData(employeeId, month, year);
+        const day = monthlyData.find(d => this.toLocalDateKey(d.date) === dateKey);
+        if (day) {
+          hoursWorked = day.totalHours;
+          milesDriven = day.totalMiles || 0;
+          distanceFromBase = await this.calculateDistanceFromBase(
+            day.mileageEntries || [],
+            employee.baseAddress || ''
+          );
+        }
+      } catch {
+        // fallback: try local
+        const [timeEntries, mileageEntries] = await Promise.all([
+          DatabaseService.getTimeTrackingEntries(employeeId),
+          DatabaseService.getMileageEntries(employeeId)
+        ]);
+        const dayTime = timeEntries.filter(e => this.toLocalDateKey(e.date) === dateKey);
+        const dayMileage = mileageEntries.filter(e => this.toLocalDateKey(e.date) === dateKey);
+        hoursWorked = dayTime
+          .filter((e: any) => ['', 'Working Hours', 'Regular Hours'].includes((e.category || '').trim()))
+          .reduce((s: number, e: any) => s + e.hours, 0);
+        milesDriven = dayMileage.reduce((s, e) => s + e.miles, 0);
+        distanceFromBase = await this.calculateDistanceFromBase(dayMileage, employee.baseAddress || '');
+      }
 
-      // Calculate working hours only (exclude PTO, G&A, etc.)
-      const hoursWorked = dayTimeTracking
-        .filter((e: any) => {
-          const cat = (e.category || '').trim();
-          return cat === '' || cat === 'Working Hours' || cat === 'Regular Hours';
-        })
-        .reduce((sum: number, entry: any) => sum + entry.hours, 0);
-      const milesDriven = dayMileageEntries.reduce((sum: number, entry: any) => sum + entry.miles, 0);
-      const distanceFromBase = await this.calculateDistanceFromBase(
-        dayMileageEntries,
-        employee.baseAddress
-      );
-
-      // Eligibility: 8+ hours AND (100+ miles OR (stayed overnight AND 50+ mi from base))
       const criteria = {
         hoursWorked: hoursWorked >= this.MIN_HOURS,
         milesDriven: milesDriven >= this.MIN_MILES,
         distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
       };
-      const isEligible = criteria.hoursWorked && (criteria.milesDriven || (stayedOvernight && criteria.distanceFromBase));
-
-      // Generate reason (reflects 8h AND (100mi OR stayed 50+ from base))
-      const reason = this.generateEligibilityReason(criteria, {
-        hoursWorked,
-        milesDriven,
-        distanceFromBase
-      }, stayedOvernight, isEligible);
-
-      // Calculate confidence
       const confidence = this.calculateConfidence(criteria, {
         hoursWorked,
         milesDriven,
@@ -108,22 +118,21 @@ export class PerDiemAiService {
       });
 
       const response: PerDiemEligibility = {
-        isEligible,
-        reason,
+        isEligible: dayResult.isEligible,
+        reason: dayResult.reason,
         criteria,
         details: {
           hoursWorked,
           milesDriven,
           distanceFromBase,
-          baseAddress: employee.baseAddress
+          baseAddress: employee.baseAddress || ''
         },
-        suggestedAmount: isEligible ? this.PER_DIEM_AMOUNT : 0,
+        suggestedAmount: dayResult.isEligible ? this.PER_DIEM_AMOUNT : 0,
         confidence
       };
 
       debugLog('💵 PerDiemAI: Eligibility result:', response);
       return response;
-
     } catch (error) {
       console.error('❌ PerDiemAI: Error checking eligibility:', error);
       return this.createIneligibleResponse('Error checking eligibility');
@@ -133,6 +142,7 @@ export class PerDiemAiService {
   /**
    * Get per-diem eligibility for every day in a month (for Per Diem screen labels).
    * Rule: 8+ hours AND (100+ miles OR (stayed overnight AND 50+ mi from base)).
+   * Uses backend data first (same as dashboard), then local DB; uses local date keys and real distance.
    */
   static async getEligibilityForMonth(
     employeeId: string,
@@ -145,6 +155,43 @@ export class PerDiemAiService {
       const employee = employees.find(emp => emp.id === employeeId);
       if (!employee) return result;
 
+      // Prefer backend so eligibility matches dashboard and web (hours/mileage from same source).
+      try {
+        const monthlyData = await BackendDataService.getMonthData(employeeId, month, year);
+        for (const day of monthlyData) {
+          const dateKey = this.toLocalDateKey(day.date);
+          const stayedOvernight = day.stayedOvernight ?? false;
+          const distanceFromBase = await this.calculateDistanceFromBase(
+            day.mileageEntries || [],
+            employee.baseAddress || ''
+          );
+          const criteria = {
+            hoursWorked: day.totalHours >= this.MIN_HOURS,
+            milesDriven: (day.totalMiles || 0) >= this.MIN_MILES,
+            distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
+          };
+          const isEligible = criteria.hoursWorked && (
+            criteria.milesDriven ||
+            (stayedOvernight && criteria.distanceFromBase)
+          );
+          const reason = this.generateEligibilityReason(
+            criteria,
+            {
+              hoursWorked: day.totalHours,
+              milesDriven: day.totalMiles || 0,
+              distanceFromBase
+            },
+            stayedOvernight,
+            isEligible
+          );
+          result.set(dateKey, { isEligible, reason });
+        }
+        return result;
+      } catch (backendErr) {
+        debugWarn('PerDiemAI: Backend month data failed, using local:', backendErr);
+      }
+
+      // Fallback: local DB (use local date keys to avoid timezone bugs)
       const [dailyDescriptions, timeTracking, mileageEntries] = await Promise.all([
         DatabaseService.getDailyDescriptions(employeeId, month, year),
         DatabaseService.getTimeTrackingEntries(employeeId, month, year),
@@ -154,16 +201,16 @@ export class PerDiemAiService {
       const daysInMonth = new Date(year, month, 0).getDate();
       const descByDate = new Map<string, { stayedOvernight: boolean }>();
       dailyDescriptions.forEach(d => {
-        const key = d.date.toISOString().split('T')[0];
+        const key = this.toLocalDateKey(d.date);
         descByDate.set(key, { stayedOvernight: d.stayedOvernight ?? false });
       });
 
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dateKey = date.toISOString().split('T')[0];
+      for (let dayNum = 1; dayNum <= daysInMonth; dayNum++) {
+        const date = new Date(year, month - 1, dayNum);
+        const dateKey = this.toLocalDateKey(date);
 
-        const dayTime = timeTracking.filter(e => e.date.toDateString() === date.toDateString());
-        const dayMileage = mileageEntries.filter(e => e.date.toDateString() === date.toDateString());
+        const dayTime = timeTracking.filter(e => this.toLocalDateKey(e.date) === dateKey);
+        const dayMileage = mileageEntries.filter(e => this.toLocalDateKey(e.date) === dateKey);
         const hoursWorked = dayTime
           .filter((e: any) => {
             const cat = (e.category || '').trim();
@@ -195,76 +242,39 @@ export class PerDiemAiService {
   }
 
   /**
-   * Calculate distance from base address
+   * Calculate max distance from base address for the day's trips.
+   * Uses DistanceService (backend/Google Maps) so "50+ miles from base" is real.
    */
   private static async calculateDistanceFromBase(
     mileageEntries: MileageEntry[],
     baseAddress: string
   ): Promise<number> {
-    if (!baseAddress || mileageEntries.length === 0) {
+    if (!baseAddress || (baseAddress || '').trim() === '' || !mileageEntries?.length) {
       return 0;
     }
 
-    // Find the farthest distance from base in any trip
     let maxDistance = 0;
-
     for (const entry of mileageEntries) {
-      // Check start location distance from base
-      const startDistance = await this.estimateDistance(baseAddress, entry.startLocation);
-      if (startDistance > maxDistance) {
-        maxDistance = startDistance;
+      const start = (entry.startLocation || '').trim();
+      if (start && start !== 'BA') {
+        try {
+          const d = await DistanceService.calculateDistance(baseAddress, start);
+          maxDistance = Math.max(maxDistance, d);
+        } catch {
+          // ignore per-entry failures
+        }
       }
-
-      // Check end location distance from base
-      const endDistance = await this.estimateDistance(baseAddress, entry.endLocation);
-      if (endDistance > maxDistance) {
-        maxDistance = endDistance;
-      }
-    }
-
-    return maxDistance;
-  }
-
-  /**
-   * Estimate distance between two locations (simplified)
-   */
-  private static async estimateDistance(location1: string, location2: string): Promise<number> {
-    // This is a simplified distance estimation
-    // In production, you'd use a proper geocoding service
-    
-    // For now, we'll use a basic pattern matching approach
-    const baseCity = this.extractCity(location1);
-    const targetCity = this.extractCity(location2);
-    
-    if (baseCity === targetCity) {
-      return 0; // Same city
-    }
-
-    // Return estimated distance based on common patterns
-    // This is a placeholder - in production you'd use Google Maps API
-    return Math.random() * 100 + 10; // 10-110 miles
-  }
-
-  /**
-   * Extract city from address string
-   */
-  private static extractCity(address: string): string {
-    // Simple city extraction - look for common patterns
-    const cityPatterns = [
-      /([A-Za-z\s]+),\s*NC/i,
-      /([A-Za-z\s]+),\s*SC/i,
-      /([A-Za-z\s]+),\s*VA/i,
-      /([A-Za-z\s]+),\s*TN/i
-    ];
-
-    for (const pattern of cityPatterns) {
-      const match = address.match(pattern);
-      if (match) {
-        return match[1].trim();
+      const end = (entry.endLocation || '').trim();
+      if (end && end !== 'BA') {
+        try {
+          const d = await DistanceService.calculateDistance(baseAddress, end);
+          maxDistance = Math.max(maxDistance, d);
+        } catch {
+          // ignore per-entry failures
+        }
       }
     }
-
-    return address; // Return full address if no city found
+    return Math.round(maxDistance * 10) / 10;
   }
 
   /**

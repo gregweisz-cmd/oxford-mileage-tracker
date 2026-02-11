@@ -105,9 +105,11 @@ export class DashboardService {
       mileageEntries.push(...(day.mileageEntries || []));
       receipts.push(...(day.receipts || []));
     });
-    const totalReceipts = receipts.reduce((sum, r) => sum + r.amount, 0);
     const totalPerDiemReceipts = receipts
       .filter(r => r.category === 'Per Diem')
+      .reduce((sum, r) => sum + r.amount, 0);
+    const totalReceipts = receipts
+      .filter(r => r.category !== 'Per Diem')
       .reduce((sum, r) => sum + r.amount, 0);
 
     // Recent: sort by date descending, take first 5
