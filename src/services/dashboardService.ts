@@ -47,7 +47,53 @@ export class DashboardService {
     try {
       // Prefer backend so dashboard matches web portal and Hours & Description page
       const monthlyData = await BackendDataService.getMonthData(employeeId, selectedMonth, selectedYear);
-      return this.aggregateMonthDataToDashboardStats(monthlyData);
+      let result = this.aggregateMonthDataToDashboardStats(monthlyData);
+      // If backend returned no mileage (e.g. one request failed in allSettled), fill from local
+      // so Recent Entries, Monthly Mileage Summary, and Recent Activity show data until next full sync.
+      if (result.recentMileageEntries.length === 0 && result.monthlyStats.totalMiles === 0) {
+        const localMileage = await DatabaseService.getMileageEntries(employeeId);
+        const inMonth = localMileage.filter(e => {
+          const d = new Date(e.date);
+          return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
+        });
+        const totalMiles = inMonth.reduce((s, e) => s + e.miles, 0);
+        const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime();
+        const recentMileageEntries = [...inMonth].sort(byDateDesc).slice(0, 5);
+        result = {
+          ...result,
+          recentMileageEntries,
+          monthlyStats: {
+            ...result.monthlyStats,
+            totalMiles,
+            mileageEntries: inMonth
+          }
+        };
+      }
+      // If backend returned no receipts for recent list, fill from local for the month
+      if (result.recentReceipts.length === 0 && result.monthlyStats.receipts.length === 0) {
+        const localReceipts = await DatabaseService.getReceipts(employeeId);
+        const inMonth = localReceipts.filter(r => {
+          const d = new Date(r.date);
+          return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
+        });
+        const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime();
+        const recentReceipts = [...inMonth].sort(byDateDesc).slice(0, 5);
+        const totalReceipts = inMonth.filter(r => r.category !== 'Per Diem').reduce((s, r) => s + r.amount, 0);
+        const totalPerDiemReceipts = inMonth.filter(r => r.category === 'Per Diem').reduce((s, r) => s + r.amount, 0);
+        result = {
+          ...result,
+          recentReceipts,
+          monthlyStats: {
+            ...result.monthlyStats,
+            totalReceipts,
+            totalPerDiemReceipts: result.monthlyStats.totalPerDiemReceipts || totalPerDiemReceipts,
+            receipts: inMonth
+          }
+        };
+      }
+      return result;
     } catch (backendError) {
       console.warn('⚠️ DashboardService: Backend failed, using local data:', backendError);
       try {
