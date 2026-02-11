@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { OxfordHouse } from '../types';
 import { DatabaseService } from './database';
 import { API_BASE_URL } from '../config/api';
@@ -315,11 +316,19 @@ export class OxfordHouseService {
     }
   }
 
+  // Android often needs longer for first request (cold start, network); iOS is typically faster
+  private static getFetchTimeoutMs(): number {
+    return Platform.OS === 'android' ? 18000 : 10000;
+  }
+
   private static async fetchFromBackend(): Promise<void> {
     try {
-      // Use centralized API config (respects USE_PRODUCTION_FOR_TESTING setting)
-      const response = await fetch(`${API_BASE_URL}/oxford-houses`);
-      
+      const controller = new AbortController();
+      const timeoutMs = this.getFetchTimeoutMs();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      const response = await fetch(`${API_BASE_URL}/oxford-houses`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         throw new Error(`Failed to fetch Oxford Houses: ${response.status}`);
       }

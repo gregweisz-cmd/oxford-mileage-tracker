@@ -11,6 +11,8 @@ import {
   TextInput,
   Platform,
   Linking,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -373,13 +375,23 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   }, [selectedMonth, selectedYear]);
 
-  // When returning to this screen, refresh from local DB. Skip on first focus so loadData (sync then load) runs without being overwritten by empty local data.
+  // When returning to this screen, refresh dashboard stats so tiles show latest data after sync.
   useFocusEffect(
     React.useCallback(() => {
       if (!initialLoadDoneRef.current) return;
       refreshLocalDataOnly();
     }, [])
   );
+
+  // When app comes to foreground, refresh dashboard so stats stay in sync (e.g. after background sync).
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active' && initialLoadDoneRef.current && currentEmployee?.id) {
+        loadEmployeeData(currentEmployee.id, currentEmployee);
+      }
+    });
+    return () => subscription.remove();
+  }, [currentEmployee?.id]);
 
   // Refresh only local data without syncing from backend
   const refreshLocalDataOnly = async () => {
@@ -714,20 +726,27 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         console.error('❌ Real-time sync error:', error);
       });
 
-      // Sync from backend first so new devices (e.g. Android after login) have full data before we show the screen
+      // Sync from backend first (with timeout so app doesn't spin forever if backend is unreachable).
+      // Android often needs longer for first request; iOS is typically faster.
+      const INITIAL_SYNC_TIMEOUT_MS = Platform.OS === 'android' ? 35000 : 20000;
       if (!homeScreenIsSyncing) {
         homeScreenIsSyncing = true;
         setIsSyncing(true);
         try {
           const { ApiSyncService } = await import('../services/apiSyncService');
-          const syncResult = await ApiSyncService.syncFromBackend(employee.id);
-          if (syncResult.success) {
+          const syncPromise = ApiSyncService.syncFromBackend(employee.id);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Initial sync timed out')), INITIAL_SYNC_TIMEOUT_MS)
+          );
+          const syncResult = await Promise.race([syncPromise, timeoutPromise]);
+          if (syncResult?.success) {
             setLastSyncTime(new Date());
-          } else {
+          } else if (syncResult && !syncResult.success) {
             debugWarn('⚠️ Initial sync completed with some errors (this is normal):', syncResult.error);
           }
         } catch (syncError) {
-          debugWarn('⚠️ Error during initial backend sync:', syncError instanceof Error ? syncError.message : 'Unknown error');
+          const msg = syncError instanceof Error ? syncError.message : 'Unknown error';
+          debugWarn('⚠️ Initial backend sync failed or timed out (showing local data):', msg);
         } finally {
           homeScreenIsSyncing = false;
           setIsSyncing(false);
