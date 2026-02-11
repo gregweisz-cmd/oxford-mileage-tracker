@@ -1231,12 +1231,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               drivingSummary = tripSegments.join(' ');
             }
             
-            // Use saved description as-is (can include user narrative + driving summary)
-            // Append driving summary from mileage only if not already in saved
-            const userDescription = dayDescription && dayDescription.description 
-              ? dayDescription.description
-              : '';
-            
+            // User narrative only (from daily_descriptions). Never persist driving summary so deleted mileage doesn't leave stuck text.
+            let userDescription = (dayDescription && dayDescription.description) ? String(dayDescription.description).trim() : '';
+            // Clear stale driving summaries: day has no mileage but saved text looks like auto-generated "X to Y for Purpose"
+            if (dayMileageEntries.length === 0 && userDescription && userDescription.includes(' to ') && userDescription.includes(' for ')) {
+              userDescription = '';
+            }
+
             // Concatenate user description + driving summary from mileage
             // Only append driving summary if it's not already in the saved content
             let fullDescription = '';
@@ -1384,12 +1385,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             costCenters.forEach((_, i) => {
               costCenterHoursPayload[`costCenter${i}Hours`] = costCenterHours[i] || 0;
             });
-            // User narrative only (from daily_descriptions). Never persist driving summary so deleted mileage doesn't leave stuck text.
-            let userDescription = (dayDescription && dayDescription.description) ? String(dayDescription.description).trim() : '';
-            // Clear stale driving summaries: day has no mileage but saved text looks like auto-generated "X to Y for Purpose"
-            if (dayMileageEntries.length === 0 && userDescription && userDescription.includes(' to ') && userDescription.includes(' for ')) {
-              userDescription = '';
-            }
             return {
               day,
               date: dateStr,
