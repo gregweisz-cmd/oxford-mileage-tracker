@@ -181,6 +181,8 @@ interface DailyExpenseEntry {
   day: number;
   date: string;
   description: string;
+  /** User narrative only (not auto-generated driving summary). Used when saving daily_descriptions. */
+  userDescription?: string;
   hoursWorked: number;
   workingHours?: number;
   odometerStart: number;
@@ -1382,10 +1384,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             costCenters.forEach((_, i) => {
               costCenterHoursPayload[`costCenter${i}Hours`] = costCenterHours[i] || 0;
             });
+            // User narrative only (from daily_descriptions). Never persist driving summary so deleted mileage doesn't leave stuck text.
+            let userDescription = (dayDescription && dayDescription.description) ? String(dayDescription.description).trim() : '';
+            // Clear stale driving summaries: day has no mileage but saved text looks like auto-generated "X to Y for Purpose"
+            if (dayMileageEntries.length === 0 && userDescription && userDescription.includes(' to ') && userDescription.includes(' for ')) {
+              userDescription = '';
+            }
             return {
               day,
               date: dateStr,
               description: fullDescription,
+              userDescription,
               hoursWorked: dayTimeTracking?.hours || 0,
               workingHours: dayTimeTracking?.hours || 0,
               ...costCenterHoursPayload,
@@ -4117,9 +4126,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const entries = [...employeeData.dailyEntries];
         const entry = entries[row];
         if (field === 'description') {
-          entries[row] = { ...entry, description: editingValue };
-          const dateStr = normalizeDate(entry.date);
           const userDesc = (editingValue && editingValue.trim()) ? prepareDescriptionForSave(editingValue) : '';
+          entries[row] = { ...entry, description: editingValue, userDescription: userDesc };
+          const dateStr = normalizeDate(entry.date);
           const existingIdx = dailyDescriptionsForSave.findIndex((d: any) => normalizeDate(d.date) === dateStr);
           if (userDesc) {
             const descEntry = { id: `desc-${employeeData.employeeId}-${dateStr}`, employeeId: employeeData.employeeId, date: dateStr, description: userDesc, costCenter: entry.costCenter || employeeData.costCenters?.[0] || '', stayedOvernight: false, dayOff: false, dayOffType: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
@@ -4155,7 +4164,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       entriesToSave.forEach((entry: any) => {
         const dateStr = normalizeDate(entry.date);
         if (!dateStr) return;
-        const userDesc = (entry.description && String(entry.description).trim()) ? prepareDescriptionForSave(entry.description) : '';
+        // Use userDescription (user narrative only) so we never persist auto-generated driving summary; avoids stuck descriptions when mileage is deleted.
+        const rawUser = entry.userDescription != null ? String(entry.userDescription).trim() : (entry.description ? String(entry.description).trim() : '');
+        const userDesc = rawUser ? prepareDescriptionForSave(rawUser) : '';
         if (userDesc) {
           const isDayOffType = dayOffTypeLabels.includes(userDesc);
           const existing = byDate.get(dateStr);
