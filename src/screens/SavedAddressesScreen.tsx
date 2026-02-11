@@ -206,11 +206,20 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const handleSelectForManualEntry = (address: SavedAddress) => {
-    // Navigate back to MileageEntryScreen with the selected address
-    navigation.navigate('MileageEntry', {
-      selectedAddress: address,
+    // Go back to MileageEntryScreen with the selected address (preserve entryId when editing)
+    const params: any = {
+      selectedAddress: {
+        name: address.name,
+        address: address.address,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      },
       locationType: locationType, // 'start' or 'end'
-    });
+    };
+    if (route.params?.entryId) {
+      params.entryId = route.params.entryId;
+    }
+    navigation.navigate('MileageEntry', params);
   };
 
   const handleSelectForGpsTracking = async (address: SavedAddress) => {

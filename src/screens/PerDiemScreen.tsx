@@ -34,6 +34,14 @@ interface PerDiemEntry {
   imageUri?: string;
 }
 
+/** Local YYYY-MM-DD so keys match PerDiemAiService.getEligibilityForMonth (no UTC shift). */
+function toLocalDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 /**
  * Per Diem Screen Component
  * 
@@ -138,7 +146,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       
       for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-        const dateKey = date.toISOString().split('T')[0];
+        const dateKey = toLocalDateKey(date);
         
         // Find existing per diem receipt for this day
         const existingReceipt = perDiemReceipts.find(r => {
@@ -232,7 +240,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     
     // Check if new amount would exceed monthly limit
     const currentTotal = Array.from(perDiemEntries.values())
-      .filter(e => e.isEligible && e.date.toISOString().split('T')[0] !== dateKey)
+      .filter(e => e.isEligible && toLocalDateKey(e.date) !== dateKey)
       .reduce((sum, e) => sum + e.amount, 0);
     
     const newTotal = currentTotal + numAmount;
@@ -357,7 +365,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           receiptId: undefined,
           imageUri: undefined,
         };
-        newMap.set(entry.date.toISOString().split('T')[0], updatedEntry);
+        newMap.set(toLocalDateKey(entry.date), updatedEntry);
         setPerDiemEntries(newMap);
       } else {
         // Entry is eligible - create or update receipt
@@ -390,7 +398,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
             receiptId: existingReceipt.id,
             imageUri: imageUri || entry.imageUri || existingReceipt.imageUri,
           };
-          newMap.set(entry.date.toISOString().split('T')[0], updatedEntry);
+          newMap.set(toLocalDateKey(entry.date), updatedEntry);
           setPerDiemEntries(newMap);
         } else {
           // Create new receipt
@@ -413,7 +421,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
             receiptId: newReceipt.id,
             imageUri: imageUri || entry.imageUri || '',
           };
-          newMap.set(entry.date.toISOString().split('T')[0], updatedEntry);
+          newMap.set(toLocalDateKey(entry.date), updatedEntry);
           setPerDiemEntries(newMap);
         }
       }
@@ -576,8 +584,8 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const dateKey = date.toISOString().split('T')[0];
-    return { day, date, dateKey, entry: perDiemEntries.get(dateKey) };
+const dateKey = toLocalDateKey(date);
+        return { day, date, dateKey, entry: perDiemEntries.get(dateKey) };
   });
 
   return (

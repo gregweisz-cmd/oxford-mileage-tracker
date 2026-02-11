@@ -1,8 +1,10 @@
 # Screenshot Checklist for How-To Guides
 
-Check off each item as you capture and save it. Use **exact filenames**; save paths are under each section.
+**→ Use [TODAY_RUN_ORDER.md](TODAY_RUN_ORDER.md) as your run list** — same screens in capture order with exact filenames and save paths.
 
-**After you're done:** Run `npm run build` in `docs/how-to-guides/scripts/` to regenerate PDFs.
+Check off each item below as you save it. Use **exact filenames**; save paths are under each section.
+
+**After you're done:** Run `npm run generate` in `docs/how-to-guides/scripts/` to regenerate PDFs.
 
 ---
 

@@ -77,7 +77,7 @@ export class DatabaseService {
       // Map operation names to correct entity types (must preserve camelCase for SyncIntegrationService)
       const syncOperation = operation.startsWith('update') ? 'update' : 'create';
       let entityType: string;
-      if (operation === 'addMileageEntry') {
+      if (operation === 'addMileageEntry' || operation === 'updateMileageEntry') {
         entityType = 'mileageEntry';
       } else if (operation === 'updateEmployee') {
         entityType = 'employee';

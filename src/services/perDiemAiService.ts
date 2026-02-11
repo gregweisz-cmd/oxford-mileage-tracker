@@ -158,16 +158,37 @@ export class PerDiemAiService {
       // Prefer backend so eligibility matches dashboard and web (hours/mileage from same source).
       try {
         const monthlyData = await BackendDataService.getMonthData(employeeId, month, year);
+        const monthMiles = monthlyData.reduce((s, d) => s + (d.totalMiles || 0), 0);
+        // If backend returned no mileage (e.g. mileage API failed on Android), use local mileage so eligibility still works.
+        let localMileageEntries: MileageEntry[] = [];
+        if (monthMiles === 0) {
+          try {
+            localMileageEntries = await DatabaseService.getMileageEntries(employeeId, month, year);
+            if (localMileageEntries.length > 0) {
+              debugLog('PerDiemAI: Backend had 0 miles for month; using local mileage for eligibility');
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         for (const day of monthlyData) {
           const dateKey = this.toLocalDateKey(day.date);
           const stayedOvernight = day.stayedOvernight ?? false;
+          const useLocalMiles = localMileageEntries.length > 0;
+          const dayMileageEntries = useLocalMiles
+            ? localMileageEntries.filter(e => this.toLocalDateKey(e.date) === dateKey)
+            : (day.mileageEntries || []);
+          const milesDriven = useLocalMiles
+            ? dayMileageEntries.reduce((s, e) => s + e.miles, 0)
+            : (day.totalMiles || 0);
           const distanceFromBase = await this.calculateDistanceFromBase(
-            day.mileageEntries || [],
+            dayMileageEntries,
             employee.baseAddress || ''
           );
           const criteria = {
             hoursWorked: day.totalHours >= this.MIN_HOURS,
-            milesDriven: (day.totalMiles || 0) >= this.MIN_MILES,
+            milesDriven: milesDriven >= this.MIN_MILES,
             distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
           };
           const isEligible = criteria.hoursWorked && (
@@ -178,7 +199,7 @@ export class PerDiemAiService {
             criteria,
             {
               hoursWorked: day.totalHours,
-              milesDriven: day.totalMiles || 0,
+              milesDriven,
               distanceFromBase
             },
             stayedOvernight,
