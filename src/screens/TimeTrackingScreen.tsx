@@ -14,8 +14,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { TimeTracking, Employee } from '../types';
 import UnifiedHeader from '../components/UnifiedHeader';
-import { useTips } from '../contexts/TipsContext';
-import { TipCard } from '../components/TipCard';
 import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 
 interface TimeTrackingScreenProps {
@@ -32,7 +30,6 @@ const TIME_CATEGORIES = [
 ];
 
 export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenProps) {
-  const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -100,11 +97,6 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
         const costCenter = currentEmployee.defaultCostCenter || currentEmployee.selectedCostCenters?.[0] || '';
         setSelectedCostCenter(costCenter);
         
-        // Set employee for tips context and load time tracking tips
-        setTipsEmployee(currentEmployee);
-        if (showTips) {
-          await loadTipsForScreen('TimeTrackingScreen', 'on_load');
-        }
       }
     } catch (error) {
       console.error('Error loading current employee:', error);
@@ -487,26 +479,6 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
           <MaterialIcons name="chevron-right" size={24} color="#007AFF" />
         </TouchableOpacity>
       </View>
-
-      {/* Tips Display */}
-      {showTips && tips.length > 0 && (
-        <View style={styles.tipsContainer}>
-          <ScrollView 
-            style={styles.tipsScrollView} 
-            showsVerticalScrollIndicator={false}
-            nestedScrollEnabled={true}
-          >
-            {tips.map((tip) => (
-              <TipCard
-                key={tip.id}
-                tip={tip}
-                onDismiss={dismissTip}
-                onMarkSeen={markTipAsSeen}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      )}
 
       {/* Summary Cards */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -1051,17 +1023,6 @@ const styles = StyleSheet.create({
   categoryButtonTextSelected: {
     color: '#fff',
     fontWeight: '500',
-  },
-  tipsContainer: {
-    marginTop: 8,
-    maxHeight: 200,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
-    marginHorizontal: 16,
-    marginBottom: 16,
-  },
-  tipsScrollView: {
-    maxHeight: 180,
   },
   costCenterSelector: {
     flexDirection: 'row',

@@ -244,20 +244,6 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
           <Text style={dynamicStyles.sectionTitle}>🤖 Smart Features</Text>
         </View>
 
-        <View style={dynamicStyles.preferenceItem}>
-          <View style={dynamicStyles.preferenceLeft}>
-            <Text style={dynamicStyles.preferenceTitle}>Tips & Hints</Text>
-            <Text style={dynamicStyles.preferenceDescription}>
-              Show helpful tips throughout the app
-            </Text>
-          </View>
-          <Switch
-            value={preferences.enableTips}
-            onValueChange={(value) => updatePreference('enableTips', value)}
-            disabled={saving}
-          />
-        </View>
-
         <View style={[dynamicStyles.preferenceItem, { opacity: 0.5 }]}>
           <View style={dynamicStyles.preferenceLeft}>
             <Text style={dynamicStyles.preferenceTitle}>Auto Per Diem (DISABLED)</Text>

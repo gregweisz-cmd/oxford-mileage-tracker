@@ -10,7 +10,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useReactNavigationDevTools } from '@dev-plugins/react-navigation';
 import { GpsTrackingProvider } from './src/contexts/GpsTrackingContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
-import { TipsProvider } from './src/contexts/TipsContext';
 import { NotificationProvider } from './src/contexts/NotificationContext';
 import GlobalGpsStopButton from './src/components/GlobalGpsStopButton';
 import GlobalGpsReturnButton from './src/components/GlobalGpsReturnButton';
@@ -199,15 +198,13 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <ThemeProvider>
-          <TipsProvider>
-            <GpsTrackingProvider>
-              <StatusBar style="light" />
-              <LoginScreen 
-                navigation={null} 
-                onLogin={handleLogin}
-              />
-            </GpsTrackingProvider>
-          </TipsProvider>
+          <GpsTrackingProvider>
+            <StatusBar style="light" />
+            <LoginScreen 
+              navigation={null} 
+              onLogin={handleLogin}
+            />
+          </GpsTrackingProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     );
@@ -218,10 +215,9 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <ThemeProvider>
-          <TipsProvider>
-            <GpsTrackingProvider>
-              <StatusBar style="light" />
-              <OnboardingScreen 
+          <GpsTrackingProvider>
+            <StatusBar style="light" />
+            <OnboardingScreen 
                 employeeId={currentEmployee.id}
                 onComplete={async () => {
                   setShowOnboarding(false);
@@ -235,7 +231,6 @@ export default function App() {
                 }} 
               />
             </GpsTrackingProvider>
-          </TipsProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     );
@@ -246,10 +241,9 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <ThemeProvider>
-          <TipsProvider>
-            <GpsTrackingProvider>
-              <StatusBar style="light" />
-              <SetupWizard 
+          <GpsTrackingProvider>
+            <StatusBar style="light" />
+            <SetupWizard 
                 employee={currentEmployee} 
                 onComplete={async () => {
                   setShowSetupWizard(false);
@@ -270,9 +264,8 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <TipsProvider>
-          <NotificationProvider currentEmployeeId={currentEmployee?.id}>
-            <GpsTrackingProvider>
+        <NotificationProvider currentEmployeeId={currentEmployee?.id}>
+          <GpsTrackingProvider>
           <NavigationContainer
             ref={navigationRef}
             onStateChange={(state) => {
@@ -320,9 +313,8 @@ export default function App() {
           </Stack.Navigator>
           <GlobalGpsOverlay currentRouteName={currentRouteName} />
         </NavigationContainer>
-            </GpsTrackingProvider>
-          </NotificationProvider>
-        </TipsProvider>
+          </GpsTrackingProvider>
+        </NotificationProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

@@ -16,15 +16,11 @@ import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataServi
 import { ApiSyncService } from '../services/apiSyncService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
-import { useTips } from '../contexts/TipsContext';
-import { TipCard } from '../components/TipCard';
-
 interface DailyDescriptionScreenProps {
   navigation: any;
 }
 
 export default function DailyDescriptionScreen({ navigation }: DailyDescriptionScreenProps) {
-  const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [daysWithData, setDaysWithData] = useState<UnifiedDayData[]>([]);
@@ -49,10 +45,6 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
         return;
       }
       setCurrentEmployee(employee);
-      setTipsEmployee(employee);
-      if (showTips) {
-        await loadTipsForScreen('DailyDescriptionScreen', 'on_load');
-      }
       
       // Get month data for all days
       const monthData = await UnifiedDataService.getMonthData(
@@ -260,26 +252,6 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
           </View>
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            {/* Tips Display */}
-            {showTips && tips.length > 0 && (
-              <View style={styles.tipsContainer}>
-                <ScrollView 
-                  style={styles.tipsScrollView} 
-                  showsVerticalScrollIndicator={false}
-                  nestedScrollEnabled={true}
-                >
-                  {tips.map((tip) => (
-                    <TipCard
-                      key={tip.id}
-                      tip={tip}
-                      onDismiss={dismissTip}
-                      onMarkSeen={markTipAsSeen}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
             {/* Description Input */}
             <View style={styles.descriptionSection}>
               <Text style={styles.descriptionLabel}>What did you do today?</Text>
@@ -485,15 +457,6 @@ const styles = StyleSheet.create({
   modalContent: {
     flex: 1,
     padding: 20,
-  },
-  tipsContainer: {
-    marginTop: 8,
-    marginBottom: 16,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
-  },
-  tipsScrollView: {
-    maxHeight: 180,
   },
   descriptionSection: {
     marginBottom: 20,

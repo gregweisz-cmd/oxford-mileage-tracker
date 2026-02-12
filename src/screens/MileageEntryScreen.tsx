@@ -26,8 +26,6 @@ import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import EnhancedLocationInput from '../components/EnhancedLocationInput';
-import { useTips } from '../contexts/TipsContext';
-import { TipCard } from '../components/TipCard';
 import { DuplicateDetectionService } from '../services/duplicateDetectionService';
 import { HoursEstimationService } from '../services/hoursEstimationService';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
@@ -45,7 +43,6 @@ interface MileageEntryScreenProps {
 }
 
 export default function MileageEntryScreen({ navigation, route }: MileageEntryScreenProps) {
-  const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const { showAnomalyAlert } = useNotifications();
   const [formData, setFormData] = useState({
     date: new Date(),
@@ -284,11 +281,6 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         setSelectedCostCenter(costCenter);
         setIsCostCenterAutoSelected(false);
         setCostCenterSuggestion(null);
-        
-        setTipsEmployee(currentEmployee);
-        if (showTips) {
-          await loadTipsForScreen('MileageEntryScreen', 'on_load');
-        }
         
         // Set base address as default start location if available
         if (currentEmployee.baseAddress) {
@@ -1028,28 +1020,6 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         scrollEventThrottle={16}
         keyboardDismissMode="on-drag"
       >
-        {/* Tips Display */}
-        {showTips && tips.length > 0 && (
-          <View style={styles.tipsContainer}>
-            <ScrollView 
-              style={styles.tipsScrollView} 
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled={true}
-              removeClippedSubviews={true}
-              scrollEventThrottle={16}
-            >
-              {tips.map((tip) => (
-                <TipCard
-                  key={tip.id}
-                  tip={tip}
-                  onDismiss={dismissTip}
-                  onMarkSeen={markTipAsSeen}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
         {/* Date Picker */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Date</Text>
@@ -2210,18 +2180,6 @@ const styles = StyleSheet.create({
     color: '#2196F3',
     fontSize: 16,
     fontWeight: '600',
-  },
-  
-  tipsContainer: {
-    marginTop: 8,
-    maxHeight: 200,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
-    marginHorizontal: 16,
-    marginBottom: 16,
-  },
-  tipsScrollView: {
-    maxHeight: 180,
   },
   
   // Cost Center Selector Styles

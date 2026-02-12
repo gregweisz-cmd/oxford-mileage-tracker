@@ -1749,7 +1749,64 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
             }
           }
         }
-        
+
+        // If current step is finance but approver is the employee's supervisor or senior staff, the report may have
+        // wrong currentApprovalStep or a stale workflow (e.g. created when employee had no supervisor). Use the
+        // pending supervisor/senior_staff step so they can act; if none exists, re-initialize the workflow.
+        if (currentStep && currentStep.role === 'finance' && approverId) {
+          const empForApproval = await dbService.getEmployeeById(report.employeeId);
+          if (empForApproval) {
+            const pendingSupervisorStep = workflow.find(s => s.role === 'supervisor' && s.status === 'pending');
+            const pendingSeniorStaffStep = workflow.find(s => s.role === 'senior_staff' && s.status === 'pending');
+            if (empForApproval.supervisorId === approverId && pendingSupervisorStep) {
+              resolvedCurrentStepIndex = workflow.indexOf(pendingSupervisorStep);
+              currentStep = pendingSupervisorStep;
+              updates.currentApprovalStep = resolvedCurrentStepIndex;
+              debugLog(`✅ Corrected current step to pending supervisor (index ${resolvedCurrentStepIndex}) for approver ${approverId}`);
+            } else if (empForApproval.seniorStaffId === approverId && pendingSeniorStaffStep) {
+              resolvedCurrentStepIndex = workflow.indexOf(pendingSeniorStaffStep);
+              currentStep = pendingSeniorStaffStep;
+              updates.currentApprovalStep = resolvedCurrentStepIndex;
+              debugLog(`✅ Corrected current step to pending senior_staff (index ${resolvedCurrentStepIndex}) for approver ${approverId}`);
+            } else if (empForApproval.supervisorId === approverId && !pendingSupervisorStep) {
+              // Workflow has no (pending) supervisor step — e.g. report was created when employee had no supervisor. Re-initialize.
+              const workflowInit = await initializeApprovalWorkflow(report);
+              const newWorkflow = workflowInit.workflow;
+              const supervisorStep = newWorkflow.find(s => s.role === 'supervisor');
+              if (supervisorStep) {
+                workflow.length = 0;
+                workflow.push(...newWorkflow);
+                const idx = newWorkflow.indexOf(supervisorStep);
+                resolvedCurrentStepIndex = idx;
+                currentStep = supervisorStep;
+                updates.currentApprovalStep = idx;
+                updates.currentApprovalStage = 'supervisor';
+                updates.currentApproverId = supervisorStep.approverId || approverId;
+                updates.currentApproverName = supervisorStep.approverName || approverName;
+                updates.escalationDueAt = supervisorStep.dueAt || null;
+                debugLog(`✅ Re-initialized workflow for report ${id}; supervisor step at index ${idx} for approver ${approverId}`);
+              }
+            } else if (empForApproval.seniorStaffId === approverId && !pendingSeniorStaffStep) {
+              const workflowInit = await initializeApprovalWorkflow(report);
+              const newWorkflow = workflowInit.workflow;
+              const seniorStep = newWorkflow.find(s => s.role === 'senior_staff');
+              if (seniorStep) {
+                workflow.length = 0;
+                workflow.push(...newWorkflow);
+                const idx = newWorkflow.indexOf(seniorStep);
+                resolvedCurrentStepIndex = idx;
+                currentStep = seniorStep;
+                updates.currentApprovalStep = idx;
+                updates.currentApprovalStage = 'senior_staff';
+                updates.currentApproverId = seniorStep.approverId || approverId;
+                updates.currentApproverName = seniorStep.approverName || approverName;
+                updates.escalationDueAt = seniorStep.dueAt || null;
+                debugLog(`✅ Re-initialized workflow for report ${id}; senior_staff step at index ${idx} for approver ${approverId}`);
+              }
+            }
+          }
+        }
+
         if (!currentStep) {
           debugError(`❌ Cannot find active approval step for report ${id}. Workflow:`, JSON.stringify(workflow, null, 2));
           res.status(400).json({ error: 'No active approval step. The report may need to be resubmitted.' });
@@ -2134,6 +2191,46 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           initialCurrentApproverId === approverId ||
           (employeeForRevision && employeeForRevision.seniorStaffId === approverId)
         );
+
+        // If current step is finance but approver is supervisor/senior staff, use pending supervisor/senior_staff step or re-init workflow
+        if (currentStep && currentStep.role === 'finance' && approverId && employeeForRevision) {
+          const pendingSupervisorStep = workflow.find(s => s.role === 'supervisor' && s.status === 'pending');
+          const pendingSeniorStaffStep = workflow.find(s => s.role === 'senior_staff' && s.status === 'pending');
+          if (employeeForRevision.supervisorId === approverId && pendingSupervisorStep) {
+            resolvedCurrentStepIndex = workflow.indexOf(pendingSupervisorStep);
+            currentStep = pendingSupervisorStep;
+            updates.currentApprovalStep = resolvedCurrentStepIndex;
+          } else if (employeeForRevision.seniorStaffId === approverId && pendingSeniorStaffStep) {
+            resolvedCurrentStepIndex = workflow.indexOf(pendingSeniorStaffStep);
+            currentStep = pendingSeniorStaffStep;
+            updates.currentApprovalStep = resolvedCurrentStepIndex;
+          } else if (employeeForRevision.supervisorId === approverId && !pendingSupervisorStep) {
+            const workflowInit = await initializeApprovalWorkflow(report);
+            const newWorkflow = workflowInit.workflow;
+            const supervisorStepNew = newWorkflow.find(s => s.role === 'supervisor');
+            if (supervisorStepNew) {
+              workflow.length = 0;
+              workflow.push(...newWorkflow);
+              const idx = newWorkflow.indexOf(supervisorStepNew);
+              resolvedCurrentStepIndex = idx;
+              currentStep = supervisorStepNew;
+              updates.currentApprovalStep = idx;
+            }
+          } else if (employeeForRevision.seniorStaffId === approverId && !pendingSeniorStaffStep) {
+            const workflowInit = await initializeApprovalWorkflow(report);
+            const newWorkflow = workflowInit.workflow;
+            const seniorStepNew = newWorkflow.find(s => s.role === 'senior_staff');
+            if (seniorStepNew) {
+              workflow.length = 0;
+              workflow.push(...newWorkflow);
+              const idx = newWorkflow.indexOf(seniorStepNew);
+              resolvedCurrentStepIndex = idx;
+              currentStep = seniorStepNew;
+              updates.currentApprovalStep = idx;
+            }
+          }
+        }
+
         const seniorStaffStep = workflow.find(s => s.role === 'senior_staff');
         const seniorStaffStepIndex = seniorStaffStep ? workflow.indexOf(seniorStaffStep) : -1;
         let supervisorStep = currentStep && currentStep.role === 'supervisor' ? currentStep : workflow.find(s => s.role === 'supervisor');

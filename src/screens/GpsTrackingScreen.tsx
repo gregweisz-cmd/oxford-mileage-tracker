@@ -25,8 +25,6 @@ import { getTravelReasons, TravelReason } from '../services/travelReasonsService
 import SimpleNavigationButton from '../components/SimpleNavigationButton';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
-import { useTips } from '../contexts/TipsContext';
-import { TipCard } from '../components/TipCard';
 import { useTheme } from '../contexts/ThemeContext';
 import { COST_CENTERS } from '../constants/costCenters';
 import { PreferencesService } from '../services/preferencesService';
@@ -39,7 +37,6 @@ interface GpsTrackingScreenProps {
 export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
   const { colors } = useTheme();
   const { isTracking, currentSession, currentDistance, setCurrentDistance, startTracking, stopTracking, shouldShowEndLocationModal, setShouldShowEndLocationModal } = useGpsTracking();
-  const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [showGpsDuration, setShowGpsDuration] = useState(false);
   const [trackingForm, setTrackingForm] = useState({
@@ -240,7 +237,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       }
       setCurrentEmployee(employee);
       
-      // Set employee for tips context and load GPS tracking tips
       if (employee) {
         // Initialize cost center
         const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
@@ -248,11 +244,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         
         // Check if GPS tracking has been started today
         await checkGpsTrackingStatus(employee.id);
-        
-        setTipsEmployee(employee);
-        if (showTips) {
-          await loadTipsForScreen('GpsTrackingScreen', 'on_load');
-        }
       }
       
       // Set base address as default start location if available
@@ -713,28 +704,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         ), [isTracking, trackingTime, showGpsDuration])}
 
         {/* Tracking Form */}
-        {/* Tips Display - Memoized to prevent re-renders */}
-        {useMemo(() => showTips && tips.length > 0 && (
-          <View style={styles.tipsContainer}>
-            <ScrollView 
-              style={styles.tipsScrollView} 
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled={true}
-              removeClippedSubviews={true}
-              scrollEventThrottle={16}
-            >
-              {tips.map((tip) => (
-                <TipCard
-                  key={tip.id}
-                  tip={tip}
-                  onDismiss={dismissTip}
-                  onMarkSeen={markTipAsSeen}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ), [showTips, tips, dismissTip, markTipAsSeen])}
-
         {!isTracking && (
           <View style={styles.formContainer}>
             <Text style={styles.sectionTitle}>Trip Details</Text>
@@ -1499,18 +1468,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  tipsContainer: {
-    marginTop: 8,
-    maxHeight: 200,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
-    marginHorizontal: 16,
-    marginBottom: 16,
-  },
-  tipsScrollView: {
-    maxHeight: 180,
-  },
-  
   // Cost Center Selector Styles
   costCenterSelector: {
     flexDirection: 'row',

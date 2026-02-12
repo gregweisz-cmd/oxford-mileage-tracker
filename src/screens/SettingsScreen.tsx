@@ -21,7 +21,6 @@ import { DeviceControlService, DeviceControlSettings } from '../services/deviceC
 import { Employee } from '../types';
 import { DatabaseService } from '../services/database';
 import { useTheme } from '../contexts/ThemeContext';
-import { useTips } from '../contexts/TipsContext';
 
 interface SettingsScreenProps {
   navigation: any;
@@ -35,7 +34,6 @@ interface SettingsScreenProps {
 export default function SettingsScreen({ navigation, route }: SettingsScreenProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const { theme, setTheme, colors } = useTheme();
-  const { showTips, setShowTips, resetAllTips } = useTips();
   // State for device settings
   const [deviceSettings, setDeviceSettings] = useState<DeviceSettings | null>(null);
   const [deviceControlSettings, setDeviceControlSettings] = useState<DeviceControlSettings | null>(null);
@@ -498,24 +496,6 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
     marginVertical: 20,
-  },
-  resetTipsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#f44336',
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-  },
-  resetTipsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
   },
   loadingContainer: {
     flex: 1,

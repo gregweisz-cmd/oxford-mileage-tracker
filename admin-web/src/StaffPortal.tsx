@@ -53,9 +53,6 @@ import {
 
 // PDF generation imports
 
-// Tips system imports
-import { TipCard } from './components/TipCard';
-import { useWebTips, TipsProvider } from './contexts/TipsContext';
 
 // Real-time sync imports
 import { useRealtimeSync, useRealtimeStatus } from './hooks/useRealtimeSync';
@@ -495,16 +492,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // UI Enhancement hooks
   const { showSuccess, showError } = useToast();
   const { isLoading: uiLoading, startLoading, stopLoading } = useLoadingState();
-
-  // Tips system integration
-  const { 
-    tips, 
-    showTips, 
-    loadTipsForScreen, 
-    dismissTip, 
-    markTipAsSeen, 
-    setCurrentUserId 
-  } = useWebTips();
 
   // Calculate days in the current month
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
@@ -1761,21 +1748,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipts.length]); // Only update when count changes to avoid infinite loops
-
-  // Set tips user when employee is known, and load tips with that userId so persist matches
-  useEffect(() => {
-    if (effectiveEmployeeId) {
-      setCurrentUserId(effectiveEmployeeId);
-    }
-  }, [effectiveEmployeeId, setCurrentUserId]);
-
-  // Load tips only after we have a stable userId, passing it explicitly so localStorage key is correct
-  useEffect(() => {
-    if (effectiveEmployeeId && !loading && showTips) {
-      loadTipsForScreen('staff_portal', 'on_load', effectiveEmployeeId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveEmployeeId, loading, showTips]);
 
   // Check for revision requests
   useEffect(() => {
@@ -5319,22 +5291,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
         }}
       />
-
-      {/* Tips Display - pass effectiveEmployeeId so dismiss persists across logins */}
-      {showTips && tips.length > 0 && effectiveEmployeeId && (
-        <div className="tips-container">
-          <div className="tips-scroll-view">
-            {tips.map((tip) => (
-              <TipCard
-                key={tip.id}
-                tip={tip}
-                onDismiss={(tipId) => dismissTip(tipId, effectiveEmployeeId)}
-                onMarkSeen={(tipId) => markTipAsSeen(tipId, effectiveEmployeeId)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Loading Overlay */}
       <LoadingOverlay 
@@ -9016,9 +8972,7 @@ const StaffPortalWithProviders: React.FC<StaffPortalProps> = (props) => {
   return (
     <UIEnhancementProvider>
       <ToastProvider>
-        <TipsProvider>
-          <StaffPortal {...props} />
-        </TipsProvider>
+        <StaffPortal {...props} />
       </ToastProvider>
     </UIEnhancementProvider>
   );

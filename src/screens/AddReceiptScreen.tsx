@@ -30,8 +30,6 @@ import EesRulesService from '../services/eesRulesService';
 import { CostCenterAutoSelectionService } from '../services/costCenterAutoSelectionService';
 import { VendorSuggestion, NearbyVendor } from '../services/vendorIntelligenceService';
 import { Employee, Receipt } from '../types';
-import { useTips } from '../contexts/TipsContext';
-import { TipCard } from '../components/TipCard';
 import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 import { useNotifications } from '../contexts/NotificationContext';
 import { CategoryAiService, CategorySuggestion } from '../services/categoryAiService';
@@ -67,7 +65,6 @@ const EES_NOTE_SUFFIX = ` - ${EES_NOTE_TEXT}`;
 export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) {
   const { colors } = useTheme();
   const route = useRoute<RouteProp<RootStackParamList, 'AddReceipt'>>();
-  const { tips, loadTipsForScreen, dismissTip, markTipAsSeen, showTips, setCurrentEmployee: setTipsEmployee } = useTips();
   const { showAnomalyAlert } = useNotifications();
   const lastNonPerDiemCategoryRef = useRef<string>('Other');
   const [formData, setFormData] = useState({
@@ -148,7 +145,6 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     suggestionAddress: { color: colors.textSecondary },
     confidenceBadge: { backgroundColor: colors.secondary },
     confidenceText: { color: colors.surface },
-    tipsContainer: { backgroundColor: colors.card },
     aiSuggestionsTitle: { color: colors.text },
     categorySuggestionChip: { backgroundColor: colors.surface, borderColor: colors.border },
     categorySuggestionText: { color: colors.text },
@@ -339,11 +335,6 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         console.log('📄 AddReceiptScreen: Auto-selected cost center:', suggestedCostCenter);
         setSelectedCostCenter(suggestedCostCenter);
         
-        // Set employee for tips context and load receipt tips
-        setTipsEmployee(employee);
-        if (showTips) {
-          await loadTipsForScreen('AddReceiptScreen', 'on_load');
-        }
       }
     } catch (error) {
       console.error('Error loading employee:', error);
@@ -1145,26 +1136,6 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Tips Display */}
-        {showTips && tips.length > 0 && (
-          <View style={[styles.tipsContainer, dynamicStyles.tipsContainer]}>
-            <ScrollView 
-              style={styles.tipsScrollView} 
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled={true}
-            >
-              {tips.map((tip) => (
-                <TipCard
-                  key={tip.id}
-                  tip={tip}
-                  onDismiss={dismissTip}
-                  onMarkSeen={markTipAsSeen}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
         {/* Receipt Photo */}
         <View style={styles.photoContainer}>
           <View style={styles.labelRow}>
@@ -2078,18 +2049,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  tipsContainer: {
-    marginTop: 8,
-    maxHeight: 200,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
-    marginHorizontal: 16,
-    marginBottom: 16,
-  },
-  tipsScrollView: {
-    maxHeight: 180,
-  },
-
   // Category AI Styles
   aiSuggestionsHeader: {
     flexDirection: 'row',
