@@ -122,6 +122,8 @@ interface StaffPortalProps {
   supervisorMode?: boolean; // Optional prop to indicate supervisor is viewing
   supervisorId?: string; // Supervisor ID for approval workflow
   supervisorName?: string; // Supervisor name for approval workflow
+  seniorStaffId?: string; // Senior staff ID when viewing as senior staff
+  seniorStaffName?: string; // Senior staff name when viewing as senior staff
   onSelectedItemsChange?: (selectedItems: { mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> }) => void; // Callback for selected items when in supervisor mode
   onApproveReport?: () => void; // Callback for approving report in supervisor mode
   onRequestRevision?: () => void; // Callback for requesting revision in supervisor mode
@@ -251,6 +253,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   supervisorMode = false,
   supervisorId,
   supervisorName,
+  seniorStaffId,
+  seniorStaffName,
   onSelectedItemsChange,
   onApproveReport,
   onRequestRevision,

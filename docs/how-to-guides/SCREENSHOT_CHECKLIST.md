@@ -11,42 +11,55 @@ Check off each item below as you save it. Use **exact filenames**; save paths ar
 ## 1. Mobile App (11) — save to `images/screenshots/mobile-app/`
 
 - [ ] `app-store-download.png` — App/Play Store page (optional)
-- [ ] `login-screen.png` — Login (logo + email/password)
-- [ ] `home-screen.png` — Home overview
-- [ ] `home-dashboard-full.png` — Full dashboard, all tiles (scroll to show all)
-- [ ] `gps-tracking-screen.png` — GPS in progress (map + Stop)
-- [ ] `manual-entry-screen.png` — Manual mileage entry form
-- [ ] `receipt-capture-screen.png` — Add Receipt screen (or “Reading receipt image…” popup)
-- [ ] `daily-hours-screen.png` — Daily Hours — **include “Go to today” in frame**
-- [ ] `per-diem-screen.png` — Per Diem — **include “Go to today” in frame**
-- [ ] `settings-screen.png` — Settings
-- [ ] `saved-addresses-screen.png` — Saved addresses list
+- [x] `login-screen.png` — Login (logo + email/password)
+- [x] `home-screen.png` — Home overview
+- [x] `home-dashboard-full.png` — Full dashboard, all tiles (scroll to show all)
+- [x] `gps-tracking-screen.png` — GPS in progress (map + Stop)
+- [x] `manual-entry-screen.png` — Manual mileage entry form
+- [x] `receipt-capture-screen.png` — Add Receipt screen (or “Reading receipt image…” popup)
+- [x] `daily-hours-screen.png` — Daily Hours — **include “Go to today” in frame**
+- [x] `per-diem-screen.png` — Per Diem — **include “Go to today” in frame**
+- [x] `settings-screen.png` — Settings
+- [x] `saved-addresses-screen.png` — Saved addresses list
 
-**Mobile subtotal:** 0 / 11
+**Mobile subtotal:** 10 / 11
 
 ---
 
 ## 2. Staff Portal (13) — save to `images/screenshots/web-portal/`
 
-- [ ] `staff-portal-login.png` — Staff login
-- [ ] `staff-portal-dashboard.png` — Dashboard/overview
-- [ ] `staff-portal-submit.png` — Submit report button or dialog
-- [ ] `staff-portal-overview.png` — Overview with tabs
-- [ ] `staff-portal-mileage-tab.png` — Daily Travel (Odometer Start/End if visible)
-- [ ] `staff-portal-receipts-tab.png` — Receipts tab (Crop option)
-- [ ] `staff-portal-hours-tab.png` — Hours Worked tab
-- [ ] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
-- [ ] `staff-portal-monthly-summary.png` — Monthly Summary tab
-- [ ] `staff-portal-submission-workflow.png` — Submit dialog (Monthly vs Weekly)
-- [ ] `staff-portal-report-status.png` — Report status indicators
-- [ ] `staff-portal-notifications.png` — Notification bell/panel
-- [ ] `staff-portal-settings.png` — Settings / preferences
+- [x] `staff-portal-login.png` — Staff login
+- [x] `staff-portal-dashboard.png` — Dashboard/overview
+- [x] `staff-portal-submit.png` — Submit report button or dialog
+- [x] `staff-portal-overview.png` — Overview with tabs
+- [x] `staff-portal-mileage-tab.png` — Daily Travel (Odometer Start/End if visible)
+- [x] `staff-portal-receipts-tab.png` — Receipts tab (Crop option)
+- [x] `staff-portal-hours-tab.png` — Hours Worked tab
+- [x] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
+- [x] `staff-portal-monthly-summary.png` — Monthly Summary tab
+- [x] `staff-portal-submission-workflow.png` — Submit dialog (Monthly vs Weekly)
+- [x] `staff-portal-report-status.png` — Report status indicators
+- [x] `staff-portal-notifications.png` — Notification bell/panel
+- [x] `staff-portal-settings.png` — Settings / preferences
 
-**Staff subtotal:** 0 / 13
+**Staff subtotal:** 13 / 13
 
 ---
 
-## 3. Supervisor Portal (13) — save to `images/screenshots/web-portal/`
+## 3. Senior Staff Portal (optional) — save to `images/screenshots/web-portal/`
+
+Optional screenshots for the Senior Staff how-to guide (e.g. `senior-staff-portal-dashboard.png`, `senior-staff-portal-approvals.png`, `senior-staff-portal-team.png`). The PDF is generated without placeholders if none are added.
+
+- [ ] `senior-staff-portal-dashboard.png` — Senior Staff dashboard/overview
+- [ ] `senior-staff-portal-approvals.png` — Approvals tab
+- [ ] `senior-staff-portal-reports.png` — Reports tab
+- [ ] `senior-staff-portal-team.png` — Team tab
+
+**Senior Staff subtotal:** 0 / 4 (optional)
+
+---
+
+## 4. Supervisor Portal (13) — save to `images/screenshots/web-portal/`
 
 - [ ] `supervisor-portal-login.png` — Supervisor login
 - [ ] `supervisor-portal-dashboard.png` — Dashboard with KPIs
@@ -66,7 +79,7 @@ Check off each item below as you save it. Use **exact filenames**; save paths ar
 
 ---
 
-## 4. Admin Portal (13) — save to `images/screenshots/web-portal/`
+## 5. Admin Portal (13) — save to `images/screenshots/web-portal/`
 
 - [ ] `admin-portal-login.png` — Admin login
 - [ ] `admin-portal-dashboard.png` — Admin dashboard
@@ -86,7 +99,7 @@ Check off each item below as you save it. Use **exact filenames**; save paths ar
 
 ---
 
-## 5. Admin Portal — optional extras (same folder: `images/screenshots/web-portal/`)
+## 6. Admin Portal — optional extras (same folder: `images/screenshots/web-portal/`)
 
 - [ ] `admin-portal-employee-management.png` — Individual Management tab
 - [ ] `admin-portal-sync-from-hr.png` — **Sync from HR API** button (cloud icon next to Add Employee)
@@ -99,12 +112,13 @@ Check off each item below as you save it. Use **exact filenames**; save paths ar
 
 ## Summary
 
-| Section        | Required | Optional |
-|----------------|----------|----------|
-| Mobile App     | 11       | —        |
-| Staff Portal   | 13       | —        |
-| Supervisor     | 13       | —        |
-| Admin Portal   | 13       | 6        |
-| **Total**      | **50**   | 6        |
+| Section          | Required | Optional |
+|------------------|----------|----------|
+| Mobile App       | 11       | 1        |
+| Staff Portal     | 13       | —        |
+| Senior Staff     | —        | 4        |
+| Supervisor       | 13       | —        |
+| Admin Portal     | 13       | 6        |
+| **Total**        | **50**   | 11       |
 
 To mark done: change `- [ ]` to `- [x]` for each screenshot you’ve saved.

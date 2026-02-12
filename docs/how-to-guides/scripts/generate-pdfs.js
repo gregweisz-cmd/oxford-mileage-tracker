@@ -17,14 +17,15 @@ const imagesDir = path.join(__dirname, '../images/screenshots');
 const allTemplates = [
     { template: 'mobile-app-template.html', output: 'Mobile-App-How-To.pdf', title: 'Mobile App How-To Guide' },
     { template: 'staff-portal-template.html', output: 'Staff-Portal-How-To.pdf', title: 'Staff Portal How-To Guide' },
+    { template: 'senior-staff-portal-template.html', output: 'Senior-Staff-Portal-How-To.pdf', title: 'Senior Staff Portal How-To Guide' },
     { template: 'supervisor-portal-template.html', output: 'Supervisor-Portal-How-To.pdf', title: 'Supervisor Portal How-To Guide' },
     { template: 'admin-portal-template.html', output: 'Admin-Portal-How-To.pdf', title: 'Admin Portal How-To Guide' },
     { template: 'finance-portal-template.html', output: 'Finance-Portal-How-To.pdf', title: 'Finance Portal How-To Guide' },
     { template: 'contracts-portal-template.html', output: 'Contracts-Portal-How-To.pdf', title: 'Contracts Portal How-To Guide' }
 ];
 
-// Only generate PDFs that are "ready" (screenshots complete). Finance & Contracts deferred.
-const templates = allTemplates.filter((_, i) => i < 4);
+// Generate PDFs for Mobile, Staff, Senior Staff, Supervisor, and Admin (Finance & Contracts deferred)
+const templates = allTemplates.filter((_, i) => i < 5);
 
 async function generatePDF(templateFile, outputFile, title) {
     const templatePath = path.join(templatesDir, templateFile);
@@ -49,6 +50,8 @@ async function generatePDF(templateFile, outputFile, title) {
         let screenshotDir = 'web-portal'; // default
         if (templateFile.includes('mobile-app')) {
             screenshotDir = 'mobile-app';
+        } else if (templateFile.includes('senior-staff')) {
+            screenshotDir = 'web-portal'; // Senior Staff uses web-portal screenshots if any
         }
         
         // Replace screenshot placeholders with actual images (as base64 data URIs)
@@ -67,10 +70,10 @@ async function generatePDF(templateFile, outputFile, title) {
                     const base64Image = imageBuffer.toString('base64');
                     const imageDataUri = `data:image/png;base64,${base64Image}`;
                     
-                    // Resize so screenshot fits on one page (Letter 8.5x11, ~0.75in margins => content ~7x9.5in)
+                    // Size screenshot to fit on one page without spilling (Letter 8.5x11, 0.75in margins)
                     replacements.push({
                         placeholder: match[0],
-                        replacement: `<div style="text-align: center; margin: 16pt 0; page-break-inside: avoid;"><img src="${imageDataUri}" alt="${screenshotName}" style="max-width: 6.25in; max-height: 5.75in; width: auto; height: auto; object-fit: contain; border: 1px solid #ddd; border-radius: 4pt; box-shadow: 0 2pt 4pt rgba(0,0,0,0.1);" /></div>`
+                        replacement: `<div style="text-align: center; margin: 12pt 0; page-break-inside: avoid;"><img src="${imageDataUri}" alt="${screenshotName}" style="max-width: 6.25in; max-height: 4.5in; width: auto; height: auto; object-fit: contain; border: 1px solid #ddd; border-radius: 4pt; box-shadow: 0 2pt 4pt rgba(0,0,0,0.1);" /></div>`
                     });
                 } catch (err) {
                     console.warn(`   ⚠️  Error reading screenshot ${screenshotName}.png: ${err.message}`);

@@ -399,7 +399,29 @@
         
         <div class="warning-box">
             <h4>Important: Report Locking</h4>
-            <p>Once a report is submitted, it is locked and cannot be edited unless your supervisor requests revisions. Make sure all entries are complete before submitting.</p>
+            <p>Once a report is submitted, it is locked and cannot be edited unless a reviewer requests revisions. You can <strong>withdraw</strong> a submission only if no one has approved it yet (see Withdraw Submission below). Otherwise, make sure all entries are complete before submitting.</p>
+        </div>
+        
+        <h3>Withdrawing a Submission</h3>
+        <p>If you need to make changes after submitting (for example, you forgot an entry or something came up), you can withdraw your report <strong>only before the first reviewer has approved it</strong>.</p>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Check Your Report Status</strong>
+            <p>On the Approval Progress card, if you see a <strong>Withdraw Submission</strong> button, your report is still with the first reviewer and can be withdrawn.</p>
+        </div>
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Click Withdraw Submission</strong>
+            <p>Confirm that you want to withdraw. The report will return to <strong>Draft</strong> and you can edit it again, then submit when ready.</p>
+        </div>
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Resubmit</strong>
+            <p>After making your changes, use <strong>Submit Report</strong> again as usual.</p>
+        </div>
+        <div class="tip-box">
+            <h4>When Can I Withdraw?</h4>
+            <p>Withdraw is only available when the report is still at the first approval step (Senior Staff or Supervisor). Once anyone has approved and the report has moved to the next step, you must wait for a revision request to make changes.</p>
         </div>
     </div>
     
@@ -747,15 +769,14 @@
         </div>
         
         <h3>What Happens After Submission</h3>
-        <p>After you submit your report:</p>
+        <p>Reports follow an approval chain. After you submit:</p>
         <ol>
-            <li>Your supervisor receives a notification</li>
-            <li>The report status changes to "Pending Approval"</li>
-            <li>Your supervisor reviews the report</li>
-            <li>Your supervisor either approves the report or requests revisions</li>
-            <li>If revisions are requested, you'll receive a notification and can make the requested changes</li>
-            <li>Once approved by your supervisor, the report moves to finance for final approval</li>
+            <li><strong>Senior Staff (if applicable)</strong> – If you have a Senior Staff assigned, they review first. They can approve (send to Supervisor) or request revisions (send back to you).</li>
+            <li><strong>Supervisor</strong> – Your supervisor reviews next. They can approve (send to Finance) or request revisions (send back to you or to Senior Staff).</li>
+            <li><strong>Finance</strong> – Finance performs final review and approval.</li>
+            <li><strong>Revisions</strong> – If any reviewer requests revisions, you'll get a notification. Make the requested changes and use <strong>Resubmit for Approval</strong> to send the report back through the same chain.</li>
         </ol>
+        <p>Weekly check-up submissions stop at Supervisor approval and do not go to Finance.</p>
         
         <h2 id="report-status">Viewing Report Status</h2>
         
@@ -779,23 +800,28 @@
                     <td>Edit entries, add new entries, submit report</td>
                 </tr>
                 <tr>
-                    <td><strong>Submitted</strong></td>
-                    <td>Report is submitted and awaiting supervisor review</td>
-                    <td>View only (cannot edit)</td>
+                    <td><strong>Submitted / Waiting for Senior Staff</strong></td>
+                    <td>Report is with Senior Staff (if you have one) or first reviewer</td>
+                    <td>View only; you may see <strong>Withdraw Submission</strong> to take it back to draft</td>
                 </tr>
                 <tr>
-                    <td><strong>Needs Revision</strong></td>
-                    <td>Supervisor requested changes</td>
-                    <td>Edit entries based on supervisor's comments</td>
+                    <td><strong>Waiting for Supervisor</strong></td>
+                    <td>Senior Staff approved (or you have no Senior Staff); report is with Supervisor</td>
+                    <td>View only; Withdraw may still be available if no one has approved yet</td>
                 </tr>
                 <tr>
-                    <td><strong>Approved by Supervisor</strong></td>
-                    <td>Supervisor approved, awaiting finance approval</td>
+                    <td><strong>Waiting for Finance</strong></td>
+                    <td>Supervisor approved; report is with Finance</td>
                     <td>View only</td>
                 </tr>
                 <tr>
+                    <td><strong>Needs Revision</strong></td>
+                    <td>A reviewer requested changes</td>
+                    <td>Edit entries per comments, then <strong>Resubmit for Approval</strong></td>
+                </tr>
+                <tr>
                     <td><strong>Approved</strong></td>
-                    <td>Fully approved by supervisor and finance</td>
+                    <td>Fully approved</td>
                     <td>View only, export PDF</td>
                 </tr>
             </tbody>
@@ -942,15 +968,14 @@
         <h2>Understanding Approval Status</h2>
         
         <h3>Approval Workflow</h3>
-        <p>Your reports go through a multi-stage approval process:</p>
+        <p>Your reports go through a multi-stage approval process (some steps apply only if you have a Senior Staff assigned):</p>
         <ol>
-            <li><strong>Draft</strong> - You're still working on it</li>
-            <li><strong>Submitted</strong> - You've submitted, awaiting supervisor</li>
-            <li><strong>Supervisor Review</strong> - Your supervisor is reviewing</li>
-            <li><strong>Needs Revision</strong> - Supervisor requested changes (you can edit again)</li>
-            <li><strong>Approved by Supervisor</strong> - Supervisor approved, sent to finance</li>
-            <li><strong>Finance Review</strong> - Finance team is reviewing</li>
-            <li><strong>Approved</strong> - Fully approved and processed</li>
+            <li><strong>Draft</strong> – You're still working on it. You can withdraw a submitted report only before the first approval.</li>
+            <li><strong>Submitted / Waiting for Senior Staff</strong> – First reviewer (Senior Staff if applicable).</li>
+            <li><strong>Waiting for Supervisor</strong> – Supervisor is reviewing.</li>
+            <li><strong>Waiting for Finance</strong> – Finance is reviewing (monthly reports only; weekly check-ups stop at Supervisor).</li>
+            <li><strong>Needs Revision</strong> – A reviewer requested changes; edit and use Resubmit for Approval.</li>
+            <li><strong>Approved</strong> – Fully approved and processed.</li>
         </ol>
         
         <h3>What to Expect</h3>

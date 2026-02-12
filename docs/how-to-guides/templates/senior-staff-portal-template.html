@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Senior Staff Portal How-To Guide - Oxford House Expense Tracker</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 0.75in;
+            @top-center {
+                content: "Senior Staff Portal How-To Guide";
+                font-size: 10pt;
+                color: #666;
+            }
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 10pt;
+                color: #666;
+            }
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 0;
+        }
+        
+        .cover-page {
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 9in;
+            text-align: center;
+        }
+        
+        .cover-page h1 {
+            font-size: 36pt;
+            margin-bottom: 20pt;
+            color: #1976d2;
+        }
+        
+        .cover-page .subtitle {
+            font-size: 18pt;
+            color: #666;
+            margin-bottom: 40pt;
+        }
+        
+        .cover-page .version {
+            font-size: 12pt;
+            color: #999;
+            margin-top: 40pt;
+        }
+        
+        h1 {
+            font-size: 24pt;
+            color: #1976d2;
+            margin-top: 30pt;
+            margin-bottom: 15pt;
+            page-break-after: avoid;
+        }
+        
+        h2 {
+            font-size: 18pt;
+            color: #1976d2;
+            margin-top: 25pt;
+            margin-bottom: 12pt;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: 14pt;
+            color: #333;
+            margin-top: 20pt;
+            margin-bottom: 10pt;
+            page-break-after: avoid;
+        }
+        
+        h4 {
+            font-size: 12pt;
+            color: #555;
+            margin-top: 15pt;
+            margin-bottom: 8pt;
+            font-weight: bold;
+        }
+        
+        p {
+            margin-bottom: 10pt;
+            text-align: justify;
+        }
+        
+        ul, ol {
+            margin-bottom: 10pt;
+            padding-left: 25pt;
+        }
+        
+        li {
+            margin-bottom: 5pt;
+        }
+        
+        .quick-start {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 15pt;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        .quick-start h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        
+        .tip-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15pt;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        .tip-box h4 {
+            margin-top: 0;
+            color: #856404;
+        }
+        
+        .step-number {
+            display: inline-block;
+            background-color: #1976d2;
+            color: white;
+            width: 24pt;
+            height: 24pt;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 24pt;
+            font-weight: bold;
+            margin-right: 10pt;
+            vertical-align: middle;
+        }
+        
+        .step {
+            margin-bottom: 15pt;
+            page-break-inside: avoid;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20pt 0;
+            page-break-inside: avoid;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8pt;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #1976d2;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .toc {
+            page-break-after: always;
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .toc a {
+            color: #1976d2;
+            text-decoration: none;
+        }
+        
+        .section-divider {
+            border-top: 2px solid #1976d2;
+            margin: 30pt 0;
+            page-break-before: always;
+        }
+    </style>
+</head>
+<body>
+    <!-- Cover Page -->
+    <div class="cover-page">
+        <h1>Senior Staff Portal How-To Guide</h1>
+        <div class="subtitle">Oxford House Expense Tracker</div>
+        <div class="version">Version 1.0 | February 2026</div>
+    </div>
+    
+    <!-- Table of Contents -->
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ul>
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#accessing">Accessing the Senior Staff Portal</a></li>
+            <li><a href="#approvals-tab">Approvals Tab</a></li>
+            <li><a href="#reports-tab">Reports Tab</a></li>
+            <li><a href="#team-tab">Team Tab</a></li>
+            <li><a href="#approving">Approving a Report</a></li>
+            <li><a href="#requesting-revision">Requesting Revisions</a></li>
+            <li><a href="#workflow">Where Reports Go After You Approve</a></li>
+        </ul>
+    </div>
+    
+    <!-- Overview -->
+    <div id="overview">
+        <h1>Overview</h1>
+        
+        <div class="quick-start">
+            <h3>What Is the Senior Staff Portal?</h3>
+            <p>The Senior Staff Portal is for employees who are designated as <strong>Senior Staff</strong> and have team members assigned to them. It works like the Supervisor Portal but is used only by Senior Staff to review and approve expense reports for <strong>their team</strong>—employees who have you set as their Senior Staff in the system.</p>
+        </div>
+        
+        <h3>Who Sees This Portal?</h3>
+        <p>You will see the <strong>Senior Staff Portal</strong> option in the portal switcher (dropdown in the header) if your position includes &quot;Senior Staff&quot; or you have been given access. Not every employee has a Senior Staff; only those whose administrator has assigned one will have reports that appear in a Senior Staff's queue.</p>
+        
+        <h3>Your Role in the Approval Chain</h3>
+        <p>When an employee has you as their Senior Staff, their report goes to you <strong>first</strong> after they submit. You can:</p>
+        <ul>
+            <li><strong>Approve</strong> – Send the report to the employee's Supervisor for the next step.</li>
+            <li><strong>Request revision</strong> – Send the report back to the employee with comments so they can make changes and resubmit.</li>
+        </ul>
+        <p>After you approve, the report moves to the Supervisor, then to Finance. Revisions follow the same chain in reverse when needed.</p>
+    </div>
+    
+    <!-- Accessing the Portal -->
+    <div class="section-divider" id="accessing">
+        <h1>Accessing the Senior Staff Portal</h1>
+        
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Log in</strong>
+            <p>Log in to the Oxford House Expense Tracker web portal with your email and password.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Open the portal switcher</strong>
+            <p>In the header, click the dropdown that shows the current portal name (e.g., &quot;Staff Portal&quot; or your name).</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Select Senior Staff Portal</strong>
+            <p>Choose <strong>Senior Staff Portal</strong> from the list. The portal will load and show your team's reports.</p>
+        </div>
+        
+        <div class="tip-box">
+            <h4>Tip</h4>
+            <p>Your last selected portal is usually remembered for your next login.</p>
+        </div>
+    </div>
+    
+    <!-- Approvals Tab -->
+    <div class="section-divider" id="approvals-tab">
+        <h1>Approvals Tab</h1>
+        
+        <p>The <strong>Approvals</strong> tab shows reports that are <strong>pending your review</strong>—reports from your team that are waiting for Senior Staff approval. Each row shows:</p>
+        <ul>
+            <li>Employee name</li>
+            <li>Report period (month/year)</li>
+            <li>Status</li>
+            <li>Amount and miles</li>
+            <li>Actions: <strong>View</strong> (open the report in a full view) and <strong>Details</strong> (open detailed report view)</li>
+        </ul>
+        
+        <p>If there are no reports pending your review, you'll see a message: &quot;No reports pending your review.&quot;</p>
+    </div>
+    
+    <!-- Reports Tab -->
+    <div class="section-divider" id="reports-tab">
+        <h1>Reports Tab</h1>
+        
+        <p>The <strong>Reports</strong> tab lists all reports from your team (employees who have you as their Senior Staff), regardless of status. You can:</p>
+        <ul>
+            <li><strong>Search</strong> by employee name</li>
+            <li><strong>Filter</strong> by status (e.g., Pending Senior Staff, Pending Supervisor, Approved, Needs Revision)</li>
+            <li><strong>Filter</strong> by month</li>
+        </ul>
+        
+        <p>Use this tab to see the full picture of your team's reports and to open any report for review.</p>
+    </div>
+    
+    <!-- Team Tab -->
+    <div class="section-divider" id="team-tab">
+        <h1>Team Tab</h1>
+        
+        <p>The <strong>Team</strong> tab shows the list of employees who have you as their <strong>Senior Staff</strong>. These are the people whose reports will appear in your Approvals and Reports tabs. You can click an employee to view their report for a given month.</p>
+        
+        <div class="tip-box">
+            <h4>Who appears here?</h4>
+            <p>Only employees whose Senior Staff assignment is set to you (in Admin Portal &gt; Employee Management) appear in your team. If you don't see anyone, no one has been assigned to you as Senior Staff yet.</p>
+        </div>
+    </div>
+    
+    <!-- Approving a Report -->
+    <div class="section-divider" id="approving">
+        <h1>Approving a Report</h1>
+        
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Open the report</strong>
+            <p>From the Approvals or Reports tab, click <strong>View</strong> (or the row) to open the employee's report in the full view, or use <strong>Details</strong> for the detailed report view.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Review the report</strong>
+            <p>Review mileage, receipts, hours, and descriptions. You can expand sections and check the monthly summary as needed.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Approve</strong>
+            <p>When you're satisfied, click <strong>Approve</strong>. Confirm that you want to send the report to the next reviewer (the employee's Supervisor). The report will leave your queue and move to the Supervisor's queue.</p>
+        </div>
+        
+        <p>If you need changes from the employee, use <strong>Request Revision</strong> instead (see below).</p>
+    </div>
+    
+    <!-- Requesting Revisions -->
+    <div class="section-divider" id="requesting-revision">
+        <h1>Requesting Revisions</h1>
+        
+        <p>If something in the report needs to be corrected or clarified, you can send it back to the employee with comments.</p>
+        
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Open the report</strong>
+            <p>Open the report from the Approvals or Reports tab as above.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Click Request Revision</strong>
+            <p>Click <strong>Request Revision</strong> (or &quot;Request Revision from Employee&quot; in the review dialog).</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Enter comments</strong>
+            <p>You <strong>must</strong> enter comments explaining what needs to be changed. Optionally, you can select specific items (mileage, receipts, time entries) to flag. The employee will see your comments and can make the changes, then resubmit.</p>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Submit</strong>
+            <p>Submit the revision request. The report status will change to <strong>Needs Revision</strong> and the report will return to the employee. They can edit and resubmit; when they do, it will come back to you for review again.</p>
+        </div>
+    </div>
+    
+    <!-- Where Reports Go After You Approve -->
+    <div class="section-divider" id="workflow">
+        <h1>Where Reports Go After You Approve</h1>
+        
+        <p>When you approve a report:</p>
+        <ol>
+            <li>The report moves to the employee's <strong>Supervisor</strong> for review.</li>
+            <li>The Supervisor can then approve (sending it to Finance) or request revisions (back to the employee or, in some cases, back to you).</li>
+            <li>Finance performs the final review and approval for full monthly reports. Weekly check-up reports stop at Supervisor approval and do not go to Finance.</li>
+        </ol>
+        
+        <p>If the Supervisor (or Finance) requests revisions, the employee makes changes and resubmits; the report will work its way back through the same chain (e.g., to you again if it's back at the Senior Staff step).</p>
+    </div>
+    
+    <!-- Footer -->
+    <div style="margin-top: 40pt; padding-top: 20pt; border-top: 1px solid #ddd; font-size: 9pt; color: #666; text-align: center;">
+        <p>This document is part of the Oxford House Expense Tracker documentation suite.</p>
+        <p>For technical support, please contact your system administrator.</p>
+        <p>Document Version: 1.0 | Last Updated: February 2026</p>
+    </div>
+</body>
+</html>
