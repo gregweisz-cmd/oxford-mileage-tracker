@@ -26,9 +26,10 @@ Check off each item below as you save it. Use **exact filenames**; save paths ar
 
 ---
 
-## 2. Staff Portal (13) — save to `images/screenshots/web-portal/`
+## 2. Staff Portal (14) — save to `images/screenshots/web-portal/`
 
 - [x] `staff-portal-login.png` — Staff login
+- [ ] `staff-portal-portal-switcher.png` — Portal switcher dropdown in header (Finding/Selecting Portal section)
 - [x] `staff-portal-dashboard.png` — Dashboard/overview
 - [x] `staff-portal-submit.png` — Submit report button or dialog
 - [x] `staff-portal-overview.png` — Overview with tabs
@@ -42,7 +43,7 @@ Check off each item below as you save it. Use **exact filenames**; save paths ar
 - [x] `staff-portal-notifications.png` — Notification bell/panel
 - [x] `staff-portal-settings.png` — Settings / preferences
 
-**Staff subtotal:** 13 / 13
+**Staff subtotal:** 13 / 14
 
 ---
 

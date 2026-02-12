@@ -317,11 +317,11 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   sx={{ 
                     border: '1px solid',
                     borderColor: 'divider',
-                    color: 'error.main',
-                    '&:hover': { bgcolor: 'error.light', color: 'error.dark' }
+                    color: 'primary.main',
+                    '&:hover': { bgcolor: 'primary.light', color: 'primary.dark' }
                   }}
                 >
-                  <AddIcon fontSize="small" />
+                  <CheckCircleIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             )}

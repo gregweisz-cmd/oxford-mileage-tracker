@@ -296,9 +296,11 @@ const App: React.FC = () => {
               debugError('Error fetching user preferences:', error);
             }
             
-            // If no preference or preference invalid, use role/position-based detection
+            // If no preference or preference invalid, default to personal (Staff) portal first, then role-based
             const availablePortals = getAvailablePortalsForUser(role, position, permissions);
-            if (availablePortals.includes('admin')) {
+            if (availablePortals.includes('staff')) {
+              setCurrentPortal('staff');
+            } else if (availablePortals.includes('admin')) {
               setCurrentPortal('admin');
             } else if (availablePortals.includes('finance')) {
               setCurrentPortal('finance');
@@ -306,6 +308,8 @@ const App: React.FC = () => {
               setCurrentPortal('contracts');
             } else if (availablePortals.includes('supervisor')) {
               setCurrentPortal('supervisor');
+            } else if (availablePortals.includes('senior_staff')) {
+              setCurrentPortal('senior_staff');
             } else {
               setCurrentPortal('staff');
             }
@@ -503,9 +507,11 @@ const App: React.FC = () => {
       debugError('Error fetching user preferences:', error);
     }
     
-    // If no preference or preference invalid, use role/position-based detection
-    // Check role first (explicit role assignment takes priority)
-    if (role === 'admin') {
+    // If no preference or preference invalid, default to personal (Staff) portal first so user sees their own portal on first login
+    const availablePortals = getAvailablePortalsForUser(role, position, permissions);
+    if (availablePortals.includes('staff')) {
+      setCurrentPortal('staff');
+    } else if (role === 'admin') {
       setCurrentPortal('admin');
     } else if (role === 'finance') {
       setCurrentPortal('finance');
@@ -514,7 +520,6 @@ const App: React.FC = () => {
     } else if (role === 'supervisor') {
       setCurrentPortal('supervisor');
     } else if (role === 'employee' || !role) {
-      // If role is 'employee' or not set, fall back to position-based detection
       if (position.includes('admin') || position.includes('ceo')) {
         setCurrentPortal('admin');
       } else if (position.includes('finance') || position.includes('accounting')) {
@@ -527,7 +532,6 @@ const App: React.FC = () => {
         setCurrentPortal('staff');
       }
     } else {
-      // Unknown role, default to staff
       setCurrentPortal('staff');
     }
   };
