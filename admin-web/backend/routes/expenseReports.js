@@ -343,8 +343,10 @@ router.get('/api/monthly-reports', (req, res) => {
     if (teamSupervisorId === 'unassigned') {
       conditions.push('(e.supervisorId IS NULL OR e.supervisorId = "")');
     } else {
-      conditions.push('e.supervisorId = ?');
-      params.push(teamSupervisorId);
+      // Include reports where (1) employee reports to this supervisor OR (2) report is assigned to this supervisor
+      // so supervisors still see reports assigned to them even if employee's supervisor was changed after submit
+      conditions.push('(e.supervisorId = ? OR er.currentApproverId = ?)');
+      params.push(teamSupervisorId, teamSupervisorId);
     }
   }
 
@@ -1040,8 +1042,8 @@ router.get('/api/expense-reports', (req, res) => {
     if (teamSupervisorId === 'unassigned') {
       conditions.push('(e.supervisorId IS NULL OR e.supervisorId = "")');
     } else {
-      conditions.push('e.supervisorId = ?');
-      params.push(teamSupervisorId);
+      conditions.push('(e.supervisorId = ? OR er.currentApproverId = ?)');
+      params.push(teamSupervisorId, teamSupervisorId);
     }
   }
 
@@ -1697,6 +1699,8 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         const allowedApproverIds = new Set();
         if (currentStep.approverId) allowedApproverIds.add(currentStep.approverId);
         if (currentStep.delegatedToId) allowedApproverIds.add(currentStep.delegatedToId);
+        // Allow report's current approver (so the person the report is assigned to can always act, even if step approverId differs e.g. after reassignment)
+        if (initialCurrentApproverId) allowedApproverIds.add(initialCurrentApproverId);
 
         // For finance step: allow any employee with finance role (not just the designated approver)
         if (currentStep.role === 'finance') {
@@ -1706,6 +1710,14 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
             if (!currentStep.approverName || currentStep.approverName === 'Finance Team') {
               currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
             }
+          }
+        }
+
+        // For supervisor step: allow employee's current supervisor so reassigned supervisors can act
+        if (currentStep.role === 'supervisor' && approverId) {
+          const employee = await dbService.getEmployeeById(report.employeeId);
+          if (employee && employee.supervisorId === approverId) {
+            allowedApproverIds.add(approverId);
           }
         }
 
@@ -1990,12 +2002,29 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
       case 'request_revision_to_employee': {
         // Supervisor requests revision - send back to employee
+        if (!comments || (typeof comments === 'string' && !comments.trim())) {
+          res.status(400).json({ error: 'Comments are required when requesting revision' });
+          return;
+        }
+        // Allow if requester is report's current approver or employee's supervisor (so reassigned supervisors can request revision)
+        const employeeForRevision = await dbService.getEmployeeById(report.employeeId);
+        const isAuthorizedSupervisor = approverId && (
+          initialCurrentApproverId === approverId ||
+          (employeeForRevision && employeeForRevision.supervisorId === approverId)
+        );
+        let supervisorStep = currentStep && currentStep.role === 'supervisor' ? currentStep : workflow.find(s => s.role === 'supervisor');
+        let supervisorStepIndex = supervisorStep ? workflow.indexOf(supervisorStep) : -1;
+        if (supervisorStep && (currentStep === supervisorStep || isAuthorizedSupervisor)) {
+          currentStep = supervisorStep;
+          resolvedCurrentStepIndex = supervisorStepIndex;
+          updates.currentApprovalStep = supervisorStepIndex;
+        }
         if (currentStep && currentStep.role !== 'supervisor') {
           res.status(400).json({ error: 'This action is only available for supervisor approvers' });
           return;
         }
-        if (!comments) {
-          res.status(400).json({ error: 'Comments are required when requesting revision' });
+        if (!isAuthorizedSupervisor && currentStep && currentStep.approverId !== approverId && currentStep.delegatedToId !== approverId) {
+          res.status(403).json({ error: 'Approver is not authorized to request revision for this report.' });
           return;
         }
 
@@ -2003,7 +2032,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           currentStep.status = 'revision_requested';
           currentStep.actedAt = nowIso;
           currentStep.comments = comments;
-          workflow[currentStepIndex] = currentStep;
+          workflow[resolvedCurrentStepIndex] = currentStep;
         }
 
         // Process selected items for item-specific revisions
