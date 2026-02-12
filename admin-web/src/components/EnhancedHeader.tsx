@@ -18,7 +18,6 @@ import {
 import {
   Download as DownloadIcon,
   List as ListIcon,
-  Add as AddIcon,
   Save as SaveIcon,
   Send as SendIcon,
   Settings as SettingsIcon,
