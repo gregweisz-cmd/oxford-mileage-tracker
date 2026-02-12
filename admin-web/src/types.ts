@@ -68,6 +68,7 @@ export interface Employee {
   selectedCostCenters: string[];
   defaultCostCenter: string;
   supervisorId?: string | null; // ID of the supervisor this employee reports to (null = no supervisor)
+  seniorStaffId?: string | null; // ID of the senior staff who reviews before supervisor (optional)
   signature?: string;
   typicalWorkStartHour?: number; // Typical work start hour (0-23)
   typicalWorkEndHour?: number; // Typical work end hour (0-23)

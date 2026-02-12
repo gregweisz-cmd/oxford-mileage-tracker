@@ -5,6 +5,7 @@ import { CssBaseline, Box } from '@mui/material';
 // Import all portal components
 import StaffPortal from './StaffPortal';
 import SupervisorPortal from './components/SupervisorPortal';
+import SeniorStaffPortal from './components/SeniorStaffPortal';
 import { AdminPortal } from './components/AdminPortal';
 import FinancePortal from './components/FinancePortal';
 import ContractsPortal from './components/ContractsPortal';
@@ -26,13 +27,13 @@ const getAvailablePortalsForUser = (
   role: string,
   position: string,
   permissions: string[] = []
-): Array<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'> => {
+): Array<'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts'> => {
   const normalizedRole = role.toLowerCase();
   const normalizedPosition = position.toLowerCase();
   const normalizedPermissions = permissions.map((perm) => perm.toLowerCase());
 
   if (normalizedPermissions.length > 0) {
-    const allowed = new Set<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'>();
+    const allowed = new Set<'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts'>();
     normalizedPermissions.forEach((permission) => {
       if (permission === 'admin') allowed.add('admin');
       if (permission === 'finance') allowed.add('finance');
@@ -40,11 +41,13 @@ const getAvailablePortalsForUser = (
       if (permission === 'supervisor') allowed.add('supervisor');
       if (permission === 'staff') allowed.add('staff');
     });
-    const portalOrder: Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> = [
+    if (normalizedPosition.includes('senior staff')) allowed.add('senior_staff');
+    const portalOrder: Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'> = [
       'admin',
       'finance',
       'contracts',
       'supervisor',
+      'senior_staff',
       'staff',
     ];
     return portalOrder.filter((portal) => allowed.has(portal));
@@ -56,7 +59,7 @@ const getAvailablePortalsForUser = (
   const hasSupervisorRole = normalizedRole.includes('supervisor') || normalizedRole.includes('director') || normalizedRole.includes('manager');
 
   if (hasAdminRole) {
-    return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
+    return ['admin', 'finance', 'contracts', 'supervisor', 'senior_staff', 'staff'];
   } else if (hasFinanceRole) {
     return ['finance', 'staff'];
   } else if (hasContractsRole) {
@@ -64,15 +67,16 @@ const getAvailablePortalsForUser = (
   } else if (hasSupervisorRole) {
     return ['supervisor', 'staff'];
   } else if (!normalizedRole || normalizedRole === 'employee') {
-    // Fallback to position-based detection
     if (normalizedPosition.includes('admin') || normalizedPosition.includes('ceo')) {
-      return ['admin', 'finance', 'contracts', 'supervisor', 'staff'];
+      return ['admin', 'finance', 'contracts', 'supervisor', 'senior_staff', 'staff'];
     } else if (normalizedPosition.includes('finance') || normalizedPosition.includes('accounting')) {
       return ['finance', 'staff'];
     } else if (normalizedPosition.includes('contracts')) {
       return ['contracts', 'staff'];
     } else if (normalizedPosition.includes('supervisor') || normalizedPosition.includes('director') || normalizedPosition.includes('regional manager') || normalizedPosition.includes('manager')) {
       return ['supervisor', 'staff'];
+    } else if (normalizedPosition.includes('senior staff')) {
+      return ['senior_staff', 'staff'];
     }
   }
   
@@ -190,7 +194,7 @@ const createAppTheme = (mode: 'light' | 'dark') => {
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentPortal, setCurrentPortal] = useState<'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts'>('staff');
+  const [currentPortal, setCurrentPortal] = useState<'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts'>('staff');
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -418,7 +422,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePortalChange = (portal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts') => {
+  const handlePortalChange = (portal: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts') => {
     setCurrentPortal(portal);
   };
 
@@ -517,6 +521,8 @@ const App: React.FC = () => {
         setCurrentPortal('finance');
       } else if (position.includes('supervisor') || position.includes('director') || position.includes('regional manager') || position.includes('manager')) {
         setCurrentPortal('supervisor');
+      } else if (position.toLowerCase().includes('senior staff')) {
+        setCurrentPortal('senior_staff');
       } else {
         setCurrentPortal('staff');
       }
@@ -647,6 +653,12 @@ const App: React.FC = () => {
         return (
           <ErrorBoundary>
             <SupervisorPortal supervisorId={currentUser.id} supervisorName={currentUser.name} />
+          </ErrorBoundary>
+        );
+      case 'senior_staff':
+        return (
+          <ErrorBoundary>
+            <SeniorStaffPortal seniorStaffId={currentUser.id} seniorStaffName={currentUser.name} />
           </ErrorBoundary>
         );
       case 'staff':

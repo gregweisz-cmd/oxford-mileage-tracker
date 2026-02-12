@@ -19,7 +19,6 @@ const { debugLog, debugWarn, debugError } = require('../debug');
  */
 async function initializeApprovalWorkflow(report) {
   const workflow = [];
-  const now = new Date();
   let currentApprovalStage = '';
   let currentApprovalStep = 0;
   let currentApproverId = null;
@@ -27,18 +26,23 @@ async function initializeApprovalWorkflow(report) {
   let escalationDueAt = null;
 
   const employee = await dbService.getEmployeeById(report.employeeId);
+  let seniorStaff = null;
+  if (employee && employee.seniorStaffId) {
+    seniorStaff = await dbService.getEmployeeById(employee.seniorStaffId);
+  }
   let supervisor = null;
   if (employee && employee.supervisorId) {
     supervisor = await dbService.getEmployeeById(employee.supervisorId);
   }
 
-  if (supervisor) {
-    const supervisorName = supervisor.preferredName || supervisor.name || 'Supervisor';
-    const supervisorStep = {
+  // Step 1: Senior Staff (if applicable) — before supervisor
+  if (seniorStaff) {
+    const seniorStaffName = seniorStaff.preferredName || seniorStaff.name || 'Senior Staff';
+    const seniorStaffStep = {
       step: workflow.length,
-      role: 'supervisor',
-      approverId: supervisor.id,
-      approverName: supervisorName,
+      role: 'senior_staff',
+      approverId: seniorStaff.id,
+      approverName: seniorStaffName,
       status: 'pending',
       delegatedToId: null,
       delegatedToName: null,
@@ -47,11 +51,36 @@ async function initializeApprovalWorkflow(report) {
       comments: '',
       reminders: []
     };
+    workflow.push(seniorStaffStep);
+    currentApprovalStage = 'senior_staff';
+    currentApproverId = seniorStaff.id;
+    currentApproverName = seniorStaffName;
+    escalationDueAt = seniorStaffStep.dueAt;
+  }
+
+  // Step 2: Supervisor (if applicable)
+  if (supervisor) {
+    const supervisorName = supervisor.preferredName || supervisor.name || 'Supervisor';
+    const supervisorStep = {
+      step: workflow.length,
+      role: 'supervisor',
+      approverId: supervisor.id,
+      approverName: supervisorName,
+      status: workflow.length === 0 ? 'pending' : 'waiting',
+      delegatedToId: null,
+      delegatedToName: null,
+      dueAt: helpers.computeEscalationDueAt(constants.SUPERVISOR_ESCALATION_HOURS),
+      actedAt: null,
+      comments: '',
+      reminders: []
+    };
     workflow.push(supervisorStep);
-    currentApprovalStage = 'supervisor';
-    currentApproverId = supervisor.id;
-    currentApproverName = supervisorName;
-    escalationDueAt = supervisorStep.dueAt;
+    if (workflow.length === 1) {
+      currentApprovalStage = 'supervisor';
+      currentApproverId = supervisor.id;
+      currentApproverName = supervisorName;
+      escalationDueAt = supervisorStep.dueAt;
+    }
   }
 
   const financeApprovers = await dbService.getFinanceApprovers();
@@ -80,7 +109,6 @@ async function initializeApprovalWorkflow(report) {
   workflow.push(financeStep);
 
   if (workflow.length === 1) {
-    // No supervisor step; finance is first approver
     currentApprovalStage = 'finance';
     currentApproverId = financeApproverId;
     currentApproverName = financeApproverName;
@@ -160,7 +188,8 @@ router.post('/api/expense-reports', async (req, res) => {
         const workflowInit = await initializeApprovalWorkflow(report);
         debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}`);
         
-        updateData.status = workflowInit.currentApprovalStage === 'finance' ? 'pending_finance' : 'pending_supervisor';
+        const stage = workflowInit.currentApprovalStage;
+        updateData.status = stage === 'finance' ? 'pending_finance' : (stage === 'senior_staff' ? 'pending_senior_staff' : 'pending_supervisor');
         updateData.submittedAt = now;
         updateData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
         updateData.currentApprovalStep = workflowInit.currentApprovalStep;
@@ -217,7 +246,8 @@ router.post('/api/expense-reports', async (req, res) => {
         const workflowInit = await initializeApprovalWorkflow(report);
         debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}`);
         
-        insertData.status = workflowInit.currentApprovalStage === 'finance' ? 'pending_finance' : 'pending_supervisor';
+        const stageInsert = workflowInit.currentApprovalStage;
+        insertData.status = stageInsert === 'finance' ? 'pending_finance' : (stageInsert === 'senior_staff' ? 'pending_senior_staff' : 'pending_supervisor');
         insertData.submittedAt = now;
         insertData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
         insertData.currentApprovalStep = workflowInit.currentApprovalStep;
@@ -270,13 +300,13 @@ router.post('/api/expense-reports', async (req, res) => {
 // 1. With query params (employeeId, month, year) - returns single report
 // 2. Without query params - returns all reports (for supervisor dashboard)
 router.get('/api/monthly-reports', (req, res) => {
-  const { employeeId, month, year, status, approverId, stage, teamSupervisorId } = req.query;
+  const { employeeId, month, year, status, approverId, stage, teamSupervisorId, teamSeniorStaffId } = req.query;
   const db = dbService.getDb();
   
-  debugLog(`🔍 GET /api/monthly-reports - Query params:`, { employeeId, month, year, status, approverId, stage, teamSupervisorId });
+  debugLog(`🔍 GET /api/monthly-reports - Query params:`, { employeeId, month, year, status, approverId, stage, teamSupervisorId, teamSeniorStaffId });
   
   // If query params are provided, return a single report
-  if (employeeId && month && year && !teamSupervisorId) {
+  if (employeeId && month && year && !teamSupervisorId && !teamSeniorStaffId) {
     db.get(
       'SELECT * FROM expense_reports WHERE employeeId = ? AND month = ? AND year = ?',
       [employeeId, month, year],
@@ -344,10 +374,15 @@ router.get('/api/monthly-reports', (req, res) => {
       conditions.push('(e.supervisorId IS NULL OR e.supervisorId = "")');
     } else {
       // Include reports where (1) employee reports to this supervisor OR (2) report is assigned to this supervisor
-      // so supervisors still see reports assigned to them even if employee's supervisor was changed after submit
       conditions.push('(e.supervisorId = ? OR er.currentApproverId = ?)');
       params.push(teamSupervisorId, teamSupervisorId);
     }
+  }
+
+  if (teamSeniorStaffId) {
+    // Senior staff portal: reports where (1) employee has this senior staff OR (2) report is assigned to this senior staff
+    conditions.push('(e.seniorStaffId = ? OR er.currentApproverId = ?)');
+    params.push(teamSeniorStaffId, teamSeniorStaffId);
   }
 
   if (employeeId) {
@@ -1005,7 +1040,7 @@ router.get('/api/expense-reports/:employeeId', (req, res) => {
  * Get all expense reports (for admin/supervisor view)
  */
 router.get('/api/expense-reports', (req, res) => {
-  const { status, month, year, approverId, stage, teamSupervisorId, employeeId } = req.query;
+  const { status, month, year, approverId, stage, teamSupervisorId, teamSeniorStaffId, employeeId } = req.query;
   const db = dbService.getDb();
   
   let query = `
@@ -1045,6 +1080,11 @@ router.get('/api/expense-reports', (req, res) => {
       conditions.push('(e.supervisorId = ? OR er.currentApproverId = ?)');
       params.push(teamSupervisorId, teamSupervisorId);
     }
+  }
+
+  if (teamSeniorStaffId) {
+    conditions.push('(e.seniorStaffId = ? OR er.currentApproverId = ?)');
+    params.push(teamSeniorStaffId, teamSeniorStaffId);
   }
 
   if (employeeId) {
@@ -1422,7 +1462,8 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
       const workflowInit = await initializeApprovalWorkflow(report);
       debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}, approverName=${workflowInit.currentApproverName}`);
       
-      updateData.status = workflowInit.currentApprovalStage === 'finance' ? 'pending_finance' : 'pending_supervisor';
+      const stage = workflowInit.currentApprovalStage;
+      updateData.status = stage === 'finance' ? 'pending_finance' : (stage === 'senior_staff' ? 'pending_senior_staff' : 'pending_supervisor');
       updateData.submittedAt = nowIso;
       updateData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
       updateData.currentApprovalStep = workflowInit.currentApprovalStep;
@@ -1433,12 +1474,12 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
       
       debugLog(`📝 Report ${id} status set to: ${updateData.status}, currentApproverId: ${updateData.currentApproverId}`);
       
-      // Notify supervisor (if supervisor exists and is first approver)
-      if (workflowInit.currentApprovalStage === 'supervisor' && workflowInit.currentApproverId) {
+      // Notify first approver (senior staff or supervisor)
+      if (workflowInit.currentApproverId) {
         const employee = await dbService.getEmployeeById(report.employeeId);
         if (employee) {
-          debugLog(`📝 Sending notification to supervisor ${workflowInit.currentApproverId} for report ${id}`);
-          notificationService.notifyReportSubmitted(id, report.employeeId, employee.preferredName || employee.name).catch(err => {
+          debugLog(`📝 Sending notification to first approver ${workflowInit.currentApproverId} for report ${id}`);
+          notificationService.notifyReportSubmitted(id, report.employeeId, employee.preferredName || employee.name, workflowInit.currentApproverId).catch(err => {
             debugError('❌ Error sending notification for report submission:', err);
           });
         }
@@ -1451,6 +1492,29 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
       updateData.currentApproverId = null;
       updateData.currentApproverName = null;
       updateData.escalationDueAt = null;
+    } else if (status === 'draft') {
+      // Withdraw submission: staff can take report back to draft if no one has approved yet
+      const withdrawableStatuses = ['submitted', 'pending_supervisor', 'pending_finance', 'pending_senior_staff'];
+      const currentStep = Number.isInteger(report.currentApprovalStep)
+        ? report.currentApprovalStep
+        : parseInt(report.currentApprovalStep || '0', 10) || 0;
+      if (!withdrawableStatuses.includes(report.status)) {
+        res.status(400).json({ error: 'Report cannot be withdrawn in its current status. Only submitted reports that have not yet been approved can be withdrawn.' });
+        return;
+      }
+      if (currentStep !== 0) {
+        res.status(400).json({ error: 'Report has already been approved by the first reviewer. It cannot be withdrawn.' });
+        return;
+      }
+      updateData.status = 'draft';
+      updateData.submittedAt = null;
+      updateData.approvalWorkflow = null;
+      updateData.currentApprovalStage = null;
+      updateData.currentApprovalStep = 0;
+      updateData.currentApproverId = null;
+      updateData.currentApproverName = null;
+      updateData.escalationDueAt = null;
+      debugLog(`📝 Report ${id} withdrawn to draft by employee ${report.employeeId}`);
     } else {
       updateData.status = status;
       if (status === 'needs_revision') {
@@ -1715,8 +1779,15 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
         // For supervisor step: allow employee's current supervisor so reassigned supervisors can act
         if (currentStep.role === 'supervisor' && approverId) {
-          const employee = await dbService.getEmployeeById(report.employeeId);
-          if (employee && employee.supervisorId === approverId) {
+          const empForApproval = await dbService.getEmployeeById(report.employeeId);
+          if (empForApproval && empForApproval.supervisorId === approverId) {
+            allowedApproverIds.add(approverId);
+          }
+        }
+        // For senior_staff step: allow employee's designated senior staff
+        if (currentStep.role === 'senior_staff' && approverId) {
+          const empForApproval = await dbService.getEmployeeById(report.employeeId);
+          if (empForApproval && empForApproval.seniorStaffId === approverId) {
             allowedApproverIds.add(approverId);
           }
         }
@@ -1775,7 +1846,12 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
             updates.currentApprovalStep = nextStepIndex;
 
-            // Notify next approver (e.g., supervisor approves -> notify finance) only for monthly submissions
+            // Notify next approver: senior_staff -> supervisor; supervisor -> finance (monthly only)
+            if (nextStage === 'supervisor' && currentStep.role === 'senior_staff') {
+              notificationService.notifySupervisorApprovalNeeded(id, approverId, approverName, report.employeeId).catch(err => {
+                debugError('❌ Error sending notification to supervisor:', err);
+              });
+            }
             if (nextStage === 'finance' && currentStep.role === 'supervisor') {
               notificationService.notifyFinanceApprovalNeeded(id, approverId, approverName, report.employeeId).catch(err => {
                 debugError('❌ Error sending notification to finance:', err);
@@ -2000,40 +2076,94 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         return;
       }
 
-      case 'request_revision_to_employee': {
-        // Supervisor requests revision - send back to employee
-        if (!comments || (typeof comments === 'string' && !comments.trim())) {
+      case 'request_revision_to_senior_staff': {
+        // Supervisor requests revision - send back to senior staff (same steps back)
+        if (currentStep && currentStep.role !== 'supervisor') {
+          res.status(400).json({ error: 'This action is only available for supervisor approvers' });
+          return;
+        }
+        const commentsStrRev = typeof comments === 'string' ? comments.trim() : (comments ? String(comments).trim() : '');
+        if (!commentsStrRev) {
           res.status(400).json({ error: 'Comments are required when requesting revision' });
           return;
         }
-        // Allow if requester is report's current approver or employee's supervisor (so reassigned supervisors can request revision)
+        const seniorStaffStepIdx = workflow.findIndex(step => step.role === 'senior_staff');
+        if (seniorStaffStepIdx === -1) {
+          res.status(400).json({ error: 'No senior staff step in workflow; send revision to employee instead.' });
+          return;
+        }
+        const seniorStaffStepToReset = workflow[seniorStaffStepIdx];
+        seniorStaffStepToReset.status = 'pending';
+        seniorStaffStepToReset.actedAt = null;
+        seniorStaffStepToReset.comments = commentsStrRev;
+        seniorStaffStepToReset.dueAt = helpers.computeEscalationDueAt(constants.SUPERVISOR_ESCALATION_HOURS);
+        workflow[seniorStaffStepIdx] = seniorStaffStepToReset;
+
+        if (currentStep) {
+          currentStep.status = 'revision_requested';
+          currentStep.actedAt = nowIso;
+          currentStep.comments = commentsStrRev;
+          workflow[resolvedCurrentStepIndex] = currentStep;
+        }
+
+        updates.status = 'pending_senior_staff';
+        updates.currentApprovalStage = 'pending_senior_staff';
+        updates.currentApprovalStep = seniorStaffStepIdx;
+        updates.currentApproverId = seniorStaffStepToReset.approverId || null;
+        updates.currentApproverName = seniorStaffStepToReset.approverName || 'Senior Staff';
+        updates.escalationDueAt = seniorStaffStepToReset.dueAt;
+
+        logAction('request_revision_to_senior_staff', approverId, approverName, commentsStrRev);
+        await saveAndRespond();
+        return;
+      }
+
+      case 'request_revision_to_employee': {
+        // Supervisor or senior staff requests revision - send back to employee
+        const commentsStr = typeof comments === 'string' ? comments.trim() : (comments ? String(comments).trim() : '');
+        if (!commentsStr) {
+          res.status(400).json({ error: 'Comments are required when requesting revision' });
+          return;
+        }
         const employeeForRevision = await dbService.getEmployeeById(report.employeeId);
         const isAuthorizedSupervisor = approverId && (
           initialCurrentApproverId === approverId ||
           (employeeForRevision && employeeForRevision.supervisorId === approverId)
         );
+        const isAuthorizedSeniorStaff = approverId && (
+          initialCurrentApproverId === approverId ||
+          (employeeForRevision && employeeForRevision.seniorStaffId === approverId)
+        );
+        const seniorStaffStep = workflow.find(s => s.role === 'senior_staff');
+        const seniorStaffStepIndex = seniorStaffStep ? workflow.indexOf(seniorStaffStep) : -1;
         let supervisorStep = currentStep && currentStep.role === 'supervisor' ? currentStep : workflow.find(s => s.role === 'supervisor');
         let supervisorStepIndex = supervisorStep ? workflow.indexOf(supervisorStep) : -1;
-        if (supervisorStep && (currentStep === supervisorStep || isAuthorizedSupervisor)) {
+        if (seniorStaffStep && (currentStep === seniorStaffStep || isAuthorizedSeniorStaff) && currentStep && currentStep.role === 'senior_staff') {
+          currentStep = seniorStaffStep;
+          resolvedCurrentStepIndex = seniorStaffStepIndex;
+          updates.currentApprovalStep = seniorStaffStepIndex;
+        } else if (supervisorStep && (currentStep === supervisorStep || isAuthorizedSupervisor)) {
           currentStep = supervisorStep;
           resolvedCurrentStepIndex = supervisorStepIndex;
           updates.currentApprovalStep = supervisorStepIndex;
         }
-        if (currentStep && currentStep.role !== 'supervisor') {
-          res.status(400).json({ error: 'This action is only available for supervisor approvers' });
-          return;
-        }
-        if (!isAuthorizedSupervisor && currentStep && currentStep.approverId !== approverId && currentStep.delegatedToId !== approverId) {
+        const allowedToRequestRevision = (currentStep && currentStep.role === 'supervisor' && isAuthorizedSupervisor) ||
+          (currentStep && currentStep.role === 'senior_staff' && isAuthorizedSeniorStaff);
+        if (!allowedToRequestRevision && currentStep && currentStep.approverId !== approverId && currentStep.delegatedToId !== approverId) {
           res.status(403).json({ error: 'Approver is not authorized to request revision for this report.' });
           return;
         }
-
-        if (currentStep) {
+        if (!allowedToRequestRevision && (!currentStep || (currentStep.role !== 'supervisor' && currentStep.role !== 'senior_staff'))) {
+          res.status(400).json({ error: 'This action is only available for supervisor or senior staff approvers' });
+          return;
+        }
+        if (currentStep && (currentStep.role === 'supervisor' || currentStep.role === 'senior_staff')) {
           currentStep.status = 'revision_requested';
           currentStep.actedAt = nowIso;
-          currentStep.comments = comments;
+          currentStep.comments = commentsStr;
           workflow[resolvedCurrentStepIndex] = currentStep;
         }
+        // When authorized but no matching step (workflow anomaly), still allow - we set status below
 
         // Process selected items for item-specific revisions
         const selectedItems = req.body.selectedItems || {};
@@ -2057,7 +2187,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'mileage', index.toString(), 'mileage', comments, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'mileage', index.toString(), 'mileage', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2077,7 +2207,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'receipt', receiptId, 'receipt', comments, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'receipt', receiptId, 'receipt', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2089,7 +2219,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
               await new Promise((resolve, reject) => {
                 db.run(
                   'UPDATE receipts SET needsRevision = 1, revisionReason = ? WHERE id = ?',
-                  [comments, receiptId],
+                  [commentsStr, receiptId],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2119,7 +2249,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', timeIndex, 'time', comments, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', timeIndex, 'time', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2141,7 +2271,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', index, 'time', comments, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', index, 'time', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2169,7 +2299,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           debugError('❌ Error sending notification to employee:', err);
         });
 
-        logAction('request_revision_to_employee', approverId, approverName, comments);
+        logAction('request_revision_to_employee', approverId, approverName, commentsStr);
         await saveAndRespond();
         return;
       }

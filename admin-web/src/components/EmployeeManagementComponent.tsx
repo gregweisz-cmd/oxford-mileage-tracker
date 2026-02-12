@@ -1657,6 +1657,30 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     ))}
                   </Select>
                 </FormControl>
+
+                {/* Senior Staff (optional - not everyone has a senior staff) */}
+                <FormControl fullWidth>
+                  <InputLabel>Senior Staff</InputLabel>
+                  <Select
+                    value={(editingEmployee as any).seniorStaffId || ''}
+                    onChange={(e) => setEditingEmployee({
+                      ...editingEmployee,
+                      seniorStaffId: e.target.value || undefined
+                    } as any)}
+                    label="Senior Staff"
+                  >
+                    <MenuItem value="">
+                      <em>No Senior Staff</em>
+                    </MenuItem>
+                    {existingEmployees
+                      .filter(emp => (emp.position || '').toLowerCase().includes('senior staff'))
+                      .map(emp => (
+                        <MenuItem key={emp.id} value={emp.id}>
+                          {emp.name} ({emp.position})
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
                 
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <TextField
@@ -1995,6 +2019,15 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     {viewingEmployee.supervisorId ? 
                       existingEmployees.find(emp => emp.id === viewingEmployee.supervisorId)?.name || 'Unknown' :
                       'No Supervisor'
+                    }
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Senior Staff</Typography>
+                  <Typography variant="body1">
+                    {(viewingEmployee as any).seniorStaffId ? 
+                      existingEmployees.find(emp => emp.id === (viewingEmployee as any).seniorStaffId)?.name || 'Unknown' :
+                      'No Senior Staff'
                     }
                   </Typography>
                 </Box>

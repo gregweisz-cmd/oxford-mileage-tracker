@@ -72,7 +72,6 @@ import {
 // Import StaffPortal for team member report viewing
 import StaffPortal from '../StaffPortal';
 import OxfordHouseLogo from './OxfordHouseLogo';
-import SupervisorDashboard from './SupervisorDashboard';
 import { NotificationBell } from './NotificationBell';
 import DetailedReportView from './DetailedReportView';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
@@ -86,9 +85,9 @@ import { debugError, debugLog } from '../config/debug';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
-interface SupervisorPortalProps {
-  supervisorId: string;
-  supervisorName: string;
+interface SeniorStaffPortalProps {
+  seniorStaffId: string;
+  seniorStaffName: string;
 }
 
 interface Employee {
@@ -97,7 +96,7 @@ interface Employee {
   preferredName?: string;
   email: string;
   position: string;
-  supervisorId?: string | null;
+  seniorStaffId?: string | null;
   costCenters?: string[];
   isActive?: boolean;
   joinDate?: string;
@@ -161,8 +160,8 @@ interface TeamReport {
 
 interface SupervisorComment {
   id: string;
-  supervisorId: string;
-  supervisorName: string;
+  seniorStaffId: string;
+  seniorStaffName: string;
   reportId: string;
   comment: string;
   createdAt: string;
@@ -178,7 +177,7 @@ interface DashboardStats {
   averageResponseTime: string;
 }
 
-const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, supervisorName }) => {
+const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, seniorStaffName }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [teamMembers, setTeamMembers] = useState<Employee[]>([]);
   const [teamReports, setTeamReports] = useState<TeamReport[]>([]);
@@ -226,14 +225,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<TeamReport | null>(null);
 
-  // Memoize the employee object to prevent SupervisorDashboard from re-rendering unnecessarily
-  const currentEmployee = useMemo(() => ({ id: supervisorId, name: supervisorName }), [supervisorId, supervisorName]);
+  const currentEmployee = useMemo(() => ({ id: seniorStaffId, name: seniorStaffName }), [seniorStaffId, seniorStaffName]);
 
   // Widget toggle removed
 
   const loadTeamMembers = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/supervisors/${supervisorId}/team`);
+      const response = await fetch(`${API_BASE_URL}/api/senior-staff/${seniorStaffId}/team`);
       if (!response.ok) throw new Error('Failed to load team members');
       const data = await response.json();
       const mapped: Employee[] = data.map((member: any) => ({
@@ -242,7 +240,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         preferredName: member.preferredName,
         email: member.email,
         position: member.position,
-        supervisorId: member.supervisorId,
+        seniorStaffId: member.seniorStaffId,
         costCenters: member.costCenters || [],
         isActive: member.archived ? false : true,
         joinDate: member.joinDate,
@@ -252,13 +250,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       debugError('Error loading team members:', error);
       setTeamMembers([]);
     }
-  }, [supervisorId]);
+  }, [seniorStaffId]);
 
   const loadTeamReports = useCallback(async () => {
     try {
       const { apiGet } = await import('../services/rateLimitedApi');
       // Use /api/monthly-reports endpoint which supports teamSupervisorId filtering
-      const data = await apiGet<any[]>(`/api/monthly-reports?teamSupervisorId=${supervisorId}`);
+      const data = await apiGet<any[]>(`/api/monthly-reports?teamSeniorStaffId=${seniorStaffId}`);
       const mapped: TeamReport[] = data.map((report: any) => {
         const reportData = report.reportData || {};
         const approvalWorkflow = Array.isArray(report.approvalWorkflow) ? report.approvalWorkflow : [];
@@ -282,8 +280,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           comments: Array.isArray(report.comments)
             ? report.comments.map((comment: any) => ({
                 id: comment.id || `comment_${comment.createdAt}`,
-                supervisorId: comment.supervisorId || '',
-                supervisorName: comment.supervisorName || 'Supervisor',
+                seniorStaffId: comment.seniorStaffId || '',
+                seniorStaffName: comment.seniorStaffName || 'Supervisor',
                 reportId: report.id,
                 comment: comment.comment || '',
                 createdAt: comment.createdAt || new Date().toISOString(),
@@ -302,13 +300,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         };
       });
 
-      debugLog(`📊 Loaded ${mapped.length} team reports for supervisor ${supervisorId}`);
+      debugLog(`📊 Loaded ${mapped.length} team reports for senior staff ${seniorStaffId}`);
       setTeamReports(mapped);
     } catch (error) {
       debugError('Error loading team reports:', error);
       setTeamReports([]);
     }
-  }, [supervisorId]);
+  }, [seniorStaffId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -375,8 +373,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'approve',
-          approverId: supervisorId,
-          approverName: supervisorName,
+          approverId: seniorStaffId,
+          approverName: seniorStaffName,
           supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
         }),
       });
@@ -408,8 +406,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       // Use request_revision_to_employee action to send back to employee
       const body: any = {
         action: 'request_revision_to_employee',
-        approverId: supervisorId,
-        approverName: supervisorName,
+        approverId: seniorStaffId,
+        approverName: seniorStaffName,
         comments: reviewComment.trim(),
       };
       
@@ -481,7 +479,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       }
     }
     
-    const confirmApprove = window.confirm(`Are you sure you want to approve this report and send it to the finance team?`);
+    const confirmApprove = window.confirm(`Are you sure you want to approve this report and send it to the next reviewer (supervisor)?`);
     if (!confirmApprove) {
       return;
     }
@@ -494,8 +492,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'approve',
-          approverId: supervisorId,
-          approverName: supervisorName,
+          approverId: seniorStaffId,
+          approverName: seniorStaffName,
           supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
         }),
       });
@@ -508,14 +506,14 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       setSupervisorCertificationAcknowledged(false);
       await loadTeamReports();
       setShowEmployeeReportView(false);
-      alert('Report approved and sent to finance team successfully!');
+      alert('Report approved and sent to the next reviewer successfully!');
     } catch (error) {
       debugError('Error approving report:', error);
       alert(`Failed to approve report. Please try again. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSavingAction(false);
     }
-  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports, supervisorId, supervisorName, supervisorCertificationAcknowledged, loadTeamReports]);
+  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports, seniorStaffId, seniorStaffName, supervisorCertificationAcknowledged, loadTeamReports]);
 
   // Handler for requesting revision from StaffPortal - sends back to employee with notes
   const handleRequestRevisionFromPortal = useCallback(async () => {
@@ -571,7 +569,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   // Debug: Log handlers immediately after creation (only in development)
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔍 SupervisorPortal: Handlers created/updated:', {
+      console.log('🔍 SeniorStaffPortal: Handlers created/updated:', {
         handleApproveFromPortal: typeof handleApproveFromPortal,
         handleRequestRevisionFromPortal: typeof handleRequestRevisionFromPortal,
         stableApproveHandler: typeof stableApproveHandler,
@@ -583,7 +581,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   // Debug: Log handlers when dialog opens
   useEffect(() => {
     if (showEmployeeReportView && viewingEmployeeReport) {
-      console.log('🔍 SupervisorPortal: Dialog opened, checking handlers:', {
+      console.log('🔍 SeniorStaffPortal: Dialog opened, checking handlers:', {
         hasApprove: typeof handleApproveFromPortal === 'function',
         hasRevision: typeof handleRequestRevisionFromPortal === 'function',
         handleApproveFromPortal,
@@ -591,17 +589,17 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         viewingEmployeeReport: !!viewingEmployeeReport,
         viewingReportMonth,
         viewingReportYear,
-        supervisorId,
-        supervisorName
+        seniorStaffId,
+        seniorStaffName
       });
-      debugLog('🔍 SupervisorPortal: Dialog opened, checking handlers:', {
+      debugLog('🔍 SeniorStaffPortal: Dialog opened, checking handlers:', {
         hasApprove: typeof handleApproveFromPortal === 'function',
         hasRevision: typeof handleRequestRevisionFromPortal === 'function',
         viewingEmployeeReport: !!viewingEmployeeReport,
         viewingReportMonth,
         viewingReportYear,
-        supervisorId,
-        supervisorName
+        seniorStaffId,
+        seniorStaffName
       });
       if (typeof handleApproveFromPortal !== 'function') {
         console.error('❌ handleApproveFromPortal is not a function!', handleApproveFromPortal);
@@ -610,7 +608,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         console.error('❌ handleRequestRevisionFromPortal is not a function!', handleRequestRevisionFromPortal);
       }
     }
-  }, [showEmployeeReportView, viewingEmployeeReport, handleApproveFromPortal, handleRequestRevisionFromPortal, viewingReportMonth, viewingReportYear, supervisorId, supervisorName]);
+  }, [showEmployeeReportView, viewingEmployeeReport, handleApproveFromPortal, handleRequestRevisionFromPortal, viewingReportMonth, viewingReportYear, seniorStaffId, seniorStaffName]);
 
   const handleResubmitToFinance = async (reportId: string) => {
     if (!reviewComment.trim()) {
@@ -625,8 +623,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'resubmit_to_finance',
-          approverId: supervisorId,
-          approverName: supervisorName,
+          approverId: seniorStaffId,
+          approverName: seniorStaffName,
           comments: reviewComment.trim(),
         }),
       });
@@ -654,14 +652,14 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       if (!response.ok) throw new Error('Failed to load supervisors');
       const data = await response.json();
       const mapped: Employee[] = data
-        .filter((emp: any) => emp.id !== supervisorId)
+        .filter((emp: any) => emp.id !== seniorStaffId)
         .map((emp: any) => ({
           id: emp.id,
           name: emp.name,
           preferredName: emp.preferredName,
           email: emp.email,
           position: emp.position,
-          supervisorId: emp.supervisorId,
+          seniorStaffId: emp.seniorStaffId,
           costCenters: emp.costCenters || [],
         }));
       setAvailableDelegates(mapped);
@@ -671,7 +669,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     } finally {
       setLoadingDelegates(false);
     }
-  }, [supervisorId]);
+  }, [seniorStaffId]);
 
   const handleOpenDelegateDialog = async (report: TeamReport) => {
     setDelegateReport(report);
@@ -701,8 +699,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'delegate',
-          approverId: supervisorId,
-          approverName: supervisorName,
+          approverId: seniorStaffId,
+          approverName: seniorStaffName,
           delegateId: selectedDelegateId,
         }),
       });
@@ -728,8 +726,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'remind',
-          approverId: supervisorId,
-          approverName: supervisorName,
+          approverId: seniorStaffId,
+          approverName: seniorStaffName,
         }),
       });
 
@@ -754,8 +752,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'comment',
-          approverId: supervisorId,
-          approverName: supervisorName,
+          approverId: seniorStaffId,
+          approverName: seniorStaffName,
           comments: reviewComment.trim(),
         }),
       });
@@ -841,7 +839,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                 preferredName: empData.preferredName,
                 email: empData.email,
                 position: empData.position,
-                supervisorId: empData.supervisorId,
+                seniorStaffId: empData.seniorStaffId,
                 costCenters: empData.costCenters || [],
                 isActive: !empData.archived,
                 joinDate: empData.joinDate,
@@ -874,7 +872,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               preferredName: empData.preferredName,
               email: empData.email,
               position: empData.position,
-              supervisorId: empData.supervisorId,
+              seniorStaffId: empData.seniorStaffId,
               costCenters: empData.costCenters || [],
               isActive: !empData.archived,
               joinDate: empData.joinDate,
@@ -1006,7 +1004,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Typography variant="h6">Loading Supervisor Portal...</Typography>
+        <Typography variant="h6">Loading Senior Staff Portal...</Typography>
       </Box>
     );
   }
@@ -1021,10 +1019,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
             <Box>
               <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <SupervisorIcon sx={{ mr: 2 }} />
-                Supervisor Portal
+                Senior Staff Portal
               </Typography>
               <Typography variant="h6" color="text.secondary">
-                Welcome back, {supervisorName}
+                Welcome back, {seniorStaffName}
               </Typography>
             </Box>
           </Box>
@@ -1032,7 +1030,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               {/* Notification Bell */}
               <NotificationBell 
-                employeeId={supervisorId} 
+                employeeId={seniorStaffId} 
                 role="supervisor"
                 onReportClick={handleReportClickFromNotification}
               />
@@ -1087,7 +1085,47 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           {/* Approvals Tab */}
           {activeTab === 0 && (
             <Box sx={{ p: 3 }}>
-              <SupervisorDashboard currentEmployee={currentEmployee} showKpiCards={false} />
+              <Typography variant="h6" gutterBottom>Reports pending your review</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Reports from your team waiting for your approval. Click a report to review it.
+              </Typography>
+              {filteredReports.filter(r => r.status === 'pending_senior_staff').length === 0 ? (
+                <Alert severity="info">No reports pending your review.</Alert>
+              ) : (
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Employee</TableCell>
+                        <TableCell>Period</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell align="right">Amount</TableCell>
+                        <TableCell align="right">Miles</TableCell>
+                        <TableCell padding="none" align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredReports.filter(r => r.status === 'pending_senior_staff').map((report) => (
+                        <TableRow key={report.id} hover>
+                          <TableCell>{report.employeeName}</TableCell>
+                          <TableCell>{report.month}/{report.year}</TableCell>
+                          <TableCell><Chip label={report.status.replace(/_/g, ' ')} size="small" color="warning" /></TableCell>
+                          <TableCell align="right">${(report.totalAmount || 0).toFixed(2)}</TableCell>
+                          <TableCell align="right">{report.totalMiles ?? 0}</TableCell>
+                          <TableCell padding="none" align="right">
+                            <IconButton size="small" onClick={() => handleViewEmployeeReport(teamMembers.find(m => m.id === report.employeeId) || { id: report.employeeId, name: report.employeeName, email: '', position: '' }, report.month, report.year)} title="View">
+                              <VisibilityIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => { setSelectedReport(report); setDetailedReportViewOpen(true); }} title="Details">
+                              <AssignmentIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </Box>
           )}
 
@@ -1114,6 +1152,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                     label="Status"
                   >
                     <MenuItem value="all">All Status</MenuItem>
+                    <MenuItem value="pending_senior_staff">Pending Senior Staff</MenuItem>
                     <MenuItem value="pending_supervisor">Pending Supervisor</MenuItem>
                     <MenuItem value="pending_finance">Pending Finance</MenuItem>
                     <MenuItem value="approved">Approved</MenuItem>
@@ -1161,10 +1200,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                       const currentStepIndex = report.currentApprovalStep ?? 0;
                       const currentStep = report.approvalWorkflow?.[currentStepIndex];
                       const isSupervisorStage = (report.currentApprovalStage || '').toLowerCase() === 'supervisor';
-                      const isDelegatedToSupervisor = currentStep?.delegatedToId === supervisorId;
+                      const isDelegatedToSupervisor = currentStep?.delegatedToId === seniorStaffId;
                       const isAwaitingSupervisor = isSupervisorStage && (
                         !report.currentApproverId ||
-                        report.currentApproverId === supervisorId ||
+                        report.currentApproverId === seniorStaffId ||
                         isDelegatedToSupervisor
                       );
                       const dueInfo = getDueInfo(report.escalationDueAt);
@@ -1257,7 +1296,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                                             name: empData.name || report.employeeName,
                                             email: empData.email || '',
                                             position: empData.position || '',
-                                            supervisorId: empData.supervisorId,
+                                            seniorStaffId: empData.seniorStaffId,
                                             costCenters: empData.costCenters || [],
                                           },
                                           report.month,
@@ -1514,7 +1553,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                       <ListItem key={comment.id}>
                         <ListItemText
                           primary={comment.comment}
-                          secondary={`by ${comment.supervisorName} on ${new Date(comment.createdAt).toLocaleString()}`}
+                          secondary={`by ${comment.seniorStaffName} on ${new Date(comment.createdAt).toLocaleString()}`}
                         />
                       </ListItem>
                     ))}
@@ -1734,7 +1773,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         open={shortcutsDialogOpen}
         onClose={() => setShortcutsDialogOpen(false)}
         shortcuts={shortcuts}
-        title="Keyboard Shortcuts - Supervisor Portal"
+        title="Keyboard Shortcuts - Senior Staff Portal"
       />
 
       {/* Employee Report View Modal */}
@@ -1770,8 +1809,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                 reportMonth={viewingReportMonth ?? new Date().getMonth() + 1}
                 reportYear={viewingReportYear ?? new Date().getFullYear()}
                 supervisorMode={true}
-                supervisorId={supervisorId}
-                supervisorName={supervisorName}
+                seniorStaffId={seniorStaffId}
+                seniorStaffName={seniorStaffName}
                 onSelectedItemsChange={handleSelectedItemsChange}
                 onApproveReport={stableApproveHandler}
                 onRequestRevision={stableRevisionHandler}
@@ -1785,4 +1824,4 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   );
 };
 
-export default SupervisorPortal;
+export default SeniorStaffPortal;

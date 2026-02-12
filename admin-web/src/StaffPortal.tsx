@@ -445,7 +445,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Report submission and approval state
   const [reportStatus, setReportStatus] = useState<
-    'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision' | 'pending_supervisor' | 'pending_finance' | 'under_review'
+    'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision' | 'pending_supervisor' | 'pending_senior_staff' | 'pending_finance' | 'under_review'
   >('draft');
   const [revisionItems, setRevisionItems] = useState<{mileage: number, receipts: number, time: number}>({mileage: 0, receipts: 0, time: 0});
   // Raw line item data for revision checking
@@ -464,6 +464,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [reportSubmittedAt, setReportSubmittedAt] = useState<string | null>(null);
   const [, setReportApprovedAt] = useState<string | null>(null);
   const [currentApprovalStage, setCurrentApprovalStage] = useState<string | null>(null);
+  const [currentApprovalStep, setCurrentApprovalStep] = useState<number>(0);
   const [currentApproverName, setCurrentApproverName] = useState<string | null>(null);
   const [approvalCommentDialogOpen, setApprovalCommentDialogOpen] = useState(false);
   const [approvalCommentText, setApprovalCommentText] = useState('');
@@ -541,11 +542,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             | 'rejected'
             | 'needs_revision'
             | 'pending_supervisor'
+            | 'pending_senior_staff'
             | 'pending_finance'
             | 'under_review';
 
           setReportStatus(statusValue);
           setCurrentApprovalStage(data.report.currentApprovalStage || null);
+          setCurrentApprovalStep(typeof data.report.currentApprovalStep === 'number' ? data.report.currentApprovalStep : 0);
           setCurrentApproverName(data.report.currentApproverName || null);
           setReportSubmittedAt(data.report.submittedAt || null);
           setReportApprovedAt(data.report.approvedAt || null);
@@ -1167,21 +1170,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             dayMileageEntries.sort((a: any, b: any) => {
               return new Date(a.date).getTime() - new Date(b.date).getTime();
             });
-            
+            // Exclude 0-mile entries (e.g. duplicate/stuck from sync) so they don't pollute description or totals
+            const dayMileageEntriesWithMiles = dayMileageEntries.filter((e: any) => (e.miles || 0) > 0);
+
             // Find daily description for this day
             const dayDescription = dailyDescriptions.find((desc: any) => {
               const descDate = new Date(desc.date);
               return descDate.getUTCDate() === day;
             });
             
-            // Build driving summary from mileage entries
+            // Build driving summary from mileage entries that have miles (skip 0-mile duplicates)
             let drivingSummary = '';
-            if (dayMileageEntries.length > 0) {
+            if (dayMileageEntriesWithMiles.length > 0) {
               const tripSegments: string[] = [];
               const baseAddress = employee?.baseAddress;
               const baseAddress2 = employee?.baseAddress2;
               
-              dayMileageEntries.forEach((entry: any, index: number) => {
+              dayMileageEntriesWithMiles.forEach((entry: any, index: number) => {
                 // Use the field that has the actual street address (not the name again)
                 const startName = (entry.startLocationName || '').trim();
                 const startAddrRaw = entry.startLocationAddress || entry.startLocation || '';
@@ -1253,12 +1258,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               fullDescription = ''; // Empty description for blank days
             }
             
-            // Calculate total miles for the day
-            const totalDayMiles = dayMileageEntries.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0);
+            // Calculate total miles for the day (only from entries with miles; ignore 0-mile duplicates)
+            const totalDayMiles = dayMileageEntriesWithMiles.reduce((sum: number, entry: any) => sum + (entry.miles || 0), 0);
             
             // Get odometer start: prefer daily_odometer_readings for this date, else first entry's odometerReading
-            const firstEntry = dayMileageEntries.length > 0 ? dayMileageEntries[0] : null;
-            const lastEntry = dayMileageEntries.length > 0 ? dayMileageEntries[dayMileageEntries.length - 1] : null;
+            const firstEntry = dayMileageEntriesWithMiles.length > 0 ? dayMileageEntriesWithMiles[0] : null;
+            const lastEntry = dayMileageEntriesWithMiles.length > 0 ? dayMileageEntriesWithMiles[dayMileageEntriesWithMiles.length - 1] : null;
             const odometerStart = (dailyOdometerMap[dateStr] != null && dailyOdometerMap[dateStr] > 0)
               ? dailyOdometerMap[dateStr]
               : (firstEntry?.odometerReading || 0);
@@ -1411,17 +1416,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               perDiem: calculatedPerDiem
             };
           }));
+
+          // Dedupe by date: if same calendar day appears twice (e.g. timezone or duplicate data), keep one row with real miles
+          const byDateKey = new Map<string, any>();
+          dailyEntries.forEach((entry: any) => {
+            const key = normalizeDate(entry.date);
+            if (!key) return;
+            const existing = byDateKey.get(key);
+            if (!existing) byDateKey.set(key, entry);
+            else if ((entry.milesTraveled || 0) > (existing.milesTraveled || 0)) byDateKey.set(key, entry);
+            else if ((entry.milesTraveled || 0) === (existing.milesTraveled || 0) && (String(entry.description || '').length > String(existing.description || '').length)) byDateKey.set(key, entry);
+          });
+          const emptyDayEntry = (day: number) => {
+            const date = new Date(currentYear, currentMonth - 1, day);
+            const dateStr = date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
+            return { day, date: dateStr, description: '', userDescription: '', hoursWorked: 0, odometerStart: 0, odometerEnd: 0, milesTraveled: 0, mileageAmount: 0, startLocation: '', startLocationName: '', endLocation: '', endLocationName: '', costCenter: employee.defaultCostCenter || employee.costCenters?.[0] || '', airRailBus: 0, vehicleRentalFuel: 0, parkingTolls: 0, groundTransportation: 0, hotelsAirbnb: 0, perDiem: 0 };
+          };
+          const dedupedDailyEntries = Array.from({ length: daysInMonth }, (_, i) => {
+            const day = i + 1;
+            const key = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            return byDateKey.get(key) || emptyDayEntry(day);
+          });
           
           // No merge from saved reportData: match c1a8138 (working). Data comes only from API so reload shows what sync-to-source actually persisted (daily_descriptions, time_tracking, mileage_entries).
           
           // Calculate totals from real data
-          const totalMiles = Math.round(dailyEntries.reduce((sum: number, e: any) => sum + (e.milesTraveled || 0), 0));
-          const totalMileageAmount = dailyEntries.reduce((sum: number, e: any) => sum + (e.mileageAmount || 0), 0);
+          const totalMiles = Math.round(dedupedDailyEntries.reduce((sum: number, e: any) => sum + (e.milesTraveled || 0), 0));
+          const totalMileageAmount = dedupedDailyEntries.reduce((sum: number, e: any) => sum + (e.mileageAmount || 0), 0);
           const totalReceipts = currentMonthReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
           const totalHours = currentMonthTimeTracking.reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
           
           // Per diem total from daily entries (built from API/receipts/rules)
-          const totalPerDiemFromDailyEntries = dailyEntries.reduce((sum: number, e: any) => sum + (e.perDiem || 0), 0);
+          const totalPerDiemFromDailyEntries = dedupedDailyEntries.reduce((sum: number, e: any) => sum + (e.perDiem || 0), 0);
           const totalPerDiemFromReceipts = currentMonthReceipts
             .filter((receipt: any) => receipt.category === 'Per Diem')
             .reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
@@ -1445,7 +1471,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             totalReceipts,
             totalHours,
             
-            dailyEntries,
+            dailyEntries: dedupedDailyEntries,
             
             // All expenses default to 0 (can be updated from receipts)
             airRailBus: 0,
@@ -4601,6 +4627,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
         setReportStatus(statusValue);
         setCurrentApprovalStage(statusPayload.currentApprovalStage || null);
+        setCurrentApprovalStep(typeof statusPayload.currentApprovalStep === 'number' ? statusPayload.currentApprovalStep : 0);
         setCurrentApproverName(statusPayload.currentApproverName || null);
         setReportSubmittedAt(statusPayload.submittedAt || new Date().toISOString());
         setReportApprovedAt(statusPayload.approvedAt || null);
@@ -4648,6 +4675,47 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const handleSubmissionTypeCancel = () => {
     setSubmissionTypeDialogOpen(false);
     setLoading(false);
+  };
+
+  // Withdraw submission: take report back to draft so staff can edit and resubmit (only before first approval)
+  const handleWithdrawReport = async () => {
+    if (!currentReportId) return;
+    if (
+      !window.confirm(
+        'Withdraw this submission? The report will return to draft and you can make changes, then submit again. No one has approved it yet.'
+      )
+    ) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'draft' }),
+      });
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody?.error || response.statusText || 'Failed to withdraw');
+      }
+      setReportStatus('draft');
+      setReportSubmittedAt(null);
+      setCurrentApprovalStage(null);
+      setCurrentApprovalStep(0);
+      setCurrentApproverName(null);
+      setApprovalWorkflow([]);
+      setApprovalHistory([]);
+      if (typeof showSuccess === 'function') {
+        showSuccess('Report withdrawn. You can edit and submit again.');
+      } else {
+        alert('Report withdrawn. You can edit and submit again.');
+      }
+    } catch (error) {
+      debugError('Error withdrawing report:', error);
+      alert(error instanceof Error ? error.message : 'Failed to withdraw report.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCloseApprovalComment = () => {
@@ -5281,7 +5349,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         loading={approvalHistoryLoading}
         onAddComment={() => setApprovalCommentDialogOpen(true)}
         onResubmit={reportStatus === 'needs_revision' ? handleSubmitReport : undefined}
+        onWithdraw={
+          (reportStatus === 'submitted' ||
+            reportStatus === 'pending_supervisor' ||
+            reportStatus === 'pending_senior_staff' ||
+            reportStatus === 'pending_finance') &&
+          currentApprovalStep === 0
+            ? handleWithdrawReport
+            : undefined
+        }
         disableResubmit={loading}
+        disableWithdraw={loading}
       />
 
       {/* Enhanced Tab Navigation - Now in header */}

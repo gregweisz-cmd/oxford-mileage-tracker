@@ -56,13 +56,16 @@ interface EmployeeApprovalStatusCardProps {
   loading?: boolean;
   onAddComment?: () => void;
   onResubmit?: () => void;
+  onWithdraw?: () => void;
   disableResubmit?: boolean;
+  disableWithdraw?: boolean;
 }
 
 const STATUS_COLOR_MAP: Record<string, { label: string; color: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' }> = {
   draft: { label: 'Draft', color: 'default' },
   submitted: { label: 'Submitted', color: 'info' },
   pending_supervisor: { label: 'Waiting for Supervisor', color: 'warning' },
+  pending_senior_staff: { label: 'Waiting for Senior Staff', color: 'warning' },
   pending_finance: { label: 'Waiting for Finance', color: 'warning' },
   under_review: { label: 'Under Review', color: 'warning' },
   needs_revision: { label: 'Needs Revision', color: 'error' },
@@ -110,6 +113,7 @@ const getStatusChipProps = (status: string) => {
 };
 
 const roleLabels: Record<string, string> = {
+  senior_staff: 'Senior Staff Review',
   supervisor: 'Supervisor Review',
   finance: 'Finance Review',
 };
@@ -124,7 +128,9 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
   loading = false,
   onAddComment,
   onResubmit,
+  onWithdraw,
   disableResubmit,
+  disableWithdraw,
 }) => {
   const statusChip = getStatusChipProps(status);
 
@@ -155,10 +161,21 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
               </Typography>
             )}
           </Box>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
             {onAddComment && (
               <Button variant="outlined" size="small" startIcon={<CommentIcon />} onClick={onAddComment} disabled={loading}>
                 Add Comment
+              </Button>
+            )}
+            {onWithdraw && (
+              <Button
+                variant="outlined"
+                size="small"
+                color="warning"
+                onClick={onWithdraw}
+                disabled={loading || disableWithdraw}
+              >
+                Withdraw Submission
               </Button>
             )}
             {onResubmit && (

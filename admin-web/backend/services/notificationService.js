@@ -142,19 +142,28 @@ async function createNotification({
  * Create notification for expense report submission
  * Notifies supervisor when employee submits report
  */
-async function notifyReportSubmitted(reportId, employeeId, employeeName) {
+/**
+ * Notify the first approver (senior staff or supervisor) when an employee submits a report.
+ * @param {string} reportId - Expense report ID
+ * @param {string} employeeId - Submitting employee ID
+ * @param {string} employeeName - Submitting employee name
+ * @param {string} [firstApproverId] - If provided, notify this user; otherwise notify employee's supervisor
+ */
+async function notifyReportSubmitted(reportId, employeeId, employeeName, firstApproverId = null) {
   try {
     const db = dbService.getDb();
     const employee = await dbService.getEmployeeById(employeeId);
-    
-    if (!employee || !employee.supervisorId) {
-      debugLog('⚠️ Employee has no supervisor, skipping notification');
-      return null;
+    let recipient = null;
+
+    if (firstApproverId) {
+      recipient = await dbService.getEmployeeById(firstApproverId);
+    }
+    if (!recipient && employee && employee.supervisorId) {
+      recipient = await dbService.getEmployeeById(employee.supervisorId);
     }
 
-    const supervisor = await dbService.getEmployeeById(employee.supervisorId);
-    if (!supervisor) {
-      debugWarn('⚠️ Supervisor not found for notification');
+    if (!recipient) {
+      debugLog('⚠️ No first approver or supervisor found, skipping notification');
       return null;
     }
 
@@ -168,21 +177,61 @@ async function notifyReportSubmitted(reportId, employeeId, employeeName) {
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
 
     return await createNotification({
-      recipientId: supervisor.id,
-      recipientRole: supervisor.role || 'supervisor',
+      recipientId: recipient.id,
+      recipientRole: recipient.role || 'supervisor',
       type: 'report_submitted',
       title: `Expense Report Submitted${monthName ? ` - ${monthName}` : ''}`,
-      message: `${employeeName || employee.preferredName || employee.name} has submitted an expense report${monthName ? ` for ${monthName}` : ''} for your review.`,
+      message: `${employeeName || employee?.preferredName || employee?.name || 'An employee'} has submitted an expense report${monthName ? ` for ${monthName}` : ''} for your review.`,
       reportId,
       employeeId,
-      employeeName: employeeName || employee.preferredName || employee.name,
+      employeeName: employeeName || employee?.preferredName || employee?.name || 'Employee',
       actorId: employeeId,
-      actorName: employeeName || employee.preferredName || employee.name,
+      actorName: employeeName || employee?.preferredName || employee?.name || 'Employee',
       actorRole: 'employee',
       sendEmail: true,
     });
   } catch (error) {
     debugError('❌ Error notifying report submission:', error);
+    return null;
+  }
+}
+
+/**
+ * Notify supervisor when senior staff has approved and report is ready for supervisor review.
+ */
+async function notifySupervisorApprovalNeeded(reportId, seniorStaffId, seniorStaffName, employeeId) {
+  try {
+    const employee = await dbService.getEmployeeById(employeeId);
+    if (!employee || !employee.supervisorId) return null;
+
+    const supervisor = await dbService.getEmployeeById(employee.supervisorId);
+    if (!supervisor) return null;
+
+    const db = dbService.getDb();
+    const report = await new Promise((resolve) => {
+      db.get('SELECT id, month, year FROM expense_reports WHERE id = ?', [reportId], (err, row) => {
+        if (err) resolve(null);
+        else resolve(row);
+      });
+    });
+    const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+
+    return await createNotification({
+      recipientId: supervisor.id,
+      recipientRole: supervisor.role || 'supervisor',
+      type: 'approval_needed',
+      title: `Expense Report Ready for Your Review${monthName ? ` - ${monthName}` : ''}`,
+      message: `${employee?.preferredName || employee?.name || 'An employee'}'s expense report${monthName ? ` for ${monthName}` : ''} has been approved by senior staff and is ready for your review.`,
+      reportId,
+      employeeId,
+      employeeName: employee?.preferredName || employee?.name || 'Employee',
+      actorId: seniorStaffId,
+      actorName: seniorStaffName,
+      actorRole: 'senior_staff',
+      sendEmail: true,
+    });
+  } catch (error) {
+    debugError('❌ Error notifying supervisor approval needed:', error);
     return null;
   }
 }
@@ -526,6 +575,7 @@ module.exports = {
   notifyReportSubmitted,
   notifyFinanceRevisionRequest,
   notifySupervisorRevisionRequest,
+  notifySupervisorApprovalNeeded,
   notifyFinanceApprovalNeeded,
   notifyEmployeeReportApproved,
   notifySundayReminder,

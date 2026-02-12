@@ -33,8 +33,8 @@ import { getEmployeeDisplayName } from '../utils/employeeUtils';
 
 interface PortalSwitcherProps {
   currentUser: any;
-  currentPortal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts';
-  onPortalChange: (portal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts') => void;
+  currentPortal: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts';
+  onPortalChange: (portal: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts') => void;
   onLogout: () => void;
 }
 
@@ -56,7 +56,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     setAnchorEl(null);
   };
 
-  const handlePortalSelect = async (portal: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts') => {
+  const handlePortalSelect = async (portal: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts') => {
     // Close the menu first
     handleClose();
     
@@ -183,7 +183,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
     const permissions = normalizePermissions(currentUser?.permissions);
     const personalizedStaffName = getPersonalizedStaffPortalName();
     const availablePortals: Array<{
-      id: 'admin' | 'supervisor' | 'staff' | 'finance' | 'contracts';
+      id: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts';
       name: string;
       icon: React.ReactNode;
       description: string;
@@ -220,6 +220,14 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           name: 'Supervisor Portal',
           icon: <SupervisorAccount />,
           description: 'Review team reports and approve expenses'
+        });
+      }
+      if (position.includes('senior staff')) {
+        availablePortals.push({
+          id: 'senior_staff',
+          name: 'Senior Staff Portal',
+          icon: <SupervisorAccount />,
+          description: 'Review your team reports and approve expenses'
         });
       }
       if (permissions.includes('staff')) {
@@ -266,6 +274,12 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           name: 'Supervisor Portal',
           icon: <SupervisorAccount />,
           description: 'Review team reports and approve expenses'
+        },
+        {
+          id: 'senior_staff',
+          name: 'Senior Staff Portal',
+          icon: <SupervisorAccount />,
+          description: 'Review your team reports and approve expenses'
         },
         {
           id: 'staff',
@@ -395,6 +409,21 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
             name: 'Supervisor Portal',
             icon: <SupervisorAccount />,
             description: 'Review team reports and approve expenses'
+          },
+          {
+            id: 'staff',
+            name: personalizedStaffName,
+            icon: <Person />,
+            description: 'Manage your own expense reports and mileage'
+          }
+        );
+      } else if (position.includes('senior staff')) {
+        availablePortals.push(
+          {
+            id: 'senior_staff',
+            name: 'Senior Staff Portal',
+            icon: <SupervisorAccount />,
+            description: 'Review your team reports and approve expenses'
           },
           {
             id: 'staff',

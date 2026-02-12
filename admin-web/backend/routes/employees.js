@@ -736,6 +736,7 @@ router.put('/api/employees/:id', async (req, res) => {
     const defaultCostCenter = updateData.defaultCostCenter !== undefined ? (updateData.defaultCostCenter || '') : (currentEmployee.defaultCostCenter || '');
     const signature = updateData.signature !== undefined ? (updateData.signature || null) : (currentEmployee.signature || null);
     const supervisorId = updateData.supervisorId !== undefined ? (updateData.supervisorId || null) : (currentEmployee.supervisorId || null);
+    const seniorStaffId = updateData.seniorStaffId !== undefined ? (updateData.seniorStaffId || null) : (currentEmployee.seniorStaffId || null);
     const typicalWorkStartHour = updateData.typicalWorkStartHour !== undefined ? (updateData.typicalWorkStartHour !== null && updateData.typicalWorkStartHour !== undefined ? updateData.typicalWorkStartHour : null) : (currentEmployee.typicalWorkStartHour !== null && currentEmployee.typicalWorkStartHour !== undefined ? currentEmployee.typicalWorkStartHour : null);
     const typicalWorkEndHour = updateData.typicalWorkEndHour !== undefined ? (updateData.typicalWorkEndHour !== null && updateData.typicalWorkEndHour !== undefined ? updateData.typicalWorkEndHour : null) : (currentEmployee.typicalWorkEndHour !== null && currentEmployee.typicalWorkEndHour !== undefined ? currentEmployee.typicalWorkEndHour : null);
     const hasCompletedOnboarding = updateData.hasCompletedOnboarding !== undefined ? (updateData.hasCompletedOnboarding === true || updateData.hasCompletedOnboarding === 1 ? 1 : 0) : (currentEmployee.hasCompletedOnboarding === 1 ? 1 : 0);
@@ -782,8 +783,8 @@ router.put('/api/employees/:id', async (req, res) => {
     }
 
     db.run(
-      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, role = ?, permissions = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, preferences = ?, updatedAt = ? WHERE id = ?',
-      [name, preferredName, email, password, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, preferences, now, id],
+      'UPDATE employees SET name = ?, preferredName = ?, email = ?, password = ?, oxfordHouseId = ?, position = ?, role = ?, permissions = ?, phoneNumber = ?, baseAddress = ?, baseAddress2 = ?, costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, signature = ?, supervisorId = ?, seniorStaffId = ?, typicalWorkStartHour = ?, typicalWorkEndHour = ?, hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, preferences = ?, updatedAt = ? WHERE id = ?',
+      [name, preferredName, email, password, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, signature, supervisorId, seniorStaffId, typicalWorkStartHour, typicalWorkEndHour, hasCompletedOnboarding, hasCompletedSetupWizard, preferences, now, id],
       function(err) {
         if (err) {
           debugError('❌ Database error updating employee:', err.message);
@@ -1047,6 +1048,37 @@ router.get('/api/supervisors', (req, res) => {
       }
 
       res.json(rows);
+    }
+  );
+});
+
+/**
+ * Get senior staff team (employees who have this user as their senior staff)
+ */
+router.get('/api/senior-staff/:seniorStaffId/team', (req, res) => {
+  const { seniorStaffId } = req.params;
+  const db = dbService.getDb();
+
+  db.all(
+    `SELECT id, name, preferredName, email, position, costCenters, selectedCostCenters, archived, createdAt as joinDate
+     FROM employees
+     WHERE seniorStaffId = ? AND (archived IS NULL OR archived = 0)
+     ORDER BY name`,
+    [seniorStaffId],
+    (err, rows) => {
+      if (err) {
+        debugError('❌ Error fetching senior staff team:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      const parsedRows = (rows || []).map(row => ({
+        ...row,
+        costCenters: helpers.parseJsonSafe(row.costCenters, []),
+        selectedCostCenters: helpers.parseJsonSafe(row.selectedCostCenters, []),
+      }));
+
+      res.json(parsedRows);
     }
   );
 });

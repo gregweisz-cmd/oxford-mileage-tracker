@@ -653,6 +653,13 @@ function ensureTablesExist() {
               else debugLog('✅ Added supervisorId column to employees table');
             });
           }
+
+          if (!columnNames.includes('seniorStaffId')) {
+            db.run(`ALTER TABLE employees ADD COLUMN seniorStaffId TEXT DEFAULT NULL`, (err) => {
+              if (err) debugLog('Note: seniorStaffId column may already exist');
+              else debugLog('✅ Added seniorStaffId column to employees table');
+            });
+          }
           
           if (!columnNames.includes('approvalFrequency')) {
             db.run(`ALTER TABLE employees ADD COLUMN approvalFrequency TEXT DEFAULT 'monthly'`, (err) => {
