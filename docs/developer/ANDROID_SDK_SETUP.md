@@ -85,3 +85,42 @@ When the home screen is visible, run in your project folder:
 ```powershell
 npx expo run:android
 ```
+
+---
+
+## Expo Go on Android (app won’t load / works on iPhone only)
+
+If the app loads in **Expo Go on iPhone** but **not on your Android phone** when you scan the QR code or open the same dev server:
+
+### 1. Use tunnel mode (recommended)
+
+Tunnel mode gives you a public URL so the phone doesn't need to be on the same Wi-Fi as your PC.
+
+**Set your Expo access token (required for tunnel).** If you see `CommandError: ngrok tunnel took too long to connect`, your token may be missing or expired. Create or regenerate a token at [expo.dev/settings/access-tokens](https://expo.dev/settings/access-tokens), then set it before starting:
+
+**Current PowerShell session (recommended so the token is not stored in a file):**
+
+```powershell
+$env:EXPO_TOKEN = "your_expo_personal_access_token_here"
+npx expo start --tunnel
+```
+
+**Permanently (Windows user environment):**  
+Windows key → search "Environment variables" → Edit environment variables for your account → New → Variable name: `EXPO_TOKEN`, Value: your token. OK out, then **close and reopen** your terminal and run `npx expo start --tunnel`.
+
+- First run may install `@expo/ngrok` if needed.
+- Scan the **tunnel** QR code with Expo Go on Android (or type the `exp://...` URL).
+- Slower than LAN but usually fixes “works on iPhone, not Android” when the Android device can’t reach your PC’s IP.
+
+### 2. If you prefer LAN (no tunnel)
+
+- Put **Android and PC on the same Wi‑Fi** (not guest network).
+- In the terminal where you ran `npx expo start`, use the URL shown for **Android** (e.g. `exp://192.168.x.x:8081`). If you only see an iOS URL, press `a` to open on Android or show the Android URL.
+- **Windows firewall**: allow inbound TCP on port **8081** for “Private” networks so your phone can reach Metro.  
+  **Windows Security → Firewall & network protection → Advanced settings → Inbound Rules → New Rule → Port → TCP 8081 → Allow the connection → Private.**
+
+### 3. App opens but white screen or crashes on Android
+
+- In the terminal running `npx expo start`, check for red errors when the app loads on the phone.
+- On the Android device: **Expo Go → clear app data/cache** for the project (or uninstall/reinstall Expo Go), then try again.
+- Try tunnel mode (step 1); if it works there, the issue is likely LAN/firewall.

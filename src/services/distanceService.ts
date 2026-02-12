@@ -396,7 +396,7 @@ Current method provides good estimates but Google Maps will give you the exact d
       return distance;
     } catch (error) {
       debugLog('⚠️ Free geocoding failed, using keyword-based estimation');
-      debugError('Free geocoding error details:', error);
+      debugLog('Free geocoding fallback (expected for short names):', error instanceof Error ? error.message : error);
     }
     
     // Fallback: Simple keyword-based estimation for common locations
@@ -483,8 +483,8 @@ Current method provides good estimates but Google Maps will give you the exact d
       
       return roundedDistance;
     } catch (error) {
-      console.error('Free geocoding error:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      debugLog('Free geocoding error (will use estimation):', errorMsg);
       throw new Error(`Could not geocode addresses for distance calculation: ${errorMsg}`);
     }
   }
@@ -507,6 +507,12 @@ Current method provides good estimates but Google Maps will give you the exact d
       
       if (!response.ok) {
         debugError(`Nominatim request failed with status: ${response.status}`);
+        // 509 Bandwidth Limit / 429 Too Many Requests = rate limit
+        if (response.status === 509 || response.status === 429) {
+          throw new Error(
+            'Geocoding is temporarily unavailable (rate limit). Please try again in a few minutes.'
+          );
+        }
         // If cleaned address failed, try original address
         if (cleanedAddress !== address) {
           debugLog(`Retrying with original address: ${address}`);
@@ -529,6 +535,11 @@ Current method provides good estimates but Google Maps will give you the exact d
               debugLog(`📍 Coordinates found (retry): ${coords.lat}, ${coords.lng}`);
               return coords;
             }
+          }
+          if (retryResponse.status === 509 || retryResponse.status === 429) {
+            throw new Error(
+              'Geocoding is temporarily unavailable (rate limit). Please try again in a few minutes.'
+            );
           }
         }
         throw new Error(`Geocoding request failed: ${response.status}`);
@@ -573,7 +584,7 @@ Current method provides good estimates but Google Maps will give you the exact d
       debugLog(`📍 Coordinates found: ${coords.lat}, ${coords.lng}`);
       return coords;
     } catch (error) {
-      debugError('Nominatim geocoding error:', error);
+      debugLog('Nominatim geocoding failed (e.g. short name without address):', error instanceof Error ? error.message : error);
       if (error instanceof Error) {
         throw error;
       }

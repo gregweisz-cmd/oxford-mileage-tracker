@@ -578,7 +578,16 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    // Only update temp date, don't close picker or update formData
+    if (Platform.OS === 'android') {
+      if (event.type === 'dismissed' || event.type === 'set') {
+        setShowDatePicker(false);
+      }
+      if (event.type === 'set' && selectedDate) {
+        setTempDate(selectedDate);
+        setFormData(prev => ({ ...prev, date: selectedDate }));
+      }
+      return;
+    }
     if (selectedDate) {
       setTempDate(selectedDate);
     }
@@ -1271,47 +1280,55 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           </TouchableOpacity>
         </View>
 
-        {/* Date Picker Modal */}
-        <Modal
-          visible={showDatePicker}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowDatePicker(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, dynamicStyles.modalContent]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, dynamicStyles.modalTitle]}>Select Date</Text>
-                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <MaterialIcons name="close" size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              
-              <DateTimePicker
-                value={tempDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-                onChange={handleDateChange}
-                style={styles.datePicker}
-              />
-              
-              <View style={styles.modalButtons}>
-                <TouchableOpacity 
-                  style={[styles.modalCancelButton, dynamicStyles.modalCancelButton]} 
-                  onPress={() => setShowDatePicker(false)}
-                >
-                  <Text style={[styles.modalCancelButtonText, dynamicStyles.modalCancelButtonText]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.modalConfirmButton, dynamicStyles.modalConfirmButton]} 
-                  onPress={handleDatePickerConfirm}
-                >
-                  <Text style={[styles.modalConfirmButtonText, dynamicStyles.modalConfirmButtonText]}>Select</Text>
-                </TouchableOpacity>
+        {/* Date Picker: on Android use native dialog only (no Modal) so OK/Cancel close properly */}
+        {showDatePicker && Platform.OS === 'android' && (
+          <DateTimePicker
+            value={tempDate}
+            mode="date"
+            display="default"
+            onChange={handleDateChange}
+          />
+        )}
+        {showDatePicker && Platform.OS === 'ios' && (
+          <Modal
+            visible={showDatePicker}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowDatePicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, dynamicStyles.modalContent]}>
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, dynamicStyles.modalTitle]}>Select Date</Text>
+                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                    <MaterialIcons name="close" size={24} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={tempDate}
+                  mode="date"
+                  display="spinner"
+                  onChange={handleDateChange}
+                  style={styles.datePicker}
+                />
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalCancelButton, dynamicStyles.modalCancelButton]}
+                    onPress={() => setShowDatePicker(false)}
+                  >
+                    <Text style={[styles.modalCancelButtonText, dynamicStyles.modalCancelButtonText]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalConfirmButton, dynamicStyles.modalConfirmButton]}
+                    onPress={handleDatePickerConfirm}
+                  >
+                    <Text style={[styles.modalConfirmButtonText, dynamicStyles.modalConfirmButtonText]}>Select</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        </Modal>
+          </Modal>
+        )}
 
         {/* Vendor */}
         <View style={styles.inputGroup}>

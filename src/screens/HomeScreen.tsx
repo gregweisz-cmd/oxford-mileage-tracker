@@ -19,19 +19,16 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { DashboardService } from '../services/dashboardService';
 import { PerDiemService } from '../services/perDiemService';
-import { PerDiemDashboardService } from '../services/perDiemDashboardService';
 import { PreferencesService } from '../services/preferencesService';
 import { DemoDataService } from '../services/demoDataService';
 import { PermissionService } from '../services/permissionService';
 import RealtimeSyncService from '../services/realtimeSyncService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { MileageEntry, Employee, Receipt } from '../types';
-import { formatLocationRoute } from '../utils/locationFormatter';
 import { API_BASE_URL } from '../config/api';
 import { debugWarn } from '../config/debug';
 import UnifiedHeader from '../components/UnifiedHeader';
 import CostCenterSelector from '../components/CostCenterSelector';
-import PerDiemWidget from '../components/PerDiemWidget';
 import DashboardTile, { TileConfig } from '../components/DashboardTile';
 import LogoutService from '../services/logoutService';
 import { useTheme } from '../contexts/ThemeContext';
@@ -39,8 +36,6 @@ import { BaseAddressDetectionService } from '../services/baseAddressDetectionSer
 import { CostCenterImportService } from '../services/costCenterImportService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
-import { DistanceService } from '../services/distanceService';
-import * as Location from 'expo-location';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 
@@ -89,7 +84,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const initialLoadDoneRef = useRef(false);
-  const [perDiemStats, setPerDiemStats] = useState<any>(null);
   const [isEditingTiles, setIsEditingTiles] = useState(false);
   const [dashboardTiles, setDashboardTiles] = useState<TileConfig[]>([]);
   
@@ -103,11 +97,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
   const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
   
-  // Distance from BA state
-  const [distanceFromBA, setDistanceFromBA] = useState<number | null>(null);
-  const [calculatingDistance, setCalculatingDistance] = useState(false);
-  const [distanceError, setDistanceError] = useState<string | null>(null);
-
   // Generate dynamic styles based on theme
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -403,8 +392,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         await loadEmployeeData(employee.id, employee);
         // Check for smart notifications when refreshing
         await checkSmartNotifications(employee.id);
-        // Calculate distance from BA
-        calculateDistanceFromBA();
       }
     } catch (error) {
       console.error('Error refreshing local data:', error);
@@ -449,68 +436,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
-  const calculateDistanceFromBA = async () => {
-    if (!currentEmployee || !currentEmployee.baseAddress) {
-      setDistanceFromBA(null);
-      return;
-    }
-
-    try {
-      setCalculatingDistance(true);
-      setDistanceError(null);
-
-      // Request location permission
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setDistanceError('Location permission denied');
-        setCalculatingDistance(false);
-        return;
-      }
-
-      // Get current location
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      // Reverse geocode current location to get address
-      const reverseGeocode = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
-      let currentAddress = '';
-      if (reverseGeocode && reverseGeocode.length > 0) {
-        const addr = reverseGeocode[0];
-        currentAddress = [
-          addr.street,
-          addr.city,
-          addr.region,
-          addr.postalCode,
-          addr.country
-        ].filter(Boolean).join(', ');
-      }
-
-      // If reverse geocoding failed, use coordinates as fallback
-      if (!currentAddress) {
-        currentAddress = `${location.coords.latitude},${location.coords.longitude}`;
-      }
-
-      // Straight-line distance "as the crow flies" from current location to base address
-      const distance = await DistanceService.calculateDistanceAsCrowFlies(
-        currentAddress,
-        currentEmployee.baseAddress
-      );
-
-      setDistanceFromBA(distance);
-    } catch (error) {
-      console.error('Error calculating distance from BA:', error);
-      setDistanceError('Unable to calculate');
-      setDistanceFromBA(null);
-    } finally {
-      setCalculatingDistance(false);
-    }
-  };
-
   const loadEmployeeData = async (employeeId: string, employeeParam?: Employee) => {
     try {
       
@@ -538,14 +463,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       const perDiemFromReceipts = dashboardData.monthlyStats.totalPerDiemReceipts || 0;
       setPerDiemThisMonth(perDiemFromReceipts);
       
-      // Load enhanced Per Diem statistics
-      const stats = await PerDiemDashboardService.getPerDiemStats(
-        employee,
-        selectedMonth,
-        selectedYear
-      );
-      setPerDiemStats(stats);
-
       // Calculate total expenses
       const expenseBreakdown = PerDiemService.getExpenseBreakdown(
         dashboardData.monthlyStats.totalMiles,
@@ -655,14 +572,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       navigation.navigate(notification.actionRoute);
     }
     handleDismissNotification(notification.id);
-  };
-
-  const handleEditEntry = (entryId: string) => {
-    // Navigate to MileageEntryScreen with the entry ID for editing
-    navigation.navigate('MileageEntry', { 
-      entryId: entryId,
-      isEditing: true 
-    });
   };
 
   /**
@@ -1234,45 +1143,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
-  const formatDate = (date: Date) => {
-    // Dates are now properly parsed at storage time
-    // Just display them normally
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
-  // formatLocationRoute is now imported from utils/locationFormatter
-
-  const handleDeleteEntry = async (entryId: string) => {
-    Alert.alert(
-      'Delete Entry',
-      'Are you sure you want to delete this mileage entry? This action cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await DatabaseService.deleteMileageEntry(entryId);
-              Alert.alert('Success', 'Mileage entry deleted successfully');
-              await refreshAfterLocalChange();
-            } catch (error) {
-              console.error('Error deleting entry:', error);
-              Alert.alert('Error', 'Failed to delete mileage entry');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -1449,114 +1319,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
         >
-        {/* Sync Status Indicator (for debugging) */}
-        {__DEV__ ? (
-          <View style={styles.syncStatusBar}>
-            <MaterialIcons 
-              name={isSyncing ? "sync" : "cloud-done"} 
-              size={16} 
-              color={isSyncing ? "#2196F3" : "#4CAF50"} 
-            />
-            <Text style={styles.syncStatusText}>
-              {isSyncing ? "Syncing..." : lastSyncTime ? `Last sync: ${lastSyncTime.toLocaleTimeString()}` : "Not synced yet"}
-            </Text>
-            <Text style={styles.syncStatusUrl}>
-              {API_BASE_URL?.includes('onrender') ? 'Production' : 'Local'}
-            </Text>
-          </View>
-        ) : null}
-        
-        {/* Tips Display */}
-        
-        {/* Quick Stats */}
-        <View style={styles.statsContainer}>
-          <View style={dynamicStyles.statCard}>
-            <MaterialIcons name="attach-money" size={24} color="#FF9800" />
-            <Text style={dynamicStyles.statValue}>${totalExpensesThisMonth.toFixed(2)}</Text>
-            <Text style={dynamicStyles.statLabel}>Total Expenses</Text>
-          </View>
-          
-          <View style={dynamicStyles.statCard}>
-            <MaterialIcons name="speed" size={24} color="#4CAF50" />
-            <Text style={dynamicStyles.statValue}>{totalMilesThisMonth.toFixed(1)}</Text>
-            <Text style={dynamicStyles.statLabel}>Miles This Month</Text>
-          </View>
-        </View>
-
-        {/* Enhanced Per Diem Widget - Always visible */}
-        <PerDiemWidget
-          currentTotal={perDiemStats?.currentMonthTotal || 0}
-          monthlyLimit={perDiemStats?.monthlyLimit || 350}
-          daysEligible={perDiemStats?.daysEligible || 0}
-          daysClaimed={perDiemStats?.daysClaimed || 0}
-          isEligibleToday={perDiemStats?.isEligibleToday || false}
-          onPress={() => {
-            // Navigate to Per Diem screen
-            navigation.navigate('PerDiem');
-          }}
-          colors={{
-            card: colors.card,
-            text: colors.text,
-            textSecondary: colors.textSecondary
-          }}
-        />
-
-        {/* Secondary Stats */}
-        <View style={styles.statsContainer}>
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('Receipts', { selectedMonth, selectedYear })}>
-            <MaterialIcons name="receipt" size={24} color="#E91E63" />
-            <Text style={dynamicStyles.statValue}>${totalReceiptsThisMonth.toFixed(2)}</Text>
-            <Text style={dynamicStyles.statLabel}>Other Receipts</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={dynamicStyles.statCard} onPress={() => navigation.navigate('DailyHours')}>
-            <MaterialIcons name="access-time" size={24} color="#FF5722" />
-            <Text style={dynamicStyles.statValue}>{totalHoursThisMonth.toFixed(1)}h</Text>
-            <Text style={dynamicStyles.statLabel}>Hours Worked</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Distance from BA Widget */}
-        {currentEmployee?.baseAddress ? (
-          <View style={styles.distanceBAContainer}>
-            <View style={dynamicStyles.statCard}>
-              <MaterialIcons name="location-on" size={24} color="#2196F3" />
-              {calculatingDistance ? (
-                <Text style={dynamicStyles.statValue}>...</Text>
-              ) : distanceError ? (
-                <Text style={[dynamicStyles.statValue, { fontSize: 14, color: '#999' }]}>{distanceError}</Text>
-              ) : distanceFromBA !== null ? (
-                <Text style={dynamicStyles.statValue}>{distanceFromBA.toFixed(1)} mi</Text>
-              ) : (
-                <Text style={[dynamicStyles.statValue, { fontSize: 14, color: '#999' }]}>N/A</Text>
-              )}
-              <Text style={dynamicStyles.statLabel}>Distance from BA</Text>
-              <Text style={[dynamicStyles.statLabel, { fontSize: 10, opacity: 0.8, marginTop: 0 }]}>(as the crow flies)</Text>
-              <TouchableOpacity 
-                onPress={calculateDistanceFromBA}
-                style={{ marginTop: 8 }}
-              >
-                <MaterialIcons name="refresh" size={16} color="#2196F3" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
-
-        {/* Total Expenses Card */}
-        <View style={styles.statsContainer}>
-          <View style={dynamicStyles.statCard}>
-            <MaterialIcons name="attach-money" size={24} color="#4CAF50" />
-            <Text style={dynamicStyles.statValue}>${totalExpensesThisMonth.toFixed(2)}</Text>
-            <Text style={dynamicStyles.statLabel}>Total Expenses</Text>
-          </View>
-          
-          <View style={dynamicStyles.statCard}>
-            <MaterialIcons name="list" size={24} color="#2196F3" />
-            <Text style={dynamicStyles.statValue}>{recentEntries.length}</Text>
-            <Text style={dynamicStyles.statLabel}>Recent Entries</Text>
-          </View>
-        </View>
-
         {/* Monthly Mileage Link */}
         <View style={styles.monthlyMileageContainer}>
           <TouchableOpacity 
@@ -1673,74 +1435,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               ) : null}
             </View>
           ))}
-        </View>
-
-        {/* Quick Access to Recent Entries */}
-        <View style={styles.quickActionsContainer}>
-          <View style={styles.quickActionsHeader}>
-            <Text style={styles.quickActionsTitle}>Quick Actions</Text>
-            <View style={styles.quickActionsViewAllButton}>
-              <Text style={styles.quickActionsViewAllText}>Recent Activity</Text>
-            </View>
-          </View>
-          
-          {recentEntries.filter(entry => {
-            const entryDate = new Date(entry.date);
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            return entryDate >= oneWeekAgo;
-          }).length === 0 ? (
-            <View style={styles.quickActionsEmptyState}>
-              <MaterialIcons name="directions-car" size={48} color="#ccc" />
-              <Text style={styles.quickActionsEmptyStateText}>No entries this week</Text>
-              <Text style={styles.quickActionsEmptyStateSubtext}>
-                Add a mileage entry to see it here
-              </Text>
-            </View>
-          ) : (
-            recentEntries
-              .filter(entry => {
-                const entryDate = new Date(entry.date);
-                const oneWeekAgo = new Date();
-                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-                return entryDate >= oneWeekAgo;
-              })
-              .slice(0, 3)
-              .map((entry) => (
-              <View key={entry.id} style={styles.quickActionsEntryCard}>
-                <View style={styles.quickActionsEntryContent}>
-                  <View style={styles.quickActionsEntryInfo}>
-                    <Text style={styles.quickActionsEntryDate}>{formatDate(entry.date)}</Text>
-                    <Text style={styles.quickActionsEntryRoute}>
-                      {formatLocationRoute(entry)}
-                    </Text>
-                    <Text style={styles.quickActionsEntryPurpose}>{entry.purpose ?? ''}</Text>
-                    <Text style={styles.quickActionsEntryMiles}>{entry.miles != null ? entry.miles.toFixed(1) : '0'} mi</Text>
-                    {entry.isGpsTracked ? (
-                      <View style={styles.quickActionsGpsBadge}>
-                        <MaterialIcons name="gps-fixed" size={12} color="#4CAF50" />
-                        <Text style={styles.quickActionsGpsText}>GPS Tracked</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <View style={styles.quickActionsButtonContainer}>
-                    <TouchableOpacity
-                      style={styles.quickActionsEditButton}
-                      onPress={() => handleEditEntry(entry.id)}
-                    >
-                      <MaterialIcons name="edit" size={18} color="#2196F3" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.quickActionsDeleteButton}
-                      onPress={() => handleDeleteEntry(entry.id)}
-                    >
-                      <MaterialIcons name="delete" size={18} color="#f44336" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            ))
-          )}
         </View>
 
       </ScrollView>
@@ -2494,10 +2188,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 4,
   },
-  distanceBAContainer: {
-    marginHorizontal: 20,
-    marginBottom: 12,
-  },
   monthlyMileageContainer: {
     marginBottom: 20,
   },
@@ -2790,28 +2480,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2e7d32',
   },
-  syncStatusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
   syncStatusText: {
     fontSize: 12,
     color: '#666',
     marginLeft: 8,
     flex: 1,
-  },
-  syncStatusUrl: {
-    fontSize: 10,
-    color: '#999',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   quickActionsGpsBadge: {
     flexDirection: 'row',

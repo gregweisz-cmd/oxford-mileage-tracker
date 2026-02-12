@@ -4,7 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, Platform } from 'react-native';
 import { useFonts } from 'expo-font';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useReactNavigationDevTools } from '@dev-plugins/react-navigation';
@@ -288,6 +288,9 @@ export default function App() {
             initialRouteName="Home"
             screenOptions={{
               headerShown: false,
+              cardStyle: {
+                paddingBottom: Platform.OS === 'android' ? 48 : 30,
+              },
             }}
           >
             <Stack.Screen 

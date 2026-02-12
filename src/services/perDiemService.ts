@@ -205,23 +205,24 @@ export class PerDiemService {
       let maxDistance = 0;
       
       for (const entry of entries) {
-        // Check start location
-        if (entry.startLocation && entry.startLocation.trim() !== '' && entry.startLocation !== 'BA') {
+        // Prefer full address from details so geocoding works (short names like "Gibson Casa" fail)
+        const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
+        if (start && start !== 'BA') {
           try {
-            const distance = await DistanceService.calculateDistance(baseAddress, entry.startLocation);
+            const distance = await DistanceService.calculateDistance(baseAddress, start);
             maxDistance = Math.max(maxDistance, distance);
           } catch (error) {
-            console.warn(`Could not calculate distance to start location: ${entry.startLocation}`, error);
+            console.warn(`Could not calculate distance to start location: ${start}`, error);
           }
         }
-        
-        // Check end location
-        if (entry.endLocation && entry.endLocation.trim() !== '' && entry.endLocation !== 'BA') {
+
+        const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
+        if (end && end !== 'BA') {
           try {
-            const distance = await DistanceService.calculateDistance(baseAddress, entry.endLocation);
+            const distance = await DistanceService.calculateDistance(baseAddress, end);
             maxDistance = Math.max(maxDistance, distance);
           } catch (error) {
-            console.warn(`Could not calculate distance to end location: ${entry.endLocation}`, error);
+            console.warn(`Could not calculate distance to end location: ${end}`, error);
           }
         }
       }

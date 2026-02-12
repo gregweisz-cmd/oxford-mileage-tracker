@@ -557,7 +557,18 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   const handleDateChange = (event: any, date?: Date) => {
-    console.log('📅 Date picker change:', { event, date });
+    if (Platform.OS === 'android') {
+      // Android shows native dialog; close on OK or Cancel so it doesn't pop back up
+      if (event.type === 'dismissed' || event.type === 'set') {
+        setShowDatePicker(false);
+      }
+      if (event.type === 'set' && date) {
+        setSelectedDate(date);
+        setFormData(prev => ({ ...prev, date }));
+        checkExistingEntriesForDate(date);
+      }
+      return;
+    }
     if (date) {
       setSelectedDate(date);
     }
@@ -575,7 +586,6 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   const handleDatePickerOpen = () => {
-    console.log('📅 Opening date picker with date:', formData.date);
     setSelectedDate(formData.date);
     setShowDatePicker(true);
   };
@@ -1054,8 +1064,16 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           </TouchableOpacity>
         </View>
 
-        {/* Date Picker Modal */}
-        {showDatePicker && (
+        {/* Date Picker: on Android use native dialog only (no Modal) so OK/Cancel close properly */}
+        {showDatePicker && Platform.OS === 'android' && (
+          <DateTimePicker
+            value={selectedDate}
+            mode="date"
+            display="default"
+            onChange={handleDateChange}
+          />
+        )}
+        {showDatePicker && Platform.OS === 'ios' && (
           <Modal
             visible={showDatePicker}
             transparent={true}
@@ -1070,12 +1088,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                     <MaterialIcons name="close" size={24} color="#666" />
                   </TouchableOpacity>
                 </View>
-                
                 <View style={styles.datePickerContainer}>
                   <DateTimePicker
                     value={selectedDate}
                     mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    display="spinner"
                     onChange={handleDateChange}
                     style={styles.datePicker}
                     themeVariant="light"
@@ -1083,16 +1100,15 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                     accentColor="#2196F3"
                   />
                 </View>
-                
                 <View style={styles.modalButtons}>
-                  <TouchableOpacity 
-                    style={styles.modalCancelButton} 
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
                     onPress={handleDatePickerCancel}
                   >
                     <Text style={styles.modalCancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.modalConfirmButton} 
+                  <TouchableOpacity
+                    style={styles.modalConfirmButton}
                     onPress={handleDatePickerConfirm}
                   >
                     <Text style={styles.modalConfirmButtonText}>Done</Text>

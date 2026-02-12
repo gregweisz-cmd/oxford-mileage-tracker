@@ -276,7 +276,8 @@ export class PerDiemAiService {
 
     let maxDistance = 0;
     for (const entry of mileageEntries) {
-      const start = (entry.startLocation || '').trim();
+      // Prefer full address from details so geocoding works (short names like "Gibson Casa" fail)
+      const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
       if (start && start !== 'BA') {
         try {
           const d = await DistanceService.calculateDistance(baseAddress, start);
@@ -285,7 +286,7 @@ export class PerDiemAiService {
           // ignore per-entry failures
         }
       }
-      const end = (entry.endLocation || '').trim();
+      const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
       if (end && end !== 'BA') {
         try {
           const d = await DistanceService.calculateDistance(baseAddress, end);
