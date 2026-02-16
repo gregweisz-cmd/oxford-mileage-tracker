@@ -10,19 +10,21 @@ import { AdminPortal } from './components/AdminPortal';
 import FinancePortal from './components/FinancePortal';
 import ContractsPortal from './components/ContractsPortal';
 import Login from './components/Login';
-// import LoginForm from './components/LoginForm'; // Currently unused
 import PortalSwitcher from './components/PortalSwitcher';
 import OnboardingScreen from './components/OnboardingScreen';
 import SetupWizard from './components/SetupWizard';
 import { ToastProvider } from './contexts/ToastContext';
+import { ErrorPromptProvider } from './contexts/ErrorPromptContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import AuthCallback from './components/AuthCallback';
-// import AuthService from './services/authService'; // Currently unused
 
 // Debug logging
 import { debugLog, debugError, debugVerbose } from './config/debug';
 
-// Helper function to get available portals for a user (used before user state is set)
+/**
+ * Returns list of portal IDs the user can access, based on role, position, and permissions.
+ * Used to set initial portal and to show/hide options in the portal switcher.
+ */
 const getAvailablePortalsForUser = (
   role: string,
   position: string,
@@ -296,7 +298,7 @@ const App: React.FC = () => {
               debugError('Error fetching user preferences:', error);
             }
             
-            // If no preference or preference invalid, default to personal (Staff) portal first, then role-based
+            // No saved preference: default to Staff first so first-time users see their own portal
             const availablePortals = getAvailablePortalsForUser(role, position, permissions);
             if (availablePortals.includes('staff')) {
               setCurrentPortal('staff');
@@ -507,33 +509,15 @@ const App: React.FC = () => {
       debugError('Error fetching user preferences:', error);
     }
     
-    // If no preference or preference invalid, default to personal (Staff) portal first so user sees their own portal on first login
+    // No saved preference: default to Staff (personal) portal first, then by role
     const availablePortals = getAvailablePortalsForUser(role, position, permissions);
-    if (availablePortals.includes('staff')) {
-      setCurrentPortal('staff');
-    } else if (role === 'admin') {
-      setCurrentPortal('admin');
-    } else if (role === 'finance') {
-      setCurrentPortal('finance');
-    } else if (role === 'contracts') {
-      setCurrentPortal('contracts');
-    } else if (role === 'supervisor') {
-      setCurrentPortal('supervisor');
-    } else if (role === 'employee' || !role) {
-      if (position.includes('admin') || position.includes('ceo')) {
-        setCurrentPortal('admin');
-      } else if (position.includes('finance') || position.includes('accounting')) {
-        setCurrentPortal('finance');
-      } else if (position.includes('supervisor') || position.includes('director') || position.includes('regional manager') || position.includes('manager')) {
-        setCurrentPortal('supervisor');
-      } else if (position.toLowerCase().includes('senior staff')) {
-        setCurrentPortal('senior_staff');
-      } else {
-        setCurrentPortal('staff');
-      }
-    } else {
-      setCurrentPortal('staff');
-    }
+    if (availablePortals.includes('staff')) setCurrentPortal('staff');
+    else if (availablePortals.includes('admin')) setCurrentPortal('admin');
+    else if (availablePortals.includes('finance')) setCurrentPortal('finance');
+    else if (availablePortals.includes('contracts')) setCurrentPortal('contracts');
+    else if (availablePortals.includes('supervisor')) setCurrentPortal('supervisor');
+    else if (availablePortals.includes('senior_staff')) setCurrentPortal('senior_staff');
+    else setCurrentPortal('staff');
   };
 
   // Create theme based on current mode
@@ -633,42 +617,42 @@ const App: React.FC = () => {
   }
 
   // Determine which portal to show based on current portal selection
-  const renderPortal = () => {
+  const renderPortal = (onGoToDashboard: () => void) => {
     switch (currentPortal) {
       case 'admin':
         return (
-          <ErrorBoundary>
+          <ErrorBoundary onGoToDashboard={onGoToDashboard}>
             <AdminPortal adminId={currentUser.id} adminName={currentUser.name} />
           </ErrorBoundary>
         );
       case 'finance':
         return (
-          <ErrorBoundary>
+          <ErrorBoundary onGoToDashboard={onGoToDashboard}>
             <FinancePortal financeUserId={currentUser.id} financeUserName={currentUser.name} />
           </ErrorBoundary>
         );
       case 'contracts':
         return (
-          <ErrorBoundary>
+          <ErrorBoundary onGoToDashboard={onGoToDashboard}>
             <ContractsPortal contractsUserId={currentUser.id} contractsUserName={currentUser.name} />
           </ErrorBoundary>
         );
       case 'supervisor':
         return (
-          <ErrorBoundary>
+          <ErrorBoundary onGoToDashboard={onGoToDashboard}>
             <SupervisorPortal supervisorId={currentUser.id} supervisorName={currentUser.name} />
           </ErrorBoundary>
         );
       case 'senior_staff':
         return (
-          <ErrorBoundary>
+          <ErrorBoundary onGoToDashboard={onGoToDashboard}>
             <SeniorStaffPortal seniorStaffId={currentUser.id} seniorStaffName={currentUser.name} />
           </ErrorBoundary>
         );
       case 'staff':
       default:
         return (
-          <ErrorBoundary>
+          <ErrorBoundary onGoToDashboard={onGoToDashboard}>
             <StaffPortal
               employeeId={currentUser.id}
               reportMonth={new Date().getMonth() + 1}
@@ -679,19 +663,23 @@ const App: React.FC = () => {
     }
   };
 
+  const goToDashboard = () => setCurrentPortal('staff');
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <ToastProvider>
-        <Box>
-          <PortalSwitcher
-            currentUser={currentUser}
-            currentPortal={currentPortal}
-            onPortalChange={handlePortalChange}
-            onLogout={handleLogout}
-          />
-          {renderPortal()}
-        </Box>
+        <ErrorPromptProvider>
+          <Box>
+            <PortalSwitcher
+              currentUser={currentUser}
+              currentPortal={currentPortal}
+              onPortalChange={handlePortalChange}
+              onLogout={handleLogout}
+            />
+            {renderPortal(goToDashboard)}
+          </Box>
+        </ErrorPromptProvider>
       </ToastProvider>
     </ThemeProvider>
   );

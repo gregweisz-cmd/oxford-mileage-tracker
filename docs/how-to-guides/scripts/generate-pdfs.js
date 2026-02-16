@@ -1,8 +1,10 @@
 /**
  * PDF Generation Script
- * Converts HTML templates to PDF files using puppeteer
- * 
- * Usage: node generate-pdfs.js
+ * Converts HTML how-to templates to PDF files using Puppeteer.
+ * Injects screenshots from images/screenshots/{mobile-app|web-portal} into
+ * placeholder divs and outputs PDFs to docs/how-to-guides/.
+ *
+ * Usage: npm run generate  (or: node generate-pdfs.js)
  */
 
 const puppeteer = require('puppeteer');
@@ -13,7 +15,7 @@ const templatesDir = path.join(__dirname, '../templates');
 const outputDir = path.join(__dirname, '..');
 const imagesDir = path.join(__dirname, '../images/screenshots');
 
-// All templates (Finance & Contracts deferred until portals are tuned)
+// All template definitions (Finance & Contracts not yet generated)
 const allTemplates = [
     { template: 'mobile-app-template.html', output: 'Mobile-App-How-To.pdf', title: 'Mobile App How-To Guide' },
     { template: 'staff-portal-template.html', output: 'Staff-Portal-How-To.pdf', title: 'Staff Portal How-To Guide' },
@@ -24,7 +26,7 @@ const allTemplates = [
     { template: 'contracts-portal-template.html', output: 'Contracts-Portal-How-To.pdf', title: 'Contracts Portal How-To Guide' }
 ];
 
-// Generate PDFs for Mobile, Staff, Senior Staff, Supervisor, and Admin (Finance & Contracts deferred)
+// Build first 5 guides only (Mobile, Staff, Senior Staff, Supervisor, Admin)
 const templates = allTemplates.filter((_, i) => i < 5);
 
 async function generatePDF(templateFile, outputFile, title) {
@@ -46,13 +48,8 @@ async function generatePDF(templateFile, outputFile, title) {
         // Replace title placeholder if present
         html = html.replace(/\{\{TITLE\}\}/g, title);
         
-        // Determine screenshot directory based on template
-        let screenshotDir = 'web-portal'; // default
-        if (templateFile.includes('mobile-app')) {
-            screenshotDir = 'mobile-app';
-        } else if (templateFile.includes('senior-staff')) {
-            screenshotDir = 'web-portal'; // Senior Staff uses web-portal screenshots if any
-        }
+        // Screenshots: mobile-app template uses mobile-app folder; all others use web-portal
+        const screenshotDir = templateFile.includes('mobile-app') ? 'mobile-app' : 'web-portal';
         
         // Replace screenshot placeholders with actual images (as base64 data URIs)
         const placeholderRegex = /<div class="screenshot-placeholder" data-screenshot-name="([^"]+)"><\/div>/g;

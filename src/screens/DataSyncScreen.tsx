@@ -17,6 +17,7 @@ import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { DatabaseService } from '../services/database';
 import UnifiedHeader from '../components/UnifiedHeader';
+import { showErrorWithGoBack, isHttpClientError } from '../utils/errorAlerts';
 
 interface DataSyncScreenProps {
   navigation: any;
@@ -165,12 +166,23 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
         // Refresh status
         loadSyncStatus();
       } else {
-        Alert.alert('Sync Failed', `Failed to sync data: ${syncResult.error || 'Unknown error'}`);
+        const msg = syncResult.error || 'Unknown error';
+        const err = new Error(msg);
+        if (isHttpClientError(err)) {
+          showErrorWithGoBack(navigation, 'Sync Failed', msg);
+        } else {
+          Alert.alert('Sync Failed', `Failed to sync data: ${msg}`);
+        }
       }
       
     } catch (error) {
       console.error('Error during manual sync:', error);
-      Alert.alert('Sync Error', 'An error occurred during sync. Please try again.');
+      const msg = error instanceof Error ? error.message : 'An error occurred during sync. Please try again.';
+      if (isHttpClientError(error)) {
+        showErrorWithGoBack(navigation, 'Sync Error', msg);
+      } else {
+        Alert.alert('Sync Error', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -194,7 +206,12 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
       
     } catch (error) {
       console.error('Error during force sync:', error);
-      Alert.alert('Force Sync Error', 'An error occurred during force sync. Please try again.');
+      const msg = error instanceof Error ? error.message : 'An error occurred during force sync. Please try again.';
+      if (isHttpClientError(error)) {
+        showErrorWithGoBack(navigation, 'Force Sync Error', msg);
+      } else {
+        Alert.alert('Force Sync Error', msg);
+      }
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { Box, Button, Typography, Paper, Alert } from '@mui/material';
+import { Box, Button, Typography, Paper } from '@mui/material';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { debugError } from '../config/debug';
@@ -8,6 +8,8 @@ interface Props {
   children: ReactNode;
   fallback?: ReactNode;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  /** When provided, shows a "Go to dashboard" button that calls this then resets the boundary. */
+  onGoToDashboard?: () => void;
 }
 
 interface State {
@@ -71,6 +73,11 @@ class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  handleGoToDashboard = (): void => {
+    this.props.onGoToDashboard?.();
+    this.handleReset();
+  };
+
   render(): ReactNode {
     if (this.state.hasError) {
       // If custom fallback is provided, use it
@@ -78,7 +85,7 @@ class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      // Default error UI
+      // Default error UI: simple message and actions only
       return (
         <Box
           sx={{
@@ -94,65 +101,34 @@ class ErrorBoundary extends Component<Props, State> {
             elevation={3}
             sx={{
               padding: 4,
-              maxWidth: 600,
+              maxWidth: 480,
               width: '100%',
             }}
           >
             <Box sx={{ textAlign: 'center', mb: 3 }}>
               <ErrorOutlineIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
-              <Typography variant="h4" gutterBottom>
-                Something went wrong
-              </Typography>
-              <Typography variant="body1" color="text.secondary" paragraph>
-                We're sorry, but something unexpected happened. Please try refreshing the page or contact support if the problem persists.
+              <Typography variant="h5" gutterBottom>
+                An error occurred
               </Typography>
             </Box>
 
-            <Alert severity="error" sx={{ mb: 3 }}>
-              <Typography variant="body2" fontWeight="bold" gutterBottom>
-                Error Details:
-              </Typography>
-              <Typography variant="body2" component="pre" sx={{ fontSize: '0.75rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {this.state.error?.message || 'Unknown error'}
-              </Typography>
-            </Alert>
-
-            {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
-              <Alert severity="info" sx={{ mb: 3 }}>
-                <Typography variant="body2" fontWeight="bold" gutterBottom>
-                  Stack Trace:
-                </Typography>
-                <Typography
-                  variant="body2"
-                  component="pre"
-                  sx={{
-                    fontSize: '0.7rem',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    maxHeight: 200,
-                    overflow: 'auto',
-                  }}
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {this.props.onGoToDashboard && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={this.handleGoToDashboard}
                 >
-                  {this.state.errorInfo.componentStack}
-                </Typography>
-              </Alert>
-            )}
-
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<RefreshIcon />}
-                onClick={this.handleReset}
-              >
-                Try Again
-              </Button>
+                  Go to dashboard
+                </Button>
+              )}
               <Button
                 variant="outlined"
                 color="primary"
+                startIcon={<RefreshIcon />}
                 onClick={this.handleReload}
               >
-                Reload Page
+                Reload page
               </Button>
             </Box>
           </Paper>

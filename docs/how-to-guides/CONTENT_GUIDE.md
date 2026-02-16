@@ -33,7 +33,7 @@ All templates follow this structure:
 
 ### Tips & Best Practices
 - When to approve vs request revision
-- Reviewing report completeness
+- Reviewing your report before submit
 - Managing team performance
 - Response time expectations
 

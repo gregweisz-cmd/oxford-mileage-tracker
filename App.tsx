@@ -255,7 +255,6 @@ export default function App() {
                 }} 
               />
             </GpsTrackingProvider>
-          </TipsProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     );

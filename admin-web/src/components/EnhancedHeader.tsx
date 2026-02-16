@@ -51,7 +51,6 @@ interface EnhancedHeaderProps {
   onRequestRevision?: () => void;
   onViewAllReports?: () => void;
   onStartFreshReport?: () => void;
-  onCheckCompleteness?: () => void;
   onRefresh?: () => void;
   onSettings?: () => void;
   onMonthYearChange?: (month: number, year: number) => void;
@@ -80,7 +79,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   onRequestRevision,
   onViewAllReports,
   onStartFreshReport,
-  onCheckCompleteness,
   onRefresh,
   onSettings,
   onMonthYearChange,
@@ -303,24 +301,6 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                   }}
                 >
                   <ReplayIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-
-            {onCheckCompleteness && (
-              <Tooltip title="Check Completeness">
-                <IconButton
-                  onClick={onCheckCompleteness}
-                  disabled={loading}
-                  size="small"
-                  sx={{ 
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    color: 'primary.main',
-                    '&:hover': { bgcolor: 'primary.light', color: 'primary.dark' }
-                  }}
-                >
-                  <CheckCircleIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             )}

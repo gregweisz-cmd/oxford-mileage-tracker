@@ -33,6 +33,7 @@ import { Employee, Receipt } from '../types';
 import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 import { useNotifications } from '../contexts/NotificationContext';
 import { CategoryAiService, CategorySuggestion } from '../services/categoryAiService';
+import { showErrorWithGoBack, isHttpClientError } from '../utils/errorAlerts';
 import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiService';
 import { ReceiptOcrService, OcrError } from '../services/receiptOcrService';
 import { COST_CENTERS } from '../constants/costCenters';
@@ -954,7 +955,12 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       await proceedWithSave();
     } catch (error) {
       console.error('Error saving receipt:', error);
-      Alert.alert('Error', 'Failed to save receipt');
+      const msg = error instanceof Error ? error.message : 'Failed to save receipt';
+      if (isHttpClientError(error)) {
+        showErrorWithGoBack(navigation, 'Error', msg);
+      } else {
+        Alert.alert('Error', 'Failed to save receipt');
+      }
     } finally {
       setLoading(false);
     }

@@ -65,13 +65,12 @@ import { PerDiemTab } from './components/PerDiemTab';
 
 // UI Enhancement imports
 import { ToastProvider, useToast } from './contexts/ToastContext';
+import { useErrorPrompt, isHttpClientError } from './contexts/ErrorPromptContext';
 import { LoadingOverlay, useLoadingState } from './components/LoadingOverlay';
 import { EnhancedHeader } from './components/EnhancedHeader';
 import { EnhancedTabNavigation, createTabConfig } from './components/EnhancedTabNavigation';
 import { UIEnhancementProvider } from './services/uiEnhancementService';
 
-// Report completeness checker
-import { ReportCompletenessService, CompletenessReport, CompletenessIssue } from './services/reportCompletenessService';
 
 // User settings component
 import UserSettings from './components/UserSettings';
@@ -107,6 +106,27 @@ function getReceiptImageUrl(uri: string | undefined): string {
   if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')) return raw;
   if (raw.startsWith('/')) return `${API_BASE_URL}${raw}`;
   return `${API_BASE_URL}/uploads/${raw}`;
+}
+
+/** Dev-only: button that triggers an error during render so ErrorBoundary catches it (not in onClick). */
+function DevErrorBoundaryTrigger() {
+  const [triggerError, setTriggerError] = useState(false);
+  if (triggerError) {
+    throw new Error('Test error boundary (dev only)');
+  }
+  return (
+    <Box sx={{ position: 'fixed', bottom: 8, right: 8, zIndex: 9999 }}>
+      <Button
+        size="small"
+        variant="outlined"
+        color="warning"
+        data-testid="error-boundary-trigger"
+        onClick={() => setTriggerError(true)}
+      >
+        Test error boundary
+      </Button>
+    </Box>
+  );
 }
 
 // Props interface for the StaffPortal component
@@ -436,11 +456,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [summaryEditDialogOpen, setSummaryEditDialogOpen] = useState(false);
   const [receiptTotalsByCategory, setReceiptTotalsByCategory] = useState<{[key: string]: number}>({});
   
-  // Report completeness checker state
-  const [completenessReport, setCompletenessReport] = useState<CompletenessReport | null>(null);
-  const [completenessDialogOpen, setCompletenessDialogOpen] = useState(false);
-  const [completenessLoading, setCompletenessLoading] = useState(false);
-
   // Submission type dialog state
   const [submissionTypeDialogOpen, setSubmissionTypeDialogOpen] = useState(false);
 
@@ -491,6 +506,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // UI Enhancement hooks
   const { showSuccess, showError } = useToast();
+  const { showErrorPrompt } = useErrorPrompt();
   const { isLoading: uiLoading, startLoading, stopLoading } = useLoadingState();
 
   // Calculate days in the current month
@@ -3007,66 +3023,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   }, [cropModalReceipt, receipts, employeeData, syncReportData, showSuccess, showError]);
 
-  // Report Completeness Checker
-  const handleCheckCompleteness = async () => {
-    if (!employeeData) return;
-    
-    setCompletenessLoading(true);
-    setCompletenessDialogOpen(true);
-    
-    try {
-      const report = await ReportCompletenessService.analyzeReportCompleteness(
-        employeeData.employeeId,
-        currentMonth,
-        currentYear
-      );
-      
-      setCompletenessReport(report);
-    } catch (error) {
-      debugError('Error checking report completeness:', error);
-      // Show error state
-      setCompletenessReport({
-        employeeId: employeeData.employeeId,
-        month: currentMonth,
-        year: currentYear,
-        overallScore: 0,
-        issues: [{
-          id: 'error-analysis',
-          type: 'missing_odometer',
-          severity: 'critical',
-          title: 'Analysis Error',
-          description: `Failed to analyze report completeness: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          suggestion: 'Please check your data and try again',
-          category: 'System Error'
-        }],
-        recommendations: ['Error analyzing report completeness'],
-        isReadyForSubmission: false
-      });
-    } finally {
-      setCompletenessLoading(false);
-    }
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical': return '#d32f2f';
-      case 'high': return '#f57c00';
-      case 'medium': return '#fbc02d';
-      case 'low': return '#388e3c';
-      default: return '#666';
-    }
-  };
-
-  const getSeverityIcon = (severity: string) => {
-    switch (severity) {
-      case 'critical': return '🚨';
-      case 'high': return '⚠️';
-      case 'medium': return '⚡';
-      case 'low': return 'ℹ️';
-      default: return '📋';
-    }
-  };
-
   // PDF Generation Functions
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function generateApprovalCoverSheet(pdf: any, data: EmployeeExpenseData, isFirstPage: boolean) {
@@ -4307,11 +4263,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setCurrentApproverName(null);
         setReportSubmittedAt(null);
         setReportApprovedAt(null);
+        showErrorPrompt('No report found for this month and year. You can start a new report from here.', {
+          title: 'Report not found',
+          goBackLabel: 'Stay here',
+        });
         return;
       }
       
       if (!response.ok) {
-        throw new Error('Failed to load expense report');
+        throw new Error(`HTTP ${response.status}: Failed to load expense report`);
       }
 
       const savedReport = await response.json();
@@ -4358,7 +4318,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
     } catch (error) {
       debugError('Error loading report:', error);
-      alert(`Error loading report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (isHttpClientError(error)) {
+        showErrorPrompt(msg, {
+          title: 'Could not load report',
+          goBackLabel: 'Back to report',
+        });
+      } else {
+        alert(`Error loading report: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -4379,7 +4347,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }
       } catch (e) {
         debugError('Start fresh delete error:', e);
-        alert(e instanceof Error ? e.message : 'Failed to delete report');
+        const msg = e instanceof Error ? e.message : 'Failed to delete report';
+        if (isHttpClientError(e)) {
+          showErrorPrompt(msg, { title: 'Could not delete report', goBackLabel: 'Back to report' });
+        } else {
+          alert(msg);
+        }
         throw e;
       }
     }
@@ -4440,93 +4413,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       return;
     }
 
-    // Set loading state
     setLoading(true);
-
-    // Only run completeness check for monthly submissions
-    let completenessReport: CompletenessReport | null = null;
-    if (!isWeeklyCheckup) {
-      // First, run completeness check automatically
-      try {
-        debugLog('🔍 Running automatic completeness check before submission...');
-        completenessReport = await ReportCompletenessService.analyzeReportCompleteness(
-          employeeData.employeeId,
-          reportMonth,
-          reportYear
-        );
-        
-        debugLog('📊 Completeness check results:', {
-          score: completenessReport.overallScore,
-          isReady: completenessReport.isReadyForSubmission,
-          issuesCount: completenessReport.issues.length
-        });
-        
-        // Check if report is ready for submission
-        if (!completenessReport.isReadyForSubmission) {
-          const criticalIssues = completenessReport.issues.filter(issue => issue.severity === 'critical');
-          const highIssues = completenessReport.issues.filter(issue => issue.severity === 'high');
-          
-          let errorMessage = `❌ Report Not Ready for Submission\n\n`;
-          errorMessage += `Completeness Score: ${completenessReport.overallScore}/100\n\n`;
-          
-          if (criticalIssues.length > 0) {
-            errorMessage += `🚨 Critical Issues (${criticalIssues.length}):\n`;
-            criticalIssues.forEach(issue => {
-              errorMessage += `• ${issue.title}: ${issue.description}\n`;
-            });
-            errorMessage += `\n`;
-          }
-          
-          if (highIssues.length > 0) {
-            errorMessage += `⚠️ High Priority Issues (${highIssues.length}):\n`;
-            highIssues.forEach(issue => {
-              errorMessage += `• ${issue.title}: ${issue.description}\n`;
-            });
-            errorMessage += `\n`;
-          }
-          
-          errorMessage += `💡 Recommendations:\n`;
-          completenessReport.recommendations.forEach(rec => {
-            errorMessage += `• ${rec}\n`;
-          });
-          
-          errorMessage += `\nPlease fix these issues before submitting your report.`;
-          
-          alert(errorMessage);
-          setLoading(false);
-          return;
-        }
-        
-        // If we get here, the report passed completeness check
-        debugLog('✅ Report passed completeness check, proceeding with submission...');
-        
-      } catch (error) {
-        debugError('❌ Error running completeness check:', error);
-        alert('Error running completeness check. Please try again.');
-        setLoading(false);
-        return;
-      }
-    }
-
-    // Proceed with submission confirmation based on type
-    let confirmSubmit: boolean;
-    if (!isWeeklyCheckup && completenessReport) {
-      // Monthly submission with completeness check
-      confirmSubmit = window.confirm(
-        `✅ Report Completeness Check Passed!\n\nCompleteness Score: ${completenessReport.overallScore}/100\n\nAre you sure you want to submit this expense report? Once submitted, you will not be able to make further edits.`
-      );
-    } else {
-      // Weekly checkup - skip completeness check
-      confirmSubmit = window.confirm(
-        `📋 Weekly Checkup Submission\n\nThis report will be submitted for weekly review by your Regional Manager. Completeness check has been skipped.\n\nAre you sure you want to submit this weekly checkup?`
-      );
-    }
-    
+    const confirmMsg = isWeeklyCheckup
+      ? 'This report will be submitted for weekly review by your Regional Manager. Are you sure you want to submit this weekly checkup?'
+      : 'Are you sure you want to submit this expense report? Once submitted, you will not be able to make further edits.';
+    const confirmSubmit = window.confirm(confirmMsg);
     if (!confirmSubmit) {
       setLoading(false);
       return;
     }
+    await performSubmit(isWeeklyCheckup);
+    setLoading(false);
+  };
 
+  /** Runs POST for submission (confirm already done in handleSubmissionTypeSelected). */
+  const performSubmit = async (isWeeklyCheckup: boolean) => {
+    if (!employeeData) return;
     try {
       const reportData = buildReportData();
 
@@ -4553,7 +4455,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit expense report');
+        const errBody = await response.json().catch(() => ({}));
+        const msg = errBody?.error || `Failed to submit expense report`;
+        throw new Error(`HTTP ${response.status}: ${msg}`);
       }
 
       await response.json();
@@ -4641,7 +4545,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
     } catch (error) {
       debugError('Error submitting report:', error);
-      alert(`Error submitting report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (isHttpClientError(error)) {
+        showErrorPrompt(msg, { title: 'Could not submit report', goBackLabel: 'Back to report' });
+      } else {
+        alert(`Error submitting report: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -5177,6 +5086,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   return (
     <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
+      {/* Dev-only: trigger error boundary to test "Go to dashboard" (throw during render so ErrorBoundary catches it) */}
+      {process.env.NODE_ENV === 'development' && <DevErrorBoundaryTrigger />}
       {/* Enhanced Header */}
         <EnhancedHeader
         title="MONTHLY EXPENSE REPORT - OXFORD HOUSE, INC."
@@ -5202,7 +5113,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             ? handleStartFreshReport
             : undefined
         }
-        onCheckCompleteness={handleCheckCompleteness}
         onRefresh={() => {
           debugVerbose('🔄 StaffPortal: Refreshing data from backend...');
           startLoading('Refreshing data from backend...');
@@ -8733,118 +8643,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </DialogActions>
       </Dialog>
 
-      {/* Report Completeness Checker Dialog */}
-      <Dialog 
-        open={completenessDialogOpen} 
-        onClose={() => setCompletenessDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h6" component="div">Report Completeness Check</Typography>
-            {completenessReport && (
-              <Chip 
-                label={`Score: ${completenessReport.overallScore}/100`}
-                color={completenessReport.overallScore >= 80 ? 'success' : 
-                       completenessReport.overallScore >= 60 ? 'warning' : 'error'}
-                size="small"
-              />
-            )}
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          {completenessLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
-              <CircularProgress />
-              <Typography variant="body1" sx={{ ml: 2 }}>Analyzing report completeness...</Typography>
-            </Box>
-          ) : completenessReport ? (
-            <Box>
-              {/* Overall Status */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: completenessReport.isReadyForSubmission ? 'success.light' : 'warning.light', borderRadius: 1 }}>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  {completenessReport.isReadyForSubmission ? '✅ Ready for Submission' : '⚠️ Needs Attention'}
-                </Typography>
-                <Typography variant="body2">
-                  {completenessReport.isReadyForSubmission 
-                    ? 'Your report appears complete and ready for supervisor review.'
-                    : 'Please review the issues below before submitting your report.'
-                  }
-                </Typography>
-              </Box>
-
-              {/* Issues List */}
-              {completenessReport.issues.length > 0 ? (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-                    Issues Found ({completenessReport.issues.length})
-                  </Typography>
-                  {completenessReport.issues.map((issue: CompletenessIssue, index: number) => (
-                    <Box key={issue.id} sx={{ mb: 2, p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        <Typography variant="body2" sx={{ fontSize: '1.2em' }}>
-                          {getSeverityIcon(issue.severity)}
-                        </Typography>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: getSeverityColor(issue.severity) }}>
-                          {issue.title}
-                        </Typography>
-                        <Chip 
-                          label={issue.severity.toUpperCase()} 
-                          size="small" 
-                          sx={{ 
-                            bgcolor: getSeverityColor(issue.severity), 
-                            color: 'white',
-                            fontWeight: 'bold'
-                          }} 
-                        />
-                      </Box>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        {issue.description}
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
-                        💡 {issue.suggestion}
-                      </Typography>
-                      {issue.date && (
-                        <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
-                          Date: {issue.date.toLocaleDateString()}
-                        </Typography>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Box sx={{ mb: 3, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                    🎉 No Issues Found!
-                  </Typography>
-                  <Typography variant="body2">
-                    Your report appears to be complete and well-structured.
-                  </Typography>
-                </Box>
-              )}
-
-              {/* Recommendations */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-                  Recommendations
-                </Typography>
-                {completenessReport.recommendations.map((recommendation: string, index: number) => (
-                  <Typography key={index} variant="body2" sx={{ mb: 1, pl: 2 }}>
-                    {recommendation}
-                  </Typography>
-                ))}
-              </Box>
-            </Box>
-          ) : (
-            <Typography variant="body1">No completeness data available.</Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCompletenessDialogOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Submission Type Selection Dialog */}
       <Dialog 
         open={submissionTypeDialogOpen} 
@@ -8873,7 +8671,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 📅 Monthly Submission
               </Typography>
               <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Full expense report submission with completeness check. This is the standard monthly submission.
+                Full expense report submission. This is the standard monthly submission.
               </Typography>
               <Button
                 variant="contained"
@@ -8889,7 +8687,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 📋 Weekly Check-up
               </Typography>
               <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Submit for weekly review by your Regional Manager. Completeness check will be skipped.
+                Submit for weekly review by your Regional Manager.
               </Typography>
               <Button
                 variant="outlined"

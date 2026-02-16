@@ -71,6 +71,7 @@ import {
 
 // Import StaffPortal for team member report viewing
 import StaffPortal from '../StaffPortal';
+import { useErrorPrompt, isHttpClientError } from '../contexts/ErrorPromptContext';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
 import { NotificationBell } from './NotificationBell';
@@ -214,6 +215,9 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [viewingReportMonth, setViewingReportMonth] = useState<number | null>(new Date().getMonth() + 1);
   const [viewingReportYear, setViewingReportYear] = useState<number | null>(new Date().getFullYear());
   const [showEmployeeReportView, setShowEmployeeReportView] = useState(false);
+
+  // Error prompt for 403/404 so user can go back instead of raw error
+  const { showErrorPrompt } = useErrorPrompt();
 
   // Loading states
   const [loading, setLoading] = useState(true);
@@ -431,7 +435,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
         const msg = errBody?.error || response.statusText || 'Failed to request revision';
-        throw new Error(msg);
+        throw new Error(`HTTP ${response.status}: ${msg}`);
       }
 
       setReviewDialogOpen(false);
@@ -441,7 +445,11 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     } catch (error) {
       debugError('Error requesting revision:', error);
       const message = error instanceof Error ? error.message : 'Failed to request revision. Please try again.';
-      alert(message);
+      if (isHttpClientError(error)) {
+        showErrorPrompt(message, { title: 'Could not request revision', goBackLabel: 'Back to list' });
+      } else {
+        alert(message);
+      }
     } finally {
       setSavingAction(false);
     }
@@ -502,7 +510,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to approve report: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: Failed to approve report: ${errorText}`);
       }
 
       setSupervisorCertificationAcknowledged(false);
@@ -511,11 +519,16 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       alert('Report approved and sent to finance team successfully!');
     } catch (error) {
       debugError('Error approving report:', error);
-      alert(`Failed to approve report. Please try again. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (isHttpClientError(error)) {
+        showErrorPrompt(msg, { title: 'Could not approve report', goBackLabel: 'Back to report' });
+      } else {
+        alert(`Failed to approve report. Please try again. Error: ${msg}`);
+      }
     } finally {
       setSavingAction(false);
     }
-  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports, supervisorId, supervisorName, supervisorCertificationAcknowledged, loadTeamReports]);
+  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports, supervisorId, supervisorName, supervisorCertificationAcknowledged, loadTeamReports, showErrorPrompt]);
 
   // Handler for requesting revision from StaffPortal - sends back to employee with notes
   const handleRequestRevisionFromPortal = useCallback(async () => {
