@@ -123,13 +123,13 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       }
     });
 
-    // Also add employees who have staff reporting to them
+    // Also add employees who have staff reporting to them (by supervisorId or seniorStaffId)
     employees.forEach(emp => {
       if (emp.supervisorId && !supervisorMap.has(emp.supervisorId)) {
         const supervisor = employees.find(e => e.id === emp.supervisorId);
         if (supervisor) {
-        const positionLower = supervisor.position.toLowerCase();
-        const type = positionLower.includes('senior staff') ? 'senior-staff' : 'supervisor';
+          const positionLower = supervisor.position.toLowerCase();
+          const type = positionLower.includes('senior staff') ? 'senior-staff' : 'supervisor';
           supervisorMap.set(supervisor.id, {
             supervisor,
             staffMembers: [],
@@ -137,14 +137,34 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
           });
         }
       }
+      const seniorId = emp.seniorStaffId;
+      if (seniorId && !supervisorMap.has(seniorId)) {
+        const senior = employees.find(e => e.id === seniorId);
+        if (senior) {
+          const positionLower = senior.position.toLowerCase();
+          const type = positionLower.includes('senior staff') ? 'senior-staff' : 'supervisor';
+          supervisorMap.set(senior.id, {
+            supervisor: senior,
+            staffMembers: [],
+            type: 'senior-staff'
+          });
+        }
+      }
     });
 
-    // Now assign staff to their supervisors
+    // Now assign staff to their supervisors (by supervisorId) or senior staff (by seniorStaffId)
     employees.forEach(emp => {
       if (emp.supervisorId && supervisorMap.has(emp.supervisorId)) {
-        const supervisorData = supervisorMap.get(emp.supervisorId);
-        if (supervisorData) {
-          supervisorData.staffMembers.push(emp);
+        const data = supervisorMap.get(emp.supervisorId);
+        if (data && data.type === 'supervisor') {
+          data.staffMembers.push(emp);
+        }
+      }
+      const seniorId = emp.seniorStaffId;
+      if (seniorId && supervisorMap.has(seniorId)) {
+        const data = supervisorMap.get(seniorId);
+        if (data && data.type === 'senior-staff') {
+          data.staffMembers.push(emp);
         }
       }
     });
@@ -157,12 +177,24 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     organizeSupervisors();
   }, [employees, organizeSupervisors]);
 
+  /** Staff who have no supervisor (for warning alert on Supervisor tab). */
   const getUnassignedStaff = () => {
     return employees.filter(emp =>
       !emp.supervisorId &&
-      emp.id !== selectedSupervisor?.id &&
       !EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())
     );
+  };
+
+  /** Everyone who can be assigned to a supervisor or senior staff: not a supervisor/senior staff by position, and not the selected person. */
+  const getAssignableStaff = () => {
+    const pos = (p: string) => (p || '').toLowerCase();
+    return employees.filter(emp => {
+      if (emp.id === selectedSupervisor?.id) return false;
+      if (EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())) return false;
+      const p = pos(emp.position);
+      if (p.includes('supervisor') || p.includes('senior staff')) return false;
+      return true;
+    });
   };
 
   const handleOpenAssignDialog = (supervisor: Employee) => {
@@ -175,24 +207,30 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const handleAssignStaff = async () => {
     if (!selectedSupervisor || selectedStaff.length === 0) return;
 
+    const entry = supervisors.find(s => s.supervisor.id === selectedSupervisor.id);
+    const isSeniorStaff = entry?.type === 'senior-staff';
+
     try {
       const staffIds = selectedStaff.map(s => s.id);
-      await onBulkUpdateEmployees(staffIds, { supervisorId: selectedSupervisor.id });
+      await onBulkUpdateEmployees(staffIds, isSeniorStaff
+        ? { seniorStaffId: selectedSupervisor.id }
+        : { supervisorId: selectedSupervisor.id }
+      );
       setAssignDialogOpen(false);
       setSelectedStaff([]);
-      
-      // Refresh the employee list
+
       await onRefresh();
     } catch (error) {
       debugError('Error assigning staff:', error);
     }
   };
 
-  const handleRemoveStaff = async (staffMember: Employee) => {
+  const handleRemoveStaff = async (staffMember: Employee, parentType: 'supervisor' | 'senior-staff') => {
     try {
-      await onUpdateEmployee(staffMember.id, { supervisorId: null });
-      
-      // Refresh the employee list
+      await onUpdateEmployee(staffMember.id, parentType === 'senior-staff'
+        ? { seniorStaffId: null }
+        : { supervisorId: null }
+      );
       await onRefresh();
     } catch (error) {
       debugError('Error removing staff:', error);
@@ -286,28 +324,26 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const handleConfirmDelete = async () => {
     if (!supervisorToDelete) return;
 
+    const entry = supervisors.find(s => s.supervisor.id === supervisorToDelete.id);
+    const staffIds = entry?.staffMembers.map(s => s.id) || [];
+    const isSeniorStaff = entry?.type === 'senior-staff';
+
     try {
-      debugLog('🗑️ Removing from supervisor list:', supervisorToDelete.name);
-      debugLog('📝 Position (unchanged):', supervisorToDelete.position);
-      
-      // Add to excluded list (keeps their title but removes from supervisor view)
+      debugLog('🗑️ Removing from list:', supervisorToDelete.name);
       setExcludedFromSupervisorList(prev => new Set(prev).add(supervisorToDelete.id));
-      
-      // Unassign all their staff
-      const staffIds = supervisors
-        .find(s => s.supervisor.id === supervisorToDelete.id)
-        ?.staffMembers.map(s => s.id) || [];
-      
+
       if (staffIds.length > 0) {
-        await onBulkUpdateEmployees(staffIds, { supervisorId: null });
+        await onBulkUpdateEmployees(staffIds, isSeniorStaff
+          ? { seniorStaffId: null }
+          : { supervisorId: null }
+        );
       }
 
       setDeleteConfirmOpen(false);
       setSupervisorToDelete(null);
-      
-      debugLog('✅ Removed from supervisor list (title unchanged)');
+      debugLog('✅ Removed (title unchanged)');
     } catch (error) {
-      debugError('Error demoting supervisor:', error);
+      debugError('Error demoting:', error);
       setDeleteConfirmOpen(false);
       setSupervisorToDelete(null);
     }
@@ -368,26 +404,25 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   };
 
   const unassignedStaff = getUnassignedStaff();
-  // Deduplicate by id so the same person never appears multiple times (e.g. duplicate data)
-  const unassignedStaffUnique = React.useMemo(() => {
+  const assignableStaff = getAssignableStaff();
+  const assignableStaffUnique = React.useMemo(() => {
     const seen = new Set<string>();
-    return unassignedStaff.filter((emp) => {
+    return assignableStaff.filter((emp) => {
       if (seen.has(emp.id)) return false;
       seen.add(emp.id);
       return true;
     });
-  }, [unassignedStaff]);
-  // Filter assign-dialog options by search input (we control this so search always works)
+  }, [assignableStaff]);
   const assignStaffOptions = React.useMemo(() => {
     const q = assignStaffSearchInput.trim().toLowerCase();
-    if (!q) return unassignedStaffUnique;
-    return unassignedStaffUnique.filter((opt) => {
+    if (!q) return assignableStaffUnique;
+    return assignableStaffUnique.filter((opt) => {
       const name = (opt.name ?? '').toLowerCase();
       const position = (opt.position ?? '').toLowerCase();
       const email = (opt.email ?? '').toLowerCase();
       return name.includes(q) || position.includes(q) || email.includes(q);
     });
-  }, [unassignedStaffUnique, assignStaffSearchInput]);
+  }, [assignableStaffUnique, assignStaffSearchInput]);
 
   // Filter supervisors by type based on active tab
   const filteredSupervisors = supervisors.filter(s => 
@@ -515,7 +550,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                         label={formatNameForDisplay(staff.name)}
                         size="small"
                         onClick={() => handleOpenEditDialog(staff)}
-                        onDelete={() => handleRemoveStaff(staff)}
+                        onDelete={() => handleRemoveStaff(staff, type)}
                         sx={{ 
                           m: 0.5,
                           cursor: 'pointer',
@@ -534,7 +569,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                   variant="outlined"
                   startIcon={<AddIcon />}
                   onClick={() => handleOpenAssignDialog(supervisor)}
-                  disabled={unassignedStaff.length === 0}
+                  disabled={assignableStaff.length === 0}
                 >
                   Assign Staff
                 </Button>
@@ -589,7 +624,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
               {assignStaffOptions.length === 0 ? (
                 <ListItem sx={{ py: 2 }}>
                   <ListItemText
-                    primary={assignStaffSearchInput.trim() ? 'No staff match your search.' : 'No unassigned staff.'}
+                    primary={assignStaffSearchInput.trim() ? 'No staff match your search.' : 'No assignable staff (everyone is already a Supervisor or Senior Staff).'}
                   />
                 </ListItem>
               ) : (
@@ -628,9 +663,9 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                 ))}
               </Box>
             )}
-            {unassignedStaff.length === 0 && (
+            {assignableStaff.length === 0 && (
               <Alert severity="info" sx={{ mt: 2 }}>
-                All staff members are already assigned to supervisors.
+                No assignable staff. Only employees who are not Supervisors or Senior Staff can be assigned.
               </Alert>
             )}
           </Box>
