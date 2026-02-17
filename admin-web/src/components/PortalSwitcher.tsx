@@ -222,7 +222,8 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           description: 'Review team reports and approve expenses'
         });
       }
-      if (position.includes('senior staff')) {
+      // Senior Staff: just under Supervisor in hierarchy; show if admin or position includes "senior staff"
+      if (permissions.includes('admin') || position.toLowerCase().includes('senior staff')) {
         availablePortals.push({
           id: 'senior_staff',
           name: 'Senior Staff Portal',

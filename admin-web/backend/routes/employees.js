@@ -615,6 +615,12 @@ router.post('/api/employees',
   const permissionsValue = Array.isArray(permissions)
     ? JSON.stringify(permissions)
     : (typeof permissions === 'string' ? permissions : '[]');
+
+  // Everyone except CEO must have a supervisor (per Senior Staff approval design)
+  const isCeoOnCreate = (position && String(position).toLowerCase().includes('ceo'));
+  if (!isCeoOnCreate && (!supervisorId || String(supervisorId).trim() === '')) {
+    return res.status(400).json({ error: 'Everyone except CEO must have a supervisor assigned.' });
+  }
   
   // Use Promise wrapper for callback-based database operations
   await new Promise((resolve, reject) => {
@@ -779,6 +785,21 @@ router.put('/api/employees/:id', async (req, res) => {
     if (!position || position.trim() === '') {
       debugError('❌ Validation error: position is required');
       res.status(400).json({ error: 'Position is required and cannot be empty' });
+      return;
+    }
+
+    // Everyone except CEO must have a supervisor (per Senior Staff approval design)
+    const isCeo = (role === 'ceo') || (position && String(position).toLowerCase().includes('ceo'));
+    if (!isCeo && (!supervisorId || String(supervisorId).trim() === '')) {
+      debugError('❌ Validation error: Supervisor is required for all employees except CEO');
+      res.status(400).json({ error: 'Everyone except CEO must have a supervisor assigned.' });
+      return;
+    }
+
+    // Same person cannot be both Supervisor and Senior Staff for an employee
+    if (supervisorId && seniorStaffId && String(supervisorId).trim() === String(seniorStaffId).trim()) {
+      debugError('❌ Validation error: Supervisor and Senior Staff cannot be the same person');
+      res.status(400).json({ error: 'An employee cannot have the same person as both Supervisor and Senior Staff.' });
       return;
     }
 

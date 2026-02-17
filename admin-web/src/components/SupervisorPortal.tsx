@@ -912,6 +912,9 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         if (statusFilter === 'pending_supervisor') {
           return report.status === 'pending_supervisor' || report.status === 'submitted';
         }
+        if (statusFilter === 'pending_senior_staff') {
+          return report.status === 'pending_senior_staff';
+        }
         if (statusFilter === 'pending_finance') {
           return report.status === 'pending_finance' || report.status === 'under_review';
         }
@@ -943,6 +946,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       case 'approved': return 'success';
       case 'rejected': return 'error';
       case 'pending_supervisor': return 'warning';
+      case 'pending_senior_staff': return 'warning';
       case 'pending_finance': return 'info';
       case 'needs_revision': return 'error';
       default: return 'default';
@@ -957,6 +961,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       case 'approved': return <CheckCircleIcon />;
       case 'rejected': return <CancelIcon />;
       case 'pending_supervisor':
+      case 'pending_senior_staff':
       case 'pending_finance':
         return <ScheduleIcon />;
       case 'needs_revision':
@@ -1127,6 +1132,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                     label="Status"
                   >
                     <MenuItem value="all">All Status</MenuItem>
+                    <MenuItem value="pending_senior_staff">Waiting on Senior Staff</MenuItem>
                     <MenuItem value="pending_supervisor">Pending Supervisor</MenuItem>
                     <MenuItem value="pending_finance">Pending Finance</MenuItem>
                     <MenuItem value="approved">Approved</MenuItem>
@@ -1174,8 +1180,9 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                       const currentStepIndex = report.currentApprovalStep ?? 0;
                       const currentStep = report.approvalWorkflow?.[currentStepIndex];
                       const isSupervisorStage = (report.currentApprovalStage || '').toLowerCase() === 'supervisor';
+                      const isSeniorStaffStage = report.status === 'pending_senior_staff' || (report.currentApprovalStage || '').toLowerCase() === 'senior_staff';
                       const isDelegatedToSupervisor = currentStep?.delegatedToId === supervisorId;
-                      const isAwaitingSupervisor = isSupervisorStage && (
+                      const isAwaitingSupervisor = !isSeniorStaffStage && isSupervisorStage && (
                         !report.currentApproverId ||
                         report.currentApproverId === supervisorId ||
                         isDelegatedToSupervisor
@@ -1223,12 +1230,19 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                         <TableCell align="right">{report.totalMiles.toFixed(1)}</TableCell>
                         <TableCell align="right">{report.totalHours.toFixed(1)}</TableCell>
                         <TableCell>
-                          <Chip
-                            icon={getStatusIcon(report.status)}
-                            label={report.status.replace('_', ' ').toUpperCase()}
-                            color={getStatusColor(report.status) as any}
-                            size="small"
-                          />
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            <Chip
+                              icon={getStatusIcon(report.status)}
+                              label={isSeniorStaffStage ? 'Waiting on Senior Staff' : report.status.replace(/_/g, ' ').toUpperCase()}
+                              color={getStatusColor(report.status) as any}
+                              size="small"
+                            />
+                            {isSeniorStaffStage && report.currentApproverName && (
+                              <Typography variant="caption" color="text.secondary">
+                                With {report.currentApproverName}
+                              </Typography>
+                            )}
+                          </Box>
                         </TableCell>
                         <TableCell>
                           {report.submittedAt 
@@ -1238,6 +1252,14 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                         </TableCell>
                         <TableCell align="center">
                           <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                            {isSeniorStaffStage && (
+                              <Chip
+                                size="small"
+                                color="warning"
+                                label="Waiting on Senior Staff"
+                                sx={{ mr: 0.5 }}
+                              />
+                            )}
                             {dueInfo && (
                               <Chip
                                 size="small"

@@ -43,7 +43,7 @@ const getAvailablePortalsForUser = (
       if (permission === 'supervisor') allowed.add('supervisor');
       if (permission === 'staff') allowed.add('staff');
     });
-    if (normalizedPosition.includes('senior staff')) allowed.add('senior_staff');
+    if (normalizedPosition.includes('senior staff') || allowed.has('admin')) allowed.add('senior_staff');
     const portalOrder: Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'> = [
       'admin',
       'finance',
