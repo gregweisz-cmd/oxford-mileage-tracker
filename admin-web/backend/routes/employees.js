@@ -792,7 +792,7 @@ router.put('/api/employees/:id', async (req, res) => {
     const isCeo = (role === 'ceo') || (position && String(position).toLowerCase().includes('ceo'));
     if (!isCeo && (!supervisorId || String(supervisorId).trim() === '')) {
       debugError('❌ Validation error: Supervisor is required for all employees except CEO');
-      res.status(400).json({ error: 'Everyone except CEO must have a supervisor assigned.' });
+      res.status(400).json({ error: 'This employee must have a supervisor assigned. Assign a supervisor in the employee record and try again.' });
       return;
     }
 

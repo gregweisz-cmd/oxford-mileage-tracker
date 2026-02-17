@@ -216,7 +216,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
           : `${employeeToPromote.position} - Supervisor`;
       }
       
-      // Include all required employee fields in the update
+      // Include all required employee fields in the update; keep existing supervisor (Senior Staff and Supervisors report to a supervisor)
       await onUpdateEmployee(employeeToPromote.id, { 
         name: employeeToPromote.name,
         email: employeeToPromote.email,
@@ -228,7 +228,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         selectedCostCenters: employeeToPromote.selectedCostCenters,
         defaultCostCenter: employeeToPromote.defaultCostCenter,
         position: newPosition,
-        supervisorId: null // Supervisors/Senior Staff don't report to other supervisors
+        supervisorId: employeeToPromote.supervisorId ?? undefined
       });
       
       setPromoteSupervisorDialogOpen(false);
