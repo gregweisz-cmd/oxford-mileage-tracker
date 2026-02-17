@@ -141,8 +141,6 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       if (seniorId && !supervisorMap.has(seniorId)) {
         const senior = employees.find(e => e.id === seniorId);
         if (senior) {
-          const positionLower = senior.position.toLowerCase();
-          const type = positionLower.includes('senior staff') ? 'senior-staff' : 'supervisor';
           supervisorMap.set(senior.id, {
             supervisor: senior,
             staffMembers: [],
