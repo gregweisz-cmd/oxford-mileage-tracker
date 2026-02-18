@@ -99,6 +99,7 @@ function scheduleScrollAndroid(scrollToY: (y: number) => void, y: number) {
 /**
  * Wraps a single child (typically TextInput). When the child receives focus, the parent
  * KeyboardAwareScrollView scrolls so this view is visible.
+ * Safe when children is undefined, null, or not exactly one element (no throw).
  */
 export function ScrollToOnFocusView({ children }: { children: React.ReactNode }) {
   const viewRef = useRef<View>(null);
@@ -123,16 +124,20 @@ export function ScrollToOnFocusView({ children }: { children: React.ReactNode })
           setTimeout(scrollToFocused, FOCUS_SCROLL_DELAY_MS);
         }
       }
-      const child = React.Children.only(children);
-      if (React.isValidElement(child) && typeof (child.props as any).onFocus === 'function') {
-        (child.props as any).onFocus(e);
+      const arr = React.Children.toArray(children);
+      const first = arr[0];
+      if (React.isValidElement(first) && typeof (first.props as any).onFocus === 'function') {
+        (first.props as any).onFocus(e);
       }
     },
     [ctx, children, scrollToFocused]
   );
 
-  const child = React.Children.only(children);
-  if (!React.isValidElement(child)) {
+  const arr = React.Children.toArray(children);
+  const singleChild = arr.length === 1 ? arr[0] : null;
+  const child = singleChild && React.isValidElement(singleChild) ? singleChild : null;
+
+  if (!child) {
     return (
       <View ref={viewRef} onLayout={onLayout} collapsable={false}>
         {children}

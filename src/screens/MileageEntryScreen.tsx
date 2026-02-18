@@ -3,14 +3,15 @@ import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   Alert,
   Platform,
   Modal,
   Keyboard,
-  TouchableWithoutFeedback,
   FlatList,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -34,7 +35,6 @@ import { TripChainingAiService, TripChainSuggestion } from '../services/tripChai
 import TripChainingModal from '../components/TripChainingModal';
 import { COST_CENTERS } from '../constants/costCenters';
 import { CostCenterAutoSelectionService, CostCenterSuggestion } from '../services/costCenterAutoSelectionService';
-import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface MileageEntryScreenProps {
   navigation: any;
@@ -102,6 +102,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const purposeInputRef = useRef<TextInput>(null);
   const milesInputRef = useRef<TextInput>(null);
   const notesInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     getTravelReasons().then(setTravelReasons);
@@ -280,14 +281,6 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         setSelectedCostCenter(costCenter);
         setIsCostCenterAutoSelected(false);
         setCostCenterSuggestion(null);
-        
-        // Set base address as default start location if available
-        if (currentEmployee.baseAddress) {
-          setFormData(prev => ({
-            ...prev,
-            startLocation: currentEmployee.baseAddress
-          }));
-        }
         
         // Check if GPS has been started today
         await checkGpsTrackingStatus();
@@ -997,8 +990,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   }, [showOxfordHouseSearchModal]);
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
+    <View style={styles.container}>
       <UnifiedHeader
         title={isEditing ? 'Edit Entry' : 'Add Mileage Entry'}
         showBackButton={true}
@@ -1011,11 +1003,20 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         } : undefined}
       />
 
-      <KeyboardAwareScrollView
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      >
+      <ScrollView
+        ref={scrollViewRef}
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         removeClippedSubviews={true}
         scrollEventThrottle={16}
+        keyboardDismissMode="none"
       >
         {/* Date Picker */}
         <View style={styles.inputGroup}>
@@ -1090,22 +1091,20 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         {!hasStartedGpsToday && !hasExistingEntriesToday ? (
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Starting Odometer Reading *</Text>
-            <ScrollToOnFocusView>
-              <TextInput
-                ref={odometerInputRef}
-                style={styles.input}
-                value={formData.odometerReading}
-                onChangeText={(value) => handleInputChange('odometerReading', value)}
-                placeholder="e.g., 12345"
-                keyboardType="numeric"
-                placeholderTextColor="#999"
-                returnKeyType="next"
-                blurOnSubmit={false}
-                onSubmitEditing={() => {
-                  purposeInputRef.current?.focus();
-                }}
-              />
-            </ScrollToOnFocusView>
+            <TextInput
+              ref={odometerInputRef}
+              style={styles.input}
+              value={formData.odometerReading}
+              onChangeText={(value) => handleInputChange('odometerReading', value)}
+              placeholder="e.g., 12345"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                purposeInputRef.current?.focus();
+              }}
+            />
             <Text style={styles.helpText}>
               Enter the odometer reading at the start of this trip
             </Text>
@@ -1221,19 +1220,17 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             </>
           ) : (
             <>
-              <ScrollToOnFocusView>
-                <TextInput
-                  ref={purposeInputRef}
-                  style={styles.input}
-                  value={formData.purpose}
-                  onChangeText={(value) => handleInputChange('purpose', value)}
-                  placeholder="e.g., Client visit, Meeting, Training"
-                  placeholderTextColor="#999"
-                  returnKeyType="next"
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => milesInputRef.current?.focus()}
-                />
-              </ScrollToOnFocusView>
+              <TextInput
+                ref={purposeInputRef}
+                style={styles.input}
+                value={formData.purpose}
+                onChangeText={(value) => handleInputChange('purpose', value)}
+                placeholder="e.g., Client visit, Meeting, Training"
+                placeholderTextColor="#999"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => milesInputRef.current?.focus()}
+              />
               {purposeSuggestions.length > 0 && !formData.purpose && (
                 <View style={styles.purposeSuggestionsContainer}>
                   <View style={styles.purposeSuggestionsHeader}>
@@ -1272,22 +1269,20 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         {/* Miles */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Miles *</Text>
-          <ScrollToOnFocusView>
-            <TextInput
-              ref={milesInputRef}
-              style={styles.input}
-              value={formData.miles}
-              onChangeText={(value) => handleInputChange('miles', value)}
-              placeholder="0.0"
-              keyboardType="numeric"
-              placeholderTextColor="#999"
-              returnKeyType="next"
-              blurOnSubmit={false}
-              onSubmitEditing={() => {
-                notesInputRef.current?.focus();
-              }}
-            />
-          </ScrollToOnFocusView>
+          <TextInput
+            ref={milesInputRef}
+            style={styles.input}
+            value={formData.miles}
+            onChangeText={(value) => handleInputChange('miles', value)}
+            placeholder="0.0"
+            keyboardType="numeric"
+            placeholderTextColor="#999"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              notesInputRef.current?.focus();
+            }}
+          />
           
           {/* Action Buttons */}
           <View style={styles.milesButtonContainer}>
@@ -1302,71 +1297,34 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                 color={calculatingDistance ? "#999" : "#2196F3"} 
               />
               <Text style={[styles.calculateButtonText, calculatingDistance && styles.calculateButtonTextDisabled]}>
-                {calculatingDistance ? 'Calculating...' : 'Calculate'}
+                {calculatingDistance ? 'Calculating...' : 'Calculate Miles'}
               </Text>
-            </TouchableOpacity>
-            
-            {/* Trip Chaining Button */}
-            {formData.startLocation && formData.endLocation && (
-              <TouchableOpacity
-                style={[
-                  styles.tripChainingButton,
-                  loadingChainingSuggestions && styles.tripChainingButtonDisabled
-                ]}
-                onPress={handleShowTripChainingSuggestions}
-                disabled={loadingChainingSuggestions}
-              >
-                <MaterialIcons 
-                  name="route" 
-                  size={20} 
-                  color={loadingChainingSuggestions ? "#999" : "#4CAF50"} 
-                />
-                <Text style={[
-                  styles.tripChainingButtonText,
-                  loadingChainingSuggestions && styles.tripChainingButtonTextDisabled
-                ]}>
-                  {loadingChainingSuggestions ? 'Analyzing...' : 
-                   tripChainingSuggestions.length > 0 ? 
-                   `Optimize (${tripChainingSuggestions.length})` : 'Optimize'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            
-            <TouchableOpacity
-              style={styles.testButton}
-              onPress={testDistanceSystem}
-            >
-              <MaterialIcons 
-                name="bug-report" 
-                size={16} 
-                color="#FF9800" 
-              />
-              <Text style={styles.testButtonText}>Test</Text>
             </TouchableOpacity>
           </View>
           
           <Text style={styles.helpText}>
-            Enter miles manually or tap "Calculate" to auto-calculate using Google Maps
+            Enter miles manually or tap "Calculate Miles" to auto-calculate using Google Maps
           </Text>
         </View>
 
         {/* Notes */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Notes (Optional)</Text>
-          <ScrollToOnFocusView>
-            <TextInput
-              ref={notesInputRef}
-              style={[styles.input, styles.textArea]}
-              value={formData.notes}
-              onChangeText={(value) => handleInputChange('notes', value)}
-              placeholder="Additional notes about this trip..."
-              placeholderTextColor="#999"
-              multiline
-              numberOfLines={3}
-              returnKeyType="done"
-              blurOnSubmit={true}
-            />
-          </ScrollToOnFocusView>
+          <TextInput
+            ref={notesInputRef}
+            style={[styles.input, styles.textArea]}
+            value={formData.notes}
+            onChangeText={(value) => handleInputChange('notes', value)}
+            placeholder="Additional notes about this trip..."
+            placeholderTextColor="#999"
+            multiline
+            numberOfLines={3}
+            returnKeyType="done"
+            blurOnSubmit={true}
+            onFocus={() => {
+              setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 200);
+            }}
+          />
         </View>
 
         {/* Cost Center Selector - only show if user has multiple cost centers */}
@@ -1426,7 +1384,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             {loading ? 'Saving...' : (isEditing ? 'Update Entry' : 'Save Entry')}
           </Text>
         </TouchableOpacity>
-      </KeyboardAwareScrollView>
+      </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Location Options Modal */}
       <Modal
@@ -1568,7 +1527,6 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                   }}
                   placeholder="Type house name, city, or address..."
                   placeholderTextColor="#999"
-                  autoFocus
                 />
                 <MaterialIcons name="search" size={24} color="#666" style={styles.searchInputIcon} />
               </View>
@@ -1700,8 +1658,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         startLocation={formData.startLocation}
         endLocation={formData.endLocation}
       />
-      </View>
-    </TouchableWithoutFeedback>
+    </View>
   );
 }
 
