@@ -132,6 +132,19 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const [addressSelectorType, setAddressSelectorType] = useState<'start' | 'end'>('start');
   const [dailyOdometerForDate, setDailyOdometerForDate] = useState<number | null>(null);
   const [dailyOdometerLoading, setDailyOdometerLoading] = useState(false);
+  const [travelReasons, setTravelReasons] = useState<{ id: string; label: string }[]>([]);
+
+  // Fetch travel reasons (purpose dropdown) – same options as mobile app
+  useEffect(() => {
+    if (!open) return;
+    fetch(`${API_BASE_URL}/api/travel-reasons`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: { id?: string; label: string }[]) => {
+        const list = Array.isArray(rows) ? rows : [];
+        setTravelReasons(list.map((r) => ({ id: r.id || r.label, label: r.label || '' })).filter((r) => r.label));
+      })
+      .catch(() => setTravelReasons([]));
+  }, [open]);
 
   // Fetch daily odometer for selected date (mandatory once per day; if set, field is greyed out)
   const normalizedFormDate = formData.date ? String(formData.date).split('T')[0] : '';
@@ -594,20 +607,37 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
               </Box>
             )}
 
-            {/* Purpose */}
+            {/* Purpose – dropdown matching mobile app (travel reasons) */}
             <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Purpose"
-                value={formData.purpose}
-                onChange={(e) => handleInputChange('purpose', e.target.value)}
-                error={!!errors.purpose}
-                helperText={errors.purpose}
-                multiline
-                rows={2}
-                disabled={returnToBA}
-                placeholder={returnToBA ? 'Return to base (optional)' : undefined}
-              />
+              <FormControl fullWidth error={!!errors.purpose} disabled={returnToBA}>
+                <InputLabel>Purpose</InputLabel>
+                <Select
+                  value={formData.purpose}
+                  onChange={(e) => handleInputChange('purpose', e.target.value)}
+                  label="Purpose"
+                  displayEmpty
+                  renderValue={(v) => v || (returnToBA ? 'Return to base (optional)' : '')}
+                >
+                  <MenuItem value="">
+                    <em>{returnToBA ? 'Return to base (optional)' : 'Select purpose...'}</em>
+                  </MenuItem>
+                  {travelReasons.map((r) => (
+                    <MenuItem key={r.id} value={r.label}>
+                      {r.label}
+                    </MenuItem>
+                  ))}
+                  {formData.purpose && !travelReasons.some((r) => r.label === formData.purpose) && (
+                    <MenuItem value={formData.purpose}>
+                      {formData.purpose}
+                    </MenuItem>
+                  )}
+                </Select>
+                {errors.purpose && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                    {errors.purpose}
+                  </Typography>
+                )}
+              </FormControl>
             </Box>
 
             {/* Starting odometer: mandatory once per day; greyed out if already set for this date */}

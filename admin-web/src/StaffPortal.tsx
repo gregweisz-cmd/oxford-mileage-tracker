@@ -108,6 +108,161 @@ function getReceiptImageUrl(uri: string | undefined): string {
   return `${API_BASE_URL}/uploads/${raw}`;
 }
 
+/** Build driving summary from mileage entries. Each entry is "Start to End" or "Start to End for Purpose"; multiple entries joined with " ; ". */
+function buildDrivingSummaryFromMileage(
+  entries: any[],
+  formatLocationNameAndAddress: (name: string | undefined, addr: string, base?: string, base2?: string) => string,
+  baseAddress?: string,
+  baseAddress2?: string
+): string {
+  const withMiles = (entries || []).filter((e: any) => (e.miles || 0) > 0);
+  if (withMiles.length === 0) return '';
+  const tripSegments: string[] = [];
+  withMiles.forEach((entry: any) => {
+    const startAddrRaw = entry.startLocationAddress || entry.startLocation || '';
+    const startAddr = (startAddrRaw.trim().toLowerCase() === (entry.startLocationName || '').trim().toLowerCase()) ? (entry.startLocation || entry.startLocationAddress || '') : startAddrRaw;
+    const endAddrRaw = entry.endLocationAddress || entry.endLocation || '';
+    const endAddr = (endAddrRaw.trim().toLowerCase() === (entry.endLocationName || '').trim().toLowerCase()) ? (entry.endLocation || entry.endLocationAddress || '') : endAddrRaw;
+    const formattedStart = formatLocationNameAndAddress(entry.startLocationName, startAddr, baseAddress, baseAddress2);
+    const formattedEnd = formatLocationNameAndAddress(entry.endLocationName, endAddr, baseAddress, baseAddress2);
+    const purpose = (entry.purpose || 'Travel').trim();
+    const purposeLower = purpose.toLowerCase();
+    const isReturnToBase = purposeLower === 'return to base' || purposeLower === 'return to ba';
+    const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
+    const hasPurpose = purpose && purposeLower !== 'travel' && (isBaseAddress ? !isReturnToBase : true);
+    let segment = '';
+    if (formattedStart) segment = formattedStart;
+    if (formattedEnd) segment += (segment ? ' to ' : '') + (hasPurpose ? `${formattedEnd} for ${purpose}` : formattedEnd);
+    if (segment) tripSegments.push(segment);
+  });
+  return tripSegments.join(' ; ');
+}
+
+export type CostCenterRow = {
+  dateStr: string;
+  day: number;
+  description: string;
+  dayOff: boolean;
+  dayOffType?: string | null;
+  hoursWorked: number;
+  odometerStart: number;
+  odometerEnd: number;
+  milesTraveled: number;
+  mileageAmount: number;
+  perDiem: number;
+};
+
+/** Build rows for a cost center tab from raw mileage + daily descriptions (so each entry's cost center tag is respected). */
+export function buildCostCenterRows(params: {
+  currentMonthMileageList: any[];
+  dailyDescriptions: any[];
+  rawTimeEntries: any[];
+  costCenter: string;
+  costCenters: string[];
+  daysInMonth: number;
+  currentMonth: number;
+  currentYear: number;
+  normalizeDate: (d: any) => string;
+  perDiemByDate: Record<string, number>;
+  formatLocationNameAndAddress: (n: string | undefined, a: string, b?: string, b2?: string) => string;
+  employee?: { baseAddress?: string; baseAddress2?: string };
+}): CostCenterRow[] {
+  const { currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter, costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee } = params;
+  const baseAddress = employee?.baseAddress;
+  const baseAddress2 = employee?.baseAddress2;
+  const currentMonthTime = rawTimeEntries.filter((t: any) => {
+    const d = new Date(t.date);
+    return d.getUTCMonth() + 1 === currentMonth && d.getUTCFullYear() === currentYear;
+  });
+  return Array.from({ length: daysInMonth }, (_, i) => {
+    const day = i + 1;
+    const dateStr = `${String(currentMonth).padStart(2, '0')}/${String(day).padStart(2, '0')}/${String(currentYear).slice(-2)}`;
+    const normDate = normalizeDate(dateStr);
+    const dayDescription = dailyDescriptions.find((d: any) => normalizeDate(d.date) === normDate);
+    const mileageForDayAndCC = currentMonthMileageList.filter((e: any) => {
+      const d = new Date(e.date);
+      return d.getUTCDate() === day && d.getUTCMonth() + 1 === currentMonth && d.getUTCFullYear() === currentYear &&
+        ((e.costCenter || costCenters[0]) === costCenter);
+    });
+    const withMiles = mileageForDayAndCC.filter((e: any) => (e.miles || 0) > 0);
+    const timeForDayAndCC = currentMonthTime.filter((t: any) => {
+      const d = new Date(t.date);
+      return d.getUTCDate() === day && ((t.costCenter || costCenters[0]) === costCenter);
+    });
+    const hoursWorked = timeForDayAndCC.reduce((s: number, t: any) => s + (Number(t.hours) || 0), 0);
+    const milesTraveled = withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0), 0);
+    const mileageAmount = withMiles.length ? withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0) * 0.445, 0) : 0;
+    const firstEntry = withMiles[0];
+    const odometerStart = firstEntry?.odometerReading ?? 0;
+    const odometerEnd = firstEntry ? Math.round(odometerStart + milesTraveled) : odometerStart;
+    let description: string;
+    let dayOff = false;
+    let dayOffType: string | null = null;
+    const drivingSummary = withMiles.length > 0 ? buildDrivingSummaryFromMileage(withMiles, formatLocationNameAndAddress, baseAddress, baseAddress2) : '';
+    if (dayDescription && (dayDescription.costCenter || costCenters[0]) === costCenter) {
+      dayOff = dayDescription.dayOff === true || dayDescription.dayOff === 1;
+      dayOffType = dayDescription.dayOffType || null;
+      const dayDescText = (dayDescription.description || '').trim();
+      description = drivingSummary ? (dayDescText ? dayDescText + '\n\n' + drivingSummary : drivingSummary) : dayDescText;
+    } else {
+      description = drivingSummary;
+    }
+    const perDiem = (dayDescription && (dayDescription.costCenter || costCenters[0]) === costCenter) ? (perDiemByDate[normDate] ?? 0) : 0;
+    return { dateStr, day, description, dayOff, dayOffType, hoursWorked, odometerStart: Math.round(odometerStart), odometerEnd, milesTraveled: Math.round(milesTraveled), mileageAmount, perDiem };
+  });
+}
+
+/** Renders the cost center travel table from pre-built rows (from buildCostCenterRows). */
+function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
+  const { rows } = props;
+  if (!rows.length) return null;
+  const subHours = rows.reduce((s, r) => s + r.hoursWorked, 0);
+  const subMiles = rows.reduce((s, r) => s + r.milesTraveled, 0);
+  const subMileage = rows.reduce((s, r) => s + r.mileageAmount, 0);
+  const subPerDiem = rows.reduce((s, r) => s + r.perDiem, 0);
+  return (
+    <TableContainer component={Paper} sx={{ overflow: 'auto' }}>
+      <Table size="small" sx={{ minWidth: 700, '& td, & th': { border: '1px solid #ccc' } }}>
+        <TableHead>
+          <TableRow sx={{ bgcolor: 'grey.300' }}>
+            <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>DATE</TableCell>
+            <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>Description of Activity</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Hours Worked</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Odometer Start</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Odometer End</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Miles Traveled</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Mileage ($)</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Per Diem ($)</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.day} sx={row.dayOff ? { bgcolor: '#e0e0e0', opacity: 0.6, '& td': { bgcolor: '#e0e0e0', opacity: 0.6 } } : {}}>
+              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{row.dateStr}</TableCell>
+              <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>{row.dayOff ? <Box sx={{ fontStyle: 'italic', color: 'text.secondary' }}>{row.dayOffType || 'Day Off'}</Box> : <Box component="span" sx={{ whiteSpace: 'pre-wrap' }}>{row.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}</Box>}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.hoursWorked ? row.hoursWorked.toFixed(1) : ''}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.odometerStart}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.odometerEnd}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.milesTraveled}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.mileageAmount.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.perDiem.toFixed(2)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
+            <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
+            <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subHours.toFixed(1)}</strong></TableCell>
+            <TableCell colSpan={2} sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subMiles}</strong></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subMileage.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
 /** Dev-only: button that triggers an error during render so ErrorBoundary catches it (not in onClick). */
 function DevErrorBoundaryTrigger() {
   const [triggerError, setTriggerError] = useState(false);
@@ -365,63 +520,34 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       .catch(() => setDailyDescriptionOptions([]));
   }, []);
 
-  // Helper function to normalize dates to YYYY-MM-DD format
-  const normalizeDate = (dateValue: any): string => {
+  // Helper function to normalize dates to YYYY-MM-DD format (stable ref for useMemo deps)
+  const normalizeDate = React.useCallback((dateValue: any): string => {
     if (!dateValue) return '';
-    
-    // If already in YYYY-MM-DD format, ensure proper padding and return
-    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-      return dateValue;
-    }
-    
-    // Handle MM/DD/YY or MM/DD/YYYY format
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return dateValue;
     if (typeof dateValue === 'string' && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateValue)) {
       const parts = dateValue.split('/');
       const month = parseInt(parts[0], 10);
       const day = parseInt(parts[1], 10);
       let year = parseInt(parts[2], 10);
-      // Convert 2-digit year to 4-digit (assuming 2000s)
-      if (year < 100) {
-        year += 2000;
-      }
+      if (year < 100) year += 2000;
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
-    
-    // Handle YYYY-MM-DD format (may have inconsistent padding)
     if (typeof dateValue === 'string') {
-      const dateStr = dateValue.split('T')[0]; // Remove time if present
+      const dateStr = dateValue.split('T')[0];
       const parts = dateStr.split('-');
-      if (parts.length === 3) {
-        const year = parts[0];
-        const month = parts[1].padStart(2, '0');
-        const day = parts[2].padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      }
+      if (parts.length === 3) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
     }
-    
-    // Handle Date objects
     if (dateValue instanceof Date) {
-      const year = dateValue.getFullYear();
-      const month = String(dateValue.getMonth() + 1).padStart(2, '0');
-      const day = String(dateValue.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
+      return `${dateValue.getFullYear()}-${String(dateValue.getMonth() + 1).padStart(2, '0')}-${String(dateValue.getDate()).padStart(2, '0')}`;
     }
-    
-    // Fallback: try to parse as date string
     try {
       const date = new Date(dateValue);
-      if (!isNaN(date.getTime())) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      }
-    } catch (e) {
-      // Ignore parsing errors
+      if (!isNaN(date.getTime())) return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    } catch {
+      // ignore
     }
-    
     return String(dateValue).split('T')[0];
-  };
+  }, []);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [cropModalReceipt, setCropModalReceipt] = useState<{ id: string; imageUri: string } | null>(null);
@@ -928,7 +1054,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         dailyEntries: updatedEntries
       });
     }
-  }, [employeeData]);
+  }, [employeeData, normalizeDate]);
 
   // Debug logging for delete button visibility - DISABLED to prevent infinite loop
   // debugLog('🔍 StaffPortal Debug:', {
@@ -2232,7 +2358,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const entryMonth = parseInt(parts[1], 10);
       return entryMonth === currentMonth && entryYear === currentYear;
     });
-  }, [rawMileageEntries, currentMonth, currentYear]);
+  }, [rawMileageEntries, currentMonth, currentYear, normalizeDate]);
+
+  // Per-diem by date for cost center tab row building (from dailyEntries)
+  const perDiemByDate = React.useMemo(() => {
+    return Object.fromEntries((employeeData?.dailyEntries || []).map((e: any) => [normalizeDate(e.date), e.perDiem ?? 0]));
+  }, [employeeData?.dailyEntries, normalizeDate]);
 
   const handleMileageReorder = async (newOrderedIds: string[]) => {
     if (newOrderedIds.length === 0) return;
@@ -2801,7 +2932,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
       ...overrides,
     };
-  }, [employeeData, dailyDescriptions, currentMonth, currentYear, receipts, signatureImage, supervisorSignatureState, employeeCertificationAcknowledged, supervisorCertificationAcknowledged]);
+  }, [employeeData, dailyDescriptions, currentMonth, currentYear, receipts, signatureImage, supervisorSignatureState, employeeCertificationAcknowledged, supervisorCertificationAcknowledged, normalizeDate]);
 
   const syncReportData = useCallback(async (overrides: Record<string, unknown> = {}) => {
     if (!employeeData) return;
@@ -6892,7 +7023,68 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           </Box>
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.costCenter || employeeData.costCenters[0] || 'N/A'}
+                          {employeeData.costCenters.length > 1 ? (
+                            <FormControl size="small" fullWidth variant="outlined" sx={{ minWidth: 120 }}>
+                              <Select
+                                value={dayDescription?.costCenter || entry.costCenter || employeeData.costCenters[0] || ''}
+                                onChange={async (e) => {
+                                  const newCostCenter = e.target.value as string;
+                                  const entryDateStr = normalizeDate(entry.date);
+                                  const newDescriptions = [...dailyDescriptions];
+                                  const existingIndex = newDescriptions.findIndex((desc: any) => normalizeDate(desc.date) === entryDateStr);
+                                  let descToSave: any;
+                                  if (existingIndex >= 0) {
+                                    newDescriptions[existingIndex] = { ...newDescriptions[existingIndex], costCenter: newCostCenter };
+                                    descToSave = newDescriptions[existingIndex];
+                                  } else {
+                                    descToSave = {
+                                      id: `desc-${employeeData.employeeId}-${entryDateStr}`,
+                                      employeeId: employeeData.employeeId,
+                                      date: entryDateStr,
+                                      description: '',
+                                      costCenter: newCostCenter,
+                                      stayedOvernight: false,
+                                      dayOff: false,
+                                      dayOffType: null,
+                                      createdAt: new Date().toISOString(),
+                                      updatedAt: new Date().toISOString()
+                                    };
+                                    newDescriptions.push(descToSave);
+                                  }
+                                  setDailyDescriptionsWithRef(newDescriptions);
+                                  syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                  try {
+                                    const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        id: descToSave.id,
+                                        employeeId: descToSave.employeeId,
+                                        date: entryDateStr,
+                                        description: descToSave.description || '',
+                                        costCenter: descToSave.costCenter || '',
+                                        stayedOvernight: descToSave.stayedOvernight || false,
+                                        dayOff: descToSave.dayOff || false,
+                                        dayOffType: descToSave.dayOffType || null
+                                      })
+                                    });
+                                    if (!response.ok) debugError('Error saving cost center:', await response.text());
+                                  } catch (error) {
+                                    debugError('Error saving cost center:', error);
+                                  }
+                                }}
+                                disabled={isAdminView}
+                                displayEmpty
+                                sx={{ fontSize: '0.875rem' }}
+                              >
+                                {employeeData.costCenters.map((cc: string) => (
+                                  <MenuItem key={cc} value={cc}>{cc}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          ) : (
+                            entry.costCenter || employeeData.costCenters[0] || 'N/A'
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -6949,14 +7141,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           Select for Revision
                         </Typography>
                         <Checkbox
-                          indeterminate={selectedMileageItems.size > 0 && selectedMileageItems.size < employeeData.dailyEntries.length}
-                          checked={employeeData.dailyEntries.length > 0 && selectedMileageItems.size === employeeData.dailyEntries.length}
+                          indeterminate={(() => { const cc0Ids = Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`); const n = cc0Ids.filter(id => selectedMileageItems.has(id)).length; return n > 0 && n < daysInMonth; })()}
+                          checked={(() => { const cc0Ids = Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`); return daysInMonth > 0 && cc0Ids.every(id => selectedMileageItems.has(id)); })()}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              const allIds = new Set(employeeData.dailyEntries.map((_, idx) => `mileage-${idx}`));
-                              setSelectedMileageItems(allIds);
+                              const allIds = new Set(Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`));
+                              setSelectedMileageItems(prev => new Set(Array.from(prev).concat(Array.from(allIds))));
                             } else {
-                              setSelectedMileageItems(new Set());
+                              const cc0Ids = new Set(Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`));
+                              setSelectedMileageItems(prev => new Set(Array.from(prev).filter(id => !cc0Ids.has(id))));
                             }
                           }}
                           size="small"
@@ -6974,123 +7167,77 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {employeeData.dailyEntries.map((entry, index) => {
-                    // Check if any time entries for this date need revision
-                    const entryDate = new Date(entry.date);
-                    const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
-                      const tDate = new Date(t.date);
-                      return tDate.getUTCDate() === entryDate.getUTCDate() && 
-                             tDate.getUTCMonth() === entryDate.getUTCMonth() && 
-                             t.needsRevision;
+                  {(() => {
+                    const costCenterRowsCC1 = buildCostCenterRows({
+                      currentMonthMileageList,
+                      dailyDescriptions,
+                      rawTimeEntries,
+                      costCenter: employeeData.costCenters[0] || '',
+                      costCenters: employeeData.costCenters,
+                      daysInMonth,
+                      currentMonth,
+                      currentYear,
+                      normalizeDate,
+                      perDiemByDate,
+                      formatLocationNameAndAddress,
+                      employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 }
                     });
-                    
-                    // Check if this item needs revision from revision notes
-                    const itemId = `mileage-${index}`;
-                    const needsRevisionFromNotes = itemsNeedingRevision.has(itemId);
-                    const needsRevision = needsRevisionFromRaw || needsRevisionFromNotes;
-                    
-                    // Check if this day needs revision for time tracking
-                    const day = entryDate.getUTCDate();
-                    const dayNeedsRevision = daysNeedingRevision.has(day);
-                    
-                    // Check if this day is marked as day off
-                    // Normalize dates to YYYY-MM-DD format for comparison
-                    const entryDateStr = normalizeDate(entry.date);
-                    const dayDescription = dailyDescriptions.find((desc: any) => {
-                      const descDateStr = normalizeDate(desc.date);
-                      return entryDateStr === descDateStr;
-                    });
-                    const isDayOff = dayDescription?.dayOff === true || dayDescription?.dayOff === 1;
-                    
-                    const isSelected = selectedMileageItems.has(itemId);
-                    
+                    const subHours = costCenterRowsCC1.reduce((s, r) => s + r.hoursWorked, 0);
+                    const subMiles = costCenterRowsCC1.reduce((s, r) => s + r.milesTraveled, 0);
+                    const subMileage = costCenterRowsCC1.reduce((s, r) => s + r.mileageAmount, 0);
+                    const subPerDiem = costCenterRowsCC1.reduce((s, r) => s + r.perDiem, 0);
                     return (
-                      <TableRow 
-                        key={index} 
-                        sx={{ 
-                          ...((needsRevision || dayNeedsRevision) && { 
-                            bgcolor: '#ffcccc', // Light red background for items needing revision
-                            '& td': {
-                              bgcolor: '#ffcccc'
-                            }
-                          }),
-                          ...(isDayOff && !needsRevision && !dayNeedsRevision && { 
-                            bgcolor: '#e0e0e0',
-                            opacity: 0.6,
-                            '& td': {
-                              bgcolor: '#e0e0e0',
-                              opacity: 0.6
-                            }
-                          })
-                        }}
-                      >
-                        {supervisorMode && (
-                          <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
-                            <Checkbox
-                              checked={isSelected}
-                              onChange={(e) => {
-                                const newSet = new Set(selectedMileageItems);
-                                if (e.target.checked) {
-                                  newSet.add(itemId);
-                                } else {
-                                  newSet.delete(itemId);
-                                }
-                                setSelectedMileageItems(newSet);
+                      <>
+                        {costCenterRowsCC1.map((row) => {
+                          const itemId = `mileage-cc0-day-${row.day}`;
+                          const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
+                            const tDate = new Date(t.date);
+                            return tDate.getUTCDate() === row.day && tDate.getUTCMonth() + 1 === currentMonth && tDate.getFullYear() === currentYear && (t.needsRevision);
+                          });
+                          const needsRevisionFromNotes = itemsNeedingRevision.has(itemId);
+                          const needsRevision = needsRevisionFromRaw || needsRevisionFromNotes;
+                          const dayNeedsRevision = daysNeedingRevision.has(row.day);
+                          const isSelected = selectedMileageItems.has(itemId);
+                          return (
+                            <TableRow
+                              key={row.day}
+                              sx={{
+                                ...((needsRevision || dayNeedsRevision) && { bgcolor: '#ffcccc', '& td': { bgcolor: '#ffcccc' } }),
+                                ...(row.dayOff && !needsRevision && !dayNeedsRevision && { bgcolor: '#e0e0e0', opacity: 0.6, '& td': { bgcolor: '#e0e0e0', opacity: 0.6 } })
                               }}
-                              size="small"
-                            />
-                          </TableCell>
-                        )}
-                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {entry.date}
-                          {needsRevision && (
-                            <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
-                          )}
-                        </TableCell>
-                      <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>
-                        {/* Cost Center tab is read-only: edit on Daily Descriptions and Mileage Entries tabs only */}
-                        {isDayOff ? (
-                          <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap', color: 'text.secondary', fontStyle: 'italic' }}>
-                            {dayDescription?.dayOffType || 'Day Off'}
-                          </Box>
-                        ) : (
-                          <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap' }} tabIndex={-1} aria-readonly="true">
-                            {entry.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}
-                          </Box>
-                        )}
-                      </TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        <Box sx={{ cursor: 'default' }}>
-                          {typeof entry.hoursWorked === 'number' ? entry.hoursWorked.toFixed(1) : (entry.hoursWorked ?? '')}
-                        </Box>
-                      </TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        <Box sx={{ cursor: 'default' }}>{entry.odometerStart || 0}</Box>
-                      </TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        <Box sx={{ cursor: 'default' }}>{entry.odometerEnd || 0}</Box>
-                      </TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{Math.round(entry.milesTraveled || 0)}</TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${(entry.mileageAmount ?? 0).toFixed(2)}</TableCell>
-                      <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        <Box sx={{ cursor: 'default' }}>${(entry.perDiem ?? 0).toFixed(2)}</Box>
-                      </TableCell>
-                    </TableRow>
+                            >
+                              {supervisorMode && (
+                                <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
+                                  <Checkbox checked={isSelected} onChange={(e) => { const newSet = new Set(selectedMileageItems); if (e.target.checked) newSet.add(itemId); else newSet.delete(itemId); setSelectedMileageItems(newSet); }} size="small" />
+                                </TableCell>
+                              )}
+                              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{row.dateStr}{needsRevision && <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />}</TableCell>
+                              <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>
+                                {row.dayOff ? <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap', color: 'text.secondary', fontStyle: 'italic' }}>{row.dayOffType || 'Day Off'}</Box> : <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap' }} tabIndex={-1} aria-readonly="true">{row.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}</Box>}
+                              </TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>{row.hoursWorked ? row.hoursWorked.toFixed(1) : ''}</Box></TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>{row.odometerStart}</Box></TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>{row.odometerEnd}</Box></TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.milesTraveled}</TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.mileageAmount.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>${row.perDiem.toFixed(2)}</Box></TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
+                          {supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1 }} />}
+                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
+                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subHours.toFixed(1)}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subMiles}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subMileage.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
+                        </TableRow>
+                      </>
                     );
-                  })}
-                  
-                  {/* Subtotals row */}
-                  <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
-                    {supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1 }} />}
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{typeof employeeData.totalHours === 'number' ? employeeData.totalHours.toFixed(1) : (employeeData.totalHours ?? 0)}</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{employeeData.totalMiles}</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${(employeeData.totalMileageAmount ?? 0).toFixed(2)}</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${(employeeData.perDiem ?? 0).toFixed(2)}</strong></TableCell>
-                  </TableRow>
+                  })()}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -7148,62 +7295,118 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </TabPanel>
       )}
 
-      {/* Cost Center Travel Sheets Tabs 2-5 */}
+      {/* Cost Center Travel Sheets Tabs 2-5 - same header as #1, rows built from raw mileage + daily descriptions */}
       {employeeData && employeeData.costCenters.length >= 2 && (
         <TabPanel value={activeTab} index={5}>
           <Card variant="outlined">
             <CardContent>
-              <Typography variant="h5" gutterBottom>
-                Cost Ctr #2 Travel
-              </Typography>
-              <Typography color="textSecondary">
-                Cost center #2 travel data will be populated here.
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
+                  <Typography variant="h6" component="div"><strong>Cost Center:</strong> {employeeData.costCenters[1]}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {currentYear}</Typography>
+                  <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                </Typography>
+              </Box>
+              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[1], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
       )}
 
       {employeeData && employeeData.costCenters.length >= 3 && (
-        <TabPanel value={activeTab} index={4}>
+        <TabPanel value={activeTab} index={6}>
           <Card variant="outlined">
             <CardContent>
-              <Typography variant="h5" gutterBottom>
-                Cost Ctr #3 Travel
-              </Typography>
-              <Typography color="textSecondary">
-                Cost center #3 travel data will be populated here.
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
+                  <Typography variant="h6" component="div"><strong>Cost Center:</strong> {employeeData.costCenters[2]}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {currentYear}</Typography>
+                  <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                </Typography>
+              </Box>
+              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[2], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
       )}
 
       {employeeData && employeeData.costCenters.length >= 4 && (
-        <TabPanel value={activeTab} index={5}>
+        <TabPanel value={activeTab} index={7}>
           <Card variant="outlined">
             <CardContent>
-              <Typography variant="h5" gutterBottom>
-                Cost Ctr #4 Travel
-              </Typography>
-              <Typography color="textSecondary">
-                Cost center #4 travel data will be populated here.
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
+                  <Typography variant="h6" component="div"><strong>Cost Center:</strong> {employeeData.costCenters[3]}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {currentYear}</Typography>
+                  <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                </Typography>
+              </Box>
+              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[3], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
       )}
 
       {employeeData && employeeData.costCenters.length >= 5 && (
-        <TabPanel value={activeTab} index={6}>
+        <TabPanel value={activeTab} index={8}>
           <Card variant="outlined">
             <CardContent>
-              <Typography variant="h5" gutterBottom>
-                Cost Ctr #5 Travel
-              </Typography>
-              <Typography color="textSecondary">
-                Cost center #5 travel data will be populated here.
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Name:</strong> {employeeData.name}</Typography>
+                  <Typography variant="h6" component="div"><strong>Cost Center:</strong> {employeeData.costCenters[4]}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h6" component="div"><strong>Month:</strong> {monthName} / {currentYear}</Typography>
+                  <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                </Typography>
+              </Box>
+              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[4], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>

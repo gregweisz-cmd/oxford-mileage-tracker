@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   Alert,
@@ -40,6 +39,7 @@ import { COST_CENTERS } from '../constants/costCenters';
 import { ReceiptPhotoQualityService, PhotoQualityResult } from '../services/receiptPhotoQualityService';
 import { useTheme } from '../contexts/ThemeContext';
 import UnifiedHeader from '../components/UnifiedHeader';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface AddReceiptScreenProps {
   navigation: any;
@@ -1137,9 +1137,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           </View>
         </Modal>
 
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
+      <KeyboardAwareScrollView
+        style={styles.content}
         keyboardShouldPersistTaps="handled"
       >
         {/* Receipt Photo */}
@@ -1325,29 +1324,31 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               </TouchableOpacity>
             )}
           </View>
-          
-          <TextInput
-            ref={vendorInputRef}
-            style={[styles.input, dynamicStyles.input]}
-            value={formData.vendor}
-            onChangeText={(value) => handleInputChange('vendor', value)}
-            placeholder="e.g., Shell Gas Station, McDonald's"
-            placeholderTextColor="#999"
-            returnKeyType="next"
-            blurOnSubmit={false}
-            onSubmitEditing={() => {
-              amountInputRef.current?.focus();
-            }}
-            onFocus={() => {
-              if (vendorSuggestions.length > 0) {
-                setShowVendorSuggestions(true);
-              }
-            }}
-            onBlur={() => {
-              // Delay hiding suggestions to allow for selection
-              setTimeout(() => setShowVendorSuggestions(false), 200);
-            }}
-          />
+
+          <ScrollToOnFocusView>
+            <TextInput
+              ref={vendorInputRef}
+              style={[styles.input, dynamicStyles.input]}
+              value={formData.vendor}
+              onChangeText={(value) => handleInputChange('vendor', value)}
+              placeholder="e.g., Shell Gas Station, McDonald's"
+              placeholderTextColor="#999"
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                amountInputRef.current?.focus();
+              }}
+              onFocus={() => {
+                if (vendorSuggestions.length > 0) {
+                  setShowVendorSuggestions(true);
+                }
+              }}
+              onBlur={() => {
+                // Delay hiding suggestions to allow for selection
+                setTimeout(() => setShowVendorSuggestions(false), 200);
+              }}
+            />
+          </ScrollToOnFocusView>
 
           {/* Vendor Suggestions */}
           {showVendorSuggestions && vendorSuggestions.length > 0 && (
@@ -1413,20 +1414,22 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         {/* Amount */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, dynamicStyles.label]}>Amount *</Text>
-          <TextInput
-            ref={amountInputRef}
-            style={[styles.input, dynamicStyles.input]}
-            value={formData.amount}
-            onChangeText={(value) => handleInputChange('amount', value)}
-            placeholder="0.00"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-            returnKeyType="next"
-            blurOnSubmit={false}
-            onSubmitEditing={() => {
-              descriptionInputRef.current?.focus();
-            }}
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              ref={amountInputRef}
+              style={[styles.input, dynamicStyles.input]}
+              value={formData.amount}
+              onChangeText={(value) => handleInputChange('amount', value)}
+              placeholder="0.00"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                descriptionInputRef.current?.focus();
+              }}
+            />
+          </ScrollToOnFocusView>
         </View>
 
         {/* Description/Notes */}
@@ -1439,18 +1442,20 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               Required for Other Expenses so Finance knows what the money was spent on
             </Text>
           )}
-          <TextInput
-            ref={descriptionInputRef}
-            style={[styles.input, styles.textArea, dynamicStyles.input]}
-            value={formData.description}
-            onChangeText={(value) => handleInputChange('description', value)}
-            placeholder={formData.category === 'Other' ? 'Describe what this expense was for...' : 'Add notes about this receipt...'}
-            placeholderTextColor="#999"
-            multiline
-            numberOfLines={3}
-            returnKeyType="done"
-            blurOnSubmit={true}
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              ref={descriptionInputRef}
+              style={[styles.input, styles.textArea, dynamicStyles.input]}
+              value={formData.description}
+              onChangeText={(value) => handleInputChange('description', value)}
+              placeholder={formData.category === 'Other' ? 'Describe what this expense was for...' : 'Add notes about this receipt...'}
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={3}
+              returnKeyType="done"
+              blurOnSubmit={true}
+            />
+          </ScrollToOnFocusView>
         </View>
 
         {/* Category */}
@@ -1660,7 +1665,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             {loading ? 'Saving...' : 'Save Receipt'}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardAwareScrollView>
       </View>
     </TouchableWithoutFeedback>
   );

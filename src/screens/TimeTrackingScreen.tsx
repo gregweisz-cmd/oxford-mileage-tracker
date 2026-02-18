@@ -14,6 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { TimeTracking, Employee } from '../types';
 import UnifiedHeader from '../components/UnifiedHeader';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 
 interface TimeTrackingScreenProps {
@@ -481,19 +482,21 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
       </View>
 
       {/* Summary Cards */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search entries by category, description, hours, date..."
-            placeholderTextColor="#999"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search entries by category, description, hours, date..."
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </ScrollToOnFocusView>
           {searchQuery.length > 0 && (
             <TouchableOpacity
               onPress={() => setSearchQuery('')}
@@ -555,15 +558,17 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
                 <Text style={styles.entryCategory}>{entry.category}</Text>
                 {inlineEditingEntry === entry.id ? (
                   <View style={styles.inlineEditContainer}>
-                    <TextInput
-                      style={styles.inlineEditInput}
-                      value={inlineEditingValue}
-                      onChangeText={setInlineEditingValue}
-                      keyboardType="numeric"
-                      autoFocus
-                      onBlur={handleInlineSave}
-                      onSubmitEditing={handleInlineSave}
-                    />
+                    <ScrollToOnFocusView>
+                      <TextInput
+                        style={styles.inlineEditInput}
+                        value={inlineEditingValue}
+                        onChangeText={setInlineEditingValue}
+                        keyboardType="numeric"
+                        autoFocus
+                        onBlur={handleInlineSave}
+                        onSubmitEditing={handleInlineSave}
+                      />
+                    </ScrollToOnFocusView>
                     <Text style={styles.inlineEditLabel}>hours</Text>
                     <TouchableOpacity onPress={handleInlineSave} style={styles.inlineEditButton}>
                       <MaterialIcons name="check" size={16} color="#34C759" />
@@ -595,7 +600,7 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
             ))
           )}
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Add/Edit Modal */}
       <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet">
@@ -622,15 +627,17 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <KeyboardAwareScrollView style={styles.modalContent}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Date</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.date}
-                onChangeText={(value) => handleInputChange('date', value)}
-                placeholder="YYYY-MM-DD"
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={formData.date}
+                  onChangeText={(value) => handleInputChange('date', value)}
+                  placeholder="YYYY-MM-DD"
+                />
+              </ScrollToOnFocusView>
             </View>
 
             <View style={styles.inputGroup}>
@@ -658,25 +665,29 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Hours</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.hours}
-                onChangeText={(value) => handleInputChange('hours', value)}
-                placeholder="Enter hours worked"
-                keyboardType="numeric"
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={formData.hours}
+                  onChangeText={(value) => handleInputChange('hours', value)}
+                  placeholder="Enter hours worked"
+                  keyboardType="numeric"
+                />
+              </ScrollToOnFocusView>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description (Optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={formData.description}
-                onChangeText={(value) => handleInputChange('description', value)}
-                placeholder="Enter description or notes"
-                multiline
-                numberOfLines={3}
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={formData.description}
+                  onChangeText={(value) => handleInputChange('description', value)}
+                  placeholder="Enter description or notes"
+                  multiline
+                  numberOfLines={3}
+                />
+              </ScrollToOnFocusView>
             </View>
 
             {/* Cost Center Selector - only show if user has multiple cost centers */}
@@ -704,7 +715,7 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
                 </View>
               </View>
             )}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </Modal>
     </View>

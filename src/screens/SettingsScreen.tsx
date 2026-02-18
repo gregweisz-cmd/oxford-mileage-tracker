@@ -3,18 +3,16 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Switch,
   Alert,
   TextInput,
   Modal,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import UnifiedHeader from '../components/UnifiedHeader';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { DeviceIntelligenceService, DeviceSettings, UserInterfacePreferences, OfflineSyncPattern, InputMethodPreference } from '../services/deviceIntelligenceService';
 import { PerformanceOptimizationService, LoadingStrategy } from '../services/performanceOptimizationService';
 import { DeviceControlService, DeviceControlSettings } from '../services/deviceControlService';
@@ -48,8 +46,6 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const [showPreferredNameModal, setShowPreferredNameModal] = useState(false);
   const [preferredNameInput, setPreferredNameInput] = useState('');
 
-  // Refs for keyboard handling
-  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadEmployee();
@@ -400,20 +396,29 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     <Modal visible={showPreferredNameModal} transparent animationType="slide">
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Edit Preferred Name</Text>
-          <Text style={styles.modalSubtitle}>
-            This name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents.
-          </Text>
-          <View style={styles.modalInputWrap}>
-            <TextInput
-              style={styles.input}
-              value={preferredNameInput}
-              onChangeText={setPreferredNameInput}
-              placeholder="Preferred name"
-              placeholderTextColor="#999"
-              autoFocus
-            />
-          </View>
+          <KeyboardAwareScrollView
+            style={{ maxHeight: '100%' }}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.modalTitle}>Edit Preferred Name</Text>
+            <Text style={styles.modalSubtitle}>
+              This name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents.
+            </Text>
+            <View style={styles.modalInputWrap}>
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={preferredNameInput}
+                  onChangeText={setPreferredNameInput}
+                  placeholder="Preferred name"
+                  placeholderTextColor="#999"
+                  autoFocus
+                />
+              </ScrollToOnFocusView>
+            </View>
+          </KeyboardAwareScrollView>
           <View style={styles.modalButtonRow}>
             <TouchableOpacity
               style={[styles.modalCancel, { flex: 1 }]}
@@ -458,23 +463,17 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
         onHomePress={() => navigation.navigate('Home')}
       />
 
-      <KeyboardAvoidingView 
-        style={styles.content}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-      >
+      <View style={styles.content}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Essential Settings</Text>
-        
-        <ScrollView 
-          ref={scrollViewRef}
-          style={styles.settingsContainer} 
+        <KeyboardAwareScrollView
+          style={styles.settingsContainer}
+          contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 100 }}
         >
           {renderEssentialSettings()}
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </View>
 
       {renderThemeModal()}
       {renderPreferredNameModal()}

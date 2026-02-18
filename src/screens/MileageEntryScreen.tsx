@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   Alert,
@@ -11,7 +10,6 @@ import {
   Modal,
   Keyboard,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView,
   FlatList,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -36,6 +34,7 @@ import { TripChainingAiService, TripChainSuggestion } from '../services/tripChai
 import TripChainingModal from '../components/TripChainingModal';
 import { COST_CENTERS } from '../constants/costCenters';
 import { CostCenterAutoSelectionService, CostCenterSuggestion } from '../services/costCenterAutoSelectionService';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface MileageEntryScreenProps {
   navigation: any;
@@ -1012,13 +1011,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         } : undefined}
       />
 
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareScrollView
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
         removeClippedSubviews={true}
         scrollEventThrottle={16}
-        keyboardDismissMode="on-drag"
       >
         {/* Date Picker */}
         <View style={styles.inputGroup}>
@@ -1093,20 +1090,22 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         {!hasStartedGpsToday && !hasExistingEntriesToday ? (
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Starting Odometer Reading *</Text>
-            <TextInput
-              ref={odometerInputRef}
-              style={styles.input}
-              value={formData.odometerReading}
-              onChangeText={(value) => handleInputChange('odometerReading', value)}
-              placeholder="e.g., 12345"
-              keyboardType="numeric"
-              placeholderTextColor="#999"
-              returnKeyType="next"
-              blurOnSubmit={false}
-              onSubmitEditing={() => {
-                purposeInputRef.current?.focus();
-              }}
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                ref={odometerInputRef}
+                style={styles.input}
+                value={formData.odometerReading}
+                onChangeText={(value) => handleInputChange('odometerReading', value)}
+                placeholder="e.g., 12345"
+                keyboardType="numeric"
+                placeholderTextColor="#999"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => {
+                  purposeInputRef.current?.focus();
+                }}
+              />
+            </ScrollToOnFocusView>
             <Text style={styles.helpText}>
               Enter the odometer reading at the start of this trip
             </Text>
@@ -1222,17 +1221,19 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             </>
           ) : (
             <>
-              <TextInput
-                ref={purposeInputRef}
-                style={styles.input}
-                value={formData.purpose}
-                onChangeText={(value) => handleInputChange('purpose', value)}
-                placeholder="e.g., Client visit, Meeting, Training"
-                placeholderTextColor="#999"
-                returnKeyType="next"
-                blurOnSubmit={false}
-                onSubmitEditing={() => milesInputRef.current?.focus()}
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  ref={purposeInputRef}
+                  style={styles.input}
+                  value={formData.purpose}
+                  onChangeText={(value) => handleInputChange('purpose', value)}
+                  placeholder="e.g., Client visit, Meeting, Training"
+                  placeholderTextColor="#999"
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => milesInputRef.current?.focus()}
+                />
+              </ScrollToOnFocusView>
               {purposeSuggestions.length > 0 && !formData.purpose && (
                 <View style={styles.purposeSuggestionsContainer}>
                   <View style={styles.purposeSuggestionsHeader}>
@@ -1271,20 +1272,22 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         {/* Miles */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Miles *</Text>
-          <TextInput
-            ref={milesInputRef}
-            style={styles.input}
-            value={formData.miles}
-            onChangeText={(value) => handleInputChange('miles', value)}
-            placeholder="0.0"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-            returnKeyType="next"
-            blurOnSubmit={false}
-            onSubmitEditing={() => {
-              notesInputRef.current?.focus();
-            }}
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              ref={milesInputRef}
+              style={styles.input}
+              value={formData.miles}
+              onChangeText={(value) => handleInputChange('miles', value)}
+              placeholder="0.0"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                notesInputRef.current?.focus();
+              }}
+            />
+          </ScrollToOnFocusView>
           
           {/* Action Buttons */}
           <View style={styles.milesButtonContainer}>
@@ -1350,18 +1353,20 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         {/* Notes */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Notes (Optional)</Text>
-          <TextInput
-            ref={notesInputRef}
-            style={[styles.input, styles.textArea]}
-            value={formData.notes}
-            onChangeText={(value) => handleInputChange('notes', value)}
-            placeholder="Additional notes about this trip..."
-            placeholderTextColor="#999"
-            multiline
-            numberOfLines={3}
-            returnKeyType="done"
-            blurOnSubmit={true}
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              ref={notesInputRef}
+              style={[styles.input, styles.textArea]}
+              value={formData.notes}
+              onChangeText={(value) => handleInputChange('notes', value)}
+              placeholder="Additional notes about this trip..."
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={3}
+              returnKeyType="done"
+              blurOnSubmit={true}
+            />
+          </ScrollToOnFocusView>
         </View>
 
         {/* Cost Center Selector - only show if user has multiple cost centers */}
@@ -1421,8 +1426,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             {loading ? 'Saving...' : (isEditing ? 'Update Entry' : 'Save Entry')}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
-      
+      </KeyboardAwareScrollView>
+
       {/* Location Options Modal */}
       <Modal
         visible={showLocationOptionsModal}
@@ -1705,9 +1710,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  keyboardAvoid: {
+    flex: 1,
+  },
   content: {
     flex: 1,
     padding: 20,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   inputGroup: {
     marginBottom: 20,

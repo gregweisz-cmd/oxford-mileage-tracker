@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
@@ -251,20 +252,22 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
             {/* Description Input */}
             <View style={styles.descriptionSection}>
               <Text style={styles.descriptionLabel}>What did you do today?</Text>
-              <TextInput
-                style={styles.descriptionInput}
-                value={descriptionText}
-                onChangeText={setDescriptionText}
-                placeholder="Describe your activities for this day..."
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={8}
-                textAlignVertical="top"
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.descriptionInput}
+                  value={descriptionText}
+                  onChangeText={setDescriptionText}
+                  placeholder="Describe your activities for this day..."
+                  placeholderTextColor="#999"
+                  multiline
+                  numberOfLines={8}
+                  textAlignVertical="top"
+                />
+              </ScrollToOnFocusView>
             </View>
 
             {/* Cost Center Selector - only show if user has multiple cost centers */}
@@ -292,7 +295,7 @@ export default function DailyDescriptionScreen({ navigation }: DailyDescriptionS
                 </View>
               </View>
             )}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </Modal>
     </View>
