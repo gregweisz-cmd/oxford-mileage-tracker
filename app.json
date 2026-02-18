@@ -76,7 +76,7 @@
     "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/d303cc80-9dcf-4d5c-952b-d50df5cb04f0",
-      "checkAutomatically": "NEVER"
+      "checkAutomatically": "ON_LOAD"
     }
   }
 }
