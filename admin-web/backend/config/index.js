@@ -20,11 +20,11 @@ const SERVER_CONFIG = {
 
 /**
  * Database Configuration
- * In production without DATABASE_PATH (e.g. Render free tier), use tmp so the app can start.
+ * In production without DATABASE_PATH (e.g. Render free tier), use in-memory so the app can start.
  */
 function getDatabasePath() {
   if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
-  if (process.env.NODE_ENV === 'production') return path.join(os.tmpdir(), 'expense_tracker.db');
+  if (process.env.NODE_ENV === 'production') return ':memory:';
   return path.join(__dirname, '..', 'expense_tracker.db');
 }
 const DATABASE_CONFIG = {

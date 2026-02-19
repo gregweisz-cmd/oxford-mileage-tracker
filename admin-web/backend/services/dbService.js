@@ -11,11 +11,11 @@ const { debugLog, debugError, debugWarn } = require('../debug');
 const constants = require('../utils/constants');
 
 // Database path: use DATABASE_PATH when set (e.g. Render persistent disk). In production without
-// DATABASE_PATH (e.g. Render free tier), use /tmp so the app can start (ephemeral). Otherwise default next to backend.
+// DATABASE_PATH (e.g. Render free tier), use in-memory DB so the app always starts (ephemeral, no disk).
 function getDatabasePath() {
   if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
   if (process.env.NODE_ENV === 'production') {
-    return path.join(os.tmpdir(), 'expense_tracker.db');
+    return ':memory:';
   }
   return path.join(__dirname, '..', 'expense_tracker.db');
 }
