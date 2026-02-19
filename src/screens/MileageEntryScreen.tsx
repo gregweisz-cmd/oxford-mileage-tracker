@@ -1007,7 +1007,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       <KeyboardAvoidingView
         style={styles.keyboardAvoid}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
       >
       <ScrollView
         ref={scrollViewRef}
@@ -1682,7 +1682,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 12,
   },
   inputGroup: {
     marginBottom: 20,
