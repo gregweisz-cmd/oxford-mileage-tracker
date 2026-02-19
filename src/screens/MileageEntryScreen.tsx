@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
@@ -1013,8 +1014,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="always"
+        removeClippedSubviews={Platform.OS !== 'ios'}
         scrollEventThrottle={16}
         keyboardDismissMode="none"
       >
@@ -1322,7 +1323,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             returnKeyType="done"
             blurOnSubmit={true}
             onFocus={() => {
-              setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 200);
+              setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 300);
             }}
           />
         </View>
@@ -1387,22 +1388,23 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Location Options Modal */}
+      {/* Location Options Modal - full screen */}
       <Modal
         visible={showLocationOptionsModal}
         transparent={true}
         animationType="slide"
         onRequestClose={() => setShowLocationOptionsModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
+        <View style={styles.locationOptionsModalOverlay}>
+          <SafeAreaView style={styles.locationOptionsModalContent} edges={['top', 'bottom']}>
+            <Text style={styles.locationOptionsModalTitle}>
               Choose {currentLocationType === 'start' ? 'Starting' : 'Ending'} Location
             </Text>
-            <Text style={styles.modalSubtitle}>
+            <Text style={styles.locationOptionsModalSubtitle}>
               Where are you {currentLocationType === 'start' ? 'starting' : 'ending'} your trip?
             </Text>
 
+            <View style={styles.locationOptionsContainer}>
             <TouchableOpacity
               style={[styles.locationOptionButton, !lastDestination && styles.disabledButton]}
               onPress={() => handleLocationOption('lastDestination')}
@@ -1410,7 +1412,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             >
               <MaterialIcons name="location-on" size={24} color="#4CAF50" />
               <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Start from Last Destination</Text>
+                <Text style={styles.locationOptionTitle}>
+                  {currentLocationType === 'start' ? 'Start from Last Destination' : 'End at last location'}
+                </Text>
                 <Text style={styles.locationOptionSubtitle}>
                   {lastDestination ? `${lastDestination.name} (${lastDestination.address})` : 'No previous destination found'}
                 </Text>
@@ -1424,7 +1428,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             >
               <MaterialIcons name="home" size={24} color="#2196F3" />
               <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Start from Base Address</Text>
+                <Text style={styles.locationOptionTitle}>
+                  {currentLocationType === 'start' ? 'Start from Base Address' : 'Return to BA'}
+                </Text>
                 <Text style={styles.locationOptionSubtitle}>
                   {currentEmployee?.baseAddress || 'No base address set'}
                 </Text>
@@ -1470,7 +1476,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             >
               <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
             </TouchableOpacity>
-          </View>
+            </View>
+          </SafeAreaView>
         </View>
       </Modal>
 
@@ -2102,7 +2109,36 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   
-  // Location Options Modal Styles
+  // Location Options Modal Styles (full screen)
+  locationOptionsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  locationOptionsModalContent: {
+    flex: 1,
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
+  },
+  locationOptionsModalTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  locationOptionsModalSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  locationOptionsContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'space-evenly',
+  },
   modalSubtitle: {
     fontSize: 14,
     color: '#666',
@@ -2110,14 +2146,16 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   locationOptionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 8,
     backgroundColor: '#f8f9fa',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    minHeight: 56,
   },
   disabledButton: {
     opacity: 0.5,
@@ -2137,7 +2175,8 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   modalButtonSecondary: {
-    marginTop: 20,
+    flex: 0,
+    marginTop: 12,
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
