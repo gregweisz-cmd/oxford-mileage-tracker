@@ -16,6 +16,28 @@ const { jsPDF } = require('jspdf');
 const { PDFDocument } = require('pdf-lib');
 const googleMapsService = require('../services/googleMapsService');
 
+// Match Staff Portal Cost Center description format: "BA to Name (Address) for Purpose to BA"
+function getBaseAddressLabel(addr, baseAddress, baseAddress2) {
+  if (!addr || typeof addr !== 'string') return null;
+  const loc = addr.toLowerCase().trim();
+  if (loc === 'ba' || loc === 'base address' || loc === 'base' || loc === 'home base') return baseAddress2 ? 'BA1' : 'BA';
+  const extract = (s) => { const m = (s || '').match(/\(([^)]+)\)/); return m ? m[1].toLowerCase().trim() : (s || '').toLowerCase().trim(); };
+  const addrPart = extract(addr);
+  if (baseAddress && (addrPart === (baseAddress || '').toLowerCase().trim() || extract(baseAddress) === addrPart)) return baseAddress2 ? 'BA1' : 'BA';
+  if (baseAddress2 && (addrPart === (baseAddress2 || '').toLowerCase().trim() || extract(baseAddress2) === addrPart)) return 'BA2';
+  return null;
+}
+function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) {
+  const addr = (address || '').trim();
+  const displayName = (name || '').trim();
+  if (!addr) return displayName || '';
+  const ba = getBaseAddressLabel(addr, baseAddress, baseAddress2);
+  if (ba) return ba;
+  if (displayName && addr.toLowerCase() === displayName.toLowerCase()) return displayName;
+  const abbr = addr.replace(/\bRoad\b/gi, 'Rd').replace(/\bStreet\b/gi, 'St').replace(/\bAvenue\b/gi, 'Ave').replace(/\bLane\b/gi, 'Ln').replace(/\bDrive\b/gi, 'Dr').trim();
+  return displayName ? `${displayName} (${abbr})` : abbr;
+}
+
 // Export data to Excel
 router.get('/api/export/excel', (req, res) => {
   const db = dbService.getDb();
@@ -1804,7 +1826,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       }); // Close costCenterQuery callback for time tracking summary
       }; // Close generateTimesheetAndFinalizePDF function
       
-      const processCostCenterSheet = (costCenter, index, onComplete) => {
+      const processCostCenterSheet = (costCenter, index, onComplete, baseAddress, baseAddress2) => {
         // Always start each cost center sheet on a new page
         // But only if we're not already at the top of a page
         // For first cost center, check if we need a page (if yPos is already low, we don't)
@@ -2101,64 +2123,68 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             
             // Build maps for daily data aggregation
             const dailyDataMap = {};
-            
-            // Process mileage entries - filter by cost center and normalize dates
-            mileageEntries
-              .filter(entry => {
-                // Only process entries that match this cost center
-                return entry.costCenter === costCenter;
-              })
-              .forEach(entry => {
-                // Handle YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, and MM/DD/YY formats
-                let day;
-                let dateStr = entry.date;
-                
-                // Handle ISO date strings (e.g., '2025-11-03T12:00:00.000Z')
-                if (dateStr.includes('T')) {
-                  dateStr = dateStr.split('T')[0]; // Extract just the date part
-                }
-                
-                if (dateStr.includes('-')) {
-                  // YYYY-MM-DD format
-                  const parts = dateStr.split('-');
-                  day = parseInt(parts[2], 10);
-                } else if (dateStr.includes('/')) {
-                  // MM/DD/YY format
-                  day = parseInt(dateStr.split('/')[1], 10);
-                } else {
-                  debugWarn(`⚠️ Unrecognized date format: ${entry.date}`);
-                  return; // Skip this entry
-                }
-                // Trip description for table: purpose, or "Start → End", or notes
-                const startLabel = (entry.startLocationName || entry.startLocationAddress || entry.startLocation || 'Start').trim().slice(0, 40);
-                const endLabel = (entry.endLocationName || entry.endLocationAddress || entry.endLocation || 'End').trim().slice(0, 40);
-                const tripDesc = (entry.purpose && entry.purpose.trim())
-                  ? entry.purpose.trim().slice(0, 80)
-                  : (startLabel && endLabel ? `${startLabel} → ${endLabel}` : (entry.notes && entry.notes.trim()) ? entry.notes.trim().slice(0, 80) : '');
-              if (!dailyDataMap[day]) {
-                dailyDataMap[day] = {
-                  date: entry.date,
-                  description: tripDesc,
-                  hours: 0,
-                  odometerStart: entry.odometerReading || 0,
-                  odometerEnd: entry.odometerReading || 0,
-                  miles: entry.miles || 0,
-                  mileageAmount: (entry.miles || 0) * 0.655 // Standard IRS mileage rate (can be adjusted)
-                };
-              } else {
-                // Sum mileage data if multiple entries per day; append trip description
-                dailyDataMap[day].miles += (entry.miles || 0);
-                dailyDataMap[day].mileageAmount += ((entry.miles || 0) * 0.655);
-                if (entry.odometerReading && entry.odometerReading > dailyDataMap[day].odometerEnd) {
-                  dailyDataMap[day].odometerEnd = entry.odometerReading;
-                }
-                if (tripDesc) {
-                  dailyDataMap[day].description = dailyDataMap[day].description
-                    ? `${dailyDataMap[day].description}\n${tripDesc}`
-                    : tripDesc;
-                }
-              }
+            const entriesForCostCenter = (mileageEntries || []).filter(e => e.costCenter === costCenter);
+
+            // Group mileage entries by day, then build Staff-Portal-style driving summary per day
+            const dayToEntries = {};
+            entriesForCostCenter.forEach(entry => {
+              let dateStr = entry.date;
+              if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+              let day;
+              if (dateStr && dateStr.includes('-')) {
+                day = parseInt(dateStr.split('-')[2], 10);
+              } else if (dateStr && dateStr.includes('/')) {
+                day = parseInt(dateStr.split('/')[1], 10);
+              } else return;
+              if (!dayToEntries[day]) dayToEntries[day] = [];
+              dayToEntries[day].push(entry);
             });
+            Object.keys(dayToEntries).forEach(dayKey => {
+              const day = parseInt(dayKey, 10);
+              const dayEntries = dayToEntries[day].sort((a, b) => new Date(a.createdAt || a.date).getTime() - new Date(b.createdAt || b.date).getTime());
+              const withMiles = dayEntries.filter(e => (e.miles || 0) > 0);
+              let drivingSummary = '';
+              if (withMiles.length > 0) {
+                const tripSegments = [];
+                withMiles.forEach((entry, idx) => {
+                  const startName = (entry.startLocationName || '').trim();
+                  const startAddrRaw = entry.startLocationAddress || entry.startLocation || '';
+                  const startAddr = (startAddrRaw.trim().toLowerCase() === startName.toLowerCase()) ? (entry.startLocation || entry.startLocationAddress || '') : startAddrRaw;
+                  const endName = (entry.endLocationName || '').trim();
+                  const endAddrRaw = entry.endLocationAddress || entry.endLocation || '';
+                  const endAddr = (endAddrRaw.trim().toLowerCase() === endName.toLowerCase()) ? (entry.endLocation || entry.endLocationAddress || '') : endAddrRaw;
+                  if (idx === 0) {
+                    const formattedStart = formatLocationNameAndAddress(entry.startLocationName, startAddr, baseAddress, baseAddress2);
+                    if (formattedStart) tripSegments.push(formattedStart);
+                  }
+                  const formattedEnd = formatLocationNameAndAddress(entry.endLocationName, endAddr, baseAddress, baseAddress2);
+                  const purpose = (entry.purpose || 'Travel').trim();
+                  const isBase = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
+                  if (formattedEnd) {
+                    if (isBase) tripSegments.push('to ' + formattedEnd);
+                    else if (purpose && purpose.toLowerCase() !== 'travel') tripSegments.push('to ' + formattedEnd + ' for ' + purpose);
+                    else tripSegments.push('to ' + formattedEnd);
+                  }
+                });
+                drivingSummary = tripSegments.join(' ');
+              }
+              const totalDayMiles = withMiles.reduce((sum, e) => sum + (e.miles || 0), 0);
+              const firstEntry = withMiles[0];
+              const lastEntry = withMiles[withMiles.length - 1];
+              const odometerStart = firstEntry ? (firstEntry.odometerReading || 0) : 0;
+              const odometerEnd = lastEntry ? (lastEntry.odometerReading || 0) : odometerStart + totalDayMiles;
+              dailyDataMap[day] = {
+                date: firstEntry ? firstEntry.date : null,
+                description: drivingSummary,
+                hours: 0,
+                odometerStart,
+                odometerEnd,
+                miles: totalDayMiles,
+                mileageAmount: totalDayMiles * 0.655
+              };
+            });
+
+            // Process time tracking entries (for hours) - filter by cost center and normalize dates
             
             // Process time tracking entries (for hours) - filter by cost center and normalize dates
             timeEntries
@@ -2237,10 +2263,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     return; // Skip this entry
                   }
                 if (desc.description && desc.description.trim()) {
+                  const userDesc = desc.description.trim();
                   if (!dailyDataMap[day]) {
                     dailyDataMap[day] = {
                       date: desc.date,
-                      description: desc.description,
+                      description: userDesc,
                       hours: 0,
                       odometerStart: 0,
                       odometerEnd: 0,
@@ -2248,8 +2275,13 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       mileageAmount: 0
                     };
                   } else {
-                    // Daily description takes priority over time tracking description
-                    dailyDataMap[day].description = desc.description;
+                    // Match Staff Portal: user narrative first; append driving summary if present and not already in user text
+                    const existingDriving = dailyDataMap[day].description || '';
+                    if (existingDriving && !userDesc.includes(existingDriving)) {
+                      dailyDataMap[day].description = userDesc + '\n\n' + existingDriving;
+                    } else {
+                      dailyDataMap[day].description = userDesc;
+                    }
                   }
                 }
               });
@@ -2450,10 +2482,26 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     
                     debugLog(`🗺️ Grouped ${mileageEntries.length} entries into ${Object.keys(entriesByDate).length} days`);
                     
-                    // Generate one map per route; API auto-fits zoom when we omit center/zoom
+                    // Generate one map per route; substitute base address for "BA" so geocoding succeeds
                     const sortedDates = Object.keys(entriesByDate).sort();
                     for (const date of sortedDates) {
-                      const dayRoutes = googleMapsService.collectRoutesForDay(entriesByDate[date]);
+                      const dayEntries = (entriesByDate[date] || []).map(entry => {
+                        const copy = { ...entry };
+                        const startAddr = (entry.startLocationAddress || entry.startLocation || '').trim();
+                        const endAddr = (entry.endLocationAddress || entry.endLocation || '').trim();
+                        if (getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
+                          copy.startLocationAddress = baseAddress || startAddr;
+                          copy.startLocationLat = null;
+                          copy.startLocationLng = null;
+                        }
+                        if (getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
+                          copy.endLocationAddress = baseAddress || endAddr;
+                          copy.endLocationLat = null;
+                          copy.endLocationLng = null;
+                        }
+                        return copy;
+                      });
+                      const dayRoutes = googleMapsService.collectRoutesForDay(dayEntries);
                       debugLog(`🗺️ Day ${date}: Found ${dayRoutes.length} routes (one map per route)`);
                       if (dayRoutes.length === 0) {
                         console.warn(`Maps skipped: No map points for date ${date} (cost center: ${costCenter})`);
@@ -2576,26 +2624,24 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         }); // Close mileageEntries callback
       };
       
-      // Process cost centers sequentially, one at a time
-      const processCostCenterSheetsSequentially = (index = 0) => {
+      // Process cost centers sequentially, one at a time (need baseAddress for driving summary + maps)
+      const processCostCenterSheetsSequentially = (index, baseAddress, baseAddress2) => {
         if (index >= costCentersToProcess.length) {
-          // All cost center sheets done, now generate timesheet and finalize PDF
           generateTimesheetAndFinalizePDF().catch(err => {
             debugError('❌ Error generating timesheet and finalizing PDF:', err);
             res.status(500).json({ error: 'Failed to finalize PDF' });
           });
           return;
         }
-        
         const costCenter = costCentersToProcess[index];
-        processCostCenterSheet(costCenter, index, () => {
-          // Callback: this cost center is done, process the next one
-          processCostCenterSheetsSequentially(index + 1);
-            });
-          };
-          
-      // Start processing cost centers sequentially
-      processCostCenterSheetsSequentially(0);
+        processCostCenterSheet(costCenter, index, () => processCostCenterSheetsSequentially(index + 1, baseAddress, baseAddress2), baseAddress || '', baseAddress2 || '');
+      };
+
+      db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [reportData.employeeId], (err, emp) => {
+        const baseAddress = (emp && emp.baseAddress) ? emp.baseAddress : (reportData.baseAddress || '');
+        const baseAddress2 = (emp && emp.baseAddress2) ? emp.baseAddress2 : (reportData.baseAddress2 || '');
+        processCostCenterSheetsSequentially(0, baseAddress, baseAddress2);
+      });
             
       // NOTE: The above function is called after all cost center sheets complete
     } catch (error) {
