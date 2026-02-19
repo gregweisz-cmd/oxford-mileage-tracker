@@ -250,6 +250,20 @@ router.get('/api/export/expense-report/:id', (req, res) => {
   });
 });
 
+// Diagnostic: map configuration status (no secrets in response)
+router.get('/api/export/map-status', (req, res) => {
+  const { mapViewMode } = req.query;
+  try {
+    const configured = googleMapsService.isConfigured();
+    res.json({
+      configured,
+      mapViewMode: mapViewMode || 'none'
+    });
+  } catch (err) {
+    res.status(500).json({ configured: false, error: 'Check failed' });
+  }
+});
+
 // Export individual expense report to PDF (matching Staff Portal format)
 router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
   const db = dbService.getDb();
@@ -1949,16 +1963,17 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         const startDateYYYYMMDD = `${yearStr}-${monthStr}-01`;
         const endDateYYYYMMDD = `${yearStr}-${monthStr}-${daysInMonth.toString().padStart(2, '0')}`;
         
-        // Query that handles both YYYY-MM-DD and MM/DD/YY date formats
+        // Query: match dates in report month. ISO/YYYY-MM-DD: use date range; MM/DD/YY: use month/year.
         // STRICT cost center matching - only match exact cost center (no empty string fallback)
         const mileageQuery = `
           SELECT date, startLocation, endLocation, miles, odometerReading, costCenter,
                  startLocationAddress, endLocationAddress, startLocationName, endLocationName,
-                 startLocationLat, startLocationLng, endLocationLat, endLocationLng, createdAt
+                 startLocationLat, startLocationLng, endLocationLat, endLocationLng,
+                 purpose, notes, createdAt
           FROM mileage_entries 
           WHERE employeeId = ? 
           AND (
-            (date LIKE '%-%-%' AND strftime("%m", date) = ? AND strftime("%Y", date) = ?)
+            (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
           )
           AND costCenter = ?
@@ -1970,7 +1985,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           FROM time_tracking 
           WHERE employeeId = ? 
           AND (
-            (date LIKE '%-%-%' AND strftime("%m", date) = ? AND strftime("%Y", date) = ?)
+            (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
           )
           AND costCenter = ?
@@ -1982,20 +1997,19 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           FROM daily_descriptions 
           WHERE employeeId = ? 
           AND (
-            (date LIKE '%-%-%' AND strftime("%m", date) = ? AND strftime("%Y", date) = ?)
+            (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
           )
           AND costCenter = ?
           ORDER BY date
         `;
         
-        // Parameters: employeeId, monthStr (YYYY-MM-DD), yearStr (YYYY-MM-DD), monthInt (MM/DD/YY), year2digit (MM/DD/YY), costCenter
-        // Total: 6 parameters - STRICT cost center matching (no empty string fallback)
+        // Params: employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt (MM), year2digit (YY), costCenter
         const monthInt = parseInt(monthStr);
         const year2digit = yearStr.slice(-2);
-        const mileageParams = [reportData.employeeId, monthStr, yearStr, monthInt, year2digit, costCenter];
+        const mileageParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit, costCenter];
         debugLog(`📊 Mileage query params:`, mileageParams);
-        debugLog(`📊 Querying for employeeId: ${reportData.employeeId}, month: ${monthStr}, year: ${yearStr}, costCenter: ${costCenter}`);
+        debugLog(`📊 Querying for employeeId: ${reportData.employeeId}, date range: ${startDateYYYYMMDD} to ${endDateYYYYMMDD}, costCenter: ${costCenter}`);
         db.all(mileageQuery, mileageParams, (err, mileageEntries) => {
           if (err) {
             debugError('❌ Error fetching mileage entries:', err);
@@ -2019,12 +2033,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             }
           }
           
-          // Parameters: employeeId, monthStr, yearStr, monthInt, year2digit, costCenter
-          const timeTrackingParams = [reportData.employeeId, monthStr, yearStr, monthInt, year2digit, costCenter];
+          const timeTrackingParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit, costCenter];
           debugLog(`📊 Time tracking query params:`, timeTrackingParams);
           
-          // Also query daily descriptions
-          const dailyDescriptionsParams = [reportData.employeeId, monthStr, yearStr, monthInt, year2digit, costCenter];
+          const dailyDescriptionsParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit, costCenter];
           db.all(dailyDescriptionsQuery, dailyDescriptionsParams, (descErr, dailyDescriptions) => {
             if (descErr) {
               debugError('❌ Error fetching daily descriptions:', descErr);
@@ -2117,10 +2129,16 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   debugWarn(`⚠️ Unrecognized date format: ${entry.date}`);
                   return; // Skip this entry
                 }
+                // Trip description for table: purpose, or "Start → End", or notes
+                const startLabel = (entry.startLocationName || entry.startLocationAddress || entry.startLocation || 'Start').trim().slice(0, 40);
+                const endLabel = (entry.endLocationName || entry.endLocationAddress || entry.endLocation || 'End').trim().slice(0, 40);
+                const tripDesc = (entry.purpose && entry.purpose.trim())
+                  ? entry.purpose.trim().slice(0, 80)
+                  : (startLabel && endLabel ? `${startLabel} → ${endLabel}` : (entry.notes && entry.notes.trim()) ? entry.notes.trim().slice(0, 80) : '');
               if (!dailyDataMap[day]) {
                 dailyDataMap[day] = {
                   date: entry.date,
-                  description: '',
+                  description: tripDesc,
                   hours: 0,
                   odometerStart: entry.odometerReading || 0,
                   odometerEnd: entry.odometerReading || 0,
@@ -2128,11 +2146,16 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   mileageAmount: (entry.miles || 0) * 0.655 // Standard IRS mileage rate (can be adjusted)
                 };
               } else {
-                // Sum mileage data if multiple entries per day
+                // Sum mileage data if multiple entries per day; append trip description
                 dailyDataMap[day].miles += (entry.miles || 0);
                 dailyDataMap[day].mileageAmount += ((entry.miles || 0) * 0.655);
                 if (entry.odometerReading && entry.odometerReading > dailyDataMap[day].odometerEnd) {
                   dailyDataMap[day].odometerEnd = entry.odometerReading;
+                }
+                if (tripDesc) {
+                  dailyDataMap[day].description = dailyDataMap[day].description
+                    ? `${dailyDataMap[day].description}\n${tripDesc}`
+                    : tripDesc;
                 }
               }
             });
@@ -2377,16 +2400,38 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 
                 if (!userIsFinance) {
                   debugLog(`⚠️ Maps skipped: User is not finance team`);
+                  console.warn(`Maps skipped: User is not finance team (cost center: ${costCenter})`);
                 } else if (!mapsEnabled) {
                   debugLog(`⚠️ Maps skipped: Cost center ${costCenter} does not have maps enabled`);
+                  console.warn(`Maps skipped: Cost center "${costCenter}" does not have maps enabled`);
                 } else if (!apiConfigured) {
                   debugLog(`⚠️ Maps skipped: Google Maps API key not configured`);
+                  console.warn('Maps skipped: Google Maps API key not configured');
                 } else if (!mapViewMode) {
                   debugLog(`⚠️ Maps skipped: No map view mode specified`);
+                  console.warn('Maps skipped: No map view mode specified');
                 }
                 
                 if (userIsFinance && mapsEnabled && apiConfigured && mapViewMode) {
                   debugLog(`🗺️ Generating Google Maps for cost center: ${costCenter}, mode: ${mapViewMode}`);
+                  console.log(`Generating Google Maps for cost center: ${costCenter}, mode: ${mapViewMode}`);
+                  // Log sample of mileage entry map data for debugging (no PII beyond addresses)
+                  if (mileageEntries && mileageEntries.length > 0) {
+                    const sample = mileageEntries[0];
+                    const mapDataSample = {
+                      entriesCount: mileageEntries.length,
+                      first: {
+                        startLocationLat: sample.startLocationLat,
+                        startLocationLng: sample.startLocationLng,
+                        endLocationLat: sample.endLocationLat,
+                        endLocationLng: sample.endLocationLng,
+                        startAddress: (sample.startLocationAddress || sample.startLocationName || sample.startLocation || '').slice(0, 60),
+                        endAddress: (sample.endLocationAddress || sample.endLocationName || sample.endLocation || '').slice(0, 60)
+                      }
+                    };
+                    debugLog('🗺️ Mileage map data sample:', JSON.stringify(mapDataSample));
+                    console.log('Map data sample:', JSON.stringify(mapDataSample));
+                  }
                   
                   // mapViewMode: 'day' = one map per trip (one page per route); 'costCenter' = one map for all routes
                   let mapPoints = [];
@@ -2410,11 +2455,16 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     for (const date of sortedDates) {
                       const dayRoutes = googleMapsService.collectRoutesForDay(entriesByDate[date]);
                       debugLog(`🗺️ Day ${date}: Found ${dayRoutes.length} routes (one map per route)`);
+                      if (dayRoutes.length === 0) {
+                        console.warn(`Maps skipped: No map points for date ${date} (cost center: ${costCenter})`);
+                      }
                       for (let tripIndex = 0; tripIndex < dayRoutes.length; tripIndex++) {
                         const singleRoute = [dayRoutes[tripIndex]];
                         const tripNum = tripIndex + 1;
                         try {
-                          const mapImage = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400' });
+                          const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400' });
+                          const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
+                          const tripSummary = Buffer.isBuffer(mapResult) ? null : mapResult.tripSummary;
                           const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
                           doc.addPage();
                           yPos = margin + 20;
@@ -2425,7 +2475,18 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           const imageWidth = pageWidth - (margin * 2);
                           const imageHeight = (imageWidth * 400) / 600;
                           doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
-                          yPos += imageHeight + 20;
+                          yPos += imageHeight + 12;
+                          if (tripSummary && (tripSummary.distanceText || tripSummary.durationText)) {
+                            doc.setFontSize(9);
+                            doc.setFont('helvetica', 'normal');
+                            const tripLine = [tripSummary.distanceText, tripSummary.durationText].filter(Boolean).join(' · ');
+                            if (tripLine) { safeText(tripLine, margin, yPos); yPos += 10; }
+                            if (tripSummary.startAddress || tripSummary.endAddress) {
+                              const routeDesc = [tripSummary.startAddress, tripSummary.endAddress].filter(Boolean).join(' → ');
+                              if (routeDesc) { safeText(routeDesc.slice(0, 100), margin, yPos, { maxWidth: pageWidth - margin * 2 }); yPos += 12; }
+                            }
+                          }
+                          yPos += 8;
                         } catch (mapError) {
                           const errMsg = (mapError && mapError.message) ? String(mapError.message) : '';
                           debugError(`❌ Error generating map for date ${date} trip ${tripNum}:`, mapError);
@@ -2497,6 +2558,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     }
                   } else {
                     debugLog(`⚠️ No map points found for cost center ${costCenter}`);
+                    console.warn(`No map points found for cost center: ${costCenter}`);
                   }
                 } else {
                   debugLog(`⚠️ Map generation conditions not met for ${costCenter}`);

@@ -23,6 +23,13 @@ function isConfigured() {
   return true;
 }
 
+/** Return URL with API key redacted for safe logging */
+function redactStaticMapUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  if (!GOOGLE_MAPS_API_KEY) return url;
+  return url.replace(GOOGLE_MAPS_API_KEY, 'REDACTED');
+}
+
 /**
  * Detect if buffer is Google's static map error image (100x100 PNG).
  * Google returns 200 OK with a small error tile when the request fails (e.g. API key/billing).
@@ -358,7 +365,91 @@ function generateStaticMapUrlFromRoutes(routes, options = {}) {
 }
 
 /**
+ * Format a point for Directions API: "lat,lng" or address string.
+ * @param {{ lat?, lng?, address? }} p
+ * @returns {string}
+ */
+function formatPointForDirections(p) {
+  if (p.lat != null && p.lng != null && isValidLatLng(p.lat, p.lng)) {
+    return `${p.lat},${p.lng}`;
+  }
+  if (isValidLocationString(p.address)) {
+    return p.address;
+  }
+  return '';
+}
+
+/**
+ * Get full Directions API result: polyline plus distance/duration for PDF trip info.
+ * Requires Directions API enabled for the same API key. Returns null on failure.
+ * @param {{ lat?, lng?, address? }} origin
+ * @param {{ lat?, lng?, address? }} destination
+ * @returns {Promise<{ polyline: string, distanceText: string, durationText: string, startAddress: string, endAddress: string }|null>}
+ */
+async function getDirectionsResult(origin, destination) {
+  if (!isConfigured()) return null;
+  const originStr = formatPointForDirections(origin);
+  const destStr = formatPointForDirections(destination);
+  if (!originStr || !destStr) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(originStr)}&destination=${encodeURIComponent(destStr)}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`;
+    const response = await axios.get(url, { timeout: 8000 });
+    const data = response.data;
+    if (data.status !== 'OK' || !data.routes || data.routes.length === 0) {
+      debugLog('Directions API:', data.status, data.error_message || '');
+      return null;
+    }
+    const route = data.routes[0];
+    const polyline = route.overview_polyline;
+    if (!polyline || !polyline.points) return null;
+    const leg = route.legs && route.legs[0];
+    const distanceText = (leg && leg.distance && leg.distance.text) ? leg.distance.text : '';
+    const durationText = (leg && leg.duration && leg.duration.text) ? leg.duration.text : '';
+    const startAddress = (leg && leg.start_address) ? leg.start_address : '';
+    const endAddress = (leg && leg.end_address) ? leg.end_address : '';
+    return {
+      polyline: polyline.points,
+      distanceText,
+      durationText,
+      startAddress,
+      endAddress
+    };
+  } catch (err) {
+    debugLog('Directions API error:', err.message);
+    return null;
+  }
+}
+
+/** @deprecated Use getDirectionsResult. Returns polyline only for backward compatibility. */
+async function getDirectionsEncodedPolyline(origin, destination) {
+  const result = await getDirectionsResult(origin, destination);
+  return result ? result.polyline : null;
+}
+
+/**
+ * Build Static Map URL using an encoded polyline (actual driven route).
+ * @param {string} encodedPolyline - From Directions API overview_polyline.points
+ * @param {Object} options - size, maptype
+ * @returns {string} Static Map URL
+ */
+function generateStaticMapUrlFromEncodedPolyline(encodedPolyline, options = {}) {
+  if (!isConfigured()) {
+    throw new Error('Google Maps API key is not configured');
+  }
+  const size = options.size || '600x400';
+  const maptype = options.maptype || 'roadmap';
+  const baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
+  const params = new URLSearchParams();
+  params.append('size', size);
+  params.append('maptype', maptype);
+  params.append('key', GOOGLE_MAPS_API_KEY);
+  params.append('path', `enc:${encodedPolyline}`);
+  return `${baseUrl}?${params.toString()}`;
+}
+
+/**
  * Download static map image for multiple routes (one path per mileage entry).
+ * For a single route with two points, uses Directions API to draw the actual driven route when possible.
  * @param {Array<Array<{lat?, lng?, address?}>>} routes - From collectRoutesForDay(mileageEntries)
  * @param {Object} options - size, maptype, etc.
  * @returns {Promise<Buffer>} Image buffer
@@ -367,8 +458,30 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
   if (!routes || routes.length === 0) {
     throw new Error('No routes provided for map');
   }
+  let url;
+  let tripSummary = null;
+  const singleRoute = routes.length === 1 && routes[0].length >= 2;
+  if (singleRoute) {
+    const origin = routes[0][0];
+    const destination = routes[0][1];
+    const result = await getDirectionsResult(origin, destination);
+    if (result) {
+      url = generateStaticMapUrlFromEncodedPolyline(result.polyline, options);
+      debugLog('🗺️ Using Directions API route (driven path) for static map');
+      if (result.distanceText || result.durationText) {
+        tripSummary = {
+          distanceText: result.distanceText,
+          durationText: result.durationText,
+          startAddress: result.startAddress || '',
+          endAddress: result.endAddress || ''
+        };
+      }
+    }
+  }
+  if (!url) {
+    url = generateStaticMapUrlFromRoutes(routes, options);
+  }
   try {
-    const url = generateStaticMapUrlFromRoutes(routes, options);
     const pointCount = routes.reduce((sum, r) => sum + r.length, 0);
     debugLog(`🗺️ Downloading Google Maps static image for ${routes.length} routes (${pointCount} points)`);
     const response = await axios.get(url, {
@@ -379,21 +492,28 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
     const warning = response.headers && response.headers['x-staticmap-api-warning'];
     if (warning) {
       debugError('❌ Google Maps API warning (do not embed):', warning);
+      console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
       throw new Error(`Map image failed (g.co/staticmaperror). ${warning}`);
     }
     const buffer = Buffer.from(response.data);
     if (buffer.length < 500) {
       debugError('❌ Google Maps returned very small image (likely error image)');
+      console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
       throw new Error('Map image failed (g.co/staticmaperror). Check API key and that Static Maps API is enabled.');
     }
     // Error tile is 100x100 PNG; we request 600x400 — reject so PDF shows fallback text
     if (isStaticMapErrorImage(buffer)) {
       debugError('❌ Google Maps returned 200 OK but body is the 100x100 error tile (staticmaperror). Common causes: (1) Billing not enabled on the GCP project, (2) API key has application restriction that blocks server requests e.g. HTTP referrer only, (3) API key restriction does not include Maps Static API.');
+      console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
       throw new Error('Google returned map error tile. Usually: billing not enabled on GCP project, or key restrictions block server (use None or IP), or Maps Static API not in key’s allowed APIs. See g.co/staticmaperror.');
+    }
+    if (tripSummary) {
+      return { imageBuffer: buffer, tripSummary };
     }
     return buffer;
   } catch (error) {
     debugError('❌ Error downloading Google Maps static image:', error);
+    if (url) console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
     if (error.response) {
       let errorMessage = error.response.data;
       if (Buffer.isBuffer(errorMessage)) {
@@ -427,20 +547,24 @@ async function downloadStaticMapImage(addressesOrPoints, options = {}) {
     const warning = response.headers && response.headers['x-staticmap-api-warning'];
     if (warning) {
       debugError('❌ Google Maps API warning (do not embed):', warning);
+      console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
       throw new Error(`Map image failed (g.co/staticmaperror). ${warning}`);
     }
     const buffer = Buffer.from(response.data);
     if (buffer.length < 500) {
       debugError('❌ Google Maps returned very small image (likely error image)');
+      console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
       throw new Error('Map image failed (g.co/staticmaperror). Check API key and that Static Maps API is enabled.');
     }
     if (isStaticMapErrorImage(buffer)) {
       debugError('❌ Google Maps returned 200 OK but body is the 100x100 error tile (staticmaperror). Common causes: (1) Billing not enabled on the GCP project, (2) API key has application restriction that blocks server requests e.g. HTTP referrer only, (3) API key restriction does not include Maps Static API.');
+      console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
       throw new Error('Google returned map error tile. Usually: billing not enabled on GCP project, or key restrictions block server (use None or IP), or Maps Static API not in key’s allowed APIs. See g.co/staticmaperror.');
     }
     return buffer;
   } catch (error) {
     debugError('❌ Error downloading Google Maps static image:', error);
+    if (url) console.error('Static Map request (key redacted):', redactStaticMapUrl(url));
     if (error.response) {
       let errorMessage = error.response.data;
       if (Buffer.isBuffer(errorMessage)) {
