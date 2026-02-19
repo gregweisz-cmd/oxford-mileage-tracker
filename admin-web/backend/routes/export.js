@@ -82,16 +82,38 @@ function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) 
   return displayName ? `${displayName} (${abbr})` : abbr;
 }
 
-// Extract 2-letter state from an address string (e.g. ", NC 28166" or "Troutman, NC").
+// US state name -> 2-letter code for same-state checks (partial map of common ones).
+const STATE_NAME_TO_CODE = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+  'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+  'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+  'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH',
+  'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC',
+  'north dakota': 'ND', 'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA',
+  'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', 'tennessee': 'TN',
+  'texas': 'TX', 'utah': 'UT', 'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA',
+  'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY', 'district of columbia': 'DC'
+};
+
+// Extract 2-letter state from an address string (e.g. ", NC 28166", "Troutman, NC", or ", North Carolina 27529").
 function parseStateFromAddress(addr) {
   if (!addr || typeof addr !== 'string') return '';
-  const m = addr.match(/, ([A-Z]{2})(?:\s+\d{5}|$|,)/i);
-  return m ? m[1].toUpperCase() : '';
+  const twoLetter = addr.match(/, ([A-Z]{2})(?:\s+\d{5}|$|,)/i);
+  if (twoLetter) return twoLetter[1].toUpperCase();
+  const withZip = addr.match(/, ([\w\s]+)\s+(\d{5}(-\d{4})?)\s*$/);
+  if (withZip) {
+    const name = withZip[1].trim().toLowerCase();
+    if (STATE_NAME_TO_CODE[name]) return STATE_NAME_TO_CODE[name];
+  }
+  return '';
 }
 
-// Prefer the fullest address for geocoding so "109 Albright Ave" doesn't resolve to the wrong state.
-// If startLocation/endLocation has "Name (Street, City, ST Zip)" use the part in parens; else use *LocationAddress.
-// When baseAddress is provided, if the parenthetical address is in a different state than base, prefer the raw *LocationAddress to avoid wrong-state data (e.g. "Barn" trip using a WV address).
+// Use the address from the entry for map geocoding. Prefer the parenthetical "Street, City, State Zip"
+// from startLocation/endLocation (what the user typed) so we never use the location name as city/state.
+// Only use *LocationAddress when there is no such parenthetical; if that value is in a different state
+// than the employee base, use the full loc string so the maps service can extract address from "Name (Address)" if present.
 function getBestAddressForGeocoding(entry, side, baseAddress) {
   const rawAddr = side === 'start' ? (entry.startLocationAddress || entry.startLocation || '') : (entry.endLocationAddress || entry.endLocation || '');
   const loc = side === 'start' ? (entry.startLocation || '') : (entry.endLocation || '');
@@ -109,7 +131,15 @@ function getBestAddressForGeocoding(entry, side, baseAddress) {
       return part;
     }
   }
-  return (rawAddr || '').trim();
+  const trimmedRaw = (rawAddr || '').trim();
+  if (baseAddress && trimmedRaw) {
+    const baseState = parseStateFromAddress(baseAddress);
+    const rawState = parseStateFromAddress(trimmedRaw);
+    if (baseState && rawState && baseState !== rawState) {
+      return (loc || trimmedRaw).trim();
+    }
+  }
+  return trimmedRaw;
 }
 
 // Export data to Excel
