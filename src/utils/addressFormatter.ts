@@ -5,6 +5,18 @@ export interface AddressParts {
   zipCode?: string;
 }
 
+/** Location details from Oxford House / saved address may have address, city, state, zipCode. Returns full one-line address for storage/API. */
+export const getFullLocationAddress = (details: { address?: string; city?: string; state?: string; zipCode?: string } | null | undefined): string => {
+  if (!details) return '';
+  const full = formatAddressParts({
+    street: details.address,
+    city: details.city,
+    state: details.state,
+    zipCode: details.zipCode,
+  });
+  return full || (details.address ?? '').trim();
+};
+
 export const formatAddressParts = ({ street, city, state, zipCode }: AddressParts): string => {
   const line1 = street?.trim() || '';
   const line2Parts = [city?.trim(), state?.trim()].filter(Boolean);

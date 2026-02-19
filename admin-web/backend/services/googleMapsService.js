@@ -73,13 +73,19 @@ function addressOnlyForGeocoding(str) {
 /**
  * Resolve an address to lat/lng via Geocoding API. Returns { lat, lng } or null on failure.
  * Biases results to the US (region=us) to avoid wrong-country matches (e.g. same city name abroad).
+ * @param {string} address - Address to geocode
+ * @param {Object} options - Optional: { biasLatLng: { lat, lng } } to bias results near a point (e.g. employee base)
  */
-async function geocodeToLatLng(address) {
+async function geocodeToLatLng(address, options = {}) {
   if (!isConfigured() || !address || typeof address !== 'string') return null;
   const cleaned = addressOnlyForGeocoding(address) || address.trim();
   if (cleaned.length < 3) return null;
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleaned)}&region=us&components=country:US&key=${GOOGLE_MAPS_API_KEY}`;
+    let url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleaned)}&region=us&components=country:US&key=${GOOGLE_MAPS_API_KEY}`;
+    const bias = options.biasLatLng;
+    if (bias && typeof bias.lat === 'number' && typeof bias.lng === 'number') {
+      url += `&location=${bias.lat},${bias.lng}&radius=100000`;
+    }
     const response = await axios.get(url, { timeout: 8000 });
     const data = response.data;
     if (data.status !== 'OK' || !data.results || data.results.length === 0) return null;
@@ -498,7 +504,9 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
   let url;
   let tripSummary = null;
   const singleRoute = routes.length === 1 && routes[0].length >= 2;
-  if (singleRoute) {
+  const hasAddressOnly = (p) => p && p.address && !isValidLatLng(p.lat, p.lng);
+  const needBiasResolve = singleRoute && options.biasLatLng && (hasAddressOnly(routes[0][0]) || hasAddressOnly(routes[0][1]));
+  if (singleRoute && !needBiasResolve) {
     const origin = routes[0][0];
     const destination = routes[0][1];
     const result = await getDirectionsResult(origin, destination);
@@ -524,7 +532,7 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
         if (p.lat != null && p.lng != null && isValidLatLng(p.lat, p.lng)) {
           resolved.push({ lat: p.lat, lng: p.lng });
         } else if (p.address) {
-          const coords = await geocodeToLatLng(p.address);
+          const coords = await geocodeToLatLng(p.address, { biasLatLng: options.biasLatLng });
           if (coords) resolved.push(coords);
         }
       }
@@ -667,6 +675,7 @@ function imageBufferToDataUrl(imageBuffer, mimeType = 'image/png') {
 
 module.exports = {
   isConfigured,
+  geocodeToLatLng,
   isValidLocationString,
   isValidLatLng,
   collectPointsForDay,

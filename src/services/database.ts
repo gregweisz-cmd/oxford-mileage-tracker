@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription, CostCenterSummary } from '../types';
 import { MileageAnalysisService } from './mileageAnalysisService';
 import { ApiSyncService } from './apiSyncService';
+import { getFullLocationAddress } from '../utils/addressFormatter';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 // Removed SyncIntegrationService import to break circular dependency
 
@@ -974,11 +975,11 @@ export class DatabaseService {
         entry.startLocation, 
         entry.endLocation,
         entry.startLocationDetails?.name || null,
-        entry.startLocationDetails?.address || null,
+        getFullLocationAddress(entry.startLocationDetails) || entry.startLocationDetails?.address || null,
         entry.startLocationDetails?.latitude || null,
         entry.startLocationDetails?.longitude || null,
         entry.endLocationDetails?.name || null,
-        entry.endLocationDetails?.address || null,
+        getFullLocationAddress(entry.endLocationDetails) || entry.endLocationDetails?.address || null,
         entry.endLocationDetails?.latitude || null,
         entry.endLocationDetails?.longitude || null,
         entry.purpose, 
@@ -1112,12 +1113,12 @@ export class DatabaseService {
       return value;
     });
     
-    // Handle location details separately if they exist
+    // Handle location details separately if they exist (store full address for geocoding/maps)
     if (updates.startLocationDetails) {
       simpleFields.push('startLocationName', 'startLocationAddress', 'startLocationLat', 'startLocationLng');
       values.push(
         updates.startLocationDetails.name || undefined,
-        updates.startLocationDetails.address || undefined,
+        getFullLocationAddress(updates.startLocationDetails) || updates.startLocationDetails.address || undefined,
         updates.startLocationDetails.latitude ?? undefined,
         updates.startLocationDetails.longitude ?? undefined
       );
@@ -1127,7 +1128,7 @@ export class DatabaseService {
       simpleFields.push('endLocationName', 'endLocationAddress', 'endLocationLat', 'endLocationLng');
       values.push(
         updates.endLocationDetails.name || undefined,
-        updates.endLocationDetails.address || undefined,
+        getFullLocationAddress(updates.endLocationDetails) || updates.endLocationDetails.address || undefined,
         updates.endLocationDetails.latitude ?? undefined,
         updates.endLocationDetails.longitude ?? undefined
       );

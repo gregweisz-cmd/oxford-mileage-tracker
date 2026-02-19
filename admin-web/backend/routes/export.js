@@ -66,6 +66,19 @@ function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) 
   return displayName ? `${displayName} (${abbr})` : abbr;
 }
 
+// Prefer the fullest address for geocoding so "109 Albright Ave" doesn't resolve to the wrong state.
+// If startLocation/endLocation has "Name (Street, City, ST Zip)" use the part in parens; else use *LocationAddress.
+function getBestAddressForGeocoding(entry, side) {
+  const loc = side === 'start' ? (entry.startLocation || '') : (entry.endLocation || '');
+  const match = (loc || '').trim().match(/\(([^)]+)\)$/);
+  if (match) {
+    const part = match[1].trim();
+    if (/\d{5}(-\d{4})?/.test(part) || /, [A-Z]{2}\s*\d/.test(part) || /, [A-Z]{2}$/.test(part)) return part;
+  }
+  const addr = side === 'start' ? (entry.startLocationAddress || entry.startLocation || '') : (entry.endLocationAddress || entry.endLocation || '');
+  return (addr || '').trim();
+}
+
 // Export data to Excel
 router.get('/api/export/excel', (req, res) => {
   const db = dbService.getDb();
@@ -2510,20 +2523,26 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     
                     debugLog(`🗺️ Grouped ${mileageEntries.length} entries into ${Object.keys(entriesByDate).length} days`);
                     
-                    // Generate one map per route; substitute base address for "BA" so geocoding succeeds
+                    // Generate one map per route; use fullest address for geocoding and substitute BA with base address
+                    let biasLatLng = null;
+                    if (baseAddress) {
+                      biasLatLng = await googleMapsService.geocodeToLatLng(baseAddress);
+                    }
                     const sortedDates = Object.keys(entriesByDate).sort();
                     for (const date of sortedDates) {
                       const dayEntries = (entriesByDate[date] || []).map(entry => {
                         const copy = { ...entry };
-                        const startAddr = (entry.startLocationAddress || entry.startLocation || '').trim();
-                        const endAddr = (entry.endLocationAddress || entry.endLocation || '').trim();
+                        let startAddr = getBestAddressForGeocoding(entry, 'start');
+                        let endAddr = getBestAddressForGeocoding(entry, 'end');
                         if (getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
                           copy.startLocationAddress = baseAddress || startAddr;
-                          // Keep existing lat/lng if valid so map generation can skip geocoding
+                        } else {
+                          copy.startLocationAddress = startAddr || (entry.startLocationAddress || entry.startLocation || '').trim();
                         }
                         if (getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
                           copy.endLocationAddress = baseAddress || endAddr;
-                          // Keep existing lat/lng if valid so map generation can skip geocoding
+                        } else {
+                          copy.endLocationAddress = endAddr || (entry.endLocationAddress || entry.endLocation || '').trim();
                         }
                         return copy;
                       });
@@ -2535,8 +2554,14 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       for (let tripIndex = 0; tripIndex < dayRoutes.length; tripIndex++) {
                         const singleRoute = [dayRoutes[tripIndex]];
                         const tripNum = tripIndex + 1;
+                        const entry = dayEntries[tripIndex];
+                        const tripStartAddr = entry.startLocationAddress || '';
+                        const tripEndAddr = entry.endLocationAddress || '';
+                        const formattedStart = formatLocationNameAndAddress(entry.startLocationName, tripStartAddr, baseAddress, baseAddress2);
+                        const formattedEnd = formatLocationNameAndAddress(entry.endLocationName, tripEndAddr, baseAddress, baseAddress2);
+                        const tripLabel = [formattedStart, formattedEnd].filter(Boolean).join(' → ');
                         try {
-                          const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400' });
+                          const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400', biasLatLng });
                           const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
                           const tripSummary = Buffer.isBuffer(mapResult) ? null : mapResult.tripSummary;
                           const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
@@ -2545,7 +2570,15 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           doc.setFontSize(14);
                           doc.setFont('helvetica', 'bold');
                           safeText(`Daily Routes - ${date} - Trip ${tripNum}`, pageWidth / 2, yPos, { align: 'center' });
-                          yPos += 30;
+                          yPos += 10;
+                          if (tripLabel) {
+                            doc.setFontSize(9);
+                            doc.setFont('helvetica', 'normal');
+                            safeText(`Trip: ${tripLabel}`, margin, yPos, { maxWidth: pageWidth - margin * 2 });
+                            yPos += 14;
+                          }
+                          yPos += 16;
+                          doc.setFont('helvetica', 'bold');
                           const imageWidth = pageWidth - (margin * 2);
                           const imageHeight = (imageWidth * 400) / 600;
                           doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);

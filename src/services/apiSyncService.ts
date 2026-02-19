@@ -2,6 +2,7 @@ import { Platform, Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
+import { getFullLocationAddress } from '../utils/addressFormatter';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 // API Configuration
 // Use central config so mobile uses the same base URL (local IP) as the app
@@ -610,11 +611,11 @@ export class ApiSyncService {
             startLocation: entry.startLocation || '',
             endLocation: entry.endLocation || '',
             startLocationName: startLocationName,
-            startLocationAddress: entry.startLocationDetails?.address || startLocationName || entry.startLocation || '',
+            startLocationAddress: getFullLocationAddress(entry.startLocationDetails) || entry.startLocationDetails?.address || startLocationName || entry.startLocation || '',
             startLocationLat: entry.startLocationDetails?.latitude || 0,
             startLocationLng: entry.startLocationDetails?.longitude || 0,
             endLocationName: endLocationName,
-            endLocationAddress: entry.endLocationDetails?.address || endLocationName || entry.endLocation || '',
+            endLocationAddress: getFullLocationAddress(entry.endLocationDetails) || entry.endLocationDetails?.address || endLocationName || entry.endLocation || '',
             endLocationLat: entry.endLocationDetails?.latitude || 0,
             endLocationLng: entry.endLocationDetails?.longitude || 0,
             purpose: entry.purpose || '',
