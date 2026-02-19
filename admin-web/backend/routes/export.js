@@ -27,6 +27,22 @@ function getBaseAddressLabel(addr, baseAddress, baseAddress2) {
   if (baseAddress2 && (addrPart === (baseAddress2 || '').toLowerCase().trim() || extract(baseAddress2) === addrPart)) return 'BA2';
   return null;
 }
+
+// Only treat as BA for map substitution when the user explicitly chose BA (name/label), not when the stored address merely equals base.
+// Avoids "Jessie's house" → BA map when the address field was wrongly set to the base address.
+function isExplicitlyBaseAddress(entry, side, baseAddress, baseAddress2) {
+  const name = side === 'start' ? (entry.startLocationName || '') : (entry.endLocationName || '');
+  const display = side === 'start' ? (entry.startLocation || '') : (entry.endLocation || '');
+  const addr = side === 'start' ? (entry.startLocationAddress || '') : (entry.endLocationAddress || '');
+  const n = (name || '').toLowerCase().trim();
+  const d = (display || '').toLowerCase().trim();
+  const a = (addr || '').toLowerCase().trim();
+  if (n === 'ba' || n === 'base address' || n === 'base' || n === 'home base') return true;
+  if (d === 'ba' || d === 'base address' || d === 'base' || d === 'home base') return true;
+  if (a === 'ba' || a === 'base address' || a === 'base' || a === 'home base') return true;
+  if (/^\s*ba\s*$/i.test(d) || /^\s*ba\s*$/i.test(n)) return true;
+  return false;
+}
 // US state full name → 2-letter abbreviation (for shortening cost center descriptions)
 const STATE_ABBR = {
   alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO',
@@ -66,17 +82,34 @@ function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) 
   return displayName ? `${displayName} (${abbr})` : abbr;
 }
 
+// Extract 2-letter state from an address string (e.g. ", NC 28166" or "Troutman, NC").
+function parseStateFromAddress(addr) {
+  if (!addr || typeof addr !== 'string') return '';
+  const m = addr.match(/, ([A-Z]{2})(?:\s+\d{5}|$|,)/i);
+  return m ? m[1].toUpperCase() : '';
+}
+
 // Prefer the fullest address for geocoding so "109 Albright Ave" doesn't resolve to the wrong state.
 // If startLocation/endLocation has "Name (Street, City, ST Zip)" use the part in parens; else use *LocationAddress.
-function getBestAddressForGeocoding(entry, side) {
+// When baseAddress is provided, if the parenthetical address is in a different state than base, prefer the raw *LocationAddress to avoid wrong-state data (e.g. "Barn" trip using a WV address).
+function getBestAddressForGeocoding(entry, side, baseAddress) {
+  const rawAddr = side === 'start' ? (entry.startLocationAddress || entry.startLocation || '') : (entry.endLocationAddress || entry.endLocation || '');
   const loc = side === 'start' ? (entry.startLocation || '') : (entry.endLocation || '');
   const match = (loc || '').trim().match(/\(([^)]+)\)$/);
   if (match) {
     const part = match[1].trim();
-    if (/\d{5}(-\d{4})?/.test(part) || /, [A-Z]{2}\s*\d/.test(part) || /, [A-Z]{2}$/.test(part)) return part;
+    if (/\d{5}(-\d{4})?/.test(part) || /, [A-Z]{2}\s*\d/.test(part) || /, [A-Z]{2}$/.test(part)) {
+      if (baseAddress && rawAddr.trim()) {
+        const baseState = parseStateFromAddress(baseAddress);
+        const partState = parseStateFromAddress(part);
+        if (baseState && partState && baseState !== partState) {
+          return (rawAddr || '').trim();
+        }
+      }
+      return part;
+    }
   }
-  const addr = side === 'start' ? (entry.startLocationAddress || entry.startLocation || '') : (entry.endLocationAddress || entry.endLocation || '');
-  return (addr || '').trim();
+  return (rawAddr || '').trim();
 }
 
 // Export data to Excel
@@ -1286,10 +1319,29 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           ORDER BY date, costCenter
         `;
         
-        db.all(detailedTimeQuery, [reportData.employeeId, monthStr, yearStr], (err, timeEntries) => {
+        db.all(detailedTimeQuery, [reportData.employeeId, monthStr, yearStr], async (err, timeEntries) => {
           if (err) {
             debugError('❌ Error fetching detailed time tracking data:', err);
             timeEntries = [];
+          }
+
+          // Load current receipt imageUri from DB so PDF has images even if report snapshot had none or stale paths
+          const receiptStartDate = `${yearStr}-${monthStr}-01`;
+          const lastDay = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10), 0).getDate();
+          const receiptEndDate = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+          let dbReceiptsById = new Map();
+          try {
+            const dbReceipts = await new Promise((resolve, reject) => {
+              db.all(
+                'SELECT id, imageUri FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ?',
+                [reportData.employeeId, receiptStartDate, receiptEndDate],
+                (e, rows) => (e ? reject(e) : resolve(rows || []))
+              );
+            });
+            dbReceiptsById = new Map((dbReceipts || []).map((r) => [r.id, r]));
+            debugLog(`📄 Loaded ${dbReceiptsById.size} receipt(s) from DB for report month`);
+          } catch (e) {
+            debugError('❌ Error loading receipts from DB for PDF:', e);
           }
           
           // Build data structure: costCenterDailyMap[costCenter][day] = hours
@@ -1571,10 +1623,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             return 6 + (lines.length * 6) + 6;
           };
           
-          // Data rows
+          // Data rows (use DB imageUri when snapshot has none so downloaded report includes receipt images)
           debugLog(`📄 Starting receipts section: yPos=${yPos}, receipts count=${reportData.receipts?.length || 0}`);
           reportData.receipts.forEach((receipt, idx) => {
-            const rawUri = receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri;
+            const dbRec = receipt.id ? dbReceiptsById.get(receipt.id) : null;
+            const rawUri = receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri || (dbRec && dbRec.imageUri) || '';
             if (rawUri) {
               const uriType = typeof rawUri === 'string' && rawUri.startsWith('data:application/pdf') ? 'PDF data URL' : typeof rawUri === 'string' && rawUri.startsWith('data:image/') ? 'image data URL' : 'path';
               debugLog(`📄 Receipt ${idx + 1} (id=${receipt.id}): imageUri type=${uriType}, length=${String(rawUri).length}`);
@@ -1611,10 +1664,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             
             yPos += maxRowHeight;
 
-            // Collect receipt images to render after the table
-            if (receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri) {
+            // Collect receipt images to render after the table (rawUri may be from DB when snapshot had none)
+            if (rawUri) {
               try {
-                const imagePath = receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri;
+                const imagePath = rawUri;
                 const fs = require('fs');
                 const path = require('path');
                 
@@ -1667,10 +1720,24 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       path.join(uploadsDir, path.basename(cleanPath)),
                       path.join(__dirname, '..', 'receipts', cleanPath)
                     ];
-                    debugLog(`⚠️ Receipt image not found for receipt ${idx + 1} (deferring):`);
+                    debugLog(`⚠️ Receipt image not found for receipt ${idx + 1}:`);
                     debugLog(`   Original path: ${imagePath}`);
                     debugLog(`   Cleaned path: ${cleanPath}`);
                     debugLog(`   Tried paths: ${triedPaths.join(', ')}`);
+                    // Fallback: if DB has a data-URL image for this receipt, use it so the PDF still gets the image
+                    const fallbackUri = dbRec && dbRec.imageUri && typeof dbRec.imageUri === 'string' ? dbRec.imageUri : null;
+                    if (fallbackUri && fallbackUri.startsWith('data:image/')) {
+                      const base64Data = fallbackUri.split(',')[1];
+                      if (base64Data) {
+                        const format = fallbackUri.includes('png') ? 'PNG' : 'JPEG';
+                        imagesToAdd.push({ type: 'base64', data: base64Data, format });
+                        debugLog(`   Using DB imageUri (data URL) for receipt ${idx + 1}`);
+                      }
+                    } else if (fallbackUri && fallbackUri.startsWith('data:application/pdf')) {
+                      const base64Data = fallbackUri.split(',')[1];
+                      if (base64Data) pdfsToEmbed.push({ type: 'base64', data: base64Data });
+                      debugLog(`   Using DB imageUri (PDF data URL) for receipt ${idx + 1}`);
+                    }
                   }
                 }
               } catch (imageError) {
@@ -2532,14 +2599,16 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     for (const date of sortedDates) {
                       const dayEntries = (entriesByDate[date] || []).map(entry => {
                         const copy = { ...entry };
-                        let startAddr = getBestAddressForGeocoding(entry, 'start');
-                        let endAddr = getBestAddressForGeocoding(entry, 'end');
-                        if (getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
+                        let startAddr = getBestAddressForGeocoding(entry, 'start', baseAddress);
+                        let endAddr = getBestAddressForGeocoding(entry, 'end', baseAddress);
+                        const startIsExplicitBA = isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
+                        const endIsExplicitBA = isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
+                        if (startIsExplicitBA && getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
                           copy.startLocationAddress = baseAddress || startAddr;
                         } else {
                           copy.startLocationAddress = startAddr || (entry.startLocationAddress || entry.startLocation || '').trim();
                         }
-                        if (getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
+                        if (endIsExplicitBA && getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
                           copy.endLocationAddress = baseAddress || endAddr;
                         } else {
                           copy.endLocationAddress = endAddr || (entry.endLocationAddress || entry.endLocation || '').trim();

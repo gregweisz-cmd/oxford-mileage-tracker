@@ -312,6 +312,31 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
     });
   }, [RECENT_STORAGE_KEY]);
 
+  /** True if the string looks like a name/label only (no full address with city, state, zip). */
+  const looksLikeNameOnly = (s: string) => {
+    const t = (s || '').trim();
+    if (!t) return true;
+    if (!t.includes(',')) return true;
+    if (!/\d{5}(-\d{4})?/.test(t) && !/, [A-Z]{2}\s*\d/.test(t)) return true;
+    return false;
+  };
+
+  /** Try to resolve a frequent name/address to a full address from Oxford Houses. */
+  const resolveFrequentToFullAddress = (name: string, address: string): { address: string; name: string } | null => {
+    const search = (name || address || '').trim();
+    if (!search || !oxfordHouses.length) return null;
+    const lower = search.toLowerCase();
+    const match = oxfordHouses.find(
+      (h) =>
+        h.name.toLowerCase() === lower ||
+        h.name.toLowerCase().includes(lower) ||
+        lower.includes(h.name.toLowerCase())
+    );
+    if (!match) return null;
+    const fullAddress = `${match.address}, ${match.city}, ${match.state} ${match.zip}`.trim();
+    return { address: fullAddress, name: match.name };
+  };
+
   const handleSelectAddress = (address: string, locationData?: any) => {
     addToRecent(address, locationData?.name);
     onSelectAddress(address, locationData);
@@ -421,13 +446,26 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
               {frequentAddresses.map((frequent) => (
                 <ListItem key={frequent.id} disablePadding>
                   <ListItemButton
-                    onClick={() =>
-                      handleSelectAddress(frequent.address, {
-                        name: frequent.name,
+                    onClick={() => {
+                      const address = frequent.address;
+                      const name = frequent.name;
+                      if (looksLikeNameOnly(address)) {
+                        const resolved = resolveFrequentToFullAddress(name, address);
+                        if (resolved) {
+                          handleSelectAddress(resolved.address, {
+                            name: resolved.name,
+                            latitude: frequent.latitude,
+                            longitude: frequent.longitude,
+                          });
+                          return;
+                        }
+                      }
+                      handleSelectAddress(address, {
+                        name,
                         latitude: frequent.latitude,
                         longitude: frequent.longitude,
-                      })
-                    }
+                      });
+                    }}
                   >
                     <ListItemText primary={frequent.name} secondary={frequent.address} />
                   </ListItemButton>

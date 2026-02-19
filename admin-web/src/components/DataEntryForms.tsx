@@ -585,9 +585,11 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                         setReturnToBA(checked);
                         if (checked) {
                           const baseAddr = employee.baseAddress || '';
-                          setFormData(prev => ({ ...prev, endLocation: baseAddr }));
+                          setFormData(prev => ({ ...prev, endLocation: baseAddr, purpose: 'Return to base' }));
                           setEndAddressParts(parseAddressToParts(baseAddr));
                           setErrors(prev => ({ ...prev, purpose: '', endLocation: '' }));
+                        } else {
+                          setFormData(prev => ({ ...prev, purpose: prev.purpose === 'Return to base' ? '' : prev.purpose }));
                         }
                       }}
                       color="primary"
@@ -610,16 +612,17 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
             {/* Purpose – dropdown matching mobile app (travel reasons) */}
             <Box sx={{ width: '100%' }}>
               <FormControl fullWidth error={!!errors.purpose} disabled={returnToBA}>
-                <InputLabel>Purpose</InputLabel>
+                <InputLabel id="purpose-label">Purpose</InputLabel>
                 <Select
+                  labelId="purpose-label"
                   value={formData.purpose}
                   onChange={(e) => handleInputChange('purpose', e.target.value)}
                   label="Purpose"
                   displayEmpty
-                  renderValue={(v) => v || (returnToBA ? 'Return to base (optional)' : '')}
+                  renderValue={(v) => v || ''}
                 >
                   <MenuItem value="">
-                    <em>{returnToBA ? 'Return to base (optional)' : 'Select purpose...'}</em>
+                    <em>{returnToBA ? 'Return to base' : 'Select purpose...'}</em>
                   </MenuItem>
                   {travelReasons.map((r) => (
                     <MenuItem key={r.id} value={r.label}>
