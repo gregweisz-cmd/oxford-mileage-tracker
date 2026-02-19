@@ -2626,9 +2626,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                         const entry = dayEntries[tripIndex];
                         const tripStartAddr = entry.startLocationAddress || '';
                         const tripEndAddr = entry.endLocationAddress || '';
-                        const formattedStart = formatLocationNameAndAddress(entry.startLocationName, tripStartAddr, baseAddress, baseAddress2);
-                        const formattedEnd = formatLocationNameAndAddress(entry.endLocationName, tripEndAddr, baseAddress, baseAddress2);
-                        const tripLabel = [formattedStart, formattedEnd].filter(Boolean).join(' → ');
+                        // Trip label: full addresses only (no location names) so map caption matches what was used for the route
+                        const startLabel = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripStartAddr);
+                        const endLabel = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripEndAddr);
+                        const tripLabel = [startLabel, endLabel].filter(Boolean).join(' → ');
                         try {
                           const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400', biasLatLng });
                           const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
