@@ -322,8 +322,10 @@ debugLog('🚀 Starting server initialization...');
 debugLog(`📊 Database path: ${DB_PATH}`);
 if (process.env.DATABASE_PATH) {
   debugLog('💾 Persistent disk: database will persist across redeploys (DATABASE_PATH is set)');
+} else if (process.env.NODE_ENV === 'production') {
+  debugWarn('⚠️ DATABASE_PATH is not set. Using ephemeral path (e.g. /tmp). Data will NOT persist across redeploys. For persistence, set DATABASE_PATH=/data/expense_tracker.db and add a persistent disk on Render.');
 } else {
-  debugWarn('⚠️ DATABASE_PATH is not set. Database is using default path (ephemeral). Data will NOT persist across redeploys. Set DATABASE_PATH=/data/expense_tracker.db and add a persistent disk on Render (see docs/RENDER_PERSISTENT_DISK_CHECKLIST.md).');
+  debugWarn('⚠️ DATABASE_PATH is not set. Database is using default path (ephemeral).');
 }
 debugLog(`📁 Uploads directory: ${uploadsDir}`);
 if (process.env.UPLOAD_DIR) {

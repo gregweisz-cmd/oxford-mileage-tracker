@@ -6,11 +6,20 @@
 
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const os = require('os');
 const { debugLog, debugError, debugWarn } = require('../debug');
 const constants = require('../utils/constants');
 
-// Database path: use DATABASE_PATH on Render persistent disk, else default next to backend
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'expense_tracker.db');
+// Database path: use DATABASE_PATH when set (e.g. Render persistent disk). In production without
+// DATABASE_PATH (e.g. Render free tier), use /tmp so the app can start (ephemeral). Otherwise default next to backend.
+function getDatabasePath() {
+  if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
+  if (process.env.NODE_ENV === 'production') {
+    return path.join(os.tmpdir(), 'expense_tracker.db');
+  }
+  return path.join(__dirname, '..', 'expense_tracker.db');
+}
+const DB_PATH = getDatabasePath();
 
 // Database connection (will be initialized)
 let db = null;

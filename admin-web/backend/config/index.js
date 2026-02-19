@@ -5,6 +5,7 @@
  */
 
 const path = require('path');
+const os = require('os');
 require('dotenv').config();
 
 /**
@@ -19,12 +20,16 @@ const SERVER_CONFIG = {
 
 /**
  * Database Configuration
+ * In production without DATABASE_PATH (e.g. Render free tier), use tmp so the app can start.
  */
+function getDatabasePath() {
+  if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
+  if (process.env.NODE_ENV === 'production') return path.join(os.tmpdir(), 'expense_tracker.db');
+  return path.join(__dirname, '..', 'expense_tracker.db');
+}
 const DATABASE_CONFIG = {
-  path: process.env.DATABASE_PATH || path.join(__dirname, '..', 'expense_tracker.db'),
-  connection: {
-    // SQLite specific options can go here if needed
-  }
+  path: getDatabasePath(),
+  connection: {}
 };
 
 /**
@@ -72,9 +77,10 @@ const CORS_CONFIG = {
 /**
  * File Upload Configuration
  * Set UPLOAD_DIR (e.g. /data/uploads) to persist uploads on a Render persistent disk.
+ * In production without UPLOAD_DIR, use tmp so uploads work (ephemeral).
  */
 const UPLOAD_CONFIG = {
-  directory: process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads'),
+  directory: process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' ? path.join(os.tmpdir(), 'uploads') : path.join(__dirname, '..', 'uploads')),
   maxFileSize: '50mb', // For JSON payloads with base64 images
   allowedMimeTypes: [
     'image/jpeg',
