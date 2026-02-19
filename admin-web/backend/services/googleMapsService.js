@@ -79,7 +79,7 @@ async function geocodeToLatLng(address) {
   const cleaned = addressOnlyForGeocoding(address) || address.trim();
   if (cleaned.length < 3) return null;
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleaned)}&region=us&key=${GOOGLE_MAPS_API_KEY}`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleaned)}&region=us&components=country:US&key=${GOOGLE_MAPS_API_KEY}`;
     const response = await axios.get(url, { timeout: 8000 });
     const data = response.data;
     if (data.status !== 'OK' || !data.results || data.results.length === 0) return null;

@@ -27,6 +27,34 @@ function getBaseAddressLabel(addr, baseAddress, baseAddress2) {
   if (baseAddress2 && (addrPart === (baseAddress2 || '').toLowerCase().trim() || extract(baseAddress2) === addrPart)) return 'BA2';
   return null;
 }
+// US state full name → 2-letter abbreviation (for shortening cost center descriptions)
+const STATE_ABBR = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO',
+  connecticut: 'CT', delaware: 'DE', 'district of columbia': 'DC', florida: 'FL', georgia: 'GA',
+  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS',
+  kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA',
+  michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT',
+  nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM',
+  'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK',
+  oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD',
+  tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA',
+  'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY'
+};
+function abbreviateForDisplay(addr) {
+  let s = addr
+    .replace(/\bRoad\b/gi, 'Rd').replace(/\bStreet\b/gi, 'St').replace(/\bAvenue\b/gi, 'Ave')
+    .replace(/\bLane\b/gi, 'Ln').replace(/\bDrive\b/gi, 'Dr').replace(/\bBoulevard\b/gi, 'Blvd')
+    .replace(/\bCourt\b/gi, 'Ct').replace(/\bCircle\b/gi, 'Cir').replace(/\bPlace\b/gi, 'Pl')
+    .replace(/\bHighway\b/gi, 'Hwy').replace(/\bParkway\b/gi, 'Pkwy').replace(/\bWay\b/gi, 'Way')
+    .replace(/\bTerrace\b/gi, 'Ter').replace(/\bTrail\b/gi, 'Trl').replace(/\bSquare\b/gi, 'Sq')
+    .replace(/\bBuilding\b/gi, 'Bldg').replace(/\bSuite\b/gi, 'Ste').replace(/\bApartment\b/gi, 'Apt');
+  // State: replace "North Carolina" etc. with "NC" (match case-insensitive, preserve trailing comma/space)
+  Object.keys(STATE_ABBR).sort((a, b) => b.length - a.length).forEach(full => {
+    const re = new RegExp(`\\b${full.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+    s = s.replace(re, STATE_ABBR[full]);
+  });
+  return s.trim();
+}
 function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) {
   const addr = (address || '').trim();
   const displayName = (name || '').trim();
@@ -34,7 +62,7 @@ function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) 
   const ba = getBaseAddressLabel(addr, baseAddress, baseAddress2);
   if (ba) return ba;
   if (displayName && addr.toLowerCase() === displayName.toLowerCase()) return displayName;
-  const abbr = addr.replace(/\bRoad\b/gi, 'Rd').replace(/\bStreet\b/gi, 'St').replace(/\bAvenue\b/gi, 'Ave').replace(/\bLane\b/gi, 'Ln').replace(/\bDrive\b/gi, 'Dr').trim();
+  const abbr = abbreviateForDisplay(addr);
   return displayName ? `${displayName} (${abbr})` : abbr;
 }
 
@@ -2491,13 +2519,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                         const endAddr = (entry.endLocationAddress || entry.endLocation || '').trim();
                         if (getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
                           copy.startLocationAddress = baseAddress || startAddr;
-                          copy.startLocationLat = null;
-                          copy.startLocationLng = null;
+                          // Keep existing lat/lng if valid so map generation can skip geocoding
                         }
                         if (getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
                           copy.endLocationAddress = baseAddress || endAddr;
-                          copy.endLocationLat = null;
-                          copy.endLocationLng = null;
+                          // Keep existing lat/lng if valid so map generation can skip geocoding
                         }
                         return copy;
                       });
@@ -2536,22 +2562,24 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           }
                           yPos += 8;
                         } catch (mapError) {
-                          const errMsg = (mapError && mapError.message) ? String(mapError.message) : '';
                           debugError(`❌ Error generating map for date ${date} trip ${tripNum}:`, mapError);
-                          // Fallback: show page with message and actual error so Finance can troubleshoot
                           doc.addPage();
                           yPos = margin + 20;
                           doc.setFontSize(14);
                           doc.setFont('helvetica', 'bold');
                           safeText(`Daily Routes - ${date} - Trip ${tripNum}`, pageWidth / 2, yPos, { align: 'center' });
                           yPos += 30;
-                          doc.setFontSize(10);
+                          const placeholderH = 120;
+                          doc.setDrawColor(200, 200, 200);
+                          doc.setLineWidth(0.5);
+                          doc.rect(margin, yPos, pageWidth - margin * 2, placeholderH);
+                          yPos += placeholderH / 2 - 8;
+                          doc.setFontSize(11);
                           doc.setFont('helvetica', 'normal');
-                          safeText('Map unavailable. PDF maps use Maps Static API (different from the Calculate button). Enable "Maps Static API" in Google Cloud and check billing (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
-                          if (errMsg && errMsg.length < 280 && !/AIza[A-Za-z0-9_-]{30,}/.test(errMsg)) {
-                            yPos += 24;
-                            safeText(`Details: ${errMsg}`, margin, yPos, { maxWidth: pageWidth - margin * 2 });
-                          }
+                          safeText('Map could not be generated for this trip.', pageWidth / 2, yPos, { align: 'center' });
+                          yPos += 14;
+                          safeText('Please add the route map manually.', pageWidth / 2, yPos, { align: 'center' });
+                          yPos += placeholderH / 2 - 6 + 8;
                         }
                       }
                     }
@@ -2587,22 +2615,24 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       yPos += imageHeight + 20;
                       debugLog(`✅ Map added to PDF for cost center ${costCenter}`);
                     } catch (mapError) {
-                      const errMsg = (mapError && mapError.message) ? String(mapError.message) : '';
                       debugError(`❌ Error generating map for cost center ${costCenter}:`, mapError);
-                      debugError(`❌ Map error details:`, mapError.message, mapError.stack);
                       doc.addPage();
                       yPos = margin + 20;
                       doc.setFontSize(14);
                       doc.setFont('helvetica', 'bold');
                       safeText(`Cost Center Routes - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
                       yPos += 30;
-                      doc.setFontSize(10);
+                      const placeholderH = 120;
+                      doc.setDrawColor(200, 200, 200);
+                      doc.setLineWidth(0.5);
+                      doc.rect(margin, yPos, pageWidth - margin * 2, placeholderH);
+                      yPos += placeholderH / 2 - 8;
+                      doc.setFontSize(11);
                       doc.setFont('helvetica', 'normal');
-                      safeText('Map unavailable. PDF maps use Maps Static API (different from the Calculate button). Enable "Maps Static API" in Google Cloud and check billing (g.co/staticmaperror).', margin, yPos, { maxWidth: pageWidth - margin * 2 });
-                      if (errMsg && errMsg.length < 280 && !/AIza[A-Za-z0-9_-]{30,}/.test(errMsg)) {
-                        yPos += 24;
-                        safeText(`Details: ${errMsg}`, margin, yPos, { maxWidth: pageWidth - margin * 2 });
-                      }
+                      safeText('Map could not be generated for this section.', pageWidth / 2, yPos, { align: 'center' });
+                      yPos += 14;
+                      safeText('Please add the route map(s) manually.', pageWidth / 2, yPos, { align: 'center' });
+                      yPos += placeholderH / 2 - 6 + 8;
                     }
                   } else {
                     debugLog(`⚠️ No map points found for cost center ${costCenter}`);

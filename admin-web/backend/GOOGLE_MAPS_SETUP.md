@@ -7,7 +7,7 @@ This document describes how to configure Google Maps APIs used by the app and we
 | Feature | API(s) | Purpose |
 |--------|--------|--------|
 | **Calculate miles** (web + app) | Geocoding API, Distance Matrix API | Turn addresses into coordinates and get driving distance |
-| **PDF route maps** (export) | **Maps Static API** | Generate map images for each trip in the report |
+| **PDF route maps** (export) | **Maps Static API**, **Directions API** (optional) | Static: map image; Directions: actual driven route (polyline). If Directions is not enabled, maps show a straight line between start/end. |
 
 They are **separate APIs**. If "Calculate" works, Geocoding and Distance Matrix are enabled. PDF maps will still show "Map unavailable" until **Maps Static API** is enabled in the same project (see below).
 
@@ -61,7 +61,7 @@ The Google Maps feature allows finance team members to view route maps in PDF ex
 3. Copy the generated API key
 4. (Recommended) Click **Restrict Key** to limit usage:
    - **Application restrictions**: None (backend server) or IP if you know Render’s IPs
-   - **API restrictions**: Restrict key → choose "Maps Static API" (for PDF maps). If you use **Calculate miles** on the web portal, also allow "Geocoding API" and "Distance Matrix API"
+   - **API restrictions**: Restrict key → choose "Maps Static API" (for PDF maps). For PDF maps to show the **driven route** (not just a straight line), also enable **Directions API**. If you use **Calculate miles** on the web portal, also allow "Geocoding API" and "Distance Matrix API"
 
 ### 4. Enable APIs for Web Portal "Calculate miles" (optional)
 

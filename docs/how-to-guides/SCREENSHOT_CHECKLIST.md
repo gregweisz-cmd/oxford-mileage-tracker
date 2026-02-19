@@ -2,7 +2,7 @@
 
 Checklist for capturing and saving screenshots used by the how-to PDFs. Use **exact filenames**; save paths are under each section.
 
-**Current focus:** Supervisor Portal (13) and Admin Portal (13) screenshots are not yet captured. Mobile and Staff Portal are complete.
+**Current focus:** Start with Mobile App (11), then Staff Portal (14), then Supervisor (13) and Admin (13). All screenshots cleared — capture fresh after app/portal updates.
 
 **Optional:** Use [TODAY_RUN_ORDER.md](TODAY_RUN_ORDER.md) as a run list if it exists (same screens in capture order).
 
@@ -13,39 +13,39 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 ## 1. Mobile App (11) — save to `images/screenshots/mobile-app/`
 
 - [ ] `app-store-download.png` — App/Play Store page (optional)
-- [x] `login-screen.png` — Login (logo + email/password)
-- [x] `home-screen.png` — Home overview
-- [x] `home-dashboard-full.png` — Full dashboard, all tiles (scroll to show all)
-- [x] `gps-tracking-screen.png` — GPS in progress (map + Stop)
-- [x] `manual-entry-screen.png` — Manual mileage entry form
-- [x] `receipt-capture-screen.png` — Add Receipt screen (or “Reading receipt image…” popup)
-- [x] `daily-hours-screen.png` — Daily Hours — **include “Go to today” in frame**
-- [x] `per-diem-screen.png` — Per Diem — **include “Go to today” in frame**
-- [x] `settings-screen.png` — Settings
-- [x] `saved-addresses-screen.png` — Saved addresses list
+- [ ] `login-screen.png` — Login (logo + email/password)
+- [ ] `home-screen.png` — Home overview
+- [ ] `home-dashboard-full.png` — Full dashboard, all tiles (scroll to show all)
+- [ ] `gps-tracking-screen.png` — GPS in progress (map + Stop)
+- [ ] `manual-entry-screen.png` — Manual mileage entry form
+- [ ] `receipt-capture-screen.png` — Add Receipt screen (or "Reading receipt image…" popup)
+- [ ] `daily-hours-screen.png` — Daily Hours — **include "Go to today" in frame**
+- [ ] `per-diem-screen.png` — Per Diem — **include "Go to today" in frame**
+- [ ] `settings-screen.png` — Settings
+- [ ] `saved-addresses-screen.png` — Saved addresses list
 
-**Mobile subtotal:** 10 / 11
+**Mobile subtotal:** 0 / 11
 
 ---
 
 ## 2. Staff Portal (14) — save to `images/screenshots/web-portal/`
 
-- [x] `staff-portal-login.png` — Staff login
-- [x] `staff-portal-portal-switcher.png` — Portal switcher dropdown in header (Finding/Selecting Portal section)
-- [x] `staff-portal-dashboard.png` — Dashboard/overview
-- [x] `staff-portal-submit.png` — Submit report button or dialog
-- [x] `staff-portal-overview.png` — Overview with tabs
-- [x] `staff-portal-mileage-tab.png` — Mileage Entries tab (date, start/end, miles, cost center, actions)
-- [x] `staff-portal-receipts-tab.png` — Receipts tab (Crop option)
-- [x] `staff-portal-hours-tab.png` — Hours Worked tab
-- [x] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
-- [x] `staff-portal-monthly-summary.png` — Monthly Summary tab
-- [x] `staff-portal-submission-workflow.png` — Submit dialog (Monthly vs Weekly)
-- [x] `staff-portal-report-status.png` — Report status indicators
-- [x] `staff-portal-notifications.png` — Notification bell/panel
-- [x] `staff-portal-settings.png` — Settings / preferences
+- [ ] `staff-portal-login.png` — Staff login
+- [ ] `staff-portal-portal-switcher.png` — Portal switcher dropdown in header (Finding/Selecting Portal section)
+- [ ] `staff-portal-dashboard.png` — Dashboard/overview
+- [ ] `staff-portal-submit.png` — Submit report button or dialog
+- [ ] `staff-portal-overview.png` — Overview with tabs
+- [ ] `staff-portal-mileage-tab.png` — Mileage Entries tab (date, start/end, miles, cost center, actions)
+- [ ] `staff-portal-receipts-tab.png` — Receipts tab (Crop option)
+- [ ] `staff-portal-hours-tab.png` — Hours Worked tab
+- [ ] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
+- [ ] `staff-portal-monthly-summary.png` — Monthly Summary tab
+- [ ] `staff-portal-submission-workflow.png` — Submit dialog (Monthly vs Weekly)
+- [ ] `staff-portal-report-status.png` — Report status indicators
+- [ ] `staff-portal-notifications.png` — Notification bell/panel
+- [ ] `staff-portal-settings.png` — Settings / preferences
 
-**Staff subtotal:** 14 / 14
+**Staff subtotal:** 0 / 14
 
 ---
 
@@ -124,4 +124,4 @@ Optional screenshots for the Senior Staff how-to guide (e.g. `senior-staff-porta
 | Admin Portal     | 13       | 6        |
 | **Total**        | **51**   | 11       |
 
-To mark done: change `- [ ]` to `- [x]` for each screenshot you’ve saved.
+To mark done: change `- [ ]` to `- [x]` for each screenshot you've saved.
