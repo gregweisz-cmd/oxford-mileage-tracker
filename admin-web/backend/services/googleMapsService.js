@@ -71,6 +71,27 @@ function addressOnlyForGeocoding(str) {
 }
 
 /**
+ * Resolve an address to lat/lng via Geocoding API. Returns { lat, lng } or null on failure.
+ * Use this so the Static Map URL contains only coordinates and does not trigger server-side geocoding (which often fails with "Error geocoding: marker N, path N").
+ */
+async function geocodeToLatLng(address) {
+  if (!isConfigured() || !address || typeof address !== 'string') return null;
+  const cleaned = addressOnlyForGeocoding(address) || address.trim();
+  if (cleaned.length < 3) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleaned)}&key=${GOOGLE_MAPS_API_KEY}`;
+    const response = await axios.get(url, { timeout: 8000 });
+    const data = response.data;
+    if (data.status !== 'OK' || !data.results || data.results.length === 0) return null;
+    const loc = data.results[0].geometry.location;
+    return { lat: loc.lat, lng: loc.lng };
+  } catch (err) {
+    debugLog('Geocoding failed for address:', cleaned.slice(0, 50), err.message);
+    return null;
+  }
+}
+
+/**
  * Returns true if lat/lng are valid for mapping (not 0,0 and within world bounds).
  * (0,0) is used as default when unset and would show in the ocean.
  */
@@ -495,7 +516,27 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
     }
   }
   if (!url) {
-    url = generateStaticMapUrlFromRoutes(routes, options);
+    // Resolve all address points to lat/lng so the Static Map URL uses only coordinates.
+    // This avoids "Error geocoding: marker N, path N" from the Static Map API's server-side geocoding.
+    const resolvedRoutes = [];
+    for (const route of routes) {
+      const resolved = [];
+      for (const p of route) {
+        if (p.lat != null && p.lng != null && isValidLatLng(p.lat, p.lng)) {
+          resolved.push({ lat: p.lat, lng: p.lng });
+        } else if (p.address) {
+          const coords = await geocodeToLatLng(p.address);
+          if (coords) resolved.push(coords);
+        }
+      }
+      if (resolved.length >= 2) resolvedRoutes.push(resolved);
+    }
+    if (resolvedRoutes.length > 0) {
+      url = generateStaticMapUrlFromRoutes(resolvedRoutes, options);
+    }
+    if (!url) {
+      throw new Error('Could not geocode route addresses. Check that addresses are valid and Geocoding API is enabled.');
+    }
   }
   try {
     const pointCount = routes.reduce((sum, r) => sum + r.length, 0);
