@@ -59,6 +59,18 @@ function isValidLocationString(str) {
 }
 
 /**
+ * Strip to address-only for geocoding. "Name (123 Main St, City, ST Zip)" -> "123 Main St, City, ST Zip".
+ * Geocoding works better with plain addresses; names in parentheses can cause failures.
+ */
+function addressOnlyForGeocoding(str) {
+  if (!str || typeof str !== 'string') return '';
+  const t = str.trim();
+  const match = t.match(/\(([^)]+)\)$/);
+  if (match) return match[1].trim();
+  return t;
+}
+
+/**
  * Returns true if lat/lng are valid for mapping (not 0,0 and within world bounds).
  * (0,0) is used as default when unset and would show in the ocean.
  */
@@ -90,10 +102,12 @@ function collectPointsForDay(mileageEntries) {
     const startLng = parseFloat(entry.startLocationLng);
     const endLat = parseFloat(entry.endLocationLat);
     const endLng = parseFloat(entry.endLocationLng);
-    const startAddress = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
-    const endAddress = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
+    const startRaw = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
+    const endRaw = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
+    const startAddress = addressOnlyForGeocoding(startRaw) || startRaw;
+    const endAddress = addressOnlyForGeocoding(endRaw) || endRaw;
 
-    // Start point: use lat/lng only when valid (not 0,0); else use address
+    // Start point: use lat/lng only when valid (not 0,0); else use address-only for geocoding
     if (isValidLatLng(startLat, startLng)) {
       points.push({ lat: startLat, lng: startLng });
     } else if (isValidLocationString(startAddress)) {
@@ -130,8 +144,10 @@ function collectRoutesForDay(mileageEntries) {
     const startLng = parseFloat(entry.startLocationLng);
     const endLat = parseFloat(entry.endLocationLat);
     const endLng = parseFloat(entry.endLocationLng);
-    const startAddress = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
-    const endAddress = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
+    const startRaw = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
+    const endRaw = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
+    const startAddress = addressOnlyForGeocoding(startRaw) || startRaw;
+    const endAddress = addressOnlyForGeocoding(endRaw) || endRaw;
 
     let startPoint = null;
     if (isValidLatLng(startLat, startLng)) {
