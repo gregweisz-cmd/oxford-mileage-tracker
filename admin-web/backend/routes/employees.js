@@ -617,7 +617,8 @@ router.post('/api/employees',
     : (typeof permissions === 'string' ? permissions : '[]');
 
   // Everyone except CEO must have a supervisor (per Senior Staff approval design)
-  const isCeoOnCreate = (position && String(position).toLowerCase().includes('ceo'));
+  const posLowerCreate = (position || '').toLowerCase();
+  const isCeoOnCreate = posLowerCreate.includes('ceo') || posLowerCreate.includes('chief executive officer');
   if (!isCeoOnCreate && (!supervisorId || String(supervisorId).trim() === '')) {
     return res.status(400).json({ error: 'Everyone except CEO must have a supervisor assigned.' });
   }
@@ -789,7 +790,8 @@ router.put('/api/employees/:id', async (req, res) => {
     }
 
     // Everyone except CEO must have a supervisor (per Senior Staff approval design)
-    const isCeo = (role === 'ceo') || (position && String(position).toLowerCase().includes('ceo'));
+    const posLower = (position || '').toLowerCase();
+    const isCeo = (role === 'ceo') || (posLower.includes('ceo') || posLower.includes('chief executive officer'));
     if (!isCeo && (!supervisorId || String(supervisorId).trim() === '')) {
       debugError('❌ Validation error: Supervisor is required for all employees except CEO');
       res.status(400).json({ error: 'This employee must have a supervisor assigned. Assign a supervisor in the employee record and try again.' });
