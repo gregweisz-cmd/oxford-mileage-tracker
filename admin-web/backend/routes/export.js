@@ -1719,7 +1719,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 if (typeof imagePath === 'string' && imagePath.startsWith('data:image/')) {
                   const base64Data = imagePath.split(',')[1];
                   const format = imagePath.includes('png') ? 'PNG' : 'JPEG';
-                  imagesToAdd.push({ type: 'base64', data: base64Data, format });
+                  imagesToAdd.push({ type: 'base64', data: base64Data, format, receipt });
                 } else if (typeof imagePath === 'string' && imagePath.startsWith('data:application/pdf')) {
                   const base64Data = imagePath.split(',')[1];
                   if (base64Data) pdfsToEmbed.push({ type: 'base64', data: base64Data });
@@ -1754,7 +1754,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       pdfsToEmbed.push({ type: 'file', path: fullImagePath });
                     } else {
                       const format = ext === '.png' ? 'PNG' : 'JPEG';
-                      imagesToAdd.push({ type: 'file', path: fullImagePath, format });
+                      imagesToAdd.push({ type: 'file', path: fullImagePath, format, receipt });
                     }
                   } else {
                     const triedPaths = [
@@ -1773,7 +1773,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                       const base64Data = fallbackUri.split(',')[1];
                       if (base64Data) {
                         const format = fallbackUri.includes('png') ? 'PNG' : 'JPEG';
-                        imagesToAdd.push({ type: 'base64', data: base64Data, format });
+                        imagesToAdd.push({ type: 'base64', data: base64Data, format, receipt });
                         debugLog(`   Using DB imageUri (data URL) for receipt ${idx + 1}`);
                       }
                     } else if (fallbackUri && fallbackUri.startsWith('data:application/pdf')) {
@@ -1789,50 +1789,42 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             }
           });
           debugLog(`📄 Receipt media: ${imagesToAdd.length} image(s) to render, ${pdfsToEmbed.length} PDF(s) to embed`);
-          // After table, render all images
+          // After table, render each receipt image one per page at full readable size
           if (imagesToAdd.length > 0) {
-            doc.addPage();
-            yPos = margin + 20;
-            doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
-            safeText('RECEIPT IMAGES', pageWidth / 2, yPos, { align: 'center' });
-            yPos += 30;
-            const maxImageWidth = 200;
-            const maxImageHeight = 150;
-            const startX = margin;
-            let xCursor = startX;
-            let imagesPerRow = Math.floor((pageWidth - margin * 2) / (maxImageWidth + 20)) || 1;
-            let col = 0;
+            const receiptCaptionY = margin + 16;
+            const maxDrawWidth = pageWidth - margin * 2;
+            const maxDrawHeight = pageHeight - margin * 2 - 40;
             imagesToAdd.forEach((img, i) => {
-              if (yPos > pageHeight - maxImageHeight - 40) {
-                doc.addPage();
-                yPos = margin + 20;
-                col = 0;
-                xCursor = startX;
+              doc.addPage();
+              doc.setFontSize(14);
+              doc.setFont('helvetica', 'bold');
+              safeText('RECEIPT IMAGES', pageWidth / 2, receiptCaptionY, { align: 'center' });
+              if (img.receipt) {
+                const r = img.receipt;
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                const caption = [r.date, r.vendor, r.amount ? `$${parseFloat(r.amount).toFixed(2)}` : ''].filter(Boolean).join(' · ');
+                if (caption) safeText(caption, pageWidth / 2, receiptCaptionY + 14, { align: 'center' });
               }
+              const imgY = receiptCaptionY + 28;
+              const drawWidth = maxDrawWidth;
+              const drawHeight = maxDrawHeight;
+              const imgX = margin;
               try {
                 if (img.type === 'placeholder') {
                   doc.setFillColor(240, 240, 240);
-                  doc.rect(xCursor, yPos, maxImageWidth, maxImageHeight, 'F');
+                  doc.rect(imgX, imgY, drawWidth, drawHeight, 'F');
                   doc.setFontSize(10);
-                  doc.text(img.label || 'Receipt', xCursor + maxImageWidth / 2, yPos + maxImageHeight / 2, { align: 'center' });
+                  doc.text(img.label || 'Receipt', imgX + drawWidth / 2, imgY + drawHeight / 2, { align: 'center' });
                 } else if (img.type === 'base64') {
                   const format = img.format || 'JPEG';
-                  doc.addImage(img.data, format, xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
+                  doc.addImage(img.data, format, imgX, imgY, drawWidth, drawHeight, undefined, 'FAST');
                 } else {
                   const format = img.format || 'JPEG';
-                  doc.addImage(img.path, format, xCursor, yPos, maxImageWidth, maxImageHeight, undefined, 'FAST');
+                  doc.addImage(img.path, format, imgX, imgY, drawWidth, drawHeight, undefined, 'FAST');
                 }
               } catch (e) {
                 debugError('❌ Error drawing receipt image:', e);
-              }
-              col++;
-              if (col >= imagesPerRow) {
-                col = 0;
-                xCursor = startX;
-                yPos += maxImageHeight + 20;
-              } else {
-                xCursor += maxImageWidth + 20;
               }
             });
           }
