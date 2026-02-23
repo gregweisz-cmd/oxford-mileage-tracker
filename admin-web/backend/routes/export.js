@@ -2664,29 +2664,50 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                         const entry = dayEntries[tripIndex];
                         const tripStartAddr = entry.startLocationAddress || '';
                         const tripEndAddr = entry.endLocationAddress || '';
-                        // Trip label: full addresses only (no location names) so map caption matches what was used for the route
                         const startLabel = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripStartAddr);
                         const endLabel = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripEndAddr);
-                        const tripLabel = [startLabel, endLabel].filter(Boolean).join(' → ');
+                        const formatMapDate = (d) => {
+                          if (!d) return '';
+                          const s = String(d).trim();
+                          if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+                            const [y, m, day] = s.slice(0, 10).split('-');
+                            return `${m}/${day}/${y.slice(-2)}`;
+                          }
+                          return s;
+                        };
                         try {
                           const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400', biasLatLng });
                           const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
                           const tripSummary = Buffer.isBuffer(mapResult) ? null : mapResult.tripSummary;
                           const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
                           doc.addPage();
-                          yPos = margin + 20;
-                          doc.setFontSize(14);
+                          yPos = margin + 16;
+                          doc.setFontSize(10);
                           doc.setFont('helvetica', 'bold');
-                          safeText(`Daily Routes - ${date} - Trip ${tripNum}`, pageWidth / 2, yPos, { align: 'center' });
+                          doc.text('Date:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          doc.text(formatMapDate(entry.date) || '—', margin + 52, yPos);
                           yPos += 10;
-                          if (tripLabel) {
-                            doc.setFontSize(9);
-                            doc.setFont('helvetica', 'normal');
-                            safeText(`Trip: ${tripLabel}`, margin, yPos, { maxWidth: pageWidth - margin * 2 });
-                            yPos += 14;
-                          }
-                          yPos += 16;
                           doc.setFont('helvetica', 'bold');
+                          doc.text('Cost Center:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          safeText(costCenter || '—', margin + 52, yPos, { maxWidth: pageWidth - margin - 52 });
+                          yPos += 10;
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Starting Location:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          safeText(startLabel || '—', margin + 52, yPos, { maxWidth: pageWidth - margin - 52 });
+                          yPos += 10;
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Ending Location:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          safeText(endLabel || '—', margin + 52, yPos, { maxWidth: pageWidth - margin - 52 });
+                          yPos += 10;
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Miles Driven:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          doc.text(entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—', margin + 52, yPos);
+                          yPos += 18;
                           const imageWidth = pageWidth - (margin * 2);
                           const imageHeight = (imageWidth * 400) / 600;
                           doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
@@ -2696,20 +2717,38 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                             doc.setFont('helvetica', 'normal');
                             const tripLine = [tripSummary.distanceText, tripSummary.durationText].filter(Boolean).join(' · ');
                             if (tripLine) { safeText(tripLine, margin, yPos); yPos += 10; }
-                            if (tripSummary.startAddress || tripSummary.endAddress) {
-                              const routeDesc = [tripSummary.startAddress, tripSummary.endAddress].filter(Boolean).join(' → ');
-                              if (routeDesc) { safeText(routeDesc.slice(0, 100), margin, yPos, { maxWidth: pageWidth - margin * 2 }); yPos += 12; }
-                            }
                           }
                           yPos += 8;
                         } catch (mapError) {
                           debugError(`❌ Error generating map for date ${date} trip ${tripNum}:`, mapError);
                           doc.addPage();
-                          yPos = margin + 20;
-                          doc.setFontSize(14);
+                          yPos = margin + 16;
+                          doc.setFontSize(10);
                           doc.setFont('helvetica', 'bold');
-                          safeText(`Daily Routes - ${date} - Trip ${tripNum}`, pageWidth / 2, yPos, { align: 'center' });
-                          yPos += 30;
+                          doc.text('Date:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          doc.text(formatMapDate(entry.date) || '—', margin + 52, yPos);
+                          yPos += 10;
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Cost Center:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          safeText(costCenter || '—', margin + 52, yPos, { maxWidth: pageWidth - margin - 52 });
+                          yPos += 10;
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Starting Location:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          safeText(startLabel || '—', margin + 52, yPos, { maxWidth: pageWidth - margin - 52 });
+                          yPos += 10;
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Ending Location:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          safeText(endLabel || '—', margin + 52, yPos, { maxWidth: pageWidth - margin - 52 });
+                          yPos += 10;
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Miles Driven:', margin, yPos);
+                          doc.setFont('helvetica', 'normal');
+                          doc.text(entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—', margin + 52, yPos);
+                          yPos += 18;
                           const placeholderH = 120;
                           doc.setDrawColor(200, 200, 200);
                           doc.setLineWidth(0.5);
