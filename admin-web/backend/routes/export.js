@@ -2666,6 +2666,12 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                         const tripEndAddr = entry.endLocationAddress || '';
                         const startLabel = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripStartAddr);
                         const endLabel = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripEndAddr);
+                        const nameFromLoc = (loc) => (loc && typeof loc === 'string' && loc.includes('(')) ? loc.replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
+                        const startName = entry.startLocationName || nameFromLoc(entry.startLocation) || '';
+                        const endName = entry.endLocationName || nameFromLoc(entry.endLocation) || '';
+                        const withName = (name, addr) => (!name || !String(name).trim()) ? (addr || '—') : (addr ? `${String(name).trim()} (${addr})` : String(name).trim());
+                        const startDisplay = withName(startName, startLabel);
+                        const endDisplay = withName(endName, endLabel);
                         const formatMapDate = (d) => {
                           if (!d) return '';
                           const s = String(d).trim();
@@ -2683,7 +2689,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           doc.addPage();
                           yPos = margin + 16;
                           doc.setFontSize(10);
-                          const labelWidth = 100;
+                          const labelWidth = 120;
                           const valueX = margin + labelWidth;
                           doc.setFont('helvetica', 'bold');
                           doc.text('Date:', margin, yPos);
@@ -2698,15 +2704,15 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           doc.setFont('helvetica', 'bold');
                           doc.text('Starting Location:', margin, yPos);
                           doc.setFont('helvetica', 'normal');
-                          safeText(startLabel || '—', valueX, yPos, { maxWidth: pageWidth - margin - labelWidth });
+                          safeText(startDisplay || '—', valueX, yPos, { maxWidth: pageWidth - margin - labelWidth });
                           yPos += 12;
                           doc.setFont('helvetica', 'bold');
                           doc.text('Ending Location:', margin, yPos);
                           doc.setFont('helvetica', 'normal');
-                          safeText(endLabel || '—', valueX, yPos, { maxWidth: pageWidth - margin - labelWidth });
+                          safeText(endDisplay || '—', valueX, yPos, { maxWidth: pageWidth - margin - labelWidth });
                           yPos += 12;
                           doc.setFont('helvetica', 'bold');
-                          doc.text('Miles Driven:', margin, yPos);
+                          doc.text('Miles Driven (Tracked by GPS):', margin, yPos);
                           doc.setFont('helvetica', 'normal');
                           doc.text(entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—', valueX, yPos);
                           yPos += 18;
@@ -2726,7 +2732,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           doc.addPage();
                           yPos = margin + 16;
                           doc.setFontSize(10);
-                          const labelWidthErr = 100;
+                          const labelWidthErr = 120;
                           const valueXErr = margin + labelWidthErr;
                           doc.setFont('helvetica', 'bold');
                           doc.text('Date:', margin, yPos);
@@ -2741,15 +2747,15 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                           doc.setFont('helvetica', 'bold');
                           doc.text('Starting Location:', margin, yPos);
                           doc.setFont('helvetica', 'normal');
-                          safeText(startLabel || '—', valueXErr, yPos, { maxWidth: pageWidth - margin - labelWidthErr });
+                          safeText(startDisplay || '—', valueXErr, yPos, { maxWidth: pageWidth - margin - labelWidthErr });
                           yPos += 12;
                           doc.setFont('helvetica', 'bold');
                           doc.text('Ending Location:', margin, yPos);
                           doc.setFont('helvetica', 'normal');
-                          safeText(endLabel || '—', valueXErr, yPos, { maxWidth: pageWidth - margin - labelWidthErr });
+                          safeText(endDisplay || '—', valueXErr, yPos, { maxWidth: pageWidth - margin - labelWidthErr });
                           yPos += 12;
                           doc.setFont('helvetica', 'bold');
-                          doc.text('Miles Driven:', margin, yPos);
+                          doc.text('Miles Driven (Tracked by GPS):', margin, yPos);
                           doc.setFont('helvetica', 'normal');
                           doc.text(entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—', valueXErr, yPos);
                           yPos += 18;
