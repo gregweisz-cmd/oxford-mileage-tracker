@@ -19,6 +19,7 @@ const { uploadLimiter } = require('../middleware/rateLimiter');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { checkAndNotify50PlusHours } = require('../services/notificationService');
 const websocketService = require('../services/websocketService');
+const { normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
 
 // Set up uploads directory and multer (use UPLOAD_DIR on Render persistent disk)
 const uploadsDir = config.upload.directory;
@@ -164,6 +165,23 @@ router.post('/api/mileage-entries', (req, res) => {
   const normalizedEndLocationName = endLocationName || endLocation || '';
   const normalizedEndLocationAddress = endLocationAddress || (endLocationName ? endLocationName : endLocation) || '';
 
+  // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
+  db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {
+    if (empErr) {
+      debugError('❌ Error fetching employee for base address:', empErr);
+      return res.status(500).json({ error: empErr.message });
+    }
+    const baseAddress = (employee && employee.baseAddress) ? String(employee.baseAddress) : '';
+    const baseAddress2 = (employee && employee.baseAddress2) ? String(employee.baseAddress2) : '';
+    const normStart = normalizeLocationForStorage(normalizedStartLocationName, normalizedStartLocationAddress, baseAddress, baseAddress2);
+    const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
+    const finalStartLocation = normStart ? normStart.display : (startLocation || '');
+    const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
+    const finalStartAddr = normStart ? normStart.address : normalizedStartLocationAddress;
+    const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
+    const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
+    const finalEndAddr = normEnd ? normEnd.address : normalizedEndLocationAddress;
+
   // Check if entry with this ID already exists
   db.get('SELECT id, sortOrder FROM mileage_entries WHERE id = ?', [entryId], (checkErr, existingRow) => {
     if (checkErr) {
@@ -183,14 +201,14 @@ router.post('/api/mileage-entries', (req, res) => {
           oxfordHouseId || '',
           normalizedDate,
           finalOdometerReading,
-          startLocation || '',
-          endLocation || '',
-          normalizedStartLocationName,
-          normalizedStartLocationAddress,
+          finalStartLocation,
+          finalEndLocation,
+          finalStartName,
+          finalStartAddr,
           startLocationLat || 0,
           startLocationLng || 0,
-          normalizedEndLocationName,
-          normalizedEndLocationAddress,
+          finalEndName,
+          finalEndAddr,
           endLocationLat || 0,
           endLocationLng || 0,
           purpose,
@@ -239,6 +257,7 @@ router.post('/api/mileage-entries', (req, res) => {
       );
     }
   });
+  });
 });
 
 /**
@@ -282,12 +301,28 @@ router.put('/api/mileage-entries/:id', (req, res) => {
   const finalOdometerReading = odometerReading || miles || 0;
 
   // Normalize manual entry locations into name/address fields if missing
-  // If address is missing but location name exists, use name as fallback for address
   // This ensures addresses are always populated when location names are provided
   const normalizedStartLocationName = startLocationName || startLocation || '';
   const normalizedStartLocationAddress = startLocationAddress || (startLocationName ? startLocationName : startLocation) || '';
   const normalizedEndLocationName = endLocationName || endLocation || '';
   const normalizedEndLocationAddress = endLocationAddress || (endLocationName ? endLocationName : endLocation) || '';
+
+  // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
+  db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {
+    if (empErr) {
+      debugError('❌ Error fetching employee for base address:', empErr);
+      return res.status(500).json({ error: empErr.message });
+    }
+    const baseAddress = (employee && employee.baseAddress) ? String(employee.baseAddress) : '';
+    const baseAddress2 = (employee && employee.baseAddress2) ? String(employee.baseAddress2) : '';
+    const normStart = normalizeLocationForStorage(normalizedStartLocationName, normalizedStartLocationAddress, baseAddress, baseAddress2);
+    const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
+    const finalStartLocation = normStart ? normStart.display : (startLocation || '');
+    const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
+    const finalStartAddr = normStart ? normStart.address : normalizedStartLocationAddress;
+    const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
+    const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
+    const finalEndAddr = normEnd ? normEnd.address : normalizedEndLocationAddress;
 
   db.run(
     'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
@@ -296,14 +331,14 @@ router.put('/api/mileage-entries/:id', (req, res) => {
       oxfordHouseId || '',
       normalizedDate || date,
       finalOdometerReading,
-      startLocation || '',
-      endLocation || '',
-      normalizedStartLocationName,
-      normalizedStartLocationAddress,
+      finalStartLocation,
+      finalEndLocation,
+      finalStartName,
+      finalStartAddr,
       startLocationLat || 0,
       startLocationLng || 0,
-      normalizedEndLocationName,
-      normalizedEndLocationAddress,
+      finalEndName,
+      finalEndAddr,
       endLocationLat || 0,
       endLocationLng || 0,
       purpose,
@@ -327,6 +362,7 @@ router.put('/api/mileage-entries/:id', (req, res) => {
       res.json({ message: 'Mileage entry updated successfully' });
     }
   );
+  });
 });
 
 /**

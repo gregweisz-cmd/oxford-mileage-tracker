@@ -226,9 +226,9 @@ export function getBaseAddressLabel(
 
 /**
  * Format a location for display in descriptions
- * Base addresses show as "BA", "BA1", "BA2"
+ * Base addresses show as "BA (address)" or "BA2 (address)" for consistency with map labels
  * Other locations show as "LocationName (Full Address)" format
- * 
+ *
  * @param location - The location string to format
  * @param baseAddress - Employee's primary base address (optional)
  * @param baseAddress2 - Employee's secondary base address (optional)
@@ -240,19 +240,24 @@ export function formatLocationForDescription(
   baseAddress2?: string
 ): string {
   if (!location) return '';
-  
-  // Check if it's a base address
+
   const baLabel = getBaseAddressLabel(location, baseAddress, baseAddress2);
   if (baLabel) {
-    return baLabel;
+    const baseAddr = baLabel === 'BA2' ? (baseAddress2 || '') : (baseAddress || '');
+    const addrOnly = extractAddressPortion(baseAddr) || baseAddr;
+    return addrOnly ? `${baLabel === 'BA2' ? 'BA2' : 'BA'} (${abbreviateAddressForDisplay(addrOnly)})` : baLabel;
   }
-  
-  // If already in format "LocationName (Address)", return as-is
+
+  const namePart = extractNamePortion(location);
+  if (/^(ba|base address|base|home base)\s*$/i.test(namePart)) {
+    const baseAddr = baseAddress ? (extractAddressPortion(baseAddress) || baseAddress) : '';
+    return baseAddr ? `BA (${abbreviateAddressForDisplay(baseAddr)})` : 'BA';
+  }
+
   if (location.includes('(') && location.includes(')')) {
     return location;
   }
-  
-  // Otherwise return as-is (should already be formatted from mobile app)
+
   return location;
 }
 
@@ -275,13 +280,14 @@ function abbreviateAddressForDisplay(address: string): string {
 
 /**
  * Format a location as "Name (address)" for display in Cost Center and Mileage Entries.
- * Base addresses show as "BA", "BA1", "BA2". Other locations show as "Name (address)".
+ * Base addresses show as "BA (address)" or "BA2 (address)" for consistency with map labels.
+ * Other locations show as "Name (address)".
  *
  * @param name - Optional location name (e.g. "Coworker's house")
  * @param address - Full address string (e.g. "2061 Jamestown Road, Morganton, NC 28655")
  * @param baseAddress - Employee's primary base address (optional)
  * @param baseAddress2 - Employee's secondary base address (optional)
- * @returns Formatted string e.g. "Coworker's house (2061 Jamestown Rd, Morganton, NC 28655)" or "BA"
+ * @returns Formatted string e.g. "Coworker's house (2061 Jamestown Rd...)" or "BA (230 Wagner St...)"
  */
 export function formatLocationNameAndAddress(
   name: string | undefined,
@@ -294,8 +300,12 @@ export function formatLocationNameAndAddress(
   if (!addr) return displayName || '';
 
   const baLabel = getBaseAddressLabel(addr, baseAddress, baseAddress2);
-  if (baLabel) {
-    return baLabel;
+  const nameIsBase = /^(ba|base address|base|home base)\s*$/i.test(displayName);
+  if (baLabel || nameIsBase) {
+    const baseAddr = (baLabel === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
+    const addrOnly = baseAddr ? (extractAddressPortion(baseAddr) || baseAddr) : '';
+    const prefix = baLabel === 'BA2' ? 'BA2' : 'BA';
+    return addrOnly ? `${prefix} (${abbreviateAddressForDisplay(addrOnly)})` : prefix;
   }
 
   // If "address" is the same as the name, don't show "Name (Name)" — show only the name

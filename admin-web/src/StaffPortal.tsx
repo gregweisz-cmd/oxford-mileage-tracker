@@ -128,7 +128,8 @@ function buildDrivingSummaryFromMileage(
     const purpose = (entry.purpose || 'Travel').trim();
     const purposeLower = purpose.toLowerCase();
     const isReturnToBase = purposeLower === 'return to base' || purposeLower === 'return to ba';
-    const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
+    const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2' ||
+      (typeof formattedEnd === 'string' && /^BA2? \(/.test(formattedEnd));
     const hasPurpose = purpose && purposeLower !== 'travel' && (isBaseAddress ? !isReturnToBase : true);
     let segment = '';
     if (formattedStart) segment = formattedStart;
@@ -1351,7 +1352,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   baseAddress2
                 );
                 const purpose = entry.purpose || 'Travel';
-                const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
+                const isBaseAddress = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2' ||
+      (typeof formattedEnd === 'string' && /^BA2? \(/.test(formattedEnd));
                 if (formattedEnd) {
                   if (isBaseAddress) {
                     tripSegments.push(`to ${formattedEnd}`);

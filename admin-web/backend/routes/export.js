@@ -76,7 +76,14 @@ function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) 
   const displayName = (name || '').trim();
   if (!addr) return displayName || '';
   const ba = getBaseAddressLabel(addr, baseAddress, baseAddress2);
-  if (ba) return ba;
+  const nameIsBase = /^(ba|base address|base|home base)\s*$/i.test(displayName);
+  if (ba || nameIsBase) {
+    let baseAddr = (ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
+    const paren = (baseAddr || '').match(/\(([^)]+)\)/);
+    if (paren) baseAddr = paren[1].trim();
+    const prefix = ba === 'BA2' ? 'BA2' : 'BA';
+    return baseAddr ? `${prefix} (${abbreviateForDisplay(baseAddr)})` : prefix;
+  }
   if (displayName && addr.toLowerCase() === displayName.toLowerCase()) return displayName;
   const abbr = abbreviateForDisplay(addr);
   return displayName ? `${displayName} (${abbr})` : abbr;
@@ -2302,7 +2309,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   }
                   const formattedEnd = formatLocationNameAndAddress(entry.endLocationName, endAddr, baseAddress, baseAddress2);
                   const purpose = (entry.purpose || 'Travel').trim();
-                  const isBase = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2';
+                  const isBase = formattedEnd === 'BA' || formattedEnd === 'BA1' || formattedEnd === 'BA2' ||
+                    (typeof formattedEnd === 'string' && /^BA2? \(/.test(formattedEnd));
                   if (formattedEnd) {
                     if (isBase) tripSegments.push('to ' + formattedEnd);
                     else if (purpose && purpose.toLowerCase() !== 'travel') tripSegments.push('to ' + formattedEnd + ' for ' + purpose);
@@ -2672,8 +2680,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                         const withName = (name, addr) => (!name || !String(name).trim()) ? (addr || '—') : (addr ? `${String(name).trim()} (${addr})` : String(name).trim());
                         const startBA = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2);
                         const endBA = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2);
-                        const startDisplay = startBA ? `BA (${abbreviateForDisplay(startBA === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''))})` : withName(startName, startLabel);
-                        const endDisplay = endBA ? `BA (${abbreviateForDisplay(endBA === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''))})` : withName(endName, endLabel);
+                        const isStartBase = startBA || isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
+                        const isEndBase = endBA || isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
+                        const baseAddrForDisplay = (ba) => abbreviateForDisplay(ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
+                        const startDisplay = isStartBase ? `BA (${baseAddrForDisplay(startBA || 'BA')})` : withName(startName, startLabel);
+                        const endDisplay = isEndBase ? `BA (${baseAddrForDisplay(endBA || 'BA')})` : withName(endName, endLabel);
                         const formatMapDate = (d) => {
                           if (!d) return '';
                           const s = String(d).trim();
