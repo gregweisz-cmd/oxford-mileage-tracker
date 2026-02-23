@@ -30,6 +30,7 @@ import {
   Tab,
   CircularProgress,
   Alert,
+  Backdrop,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -116,6 +117,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   // Delete report confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<ExpenseReport | null>(null);
+  // PDF export loading (prevents double-clicks and shows feedback)
+  const [pdfExportLoadingReportId, setPdfExportLoadingReportId] = useState<string | null>(null);
   
   // Sorting state
   const [sortField, setSortField] = useState<keyof ExpenseReport | ''>('');
@@ -612,6 +615,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   };
 
   const handleExportToExcel = async (report: ExpenseReport, viewMode?: 'day' | 'costCenter' | 'none') => {
+    setPdfExportLoadingReportId(report.id);
     try {
       debugVerbose('📊 Exporting report:', report.id, report.employeeName);
       
@@ -690,6 +694,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     } catch (error) {
       debugError('Error exporting to PDF:', error);
       alert(`Failed to export report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setPdfExportLoadingReportId(null);
     }
   };
 
@@ -1362,6 +1368,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                       <IconButton
                         size="small"
                         color="success"
+                        disabled={pdfExportLoadingReportId === report.id}
                         onClick={() => {
                           const mapsEnabled = hasMapsEnabled(report);
                           handleExportToExcel(report, mapsEnabled ? 'day' : undefined);
@@ -1520,7 +1527,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                       <IconButton
                         size="small"
                         color="success"
+                        disabled={pdfExportLoadingReportId === report.id}
                         onClick={() => handleExportToExcel(report)}
+                        title="Export to PDF"
                       >
                         <DownloadIcon />
                       </IconButton>
@@ -1733,6 +1742,22 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* PDF export loading overlay - prevents double-clicks and shows feedback */}
+      <Backdrop
+        open={!!pdfExportLoadingReportId}
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 1,
+          flexDirection: 'column',
+          gap: 2,
+          color: '#fff',
+          backgroundColor: 'rgba(0,0,0,0.7)',
+        }}
+      >
+        <CircularProgress color="inherit" size={48} />
+        <Typography variant="h6">Preparing PDF...</Typography>
+        <Typography variant="body2">Your download will start in a moment. Please wait.</Typography>
+      </Backdrop>
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
