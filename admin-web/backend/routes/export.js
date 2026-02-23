@@ -110,10 +110,23 @@ function parseStateFromAddress(addr) {
   return '';
 }
 
+// Returns only the address part for map/geocoding: "Name (Street, City, ST Zip)" -> "Street, City, ST Zip".
+// If no parenthetical or it doesn't look like an address, returns the string as-is (caller may have already normalized).
+function addressOnlyFromNotation(str) {
+  if (!str || typeof str !== 'string') return (str || '').trim();
+  const t = str.trim();
+  const match = t.match(/\(([^)]+)\)$/);
+  if (match) {
+    const part = match[1].trim();
+    if (/\d{5}(-\d{4})?/.test(part) || /, [A-Z]{2}\s*\d/.test(part) || /, [A-Z]{2}$/.test(part)) return part;
+  }
+  return t;
+}
+
 // Use the address from the entry for map geocoding. Prefer the parenthetical "Street, City, State Zip"
 // from startLocation/endLocation (what the user typed) so we never use the location name as city/state.
 // Only use *LocationAddress when there is no such parenthetical; if that value is in a different state
-// than the employee base, use the full loc string so the maps service can extract address from "Name (Address)" if present.
+// than the employee base, use the full loc string so we can extract address from "Name (Address)" if present.
 function getBestAddressForGeocoding(entry, side, baseAddress) {
   const rawAddr = side === 'start' ? (entry.startLocationAddress || entry.startLocation || '') : (entry.endLocationAddress || entry.endLocation || '');
   const loc = side === 'start' ? (entry.startLocation || '') : (entry.endLocation || '');
@@ -125,7 +138,7 @@ function getBestAddressForGeocoding(entry, side, baseAddress) {
         const baseState = parseStateFromAddress(baseAddress);
         const partState = parseStateFromAddress(part);
         if (baseState && partState && baseState !== partState) {
-          return (rawAddr || '').trim();
+          return addressOnlyFromNotation((rawAddr || '').trim());
         }
       }
       return part;
@@ -136,10 +149,10 @@ function getBestAddressForGeocoding(entry, side, baseAddress) {
     const baseState = parseStateFromAddress(baseAddress);
     const rawState = parseStateFromAddress(trimmedRaw);
     if (baseState && rawState && baseState !== rawState) {
-      return (loc || trimmedRaw).trim();
+      return addressOnlyFromNotation((loc || trimmedRaw).trim());
     }
   }
-  return trimmedRaw;
+  return addressOnlyFromNotation(trimmedRaw);
 }
 
 // Export data to Excel
@@ -2633,15 +2646,18 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                         let endAddr = getBestAddressForGeocoding(entry, 'end', baseAddress);
                         const startIsExplicitBA = isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
                         const endIsExplicitBA = isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
+                        const startFromParens = addressOnlyFromNotation((entry.startLocation || '').trim());
+                        const endFromParens = addressOnlyFromNotation((entry.endLocation || '').trim());
+                        const parensLookLikeAddress = (s) => s && (/\d{5}(-\d{4})?/.test(s) || /, [A-Z]{2}\s*\d/.test(s) || /, [A-Z]{2}$/.test(s));
                         if (startIsExplicitBA && getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
                           copy.startLocationAddress = baseAddress || startAddr;
                         } else {
-                          copy.startLocationAddress = startAddr || (entry.startLocationAddress || entry.startLocation || '').trim();
+                          copy.startLocationAddress = (parensLookLikeAddress(startFromParens) ? startFromParens : null) || startAddr || (entry.startLocationAddress || '').trim();
                         }
                         if (endIsExplicitBA && getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
                           copy.endLocationAddress = baseAddress || endAddr;
                         } else {
-                          copy.endLocationAddress = endAddr || (entry.endLocationAddress || entry.endLocation || '').trim();
+                          copy.endLocationAddress = (parensLookLikeAddress(endFromParens) ? endFromParens : null) || endAddr || (entry.endLocationAddress || '').trim();
                         }
                         return copy;
                       });

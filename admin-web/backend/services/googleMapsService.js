@@ -60,7 +60,7 @@ function isValidLocationString(str) {
 
 /**
  * Strip to address-only for geocoding. "Name (123 Main St, City, ST Zip)" -> "123 Main St, City, ST Zip".
- * Geocoding works better with plain addresses; names in parentheses can cause failures.
+ * Only the parenthetical part is used when present; never pass the location name to the API.
  */
 function addressOnlyForGeocoding(str) {
   if (!str || typeof str !== 'string') return '';
@@ -68,6 +68,14 @@ function addressOnlyForGeocoding(str) {
   const match = t.match(/\(([^)]+)\)$/);
   if (match) return match[1].trim();
   return t;
+}
+
+/** True if string looks like a full address (has comma and zip or state), not just a location name. */
+function looksLikeFullAddress(str) {
+  if (!str || typeof str !== 'string') return false;
+  const t = str.trim();
+  if (t.indexOf(',') === -1) return false;
+  return (/\d{5}(-\d{4})?/.test(t) || /, [A-Z]{2}\s*\d/.test(t) || /, [A-Z]{2}$/.test(t));
 }
 
 /**
@@ -129,23 +137,16 @@ function collectPointsForDay(mileageEntries) {
     const startLng = parseFloat(entry.startLocationLng);
     const endLat = parseFloat(entry.endLocationLat);
     const endLng = parseFloat(entry.endLocationLng);
-    const startRaw = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
-    const endRaw = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
-    const startAddress = addressOnlyForGeocoding(startRaw) || startRaw;
-    const endAddress = addressOnlyForGeocoding(endRaw) || endRaw;
+    // Map API: use only address from parenthetical in startLocation/endLocation when present; else use entry.startLocationAddress only if it looks like a full address (export normalizes it; never use name-only or wrong-state).
+    const startFromParens = addressOnlyForGeocoding((entry.startLocation || '').trim());
+    const endFromParens = addressOnlyForGeocoding((entry.endLocation || '').trim());
+    const startAddress = (startFromParens && looksLikeFullAddress(startFromParens)) ? startFromParens
+      : (looksLikeFullAddress((entry.startLocationAddress || '').trim()) ? (entry.startLocationAddress || '').trim() : '');
+    const endAddress = (endFromParens && looksLikeFullAddress(endFromParens)) ? endFromParens
+      : (looksLikeFullAddress((entry.endLocationAddress || '').trim()) ? (entry.endLocationAddress || '').trim() : '');
 
-    // Start point: use lat/lng only when valid (not 0,0); else use address-only for geocoding
-    if (isValidLatLng(startLat, startLng)) {
-      points.push({ lat: startLat, lng: startLng });
-    } else if (isValidLocationString(startAddress)) {
-      points.push({ address: startAddress });
-    }
-
-    if (isValidLatLng(endLat, endLng)) {
-      points.push({ lat: endLat, lng: endLng });
-    } else if (isValidLocationString(endAddress)) {
-      points.push({ address: endAddress });
-    }
+    if (isValidLocationString(startAddress)) points.push({ address: startAddress });
+    if (isValidLocationString(endAddress)) points.push({ address: endAddress });
   });
 
   return points;
@@ -171,24 +172,16 @@ function collectRoutesForDay(mileageEntries) {
     const startLng = parseFloat(entry.startLocationLng);
     const endLat = parseFloat(entry.endLocationLat);
     const endLng = parseFloat(entry.endLocationLng);
-    const startRaw = (entry.startLocationAddress || entry.startLocationName || entry.startLocation || '').trim();
-    const endRaw = (entry.endLocationAddress || entry.endLocationName || entry.endLocation || '').trim();
-    const startAddress = addressOnlyForGeocoding(startRaw) || startRaw;
-    const endAddress = addressOnlyForGeocoding(endRaw) || endRaw;
+    // Map API: use only address from parenthetical in startLocation/endLocation when present; else use entry.startLocationAddress only if it looks like a full address (export normalizes it; never use name-only or wrong-state).
+    const startFromParens = addressOnlyForGeocoding((entry.startLocation || '').trim());
+    const endFromParens = addressOnlyForGeocoding((entry.endLocation || '').trim());
+    const startAddress = (startFromParens && looksLikeFullAddress(startFromParens)) ? startFromParens
+      : (looksLikeFullAddress((entry.startLocationAddress || '').trim()) ? (entry.startLocationAddress || '').trim() : '');
+    const endAddress = (endFromParens && looksLikeFullAddress(endFromParens)) ? endFromParens
+      : (looksLikeFullAddress((entry.endLocationAddress || '').trim()) ? (entry.endLocationAddress || '').trim() : '');
 
-    let startPoint = null;
-    if (isValidLatLng(startLat, startLng)) {
-      startPoint = { lat: startLat, lng: startLng };
-    } else if (isValidLocationString(startAddress)) {
-      startPoint = { address: startAddress };
-    }
-
-    let endPoint = null;
-    if (isValidLatLng(endLat, endLng)) {
-      endPoint = { lat: endLat, lng: endLng };
-    } else if (isValidLocationString(endAddress)) {
-      endPoint = { address: endAddress };
-    }
+    let startPoint = isValidLocationString(startAddress) ? { address: startAddress } : null;
+    let endPoint = isValidLocationString(endAddress) ? { address: endAddress } : null;
 
     if (startPoint && endPoint) {
       routes.push([startPoint, endPoint]);
