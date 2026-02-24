@@ -51,7 +51,7 @@ import { getEmployeeDisplayName } from '../utils/employeeUtils';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import DetailedReportView from './DetailedReportView';
 import { NotificationBell } from './NotificationBell';
-import { PerDiemRulesManagement } from './PerDiemRulesManagement';
+import { CostCenterManagement } from './CostCenterManagement';
 import { CostCenter, CostCenterApiService } from '../services/costCenterApiService';
 
 // Keyboard shortcuts
@@ -1111,6 +1111,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         <Tab label="Approved Reports" />
         <Tab label="Needs Revision" />
         <Tab label="Reports & Analytics" />
+        <Tab label="Cost Center Management" />
       </Tabs>
 
       {/* Filters */}
@@ -1423,9 +1424,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         <ReportsAnalyticsTab />
       </TabPanel>
 
-      {/* Per Diem Rules */}
+      {/* Cost Center Management - Per Diem rules and Google Map creator for reporting */}
       <TabPanel value={activeTab} index={5}>
-        <PerDiemRulesManagement costCenters={costCenters} />
+        <CostCenterManagement />
       </TabPanel>
 
       {/* Pending Review Tab */}
