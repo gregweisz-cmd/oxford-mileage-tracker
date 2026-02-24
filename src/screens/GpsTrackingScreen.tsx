@@ -513,27 +513,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setShowEndLocationModal(true);
   };
 
-  /** End tracking without saving; no mileage entry is created. */
-  const handleCancelTracking = async () => {
-    try {
-      setShowEndLocationModal(false);
-      setShouldShowEndLocationModal(false);
-      await stopTracking();
-      setTrackingTime(0);
-      setStartLocationDetails(null);
-      setEndLocationDetails(null);
-      setShowLocationOptionsModal(false);
-      setShowStartLocationModal(false);
-      setShowOxfordHouseSearchModal(false);
-      setShowPurposeSuggestions(false);
-      setTrackingForm({ odometerReading: '', purpose: '', notes: '' });
-      setSelectedCostCenter('');
-    } catch (error) {
-      console.error('Error cancelling tracking:', error);
-      Alert.alert('Error', 'Failed to cancel tracking');
-    }
-  };
-
   const handleOxfordHouseSelected = (house: any) => {
     // Convert Oxford House to LocationDetails format
     const locationDetails: LocationDetails = {
@@ -1044,19 +1023,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         currentEmployee={currentEmployee}
       />
 
-      {/* End Location Capture Modal */}
+      {/* End Location Capture Modal - no "Cancel tracking" option; closing just returns to map and keeps tracking */}
       <LocationCaptureModal
         visible={showEndLocationModal}
-        onClose={() => {
-          Alert.alert(
-            'Cancel tracking?',
-            'No mileage will be saved. End tracking without logging this trip?',
-            [
-              { text: 'Keep tracking', style: 'cancel' },
-              { text: 'Cancel tracking', style: 'destructive', onPress: handleCancelTracking },
-            ]
-          );
-        }}
+        onClose={() => setShowEndLocationModal(false)}
         onConfirm={handleEndLocationConfirm}
         title="Capture End Location"
         locationType="end"
