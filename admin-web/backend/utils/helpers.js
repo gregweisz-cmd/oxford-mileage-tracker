@@ -113,6 +113,25 @@ function isFinancePosition(position = '') {
 }
 
 /**
+ * Check if employee is eligible to approve at the finance step (role or position).
+ * Allows role 'finance', 'contracts', or positions containing finance/accounting/controller/cfo.
+ */
+function isEligibleForFinanceApproval(employee) {
+  if (!employee) return false;
+  const role = (employee.role || '').toLowerCase();
+  if (role === 'finance' || role === 'contracts') return true;
+  const position = (employee.position || '');
+  return (
+    /finance/i.test(position) ||
+    /accounting/i.test(position) ||
+    /accountant/i.test(position) ||
+    /controller/i.test(position) ||
+    /\bcfo\b/i.test(position) ||
+    /chief financial/i.test(position)
+  );
+}
+
+/**
  * Check if position is supervisor-related
  */
 function isSupervisorPosition(position = '') {
@@ -142,6 +161,7 @@ module.exports = {
   parseJsonSafe,
   isFinanceRole,
   isFinancePosition, // Keep for backward compatibility
+  isEligibleForFinanceApproval,
   isSupervisorPosition,
   addHours,
   computeEscalationDueAt,

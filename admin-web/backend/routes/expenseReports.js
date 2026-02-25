@@ -1823,10 +1823,10 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         // Allow report's current approver (so the person the report is assigned to can always act, even if step approverId differs e.g. after reassignment)
         if (initialCurrentApproverId) allowedApproverIds.add(initialCurrentApproverId);
 
-        // For finance step: allow any employee with finance role (not just the designated approver)
+        // For finance step: allow any employee with finance/contracts role or finance-related position
         if (currentStep.role === 'finance') {
           const approver = await dbService.getEmployeeById(approverId);
-          if (approver && (helpers.isFinanceRole(approver) || helpers.isFinancePosition(approver.position))) {
+          if (approver && helpers.isEligibleForFinanceApproval(approver)) {
             allowedApproverIds.add(approverId);
             if (!currentStep.approverName || currentStep.approverName === 'Finance Team') {
               currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
@@ -1851,7 +1851,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
         if (!allowedApproverIds.has(approverId)) {
           const hint = currentStep.role === 'finance'
-            ? ' Ensure you are logged in as a finance employee (role or position).'
+            ? ' Ensure you are logged in as a finance or contracts user (role or position such as Finance, Accounting, Controller).'
             : '';
           res.status(403).json({ error: `Approver is not authorized for this step.${hint}` });
           return;
