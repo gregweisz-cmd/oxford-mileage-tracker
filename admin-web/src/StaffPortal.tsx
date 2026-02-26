@@ -4271,7 +4271,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             updatedAt: new Date().toISOString()
           });
         } else if (byDate.has(dateStr) && !(byDate.get(dateStr)!.dayOff)) {
-          byDate.delete(dateStr);
+          // Keep row if user set cost center only (no narrative); otherwise we'd drop their selection on Save
+          const ex = byDate.get(dateStr)!;
+          const hasCostCenter = !!(String(ex.costCenter || '').trim());
+          if (!hasCostCenter) byDate.delete(dateStr);
         }
       });
       dailyDescriptionsForSave = Array.from(byDate.values());
