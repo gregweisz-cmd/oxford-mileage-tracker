@@ -2529,27 +2529,70 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 });
 
 /**
- * Delete expense report (and its revision notes)
+ * Delete expense report, its revision notes, and wipe all source data for that month
+ * (mileage, receipts, daily descriptions, time tracking, daily odometer) so "Start fresh" truly clears the month.
  */
-router.delete('/api/expense-reports/:id', (req, res) => {
+router.delete('/api/expense-reports/:id', async (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
 
-  db.serialize(() => {
-    db.run('DELETE FROM report_revision_notes WHERE reportId = ?', [id], function(notesErr) {
-      if (notesErr) {
-        res.status(500).json({ error: notesErr.message });
-        return;
-      }
-      db.run('DELETE FROM expense_reports WHERE id = ?', [id], function(reportErr) {
-        if (reportErr) {
-          res.status(500).json({ error: reportErr.message });
-          return;
-        }
-        res.json({ message: 'Expense report deleted successfully' });
+  try {
+    const report = await new Promise((resolve, reject) => {
+      db.get('SELECT employeeId, month, year FROM expense_reports WHERE id = ?', [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
       });
     });
-  });
+
+    if (!report) {
+      res.status(404).json({ error: 'Expense report not found' });
+      return;
+    }
+
+    const { employeeId, month, year } = report;
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+    await new Promise((resolve, reject) => {
+      db.run('DELETE FROM report_revision_notes WHERE reportId = ?', [id], function(notesErr) {
+        if (notesErr) {
+          reject(notesErr);
+          return;
+        }
+        db.run('DELETE FROM expense_reports WHERE id = ?', [id], function(reportErr) {
+          if (reportErr) {
+            reject(reportErr);
+            return;
+          }
+          resolve();
+        });
+      });
+    });
+
+    const runSql = (sql, params) =>
+      new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) {
+          if (err) reject(err);
+          else {
+            debugLog(`[delete-report] ${sql.split(' ')[0]} ${this.changes} row(s)`);
+            resolve();
+          }
+        });
+      });
+
+    await runSql('DELETE FROM mileage_entries WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql('DELETE FROM daily_descriptions WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql('DELETE FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql('DELETE FROM daily_odometer_readings WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql("DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ?", [employeeId, startDate, endDate]);
+
+    debugLog(`[delete-report] Wiped month ${month}/${year} for employee ${employeeId}`);
+    res.json({ message: 'Expense report and month data deleted successfully' });
+  } catch (err) {
+    debugError('Delete expense report error:', err);
+    res.status(500).json({ error: err.message || 'Failed to delete report' });
+  }
 });
 
 /**
