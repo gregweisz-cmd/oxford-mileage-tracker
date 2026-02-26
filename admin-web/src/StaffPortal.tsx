@@ -4476,23 +4476,39 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   const handleStartFreshConfirm = async () => {
-    if (currentReportId) {
-      try {
+    const employeeId = employeeData?.employeeId;
+    if (!employeeId) {
+      alert('No employee selected.');
+      return;
+    }
+    try {
+      // Always wipe month source data (works even when no report row exists yet)
+      const wipeRes = await fetch(`${API_BASE_URL}/api/expense-reports/wipe-month`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId, month: currentMonth, year: currentYear })
+      });
+      if (!wipeRes.ok) {
+        const data = await wipeRes.json().catch(() => ({}));
+        throw new Error(data.error || `Wipe failed (${wipeRes.status})`);
+      }
+      // If a report row exists, delete it too
+      if (currentReportId) {
         const res = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}`, { method: 'DELETE' });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || `Delete failed (${res.status})`);
         }
-      } catch (e) {
-        debugError('Start fresh delete error:', e);
-        const msg = e instanceof Error ? e.message : 'Failed to delete report';
-        if (isHttpClientError(e)) {
-          showErrorPrompt(msg, { title: 'Could not delete report', goBackLabel: 'Back to report' });
-        } else {
-          alert(msg);
-        }
-        throw e;
       }
+    } catch (e) {
+      debugError('Start fresh delete error:', e);
+      const msg = e instanceof Error ? e.message : 'Failed to clear month';
+      if (isHttpClientError(e)) {
+        showErrorPrompt(msg, { title: 'Could not clear report', goBackLabel: 'Back to report' });
+      } else {
+        alert(msg);
+      }
+      throw e;
     }
     setCurrentReportId(null);
     setReportStatus('draft');
@@ -4502,6 +4518,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setCurrentApprovalStage(null);
     setCurrentApproverName(null);
     setStartFreshDialogOpen(false);
+    // Clear API cache so refetch returns wiped state, not cached data
+    const { rateLimitedApi } = await import('./services/rateLimitedApi');
+    rateLimitedApi.clearCacheFor('/api/daily-descriptions');
+    rateLimitedApi.clearCacheFor('/api/time-tracking');
+    rateLimitedApi.clearCacheFor('/api/mileage-entries');
+    rateLimitedApi.clearCacheFor('/api/receipts');
+    rateLimitedApi.clearCacheFor('/api/daily-odometer-readings');
+    rateLimitedApi.clearCacheFor('/api/expense-reports');
     setRefreshTrigger((prev) => prev + 1);
     if (typeof showSuccess === 'function') {
       showSuccess('Report cleared. You can start fresh for this month.');

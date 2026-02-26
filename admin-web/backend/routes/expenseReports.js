@@ -2529,6 +2529,46 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 });
 
 /**
+ * Wipe all source data for an employee/month (no report ID required).
+ * Used when user clicks "Start fresh" so the month is cleared even if no report row exists yet.
+ * POST body: { employeeId, month, year }
+ */
+router.post('/api/expense-reports/wipe-month', async (req, res) => {
+  const { employeeId, month, year } = req.body || {};
+  if (!employeeId || month == null || year == null) {
+    return res.status(400).json({ error: 'employeeId, month, and year are required' });
+  }
+  const db = dbService.getDb();
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+  const runSql = (sql, params) =>
+    new Promise((resolve, reject) => {
+      db.run(sql, params, function(err) {
+        if (err) reject(err);
+        else {
+          debugLog(`[wipe-month] ${sql.split(' ')[0]} ${this.changes} row(s)`);
+          resolve();
+        }
+      });
+    });
+
+  try {
+    await runSql('DELETE FROM mileage_entries WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql('DELETE FROM daily_descriptions WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql('DELETE FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql('DELETE FROM daily_odometer_readings WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    await runSql('DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ?', [employeeId, startDate, endDate]);
+    debugLog(`[wipe-month] Wiped ${month}/${year} for employee ${employeeId}`);
+    res.json({ message: 'Month data wiped successfully' });
+  } catch (err) {
+    debugError('Wipe month error:', err);
+    res.status(500).json({ error: err.message || 'Failed to wipe month data' });
+  }
+});
+
+/**
  * Delete expense report, its revision notes, and wipe all source data for that month
  * (mileage, receipts, daily descriptions, time tracking, daily odometer) so "Start fresh" truly clears the month.
  */
