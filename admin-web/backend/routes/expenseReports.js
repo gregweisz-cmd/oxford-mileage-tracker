@@ -1039,7 +1039,7 @@ router.get('/api/expense-reports/:employeeId', (req, res) => {
 /**
  * Get all expense reports (for admin/supervisor view)
  */
-router.get('/api/expense-reports', (req, res) => {
+router.get('/api/expense-reports', async (req, res) => {
   const { status, month, year, approverId, stage, teamSupervisorId, teamSeniorStaffId, employeeId } = req.query;
   const db = dbService.getDb();
   
@@ -1103,12 +1103,14 @@ router.get('/api/expense-reports', (req, res) => {
 
   query += ' ORDER BY er.year DESC, er.month DESC, e.name';
 
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    
+  const rows = await new Promise((resolve, reject) => {
+    db.all(query, params, (err, r) => {
+      if (err) reject(err);
+      else resolve(r || []);
+    });
+  });
+
+  try {
     // Parse the report data JSON for each row
     rows.forEach(row => {
       try {
@@ -1124,7 +1126,31 @@ router.get('/api/expense-reports', (req, res) => {
       row.totalMileageAmount = row.reportData?.totalMileageAmount ?? row.totalMileageAmount ?? 0;
       row.comments = [];
     });
-    
+
+    // Fallback: if LEFT JOIN left employeeName/employeeFullName null (e.g. archived employee or ID mismatch), look up by employeeId
+    const missingNameIds = [...new Set(rows.filter(r => (r.employeeId && (!r.employeeName || !r.employeeFullName))).map(r => r.employeeId))];
+    if (missingNameIds.length > 0) {
+      const placeholders = missingNameIds.map(() => '?').join(',');
+      const nameRows = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT id, name, preferredName FROM employees WHERE id IN (${placeholders})`,
+          missingNameIds,
+          (err, r) => { if (err) reject(err); else resolve(r || []); }
+        );
+      });
+      const nameById = new Map(nameRows.map(emp => [emp.id, { name: emp.name || '', preferredName: emp.preferredName || '' }]));
+      rows.forEach(row => {
+        if (row.employeeId && (!row.employeeName || !row.employeeFullName)) {
+          const emp = nameById.get(row.employeeId);
+          if (emp) {
+            const displayName = (emp.preferredName && emp.preferredName.trim()) ? emp.preferredName.trim() : (emp.name || '');
+            if (!row.employeeName) row.employeeName = displayName;
+            if (!row.employeeFullName) row.employeeFullName = emp.name || displayName;
+          }
+        }
+      });
+    }
+
     if (rows.length === 0) {
       res.json(rows);
       return;
@@ -1167,7 +1193,10 @@ router.get('/api/expense-reports', (req, res) => {
         res.json(rows);
       }
     );
-  });
+  } catch (err) {
+    debugError('Error in GET /api/expense-reports:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
