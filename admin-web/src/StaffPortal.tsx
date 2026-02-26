@@ -4256,12 +4256,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         if (userDesc) {
           const isDayOffType = dayOffTypeLabels.includes(userDesc);
           const existing = byDate.get(dateStr);
+          // Preserve cost center from Daily Descriptions tab when user changed it there; only fall back to entry.costCenter for new rows
+          const costCenterToSave = (existing?.costCenter && String(existing.costCenter).trim()) ? existing.costCenter : (entry.costCenter || dataForSave.costCenters?.[0] || '');
           byDate.set(dateStr, {
             id: existing?.id || `desc-${dataForSave.employeeId}-${dateStr}`,
             employeeId: dataForSave.employeeId,
             date: dateStr,
             description: userDesc,
-            costCenter: entry.costCenter || dataForSave.costCenters?.[0] || '',
+            costCenter: costCenterToSave,
             stayedOvernight: existing?.stayedOvernight ?? false,
             dayOff: isDayOffType || !!(existing?.dayOff),
             dayOffType: isDayOffType ? userDesc : (existing?.dayOff ? existing.dayOffType : null),
