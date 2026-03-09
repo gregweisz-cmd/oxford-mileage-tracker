@@ -11,7 +11,7 @@ Use this checklist to move off SES sandbox so you can send to any recipient (e.g
 3. If you see **Sandbox** status, click **Request production access** (or **Get set up** → **Request production access**).
 4. Fill out the form:
    - **Mail type:** Choose **Transactional** (alerts, reports, notifications) or **Promotional** as appropriate; for expense/approval emails, **Transactional** is typical.
-   - **Website URL:** Your app URL (e.g. `https://oxford-mileage-tracker.vercel.app` or your Render backend URL).
+   - **Website URL:** Your app URL (e.g. `https://oxford-house-mileage-tracker.vercel.app` or your Render backend URL).
    - **Use case description:** e.g. "Transactional email for expense report notifications and approval workflow. Recipients are employees with @oxfordhouse.org addresses. We send reminders, approval requests, and report links. Volume: low (tens to hundreds per day)."
    - **Compliance:** Confirm you have a process for bounces/complaints and that you only send to users who expect mail.
 5. Submit. AWS usually reviews within **24–48 hours**. You may get an email asking for more detail; reply with use case and volume.

@@ -167,6 +167,26 @@ function ensureTablesExist() {
               }
             });
           }
+
+          // Per-user login attempt tracking (for admin clear and lockout)
+          if (!columnNames.includes('failed_login_count')) {
+            db.run(`ALTER TABLE employees ADD COLUMN failed_login_count INTEGER DEFAULT 0`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add failed_login_count column:', alterErr.message);
+              } else {
+                debugLog('✅ Added failed_login_count column to employees table');
+              }
+            });
+          }
+          if (!columnNames.includes('login_locked_until')) {
+            db.run(`ALTER TABLE employees ADD COLUMN login_locked_until TEXT DEFAULT NULL`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add login_locked_until column:', alterErr.message);
+              } else {
+                debugLog('✅ Added login_locked_until column to employees table');
+              }
+            });
+          }
         }
       });
 

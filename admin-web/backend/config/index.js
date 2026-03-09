@@ -55,6 +55,7 @@ const CORS_CONFIG = {
     'http://localhost:3000',
     'http://localhost:3001',
     'https://oxford-mileage-tracker.vercel.app',
+    'https://oxford-house-mileage-tracker.vercel.app',
     'https://oxford-mileage-tracker-git-main-gregweisz-cmd.vercel.app',
     'https://oxford-mileage-tracker-git-main-goose-weiszs-projects.vercel.app'
   ],

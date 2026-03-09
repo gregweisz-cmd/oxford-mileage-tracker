@@ -1023,6 +1023,37 @@ router.put('/api/employees/:id/password', passwordResetLimiter, async (req, res)
 });
 
 /**
+ * Clear login attempts / unlock account (admin only)
+ * Resets failed_login_count and login_locked_until so the user can log in again from web or app.
+ */
+router.post('/api/employees/:id/clear-login-attempts', (req, res) => {
+  const { id } = req.params;
+  const db = dbService.getDb();
+  const userRole = (req.headers['x-user-role'] || '').toLowerCase();
+
+  if (!['admin', 'finance'].includes(userRole)) {
+    return res.status(403).json({ error: 'Only admins can clear login attempts.' });
+  }
+
+  const now = new Date().toISOString();
+  db.run(
+    'UPDATE employees SET failed_login_count = 0, login_locked_until = NULL, updatedAt = ? WHERE id = ?',
+    [now, id],
+    function(err) {
+      if (err) {
+        debugError('Error clearing login attempts:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+      debugLog(`✅ Cleared login attempts for employee ${id}`);
+      res.json({ message: 'Login attempts cleared. User can log in again.' });
+    }
+  );
+});
+
+/**
  * Get supervisor team
  */
 router.get('/api/supervisors/:supervisorId/team', (req, res) => {

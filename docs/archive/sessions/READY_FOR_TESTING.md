@@ -94,7 +94,7 @@ All critical and minor issues have been resolved!
 1. **Change config**: Set `USE_PRODUCTION_FOR_TESTING = true`
 2. **Restart app**: Reload to apply change
 3. **Sync destination**: Render.com (accessible anywhere)
-4. **View data**: https://oxford-mileage-tracker.vercel.app
+4. **View data**: https://oxford-house-mileage-tracker.vercel.app
 
 **Current Status**: Configured for **LOCAL testing** (syncs to localhost)
 
@@ -206,7 +206,7 @@ All critical bugs are fixed. The sync is working. Dates are correct. Everything 
 **To use**: Open Expo Go, scan QR code for main branch, or wait for OTA update
 
 ### Web Portal:
-- **Frontend**: Deployed at https://oxford-mileage-tracker.vercel.app
+- **Frontend**: Deployed at https://oxford-house-mileage-tracker.vercel.app
 - **Backend**: Deployed at https://oxford-mileage-backend.onrender.com
 
 **Note**: For real-world testing, set `USE_PRODUCTION_FOR_TESTING = true` in `src/config/api.ts` to sync to production backend.

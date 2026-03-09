@@ -39,6 +39,7 @@ import {
   Add,
   Clear,
   LockReset,
+  LockOpen,
   Search,
   ExpandMore,
   ExpandLess,
@@ -792,6 +793,17 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     }
   };
 
+  const handleClearLoginAttempts = async (employee: Employee) => {
+    if (!window.confirm(`Clear login attempts and unlock account for ${employee.name}? They will be able to log in again from the app or web.`)) return;
+    try {
+      await EmployeeApiService.clearLoginAttempts(employee.id);
+      alert(`Login attempts cleared for ${employee.name}. They can log in again.`);
+    } catch (error) {
+      console.error('Error clearing login attempts:', error);
+      alert(`Failed to clear: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    }
+  };
+
   // Quick Cost Center Edit Functions
   const handleQuickCostCenterEdit = (employee: Employee) => {
     const costCenters = parseCostCenters(employee.costCenters);
@@ -1309,6 +1321,15 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                                   sx={{ padding: '4px' }}
                                 >
                                   <LockReset fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Clear login attempts / Unlock account">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleClearLoginAttempts(employee)}
+                                  sx={{ padding: '4px' }}
+                                >
+                                  <LockOpen fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Archive">

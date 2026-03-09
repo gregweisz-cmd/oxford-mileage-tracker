@@ -210,6 +210,7 @@ async function upsertOne(mapped, existing) {
 
   if (existing) {
     const id = existing.id;
+    // Sync updates: name, position, phoneNumber, costCenters, additions/archivals only. baseAddress is preserved.
     // Always assign Employee ID from API when the API provides one; otherwise keep existing
     const oxfordHouseId =
       mapped.oxfordHouseId !== undefined && String(mapped.oxfordHouseId || '').trim() !== ''
@@ -218,7 +219,7 @@ async function upsertOne(mapped, existing) {
     await new Promise((resolve, reject) => {
       db.run(
         `UPDATE employees SET
-          name = ?, preferredName = ?, position = ?, phoneNumber = ?, baseAddress = ?,
+          name = ?, preferredName = ?, position = ?, phoneNumber = ?,
           costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, oxfordHouseId = ?, updatedAt = ?
         WHERE id = ?`,
         [
@@ -226,7 +227,6 @@ async function upsertOne(mapped, existing) {
           existing.preferredName || '',
           mapped.position,
           mapped.phoneNumber || '',
-          mapped.baseAddress || '',
           JSON.stringify(mapped.costCenters),
           JSON.stringify(existing.selectedCostCenters ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters) : mapped.costCenters),
           existing.defaultCostCenter || (mapped.costCenters[0] || ''),
@@ -280,7 +280,7 @@ async function upsertOne(mapped, existing) {
         'employee',
         '[]',
         mapped.phoneNumber || '',
-        mapped.baseAddress || '',
+        '', // baseAddress: not pulled from HR - employees set it themselves
         '',
         JSON.stringify(mapped.costCenters),
         JSON.stringify(mapped.costCenters),
@@ -366,8 +366,7 @@ async function previewSyncFromExternal() {
         (existing.name || '') === (mapped.name || '') &&
         (existing.position || '') === (mapped.position || '') &&
         JSON.stringify(prevCC.sort()) === JSON.stringify((mapped.costCenters || []).sort()) &&
-        (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
-        (existing.baseAddress || '') === (mapped.baseAddress || '');
+        (existing.phoneNumber || '') === (mapped.phoneNumber || '');
       if (!same) {
         updates.push({
           email: mapped.email,

@@ -1,6 +1,6 @@
 import { Employee } from '../types';
 import { debugLog, debugError } from '../config/debug';
-import { apiGet, apiPost, apiPut, apiDelete } from './rateLimitedApi';
+import { apiGet, apiPost, apiPut, apiDelete, apiFetch } from './rateLimitedApi';
 
 export interface BulkUpdateRequest {
   employeeIds: string[];
@@ -75,6 +75,41 @@ export class EmployeeApiService {
 
   static async resetEmployeePassword(id: string, password: string): Promise<void> {
     await apiPut(`/api/employees/${id}/password`, { password });
+  }
+
+  /** Clear failed login attempts and unlock account (admin/finance only). */
+  static async clearLoginAttempts(id: string): Promise<void> {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const employeeDataRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('employeeData') : null;
+    let role = 'employee';
+    try {
+      if (employeeDataRaw) {
+        const data = JSON.parse(employeeDataRaw);
+        role = (data?.role || 'employee').toLowerCase();
+      }
+    } catch (_) { /* ignore */ }
+    const baseUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+    const response = await apiFetch(`${baseUrl}/api/employees/${id}/clear-login-attempts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'x-user-role': role,
+      },
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      let message = response.statusText;
+      try {
+        if (body) {
+          const parsed = JSON.parse(body);
+          message = parsed.error || body || message;
+        }
+      } catch (_) {
+        if (body) message = body;
+      }
+      throw new Error(message);
+    }
   }
 
   static async archiveEmployee(id: string): Promise<void> {

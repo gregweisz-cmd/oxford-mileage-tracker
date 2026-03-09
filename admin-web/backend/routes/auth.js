@@ -101,23 +101,53 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
       if (!employee) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
+
+      // Per-user lockout: if account is locked, reject before checking password
+      const lockedUntil = employee.login_locked_until ? new Date(employee.login_locked_until).getTime() : 0;
+      if (lockedUntil > Date.now()) {
+        debugLog(`🔒 Login blocked for ${email}: account locked until ${employee.login_locked_until}`);
+        return res.status(423).json({
+          error: 'Account temporarily locked due to too many failed login attempts. An admin can clear this, or try again later.'
+        });
+      }
       
       // Check password (using bcrypt comparison)
       const passwordMatch = await helpers.comparePassword(password, employee.password);
       if (!passwordMatch) {
         debugLog(`❌ Password mismatch for ${email}`);
+        const failedCount = (employee.failed_login_count || 0) + 1;
+        const maxAttempts = 5;
+        const lockMinutes = 15;
+        const newLockedUntil = failedCount >= maxAttempts
+          ? new Date(Date.now() + lockMinutes * 60 * 1000).toISOString()
+          : null;
+        await new Promise((resolve) => {
+          db.run(
+            'UPDATE employees SET failed_login_count = ?, login_locked_until = ?, updatedAt = ? WHERE id = ?',
+            [failedCount, newLockedUntil, new Date().toISOString(), employee.id],
+            function(updateErr) {
+              if (updateErr) debugError('Failed to update failed_login_count:', updateErr);
+              resolve();
+            }
+          );
+        });
+        if (failedCount >= maxAttempts) {
+          return res.status(423).json({
+            error: `Too many failed attempts. Account locked for ${lockMinutes} minutes. An admin can clear this.`
+          });
+        }
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
       debugLog(`✅ Password match for ${email}, updating lastLoginAt...`);
       
-      // Update lastLoginAt timestamp on successful login
+      // Update lastLoginAt and reset failed attempt count on success
       const now = new Date().toISOString();
       let lastLoginUpdated = false;
       await new Promise((resolve) => {
         db.run(
-          'UPDATE employees SET lastLoginAt = ? WHERE id = ?',
-          [now, employee.id],
+          'UPDATE employees SET lastLoginAt = ?, failed_login_count = 0, login_locked_until = NULL, updatedAt = ? WHERE id = ?',
+          [now, now, employee.id],
           function(updateErr) {
             if (updateErr) {
               debugError('❌ Failed to update lastLoginAt:', updateErr);
@@ -330,12 +360,54 @@ router.post('/api/employee-login', async (req, res) => {
       if (!employee) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
-      
+
+      // Per-user lockout (same as web login)
+      const lockedUntilMobile = employee.login_locked_until ? new Date(employee.login_locked_until).getTime() : 0;
+      if (lockedUntilMobile > Date.now()) {
+        debugLog(`🔒 Mobile login blocked for ${employee.email}: account locked`);
+        return res.status(423).json({
+          error: 'Account temporarily locked due to too many failed login attempts. An admin can clear this, or try again later.'
+        });
+      }
+
       // Check password (using bcrypt comparison)
       const passwordMatch = await helpers.comparePassword(password, employee.password);
       if (!passwordMatch) {
+        const failedCount = (employee.failed_login_count || 0) + 1;
+        const maxAttempts = 5;
+        const lockMinutes = 15;
+        const newLockedUntil = failedCount >= maxAttempts
+          ? new Date(Date.now() + lockMinutes * 60 * 1000).toISOString()
+          : null;
+        await new Promise((resolve) => {
+          db.run(
+            'UPDATE employees SET failed_login_count = ?, login_locked_until = ?, updatedAt = ? WHERE id = ?',
+            [failedCount, newLockedUntil, new Date().toISOString(), employee.id],
+            function(updateErr) {
+              if (updateErr) debugError('Failed to update failed_login_count (mobile):', updateErr);
+              resolve();
+            }
+          );
+        });
+        if (failedCount >= maxAttempts) {
+          return res.status(423).json({
+            error: `Too many failed attempts. Account locked for ${lockMinutes} minutes. An admin can clear this.`
+          });
+        }
         return res.status(401).json({ error: 'Invalid credentials' });
       }
+
+      // Reset failed attempt count on success (mobile)
+      await new Promise((resolve) => {
+        db.run(
+          'UPDATE employees SET failed_login_count = 0, login_locked_until = NULL, updatedAt = ? WHERE id = ?',
+          [new Date().toISOString(), employee.id],
+          function(updateErr) {
+            if (updateErr) debugError('Failed to reset login attempts (mobile):', updateErr);
+            resolve();
+          }
+        );
+      });
       
       // Parse JSON fields
       let costCenters = [];
