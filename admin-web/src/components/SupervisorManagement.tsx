@@ -404,13 +404,18 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const unassignedStaff = getUnassignedStaff();
   const assignableStaff = getAssignableStaff();
   const assignableStaffUnique = React.useMemo(() => {
+    const entry = selectedSupervisor ? supervisors.find(s => s.supervisor.id === selectedSupervisor.id) : null;
+    const type = entry?.type ?? 'supervisor';
+    const withoutAssignment = type === 'senior-staff'
+      ? assignableStaff.filter(emp => !emp.seniorStaffId)
+      : assignableStaff.filter(emp => !emp.supervisorId);
     const seen = new Set<string>();
-    return assignableStaff.filter((emp) => {
+    return withoutAssignment.filter((emp) => {
       if (seen.has(emp.id)) return false;
       seen.add(emp.id);
       return true;
     });
-  }, [assignableStaff]);
+  }, [assignableStaff, selectedSupervisor, supervisors]);
   const assignStaffOptions = React.useMemo(() => {
     const q = assignStaffSearchInput.trim().toLowerCase();
     if (!q) return assignableStaffUnique;
