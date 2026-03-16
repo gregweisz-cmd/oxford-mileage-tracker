@@ -77,6 +77,8 @@ interface MonthlyReport {
 interface SupervisorDashboardProps {
   currentEmployee: any;
   showKpiCards?: boolean;
+  /** When true, only KPI cards and expense trend are shown (e.g. for Analytics tab). No report lists. */
+  kpiOnly?: boolean;
 }
 
 interface SupervisorKpiData {
@@ -109,7 +111,7 @@ interface SupervisorKpiData {
   }[];
 }
 
-export default function SupervisorDashboard({ currentEmployee, showKpiCards = true }: SupervisorDashboardProps) {
+export default function SupervisorDashboard({ currentEmployee, showKpiCards = true, kpiOnly = false }: SupervisorDashboardProps) {
   const [pendingReports, setPendingReports] = useState<MonthlyReport[]>([]);
   const [reviewedReports, setReviewedReports] = useState<MonthlyReport[]>([]);
   const [acceptedReports, setAcceptedReports] = useState<MonthlyReport[]>([]);
@@ -210,9 +212,13 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
   }, [currentEmployee]);
 
   useEffect(() => {
-    loadReports();
     loadKpis();
-  }, [loadReports, loadKpis]);
+    if (kpiOnly) {
+      setLoading(false);
+    } else {
+      loadReports();
+    }
+  }, [loadReports, loadKpis, kpiOnly]);
 
   const handleReview = (report: MonthlyReport, action: 'approve' | 'revision') => {
     setSelectedReport(report);
@@ -422,7 +428,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
     }
   };
 
-  if (loading) {
+  if (!kpiOnly && loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
         <CircularProgress />
@@ -433,12 +439,16 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Supervisor Dashboard
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Review and approve expense reports from your team
-      </Typography>
+      {!kpiOnly && (
+        <>
+          <Typography variant="h4" gutterBottom>
+            Supervisor Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Review and approve expense reports from your team
+          </Typography>
+        </>
+      )}
 
       {kpiError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setKpiError(null)}>
@@ -473,7 +483,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
         </Alert>
       )}
 
-      {showKpiCards && (
+      {(showKpiCards || kpiOnly) && (
         kpiLoading ? (
           <Box display="flex" justifyContent="center" py={3}>
             <CircularProgress size={24} />
@@ -604,12 +614,14 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
         ) : null
       )}
 
-      {error && (
+      {!kpiOnly && error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
+      {!kpiOnly && (
+      <>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab 
@@ -892,6 +904,9 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
             </TableContainer>
           )}
         </Box>
+      )}
+
+      </>
       )}
 
       {/* Review Dialog */}

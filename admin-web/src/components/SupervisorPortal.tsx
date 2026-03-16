@@ -1489,10 +1489,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               <Typography variant="h6" gutterBottom>
                 Team Performance Analytics
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Comprehensive analytics and performance metrics will be available here.
-                This will include approval rates, submission patterns, expense trends, and team productivity metrics.
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Approval rates, submission patterns, expense trends, and team productivity metrics.
               </Typography>
+              <SupervisorDashboard currentEmployee={currentEmployee} showKpiCards={true} kpiOnly />
             </Box>
           )}
         </Paper>
