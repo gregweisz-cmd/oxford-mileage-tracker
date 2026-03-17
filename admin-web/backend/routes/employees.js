@@ -616,13 +616,6 @@ router.post('/api/employees',
     ? JSON.stringify(permissions)
     : (typeof permissions === 'string' ? permissions : '[]');
 
-  // Everyone except CEO must have a supervisor (per Senior Staff approval design)
-  const posLowerCreate = (position || '').toLowerCase();
-  const isCeoOnCreate = posLowerCreate.includes('ceo') || posLowerCreate.includes('chief executive officer');
-  if (!isCeoOnCreate && (!supervisorId || String(supervisorId).trim() === '')) {
-    return res.status(400).json({ error: 'Everyone except CEO must have a supervisor assigned.' });
-  }
-  
   // Use Promise wrapper for callback-based database operations
   await new Promise((resolve, reject) => {
     db.run(
@@ -786,15 +779,6 @@ router.put('/api/employees/:id', async (req, res) => {
     if (!position || position.trim() === '') {
       debugError('❌ Validation error: position is required');
       res.status(400).json({ error: 'Position is required and cannot be empty' });
-      return;
-    }
-
-    // Everyone except CEO must have a supervisor (per Senior Staff approval design)
-    const posLower = (position || '').toLowerCase();
-    const isCeo = (role === 'ceo') || (posLower.includes('ceo') || posLower.includes('chief executive officer'));
-    if (!isCeo && (!supervisorId || String(supervisorId).trim() === '')) {
-      debugError('❌ Validation error: Supervisor is required for all employees except CEO');
-      res.status(400).json({ error: 'This employee must have a supervisor assigned. Assign a supervisor in the employee record and try again.' });
       return;
     }
 
