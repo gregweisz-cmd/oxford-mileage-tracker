@@ -328,18 +328,38 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
 
     try {
       debugLog('🗑️ Removing from list:', supervisorToDelete.name);
+
+      // Update the employee's position to remove the Supervisor / Senior Staff suffix
+      const currentPosition = supervisorToDelete.position || '';
+      let updatedPosition = currentPosition;
+
+      if (isSeniorStaff) {
+        updatedPosition = currentPosition.replace(/\s*-\s*Senior Staff\b/, '');
+      } else {
+        updatedPosition = currentPosition.replace(/\s*-\s*Supervisor\b/, '');
+      }
+
+      await onUpdateEmployee(supervisorToDelete.id, {
+        ...supervisorToDelete,
+        position: updatedPosition,
+      });
+
+      // Also hide them locally from the list until the next refresh
       setExcludedFromSupervisorList(prev => new Set(prev).add(supervisorToDelete.id));
 
       if (staffIds.length > 0) {
-        await onBulkUpdateEmployees(staffIds, isSeniorStaff
-          ? { seniorStaffId: null }
-          : { supervisorId: null }
+        await onBulkUpdateEmployees(
+          staffIds,
+          isSeniorStaff ? { seniorStaffId: null } : { supervisorId: null }
         );
       }
 
+      // Refresh data from the server so the change persists across reloads
+      await onRefresh();
+
       setDeleteConfirmOpen(false);
       setSupervisorToDelete(null);
-      debugLog('✅ Removed (title unchanged)');
+      debugLog('✅ Removed designation and updated position');
     } catch (error) {
       debugError('Error demoting:', error);
       setDeleteConfirmOpen(false);
