@@ -1418,16 +1418,29 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           {/* Team Tab */}
           {activeTab === 2 && (
             <Box sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">Team Members</Typography>
                 <Button
                   startIcon={<PersonAddIcon />}
-                  variant="contained"
+                  variant="outlined"
                   size="small"
+                  onClick={() => {
+                    showErrorPrompt({
+                      title: 'Manage team members in Admin Portal',
+                      message:
+                        'Supervisor team membership is managed in the Admin Portal (Employee Management / Supervisor Management). ' +
+                        'If you need someone added to your team, please contact an administrator.',
+                      suggestion:
+                        'Open the Admin Portal and use Employee Management or Supervisor Management to update supervisor assignments.',
+                    });
+                  }}
                 >
                   Add Team Member
                 </Button>
               </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                To change who appears in this list, an admin must update supervisor assignments in the Admin Portal.
+              </Typography>
 
               <List>
                 {teamMembers.map((member) => (
