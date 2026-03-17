@@ -1425,14 +1425,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                   variant="outlined"
                   size="small"
                   onClick={() => {
-                    showErrorPrompt({
-                      title: 'Manage team members in Admin Portal',
-                      message:
-                        'Supervisor team membership is managed in the Admin Portal (Employee Management / Supervisor Management). ' +
-                        'If you need someone added to your team, please contact an administrator.',
-                      suggestion:
-                        'Open the Admin Portal and use Employee Management or Supervisor Management to update supervisor assignments.',
-                    });
+                    showErrorPrompt(
+                      'Supervisor team membership is managed in the Admin Portal (Employee Management / Supervisor Management). ' +
+                      'If you need someone added to your team, please contact an administrator.'
+                    );
                   }}
                 >
                   Add Team Member
