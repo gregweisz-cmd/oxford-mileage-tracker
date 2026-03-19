@@ -57,13 +57,18 @@
         width: 36px;
         height: 36px;
         border-radius: 8px;
-        background: var(--primary);
+        background: #fff;
+        border: 1px solid var(--border);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #fff;
-        font-weight: 700;
-        font-size: 18px;
+        overflow: hidden;
+      }
+
+      .brand-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
 
       .brand-text-title {
@@ -219,7 +224,9 @@
     <div class="page">
       <header>
         <div class="brand">
-          <div class="brand-logo">OH</div>
+          <div class="brand-logo">
+            <img src="oxford-house-logo.png" alt="Oxford House logo" />
+          </div>
           <div>
             <div class="brand-text-title">Oxford House Expense Tracker</div>
             <div class="brand-text-subtitle">Staff & Supervisor Web Portal</div>
@@ -303,22 +310,22 @@
             </p>
             <ul>
               <li>
-                <a href="https://oxford-mileage-tracker.vercel.app/docs/mobile-app"
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/Mobile-App-How-To.pdf"
                   >Mobile App How‑To Guide</a
                 >
               </li>
               <li>
-                <a href="https://oxford-mileage-tracker.vercel.app/docs/staff-portal"
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/Staff-Portal-How-To.pdf"
                   >Staff Web Portal Guide</a
                 >
               </li>
               <li>
-                <a href="https://oxford-mileage-tracker.vercel.app/docs/supervisor-portal"
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/Supervisor-Portal-How-To.pdf"
                   >Supervisor Web Portal Guide</a
                 >
               </li>
               <li>
-                <a href="https://oxford-mileage-tracker.vercel.app/docs/admin-portal"
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/Admin-Portal-How-To.pdf"
                   >Admin &amp; Finance Portal Guide</a
                 >
               </li>
@@ -331,7 +338,10 @@
             </p>
             <p>
               For privacy information, see our
-              <a href="#" target="_blank" rel="noreferrer"
+              <a
+                href="https://oxford-mileage-tracker.vercel.app/privacy-policy.html"
+                target="_blank"
+                rel="noreferrer"
                 >Privacy Policy</a
               >.
             </p>
