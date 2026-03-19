@@ -3134,8 +3134,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const handleCropApply = useCallback(async (croppedDataUrl: string) => {
     if (!cropModalReceipt) return;
     const receiptId = cropModalReceipt.id;
-    const updatedReceipts = receipts.map(receipt =>
-      receipt.id === receiptId ? { ...receipt, imageUri: croppedDataUrl } : receipt
+    const updatedReceipts: ReceiptData[] = receipts.map(receipt =>
+      receipt.id === receiptId ? { ...receipt, imageUri: croppedDataUrl, fileType: 'image' } : receipt
     );
     setReceipts(updatedReceipts);
     setReceiptImageLoadErrors(prev => {
@@ -3153,7 +3153,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const response = await fetch(`${API_BASE_URL}/api/receipts/${receiptId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...receipt, imageUri: croppedDataUrl })
+          body: JSON.stringify({ ...receipt, imageUri: croppedDataUrl, fileType: 'image' })
         });
         if (response.ok) {
           await syncReportData();
@@ -8073,19 +8073,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                 {receipt.fileType === 'pdf' || isPdfReceiptUri(raw) ? (
                                   <>
-                                    <Tooltip title="PDF cropping is not supported yet. Upload an image to use Crop.">
-                                      <span>
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          startIcon={<CropIcon sx={{ fontSize: 14 }} />}
-                                          disabled
-                                          sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
-                                        >
-                                          Crop
-                                        </Button>
-                                      </span>
-                                    </Tooltip>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<CropIcon sx={{ fontSize: 14 }} />}
+                                      onClick={() => setCropModalReceipt({ id: receipt.id, imageUri: getReceiptImageUrl(raw) })}
+                                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                    >
+                                      Crop
+                                    </Button>
                                     <Button
                                       size="small"
                                       variant="outlined"

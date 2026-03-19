@@ -9,6 +9,11 @@ import {
 } from '@mui/material';
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+// pdf.js worker bundling can vary by toolchain; use require and normalize below.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+// @ts-ignore
+const pdfWorkerSrc = require('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
 
 export interface ReceiptImageCropModalProps {
   open: boolean;
@@ -88,6 +93,42 @@ function imageSrcWithCors(imageSrc: string): string {
   return imageSrc;
 }
 
+function isPdfSrc(src: string): boolean {
+  const raw = (src || '').trim().toLowerCase();
+  if (!raw) return false;
+  if (raw.startsWith('data:application/pdf')) return true;
+  const noQuery = raw.split('?')[0].split('#')[0];
+  return noQuery.endsWith('.pdf');
+}
+
+/**
+ * Render the first page of a PDF into a JPEG data URL.
+ * Used so we can reuse the existing image-only crop UI for PDF receipts.
+ */
+async function renderPdfFirstPageToJpegDataUrl(pdfSrc: string): Promise<string> {
+  const workerSrc = (pdfWorkerSrc as any)?.default ?? pdfWorkerSrc;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+
+  const loadingTask = pdfjsLib.getDocument({ url: pdfSrc });
+  const pdf = await loadingTask.promise;
+  try {
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas 2D context not available');
+
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+
+    // pdfjs-dist types are stricter than what we provide; runtime accepts this shape.
+    await page.render({ canvasContext: context, viewport } as any).promise;
+    return canvas.toDataURL('image/jpeg', 0.9);
+  } finally {
+    pdf.destroy();
+  }
+}
+
 export default function ReceiptImageCropModal({
   open,
   imageSrc,
@@ -97,20 +138,48 @@ export default function ReceiptImageCropModal({
   const [crop, setCrop] = useState<Crop | undefined>(undefined);
   const [applying, setApplying] = useState(false);
   const srcToLoad = imageSrcWithCors(imageSrc);
+  const pdfReceipt = isPdfSrc(srcToLoad);
+  const [renderingPdf, setRenderingPdf] = useState(false);
+  const [renderedPdfImageSrc, setRenderedPdfImageSrc] = useState<string | null>(null);
 
   const handleClose = useCallback(() => {
     setCrop(undefined);
+    setRenderedPdfImageSrc(null);
     onClose();
   }, [onClose]);
 
+  const handleRenderPdf = useCallback(async () => {
+    if (!pdfReceipt || !srcToLoad) return;
+    setRenderingPdf(true);
+    try {
+      const rendered = await renderPdfFirstPageToJpegDataUrl(srcToLoad);
+      setRenderedPdfImageSrc(rendered);
+    } finally {
+      setRenderingPdf(false);
+    }
+  }, [pdfReceipt, srcToLoad]);
+
+  // Render PDF -> image once when modal opens.
+  React.useEffect(() => {
+    if (!open) return;
+    if (!pdfReceipt) {
+      setRenderedPdfImageSrc(null);
+      return;
+    }
+    setRenderedPdfImageSrc(null);
+    handleRenderPdf();
+  }, [open, pdfReceipt, handleRenderPdf]);
+
   const handleApply = useCallback(async () => {
     if (!onApply || !imageSrc) return;
+    const applySrc = pdfReceipt ? renderedPdfImageSrc : srcToLoad;
+    if (pdfReceipt && !applySrc) return;
     const cropToUse = crop && crop.width > 0 && crop.height > 0
       ? crop
       : { unit: '%' as const, x: 0, y: 0, width: 100, height: 100 };
     setApplying(true);
     try {
-      const img = await loadImageForCrop(srcToLoad);
+      const img = await loadImageForCrop(applySrc || '');
       const dataUrl = drawCroppedToDataUrl(img, cropToUse);
       onApply(dataUrl);
       handleClose();
@@ -120,21 +189,26 @@ export default function ReceiptImageCropModal({
     } finally {
       setApplying(false);
     }
-  }, [crop, imageSrc, srcToLoad, onApply, handleClose]);
+  }, [crop, imageSrc, srcToLoad, pdfReceipt, renderedPdfImageSrc, onApply, handleClose]);
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>Crop receipt image</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 320, bgcolor: '#f5f5f5' }}>
-          {imageSrc && (
+          {pdfReceipt && renderingPdf && (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              Rendering PDF page for cropping…
+            </Box>
+          )}
+          {(pdfReceipt ? !!renderedPdfImageSrc : !!imageSrc) && (
             <ReactCrop
               crop={crop}
               onChange={(_pixelCrop, percentCrop) => setCrop(percentCrop)}
               aspect={undefined}
             >
               <img
-                src={srcToLoad}
+                src={pdfReceipt ? renderedPdfImageSrc || '' : srcToLoad}
                 alt="Receipt"
                 crossOrigin="anonymous"
                 style={{ maxWidth: '100%', maxHeight: '70vh', display: 'block' }}
@@ -144,9 +218,9 @@ export default function ReceiptImageCropModal({
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={applying}>Close</Button>
+        <Button onClick={handleClose} disabled={applying || renderingPdf}>Close</Button>
         {onApply && (
-          <Button variant="contained" onClick={handleApply} disabled={applying}>
+          <Button variant="contained" onClick={handleApply} disabled={applying || renderingPdf || (pdfReceipt && !renderedPdfImageSrc)}>
             {applying ? 'Applying…' : 'Apply crop'}
           </Button>
         )}
