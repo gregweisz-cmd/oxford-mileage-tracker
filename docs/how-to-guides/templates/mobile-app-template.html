@@ -175,6 +175,30 @@
             margin-bottom: 15pt;
             page-break-inside: avoid;
         }
+
+        .two-col {
+            display: flex;
+            gap: 18pt;
+            align-items: flex-start;
+            justify-content: space-between;
+            page-break-inside: avoid;
+        }
+
+        .two-col .col-left {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .two-col .col-right {
+            flex: 0 0 2.75in;
+            max-width: 2.75in;
+            min-width: 2.75in;
+        }
+
+        .two-col .col-right img {
+            max-width: 2.75in !important;
+            max-height: 4.8in !important;
+        }
         
         table {
             width: 100%;
@@ -269,7 +293,6 @@
             <li><a href="#comprehensive-reference">Comprehensive Reference</a>
                 <ul>
                     <li><a href="#login-auth">Login and Authentication</a></li>
-                    <li><a href="#home-dashboard">Home Screen Dashboard</a></li>
                     <li><a href="#gps-tracking">GPS Tracking</a></li>
                     <li><a href="#manual-mileage">Manual Mileage Entry</a></li>
                     <li><a href="#receipts">Receipt Capture and Management</a></li>
@@ -296,32 +319,21 @@
         </div>
         
         <h2 id="installation">Installation and First Login</h2>
-        
-        <div class="screenshot-placeholder" data-screenshot-name="app-store-download"></div>
-        
-        <h3>Installing the App</h3>
         <div class="step">
             <span class="step-number">1</span>
-            <strong>Download the App</strong>
-            <p>Install the Oxford House Expense Tracker app from the Apple App Store (iOS) or Google Play Store (Android).</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">2</span>
             <strong>Open the App</strong>
             <p>Tap the app icon on your device to launch the application.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Login Screen</strong>
+            <p>You'll see the login screen. Enter your email address and password provided by your administrator.</p>
+            <div class="screenshot-placeholder" data-screenshot-name="login-screen"></div>
         </div>
         
         <div class="step">
             <span class="step-number">3</span>
-            <strong>Login Screen</strong>
-            <p>You'll see the login screen. Enter your email address and password provided by your administrator.</p>
-        </div>
-        
-        <div class="screenshot-placeholder" data-screenshot-name="login-screen"></div>
-        
-        <div class="step">
-            <span class="step-number">4</span>
             <strong>First Login</strong>
             <p>On your first login, you may be prompted to complete a setup wizard to configure your preferences.</p>
         </div>
@@ -332,28 +344,26 @@
         </div>
         
         <h2 id="basic-navigation">Basic Navigation</h2>
-        
-        <div class="screenshot-placeholder" data-screenshot-name="home-screen"></div>
-        
-        <h3>Home Screen Overview</h3>
-        <p>The home screen is your main dashboard. Here's what you'll see:</p>
-        <ul>
-            <li><strong>Dashboard Tiles</strong> - Quick access to main features</li>
-            <li><strong>Monthly Summary</strong> - Overview of your current month's expenses</li>
-            <li><strong>Quick Actions</strong> - Common tasks like GPS tracking and adding receipts</li>
-        </ul>
-        
-        <h3>Navigation Menu</h3>
-        <p>The app uses a simple navigation structure:</p>
-        <ul>
-            <li><strong>Home</strong> - Return to the main dashboard</li>
-            <li><strong>Mileage</strong> - View and manage mileage entries</li>
-            <li><strong>Receipts</strong> - View and manage receipts</li>
-                <li><strong>Hours & Descriptions</strong> - Track hours and add daily notes</li>
-                <li><strong>Per Diem</strong> - Manage per diem allowances</li>
-                <li><strong>Reports</strong> - View monthly expense reports</li>
-                <li><strong>Settings</strong> - Configure app preferences</li>
-        </ul>
+        <div class="two-col">
+            <div class="col-left">
+                <h3>Home Screen Overview</h3>
+                <p>The home screen is your main dashboard. The most common buttons are in this order:</p>
+                <ol>
+                    <li><strong>Monthly Mileage Summary</strong> - A quick summary of miles and entries for the current month. Tap to view details.</li>
+                    <li><strong>Start GPS Tracking</strong> - Begin tracking a trip automatically.</li>
+                    <li><strong>Add Receipt</strong> - Capture a receipt photo and attach it to a cost center.</li>
+                    <li><strong>Manual Entry</strong> - Enter mileage manually if you didn’t use GPS tracking.</li>
+                    <li><strong>View Receipts</strong> - Browse receipts you’ve already captured.</li>
+                    <li><strong>Hours Worked</strong> - Log your hours for a day and cost center.</li>
+                    <li><strong>Daily Description</strong> - Add a daily note/description for your work day.</li>
+                    <li><strong>Per Diem</strong> - See per diem eligibility and claim per diem (if enabled).</li>
+                    <li><strong>Settings</strong> - Update preferences like base address, cost centers, and month selection.</li>
+                </ol>
+            </div>
+            <div class="col-right">
+                <div class="screenshot-placeholder" data-screenshot-name="home-dashboard-full"></div>
+            </div>
+        </div>
         
         <h2 id="essential-features">Essential Features Overview</h2>
         
@@ -410,37 +420,6 @@
         
         <h3>Logging Out</h3>
         <p>To log out, navigate to Settings and tap the "Log Out" button. This is recommended if you're using a shared device.</p>
-        
-        <h2 id="home-dashboard">Home Screen Dashboard</h2>
-        
-        <div class="screenshot-placeholder" data-screenshot-name="home-dashboard-full"></div>
-        
-        <h3>Dashboard Layout</h3>
-        <p>The home screen provides a comprehensive overview of your expense tracking activities:</p>
-        
-        <h4>Monthly Summary Card</h4>
-        <p>At the top of the screen, you'll see a summary of your current month's activity:</p>
-        <ul>
-            <li><strong>Total Miles</strong> - Sum of all mileage entries for the month</li>
-            <li><strong>Total Receipts</strong> - Number of receipts captured</li>
-            <li><strong>Total Hours</strong> - Hours worked this month</li>
-        </ul>
-        
-        <h4>Quick Action Tiles</h4>
-        <p>The main area contains tiles for quick access to common functions:</p>
-        <ul>
-            <li><strong>Start GPS Tracking</strong> - Begin automatic trip tracking (green tile)</li>
-            <li><strong>Add Receipt</strong> - Capture a new receipt photo</li>
-            <li><strong>Manual Entry</strong> - Add mileage manually</li>
-            <li><strong>View Receipts</strong> - See all captured receipts</li>
-            <li><strong>Hours Worked</strong> - Track work hours</li>
-            <li><strong>Daily Description</strong> - Add daily notes</li>
-        </ul>
-        
-        <div class="tip-box">
-            <h4>Customizing Your Dashboard</h4>
-            <p>You can reorder the dashboard tiles by long-pressing and dragging them. Your preferred order will be saved automatically.</p>
-        </div>
         
         <h2 id="gps-tracking">GPS Tracking</h2>
         
@@ -519,70 +498,75 @@
         </ul>
         
         <h2 id="manual-mileage">Manual Mileage Entry</h2>
-        
-        <div class="screenshot-placeholder" data-screenshot-name="manual-entry-screen"></div>
-        
-        <h3>When to Use Manual Entry</h3>
-        <p>Use manual entry when:</p>
-        <ul>
-            <li>GPS tracking isn't available or accurate</li>
-            <li>You forgot to start GPS tracking</li>
-            <li>You need to enter historical mileage</li>
-            <li>You prefer to enter mileage yourself</li>
-        </ul>
-        
-        <h3>Adding a Manual Entry</h3>
-        <div class="step">
-            <span class="step-number">1</span>
-            <strong>Tap "Manual Entry"</strong>
-            <p>From the home screen, tap the "Manual Entry" tile.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">2</span>
-            <strong>Select Date</strong>
-            <p>Choose the date for this mileage entry. Defaults to today.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">3</span>
-            <strong>Enter Start Location</strong>
-            <p>Enter the starting address or location name. You can use saved addresses for faster entry.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">4</span>
-            <strong>Enter End Location</strong>
-            <p>Enter the destination address or location name.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">5</span>
-            <strong>Enter Miles</strong>
-            <p>Enter the number of miles traveled. You can use your odometer reading or a mapping service to calculate distance.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">6</span>
-            <strong>Select Cost Center</strong>
-            <p>Choose the appropriate cost center for this trip.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">7</span>
-            <strong>Add Purpose</strong>
-            <p>Optionally add a description or purpose for the trip.</p>
-        </div>
-        
-        <div class="step">
-            <span class="step-number">8</span>
-            <strong>Save Entry</strong>
-            <p>Tap "Save" to save the mileage entry.</p>
-        </div>
-        
-        <div class="tip-box">
-            <h4>Using Saved Addresses</h4>
-            <p>If you frequently travel to the same locations, save them as addresses. This makes manual entry much faster - just select from your saved addresses instead of typing each time.</p>
+
+        <div class="two-col">
+            <div class="col-left">
+                <h3>When to Use Manual Entry</h3>
+                <p>Use manual entry when:</p>
+                <ul>
+                    <li>GPS tracking isn't available or accurate</li>
+                    <li>You forgot to start GPS tracking</li>
+                    <li>You need to enter historical mileage</li>
+                    <li>You prefer to enter mileage yourself</li>
+                </ul>
+                
+                <h3>Adding a Manual Entry</h3>
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>Tap "Manual Entry"</strong>
+                    <p>From the home screen, tap the "Manual Entry" tile.</p>
+                </div>
+                
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>Select Date</strong>
+                    <p>Choose the date for this mileage entry. Defaults to today.</p>
+                </div>
+                
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>Enter Start Location</strong>
+                    <p>Enter the starting address or location name. You can use saved addresses for faster entry.</p>
+                </div>
+                
+                <div class="step">
+                    <span class="step-number">4</span>
+                    <strong>Enter End Location</strong>
+                    <p>Enter the destination address or location name.</p>
+                </div>
+                
+                <div class="step">
+                    <span class="step-number">5</span>
+                    <strong>Enter Miles</strong>
+                    <p>Enter the number of miles traveled. You can use your odometer reading or a mapping service to calculate distance.</p>
+                </div>
+                
+                <div class="step">
+                    <span class="step-number">6</span>
+                    <strong>Select Cost Center</strong>
+                    <p>Choose the appropriate cost center for this trip.</p>
+                </div>
+                
+                <div class="step">
+                    <span class="step-number">7</span>
+                    <strong>Add Purpose</strong>
+                    <p>Optionally add a description or purpose for the trip.</p>
+                </div>
+                
+                <div class="step">
+                    <span class="step-number">8</span>
+                    <strong>Save Entry</strong>
+                    <p>Tap "Save" to save the mileage entry.</p>
+                </div>
+                
+                <div class="tip-box">
+                    <h4>Using Saved Addresses</h4>
+                    <p>If you frequently travel to the same locations, save them as addresses. This makes manual entry much faster - just select from your saved addresses instead of typing each time.</p>
+                </div>
+            </div>
+            <div class="col-right">
+                <div class="screenshot-placeholder" data-screenshot-name="manual-entry-screen"></div>
+            </div>
         </div>
         
         <h2 id="receipts">Receipt Capture and Management</h2>
@@ -624,6 +608,10 @@
             <span class="step-number">5</span>
             <strong>Reading the Image</strong>
             <p>After you take or select a photo, a popup appears: <strong>"Reading receipt image to fill in the data…"</strong> The app runs a quick quality check and reads the image (OCR) to pre-fill vendor, amount, date, and category. This may take a few seconds. When it finishes, the popup closes automatically.</p>
+            <div class="warning-box">
+                <h4>Important: Verify OCR Results</h4>
+                <p>OCR is helpful, but it isn’t perfect. Please double-check the <strong>vendor</strong>, <strong>amount</strong>, <strong>date</strong>, and <strong>category</strong> before saving—sometimes the app will read a receipt incorrectly.</p>
+            </div>
         </div>
         
         <div class="step">
@@ -797,35 +785,37 @@
             <li><strong>Remaining</strong> - How much per diem you have left for the month</li>
         </ul>
         
-        <h3>Marking Days as Eligible</h3>
+        <h3>Selecting Days to Apply Per Diem</h3>
+        <p>The app determines which days are eligible for per diem based on your travel/policy rules. On this screen, you choose which of the eligible (highlighted/selectable) days to apply per diem for—up to your monthly limit.</p>
+        
         <div class="step">
             <span class="step-number">1</span>
             <strong>Select a Day</strong>
-            <p>Scroll through the calendar to find the day you want to mark as eligible for per diem.</p>
+            <p>Scroll through the calendar and look for the highlighted/selectable days that are eligible for per diem.</p>
         </div>
         
         <div class="step">
             <span class="step-number">2</span>
             <strong>Check the Box</strong>
-            <p>Check the box next to the date to mark it as eligible for per diem.</p>
+            <p>Check the box next to the date to apply per diem for that day (you can only select eligible days).</p>
         </div>
         
         <div class="step">
             <span class="step-number">3</span>
             <strong>Enter Amount (Optional)</strong>
-            <p>If the default amount needs to be adjusted, enter the specific amount for that day. The default is typically $35 per day.</p>
+            <p>If you need to adjust the default amount for a selected day, enter the amount for that day. The app may restrict values based on policy.</p>
         </div>
         
         <div class="step">
             <span class="step-number">4</span>
             <strong>Add Receipt (Optional)</strong>
-            <p>You can optionally add a receipt for per diem expenses by tapping "Add Receipt" for that day.</p>
+            <p>If you have a receipt for a selected day, tap "Add Receipt" to attach it.</p>
         </div>
         
         <div class="step">
             <span class="step-number">5</span>
             <strong>Save Changes</strong>
-            <p>When you're done making your selections, tap the "Save Changes" button at the bottom of the screen. This will save all your per diem entries at once.</p>
+            <p>After making your selections, tap the "Save Changes" button at the bottom of the screen. This saves all selected days to your per diem claim at once.</p>
         </div>
         
         <h3>Monthly Limit Enforcement</h3>
@@ -849,40 +839,28 @@
             <p>You can check or uncheck multiple days before saving. The "Save Changes" button will appear when you have unsaved changes. This reduces server load and allows you to make all your selections before syncing.</p>
         </div>
         
-        <h2 id="reports">Reports and Submission</h2>
-        
-        <h3>Where to View and Submit Monthly Reports</h3>
-        <p>The in-app monthly report screen has been removed. To view and submit your monthly expense report:</p>
-        <ol>
-            <li>Open the <strong>Staff Portal</strong> in a web browser (same login as the app).</li>
-            <li>Select the month and year.</li>
-            <li>Review your mileage, receipts, hours, and daily descriptions.</li>
-            <li>Use <strong>Submit Report</strong> when the month is complete.</li>
-        </ol>
-        <p>Export and PDF options are available in the Staff Portal. Your mobile app data syncs to the portal automatically.</p>
-        
-        <div class="tip-box">
-            <h4>Before Submitting</h4>
-            <p>Before submitting your report in the Staff Portal, ensure all receipts are captured and mileage is properly logged.</p>
-        </div>
-        
         <h2 id="settings">Settings and Preferences</h2>
         
-        <div class="screenshot-placeholder" data-screenshot-name="settings-screen"></div>
-        
-        <h3>Accessing Settings</h3>
-        <p>Tap the "Settings" option from the navigation menu or home screen.</p>
-        
-        <h3>Available Settings</h3>
-        <ul>
-            <li><strong>Profile</strong> - View and edit your profile information</li>
-            <li><strong>Preferences</strong> - Configure app preferences</li>
-            <li><strong>Notifications</strong> - Manage notification settings</li>
-            <li><strong>Data Sync</strong> - View sync status and manually trigger sync</li>
-            <li><strong>Saved Addresses</strong> - Manage your saved addresses</li>
-            <li><strong>About</strong> - App version and information</li>
-            <li><strong>Log Out</strong> - Sign out of the app</li>
-        </ul>
+        <div class="two-col">
+            <div class="col-left">
+                <h3>Accessing Settings</h3>
+                <p>Tap the "Settings" option from the navigation menu or home screen.</p>
+                
+                <h3>Available Settings</h3>
+                <ul>
+                    <li><strong>Profile</strong> - View and edit your profile information</li>
+                    <li><strong>Preferences</strong> - Configure app preferences</li>
+                    <li><strong>Notifications</strong> - Manage notification settings</li>
+                    <li><strong>Data Sync</strong> - View sync status and manually trigger sync</li>
+                    <li><strong>Saved Addresses</strong> - Manage your saved addresses</li>
+                    <li><strong>About</strong> - App version and information</li>
+                    <li><strong>Log Out</strong> - Sign out of the app</li>
+                </ul>
+            </div>
+            <div class="col-right">
+                <div class="screenshot-placeholder" data-screenshot-name="settings-screen"></div>
+            </div>
+        </div>
         
         <h3>Preferences</h3>
         <p>In the Preferences section, you can configure:</p>

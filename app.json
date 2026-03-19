@@ -21,6 +21,7 @@
         "applinks:oxford-mileage-backend.onrender.com"
       ],
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
