@@ -109,6 +109,22 @@ async function seedTestAccounts() {
       costCenters: JSON.stringify(['Program Services', 'TX-SUBG', 'CORPORATE']),
       selectedCostCenters: JSON.stringify(['Program Services', 'TX-SUBG', 'CORPORATE']),
       defaultCostCenter: 'Program Services'
+    },
+    // Dedicated account for App Store Connect review/testing.
+    // Mobile app login uses email+password and parses costCenters/selectedCostCenters.
+    {
+      id: 'app-review-001',
+      name: 'App Review User',
+      preferredName: 'App Review',
+      email: 'appreview@oxfordhouse.org',
+      password: 'Q7nK3xP2mL9aT4bC',
+      oxfordHouseId: 'oxford-house-999',
+      position: 'App Review Tester',
+      phoneNumber: '(555) 000-0000',
+      baseAddress: '1 App Review Way, Test City, ST 00000',
+      costCenters: JSON.stringify(['Program Services']),
+      selectedCostCenters: JSON.stringify(['Program Services']),
+      defaultCostCenter: 'Program Services'
     }
   ];
 
