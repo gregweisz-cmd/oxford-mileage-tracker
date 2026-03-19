@@ -3082,9 +3082,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const result = e.target?.result as string;
         // Update the receipt with the new file
         const isPdfUpload = file.type === 'application/pdf';
-        const updatedReceipts = receipts.map(receipt =>
+        const uploadedFileType: 'pdf' | 'image' = isPdfUpload ? 'pdf' : 'image';
+        const updatedReceipts: ReceiptData[] = receipts.map(receipt =>
           receipt.id === receiptId 
-            ? { ...receipt, imageUri: result, fileType: isPdfUpload ? 'pdf' : 'image' }
+            ? { ...receipt, imageUri: result, fileType: uploadedFileType }
             : receipt
         );
         setReceipts(updatedReceipts);
@@ -3110,7 +3111,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               body: JSON.stringify({
                 ...receipt,
                 imageUri: result,
-                fileType: isPdfUpload ? 'pdf' : 'image'
+                fileType: uploadedFileType
               })
             });
             
