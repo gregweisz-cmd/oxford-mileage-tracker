@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oxford House Expense Tracker – Support</title>
+    <link rel="icon" href="oxford-house-logo.png" />
+    <style>
+      :root {
+        --primary: #1c75bc;
+        --accent: #2bb673;
+        --bg: #f5f7fb;
+        --card-bg: #ffffff;
+        --text-main: #233044;
+        --text-muted: #65748b;
+        --border: #d0d7e2;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial,
+          sans-serif;
+        background: radial-gradient(circle at top left, #e3f2fd, #f5f7fb);
+        color: var(--text-main);
+      }
+
+      .page {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--border);
+        background: #ffffffd9;
+        backdrop-filter: blur(10px);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .brand-logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 18px;
+      }
+
+      .brand-text-title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .brand-text-subtitle {
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      .tagline {
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      main {
+        flex: 1;
+        padding: 32px 16px 40px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .content {
+        width: 100%;
+        max-width: 960px;
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr);
+        gap: 24px;
+        align-items: flex-start;
+      }
+
+      @media (max-width: 800px) {
+        .content {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .card {
+        background: var(--card-bg);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        border: 1px solid rgba(209, 213, 219, 0.6);
+      }
+
+      .card h1 {
+        margin: 0 0 12px;
+        font-size: 26px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: rgba(25, 118, 210, 0.06);
+        color: var(--primary);
+        margin-bottom: 10px;
+      }
+
+      .lead {
+        margin: 0 0 16px;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      h2 {
+        font-size: 16px;
+        margin: 22px 0 10px;
+      }
+
+      p {
+        margin: 0 0 10px;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      ul {
+        margin: 0 0 12px 20px;
+        padding: 0;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      li + li {
+        margin-top: 4px;
+      }
+
+      a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .contact-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .contact-item-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+        margin-bottom: 2px;
+      }
+
+      .contact-item-value {
+        font-size: 15px;
+        font-weight: 500;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(43, 182, 115, 0.08);
+        color: var(--accent);
+        font-size: 11px;
+        margin-bottom: 12px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 0 4px rgba(43, 182, 115, 0.22);
+      }
+
+      footer {
+        padding: 16px 24px 20px;
+        font-size: 12px;
+        color: var(--text-muted);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <div class="brand">
+          <div class="brand-logo">OH</div>
+          <div>
+            <div class="brand-text-title">Oxford House Expense Tracker</div>
+            <div class="brand-text-subtitle">Staff & Supervisor Web Portal</div>
+          </div>
+        </div>
+        <div class="tagline">Support &amp; help for Oxford House staff</div>
+      </header>
+
+      <main>
+        <div class="content">
+          <section class="card">
+            <div class="pill">Support</div>
+            <h1>Need help with the Expense Tracker?</h1>
+            <p class="lead">
+              This page is for Oxford House employees, supervisors, and finance
+              staff using the Oxford House Expense Tracker mobile app and web
+              portal.
+            </p>
+
+            <h2>Common reasons to contact support</h2>
+            <ul>
+              <li>Problems signing in or resetting your password</li>
+              <li>Questions about mileage, receipts, or per diem entries</li>
+              <li>Issues submitting or approving an expense report</li>
+              <li>Errors or unexpected behavior in the mobile app or web portal</li>
+            </ul>
+
+            <h2>What to include in your request</h2>
+            <p>
+              When you contact support, please include as much detail as
+              possible so we can help quickly:
+            </p>
+            <ul>
+              <li>Your full name and Oxford House email address</li>
+              <li>
+                Whether you are using the <strong>mobile app</strong> or the
+                <strong>web portal</strong>
+              </li>
+              <li>
+                The browser or device you are using (for example, “iPhone 14 /
+                iOS 18” or “Chrome on Windows 11”)
+              </li>
+              <li>
+                A short description of what you were trying to do and what
+                happened instead
+              </li>
+              <li>
+                Any error message you saw, and (if possible) a screenshot of the
+                problem
+              </li>
+            </ul>
+          </section>
+
+          <aside class="card">
+            <div class="status-pill">
+              <span class="status-dot"></span>
+              Internal staff support
+            </div>
+            <h2>How to reach us</h2>
+            <div class="contact-grid">
+              <div>
+                <div class="contact-item-label">Support email</div>
+                <div class="contact-item-value">
+                  <a href="mailto:support@oxfordhouse.org"
+                    >support@oxfordhouse.org</a
+                  >
+                </div>
+              </div>
+              <div>
+                <div class="contact-item-label">Support hours</div>
+                <div class="contact-item-value">
+                  Monday–Friday, 9:00 AM–5:00 PM (local time)
+                </div>
+              </div>
+            </div>
+
+            <h2 style="margin-top: 20px">How‑To Guides</h2>
+            <p>
+              For step‑by‑step walkthroughs with screenshots, see the Oxford
+              House how‑to guides:
+            </p>
+            <ul>
+              <li>
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/mobile-app"
+                  >Mobile App How‑To Guide</a
+                >
+              </li>
+              <li>
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/staff-portal"
+                  >Staff Web Portal Guide</a
+                >
+              </li>
+              <li>
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/supervisor-portal"
+                  >Supervisor Web Portal Guide</a
+                >
+              </li>
+              <li>
+                <a href="https://oxford-mileage-tracker.vercel.app/docs/admin-portal"
+                  >Admin &amp; Finance Portal Guide</a
+                >
+              </li>
+            </ul>
+            <h2 style="margin-top: 20px">Other resources</h2>
+            <p>
+              If you are unsure which guide to use, start with your supervisor
+              or the finance team, or contact support using the information
+              above.
+            </p>
+            <p>
+              For privacy information, see our
+              <a href="#" target="_blank" rel="noreferrer"
+                >Privacy Policy</a
+              >.
+            </p>
+          </aside>
+        </div>
+      </main>
+
+      <footer>
+        &copy; <span id="year"></span> Oxford House, Inc. All rights reserved.
+      </footer>
+    </div>
+    <script>
+      document.getElementById('year').textContent =
+        new Date().getFullYear().toString();
+    </script>
+  </body>
+</html>
+

@@ -105,6 +105,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   // Status
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info' | '', text: string }>({ type: '', text: '' });
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const loadUserProfile = useCallback(async () => {
     try {
@@ -316,7 +317,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   };
 
 
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     if (passwordData.new !== passwordData.confirm) {
       showMessage('error', 'New passwords do not match.');
       return;
@@ -325,11 +326,40 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       showMessage('error', 'Password must be at least 8 characters long.');
       return;
     }
-    
-    setProfile(prev => ({ ...prev, password: passwordData.new }));
-    setPasswordDialogOpen(false);
-    setPasswordData({ current: '', new: '', confirm: '' });
-    showMessage('success', 'Password updated successfully!');
+
+    setPasswordLoading(true);
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+
+      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: passwordData.new }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        debugError('Password update failed:', errorData);
+        throw new Error(errorData.error || 'Failed to update password');
+      }
+
+      await response.json().catch(() => ({}));
+      showMessage('success', 'Password updated successfully!');
+
+      setPasswordDialogOpen(false);
+      setPasswordData({ current: '', new: '', confirm: '' });
+
+      // Refresh profile in case the backend updates persisted data
+      await loadUserProfile();
+      window.dispatchEvent(new CustomEvent('userProfileUpdated', { detail: { employeeId } }));
+    } catch (error) {
+      debugError('Error updating password:', error);
+      showMessage('error', error instanceof Error ? error.message : 'Failed to update password.');
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -844,7 +874,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           <TextField
             autoFocus
             margin="dense"
-            label="Current Password"
+            label="Current Password (optional)"
             type={showPassword ? 'text' : 'password'}
             fullWidth
             variant="outlined"
@@ -885,9 +915,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           <Button 
             onClick={handlePasswordChange} 
             variant="contained"
-            disabled={!passwordData.current || !passwordData.new || passwordData.new !== passwordData.confirm}
+            disabled={passwordLoading || !passwordData.new || passwordData.new !== passwordData.confirm}
           >
-            Change Password
+            {passwordLoading ? 'Updating...' : 'Change Password'}
           </Button>
         </DialogActions>
       </Dialog>
