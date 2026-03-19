@@ -108,6 +108,14 @@ function getReceiptImageUrl(uri: string | undefined): string {
   return `${API_BASE_URL}/uploads/${raw}`;
 }
 
+function isPdfReceiptUri(uri: string | undefined): boolean {
+  const raw = (uri || '').trim().toLowerCase();
+  if (!raw) return false;
+  if (raw.startsWith('data:application/pdf')) return true;
+  const noQuery = raw.split('?')[0].split('#')[0];
+  return noQuery.endsWith('.pdf');
+}
+
 /** Build driving summary from mileage entries. Each entry is "Start to End" or "Start to End for Purpose"; multiple entries joined with " ; ". */
 function buildDrivingSummaryFromMileage(
   entries: any[],
@@ -1759,7 +1767,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               vendor: receipt.vendor,
               description: receipt.description,
               category: receipt.category,
-              imageUri: receipt.imageUri
+              imageUri: receipt.imageUri,
+              fileType: receipt.fileType || (isPdfReceiptUri(receipt.imageUri) ? 'pdf' : 'image')
             }));
             setReceipts(formattedReceipts);
             
@@ -3072,9 +3081,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       reader.onload = async (e) => {
         const result = e.target?.result as string;
         // Update the receipt with the new file
-        const updatedReceipts = receipts.map(receipt => 
+        const isPdfUpload = file.type === 'application/pdf';
+        const updatedReceipts = receipts.map(receipt =>
           receipt.id === receiptId 
-            ? { ...receipt, imageUri: result }
+            ? { ...receipt, imageUri: result, fileType: isPdfUpload ? 'pdf' : 'image' }
             : receipt
         );
         setReceipts(updatedReceipts);
@@ -3099,7 +3109,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 ...receipt,
-                imageUri: result
+                imageUri: result,
+                fileType: isPdfUpload ? 'pdf' : 'image'
               })
             });
             
@@ -8048,21 +8059,55 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           }
                           return (
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} titleAccess="Image uploaded" />
-                                <Typography variant="caption" color="text.secondary">Image uploaded</Typography>
-                              </Box>
+                              {(() => {
+                                const isPdfReceipt = receipt.fileType === 'pdf' || isPdfReceiptUri(raw);
+                                return (
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} titleAccess={isPdfReceipt ? 'PDF uploaded' : 'Image uploaded'} />
+                                    <Typography variant="caption" color="text.secondary">{isPdfReceipt ? 'PDF uploaded' : 'Image uploaded'}</Typography>
+                                  </Box>
+                                );
+                              })()}
                               <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} id={`receipt-change-${receipt.id}`} onChange={(e) => handleReceiptImageUpload(receipt.id, e)} />
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={<CropIcon sx={{ fontSize: 14 }} />}
-                                  onClick={() => setCropModalReceipt({ id: receipt.id, imageUri: getReceiptImageUrl(raw) })}
-                                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
-                                >
-                                  Crop
-                                </Button>
+                                {receipt.fileType === 'pdf' || isPdfReceiptUri(raw) ? (
+                                  <>
+                                    <Tooltip title="PDF cropping is not supported yet. Upload an image to use Crop.">
+                                      <span>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          startIcon={<CropIcon sx={{ fontSize: 14 }} />}
+                                          disabled
+                                          sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                        >
+                                          Crop
+                                        </Button>
+                                      </span>
+                                    </Tooltip>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => {
+                                        const pdfUrl = getReceiptImageUrl(raw);
+                                        if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+                                      }}
+                                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                    >
+                                      Open PDF
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<CropIcon sx={{ fontSize: 14 }} />}
+                                    onClick={() => setCropModalReceipt({ id: receipt.id, imageUri: getReceiptImageUrl(raw) })}
+                                    sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                  >
+                                    Crop
+                                  </Button>
+                                )}
                                 <Button
                                   size="small"
                                   variant="outlined"

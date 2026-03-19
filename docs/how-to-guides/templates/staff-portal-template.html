@@ -175,6 +175,39 @@
             margin-bottom: 15pt;
             page-break-inside: avoid;
         }
+
+        .step-image-row {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            margin: 12pt 0 18pt;
+            page-break-inside: avoid;
+        }
+
+        .step-image-row .step-column,
+        .step-image-row .image-column {
+            display: table-cell;
+            vertical-align: top;
+        }
+
+        .step-image-row .step-column {
+            width: 42%;
+            padding-right: 14pt;
+        }
+
+        .step-image-row .image-column {
+            width: 58%;
+        }
+
+        .step-image-row .step {
+            margin: 0;
+        }
+
+        .step-image-row .screenshot-placeholder {
+            margin: 0;
+            padding: 20pt 10pt;
+            min-height: 210pt;
+        }
         
         table {
             width: 100%;
@@ -324,13 +357,18 @@
         
         <h3>Portal Switching</h3>
         <p>The portal switcher only appears if your account is assigned access to multiple portals. If you are not assigned to <strong>Supervisor</strong>, <strong>Senior Staff</strong>, <strong>Admin</strong>, <strong>Finance</strong>, or <strong>Contracts</strong>, you won't see the portal switcher dropdown. If you feel like you should have the switcher and do not, reach out to your administrator(s).</p>
-        <div class="step">
-            <span class="step-number">1</span>
-            <strong>Find Portal Switcher</strong>
-            <p>Look for the portal switcher dropdown in the header, typically near your name or in the navigation area (it appears only when you have multiple portal assignments).</p>
+        <div class="step-image-row">
+            <div class="step-column">
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>Find Portal Switcher</strong>
+                    <p>Look for the portal switcher dropdown in the header, typically near your name or in the navigation area (it appears only when you have multiple portal assignments).</p>
+                </div>
+            </div>
+            <div class="image-column">
+                <div class="screenshot-placeholder" data-screenshot-name="staff-portal-portal-switcher"></div>
+            </div>
         </div>
-        
-        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-portal-switcher"></div>
         
         <div class="step">
             <span class="step-number">2</span>
@@ -363,6 +401,8 @@
             <strong>Select Month and Year</strong>
             <p>Use the month and year selectors at the top of the portal to choose which month's report you want to view.</p>
         </div>
+
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-month-year-selector"></div>
         
         <div class="step">
             <span class="step-number">2</span>
@@ -379,6 +419,13 @@
                 <li><strong>Receipt Management</strong> - View and manage receipts</li>
                 <li><strong>Per Diem</strong> - View and manage per diem claims</li>
             </ul>
+        </div>
+
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-navigation-tabs"></div>
+
+        <div class="tip-box">
+            <h4>Important: Scroll to See All Tabs</h4>
+            <p>The tab bar is horizontally scrollable. If you don't see tabs like <strong>Receipt Management</strong>, <strong>Per Diem</strong>, or additional cost center tabs, scroll the tab bar left or right to reveal the remaining tabs.</p>
         </div>
         
         <div class="step">
@@ -453,20 +500,23 @@
             <li><strong>1. Month/Year Selector</strong> - Choose which month's report to view</li>
             <li><strong>2. Employee Name</strong> - Displays your name (e.g., "Goose's Portal")</li>
             <li><strong>3. Notification Bell</strong> - Shows alerts and notifications</li>
-            <li><strong>4. Action Buttons</strong> - Submit Report (4a), Export PDF (4b). The tab bar (5–9) scrolls left and right to reveal all tabs.</li>
+            <li><strong>4. Action Buttons</strong> - Submit Report (4a), Export PDF (4b)</li>
         </ul>
         
         <h4>Tab Navigation</h4>
         <p>The portal uses tabs to organize different types of data. Scroll the tab bar left or right to see all tabs:</p>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-overview-tab-navigation"></div>
         <ul>
-            <li><strong>5. Approval Cover Sheet / Summary Sheet</strong> - Sign-off and monthly totals</li>
-            <li><strong>6. Mileage Entries</strong> - View and edit mileage entries (date, start/end location, miles, cost center; reorder, edit, delete)</li>
-            <li><strong>7. Daily Descriptions Tab</strong> - Daily notes and descriptions</li>
-            <li><strong>8. Cost Center tabs</strong> (e.g., #1 Program Services) - If you have multiple cost centers</li>
-            <li><strong>9. Timesheet</strong> - Time tracking entries</li>
-            <li><strong>10. Receipt Management</strong> - All captured receipts</li>
-            <li><strong>11. Per Diem</strong> - Per diem claims (more tabs may appear to the right; scroll to see them)</li>
+            <li><strong>5. Approval Cover Sheet</strong> - Sign and complete the approval cover</li>
+            <li><strong>6. Summary Sheet</strong> - Monthly totals and summary</li>
+            <li><strong>7. Mileage Entries</strong> - View and edit mileage entries</li>
+            <li><strong>8. Daily Descriptions</strong> - View and edit daily notes</li>
+            <li><strong>9. Cost Center tab(s)</strong> (e.g., #1 Program Services) - These reflect all assigned cost centers for the user; if a user has multiple cost centers, each one appears as its own tab</li>
+            <li><strong>10. Timesheet</strong> - View and edit hours tracking</li>
+            <li><strong>11. Receipt Management</strong> - View and manage receipts</li>
+            <li><strong>12. Per Diem</strong> - View and manage per diem claims</li>
         </ul>
+        <p><strong>Note:</strong> The <strong>Settings</strong> tab is also available in the tab bar. It may be off-screen at first, so scroll horizontally to reveal it.</p>
         
         <h4>Real-time Status Indicator</h4>
         <p>Look for the sync status indicator in the header. It shows:</p>
@@ -499,6 +549,7 @@
         </div>
         
         <h3>Editing Mileage Entries</h3>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-mileage-editing-window"></div>
         <div class="step">
             <span class="step-number">1</span>
             <strong>Click on a Cell</strong>
@@ -519,17 +570,13 @@
         
         <h3>Adding New Mileage Entries</h3>
         <p>To add a new mileage entry:</p>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-add-mileage-entry-window"></div>
         <ol>
             <li>Navigate to the Mileage Entries tab</li>
             <li>Click the <strong>+ ADD MILEAGE ENTRY</strong> button</li>
             <li>Fill in the required information (date, start location, end location, miles, cost center)</li>
             <li>Save the entry</li>
         </ol>
-        
-        <div class="tip-box">
-            <h4>Tip: Bulk Editing</h4>
-            <p>You can edit multiple cells in the same row. Just click on each cell you want to change, make your edits, and they'll all be saved together.</p>
-        </div>
         
         <h2 id="viewing-receipts">Viewing Receipts</h2>
         
@@ -548,6 +595,7 @@
         </ul>
         
         <h3>Viewing Receipt Details</h3>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-receipt-details-view"></div>
         <div class="step">
             <span class="step-number">1</span>
             <strong>Click on a Receipt</strong>
@@ -567,6 +615,7 @@
         </div>
         
         <h3>Cropping a Receipt Image</h3>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-receipt-crop-dialog"></div>
         <p>You can adjust the visible area of a receipt image using the <strong>Crop</strong> option:</p>
         <ol>
             <li>Open a receipt that has an image (click the receipt in the list).</li>
@@ -576,6 +625,7 @@
         </ol>
         
         <h3>Uploading Receipts via Web</h3>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-upload-receipt-dialog"></div>
         <p>If you need to upload a receipt through the web portal:</p>
         <ol>
             <li>Go to the Receipts tab</li>

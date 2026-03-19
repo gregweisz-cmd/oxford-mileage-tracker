@@ -2,7 +2,7 @@
 
 Checklist for capturing and saving screenshots used by the how-to PDFs. Use **exact filenames**; save paths are under each section.
 
-**Current focus:** Start with Mobile App (11), then Staff Portal (14), then Supervisor (6) and Admin (15). All web portals use the same login — one shared screenshot: `web-portal-login.png`. All screenshots cleared — capture fresh after app/portal updates.
+**Current focus:** Start with Mobile App (11), then Staff Portal (22), then Supervisor (6) and Admin (15). All web portals use the same login — one shared screenshot: `web-portal-login.png`. All screenshots cleared — capture fresh after app/portal updates.
 
 **Optional:** Use [TODAY_RUN_ORDER.md](TODAY_RUN_ORDER.md) as a run list if it exists (same screens in capture order).
 
@@ -27,15 +27,23 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 
 ---
 
-## 2. Staff Portal (14) — save to `images/screenshots/web-portal/`
+## 2. Staff Portal (22) — save to `images/screenshots/web-portal/`
 
 - [x] `web-portal-login.png` — Login (shared by all web portals — Staff, Supervisor, Admin, Senior Staff)
 - [x] `staff-portal-portal-switcher.png` — Portal switcher with Staff selected (optional for staff-only guide; regular staff don’t see the switcher—capture by logging in as supervisor/admin, then open switcher and select Staff)
 - [x] `staff-portal-dashboard.png` — Dashboard/overview
+- [ ] `staff-portal-month-year-selector.png` — Zoomed-in month/year selector controls (top of portal)
+- [ ] `staff-portal-navigation-tabs.png` — Zoomed-in top tab navigation bar (Approval Cover Sheet, Summary Sheet, Mileage, etc.)
 - [x] `staff-portal-submit.png` — Submit report button or dialog
 - [x] `staff-portal-overview.png` — Overview with tabs
+- [ ] `staff-portal-overview-tab-navigation.png` — Zoomed tab-navigation strip from portal overview (Approval Cover Sheet through Per Diem)
 - [x] `staff-portal-mileage-tab.png` — Mileage Entries tab (date, start/end, miles, cost center, actions)
+- [ ] `staff-portal-mileage-editing-window.png` — Mileage entry editing view after clicking a table cell
+- [ ] `staff-portal-add-mileage-entry-window.png` — Add Mileage Entry popup/window with required fields
 - [x] `staff-portal-receipts-tab.png` — Receipts tab (Crop option)
+- [ ] `staff-portal-receipt-details-view.png` — Receipt details view with full image and editable fields
+- [ ] `staff-portal-receipt-crop-dialog.png` — Crop dialog for a receipt image (selection box + Apply)
+- [ ] `staff-portal-upload-receipt-dialog.png` — Add/Upload Receipt dialog from the web portal
 - [x] `staff-portal-hours-tab.png` — Hours Worked tab
 - [x] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
 - [x] `staff-portal-monthly-summary.png` — Monthly Summary tab
@@ -44,7 +52,7 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 - [x] `staff-portal-notifications.png` — Notification bell/panel
 - [x] `staff-portal-settings.png` — Settings / preferences
 
-**Staff subtotal:** 14 / 14
+**Staff subtotal:** 14 / 22
 
 ---
 
@@ -100,10 +108,10 @@ Optional screenshots for the Senior Staff how-to guide. (There is no separate Se
 | Section          | Required | Optional |
 |------------------|----------|----------|
 | Mobile App       | 10       | —        |
-| Staff Portal     | 14       | —        |
+| Staff Portal     | 22       | —        |
 | Senior Staff     | —        | 3        |
 | Supervisor       | 5        | —        |
 | Admin Portal     | 15       | —        |
-| **Total**        | **44**   | **4**    |
+| **Total**        | **52**   | **4**    |
 
 To mark done: change `- [ ]` to `- [x]` for each screenshot you've saved.
