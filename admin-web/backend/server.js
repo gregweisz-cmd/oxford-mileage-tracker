@@ -123,7 +123,7 @@ app.get('/.well-known/apple-app-site-association', (req, res) => {
           // Format: TEAM_ID.BUNDLE_ID
           // Replace '*' with your actual Apple Developer Team ID
           // Example: 'ABC123XYZ.com.oxfordhouse.ohstafftracker'
-          appID: '*.com.oxfordhouse.ohstafftracker',
+          appID: '4JQHQ3J956.com.oxfordhouse.ohstafftracker',
           paths: [
             '/api/auth/google/mobile/callback*',
             '/oauth/callback*'
@@ -132,7 +132,7 @@ app.get('/.well-known/apple-app-site-association', (req, res) => {
       ]
     },
     webcredentials: {
-      apps: ['*.com.oxfordhouse.ohstafftracker']
+      apps: ['4JQHQ3J956.com.oxfordhouse.ohstafftracker']
     }
   };
   
