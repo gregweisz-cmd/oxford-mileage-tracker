@@ -49,6 +49,7 @@ import {
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
   Crop as CropIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
 // PDF generation imports
@@ -8070,9 +8071,52 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 );
                               })()}
                               <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} id={`receipt-change-${receipt.id}`} onChange={(e) => handleReceiptImageUpload(receipt.id, e)} />
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                                 {receipt.fileType === 'pdf' || isPdfReceiptUri(raw) ? (
                                   <>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
+                                      onClick={() => {
+                                        const url = getReceiptImageUrl(raw);
+                                        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                      }}
+                                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                    >
+                                      View PDF
+                                    </Button>
+                                    <Tooltip
+                                      title="Cropping isn’t available for PDFs in the portal. Edit the PDF in a desktop app (e.g. Adobe Acrobat), then use Upload new to replace it."
+                                      arrow
+                                    >
+                                      <span>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          disabled
+                                          startIcon={<CropIcon sx={{ fontSize: 14 }} />}
+                                          sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                        >
+                                          Crop
+                                        </Button>
+                                      </span>
+                                    </Tooltip>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
+                                      onClick={() => {
+                                        const url = getReceiptImageUrl(raw);
+                                        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                      }}
+                                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                    >
+                                      View image
+                                    </Button>
                                     <Button
                                       size="small"
                                       variant="outlined"
@@ -8082,28 +8126,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                     >
                                       Crop
                                     </Button>
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      onClick={() => {
-                                        const pdfUrl = getReceiptImageUrl(raw);
-                                        if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer');
-                                      }}
-                                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
-                                    >
-                                      Open PDF
-                                    </Button>
                                   </>
-                                ) : (
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<CropIcon sx={{ fontSize: 14 }} />}
-                                    onClick={() => setCropModalReceipt({ id: receipt.id, imageUri: getReceiptImageUrl(raw) })}
-                                    sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
-                                  >
-                                    Crop
-                                  </Button>
                                 )}
                                 <Button
                                   size="small"

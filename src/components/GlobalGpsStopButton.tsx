@@ -17,7 +17,7 @@ interface GlobalGpsStopButtonProps {
 
 export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopButtonProps) {
   const insets = useSafeAreaInsets();
-  const { isTracking, currentDistance, requestStopTracking, stopTracking, setShouldShowEndLocationModal } = useGpsTracking();
+  const { isTracking, currentDistance, requestStopTracking } = useGpsTracking();
   const navigation = useNavigation<any>();
 
   // Don't show if not tracking
@@ -34,24 +34,16 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
   };
 
   const handleStopTracking = () => {
+    // Intentionally no "discard / cancel session" action here — it was easy to tap by mistake.
+    // To end tracking, users must use "End & save trip" and confirm destination. Staff who truly
+    // need to abandon a session can force-close the app or contact support (rare).
     Alert.alert(
-      'Stop GPS Tracking',
-      `Distance tracked: ${formatDistance(currentDistance)}\n\nChoose how to end this session:`,
+      'End this trip?',
+      `Distance so far: ${formatDistance(currentDistance)}\n\nTap "End & save trip" to enter your destination and save this drive. Tap "Keep tracking" if you tapped Stop by accident.`,
       [
         {
-          text: 'Cancel',
+          text: 'Keep tracking',
           style: 'cancel',
-        },
-        {
-          text: 'Cancel tracking',
-          style: 'destructive',
-          onPress: async () => {
-            setShouldShowEndLocationModal(false);
-            await stopTracking();
-            if (currentRouteName !== 'GpsTracking') {
-              navigation.navigate('Home');
-            }
-          },
         },
         {
           text: 'End & save trip',

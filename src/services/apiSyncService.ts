@@ -2104,14 +2104,16 @@ export class ApiSyncService {
         }
       }
 
-      // Remove local receipts for this employee that are not on the backend (e.g. deleted on web portal)
+      // Remove local receipts for this employee that are not on the backend (e.g. deleted on web portal).
+      // IMPORTANT: If the backend returns zero rows, do NOT delete all local receipts — that often means
+      // wrong employeeId resolution, a failed fetch, or an empty filter, not "user deleted everything on web".
+      // Wholesale delete when backendIds.length === 0 was wiping phones after a bad sync.
       if (localEmployeeId) {
         const backendIds = receipts.map(r => r.id).filter(Boolean);
         if (backendIds.length === 0) {
-          const del = await database.runAsync('DELETE FROM receipts WHERE employeeId = ?', [localEmployeeId]);
-          if (del.changes > 0) {
-            debugLog(`🗑️ ApiSync: Removed ${del.changes} local receipt(s) not on backend (employee ${localEmployeeId})`);
-          }
+          debugLog(
+            `📥 ApiSync: Backend returned 0 receipts for employee ${localEmployeeId}; keeping local receipts (no orphan cleanup)`
+          );
         } else {
           const placeholders = backendIds.map(() => '?').join(',');
           const del = await database.runAsync(

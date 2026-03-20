@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -21,6 +22,8 @@ import { Receipt, Employee } from '../types';
 import { API_BASE_URL } from '../config/api';
 import * as ImagePicker from 'expo-image-picker';
 import UnifiedHeader from '../components/UnifiedHeader';
+import { ApiSyncService } from '../services/apiSyncService';
+import { SyncIntegrationService } from '../services/syncIntegrationService';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -73,6 +76,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   const [filterAmountMax, setFilterAmountMax] = useState<string>('');
   const [showDateStartPicker, setShowDateStartPicker] = useState(false);
   const [showDateEndPicker, setShowDateEndPicker] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Get month/year from route params, default to current month/year
   const now = new Date();
@@ -179,23 +183,23 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     }, [selectedMonth, selectedYear, filterCategory])
   );
 
-  const loadData = async () => {
+  const loadData = async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
-      
+      if (!opts?.silent) setLoading(true);
+
       // Get the current logged-in employee instead of the first employee
       const employee = await DatabaseService.getCurrentEmployee();
-      
+
       if (employee) {
         setCurrentEmployee(employee);
-        
-        // Get receipts for the selected month/year
+
+        // Get receipts for the selected month/year (local DB; pull-to-refresh loads from server first)
         const employeeReceipts = await DatabaseService.getReceipts(
           employee.id,
           selectedMonth,
           selectedYear
         );
-        
+
         // Store all receipts - filters will be applied in useEffect
         setAllReceipts(employeeReceipts);
         console.log(`📄 ReceiptsScreen: Loaded ${employeeReceipts.length} receipts for ${employee.name} (${selectedMonth}/${selectedYear})`);
@@ -207,7 +211,29 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
       console.error('Error loading receipts:', error);
       Alert.alert('Error', 'Failed to load receipts');
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
+    }
+  };
+
+  /** Pull down to push pending changes then fetch receipts from the server (e.g. entered on web portal). */
+  const onRefreshFromServer = async () => {
+    const employee = await DatabaseService.getCurrentEmployee();
+    if (!employee?.id) {
+      return;
+    }
+    setRefreshing(true);
+    try {
+      await SyncIntegrationService.processSyncQueue();
+      const syncResult = await ApiSyncService.syncFromBackend(employee.id);
+      if (!syncResult.success) {
+        Alert.alert('Sync failed', syncResult.error || 'Could not load receipts from server. Try again.');
+      }
+      await loadData({ silent: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      Alert.alert('Sync failed', msg);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -634,7 +660,13 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
         rightButton={multiSelectMode ? { icon: 'delete', onPress: deleteSelectedReceipts } : undefined}
       />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefreshFromServer} />
+        }
+      >
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
