@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxford House Expense Tracker",
     "slug": "oh-staff-tracker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "owner": "goosew27",
     "privacy": "public",
     "orientation": "portrait",
@@ -16,6 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "2",
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "associatedDomains": [
         "applinks:oxford-mileage-backend.onrender.com"
@@ -43,6 +44,7 @@
     },
     "android": {
       "package": "com.oxfordhouse.ohstafftracker",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1C75BC"
@@ -54,7 +56,8 @@
         "ACCESS_COARSE_LOCATION",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
       ]
     },
     "web": {
@@ -66,6 +69,13 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Oxford House Expense Tracker to use your location to help track mileage."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Oxford House Expense Tracker needs access to your photos to attach receipt images.",
+          "cameraPermission": "Oxford House Expense Tracker needs camera access to take photos of receipts for expense tracking."
+        }
       ]
     ],
     "extra": {
@@ -74,7 +84,7 @@
         "projectId": "d303cc80-9dcf-4d5c-952b-d50df5cb04f0"
       }
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.0.1",
     "updates": {
       "url": "https://u.expo.dev/d303cc80-9dcf-4d5c-952b-d50df5cb04f0",
       "checkAutomatically": "ON_LOAD"

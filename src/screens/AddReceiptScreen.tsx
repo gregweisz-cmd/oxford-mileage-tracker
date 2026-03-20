@@ -1100,7 +1100,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       navigation.navigate('Receipts');
     } catch (error) {
       console.error('Error saving receipt:', error);
-      Alert.alert('Error', 'Failed to save receipt');
+      const detail = error instanceof Error ? error.message : String(error);
+      Alert.alert(
+        'Error',
+        __DEV__
+          ? `Failed to save receipt.\n\n${detail}`
+          : 'Failed to save receipt. If this continues, contact support with the time and what you entered.'
+      );
     }
   };
 

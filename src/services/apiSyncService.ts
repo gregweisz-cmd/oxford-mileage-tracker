@@ -951,7 +951,13 @@ export class ApiSyncService {
           
           // Upload image to backend if we have a local image URI
           // IMPORTANT: We need to upload the image so it's accessible on the web portal
-          if (receipt.imageUri && receipt.imageUri.startsWith('file://')) {
+          // Android gallery/camera often use content://; iOS may use ph:// — same upload path as file://
+          const needsLocalUpload =
+            receipt.imageUri &&
+            (receipt.imageUri.startsWith('file://') ||
+              receipt.imageUri.startsWith('content://') ||
+              receipt.imageUri.startsWith('ph://'));
+          if (needsLocalUpload) {
             debugLog(`📤 ApiSync: Uploading image for receipt ${receipt.id}...`);
             
             try {

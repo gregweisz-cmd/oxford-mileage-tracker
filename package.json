@@ -1,6 +1,6 @@
 {
   "name": "oxford-house-expense-tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
@@ -10,7 +10,8 @@
     "update-deps": "node scripts/update-dependencies.js",
     "update-deps:dry": "node scripts/update-dependencies.js --dry-run",
     "update-deps:safe": "node scripts/update-dependencies.js --no-backup --no-tests",
-    "eas-update": "eas update --branch production --message \"OTA update\" --non-interactive"
+    "eas-update": "eas update --channel production --message \"OTA update\" --non-interactive",
+    "eas-update:receipt-fix": "eas update --channel production --runtime-version 1.0.0 --message \"Receipt save + Android image sync fixes\" --non-interactive"
   },
   "dependencies": {
     "@dev-plugins/react-navigation": "^0.4.0",

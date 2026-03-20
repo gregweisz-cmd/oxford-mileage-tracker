@@ -9,6 +9,10 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Store build artifacts (download from EAS; do not commit)
+*.aab
+*.ipa
+
 # Native
 .kotlin/
 *.orig.*

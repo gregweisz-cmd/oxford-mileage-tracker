@@ -105,6 +105,10 @@ export class DatabaseService {
     if (this.isInitialized) {
       // Skip table creation but ensure employee setup
       try {
+        // Lightweight migrations for existing installs (full schema block is skipped once initialized)
+        const database = await getDatabase();
+        await this.runReceiptsMigrations(database);
+
         const allEmployees = await this.getEmployees();
         debugLog('🔧 Database: Found employees:', allEmployees.length);
         
@@ -199,8 +203,8 @@ export class DatabaseService {
       // Run mileage entries table migrations
       await this.runMileageEntriesMigrations(database);
 
-      // Run receipts table migrations
-      await this.runReceiptsMigrations(database);
+      // Note: receipts migrations run AFTER `CREATE TABLE receipts` (see below). Running ALTER
+      // before the table exists silently fails and leaves `costCenter` missing — receipt saves then error.
 
       // Run time tracking table migrations
       await this.runTimeTrackingMigrations(database);
@@ -316,10 +320,14 @@ export class DatabaseService {
           description TEXT NOT NULL,
           category TEXT NOT NULL,
           imageUri TEXT NOT NULL,
+          costCenter TEXT DEFAULT '',
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );
       `);
+
+      // Add costCenter (and any future receipt columns) for DBs created before costCenter existed
+      await this.runReceiptsMigrations(database);
 
       // Create daily_odometer_readings table
       await database.execAsync(`
