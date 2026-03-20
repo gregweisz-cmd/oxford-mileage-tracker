@@ -1,5 +1,7 @@
 # Tester release 1.0.1 (receipt save + Android uploads)
 
+> **Store version workflow:** See **[STORE_VERSION.md](./STORE_VERSION.md)** — run `npm run release:bump` before each new Play / TestFlight binary so `versionCode` and iOS build numbers increase automatically.
+
 ## What changed
 
 - **Receipts (local DB):** Fixed SQLite migration so new installs include the `costCenter` column — saving a receipt no longer fails with a hidden DB error.

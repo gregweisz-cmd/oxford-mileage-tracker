@@ -11,7 +11,10 @@
     "update-deps:dry": "node scripts/update-dependencies.js --dry-run",
     "update-deps:safe": "node scripts/update-dependencies.js --no-backup --no-tests",
     "eas-update": "eas update --channel production --message \"OTA update\" --non-interactive",
-    "eas-update:receipt-fix": "eas update --channel production --runtime-version 1.0.0 --message \"Receipt save + Android image sync fixes\" --non-interactive"
+    "eas-update:receipt-fix": "eas update --channel production --runtime-version 1.0.0 --message \"Receipt save + Android image sync fixes\" --non-interactive",
+    "release:bump": "node scripts/bump-store-version.js",
+    "release:bump:build-only": "node scripts/bump-store-version.js --build-only",
+    "release:sync-version": "node scripts/sync-native-version.js"
   },
   "dependencies": {
     "@dev-plugins/react-navigation": "^0.4.0",
