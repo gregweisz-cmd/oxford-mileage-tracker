@@ -9,6 +9,7 @@ import {
   ScrollView,
   Modal,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -65,6 +66,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [isEditingOdometer, setIsEditingOdometer] = useState(false);
   const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
+  const [isEndingTracking, setIsEndingTracking] = useState(false);
 
   useEffect(() => {
     loadEmployee();
@@ -529,6 +531,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     console.log('📍 End location confirmed:', locationDetails);
     setEndLocationDetails(locationDetails);
     setShowEndLocationModal(false);
+    setIsEndingTracking(true);
 
     try {
       const completedSession = await stopTracking();
@@ -573,6 +576,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         console.log('🔍 GPS: Updating last destination:', locationDetails.name);
         setLastDestination(locationDetails);
 
+        setIsEndingTracking(false);
+        
         Alert.alert(
           'Tracking Complete',
           `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`,
@@ -583,6 +588,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             },
           ]
         );
+      } else {
+        setIsEndingTracking(false);
       }
 
       setTrackingTime(0);
@@ -607,6 +614,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setSelectedCostCenter('');
     } catch (error) {
       console.error('Error stopping tracking:', error);
+      setIsEndingTracking(false);
       Alert.alert('Error', 'Failed to stop GPS tracking');
     }
   };
@@ -1061,6 +1069,21 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             >
               <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Ending Tracking Loading Overlay */}
+      <Modal
+        visible={isEndingTracking}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.endingTrackingOverlay}>
+          <View style={styles.endingTrackingCard}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.endingTrackingText}>Ending tracking...</Text>
+            <Text style={styles.endingTrackingSubtext}>Saving your trip data</Text>
           </View>
         </View>
       </Modal>
@@ -1612,5 +1635,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 4,
+  },
+  endingTrackingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  endingTrackingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    minWidth: 200,
+  },
+  endingTrackingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 16,
+  },
+  endingTrackingSubtext: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
   },
 });
