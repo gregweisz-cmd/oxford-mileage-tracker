@@ -143,6 +143,7 @@ export class PerDiemAiService {
    * Get per-diem eligibility for every day in a month (for Per Diem screen labels).
    * Rule: 8+ hours AND (100+ miles OR (stayed overnight AND 50+ mi from base)).
    * Uses backend data first (same as dashboard), then local DB; uses local date keys and real distance.
+   * Optimized: pre-calculates all distances in parallel to avoid sequential API calls.
    */
   static async getEligibilityForMonth(
     employeeId: string,
@@ -154,6 +155,8 @@ export class PerDiemAiService {
       const employees = await DatabaseService.getEmployees();
       const employee = employees.find(emp => emp.id === employeeId);
       if (!employee) return result;
+
+      const baseAddress = (employee.baseAddress || '').trim();
 
       // Prefer backend so eligibility matches dashboard and web (hours/mileage from same source).
       try {
@@ -172,6 +175,9 @@ export class PerDiemAiService {
           }
         }
 
+        // Pre-calculate all distances from base in parallel for performance
+        const distanceCache = await this.preCalculateDistancesFromBase(monthlyData, localMileageEntries, baseAddress);
+
         for (const day of monthlyData) {
           const dateKey = this.toLocalDateKey(day.date);
           const stayedOvernight = day.stayedOvernight ?? false;
@@ -182,10 +188,7 @@ export class PerDiemAiService {
           const milesDriven = useLocalMiles
             ? dayMileageEntries.reduce((s, e) => s + e.miles, 0)
             : (day.totalMiles || 0);
-          const distanceFromBase = await this.calculateDistanceFromBase(
-            dayMileageEntries,
-            employee.baseAddress || ''
-          );
+          const distanceFromBase = this.getMaxDistanceFromCache(dayMileageEntries, distanceCache);
           const criteria = {
             hoursWorked: day.totalHours >= this.MIN_HOURS,
             milesDriven: milesDriven >= this.MIN_MILES,
@@ -219,6 +222,9 @@ export class PerDiemAiService {
         DatabaseService.getMileageEntries(employeeId, month, year)
       ]);
 
+      // Pre-calculate all distances from base in parallel
+      const distanceCache = await this.preCalculateDistancesFromBaseLocal(mileageEntries, baseAddress);
+
       const daysInMonth = new Date(year, month, 0).getDate();
       const descByDate = new Map<string, { stayedOvernight: boolean }>();
       dailyDescriptions.forEach(d => {
@@ -240,7 +246,7 @@ export class PerDiemAiService {
           .reduce((s, e: any) => s + e.hours, 0);
         const milesDriven = dayMileage.reduce((s, e: any) => s + e.miles, 0);
         const { stayedOvernight } = descByDate.get(dateKey) || { stayedOvernight: false };
-        const distanceFromBase = await this.calculateDistanceFromBase(dayMileage, employee.baseAddress || '');
+        const distanceFromBase = this.getMaxDistanceFromCache(dayMileage, distanceCache);
 
         const criteria = {
           hoursWorked: hoursWorked >= this.MIN_HOURS,
@@ -260,6 +266,111 @@ export class PerDiemAiService {
       debugError('PerDiemAI: getEligibilityForMonth error', error);
     }
     return result;
+  }
+
+  /**
+   * Pre-calculate distances from base for all unique addresses in parallel.
+   * Returns a Map<address, distance> for quick lookup.
+   */
+  private static async preCalculateDistancesFromBase(
+    monthlyData: any[],
+    localMileageEntries: MileageEntry[],
+    baseAddress: string
+  ): Promise<Map<string, number>> {
+    const distanceCache = new Map<string, number>();
+    if (!baseAddress) return distanceCache;
+
+    // Collect all unique addresses
+    const addresses = new Set<string>();
+    for (const day of monthlyData) {
+      for (const entry of (day.mileageEntries || [])) {
+        const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
+        const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
+        if (start && start !== 'BA') addresses.add(start);
+        if (end && end !== 'BA') addresses.add(end);
+      }
+    }
+    for (const entry of localMileageEntries) {
+      const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
+      const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
+      if (start && start !== 'BA') addresses.add(start);
+      if (end && end !== 'BA') addresses.add(end);
+    }
+
+    // Calculate all distances in parallel
+    const addressList = Array.from(addresses);
+    const distancePromises = addressList.map(async (addr) => {
+      try {
+        const distance = await DistanceService.calculateDistance(baseAddress, addr);
+        return { addr, distance };
+      } catch {
+        return { addr, distance: 0 };
+      }
+    });
+
+    const results = await Promise.all(distancePromises);
+    for (const { addr, distance } of results) {
+      distanceCache.set(addr, distance);
+    }
+
+    return distanceCache;
+  }
+
+  /**
+   * Pre-calculate distances for local mileage entries.
+   */
+  private static async preCalculateDistancesFromBaseLocal(
+    mileageEntries: MileageEntry[],
+    baseAddress: string
+  ): Promise<Map<string, number>> {
+    const distanceCache = new Map<string, number>();
+    if (!baseAddress) return distanceCache;
+
+    const addresses = new Set<string>();
+    for (const entry of mileageEntries) {
+      const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
+      const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
+      if (start && start !== 'BA') addresses.add(start);
+      if (end && end !== 'BA') addresses.add(end);
+    }
+
+    const addressList = Array.from(addresses);
+    const distancePromises = addressList.map(async (addr) => {
+      try {
+        const distance = await DistanceService.calculateDistance(baseAddress, addr);
+        return { addr, distance };
+      } catch {
+        return { addr, distance: 0 };
+      }
+    });
+
+    const results = await Promise.all(distancePromises);
+    for (const { addr, distance } of results) {
+      distanceCache.set(addr, distance);
+    }
+
+    return distanceCache;
+  }
+
+  /**
+   * Get max distance from base for a day's mileage entries using pre-calculated cache.
+   */
+  private static getMaxDistanceFromCache(
+    mileageEntries: MileageEntry[],
+    distanceCache: Map<string, number>
+  ): number {
+    let maxDistance = 0;
+    for (const entry of mileageEntries) {
+      const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
+      const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
+      if (start && start !== 'BA') {
+        maxDistance = Math.max(maxDistance, distanceCache.get(start) || 0);
+      }
+      if (end && end !== 'BA') {
+        maxDistance = Math.max(maxDistance, distanceCache.get(end) || 0);
+      }
+    }
+    return Math.round(maxDistance * 10) / 10;
   }
 
   /**
