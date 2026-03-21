@@ -346,17 +346,32 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
       return imageUri;
     }
     
+    // If it's a data URI, return as-is
+    if (imageUri.startsWith('data:')) {
+      return imageUri;
+    }
+    
     // If it's a file:// URI, return as-is
     if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
       return imageUri;
     }
     
-    // If it's just a filename (from backend), construct the full URL
     // Backend serves images from /uploads/ directory (not /api/uploads/)
     // Remove /api suffix from base URL since uploads are served at root level
     const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
-    const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
-    return `${baseUrl}/uploads/${filename}`;
+    
+    // Handle different URI formats:
+    // - "/uploads/filename.jpg" -> use as-is with baseUrl
+    // - "uploads/filename.jpg" -> add leading slash
+    // - "filename.jpg" -> prepend /uploads/
+    if (imageUri.startsWith('/uploads/')) {
+      return `${baseUrl}${imageUri}`;
+    } else if (imageUri.startsWith('uploads/')) {
+      return `${baseUrl}/${imageUri}`;
+    } else {
+      const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
+      return `${baseUrl}/uploads/${filename}`;
+    }
   };
   
   // State for image loading errors

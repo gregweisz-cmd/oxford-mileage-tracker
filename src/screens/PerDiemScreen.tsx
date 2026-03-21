@@ -31,16 +31,31 @@ function resolveImageUri(imageUri: string | undefined | null): string {
     return imageUri;
   }
   
+  // If it's a data URI, return as-is
+  if (imageUri.startsWith('data:')) {
+    return imageUri;
+  }
+  
   // If it's a file:// or other local URI, return as-is
   if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
     return imageUri;
   }
   
-  // If it's just a filename/path (from backend), construct the full URL
   // Backend serves images from /uploads/ directory (not /api/uploads/)
   const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
-  const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
-  return `${baseUrl}/uploads/${filename}`;
+  
+  // Handle different URI formats:
+  // - "/uploads/filename.jpg" -> use as-is with baseUrl
+  // - "uploads/filename.jpg" -> add leading slash  
+  // - "filename.jpg" -> prepend /uploads/
+  if (imageUri.startsWith('/uploads/')) {
+    return `${baseUrl}${imageUri}`;
+  } else if (imageUri.startsWith('uploads/')) {
+    return `${baseUrl}/${imageUri}`;
+  } else {
+    const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
+    return `${baseUrl}/uploads/${filename}`;
+  }
 }
 
 interface PerDiemScreenProps {
