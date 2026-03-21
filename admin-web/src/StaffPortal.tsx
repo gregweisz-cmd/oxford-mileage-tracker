@@ -562,6 +562,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [cropModalReceipt, setCropModalReceipt] = useState<{ id: string; imageUri: string } | null>(null);
   const [viewImageUrl, setViewImageUrl] = useState<string | null>(null);
+  const [viewPdfUrl, setViewPdfUrl] = useState<string | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null); // Signature saved in Settings
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
@@ -8081,7 +8082,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
                                       onClick={() => {
                                         const url = getReceiptImageUrl(raw);
-                                        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                        if (url) setViewPdfUrl(url);
                                       }}
                                       sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
                                     >
@@ -8687,6 +8688,35 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               onError={() => {
                 showError('Failed to load image');
                 setViewImageUrl(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt PDF Viewer Dialog */}
+      <Dialog
+        open={!!viewPdfUrl}
+        onClose={() => setViewPdfUrl(null)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { bgcolor: '#1a1a1a', height: '90vh' } }}
+      >
+        <DialogTitle sx={{ color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Receipt PDF
+          <IconButton onClick={() => setViewPdfUrl(null)} sx={{ color: '#fff' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, height: '100%' }}>
+          {viewPdfUrl && (
+            <iframe
+              src={viewPdfUrl}
+              title="Receipt PDF"
+              style={{ width: '100%', height: '100%', border: 'none', minHeight: '70vh' }}
+              onError={() => {
+                showError('Failed to load PDF');
+                setViewPdfUrl(null);
               }}
             />
           )}
