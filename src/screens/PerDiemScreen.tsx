@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -10,6 +10,9 @@ import {
   Alert,
   Modal,
   Image,
+  InteractionManager,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -103,15 +106,14 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [saving, setSaving] = useState(false);
   /** Per-day eligibility from rule: 8+ hours AND (100+ mi OR stayed overnight 50+ mi from base) */
   const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
+  /** True after eligibility map has been computed for the current month (avoids blocking on Android) */
+  const [eligibilityReady, setEligibilityReady] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollToTodayPendingRef = useRef(false);
+  /** Incremented so stale eligibility results are ignored if user changes month quickly */
+  const eligibilityLoadGenerationRef = useRef(0);
 
-  // Reload data when month changes
-  useEffect(() => {
-    loadData();
-  }, [currentMonth]);
-  
-  // Reload data when screen comes into focus (to sync with dashboard)
+  // Load when screen is focused or month changes (single path — avoids double load on mount)
   useFocusEffect(
     React.useCallback(() => {
       loadData();
@@ -126,58 +128,60 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
    * - Monthly totals and statistics
    */
   const loadData = async () => {
+    const loadGen = ++eligibilityLoadGenerationRef.current;
     try {
       setLoading(true);
-      
+      setEligibilityReady(false);
+      setEligibilityByDay(new Map());
+
       const employee = await DatabaseService.getCurrentEmployee();
       if (!employee) {
         Alert.alert('Error', 'No employee data found. Please log in again.');
         setLoading(false);
         return;
       }
-      
+
       setCurrentEmployee(employee);
-      
-      // Load per diem rule, eligibility, and receipts in parallel for faster loading
+
       const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
       const month = currentMonth.getMonth() + 1;
       const year = currentMonth.getFullYear();
-      
-      const [rule, eligibilityMap, receipts] = await Promise.all([
+
+      // Phase 1: rule + receipts only (fast — no distance API storm)
+      const [rule, receipts] = await Promise.all([
         costCenter ? PerDiemRulesService.getPerDiemRule(costCenter) : Promise.resolve(null),
-        PerDiemAiService.getEligibilityForMonth(employee.id, month, year),
-        DatabaseService.getReceipts(employee.id, month, year)
+        DatabaseService.getReceipts(employee.id, month, year),
       ]);
-      
+
+      if (loadGen !== eligibilityLoadGenerationRef.current) return;
+
       setCurrentPerDiemRule(rule);
-      setEligibilityByDay(eligibilityMap);
-      
-      // Calculate monthly limit from rule
+
       const limit = (rule as any)?.monthlyLimit || 350;
       setMonthlyLimit(limit);
-      
+
+      const maxPerDay = (rule as any)?.maxAmount ?? 35;
+
       const perDiemReceipts = receipts.filter(r => r.category === 'Per Diem');
       const entriesMap = new Map<string, PerDiemEntry>();
-      
-      // Initialize all days of the month
+
       const daysInMonth = new Date(
         currentMonth.getFullYear(),
         currentMonth.getMonth() + 1,
         0
       ).getDate();
-      
+
       for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
         const dateKey = toLocalDateKey(date);
-        
-        // Find existing per diem receipt for this day
+
         const existingReceipt = perDiemReceipts.find(r => {
           const receiptDate = new Date(r.date);
           return receiptDate.getDate() === day &&
                  receiptDate.getMonth() === currentMonth.getMonth() &&
                  receiptDate.getFullYear() === currentMonth.getFullYear();
         });
-        
+
         if (existingReceipt) {
           entriesMap.set(dateKey, {
             date,
@@ -189,29 +193,49 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
         } else {
           entriesMap.set(dateKey, {
             date,
-            amount: currentPerDiemRule?.maxAmount || 35,
+            amount: maxPerDay,
             isEligible: false,
           });
         }
       }
-      
+
       setPerDiemEntries(entriesMap);
-      
-      // Recalculate monthly total from actual receipts (not from entries map)
-      // This ensures consistency with dashboard
+
       const actualTotal = perDiemReceipts.reduce((sum, r) => sum + r.amount, 0);
       setMonthlyTotal(actualTotal);
-      
-      // Reset unsaved changes flag when data is loaded
+
       setHasUnsavedChanges(false);
-      
+      setLoading(false);
+
+      // Phase 2: eligibility (heavy on Android — many network distance calls). Run after UI paints.
+      const runEligibility = () => {
+        PerDiemAiService.getEligibilityForMonth(employee.id, month, year)
+          .then((eligibilityMap) => {
+            if (loadGen !== eligibilityLoadGenerationRef.current) return;
+            setEligibilityByDay(eligibilityMap);
+            setEligibilityReady(true);
+          })
+          .catch(() => {
+            if (loadGen !== eligibilityLoadGenerationRef.current) return;
+            setEligibilityReady(true);
+          });
+      };
+
+      if (Platform.OS === 'android') {
+        InteractionManager.runAfterInteractions(() => {
+          if (loadGen !== eligibilityLoadGenerationRef.current) return;
+          runEligibility();
+        });
+      } else {
+        runEligibility();
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to load per diem data. Please try again.');
       if (__DEV__) {
         console.error('PerDiemScreen: Error loading data:', error);
       }
-    } finally {
       setLoading(false);
+      setEligibilityReady(true);
     }
   };
 
@@ -627,12 +651,12 @@ const dateKey = toLocalDateKey(date);
           <MaterialIcons name="chevron-left" size={24} color="#007AFF" />
         </TouchableOpacity>
         <Text style={styles.monthTitle}>{getMonthName(currentMonth)}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={styles.monthActionsRow}>
           <TouchableOpacity onPress={scrollToToday} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#007AFF', borderRadius: 8 }}>
             <MaterialIcons name="today" size={18} color="#fff" style={{ marginRight: 6 }} />
             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Go to today</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
+          <TouchableOpacity onPress={() => navigateMonth('next')} style={[styles.navButton, styles.navButtonNext]}>
             <MaterialIcons name="chevron-right" size={24} color="#007AFF" />
           </TouchableOpacity>
         </View>
@@ -663,6 +687,12 @@ const dateKey = toLocalDateKey(date);
         <Text style={styles.summaryRemaining}>
           Remaining: ${Math.max(0, monthlyLimit - monthlyTotal).toFixed(2)}
         </Text>
+        {!eligibilityReady && !loading && (
+          <View style={styles.eligibilityBanner}>
+            <ActivityIndicator size="small" color="#007AFF" />
+            <Text style={styles.eligibilityBannerText}>Calculating day eligibility (hours, miles, distance)…</Text>
+          </View>
+        )}
       </View>
 
       {/* Days List */}
@@ -681,8 +711,8 @@ const dateKey = toLocalDateKey(date);
               <View style={styles.dayHeader}>
                 <View>
                   <Text style={styles.dayDate}>{formatDate(date)}</Text>
-                  <Text style={[styles.eligibilityLabel, isEligibleByRule ? styles.eligibilityLabelEligible : styles.eligibilityLabelNotEligible]}>
-                    {isEligibleByRule ? 'Eligible' : 'Not eligible'}
+                  <Text style={[styles.eligibilityLabel, !eligibilityReady ? styles.eligibilityLabelPending : (isEligibleByRule ? styles.eligibilityLabelEligible : styles.eligibilityLabelNotEligible)]}>
+                    {!eligibilityReady ? '…' : (isEligibleByRule ? 'Eligible' : 'Not eligible')}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -743,7 +773,7 @@ const dateKey = toLocalDateKey(date);
             onPress={handleSaveAll}
             disabled={saving}
           >
-            <MaterialIcons name="save" size={20} color="#fff" />
+            <MaterialIcons name="save" size={20} color="#fff" style={styles.saveButtonIcon} />
             <Text style={styles.saveButtonText}>
               {saving ? 'Saving...' : 'Save Changes'}
             </Text>
@@ -776,6 +806,13 @@ const styles = StyleSheet.create({
   },
   navButton: {
     padding: 8,
+  },
+  navButtonNext: {
+    marginLeft: 8,
+  },
+  monthActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   monthTitle: {
     fontSize: 20,
@@ -818,6 +855,11 @@ const styles = StyleSheet.create({
   },
   eligibilityLabelNotEligible: {
     color: '#666',
+  },
+  eligibilityLabelPending: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
   },
   checkbox: {
     width: 24,
@@ -935,6 +977,20 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'right',
   },
+  eligibilityBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e0e0e0',
+  },
+  eligibilityBannerText: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 13,
+    color: '#666',
+  },
   saveButtonContainer: {
     position: 'absolute',
     bottom: 20,
@@ -955,8 +1011,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-    gap: 8,
     minWidth: 200,
+  },
+  saveButtonIcon: {
+    marginRight: 8,
   },
   saveButtonDisabled: {
     backgroundColor: '#999',

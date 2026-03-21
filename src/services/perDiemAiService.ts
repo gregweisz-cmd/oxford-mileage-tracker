@@ -1,8 +1,28 @@
+import { Platform } from 'react-native';
 import { MileageEntry, TimeTracking, Employee } from '../types';
 import { DatabaseService } from './database';
 import { BackendDataService } from './backendDataService';
 import { DistanceService } from './distanceService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
+
+/** Android: fewer parallel distance/HTTP calls (less contention/timeouts). iOS: higher throughput. */
+const DISTANCE_LOOKUP_BATCH_SIZE = Platform.OS === 'android' ? 3 : 10;
+
+/** Run distance lookups in batches — avoids hundreds of simultaneous requests on Android. */
+async function runDistanceLookupsBatched(
+  addresses: string[],
+  lookup: (addr: string) => Promise<{ addr: string; distance: number }>
+): Promise<Map<string, number>> {
+  const cache = new Map<string, number>();
+  for (let i = 0; i < addresses.length; i += DISTANCE_LOOKUP_BATCH_SIZE) {
+    const chunk = addresses.slice(i, i + DISTANCE_LOOKUP_BATCH_SIZE);
+    const results = await Promise.all(chunk.map((addr) => lookup(addr)));
+    for (const { addr, distance } of results) {
+      cache.set(addr, distance);
+    }
+  }
+  return cache;
+}
 
 export interface PerDiemEligibility {
   isEligible: boolean;
@@ -40,6 +60,34 @@ export class PerDiemAiService {
   private static readonly MIN_HOURS = 8;
   private static readonly MIN_MILES = 100;
   private static readonly MIN_DISTANCE_FROM_BASE = 50;
+
+  private static groupMileageByDate(entries: MileageEntry[]): Map<string, MileageEntry[]> {
+    const byDate = new Map<string, MileageEntry[]>();
+    for (const entry of entries) {
+      const key = this.toLocalDateKey(entry.date);
+      const list = byDate.get(key);
+      if (list) {
+        list.push(entry);
+      } else {
+        byDate.set(key, [entry]);
+      }
+    }
+    return byDate;
+  }
+
+  private static groupTimeByDate(entries: TimeTracking[]): Map<string, TimeTracking[]> {
+    const byDate = new Map<string, TimeTracking[]>();
+    for (const entry of entries) {
+      const key = this.toLocalDateKey(entry.date);
+      const list = byDate.get(key);
+      if (list) {
+        list.push(entry);
+      } else {
+        byDate.set(key, [entry]);
+      }
+    }
+    return byDate;
+  }
 
   /** Format date as YYYY-MM-DD in local time (avoid UTC shift from toISOString). */
   private static toLocalDateKey(date: Date): string {
@@ -178,12 +226,16 @@ export class PerDiemAiService {
         // Pre-calculate all distances from base in parallel for performance
         const distanceCache = await this.preCalculateDistancesFromBase(monthlyData, localMileageEntries, baseAddress);
 
+        const localMileageByDate = localMileageEntries.length > 0
+          ? this.groupMileageByDate(localMileageEntries)
+          : null;
+
         for (const day of monthlyData) {
           const dateKey = this.toLocalDateKey(day.date);
           const stayedOvernight = day.stayedOvernight ?? false;
-          const useLocalMiles = localMileageEntries.length > 0;
+          const useLocalMiles = !!localMileageByDate;
           const dayMileageEntries = useLocalMiles
-            ? localMileageEntries.filter(e => this.toLocalDateKey(e.date) === dateKey)
+            ? (localMileageByDate?.get(dateKey) || [])
             : (day.mileageEntries || []);
           const milesDriven = useLocalMiles
             ? dayMileageEntries.reduce((s, e) => s + e.miles, 0)
@@ -227,6 +279,8 @@ export class PerDiemAiService {
 
       const daysInMonth = new Date(year, month, 0).getDate();
       const descByDate = new Map<string, { stayedOvernight: boolean }>();
+      const timeByDate = this.groupTimeByDate(timeTracking);
+      const mileageByDate = this.groupMileageByDate(mileageEntries);
       dailyDescriptions.forEach(d => {
         const key = this.toLocalDateKey(d.date);
         descByDate.set(key, { stayedOvernight: d.stayedOvernight ?? false });
@@ -236,8 +290,8 @@ export class PerDiemAiService {
         const date = new Date(year, month - 1, dayNum);
         const dateKey = this.toLocalDateKey(date);
 
-        const dayTime = timeTracking.filter(e => this.toLocalDateKey(e.date) === dateKey);
-        const dayMileage = mileageEntries.filter(e => this.toLocalDateKey(e.date) === dateKey);
+        const dayTime = timeByDate.get(dateKey) || [];
+        const dayMileage = mileageByDate.get(dateKey) || [];
         const hoursWorked = dayTime
           .filter((e: any) => {
             const cat = (e.category || '').trim();
@@ -299,7 +353,7 @@ export class PerDiemAiService {
 
     // Calculate all distances in parallel
     const addressList = Array.from(addresses);
-    const distancePromises = addressList.map(async (addr) => {
+    const batchMap = await runDistanceLookupsBatched(addressList, async (addr) => {
       try {
         const distance = await DistanceService.calculateDistance(baseAddress, addr);
         return { addr, distance };
@@ -307,11 +361,7 @@ export class PerDiemAiService {
         return { addr, distance: 0 };
       }
     });
-
-    const results = await Promise.all(distancePromises);
-    for (const { addr, distance } of results) {
-      distanceCache.set(addr, distance);
-    }
+    batchMap.forEach((distance, addr) => distanceCache.set(addr, distance));
 
     return distanceCache;
   }
@@ -335,7 +385,7 @@ export class PerDiemAiService {
     }
 
     const addressList = Array.from(addresses);
-    const distancePromises = addressList.map(async (addr) => {
+    const batchMap = await runDistanceLookupsBatched(addressList, async (addr) => {
       try {
         const distance = await DistanceService.calculateDistance(baseAddress, addr);
         return { addr, distance };
@@ -343,11 +393,7 @@ export class PerDiemAiService {
         return { addr, distance: 0 };
       }
     });
-
-    const results = await Promise.all(distancePromises);
-    for (const { addr, distance } of results) {
-      distanceCache.set(addr, distance);
-    }
+    batchMap.forEach((distance, addr) => distanceCache.set(addr, distance));
 
     return distanceCache;
   }

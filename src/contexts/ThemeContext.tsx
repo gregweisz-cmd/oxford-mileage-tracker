@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DatabaseService } from '../services/database';
 import { DeviceIntelligenceService } from '../services/deviceIntelligenceService';
 import { DeviceControlService } from '../services/deviceControlService';
 
-// Simple in-memory storage for theme preferences
-const themeStorage: { [key: string]: string } = {};
+const THEME_STORAGE_KEY = 'app_theme_preference';
 
 interface ThemeContextType {
   theme: 'light' | 'dark' | 'auto';
@@ -71,9 +71,20 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   const loadTheme = async () => {
     try {
-      const savedTheme = themeStorage['app_theme'];
+      // Primary source: persisted local storage (survives app restarts)
+      const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
       if (savedTheme && ['light', 'dark', 'auto'].includes(savedTheme)) {
         setThemeState(savedTheme as 'light' | 'dark' | 'auto');
+        return;
+      }
+
+      // Fallback source: employee device settings in SQLite
+      const employee = await DatabaseService.getCurrentEmployee();
+      if (employee?.id) {
+        const settings = await DeviceIntelligenceService.getDeviceSettings(employee.id);
+        if (settings?.theme && ['light', 'dark', 'auto'].includes(settings.theme)) {
+          setThemeState(settings.theme);
+        }
       }
     } catch (error) {
       console.error('Failed to load theme:', error);
@@ -83,7 +94,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const setTheme = async (newTheme: 'light' | 'dark' | 'auto') => {
     try {
       setThemeState(newTheme);
-      themeStorage['app_theme'] = newTheme;
+      await AsyncStorage.setItem(THEME_STORAGE_KEY, newTheme);
 
       // Resolve employee at save time (avoids stale ThemeProvider state vs Settings screen)
       const employee = await DatabaseService.getCurrentEmployee();

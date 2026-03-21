@@ -320,7 +320,9 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
 
   const handleEditPreferredName = () => {
     if (!currentEmployee) return;
-    setPreferredNameInput(currentEmployee.preferredName || currentEmployee.name.split(' ')[0] || '');
+    const preferred = (currentEmployee.preferredName || '').trim();
+    const firstName = (currentEmployee.name || '').trim().split(' ')[0] || '';
+    setPreferredNameInput(preferred || firstName);
     setShowPreferredNameModal(true);
   };
 
@@ -444,8 +446,8 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     >
       <KeyboardAvoidingView
         style={styles.preferredNameKeyboardRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 24}
       >
         <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 8) }]}>
           <View

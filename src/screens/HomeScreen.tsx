@@ -32,7 +32,6 @@ import CostCenterSelector from '../components/CostCenterSelector';
 import DashboardTile, { TileConfig } from '../components/DashboardTile';
 import LogoutService from '../services/logoutService';
 import { useTheme } from '../contexts/ThemeContext';
-import { BaseAddressDetectionService } from '../services/baseAddressDetectionService';
 import { CostCenterImportService } from '../services/costCenterImportService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
@@ -480,44 +479,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
 
-  const checkBaseAddressSuggestion = async (employee: Employee) => {
-    try {
-      // Get all mileage entries for analysis
-      const allEntries = await DatabaseService.getMileageEntries(employee.id);
-      
-      if (allEntries.length < 10) return; // Need at least 10 trips
-      
-      // Analyze for base address patterns
-      const suggestion = await BaseAddressDetectionService.analyzeForBaseAddress(
-        allEntries,
-        employee.baseAddress
-      );
-      
-      if (suggestion.shouldSuggest) {
-        Alert.alert(
-          '🏠 Base Address Suggestion',
-          `We noticed you start ${suggestion.frequency}% of your trips from:\n\n"${suggestion.location}"\n\n${suggestion.reasoning}\n\nWould you like to set this as your Base Address? This will auto-fill the start location for future trips.`,
-          [
-            { text: 'Not Now', style: 'cancel' },
-            {
-              text: 'Set as Base Address',
-              onPress: async () => {
-                await DatabaseService.updateEmployee(employee.id, {
-                  ...employee,
-                  baseAddress: suggestion.location,
-                });
-                setCurrentEmployee({ ...employee, baseAddress: suggestion.location });
-                Alert.alert('Success', 'Base address updated!');
-              },
-            },
-          ]
-        );
-      }
-    } catch (error) {
-      console.error('Error checking base address:', error);
-    }
-  };
-
   const checkSmartNotifications = async (
     employeeId: string,
     dismissedSet?: Set<string>
@@ -666,7 +627,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
       await loadEmployeeData(employee.id, employee);
 
-      await checkBaseAddressSuggestion(employee);
       const loadedDismissed = await loadDismissedNotificationIds(employee.id);
       setDismissedNotifications(loadedDismissed);
       await checkSmartNotifications(employee.id, loadedDismissed);
