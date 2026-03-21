@@ -3,6 +3,7 @@ import { TouchableOpacity, Text, StyleSheet, Platform, View } from 'react-native
 import { MaterialIcons } from '@expo/vector-icons';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import { useNavigation } from '@react-navigation/native';
+import { hapticLight } from '../utils/haptics';
 
 interface GlobalGpsReturnButtonProps {
   currentRouteName?: string;
@@ -29,6 +30,7 @@ export default function GlobalGpsReturnButton({ currentRouteName }: GlobalGpsRet
   };
 
   const handlePress = () => {
+    void hapticLight();
     navigation.navigate('GpsTracking');
   };
 

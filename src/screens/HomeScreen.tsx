@@ -36,6 +36,7 @@ import { BaseAddressDetectionService } from '../services/baseAddressDetectionSer
 import { CostCenterImportService } from '../services/costCenterImportService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
+import { hapticLight } from '../utils/haptics';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 
@@ -415,6 +416,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const handleManualSync = async () => {
     const employee = currentEmployee;
     if (!employee?.id || isSyncing || homeScreenIsSyncing) return;
+    void hapticLight();
     homeScreenIsSyncing = true;
     setIsSyncing(true);
     try {
@@ -744,6 +746,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const handleEmployeeChange = async (employeeId: string) => {
+    void hapticLight();
     const employee = availableEmployees.find(emp => emp.id === employeeId);
     if (employee) {
       setViewingEmployee(employee);
@@ -1207,7 +1210,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
       {/* Month/Year Selector */}
       <View style={dynamicStyles.costCenterSection}>
-        <TouchableOpacity onPress={() => setShowMonthYearModal(true)} style={styles.costCenterContainer}>
+        <TouchableOpacity onPress={() => { void hapticLight(); setShowMonthYearModal(true); }} style={styles.costCenterContainer}>
           <Text style={dynamicStyles.costCenterText}>
             Viewing: {new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </Text>
@@ -1323,10 +1326,13 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         <View style={styles.monthlyMileageContainer}>
           <TouchableOpacity 
             style={dynamicStyles.monthlyMileageButton}
-            onPress={() => navigation.navigate('MileageEntries', { 
+            onPress={() => {
+              void hapticLight();
+              navigation.navigate('MileageEntries', { 
               selectedMonth, 
               selectedYear 
-            })}
+            });
+            }}
             activeOpacity={0.7}
           >
             <View style={styles.monthlyMileageContent}>
@@ -1373,7 +1379,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           <Text style={styles.actionsTitle}>Quick Actions</Text>
           <TouchableOpacity
             style={styles.rearrangeButton}
-            onPress={() => setIsEditingTiles(!isEditingTiles)}
+            onPress={() => {
+              void hapticLight();
+              setIsEditingTiles(!isEditingTiles);
+            }}
           >
             <MaterialIcons 
               name={isEditingTiles ? 'check' : 'edit'} 

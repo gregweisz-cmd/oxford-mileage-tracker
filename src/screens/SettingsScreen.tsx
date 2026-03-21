@@ -24,6 +24,7 @@ import { DeviceControlService, DeviceControlSettings } from '../services/deviceC
 import { Employee } from '../types';
 import { DatabaseService } from '../services/database';
 import { useTheme } from '../contexts/ThemeContext';
+import { hapticImpactUnconditional, hapticLight, hapticSelection } from '../utils/haptics';
 
 interface SettingsScreenProps {
   navigation: any;
@@ -266,7 +267,18 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     onPress?: () => void,
     rightElement?: React.ReactNode
   ) => (
-    <TouchableOpacity style={styles.settingRow} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity
+      style={styles.settingRow}
+      onPress={
+        onPress
+          ? () => {
+              void hapticLight();
+              onPress();
+            }
+          : undefined
+      }
+      disabled={!onPress}
+    >
       <View style={styles.settingContent}>
         <Text style={styles.settingTitle}>{title}</Text>
         <Text style={styles.settingSubtitle}>{subtitle}</Text>
@@ -280,13 +292,29 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     </TouchableOpacity>
   );
 
-  const renderSwitch = (title: string, subtitle: string, value: boolean, onToggle: (value: boolean) => void) => (
+  const renderSwitch = (
+    title: string,
+    subtitle: string,
+    value: boolean,
+    onToggle: (value: boolean) => void,
+    options?: { isVibrationSwitch?: boolean }
+  ) => (
     <View style={styles.settingRow}>
       <View style={styles.settingContent}>
         <Text style={styles.settingTitle}>{title}</Text>
         <Text style={styles.settingSubtitle}>{subtitle}</Text>
       </View>
-      <Switch value={value} onValueChange={onToggle} />
+      <Switch
+        value={value}
+        onValueChange={(newValue) => {
+          if (options?.isVibrationSwitch) {
+            if (newValue) void hapticImpactUnconditional('medium');
+          } else {
+            void hapticSelection();
+          }
+          onToggle(newValue);
+        }}
+      />
     </View>
   );
 
@@ -347,7 +375,8 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
         'Vibration',
         'Haptic feedback for interactions',
         deviceControlSettings?.vibrationEnabled ?? true,
-        (value) => updateDeviceControlSettings({ vibrationEnabled: value })
+        (value) => updateDeviceControlSettings({ vibrationEnabled: value }),
+        { isVibrationSwitch: true }
       )}
       
       {renderSwitch(
@@ -380,6 +409,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
                 style={styles.modalOption}
                 onPress={async () => {
                   try {
+                    void hapticSelection();
                     // Single persistence path in ThemeContext (avoids concurrent SQLite writes on iOS)
                     await setTheme(option as 'light' | 'dark' | 'auto');
                     setDeviceControlSettings(DeviceControlService.getInstance().getCurrentSettings());

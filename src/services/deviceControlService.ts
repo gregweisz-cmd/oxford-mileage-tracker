@@ -5,8 +5,8 @@
  * to the device and app behavior.
  */
 
-import { Platform, Alert } from 'react-native';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 
 export interface DeviceControlSettings {
   theme: 'light' | 'dark' | 'auto';
@@ -275,16 +275,20 @@ export class DeviceControlService {
   }
 
   /**
-   * Trigger haptic feedback if enabled
+   * Trigger haptic feedback if vibration is enabled in Settings (expo-haptics: iOS + Android).
    */
   async triggerHaptic(type: 'light' | 'medium' | 'heavy' = 'light'): Promise<void> {
     try {
-      if (await this.isVibrationEnabled()) {
-        console.log(`📳 Haptic feedback triggered: ${type}`);
-        // TODO: Implement actual haptic feedback when expo-haptics is available
-      }
-    } catch (error) {
-      // Silently fail for haptic feedback
+      if (!(await this.isVibrationEnabled())) return;
+      const style =
+        type === 'light'
+          ? Haptics.ImpactFeedbackStyle.Light
+          : type === 'medium'
+            ? Haptics.ImpactFeedbackStyle.Medium
+            : Haptics.ImpactFeedbackStyle.Heavy;
+      await Haptics.impactAsync(style);
+    } catch {
+      // Unavailable on some devices / simulators
     }
   }
 

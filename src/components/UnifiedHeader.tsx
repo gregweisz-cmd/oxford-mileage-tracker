@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { hapticLight } from '../utils/haptics';
 
 interface UnifiedHeaderProps {
   title: string;
@@ -61,11 +62,23 @@ export default function UnifiedHeader({
         <View style={styles.row}>
           <View style={styles.sideSection}>
             {showBackButton ? (
-              <TouchableOpacity style={styles.iconButton} onPress={onBackPress}>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() => {
+                  void hapticLight();
+                  onBackPress?.();
+                }}
+              >
                 <MaterialIcons name="arrow-back" size={22} color="#1C75BC" />
               </TouchableOpacity>
             ) : leftButton ? (
-              <TouchableOpacity style={styles.iconButton} onPress={leftButton.onPress}>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() => {
+                  void hapticLight();
+                  leftButton.onPress();
+                }}
+              >
                 <MaterialIcons
                   name={leftButton.icon as any}
                   size={22}
@@ -84,14 +97,23 @@ export default function UnifiedHeader({
 
           <View style={[styles.sideSection, styles.rightRow]}>
             {showHomeButton && onHomePress ? (
-              <TouchableOpacity style={styles.iconButton} onPress={onHomePress}>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() => {
+                  void hapticLight();
+                  onHomePress();
+                }}
+              >
                 <MaterialIcons name="home" size={22} color="#1C75BC" />
               </TouchableOpacity>
             ) : null}
             {rightButton ? (
               <TouchableOpacity
                 style={[rightButton.text ? styles.iconButtonWithText : styles.iconButton, showHomeButton && onHomePress && styles.rightButtonSpacing]}
-                onPress={rightButton.onPress}
+                onPress={() => {
+                  void hapticLight();
+                  rightButton.onPress();
+                }}
               >
                 <MaterialIcons
                   name={rightButton.icon as any}

@@ -9,6 +9,7 @@ import {
   Linking,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { hapticLight } from '../utils/haptics';
 
 interface SimpleNavigationButtonProps {
   isTracking: boolean;
@@ -22,6 +23,7 @@ const SimpleNavigationButton = React.memo(function SimpleNavigationButton({ isTr
   };
 
   const handleOpenNavigation = async () => {
+    void hapticLight();
     try {
       // List of popular navigation apps with their URL schemes
       const navigationApps = [

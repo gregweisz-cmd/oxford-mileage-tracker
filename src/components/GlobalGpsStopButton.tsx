@@ -10,6 +10,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import { useNavigation } from '@react-navigation/native';
+import { hapticMedium } from '../utils/haptics';
 
 interface GlobalGpsStopButtonProps {
   currentRouteName?: string;
@@ -34,6 +35,7 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
   };
 
   const handleStopTracking = () => {
+    void hapticMedium();
     // Intentionally no "discard / cancel session" action here — it was easy to tap by mistake.
     // To end tracking, users must use "End & save trip" and confirm destination. Staff who truly
     // need to abandon a session can force-close the app or contact support (rare).

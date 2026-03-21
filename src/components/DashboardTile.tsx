@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { hapticLight } from '../utils/haptics';
 
 export interface TileConfig {
   id: string;
@@ -23,7 +24,10 @@ function DashboardTile({ tile, isDragging }: DashboardTileProps) {
         tile.isPrimary ? styles.primaryTile : styles.secondaryTile,
         isDragging && styles.draggingTile,
       ]}
-      onPress={tile.onPress}
+      onPress={() => {
+        void hapticLight();
+        tile.onPress();
+      }}
       activeOpacity={0.7}
     >
       <MaterialIcons name={tile.icon as any} size={tile.isPrimary ? 28 : 24} color={tile.color} />
