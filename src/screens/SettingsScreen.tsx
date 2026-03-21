@@ -9,10 +9,15 @@ import {
   TextInput,
   Modal,
   FlatList,
+  Platform,
+  KeyboardAvoidingView,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import UnifiedHeader from '../components/UnifiedHeader';
-import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { KeyboardAwareScrollView } from '../components/KeyboardAwareScrollView';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DeviceIntelligenceService, DeviceSettings, UserInterfacePreferences, OfflineSyncPattern, InputMethodPreference } from '../services/deviceIntelligenceService';
 import { PerformanceOptimizationService, LoadingStrategy } from '../services/performanceOptimizationService';
 import { DeviceControlService, DeviceControlSettings } from '../services/deviceControlService';
@@ -30,6 +35,8 @@ interface SettingsScreenProps {
 }
 
 export default function SettingsScreen({ navigation, route }: SettingsScreenProps) {
+  const insets = useSafeAreaInsets();
+  const windowHeight = Dimensions.get('window').height;
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const { theme, setTheme, colors } = useTheme();
   // State for device settings
@@ -399,48 +406,70 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   };
 
   const renderPreferredNameModal = () => (
-    <Modal visible={showPreferredNameModal} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <KeyboardAwareScrollView
-            style={{ maxHeight: '100%' }}
-            contentContainerStyle={{ paddingBottom: 24 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+    <Modal
+      visible={showPreferredNameModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowPreferredNameModal(false)}
+    >
+      <KeyboardAvoidingView
+        style={styles.preferredNameKeyboardRoot}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+      >
+        <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+          <View
+            style={[
+              styles.modalContent,
+              styles.preferredNameModalSheet,
+              {
+                maxHeight: windowHeight * 0.88,
+                minHeight: Math.min(420, windowHeight * 0.45),
+              },
+            ]}
           >
-            <Text style={styles.modalTitle}>Edit Preferred Name</Text>
-            <Text style={styles.modalSubtitle}>
-              This name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents.
-            </Text>
-            <View style={styles.modalInputWrap}>
-              <ScrollToOnFocusView>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={styles.preferredNameScroll}
+              contentContainerStyle={styles.preferredNameScrollContent}
+            >
+              <Text style={styles.modalTitle}>Edit Preferred Name</Text>
+              <Text style={[styles.modalSubtitle, styles.preferredNameSubtitle]}>
+                This name is only used in the app and web portal. Your legal name will always be used on expense reports and official documents.
+              </Text>
+              <View style={[styles.modalInputWrap, styles.preferredNameInputWrap]}>
                 <TextInput
-                  style={styles.input}
+                  style={styles.preferredNameInput}
                   value={preferredNameInput}
                   onChangeText={setPreferredNameInput}
                   placeholder="Preferred name"
                   placeholderTextColor="#999"
                   autoFocus
+                  autoCorrect={false}
+                  autoCapitalize="words"
+                  returnKeyType="done"
+                  onSubmitEditing={handleSavePreferredName}
                 />
-              </ScrollToOnFocusView>
+              </View>
+            </ScrollView>
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalCancel, { flex: 1 }]}
+                onPress={() => setShowPreferredNameModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveButton}
+                onPress={handleSavePreferredName}
+              >
+                <Text style={styles.modalSaveButtonText}>Save</Text>
+              </TouchableOpacity>
             </View>
-          </KeyboardAwareScrollView>
-          <View style={styles.modalButtonRow}>
-            <TouchableOpacity
-              style={[styles.modalCancel, { flex: 1 }]}
-              onPress={() => setShowPreferredNameModal(false)}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalSaveButton}
-              onPress={handleSavePreferredName}
-            >
-              <Text style={styles.modalSaveButtonText}>Save</Text>
-            </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -613,6 +642,9 @@ const styles = StyleSheet.create({
   resetButtonText: {
     color: '#f44336',
   },
+  preferredNameKeyboardRoot: {
+    flex: 1,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -623,6 +655,40 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '70%',
+  },
+  /** Preferred name modal: explicit height so ScrollView + TextInput don't collapse on Android */
+  preferredNameModalSheet: {
+    width: '100%',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  preferredNameScroll: {
+    flexGrow: 1,
+    flexShrink: 1,
+  },
+  preferredNameScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 16,
+    flexGrow: 1,
+  },
+  preferredNameSubtitle: {
+    paddingHorizontal: 0,
+  },
+  preferredNameInputWrap: {
+    paddingHorizontal: 0,
+  },
+  preferredNameInput: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    fontSize: 16,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    minHeight: 48,
+    width: '100%',
   },
   modalTitle: {
     fontSize: 18,
