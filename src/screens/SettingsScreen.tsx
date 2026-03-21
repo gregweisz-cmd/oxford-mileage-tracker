@@ -371,10 +371,16 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
               <TouchableOpacity
                 key={option}
                 style={styles.modalOption}
-                onPress={() => {
-                  setTheme(option as 'light' | 'dark' | 'auto');
-                  updateDeviceControlSettings({ theme: option as any });
-                  setShowModal(false);
+                onPress={async () => {
+                  try {
+                    // Single persistence path in ThemeContext (avoids concurrent SQLite writes on iOS)
+                    await setTheme(option as 'light' | 'dark' | 'auto');
+                    setDeviceControlSettings(DeviceControlService.getInstance().getCurrentSettings());
+                    setShowModal(false);
+                  } catch (error) {
+                    console.error('❌ Error updating theme:', error);
+                    Alert.alert('Error', 'Failed to update theme. Please try again.');
+                  }
                 }}
               >
                 <Text style={styles.modalOptionText}>{option}</Text>

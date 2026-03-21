@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { DatabaseService } from '../services/database';
 import { DeviceIntelligenceService } from '../services/deviceIntelligenceService';
+import { DeviceControlService } from '../services/deviceControlService';
 
 // Simple in-memory storage for theme preferences
 const themeStorage: { [key: string]: string } = {};
@@ -19,7 +20,8 @@ interface ThemeContextType {
     border: string;
     card: string;
   };
-  setTheme: (theme: 'light' | 'dark' | 'auto') => void;
+  /** Persists theme to storage, SQLite, and device control (single write path — avoids iOS SQLite races). */
+  setTheme: (theme: 'light' | 'dark' | 'auto') => Promise<void>;
 }
 
 const lightColors = {
@@ -61,12 +63,10 @@ interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const systemColorScheme = useColorScheme();
   const [theme, setThemeState] = useState<'light' | 'dark' | 'auto'>('auto');
-  const [currentEmployee, setCurrentEmployee] = useState<any>(null);
 
-  // Load theme from storage and current employee
+  // Load theme from storage
   useEffect(() => {
     loadTheme();
-    loadCurrentEmployee();
   }, []);
 
   const loadTheme = async () => {
@@ -80,26 +80,22 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     }
   };
 
-  const loadCurrentEmployee = async () => {
-    try {
-      const employee = await DatabaseService.getCurrentEmployee();
-      setCurrentEmployee(employee);
-    } catch (error) {
-      console.error('Failed to load current employee:', error);
-    }
-  };
-
   const setTheme = async (newTheme: 'light' | 'dark' | 'auto') => {
     try {
       setThemeState(newTheme);
       themeStorage['app_theme'] = newTheme;
-      
-      // Also save to device intelligence if we have a current employee
-      if (currentEmployee?.id) {
-        await DeviceIntelligenceService.updateDeviceSettings(currentEmployee.id, { theme: newTheme });
+
+      // Resolve employee at save time (avoids stale ThemeProvider state vs Settings screen)
+      const employee = await DatabaseService.getCurrentEmployee();
+      if (employee?.id) {
+        await DeviceIntelligenceService.updateDeviceSettings(employee.id, { theme: newTheme });
       }
+
+      // Keep DeviceControlService in sync (same path as Settings — no second concurrent SQLite write for theme)
+      await DeviceControlService.getInstance().updateSettings({ theme: newTheme });
     } catch (error) {
       console.error('Failed to save theme:', error);
+      throw error;
     }
   };
 
