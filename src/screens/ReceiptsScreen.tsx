@@ -352,10 +352,11 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     }
     
     // If it's just a filename (from backend), construct the full URL
-    // Backend serves images from /uploads/ directory
-    // Remove leading slash if present
+    // Backend serves images from /uploads/ directory (not /api/uploads/)
+    // Remove /api suffix from base URL since uploads are served at root level
+    const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
     const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
-    return `${API_BASE_URL}/uploads/${filename}`;
+    return `${baseUrl}/uploads/${filename}`;
   };
   
   // State for image loading errors

@@ -22,22 +22,31 @@ interface ApiResponse<T> {
 
 export class BackendDataService {
   private static baseUrl = API_BASE_URL;
+  
+  /** Timeout in ms for backend fetch — fail fast so app doesn't hang on Loading */
+  private static readonly FETCH_TIMEOUT_MS = 15000;
 
   /**
-   * Generic fetch helper with error handling
+   * Generic fetch helper with error handling and timeout
    */
   private static async fetchFromBackend<T>(
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.FETCH_TIMEOUT_MS);
+      
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers: {
           'Content-Type': 'application/json',
           ...options?.headers,
         },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();

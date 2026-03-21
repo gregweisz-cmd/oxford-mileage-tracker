@@ -18,9 +18,30 @@ import { Employee, Receipt } from '../types';
 import UnifiedHeader from '../components/UnifiedHeader';
 import * as ImagePicker from 'expo-image-picker';
 import { PerDiemRulesService } from '../services/perDiemRulesService';
-import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiService';
-import { PerDiemDashboardService } from '../services/perDiemDashboardService';
+import { PerDiemAiService } from '../services/perDiemAiService';
 import { ApiSyncService } from '../services/apiSyncService';
+import { API_BASE_URL } from '../config/api';
+
+// Helper function to resolve image URI (handles both local files and backend URLs)
+function resolveImageUri(imageUri: string | undefined | null): string {
+  if (!imageUri || imageUri.trim() === '') return '';
+  
+  // If it's already a full URL (http/https), return as-is
+  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+    return imageUri;
+  }
+  
+  // If it's a file:// or other local URI, return as-is
+  if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
+    return imageUri;
+  }
+  
+  // If it's just a filename/path (from backend), construct the full URL
+  // Backend serves images from /uploads/ directory (not /api/uploads/)
+  const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+  const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
+  return `${baseUrl}/uploads/${filename}`;
+}
 
 interface PerDiemScreenProps {
   navigation: any;
@@ -102,37 +123,23 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       
       setCurrentEmployee(employee);
       
-      // Load per diem rule
+      // Load per diem rule, eligibility, and receipts in parallel for faster loading
       const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
-      let rule = null;
-      if (costCenter) {
-        rule = await PerDiemRulesService.getPerDiemRule(costCenter);
-        setCurrentPerDiemRule(rule);
-      }
+      const month = currentMonth.getMonth() + 1;
+      const year = currentMonth.getFullYear();
       
-      // Get monthly stats
-      const stats = await PerDiemDashboardService.getPerDiemStats(
-        employee,
-        currentMonth.getMonth() + 1,
-        currentMonth.getFullYear()
-      );
-      setMonthlyTotal(stats.currentMonthTotal);
-      setMonthlyLimit(stats.monthlyLimit);
-
-      // Per-day eligibility for labels (8+ hours AND (100+ mi OR stayed overnight 50+ mi from base))
-      const eligibilityMap = await PerDiemAiService.getEligibilityForMonth(
-        employee.id,
-        currentMonth.getMonth() + 1,
-        currentMonth.getFullYear()
-      );
+      const [rule, eligibilityMap, receipts] = await Promise.all([
+        costCenter ? PerDiemRulesService.getPerDiemRule(costCenter) : Promise.resolve(null),
+        PerDiemAiService.getEligibilityForMonth(employee.id, month, year),
+        DatabaseService.getReceipts(employee.id, month, year)
+      ]);
+      
+      setCurrentPerDiemRule(rule);
       setEligibilityByDay(eligibilityMap);
       
-      // Load existing per diem receipts for the month
-      const receipts = await DatabaseService.getReceipts(
-        employee.id,
-        currentMonth.getMonth() + 1,
-        currentMonth.getFullYear()
-      );
+      // Calculate monthly limit from rule
+      const limit = (rule as any)?.monthlyLimit || 350;
+      setMonthlyLimit(limit);
       
       const perDiemReceipts = receipts.filter(r => r.category === 'Per Diem');
       const entriesMap = new Map<string, PerDiemEntry>();
@@ -688,7 +695,7 @@ const dateKey = toLocalDateKey(date);
                   <View style={styles.imageRow}>
                     {perDiemEntry.imageUri ? (
                       <View style={styles.imageContainer}>
-                        <Image source={{ uri: perDiemEntry.imageUri }} style={styles.image} />
+                        <Image source={{ uri: resolveImageUri(perDiemEntry.imageUri) }} style={styles.image} />
                         <TouchableOpacity
                           style={styles.deleteImageButton}
                           onPress={() => handleDeletePerDiem(dateKey)}
