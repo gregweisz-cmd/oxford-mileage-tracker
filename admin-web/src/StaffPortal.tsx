@@ -1436,11 +1436,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             // Get cost center from entries (prefer first entry's cost center, or use default)
             const costCenter = firstEntry?.costCenter || dayMileageEntries.find((e: any) => e.costCenter)?.costCenter || employee.defaultCostCenter || employee.costCenters?.[0] || '';
             
-            // Find ALL time tracking entries for this day (use UTC to avoid timezone issues)
-            const dayTimeTrackingEntries = currentMonthTimeTracking.filter((tracking: any) => {
-              const trackingDate = new Date(tracking.date);
-              return trackingDate.getUTCDate() === day;
-            });
+            // Normalize date to YYYY-MM-DD for reliable matching across timezones.
+            const toDateKey = (value: any): string => {
+              const raw = value?.date ?? value;
+              if (!raw) return '';
+              const s = typeof raw === 'string' ? raw : new Date(raw).toISOString();
+              const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
+            };
+
+            // Find ALL time tracking entries for this exact day.
+            const dayTimeTrackingEntries = currentMonthTimeTracking.filter(
+              (tracking: any) => toDateKey(tracking) === dateStr
+            );
             
             // Build hours breakdown from time tracking entries
             const costCenterHours: { [key: number]: number } = {};
@@ -1462,14 +1470,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               }
             });
             
-            // Get single time tracking entry for backward compatibility
-            const dayTimeTracking = dayTimeTrackingEntries[0];
+            // Working-hours total for eligibility logic (same categories used in mobile).
+            const dayWorkingHours = dayTimeTrackingEntries
+              .filter((tracking: any) => {
+                const cat = (tracking.category || '').trim();
+                return cat === '' || cat === 'Working Hours' || cat === 'Regular Hours';
+              })
+              .reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
             
-            // Find Per Diem receipts for this day (use UTC to avoid timezone issues)
-            const dayPerDiemReceipts = currentMonthReceipts.filter((receipt: any) => {
-              const receiptDate = new Date(receipt.date);
-              return receiptDate.getUTCDate() === day && receipt.category === 'Per Diem';
-            });
+            // Find Per Diem receipts for this exact day.
+            const dayPerDiemReceipts = currentMonthReceipts.filter(
+              (receipt: any) => toDateKey(receipt) === dateStr && receipt.category === 'Per Diem'
+            );
             
             // Calculate Per Diem amount from receipts
             const perDiemFromReceipts = dayPerDiemReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
@@ -1499,20 +1511,31 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               try {
                 const perDiemResult = await PerDiemRulesService.calculatePerDiem(
                   costCenterForPerDiem,
-                  dayTimeTracking?.hours || 0,
+                  dayWorkingHours,
                   totalDayMiles,
                   distanceFromBase,
                   perDiemFromReceipts
                 );
-                
-                // Additional check: must have stayed overnight AND be 50+ miles from base
-                const qualifiesForPerDiem = stayedOvernight && distanceFromBase >= 50 && perDiemResult.meetsRequirements;
-                
+
+                // Match mobile rule: hours AND (miles OR (stayed overnight AND distance)).
+                const activeRule = perDiemResult.rule;
+                const minHours = activeRule?.minHours ?? 8;
+                const minMiles = activeRule?.minMiles ?? 100;
+                const minDistanceFromBase = activeRule?.minDistanceFromBase ?? 50;
+                const meetsHours = dayWorkingHours >= minHours;
+                const meetsMiles = totalDayMiles >= minMiles;
+                const meetsDistanceWhenOvernight = stayedOvernight && distanceFromBase >= minDistanceFromBase;
+                const qualifiesForPerDiem = meetsHours && (meetsMiles || meetsDistanceWhenOvernight);
+
                 if (qualifiesForPerDiem) {
-                  calculatedPerDiem = perDiemResult.amount;
+                  if (activeRule?.useActualAmount) {
+                    calculatedPerDiem = Math.min(perDiemFromReceipts, activeRule.maxAmount);
+                  } else {
+                    calculatedPerDiem = activeRule?.maxAmount ?? perDiemResult.amount;
+                  }
                   debugVerbose(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
                     costCenter: costCenterForPerDiem,
-                    hours: dayTimeTracking?.hours || 0,
+                    hours: dayWorkingHours,
                     miles: totalDayMiles,
                     stayedOvernight,
                     distanceFromBase,
@@ -1521,9 +1544,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   });
                 } else {
                   debugVerbose(`💰 StaffPortal: Per Diem not qualified for ${employee.name} on ${dateStr}:`, {
+                    hours: dayWorkingHours,
+                    minHours,
+                    minMiles,
+                    minDistanceFromBase,
                     stayedOvernight,
                     distanceFromBase,
-                    meetsRequirements: perDiemResult.meetsRequirements
+                    meetsHours,
+                    meetsMiles,
+                    meetsDistanceWhenOvernight
                   });
                 }
               } catch (error) {
@@ -1541,8 +1570,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               date: dateStr,
               description: fullDescription,
               userDescription,
-              hoursWorked: dayTimeTracking?.hours || 0,
-              workingHours: dayTimeTracking?.hours || 0,
+              hoursWorked: dayWorkingHours,
+              workingHours: dayWorkingHours,
               ...costCenterHoursPayload,
               categoryHours,
               odometerStart: Math.round(odometerStart),
