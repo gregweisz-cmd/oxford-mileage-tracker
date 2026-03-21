@@ -8,6 +8,8 @@ import {
   TextInput,
   Alert,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -289,6 +291,11 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
         animationType="slide"
         onRequestClose={() => setShowCostCenterModal(false)}
       >
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Cost Center</Text>
@@ -321,6 +328,7 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -330,6 +338,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  modalKeyboardAvoid: {
+    flex: 1,
   },
   header: {
     backgroundColor: '#2196F3',

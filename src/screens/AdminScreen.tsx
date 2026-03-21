@@ -9,6 +9,8 @@ import {
   Alert,
   Modal,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -600,7 +602,16 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
         animationType="slide"
         onRequestClose={() => setShowEditModal(false)}
       >
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
         <View style={styles.modalOverlay}>
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               Edit {editingEmployee?.name}
@@ -655,7 +666,9 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
+          </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Per Diem Rules Modal */}
@@ -665,7 +678,16 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
         animationType="slide"
         onRequestClose={() => setShowPerDiemModal(false)}
       >
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
         <View style={styles.modalOverlay}>
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {editingRule ? 'Edit Per Diem Rule' : 'Add Per Diem Rule'}
@@ -745,7 +767,9 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
+          </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* EES Rules Modal */}
@@ -755,7 +779,16 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
         animationType="slide"
         onRequestClose={() => setShowEesModal(false)}
       >
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
         <View style={styles.modalOverlay}>
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {editingEesRule ? 'Edit EES Rule' : 'Add EES Rule'}
@@ -805,7 +838,9 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
+          </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -815,6 +850,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  modalKeyboardAvoid: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   loadingContainer: {
     flex: 1,

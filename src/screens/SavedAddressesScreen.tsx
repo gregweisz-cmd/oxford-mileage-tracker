@@ -9,6 +9,8 @@ import {
   Modal,
   TextInput,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -372,6 +374,11 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
         resetForm();
       }}
     >
+      <KeyboardAvoidingView
+        style={styles.modalKeyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+      >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>
@@ -484,6 +491,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           </ScrollView>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -642,6 +650,9 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 8,
     textAlign: 'center',
+  },
+  modalKeyboardAvoid: {
+    flex: 1,
   },
   modalOverlay: {
     flex: 1,

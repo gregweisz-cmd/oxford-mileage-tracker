@@ -10,6 +10,8 @@ import {
   Modal,
   Keyboard,
   TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -253,6 +255,11 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
         animationType="slide"
         presentationStyle="pageSheet"
       >
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowEditModal(false)}>
@@ -266,7 +273,7 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sectionLabel}>Hours per cost center</Text>
             {(currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || []).map((cc) => (
               <View key={cc} style={styles.inputRow}>
@@ -313,6 +320,7 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
             </View>
           </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
       </View>
     </TouchableWithoutFeedback>
@@ -480,6 +488,9 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  modalKeyboardAvoid: {
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row',
