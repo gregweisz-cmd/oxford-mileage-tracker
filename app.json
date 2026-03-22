@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxford House Expense Tracker",
     "slug": "oh-staff-tracker",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "owner": "goosew27",
     "privacy": "public",
     "orientation": "portrait",
@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "2",
+      "buildNumber": "3",
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "associatedDomains": [
         "applinks:oxford-mileage-backend.onrender.com"
@@ -44,7 +44,7 @@
     },
     "android": {
       "package": "com.oxfordhouse.ohstafftracker",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1C75BC"
@@ -54,6 +54,9 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
@@ -67,7 +70,10 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Oxford House Expense Tracker to use your location to help track mileage."
+          "locationAlwaysAndWhenInUsePermission": "Allow Oxford House Expense Tracker to use your location to help track mileage.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [
@@ -84,7 +90,7 @@
         "projectId": "d303cc80-9dcf-4d5c-952b-d50df5cb04f0"
       }
     },
-    "runtimeVersion": "1.0.1",
+    "runtimeVersion": "1.0.2",
     "updates": {
       "url": "https://u.expo.dev/d303cc80-9dcf-4d5c-952b-d50df5cb04f0",
       "checkAutomatically": "ON_LOAD"

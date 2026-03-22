@@ -1,5 +1,8 @@
 import { registerRootComponent } from 'expo';
 
+// Register GPS background task before any React code (required for expo-task-manager)
+import './src/services/gpsBackgroundTask';
+
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

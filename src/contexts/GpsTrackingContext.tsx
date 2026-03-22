@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { GpsTrackingSession } from '../types';
 
@@ -11,12 +12,14 @@ interface GpsTrackingContextType {
   setShowMapOverlay: (show: boolean) => void;
   startTracking: (employeeId: string, purpose: string, odometerReading: number, notes?: string) => Promise<void>;
   stopTracking: () => Promise<GpsTrackingSession | null>;
-  requestStopTracking: () => void; // Request to show end location modal
+  requestStopTracking: () => void;
   refreshTrackingStatus: () => void;
   isStationaryTooLong: () => boolean;
   getStationaryDuration: () => number;
   shouldShowEndLocationModal: boolean;
   setShouldShowEndLocationModal: (show: boolean) => void;
+  /** True when we restored an active session from storage (e.g. app was killed during tracking) */
+  restoredTrackingOnLaunch: boolean;
 }
 
 const GpsTrackingContext = createContext<GpsTrackingContextType | undefined>(undefined);
@@ -31,30 +34,48 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const [currentDistance, setCurrentDistance] = useState(0);
   const [showMapOverlay, setShowMapOverlay] = useState(false);
   const [shouldShowEndLocationModal, setShouldShowEndLocationModal] = useState(false);
+  const [restoredTrackingOnLaunch, setRestoredTrackingOnLaunch] = useState(false);
+  const restoredRef = useRef(false);
+
+  // Restore session from storage on mount (handles app kill/restart during tracking)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const restored = await GpsTrackingService.restoreFromStorage();
+      if (mounted && restored && !restoredRef.current) {
+        restoredRef.current = true;
+        setRestoredTrackingOnLaunch(true);
+        refreshTrackingStatus();
+      } else if (mounted && !restored) {
+        refreshTrackingStatus();
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // When app returns to foreground, sync from persisted storage (background task may have updated it)
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
+      if (nextState === 'active' && GpsTrackingService.isTracking()) {
+        await GpsTrackingService.syncFromStorage();
+        refreshTrackingStatus();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
-    // Check initial tracking status
-    refreshTrackingStatus();
-
-    // Set up interval to update distance when tracking
-    const interval = setInterval(() => {
+    // Set up interval to update distance when tracking (also syncs from storage for background updates)
+    const interval = setInterval(async () => {
       if (isTracking) {
+        await GpsTrackingService.syncFromStorage();
         const newDistance = GpsTrackingService.getCurrentDistance();
-        
-        // Only update if distance has changed significantly (more than 0.01 miles)
         setCurrentDistance(prevDistance => {
-          if (Math.abs(newDistance - prevDistance) > 0.01) {
-            return newDistance;
-          }
+          if (Math.abs(newDistance - prevDistance) > 0.01) return newDistance;
           return prevDistance;
         });
-        
-        // Update session less frequently to reduce re-renders
-        // Note: We're intentionally NOT updating currentSession here to prevent re-renders
-        // The session data is fetched fresh when needed, and this interval already updates distance
       }
-    }, 15000); // Update every 15 seconds to minimize performance impact on scrolling
-
+    }, 15000);
     return () => clearInterval(interval);
   }, [isTracking]);
 
@@ -128,6 +149,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     getStationaryDuration,
     shouldShowEndLocationModal,
     setShouldShowEndLocationModal,
+    restoredTrackingOnLaunch,
   };
 
   return (

@@ -1,0 +1,27 @@
+---
+description: Release/ship workflow - sync native versions before building
+alwaysApply: true
+---
+
+# Ship / Release Workflow
+
+When the user asks to **build and ship**, **ship**, or **release** the app:
+
+1. **Sync native versions** so Android `versionCode` and `versionName` in `android/app/build.gradle` match `app.json`:
+   ```bash
+   node scripts/sync-native-version.js
+   ```
+   EAS uses the native `android/` project; `app.json` values are ignored unless Gradle is synced.
+
+2. Then run the build:
+   ```bash
+   eas build --platform all --non-interactive
+   ```
+
+3. After builds complete, submit to stores:
+   ```bash
+   eas submit --platform ios --latest --non-interactive
+   eas submit --platform android --latest --non-interactive
+   ```
+
+Optional: For a full version bump (version, versionCode, buildNumber), run `npm run release:bump` before syncing.

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
@@ -45,9 +45,19 @@ import { RootStackParamList } from './src/types';
 const Stack = createStackNavigator<RootStackParamList>();
 
 /** Overlay for GPS buttons; uses pointerEvents="none" on GPS Start so scroll works */
-function GlobalGpsOverlay({ currentRouteName }: { currentRouteName: string }) {
-  const { isTracking } = useGpsTracking();
+function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteName: string; navigationRef: React.RefObject<any> }) {
+  const { isTracking, restoredTrackingOnLaunch } = useGpsTracking();
+  const hasNavigatedForRestore = useRef(false);
   const passThrough = currentRouteName === 'GpsTracking' && !isTracking;
+
+  // When we restored a session after app was killed, navigate back to GpsTracking
+  useEffect(() => {
+    if (isTracking && restoredTrackingOnLaunch && currentRouteName === 'Home' && !hasNavigatedForRestore.current && navigationRef.current) {
+      hasNavigatedForRestore.current = true;
+      navigationRef.current.navigate('GpsTracking');
+    }
+  }, [isTracking, restoredTrackingOnLaunch, currentRouteName, navigationRef]);
+
   return (
     <View
       style={{
@@ -310,7 +320,7 @@ export default function App() {
             />
             <Stack.Screen name="Preferences" component={PreferencesScreen} />
           </Stack.Navigator>
-          <GlobalGpsOverlay currentRouteName={currentRouteName} />
+          <GlobalGpsOverlay currentRouteName={currentRouteName} navigationRef={navigationRef} />
         </NavigationContainer>
           </GpsTrackingProvider>
         </NotificationProvider>

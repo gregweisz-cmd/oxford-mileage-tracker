@@ -1,10 +1,12 @@
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { GpsTrackingSession } from '../types';
+import { LOCATION_TASK_NAME, GPS_TRACKING_STORAGE_KEY, PersistedGpsState } from './gpsBackgroundTask';
 
 export class GpsTrackingService {
   private static currentSession: GpsTrackingSession | null = null;
-  private static watchId: Location.LocationSubscription | null = null;
   private static lastLocation: Location.LocationObject | null = null;
   private static totalDistance = 0;
   private static stationaryStartTime: Date | null = null;
@@ -114,9 +116,9 @@ export class GpsTrackingService {
       let location;
       try {
         location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced, // Changed from High to Balanced
-          timeout: 15000, // Increased timeout to 15 seconds
-          maximumAge: 30000, // Allow cached location up to 30 seconds old
+          accuracy: Location.Accuracy.Balanced,
+          timeout: 15000,
+          maximumAge: 30000,
         });
       } catch (locationError) {
         console.error('❌ GPS: Error getting location:', locationError);
@@ -124,7 +126,7 @@ export class GpsTrackingService {
           debugLog('🔄 GPS: Retrying location after prepareAsync error...');
           await new Promise(resolve => setTimeout(resolve, 3000));
           location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Lowest, // Use lowest accuracy for retry
+            accuracy: Location.Accuracy.Lowest,
             timeout: 20000,
             maximumAge: 60000,
           });
@@ -139,13 +141,15 @@ export class GpsTrackingService {
 
       debugLog('📍 GPS: Current location obtained:', location.coords);
 
+      const startLocation = await this.reverseGeocode(location.coords);
+
       // Create tracking session
       const session: GpsTrackingSession = {
         id: this.generateId(),
         employeeId,
         startTime: new Date(),
         odometerReading,
-        startLocation: await this.reverseGeocode(location.coords),
+        startLocation,
         totalMiles: 0,
         isActive: true,
         purpose,
@@ -157,18 +161,45 @@ export class GpsTrackingService {
       this.totalDistance = 0;
       this.stationaryStartTime = null;
 
-      // Start location tracking with optimized update frequency
-      this.watchId = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced, // Use Balanced instead of High for better performance
-          timeInterval: 15000, // Update every 15 seconds to minimize UI blocking
-          distanceInterval: 15, // Update every 15 meters to reduce calculations
+      // Persist state for background task and app-restore
+      const persistedState: PersistedGpsState = {
+        session: {
+          id: session.id,
+          employeeId: session.employeeId,
+          startTime: session.startTime.toISOString(),
+          odometerReading: session.odometerReading,
+          startLocation,
+          totalMiles: 0,
+          purpose: session.purpose,
+          notes: session.notes,
         },
-        (newLocation) => {
-          // Minimal logging to improve performance
-          this.updateDistance(newLocation);
-        }
-      );
+        lastLocation: {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        totalDistance: 0,
+        stationaryStartTime: null,
+      };
+      await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(persistedState));
+
+      // Use background-capable location updates (works when app is in background or screen is off)
+      const taskOptions: Location.LocationTaskOptions = {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 15000,
+        distanceInterval: 15,
+        showsBackgroundLocationIndicator: true,
+      };
+
+      if (Platform.OS === 'android') {
+        taskOptions.foregroundService = {
+          notificationTitle: 'Mileage Tracking',
+          notificationBody: 'Oxford House is tracking your trip for mileage.',
+          notificationColor: '#1C75BC',
+        };
+      }
+
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, taskOptions);
+      debugLog('✅ GPS: Background location updates started');
 
       return session;
     } catch (error) {
@@ -179,23 +210,26 @@ export class GpsTrackingService {
 
   static async stopTracking(): Promise<GpsTrackingSession | null> {
     try {
-      if (!this.currentSession || !this.watchId) {
+      if (!this.currentSession) {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
+        await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY);
         return null;
       }
 
-      // Stop location tracking
-      this.watchId.remove();
-      this.watchId = null;
+      // Stop background location updates
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
+
+      // Clear persisted state
+      await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY);
 
       // Get final location
       const finalLocation = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
 
-      // Update session
       this.currentSession.endTime = new Date();
       this.currentSession.endLocation = await this.reverseGeocode(finalLocation.coords);
-      this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10; // Round to nearest tenth
+      this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
       this.currentSession.isActive = false;
 
       const completedSession = { ...this.currentSession };
@@ -211,6 +245,95 @@ export class GpsTrackingService {
     }
   }
 
+  /** Restore in-memory state from persisted storage (e.g. after app was killed and restarted) */
+  static async restoreFromStorage(): Promise<boolean> {
+    try {
+      const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (!raw) return false;
+
+      const state: PersistedGpsState = JSON.parse(raw);
+      const session = state.session;
+
+      this.currentSession = {
+        id: session.id,
+        employeeId: session.employeeId,
+        startTime: new Date(session.startTime),
+        odometerReading: session.odometerReading,
+        startLocation: session.startLocation,
+        totalMiles: session.totalMiles,
+        isActive: true,
+        purpose: session.purpose,
+        notes: session.notes,
+      };
+      this.lastLocation = {
+        coords: {
+          ...state.lastLocation,
+          altitude: null,
+          accuracy: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      };
+      this.totalDistance = state.totalDistance;
+      this.stationaryStartTime = state.stationaryStartTime ? new Date(state.stationaryStartTime) : null;
+
+      // Resume location updates if not already running
+      const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      if (!isRunning) {
+        const taskOptions: Location.LocationTaskOptions = {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 15000,
+          distanceInterval: 15,
+          showsBackgroundLocationIndicator: true,
+        };
+        if (Platform.OS === 'android') {
+          taskOptions.foregroundService = {
+            notificationTitle: 'Mileage Tracking',
+            notificationBody: 'Oxford House is tracking your trip for mileage.',
+            notificationColor: '#1C75BC',
+          };
+        }
+        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, taskOptions);
+      }
+
+      debugLog('✅ GPS: Restored tracking session from storage');
+      return true;
+    } catch (err) {
+      debugError('GPS restore error:', err);
+      return false;
+    }
+  }
+
+  /** Sync in-memory state from persisted storage (e.g. after returning from background) */
+  static async syncFromStorage(): Promise<void> {
+    try {
+      const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (!raw || !this.currentSession) return;
+
+      const state: PersistedGpsState = JSON.parse(raw);
+      if (state.session.id !== this.currentSession.id) return;
+
+      this.totalDistance = state.totalDistance;
+      this.currentSession.totalMiles = state.session.totalMiles;
+      this.stationaryStartTime = state.stationaryStartTime ? new Date(state.stationaryStartTime) : null;
+      this.lastLocation = {
+        coords: {
+          ...state.lastLocation,
+          altitude: null,
+          accuracy: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      };
+    } catch {
+      // Ignore sync errors
+    }
+  }
+
   static getCurrentSession(): GpsTrackingSession | null {
     return this.currentSession;
   }
@@ -220,7 +343,7 @@ export class GpsTrackingService {
   }
 
   static getCurrentDistance(): number {
-    const distance = Math.round(this.totalDistance * 10) / 10; // Round to nearest tenth
+    const distance = Math.round(this.totalDistance * 10) / 10;
     return distance;
   }
 
@@ -236,65 +359,6 @@ export class GpsTrackingService {
       return 0;
     }
     return Date.now() - this.stationaryStartTime.getTime();
-  }
-
-  private static updateDistance(newLocation: Location.LocationObject) {
-    if (this.lastLocation && this.currentSession) {
-      const distance = this.calculateDistance(
-        this.lastLocation.coords.latitude,
-        this.lastLocation.coords.longitude,
-        newLocation.coords.latitude,
-        newLocation.coords.longitude
-      );
-
-      // Check if movement is significant (convert meters to miles for comparison)
-      const thresholdInMiles = this.movementThreshold / 1609.34; // Convert 5 meters to miles
-      
-      if (distance > thresholdInMiles) {
-        // Significant movement detected
-        this.stationaryStartTime = null;
-        this.totalDistance += distance;
-        this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10; // Round to nearest tenth
-      } else if (distance > 0.001) { // If distance is greater than ~5 feet
-        // Small but real movement - track stationary time
-        if (!this.stationaryStartTime) {
-          this.stationaryStartTime = new Date();
-        }
-        // Still add small movements to prevent getting stuck
-        this.totalDistance += distance;
-        this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
-      } else {
-        // No significant movement - track stationary time
-        if (!this.stationaryStartTime) {
-          this.stationaryStartTime = new Date();
-        }
-      }
-    }
-
-    this.lastLocation = newLocation;
-  }
-
-  private static calculateDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ): number {
-    const R = 3959; // Earth's radius in miles
-    const dLat = this.toRadians(lat2 - lat1);
-    const dLon = this.toRadians(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(lat1)) *
-        Math.cos(this.toRadians(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  private static toRadians(degrees: number): number {
-    return degrees * (Math.PI / 180);
   }
 
   private static async reverseGeocode(coords: Location.LocationObjectCoords): Promise<string> {
@@ -326,11 +390,9 @@ export class GpsTrackingService {
         return 0;
       }
       
-      // Speed is in m/s, convert to mph
       const speedMPS = this.lastLocation.coords.speed;
-      const speedMPH = speedMPS * 2.23694; // Convert m/s to mph
-      
-      return Math.max(0, speedMPH); // Ensure non-negative
+      const speedMPH = speedMPS * 2.23694;
+      return Math.max(0, speedMPH);
     } catch (error) {
       console.error('Error getting current speed:', error);
       return 0;
