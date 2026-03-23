@@ -380,9 +380,8 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       
       // Reload data to ensure sync and reset unsaved changes flag
       await loadData();
-      
-      Alert.alert('Success', 'Per diem entries saved successfully');
-      
+
+      navigation.navigate('Home');
     } catch (error) {
       Alert.alert('Error', 'Failed to save per diem entries. Please try again.');
       if (__DEV__) {
@@ -775,7 +774,7 @@ const dateKey = toLocalDateKey(date);
           >
             <MaterialIcons name="save" size={20} color="#fff" style={styles.saveButtonIcon} />
             <Text style={styles.saveButtonText}>
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Saving...' : 'Save'}
             </Text>
           </TouchableOpacity>
         </View>

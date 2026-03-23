@@ -52,7 +52,7 @@ interface HomeScreenProps {
 let homeScreenIsSyncing = false;
 
 function HomeScreen({ navigation, route }: HomeScreenProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [recentEntries, setRecentEntries] = useState<MileageEntry[]>([]);
   const [recentReceipts, setRecentReceipts] = useState<Receipt[]>([]);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
@@ -270,6 +270,38 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       fontSize: 14,
       color: colors.textSecondary,
     },
+    quickActionsTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.text,
+    },
+    rearrangeButtonThemed: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: isDark ? colors.card : '#f0f0f0',
+    },
+    rearrangeButtonTextThemed: {
+      fontSize: 14,
+      fontWeight: '600',
+      marginLeft: 4,
+      color: colors.primary,
+    },
+    editHintThemed: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 12,
+      backgroundColor: isDark ? 'rgba(33, 150, 243, 0.15)' : '#e3f2fd',
+    },
+    editHintTextThemed: {
+      fontSize: 13,
+      marginLeft: 8,
+      color: isDark ? '#90CAF9' : '#1976d2',
+    },
   });
 
   const handleLogout = async () => {
@@ -289,7 +321,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         id: 'gps-tracking',
         icon: 'gps-fixed',
         label: 'Start GPS Tracking',
-        color: '#4CAF50',
+        color: '#FFFFFF',
         onPress: handleGpsTracking,
         isPrimary: true,
       },
@@ -356,6 +388,17 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     loadData();
     initializeTiles().then(setDashboardTiles);
   }, []);
+
+  /** Keep tile icon/text colors in sync when theme changes */
+  useEffect(() => {
+    setDashboardTiles(prev => {
+      if (prev.length === 0) return prev;
+      return prev.map(tile => ({
+        ...tile,
+        color: tile.isPrimary ? '#FFFFFF' : colors.primary,
+      }));
+    });
+  }, [colors.primary, isDark]);
 
   // Reload data when selected month/year changes
   useEffect(() => {
@@ -1126,7 +1169,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         leftButton={{
           icon: 'settings',
           onPress: () => navigation.navigate('Settings', { currentEmployeeId: currentEmployee?.id }),
-          color: '#1C75BC'
         }}
         rightButton={{
           icon: 'logout',
@@ -1144,7 +1186,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               ]
             );
           },
-          color: '#1C75BC'
         }}
       />
       
@@ -1152,7 +1193,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       <View style={dynamicStyles.baseAddressSection}>
         <TouchableOpacity onPress={handleEditBaseAddress} style={styles.baseAddressContainer}>
           <Text style={dynamicStyles.baseAddressText}>
-            Base Address (BA): {currentEmployee?.baseAddress?.trim() || 'Not set — tap to add'}
+            BA: {currentEmployee?.baseAddress?.trim() || 'Not set — tap to add'}
           </Text>
           <MaterialIcons name="edit" size={16} color={colors.primary} />
         </TouchableOpacity>
@@ -1336,9 +1377,9 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
         {/* Quick Actions */}
         <View style={styles.actionsHeader}>
-          <Text style={styles.actionsTitle}>Quick Actions</Text>
+          <Text style={dynamicStyles.quickActionsTitle}>Quick Actions</Text>
           <TouchableOpacity
-            style={styles.rearrangeButton}
+            style={dynamicStyles.rearrangeButtonThemed}
             onPress={() => {
               void hapticLight();
               setIsEditingTiles(!isEditingTiles);
@@ -1347,18 +1388,18 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
             <MaterialIcons 
               name={isEditingTiles ? 'check' : 'edit'} 
               size={20} 
-              color={isEditingTiles ? '#4CAF50' : colors.primary} 
+              color={isEditingTiles ? colors.secondary : colors.primary} 
             />
-            <Text style={[styles.rearrangeButtonText, isEditingTiles && { color: '#4CAF50' }]}>
+            <Text style={[dynamicStyles.rearrangeButtonTextThemed, isEditingTiles && { color: colors.secondary }]}>
               {isEditingTiles ? 'Done' : 'Rearrange'}
             </Text>
           </TouchableOpacity>
         </View>
 
         {isEditingTiles ? (
-          <View style={styles.editHint}>
-            <MaterialIcons name="info" size={16} color="#2196F3" />
-            <Text style={styles.editHintText}>
+          <View style={dynamicStyles.editHintThemed}>
+            <MaterialIcons name="info" size={16} color={colors.primary} />
+            <Text style={dynamicStyles.editHintTextThemed}>
               Use ↑ ↓ arrows to rearrange tiles
             </Text>
           </View>

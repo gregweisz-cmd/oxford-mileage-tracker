@@ -7,24 +7,38 @@ import { DeviceControlService } from '../services/deviceControlService';
 
 const THEME_STORAGE_KEY = 'app_theme_preference';
 
+export type ThemeColors = {
+  background: string;
+  surface: string;
+  primary: string;
+  secondary: string;
+  text: string;
+  textSecondary: string;
+  border: string;
+  card: string;
+  /** Unified header strip (below status bar) */
+  headerBackground: string;
+  headerBorder: string;
+  headerTitle: string;
+  headerSubtitle: string;
+  headerIcon: string;
+  headerIconButtonBg: string;
+  /** Start GPS Tracking — darker green on dark theme */
+  gpsButton: string;
+  /** Manual Travel, Receipts, etc. — medium gray on dark theme */
+  dashboardSecondaryButton: string;
+  dashboardSecondaryButtonBorder: string;
+};
+
 interface ThemeContextType {
   theme: 'light' | 'dark' | 'auto';
   isDark: boolean;
-  colors: {
-    background: string;
-    surface: string;
-    primary: string;
-    secondary: string;
-    text: string;
-    textSecondary: string;
-    border: string;
-    card: string;
-  };
+  colors: ThemeColors;
   /** Persists theme to storage, SQLite, and device control (single write path — avoids iOS SQLite races). */
   setTheme: (theme: 'light' | 'dark' | 'auto') => Promise<void>;
 }
 
-const lightColors = {
+const lightColors: ThemeColors = {
   background: '#f5f5f5',
   surface: '#ffffff',
   primary: '#1C75BC',
@@ -33,17 +47,35 @@ const lightColors = {
   textSecondary: '#666666',
   border: '#e0e0e0',
   card: '#ffffff',
+  headerBackground: '#D8D8D8',
+  headerBorder: '#C8C8C8',
+  headerTitle: '#1C75BC',
+  headerSubtitle: '#6CA6D9',
+  headerIcon: '#1C75BC',
+  headerIconButtonBg: '#DDE3EA',
+  gpsButton: '#2E7D32',
+  dashboardSecondaryButton: '#ffffff',
+  dashboardSecondaryButtonBorder: '#2196F3',
 };
 
-const darkColors = {
+const darkColors: ThemeColors = {
   background: '#0a0a0a',
   surface: '#1a1a1a',
-  primary: '#155A99', // Darker brand blue
-  secondary: '#1F8F5A', // Darker brand green
-  text: '#e0e0e0', // Light gray instead of pure white
-  textSecondary: '#a0a0a0', // Darker gray
-  border: '#2a2a2a', // Darker border
-  card: '#2a2a2a', // Lighter gray for tiles - similar to border color
+  primary: '#155A99',
+  secondary: '#1F8F5A',
+  text: '#e0e0e0',
+  textSecondary: '#a0a0a0',
+  border: '#2a2a2a',
+  card: '#2a2a2a',
+  headerBackground: '#121214',
+  headerBorder: '#0a0a0c',
+  headerTitle: '#7EC8F5',
+  headerSubtitle: '#9aa0a8',
+  headerIcon: '#7EC8F5',
+  headerIconButtonBg: '#2c2c30',
+  gpsButton: '#14532d',
+  dashboardSecondaryButton: '#3d3d45',
+  dashboardSecondaryButtonBorder: '#5a5a65',
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { hapticLight } from '../utils/haptics';
+import { useTheme } from '../contexts/ThemeContext';
 
 export interface TileConfig {
   id: string;
@@ -18,10 +19,24 @@ interface DashboardTileProps {
 }
 
 function DashboardTile({ tile, isDragging }: DashboardTileProps) {
+  const { colors, isDark } = useTheme();
+
+  const primaryBg = colors.gpsButton;
+  const secondaryBg = colors.dashboardSecondaryButton;
+  const secondaryBorder = colors.dashboardSecondaryButtonBorder;
+
   return (
     <TouchableOpacity
       style={[
-        tile.isPrimary ? styles.primaryTile : styles.secondaryTile,
+        tile.isPrimary
+          ? [styles.primaryTile, { backgroundColor: primaryBg }]
+          : [
+              styles.secondaryTile,
+              {
+                backgroundColor: secondaryBg,
+                borderColor: secondaryBorder,
+              },
+            ],
         isDragging && styles.draggingTile,
       ]}
       onPress={() => {
@@ -30,13 +45,22 @@ function DashboardTile({ tile, isDragging }: DashboardTileProps) {
       }}
       activeOpacity={0.7}
     >
-      <MaterialIcons name={tile.icon as any} size={tile.isPrimary ? 28 : 24} color={tile.color} />
-      <Text style={tile.isPrimary ? styles.primaryText : styles.secondaryText}>
+      <MaterialIcons
+        name={tile.icon as any}
+        size={tile.isPrimary ? 28 : 24}
+        color={tile.color}
+      />
+      <Text
+        style={[
+          tile.isPrimary ? styles.primaryText : styles.secondaryText,
+          !tile.isPrimary && { color: tile.color },
+        ]}
+      >
         {tile.label}
       </Text>
       {isDragging && (
         <View style={styles.dragIndicator}>
-          <MaterialIcons name="drag-indicator" size={20} color="#999" />
+          <MaterialIcons name="drag-indicator" size={20} color={isDark ? '#888' : '#999'} />
         </View>
       )}
     </TouchableOpacity>
@@ -47,7 +71,6 @@ export default React.memo(DashboardTile);
 
 const styles = StyleSheet.create({
   primaryTile: {
-    backgroundColor: '#4CAF50',
     padding: 18,
     borderRadius: 12,
     flexDirection: 'row',
@@ -61,7 +84,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   secondaryTile: {
-    backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
     flexDirection: 'row',
@@ -69,7 +91,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: '#2196F3',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -90,7 +111,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   secondaryText: {
-    color: '#2196F3',
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
@@ -101,4 +121,3 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 });
-

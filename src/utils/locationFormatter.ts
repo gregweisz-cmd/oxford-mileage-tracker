@@ -1,6 +1,15 @@
 import { MileageEntry, LocationDetails } from '../types';
 
 /**
+ * Consistent UI label: stored/API names may use "Base Address" while other paths use "BA".
+ * Any standalone "Base Address" in display strings becomes "BA".
+ */
+export function normalizeBaseAddressDisplay(display: string): string {
+  if (!display) return display;
+  return display.replace(/\bBase Address\b/gi, 'BA');
+}
+
+/**
  * Formats a location for display in the "Name (address)" format
  * If LocationDetails are available, uses name and address
  * If only text is available, treats the text as the name with no address
@@ -9,18 +18,15 @@ export const formatLocation = (
   locationText: string, 
   locationDetails?: LocationDetails
 ): string => {
+  let result: string;
   if (locationDetails) {
-    return `${locationDetails.name} (${locationDetails.address})`;
+    result = `${locationDetails.name} (${locationDetails.address})`;
+  } else if (locationText.includes('(') && locationText.includes(')')) {
+    result = locationText;
+  } else {
+    result = locationText;
   }
-  
-  // For simple text locations, treat the text as the name
-  // If the text already contains parentheses, assume it's already formatted
-  if (locationText.includes('(') && locationText.includes(')')) {
-    return locationText;
-  }
-  
-  // Otherwise, treat the text as the name with no address
-  return locationText;
+  return normalizeBaseAddressDisplay(result);
 };
 
 /**
@@ -42,11 +48,10 @@ export const formatLocationForInput = (
   locationDetails?: LocationDetails
 ): string => {
   if (locationDetails) {
-    return locationDetails.name;
+    return normalizeBaseAddressDisplay(locationDetails.name);
   }
-  
-  // For simple text locations, return as-is
-  return locationText;
+
+  return normalizeBaseAddressDisplay(locationText);
 };
 
 

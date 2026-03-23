@@ -24,6 +24,8 @@ import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import UnifiedHeader from '../components/UnifiedHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SyncIntegrationService } from '../services/syncIntegrationService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface DailyHoursScreenProps {
   navigation: any;
@@ -71,6 +73,9 @@ const RECENT_DESCRIPTIONS_KEY = '@recent_descriptions';
  * - Auto-sync on save
  */
 export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) {
+  const insets = useSafeAreaInsets();
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [daysWithData, setDaysWithData] = useState<UnifiedDayData[]>([]);
@@ -252,9 +257,12 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     setTimeTrackingInputs(inputs);
     const costCenter = day.costCenter || currentEmployee?.defaultCostCenter || currentEmployee?.selectedCostCenters?.[0] || '';
     setSelectedCostCenter(costCenter);
-    
+
+    setHasUnsavedChanges(false);
     setShowEditModal(true);
   };
+
+  const markHoursDirty = () => setHasUnsavedChanges(true);
 
   const handleClearDay = () => {
     if (!selectedDay || !currentEmployee) return;
@@ -273,6 +281,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           onPress: async () => {
             try {
               const savedScrollPosition = scrollPositionRef.current;
+              setHasUnsavedChanges(false);
               setShowEditModal(false);
               setSelectedDay(null);
               setDescriptionText('');
@@ -310,8 +319,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     );
   };
 
-  const handleSave = async () => {
-    if (!selectedDay || !currentEmployee) return;
+  const handleSave = async (): Promise<boolean> => {
+    if (!selectedDay || !currentEmployee) return false;
 
     try {
       // Save the current scroll position before closing modal
@@ -389,13 +398,45 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           });
         }
       }, 150); // Slightly longer delay to ensure data is rendered
-      
+
+      setHasUnsavedChanges(false);
+      return true;
     } catch (error) {
       if (__DEV__) {
         console.error('DailyHoursScreen: Error saving:', error);
       }
       Alert.alert('Error', 'Failed to save data');
+      return false;
     }
+  };
+
+  /** Same pattern as Per Diem: save day, sync, then go to dashboard (floating Save). */
+  const handleFloatingSave = async () => {
+    if (!currentEmployee || !hasUnsavedChanges) return;
+    try {
+      setSaving(true);
+      const saved = await handleSave();
+      if (!saved) return;
+      const result = await SyncIntegrationService.forceSync(currentEmployee.id);
+      if (!result.success) {
+        Alert.alert(
+          'Sync issue',
+          result.error || 'Could not sync. Check your connection or try again from Settings.'
+        );
+        return;
+      }
+      navigation.navigate('Home');
+    } catch (e) {
+      if (__DEV__) console.error('DailyHoursScreen: handleFloatingSave', e);
+      Alert.alert('Error', 'Something went wrong while saving.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const closeEditModalWithoutSave = () => {
+    setHasUnsavedChanges(false);
+    setShowEditModal(false);
   };
 
   const handleDescriptionTemplateSelect = (template: string) => {
@@ -412,6 +453,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
               if (text && text.trim()) {
                 await saveCustomTemplate(text.trim());
                 setDescriptionText(text.trim());
+                markHoursDirty();
               }
             }
           }
@@ -420,6 +462,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
       );
     } else {
       setDescriptionText(template);
+      markHoursDirty();
       setShowDescriptionDropdown(false);
     }
   };
@@ -670,7 +713,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           >
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+              <TouchableOpacity onPress={closeEditModalWithoutSave}>
                 <Text style={styles.cancelButton}>Cancel</Text>
               </TouchableOpacity>
               <Text style={styles.modalTitle}>
@@ -679,7 +722,11 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
               <View style={styles.modalHeaderSpacer} />
             </View>
 
-            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.modalContent}
+              contentContainerStyle={{ paddingBottom: hasUnsavedChanges ? 120 : 40 }}
+              showsVerticalScrollIndicator={false}
+            >
               {/* Day Off Section */}
               <View style={styles.section}>
                 <View style={styles.checkboxRow}>
@@ -688,6 +735,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                     onPress={() => {
                       const newValue = !isDayOff;
                       setIsDayOff(newValue);
+                      markHoursDirty();
                       if (!newValue) {
                         setDayOffType('Day Off');
                         setDescriptionText(''); // Clear description when unchecking so the stored value is removed on save
@@ -717,6 +765,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                             style={styles.dropdownItem}
                             onPress={() => {
                               setDayOffType(type);
+                              markHoursDirty();
                               setShowDayOffDropdown(false);
                             }}
                           >
@@ -735,7 +784,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                   <View style={styles.checkboxRow}>
                     <TouchableOpacity
                       style={styles.checkbox}
-                      onPress={() => setStayedOvernight(!stayedOvernight)}
+                      onPress={() => {
+                        setStayedOvernight(!stayedOvernight);
+                        markHoursDirty();
+                      }}
                     >
                       {stayedOvernight && <MaterialIcons name="check" size={20} color="#007AFF" />}
                     </TouchableOpacity>
@@ -783,6 +835,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                                   style={[styles.descriptionPickerItem, descriptionText === o.label && styles.descriptionPickerItemSelected]}
                                   onPress={() => {
                                     setDescriptionText(o.label);
+                                    markHoursDirty();
                                     setShowDescriptionPickerModal(false);
                                   }}
                                 >
@@ -826,6 +879,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                         value={timeTrackingInputs[`cc:${cc}`]?.toString() ?? '0'}
                         onChangeText={(text) => {
                           const value = parseFloat(text) || 0;
+                          markHoursDirty();
                           setTimeTrackingInputs(prev => ({ ...prev, [`cc:${cc}`]: value }));
                         }}
                         keyboardType="numeric"
@@ -843,6 +897,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                         value={timeTrackingInputs[category]?.toString() ?? '0'}
                         onChangeText={(text) => {
                           const value = parseFloat(text) || 0;
+                          markHoursDirty();
                           setTimeTrackingInputs(prev => ({ ...prev, [category]: value }));
                         }}
                         keyboardType="numeric"
@@ -870,6 +925,29 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                 </TouchableOpacity>
               </View>
             </ScrollView>
+
+            {hasUnsavedChanges && (
+              <View
+                style={[
+                  styles.hoursFloatingSaveContainer,
+                  { bottom: Math.max(20, insets.bottom + 8) },
+                ]}
+              >
+                <TouchableOpacity
+                  style={[styles.hoursFloatingSaveButton, saving && styles.hoursFloatingSaveButtonDisabled]}
+                  onPress={handleFloatingSave}
+                  disabled={saving}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save, sync, and return to dashboard"
+                >
+                  <MaterialIcons name="save" size={20} color="#fff" style={styles.hoursFloatingSaveIcon} />
+                  <Text style={styles.hoursFloatingSaveText}>
+                    {saving ? 'Saving...' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
           </KeyboardAvoidingView>
         </Modal>
@@ -920,6 +998,40 @@ const styles = StyleSheet.create({
   instructionText: {
     fontSize: 14,
     color: '#666',
+  },
+  hoursFloatingSaveContainer: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+    zIndex: 20,
+    elevation: 12,
+  },
+  hoursFloatingSaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    minWidth: 200,
+  },
+  hoursFloatingSaveButtonDisabled: {
+    backgroundColor: '#999',
+    opacity: 0.7,
+  },
+  hoursFloatingSaveIcon: {
+    marginRight: 8,
+  },
+  hoursFloatingSaveText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   daysList: {
     flex: 1,

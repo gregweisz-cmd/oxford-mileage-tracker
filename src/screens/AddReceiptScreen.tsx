@@ -992,7 +992,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             vendor: `${existingCarRental[0].vendor} + ${formData.vendor.trim()}`,
           });
           Alert.alert('Success', 'Rental car fuel combined with existing rental car receipt');
-          navigation.navigate('Receipts');
+          navigation.navigate('Home');
           return;
         } else {
           // No existing Car Rental, save as Car Rental instead
@@ -1009,7 +1009,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           };
           await DatabaseService.createReceipt(receiptData);
           Alert.alert('Success', 'Rental car fuel saved as rental car receipt');
-          navigation.navigate('Receipts');
+          navigation.navigate('Home');
           return;
         }
       }
@@ -1039,7 +1039,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           // Delete the fuel receipt
           await DatabaseService.deleteReceipt(existingFuel[0].id);
           Alert.alert('Success', 'Rental car combined with existing fuel receipt');
-          navigation.navigate('Receipts');
+          navigation.navigate('Home');
           return;
         }
       }
@@ -1097,7 +1097,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       }
       
       Alert.alert('Success', `Receipt added successfully${anomalyMessage}`);
-      navigation.navigate('Receipts');
+      navigation.navigate('Home');
     } catch (error) {
       console.error('Error saving receipt:', error);
       const detail = error instanceof Error ? error.message : String(error);

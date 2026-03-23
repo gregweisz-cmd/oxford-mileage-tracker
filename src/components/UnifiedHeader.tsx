@@ -10,6 +10,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { hapticLight } from '../utils/haptics';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface UnifiedHeaderProps {
   title: string;
@@ -30,6 +31,7 @@ interface UnifiedHeaderProps {
     color?: string;
     text?: string;
   };
+  /** Override theme header background (default: from theme) */
   backgroundColor?: string;
 }
 
@@ -42,18 +44,28 @@ export default function UnifiedHeader({
   onHomePress,
   leftButton,
   rightButton,
-  backgroundColor = '#E6E6E6',
+  backgroundColor: backgroundColorProp,
 }: UnifiedHeaderProps) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const backgroundColor = backgroundColorProp ?? colors.headerBackground;
+  const titleColor = colors.headerTitle;
+  const subtitleColor = colors.headerSubtitle;
+  const iconColor = colors.headerIcon;
+  const iconButtonBg = colors.headerIconButtonBg;
 
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor={backgroundColor} />
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={backgroundColor}
+      />
       <View
         style={[
           styles.header,
           {
             backgroundColor,
+            borderBottomColor: colors.headerBorder,
             paddingTop: Math.max(insets.top, 12),
           },
         ]}
@@ -63,17 +75,17 @@ export default function UnifiedHeader({
           <View style={styles.sideSection}>
             {showBackButton ? (
               <TouchableOpacity
-                style={styles.iconButton}
+                style={[styles.iconButton, { backgroundColor: iconButtonBg }]}
                 onPress={() => {
                   void hapticLight();
                   onBackPress?.();
                 }}
               >
-                <MaterialIcons name="arrow-back" size={22} color="#1C75BC" />
+                <MaterialIcons name="arrow-back" size={22} color={iconColor} />
               </TouchableOpacity>
             ) : leftButton ? (
               <TouchableOpacity
-                style={styles.iconButton}
+                style={[styles.iconButton, { backgroundColor: iconButtonBg }]}
                 onPress={() => {
                   void hapticLight();
                   leftButton.onPress();
@@ -82,7 +94,7 @@ export default function UnifiedHeader({
                 <MaterialIcons
                   name={leftButton.icon as any}
                   size={22}
-                  color={leftButton.color || '#1C75BC'}
+                  color={leftButton.color || iconColor}
                 />
               </TouchableOpacity>
             ) : (
@@ -91,25 +103,29 @@ export default function UnifiedHeader({
           </View>
 
           <View style={styles.centerSection}>
-            <Text style={styles.headerTitle}>{title}</Text>
-            <Text style={styles.headerSubtitle}>{subtitle}</Text>
+            <Text style={[styles.headerTitle, { color: titleColor }]}>{title}</Text>
+            <Text style={[styles.headerSubtitle, { color: subtitleColor }]}>{subtitle}</Text>
           </View>
 
           <View style={[styles.sideSection, styles.rightRow]}>
             {showHomeButton && onHomePress ? (
               <TouchableOpacity
-                style={styles.iconButton}
+                style={[styles.iconButton, { backgroundColor: iconButtonBg }]}
                 onPress={() => {
                   void hapticLight();
                   onHomePress();
                 }}
               >
-                <MaterialIcons name="home" size={22} color="#1C75BC" />
+                <MaterialIcons name="home" size={22} color={iconColor} />
               </TouchableOpacity>
             ) : null}
             {rightButton ? (
               <TouchableOpacity
-                style={[rightButton.text ? styles.iconButtonWithText : styles.iconButton, showHomeButton && onHomePress && styles.rightButtonSpacing]}
+                style={[
+                  rightButton.text ? styles.iconButtonWithText : styles.iconButton,
+                  { backgroundColor: iconButtonBg },
+                  showHomeButton && onHomePress && styles.rightButtonSpacing,
+                ]}
                 onPress={() => {
                   void hapticLight();
                   rightButton.onPress();
@@ -118,10 +134,10 @@ export default function UnifiedHeader({
                 <MaterialIcons
                   name={rightButton.icon as any}
                   size={22}
-                  color={rightButton.color || '#1C75BC'}
+                  color={rightButton.color || iconColor}
                 />
                 {rightButton.text ? (
-                  <Text style={styles.rightButtonText}>{rightButton.text}</Text>
+                  <Text style={[styles.rightButtonText, { color: iconColor }]}>{rightButton.text}</Text>
                 ) : null}
               </TouchableOpacity>
             ) : null}
@@ -177,7 +193,6 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 10,
-    backgroundColor: '#DDE3EA',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -185,7 +200,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 56,
     borderRadius: 10,
-    backgroundColor: '#DDE3EA',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -196,17 +210,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1C75BC',
     textAlign: 'center',
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#6CA6D9',
     textAlign: 'center',
     marginTop: 2,
   },
   rightButtonText: {
-    color: '#1C75BC',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 2,
