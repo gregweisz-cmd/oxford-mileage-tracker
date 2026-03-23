@@ -8,9 +8,7 @@ import {
   TextInput,
   ScrollView,
   Modal,
-  Platform,
   ActivityIndicator,
-  InteractionManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -588,20 +586,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setIsEndingTracking(false);
 
         const message = `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`;
-        // Defer alert until modals/overlays finish unmounting (Android can freeze if Alert stacks with Modal)
-        InteractionManager.runAfterInteractions(() => {
-          const delay = Platform.OS === 'android' ? 200 : 0;
-          setTimeout(() => {
-            Alert.alert('Tracking Complete', message, [
-              {
-                text: 'OK',
-                onPress: () => {
-                  requestAnimationFrame(() => navigation.goBack());
-                },
-              },
-            ]);
-          }, delay);
-        });
+        // Navigate away immediately to avoid iOS lockups around modal+alert sequencing.
+        navigation.goBack();
+        setTimeout(() => {
+          Alert.alert('Tracking Complete', message);
+        }, 200);
       } else {
         setIsEndingTracking(false);
       }

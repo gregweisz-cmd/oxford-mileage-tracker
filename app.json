@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxford House Expense Tracker",
     "slug": "oh-staff-tracker",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "owner": "goosew27",
     "privacy": "public",
     "orientation": "portrait",
@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "7",
+      "buildNumber": "8",
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "associatedDomains": [
         "applinks:oxford-mileage-backend.onrender.com"
@@ -44,7 +44,7 @@
     },
     "android": {
       "package": "com.oxfordhouse.ohstafftracker",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1C75BC"
@@ -90,7 +90,7 @@
         "projectId": "d303cc80-9dcf-4d5c-952b-d50df5cb04f0"
       }
     },
-    "runtimeVersion": "1.0.6",
+    "runtimeVersion": "1.0.7",
     "updates": {
       "url": "https://u.expo.dev/d303cc80-9dcf-4d5c-952b-d50df5cb04f0",
       "checkAutomatically": "ON_LOAD"
