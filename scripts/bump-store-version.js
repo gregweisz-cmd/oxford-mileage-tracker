@@ -72,7 +72,7 @@ function main() {
   console.log('Updated package.json version →', expo.version);
 
   syncNativeVersion();
-  console.log('\nNext: commit these files, then run: eas build --platform android --profile production');
+  console.log('\nNext: commit app.json (and android/app/build.gradle if changed), then: eas build --platform all --profile production');
 }
 
 try {
