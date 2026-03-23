@@ -215,16 +215,19 @@ export class GpsTrackingService {
   static async stopTracking(presetEndLocation?: LocationDetails): Promise<GpsTrackingSession | null> {
     try {
       if (!this.currentSession) {
-        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
-        await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY);
+        // Don't block UI on location stop / storage clearing.
+        void Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
+        void AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY).catch(() => {});
         return null;
       }
 
       // Stop background location updates
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
+      // Location APIs can be slow and are a common cause of "freezes" when awaited.
+      // We best-effort stop updates asynchronously and continue ending the session.
+      void Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
 
       // Clear persisted state
-      await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY);
+      void AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY).catch(() => {});
 
       this.currentSession.endTime = new Date();
       this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
