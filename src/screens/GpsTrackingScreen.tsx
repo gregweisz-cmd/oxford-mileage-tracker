@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -541,7 +542,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setIsEndingTracking(true);
 
     try {
-      const completedSession = await stopTracking();
+      // Pass confirmed end location so we skip a slow post-stop GPS fix (avoids UI freeze on many devices)
+      const completedSession = await stopTracking(locationDetails);
       
       // Use GPS-tracked miles
       const actualMiles = completedSession?.totalMiles || 0;
@@ -584,17 +586,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setLastDestination(locationDetails);
 
         setIsEndingTracking(false);
-        
-        Alert.alert(
-          'Tracking Complete',
-          `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]
-        );
+
+        const message = `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`;
+        // Defer alert until modals/overlays finish unmounting (Android can freeze if Alert stacks with Modal)
+        InteractionManager.runAfterInteractions(() => {
+          const delay = Platform.OS === 'android' ? 200 : 0;
+          setTimeout(() => {
+            Alert.alert('Tracking Complete', message, [
+              {
+                text: 'OK',
+                onPress: () => {
+                  requestAnimationFrame(() => navigation.goBack());
+                },
+              },
+            ]);
+          }, delay);
+        });
       } else {
         setIsEndingTracking(false);
       }

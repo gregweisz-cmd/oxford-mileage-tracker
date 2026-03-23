@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { debugLog, debugError, debugWarn } from '../config/debug';
-import { GpsTrackingSession } from '../types';
+import { GpsTrackingSession, LocationDetails } from '../types';
 import { LOCATION_TASK_NAME, GPS_TRACKING_STORAGE_KEY, PersistedGpsState } from './gpsBackgroundTask';
 
 export class GpsTrackingService {
@@ -208,7 +208,11 @@ export class GpsTrackingService {
     }
   }
 
-  static async stopTracking(): Promise<GpsTrackingSession | null> {
+  /**
+   * @param presetEndLocation When the user already confirmed end location in the UI, pass it here
+   * to avoid a slow `getCurrentPositionAsync` + reverse geocode after stopping updates (common freeze on Android).
+   */
+  static async stopTracking(presetEndLocation?: LocationDetails): Promise<GpsTrackingSession | null> {
     try {
       if (!this.currentSession) {
         await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
@@ -222,15 +226,23 @@ export class GpsTrackingService {
       // Clear persisted state
       await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY);
 
-      // Get final location
-      const finalLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
       this.currentSession.endTime = new Date();
-      this.currentSession.endLocation = await this.reverseGeocode(finalLocation.coords);
       this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
       this.currentSession.isActive = false;
+
+      if (presetEndLocation) {
+        const label =
+          presetEndLocation.name?.trim() ||
+          presetEndLocation.address?.trim() ||
+          'Unknown';
+        this.currentSession.endLocation = label;
+      } else {
+        // Fallback: fetch position (can block several seconds; only used if no UI-provided end)
+        const finalLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        this.currentSession.endLocation = await this.reverseGeocode(finalLocation.coords);
+      }
 
       const completedSession = { ...this.currentSession };
       this.currentSession = null;

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { GpsTrackingService } from '../services/gpsTrackingService';
-import { GpsTrackingSession } from '../types';
+import { GpsTrackingSession, LocationDetails } from '../types';
 
 interface GpsTrackingContextType {
   isTracking: boolean;
@@ -11,7 +11,7 @@ interface GpsTrackingContextType {
   showMapOverlay: boolean;
   setShowMapOverlay: (show: boolean) => void;
   startTracking: (employeeId: string, purpose: string, odometerReading: number, notes?: string) => Promise<void>;
-  stopTracking: () => Promise<GpsTrackingSession | null>;
+  stopTracking: (presetEndLocation?: LocationDetails) => Promise<GpsTrackingSession | null>;
   requestStopTracking: () => void;
   refreshTrackingStatus: () => void;
   isStationaryTooLong: () => boolean;
@@ -105,9 +105,9 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     }
   };
 
-  const stopTracking = async () => {
+  const stopTracking = async (presetEndLocation?: LocationDetails) => {
     try {
-      const completedSession = await GpsTrackingService.stopTracking();
+      const completedSession = await GpsTrackingService.stopTracking(presetEndLocation);
       setCurrentSession(null);
       setIsTracking(false);
       setCurrentDistance(0);

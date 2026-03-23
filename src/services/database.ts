@@ -1011,12 +1011,10 @@ export class DatabaseService {
     // Sync to API service
     await this.syncToApi('addMileageEntry', newEntry);
 
-    // Analyze mileage entry for location relationships
-    try {
-      await MileageAnalysisService.analyzeMileageEntry(newEntry);
-    } catch (error) {
+    // Analyze in background — awaiting here can block the UI after GPS stop + save
+    void MileageAnalysisService.analyzeMileageEntry(newEntry).catch((error) => {
       console.error('❌ Database: Error analyzing mileage entry:', error);
-    }
+    });
 
     // End odometer is calculated at end of day, not after each entry
     // No need to update here
