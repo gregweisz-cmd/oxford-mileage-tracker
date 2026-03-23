@@ -84,6 +84,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const initialLoadDoneRef = useRef(false);
+  const isRefreshingLocalRef = useRef(false);
+  const realtimeListenersRegisteredRef = useRef(false);
+  const dataUpdateListenerRef = useRef<((data: any) => void) | null>(null);
+  const notificationListenerRef = useRef<((notification: any) => void) | null>(null);
+  const connectionListenerRef = useRef<(() => void) | null>(null);
+  const errorListenerRef = useRef<((error: any) => void) | null>(null);
   const [isEditingTiles, setIsEditingTiles] = useState(false);
   const [dashboardTiles, setDashboardTiles] = useState<TileConfig[]>([]);
   
@@ -427,6 +433,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   // Refresh only local data without syncing from backend
   const refreshLocalDataOnly = async () => {
+    if (isRefreshingLocalRef.current) {
+      return;
+    }
+    isRefreshingLocalRef.current = true;
     try {
       const employee = await DatabaseService.getCurrentEmployee();
       if (employee) {
@@ -438,8 +448,59 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       }
     } catch (error) {
       console.error('Error refreshing local data:', error);
+    } finally {
+      isRefreshingLocalRef.current = false;
     }
   };
+
+  const registerRealtimeListeners = (employee: Employee) => {
+    if (realtimeListenersRegisteredRef.current) {
+      return;
+    }
+
+    const realtimeSync = RealtimeSyncService.getInstance();
+
+    dataUpdateListenerRef.current = (data: any) => {
+      console.log('📡 Real-time data update received:', data);
+      // Refresh dashboard data when updates are received
+      void loadEmployeeData(employee.id, employee);
+    };
+    notificationListenerRef.current = (notification: any) => {
+      console.log('📢 Real-time notification received:', notification);
+      // Notifications are already shown by the service
+    };
+    connectionListenerRef.current = () => {
+      console.log('✅ Real-time sync connected');
+    };
+    errorListenerRef.current = (error: any) => {
+      console.error('❌ Real-time sync error:', error);
+    };
+
+    realtimeSync.on('data_update', dataUpdateListenerRef.current);
+    realtimeSync.on('notification', notificationListenerRef.current);
+    realtimeSync.on('connection_established', connectionListenerRef.current);
+    realtimeSync.on('error', errorListenerRef.current);
+    realtimeListenersRegisteredRef.current = true;
+  };
+
+  useEffect(() => {
+    return () => {
+      const realtimeSync = RealtimeSyncService.getInstance();
+      if (dataUpdateListenerRef.current) {
+        realtimeSync.off('data_update', dataUpdateListenerRef.current);
+      }
+      if (notificationListenerRef.current) {
+        realtimeSync.off('notification', notificationListenerRef.current);
+      }
+      if (connectionListenerRef.current) {
+        realtimeSync.off('connection_established', connectionListenerRef.current);
+      }
+      if (errorListenerRef.current) {
+        realtimeSync.off('error', errorListenerRef.current);
+      }
+      realtimeListenersRegisteredRef.current = false;
+    };
+  }, []);
 
   /**
    * After user save/delete: push local changes to backend, then refresh UI from local only.
@@ -620,26 +681,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       // Initialize real-time sync
       const realtimeSync = RealtimeSyncService.getInstance();
       realtimeSync.connect(API_BASE_URL, employee.id);
-      
-      // Set up real-time sync event listeners
-      realtimeSync.on('data_update', (data) => {
-        console.log('📡 Real-time data update received:', data);
-        // Refresh data when updates are received
-        loadEmployeeData(employee.id, employee);
-      });
-      
-      realtimeSync.on('notification', (notification) => {
-        console.log('📢 Real-time notification received:', notification);
-        // Notifications are already shown by the service
-      });
-      
-      realtimeSync.on('connection_established', () => {
-        console.log('✅ Real-time sync connected');
-      });
-      
-      realtimeSync.on('error', (error) => {
-        console.error('❌ Real-time sync error:', error);
-      });
+      registerRealtimeListeners(employee);
 
       // Sync from backend first (with timeout so app doesn't spin forever if backend is unreachable).
       // Android often needs longer for first request; iOS is typically faster.

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oxford House Expense Tracker",
     "slug": "oh-staff-tracker",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "owner": "goosew27",
     "privacy": "public",
     "orientation": "portrait",
@@ -90,7 +90,7 @@
         "projectId": "d303cc80-9dcf-4d5c-952b-d50df5cb04f0"
       }
     },
-    "runtimeVersion": "1.0.2",
+    "runtimeVersion": "1.0.3",
     "updates": {
       "url": "https://u.expo.dev/d303cc80-9dcf-4d5c-952b-d50df5cb04f0",
       "checkAutomatically": "ON_LOAD"

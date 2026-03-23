@@ -48,7 +48,7 @@ const Stack = createStackNavigator<RootStackParamList>();
 function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteName: string; navigationRef: React.RefObject<any> }) {
   const { isTracking, restoredTrackingOnLaunch } = useGpsTracking();
   const hasNavigatedForRestore = useRef(false);
-  const passThrough = currentRouteName === 'GpsTracking' && !isTracking;
+  const passThroughOnGpsScreen = currentRouteName === 'GpsTracking' && !isTracking;
 
   // When we restored a session after app was killed, navigate back to GpsTracking
   useEffect(() => {
@@ -69,7 +69,8 @@ function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteNam
         zIndex: 9999,
         elevation: 9999,
       }}
-      pointerEvents={passThrough ? 'none' : 'box-none'}
+      // Never intercept touches when not actively tracking.
+      pointerEvents={isTracking ? (passThroughOnGpsScreen ? 'none' : 'box-none') : 'none'}
     >
       <GlobalGpsReturnButton currentRouteName={currentRouteName} />
       <GlobalGpsStopButton currentRouteName={currentRouteName} />
