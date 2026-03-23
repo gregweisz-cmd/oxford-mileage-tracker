@@ -72,6 +72,8 @@
     "@babel/preset-typescript": "^7.27.1",
     "@types/react": "~19.0.10",
     "babel-preset-expo": "^54.0.1",
+    "markdown-pdf": "^11.0.0",
+    "md-to-pdf": "^5.2.5",
     "typescript": "~5.8.3"
   },
   "private": true
