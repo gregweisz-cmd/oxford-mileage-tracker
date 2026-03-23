@@ -67,6 +67,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
   const [isEndingTracking, setIsEndingTracking] = useState(false);
+  const [isStartingTracking, setIsStartingTracking] = useState(false);
 
   useEffect(() => {
     loadEmployee();
@@ -191,6 +192,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         navigation.setParams({ selectedAddress: undefined });
         
         try {
+          setIsStartingTracking(true);
           // Check if this is the first GPS tracking session of the day
           const today = new Date();
           today.setHours(0, 0, 0, 0);
@@ -223,6 +225,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           console.error('❌ GPS: Error starting tracking:', error);
           const errorMessage = error instanceof Error ? error.message : 'Failed to start GPS tracking. Please check location permissions.';
           Alert.alert('GPS Tracking Error', errorMessage);
+        } finally {
+          setIsStartingTracking(false);
         }
       }
     };
@@ -468,6 +472,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
   const startGpsTracking = async () => {
     try {
+      setIsStartingTracking(true);
       // Check if this is the first GPS tracking session of the day using device's local timezone
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -501,6 +506,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       console.error('Error starting tracking:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start GPS tracking. Please check location permissions.';
       Alert.alert('GPS Tracking Error', errorMessage);
+    } finally {
+      setIsStartingTracking(false);
     }
   };
 
@@ -1084,6 +1091,21 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             <ActivityIndicator size="large" color="#2196F3" />
             <Text style={styles.endingTrackingText}>Ending tracking...</Text>
             <Text style={styles.endingTrackingSubtext}>Saving your trip data</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Starting Tracking Loading Overlay */}
+      <Modal
+        visible={isStartingTracking}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.endingTrackingOverlay}>
+          <View style={styles.endingTrackingCard}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.endingTrackingText}>GPS Tracking starting...</Text>
+            <Text style={styles.endingTrackingSubtext}>Getting location and preparing trip</Text>
           </View>
         </View>
       </Modal>
