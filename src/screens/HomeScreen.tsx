@@ -420,7 +420,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     React.useCallback(() => {
       if (!initialLoadDoneRef.current) return;
       const task = InteractionManager.runAfterInteractions(() => {
-        const delay = Platform.OS === 'ios' ? 300 : 100;
+        const delay = Platform.OS === 'ios' ? 600 : 100;
         setTimeout(() => refreshLocalDataOnly(), delay);
       });
       return () => task.cancel();

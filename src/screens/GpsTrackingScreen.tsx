@@ -9,6 +9,7 @@ import {
   ScrollView,
   Modal,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -586,11 +587,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setIsEndingTracking(false);
 
         const message = `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`;
-        // Navigate away immediately to avoid iOS lockups around modal+alert sequencing.
+        // On iOS, showing Alert after goBack causes freezes — skip it; trip is saved and visible on Home.
+        // On Android, show alert after a short delay.
         navigation.goBack();
-        setTimeout(() => {
-          Alert.alert('Tracking Complete', message);
-        }, 200);
+        if (Platform.OS === 'android') {
+          setTimeout(() => Alert.alert('Tracking Complete', message), 200);
+        }
       } else {
         setIsEndingTracking(false);
       }
