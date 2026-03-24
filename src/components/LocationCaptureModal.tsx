@@ -141,7 +141,8 @@ export default function LocationCaptureModal({
     <Modal
       visible={visible}
       transparent={true}
-      animationType="slide"
+      animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
+      presentationStyle="overFullScreen"
       onRequestClose={handleCancel}
     >
       <KeyboardAvoidingView

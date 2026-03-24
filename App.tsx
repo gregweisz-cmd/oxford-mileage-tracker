@@ -301,7 +301,15 @@ export default function App() {
               component={HomeScreen}
             />
             <Stack.Screen name="MileageEntry" component={MileageEntryScreen} />
-            <Stack.Screen name="GpsTracking" component={GpsTrackingScreen} />
+            <Stack.Screen
+              name="GpsTracking"
+              component={GpsTrackingScreen}
+              options={{
+                // iOS transition snapshotting has caused intermittent freezes after ending GPS trips.
+                // Disable animation for this screen to avoid native snapshot race conditions.
+                animationEnabled: Platform.OS !== 'ios',
+              }}
+            />
             <Stack.Screen name="Receipts" component={ReceiptsScreen} />
             <Stack.Screen name="AddReceipt" component={AddReceiptScreen} />
             <Stack.Screen name="ReceiptCrop" component={ReceiptCropScreen} />

@@ -68,6 +68,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
   const [isEndingTracking, setIsEndingTracking] = useState(false);
   const [isStartingTracking, setIsStartingTracking] = useState(false);
+  // Ref so useFocusEffect does not depend on isTracking — when tracking stops, isTracking flips
+  // false and would re-run the effect mid-end-trip, racing checkGpsTrackingStatus with save/goBack (iOS freeze).
+  const isTrackingRef = useRef(isTracking);
+  isTrackingRef.current = isTracking;
 
   useEffect(() => {
     loadEmployee();
@@ -94,11 +98,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
   };
 
-  // Reset modal states when screen comes into focus
+  // Reset modal states when screen comes into focus.
+  // Do NOT put isTracking in deps — when stopTracking() runs, isTracking becomes false and would
+  // re-run this effect while still on this screen, starting checkGpsTrackingStatus in parallel with
+  // createMileageEntry + goBack() and freezing iOS.
   useFocusEffect(
     React.useCallback(() => {
       // Check if we should show end modal (from route params)
-      if (route?.params?.showEndModal && isTracking) {
+      if (route?.params?.showEndModal && isTrackingRef.current) {
         setShowEndLocationModal(true);
         // Clear the param so it doesn't show again on next focus
         navigation.setParams({ showEndModal: false });
@@ -117,7 +124,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (currentEmployee) {
         checkGpsTrackingStatus(currentEmployee.id);
       }
-    }, [currentEmployee, route?.params?.showEndModal, isTracking, navigation])
+    }, [currentEmployee, route?.params?.showEndModal, navigation])
   );
 
   // Watch for stop tracking request from global button
@@ -585,14 +592,31 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setLastDestination(locationDetails);
 
         setIsEndingTracking(false);
+        setTrackingTime(0);
+        setStartLocationDetails(null);
+        setEndLocationDetails(null);
+        setShowLocationOptionsModal(false);
+        setShowStartLocationModal(false);
+        setShowEndLocationModal(false);
+        setShowOxfordHouseSearchModal(false);
+        setShowPurposeSuggestions(false);
+        setTrackingForm({
+          odometerReading: '',
+          purpose: '',
+          notes: '',
+        });
+        setSelectedCostCenter('');
 
         const message = `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`;
-        // On iOS, showing Alert after goBack causes freezes — skip it; trip is saved and visible on Home.
-        // On Android, show alert after a short delay.
-        navigation.goBack();
-        if (Platform.OS === 'android') {
-          setTimeout(() => Alert.alert('Tracking Complete', message), 200);
-        }
+        // Auto-return to Home after save and show completion popup.
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Home' }],
+        });
+        setTimeout(() => {
+          Alert.alert('Tracking Complete', message);
+        }, Platform.OS === 'ios' ? 250 : 200);
+        return;
       } else {
         setIsEndingTracking(false);
       }
@@ -782,10 +806,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 </Text>
                 <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
               </TouchableOpacity>
+              {showPurposePickerModal && (
               <Modal
-                visible={showPurposePickerModal}
+                visible
                 transparent
-                animationType="slide"
+                animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
+                presentationStyle="overFullScreen"
                 onRequestClose={() => setShowPurposePickerModal(false)}
               >
                 <View style={styles.purposeModalOverlay}>
@@ -823,6 +849,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   </View>
                 </View>
               </Modal>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
@@ -935,10 +962,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       </ScrollView>
 
       {/* Location Options Modal */}
+      {showLocationOptionsModal && (
       <Modal
-        visible={showLocationOptionsModal}
+        visible
         transparent={true}
-        animationType="slide"
+        animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
+        presentationStyle="overFullScreen"
         onRequestClose={() => setShowLocationOptionsModal(false)}
       >
         <View style={styles.modalOverlay}>
@@ -1025,32 +1054,35 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         </View>
       </Modal>
+      )}
 
       {/* Start Location Capture Modal */}
-      <LocationCaptureModal
+      {showStartLocationModal && <LocationCaptureModal
         visible={showStartLocationModal}
         onClose={() => setShowStartLocationModal(false)}
         onConfirm={handleStartLocationConfirm}
         title="Capture Start Location"
         locationType="start"
         currentEmployee={currentEmployee}
-      />
+      />}
 
       {/* End Location Capture Modal - no "Cancel tracking" option; closing just returns to map and keeps tracking */}
-      <LocationCaptureModal
+      {showEndLocationModal && <LocationCaptureModal
         visible={showEndLocationModal}
         onClose={() => setShowEndLocationModal(false)}
         onConfirm={handleEndLocationConfirm}
         title="Capture End Location"
         locationType="end"
         currentEmployee={currentEmployee}
-      />
+      />}
 
       {/* Oxford House Search Modal */}
+      {showOxfordHouseSearchModal && (
       <Modal
-        visible={showOxfordHouseSearchModal}
+        visible
         transparent={true}
-        animationType="slide"
+        animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
+        presentationStyle="overFullScreen"
         onRequestClose={() => setShowOxfordHouseSearchModal(false)}
       >
         <View style={styles.modalOverlay}>
@@ -1077,12 +1109,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         </View>
       </Modal>
+      )}
 
       {/* Ending Tracking Loading Overlay */}
+      {isEndingTracking && (
       <Modal
-        visible={isEndingTracking}
+        visible
         transparent={true}
-        animationType="fade"
+        animationType={Platform.OS === 'ios' ? 'none' : 'fade'}
+        presentationStyle="overFullScreen"
       >
         <View style={styles.endingTrackingOverlay}>
           <View style={styles.endingTrackingCard}>
@@ -1092,12 +1127,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         </View>
       </Modal>
+      )}
 
       {/* Starting Tracking Loading Overlay */}
+      {isStartingTracking && (
       <Modal
-        visible={isStartingTracking}
+        visible
         transparent={true}
-        animationType="fade"
+        animationType={Platform.OS === 'ios' ? 'none' : 'fade'}
+        presentationStyle="overFullScreen"
       >
         <View style={styles.endingTrackingOverlay}>
           <View style={styles.endingTrackingCard}>
@@ -1107,6 +1145,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         </View>
       </Modal>
+      )}
     </View>
   );
 }

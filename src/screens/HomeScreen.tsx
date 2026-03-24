@@ -51,6 +51,9 @@ interface HomeScreenProps {
 
 // Module-level variable to prevent concurrent syncs
 let homeScreenIsSyncing = false;
+// Run heavy backend pull only once per app process; remounting Home after GPS should not
+// trigger full employee/mileage re-sync (caused iOS freezes).
+let homeInitialBackendSyncDone = false;
 
 function HomeScreen({ navigation, route }: HomeScreenProps) {
   const { colors, isDark } = useTheme();
@@ -86,6 +89,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const initialLoadDoneRef = useRef(false);
   const isRefreshingLocalRef = useRef(false);
+  const isLoadingEmployeeDataRef = useRef(false);
   const realtimeListenersRegisteredRef = useRef(false);
   const dataUpdateListenerRef = useRef<((data: any) => void) | null>(null);
   const notificationListenerRef = useRef<((notification: any) => void) | null>(null);
@@ -548,6 +552,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const loadEmployeeData = async (employeeId: string, employeeParam?: Employee) => {
+    // Prevent concurrent dashboard loads. iOS was freezing when multiple triggers
+    // (focus/appstate/realtime) fired close together after GPS completion.
+    if (isLoadingEmployeeDataRef.current) {
+      return;
+    }
+    isLoadingEmployeeDataRef.current = true;
     try {
       
       // Use provided employee parameter or fall back to currentEmployee
@@ -585,6 +595,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       
     } catch (error) {
       console.error('Error loading employee data:', error);
+    } finally {
+      isLoadingEmployeeDataRef.current = false;
     }
   };
 
@@ -689,10 +701,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       realtimeSync.connect(API_BASE_URL, employee.id);
       registerRealtimeListeners(employee);
 
-      // Sync from backend first (with timeout so app doesn't spin forever if backend is unreachable).
-      // Android often needs longer for first request; iOS is typically faster.
+      // Sync from backend only once per app process (with timeout so app doesn't spin forever).
+      // Re-running this on every Home remount after GPS end causes large DB churn and UI stalls on iOS.
       const INITIAL_SYNC_TIMEOUT_MS = Platform.OS === 'android' ? 35000 : 20000;
-      if (!homeScreenIsSyncing) {
+      if (!homeInitialBackendSyncDone && !homeScreenIsSyncing) {
         homeScreenIsSyncing = true;
         setIsSyncing(true);
         try {
@@ -714,6 +726,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           homeScreenIsSyncing = false;
           setIsSyncing(false);
         }
+        homeInitialBackendSyncDone = true;
       }
 
       await loadEmployeeData(employee.id, employee);
