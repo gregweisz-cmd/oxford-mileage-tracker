@@ -13,6 +13,7 @@ import {
   Linking,
   AppState,
   AppStateStatus,
+  InteractionManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -414,10 +415,15 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   }, [selectedMonth, selectedYear]);
 
   // When returning to this screen, refresh dashboard stats so tiles show latest data after sync.
+  // Defer until after navigation transition — running refresh immediately can freeze iOS when returning from GPS.
   useFocusEffect(
     React.useCallback(() => {
       if (!initialLoadDoneRef.current) return;
-      refreshLocalDataOnly();
+      const task = InteractionManager.runAfterInteractions(() => {
+        const delay = Platform.OS === 'ios' ? 300 : 100;
+        setTimeout(() => refreshLocalDataOnly(), delay);
+      });
+      return () => task.cancel();
     }, [])
   );
 
