@@ -15,6 +15,7 @@
     "release:bump": "node scripts/bump-store-version.js",
     "release:bump:build-only": "node scripts/bump-store-version.js --build-only",
     "release:sync-version": "node scripts/sync-native-version.js",
+    "assets:android-adaptive-icon": "node scripts/pad-android-adaptive-icon.js",
     "docs:pdf:tester-packets": "node docs/deployment/generate-tester-packets-pdf.js"
   },
   "dependencies": {
@@ -75,6 +76,7 @@
     "babel-preset-expo": "^54.0.1",
     "markdown-pdf": "^11.0.0",
     "md-to-pdf": "^5.2.5",
+    "sharp": "^0.34.5",
     "typescript": "~5.8.3"
   },
   "private": true
