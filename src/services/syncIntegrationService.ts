@@ -1,4 +1,4 @@
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { DatabaseService } from './database';
 import { ApiSyncService } from './apiSyncService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
@@ -184,13 +184,23 @@ export class SyncIntegrationService {
   }
 
   private static lastSyncOnActiveTime = 0;
-  private static readonly MIN_SYNC_INTERVAL_MS = 30000; // Minimum 30 seconds between syncs on app active
+  /** iOS: shorter interval so returning from multitasking still pulls/pushes without waiting 30s. */
+  private static readonly MIN_SYNC_INTERVAL_MS_IOS = 15000;
+  private static readonly MIN_SYNC_INTERVAL_MS_DEFAULT = 30000;
+
+  private static getMinSyncIntervalMs(): number {
+    return Platform.OS === 'ios' ? this.MIN_SYNC_INTERVAL_MS_IOS : this.MIN_SYNC_INTERVAL_MS_DEFAULT;
+  }
 
   private static async syncOnAppActive(): Promise<void> {
     try {
+      if (!this.autoSyncEnabled) {
+        debugLog('🔄 SyncIntegration: Skipping sync on app active (auto-sync off)');
+        return;
+      }
       const now = Date.now();
-      // Prevent too frequent syncing - only sync if at least 30 seconds have passed
-      if (now - this.lastSyncOnActiveTime < this.MIN_SYNC_INTERVAL_MS) {
+      const minInterval = this.getMinSyncIntervalMs();
+      if (now - this.lastSyncOnActiveTime < minInterval) {
         debugLog(`🔄 SyncIntegration: Skipping sync on app active (only ${Math.round((now - this.lastSyncOnActiveTime) / 1000)}s since last sync)`);
         return;
       }

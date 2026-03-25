@@ -11,6 +11,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { PreferencesService, UserPreferences } from '../services/preferencesService';
+import { SyncIntegrationService } from '../services/syncIntegrationService';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -51,6 +52,9 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
       setSaving(true);
       const updated = await PreferencesService.updatePreferences({ [key]: value });
       setPreferences(updated);
+      if (key === 'autoSyncEnabled' && typeof value === 'boolean') {
+        SyncIntegrationService.setAutoSyncEnabled(value);
+      }
     } catch (error) {
       console.error('Error updating preference:', error);
       Alert.alert('Error', 'Failed to save preference');
@@ -72,6 +76,7 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
             try {
               const defaults = await PreferencesService.resetPreferences();
               setPreferences(defaults);
+              SyncIntegrationService.setAutoSyncEnabled(defaults.autoSyncEnabled);
               Alert.alert('Success', 'Preferences reset to defaults');
             } catch (error) {
               Alert.alert('Error', 'Failed to reset preferences');

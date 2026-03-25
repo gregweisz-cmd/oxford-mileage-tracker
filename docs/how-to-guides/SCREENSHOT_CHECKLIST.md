@@ -103,6 +103,19 @@ Optional screenshots for the Senior Staff how-to guide. (There is no separate Se
 
 ---
 
+## 6. Tester packets (Alpha / Beta PDFs) — save to `docs/deployment/images/tester-packet/`
+
+Used by **`docs/deployment/ALPHA_TESTER_PACKET.md`** / **`BETA_TESTER_PACKET.md`**. After capturing, run **`npm run docs:pdf:tester-packets`** from the repo root to refresh **`ALPHA_TESTER_PACKET.pdf`** / **`BETA_TESTER_PACKET.pdf`**.
+
+- [x] `ios-app-store-testflight.png` — App Store: **TestFlight** app listing
+- [x] `ios-testflight-oxford-app.png` — **TestFlight** app: Oxford House app with **Install** / **Update**
+- [x] `android-internal-test-landing.png` — Screen after opening **Android internal test** link
+- [x] `android-play-internal-test-update.png` — Play Store: internal test app with blue **Update** (new build available)
+
+See **`docs/deployment/images/tester-packet/README.md`** for full capture notes.
+
+---
+
 ## Summary
 
 | Section          | Required | Optional |
@@ -112,6 +125,7 @@ Optional screenshots for the Senior Staff how-to guide. (There is no separate Se
 | Senior Staff     | —        | 3        |
 | Supervisor       | 5        | —        |
 | Admin Portal     | 15       | —        |
-| **Total**        | **52**   | **4**    |
+| Tester packets   | 4        | —        |
+| **Total**        | **56**   | **4**    |
 
 To mark done: change `- [ ]` to `- [x]` for each screenshot you've saved.

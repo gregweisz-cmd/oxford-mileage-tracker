@@ -1,0 +1,145 @@
+/* Extends md-to-pdf’s markdown.css — Oxford House tester packets */
+
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #222;
+}
+
+h1 {
+  font-size: 18pt;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 0.5em;
+  color: #1a1a1a;
+}
+
+h2 {
+  font-size: 13pt;
+  font-weight: 700;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid #ddd;
+  color: #1c75bc;
+}
+
+h3 {
+  font-size: 11pt;
+  font-weight: 700;
+  margin-top: 1em;
+  margin-bottom: 0.35em;
+  color: #333;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 10pt;
+  margin: 0.75em 0;
+  page-break-inside: avoid;
+}
+
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f0f4f8;
+  font-weight: 600;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #ddd;
+  margin: 1.25em 0;
+}
+
+a {
+  color: #1c75bc;
+}
+
+code {
+  font-size: 0.92em;
+  background: #f5f5f5;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+ul,
+ol {
+  margin: 0.5em 0;
+  padding-left: 1.35em;
+}
+
+li {
+  margin: 0.25em 0;
+}
+
+em {
+  color: #444;
+}
+
+h4 {
+  font-size: 11pt;
+  font-weight: 700;
+  margin-top: 0.9em;
+  margin-bottom: 0.35em;
+  color: #333;
+}
+
+/* Phone-sized on Letter (~3in wide), centered — not full page width */
+/* Side-by-side: small phone-sized shot + caption (saves vertical space in PDF) */
+.screenshot-with-caption {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12pt;
+  margin: 6pt 0 10pt;
+  page-break-inside: avoid;
+}
+
+.screenshot-with-caption img.packet-screenshot,
+.screenshot-with-caption img {
+  width: auto;
+  height: auto;
+  max-width: 1.55in;
+  object-fit: contain;
+  flex-shrink: 0;
+  margin: 0;
+  border: 1px solid #ddd;
+  border-radius: 4pt;
+  display: block;
+}
+
+.screenshot-caption {
+  flex: 1;
+  min-width: 0;
+  font-size: 10pt;
+  line-height: 1.45;
+  color: #333;
+}
+
+.screenshot-caption em {
+  font-style: italic;
+  color: #444;
+}
+
+.screenshot-caption strong {
+  font-weight: 700;
+  color: #222;
+}
+
+p.screenshot-missing {
+  font-size: 10pt;
+  color: #666;
+  border: 1px dashed #ccc;
+  padding: 10pt;
+  margin: 8pt 0;
+  background: #fafafa;
+}

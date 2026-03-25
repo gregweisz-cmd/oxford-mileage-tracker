@@ -14,7 +14,8 @@
     "eas-update:receipt-fix": "eas update --channel production --runtime-version 1.0.0 --message \"Receipt save + Android image sync fixes\" --non-interactive",
     "release:bump": "node scripts/bump-store-version.js",
     "release:bump:build-only": "node scripts/bump-store-version.js --build-only",
-    "release:sync-version": "node scripts/sync-native-version.js"
+    "release:sync-version": "node scripts/sync-native-version.js",
+    "docs:pdf:tester-packets": "node docs/deployment/generate-tester-packets-pdf.js"
   },
   "dependencies": {
     "@dev-plugins/react-navigation": "^0.4.0",

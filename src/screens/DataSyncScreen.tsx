@@ -12,6 +12,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DataSyncService } from '../services/dataSyncService';
+import { PreferencesService } from '../services/preferencesService';
 import { RealtimeSyncService } from '../services/realtimeSyncService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { ApiSyncService } from '../services/apiSyncService';
@@ -217,17 +218,21 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
     }
   };
 
-  const handleToggleAutoSync = () => {
+  const handleToggleAutoSync = async () => {
     const isCurrentlyEnabled = syncQueueStatus?.autoSyncEnabled || false;
-    SyncIntegrationService.setAutoSyncEnabled(!isCurrentlyEnabled);
-    
-    // Refresh status to show the change
-    loadSyncQueueStatus();
-    
-    Alert.alert(
-      'Auto Sync Toggled', 
-      `Auto sync has been ${!isCurrentlyEnabled ? 'enabled' : 'disabled'}. ${!isCurrentlyEnabled ? 'Your data will now sync automatically every 30 seconds.' : 'You can still sync manually using the buttons above.'}`
-    );
+    const next = !isCurrentlyEnabled;
+    try {
+      await PreferencesService.updatePreferences({ autoSyncEnabled: next });
+      SyncIntegrationService.setAutoSyncEnabled(next);
+      loadSyncQueueStatus();
+      Alert.alert(
+        'Auto Sync Toggled',
+        `Auto sync has been ${next ? 'enabled' : 'disabled'}. ${next ? 'Your data will sync automatically when you change data and when you return to the app.' : 'You can still sync manually using the buttons above.'}`
+      );
+    } catch (error) {
+      console.error('Error saving auto-sync preference:', error);
+      Alert.alert('Error', 'Failed to save auto-sync setting');
+    }
   };
 
   const formatLastSyncTime = (date: Date | null): string => {

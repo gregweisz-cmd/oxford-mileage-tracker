@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import { DatabaseService } from './database';
 import { OxfordHouseService } from './oxfordHouseService';
+import { PreferencesService } from './preferencesService';
 import { RealtimeSyncService } from './realtimeSyncService';
 import { ServiceInitializer } from './serviceInitializer';
 import { SyncIntegrationService } from './syncIntegrationService';
@@ -20,6 +21,8 @@ export class AppInitializer {
         await OxfordHouseService.initializeOxfordHouses();
         
         console.log('🚀 AppInitializer: Initializing sync integration (backend sync)...');
+        const prefs = await PreferencesService.getPreferences();
+        SyncIntegrationService.setAutoSyncEnabled(prefs.autoSyncEnabled);
         await SyncIntegrationService.initialize();
         
         console.log('🚀 AppInitializer: Initializing real-time sync...');
@@ -55,6 +58,8 @@ export class AppInitializer {
           await OxfordHouseService.initializeOxfordHouses();
           
           console.log('🚀 AppInitializer: Initializing sync integration service for web...');
+          const webPrefs = await PreferencesService.getPreferences();
+          SyncIntegrationService.setAutoSyncEnabled(webPrefs.autoSyncEnabled);
           await SyncIntegrationService.initialize();
           
           console.log('✅ AppInitializer: Database and sync services initialized for web testing');
