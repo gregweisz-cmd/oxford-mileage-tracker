@@ -162,6 +162,39 @@ function getBestAddressForGeocoding(entry, side, baseAddress) {
   return addressOnlyFromNotation(trimmedRaw);
 }
 
+/** Normalize start/end addresses on a mileage row for PDF map geocoding (same rules as day-mode maps). */
+function normalizeMileageEntryForPdfMaps(entry, baseAddress, baseAddress2) {
+  const copy = { ...entry };
+  let startAddr = getBestAddressForGeocoding(entry, 'start', baseAddress);
+  let endAddr = getBestAddressForGeocoding(entry, 'end', baseAddress);
+  const startIsExplicitBA = isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
+  const endIsExplicitBA = isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
+  const startFromParens = addressOnlyFromNotation((entry.startLocation || '').trim());
+  const endFromParens = addressOnlyFromNotation((entry.endLocation || '').trim());
+  const parensLookLikeAddress = (s) => s && (/\d{5}(-\d{4})?/.test(s) || /, [A-Z]{2}\s*\d/.test(s) || /, [A-Z]{2}$/.test(s));
+  if (startIsExplicitBA && getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
+    copy.startLocationAddress = baseAddress || startAddr;
+  } else {
+    copy.startLocationAddress = (parensLookLikeAddress(startFromParens) ? startFromParens : null) || startAddr || (entry.startLocationAddress || '').trim();
+  }
+  if (endIsExplicitBA && getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
+    copy.endLocationAddress = baseAddress || endAddr;
+  } else {
+    copy.endLocationAddress = (parensLookLikeAddress(endFromParens) ? endFromParens : null) || endAddr || (entry.endLocationAddress || '').trim();
+  }
+  return copy;
+}
+
+function formatMapDateForPdf(d) {
+  if (!d) return '';
+  const s = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const [y, m, day] = s.slice(0, 10).split('-');
+    return `${m}/${day}/${y.slice(-2)}`;
+  }
+  return s;
+}
+
 // Export data to Excel
 router.get('/api/export/excel', (req, res) => {
   const db = dbService.getDb();
@@ -2616,10 +2649,110 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     console.log('Map data sample:', JSON.stringify(mapDataSample));
                   }
                   
-                  // mapViewMode: 'day' = one map per trip (one page per route); 'costCenter' = one map for all routes
-                  let mapPoints = [];
+                  // mapViewMode: 'day' = one map per trip, grouped by calendar day; 'costCenter' = one map per trip for the whole CC (chronological)
                   if (mapViewMode === 'costCenter') {
-                    mapPoints = googleMapsService.collectPointsForCostCenter(mileageEntries);
+                    let biasLatLng = null;
+                    if (baseAddress) {
+                      biasLatLng = await googleMapsService.geocodeToLatLng(baseAddress);
+                    }
+                    const sortedCcEntries = [...(entriesForCostCenter || [])]
+                      .map((e) => normalizeMileageEntryForPdfMaps(e, baseAddress, baseAddress2))
+                      .sort((a, b) => new Date(a.createdAt || a.date).getTime() - new Date(b.createdAt || b.date).getTime());
+
+                    debugLog(`🗺️ Cost center per-trip mode: ${sortedCcEntries.length} mileage entries (one map per trip when route data exists)`);
+
+                    for (let tripIndex = 0; tripIndex < sortedCcEntries.length; tripIndex++) {
+                      const entry = sortedCcEntries[tripIndex];
+                      const tripRoutes = googleMapsService.collectRoutesForDay([entry]);
+                      if (tripRoutes.length === 0) {
+                        debugLog(`🗺️ Skipping map for CC entry ${tripIndex + 1}: no valid start/end for static map`);
+                        continue;
+                      }
+                      const singleRoute = [tripRoutes[0]];
+                      const tripNum = tripIndex + 1;
+                      const tripStartAddr = entry.startLocationAddress || '';
+                      const tripEndAddr = entry.endLocationAddress || '';
+                      const startLabel = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripStartAddr);
+                      const endLabel = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripEndAddr);
+                      const nameFromLoc = (loc) => (loc && typeof loc === 'string' && loc.includes('(')) ? loc.replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
+                      const startName = entry.startLocationName || nameFromLoc(entry.startLocation) || '';
+                      const endName = entry.endLocationName || nameFromLoc(entry.endLocation) || '';
+                      const withName = (name, addr) => (!name || !String(name).trim()) ? (addr || '—') : (addr ? `${String(name).trim()} (${addr})` : String(name).trim());
+                      const startBA = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2);
+                      const endBA = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2);
+                      const isStartBase = startBA || isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
+                      const isEndBase = endBA || isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
+                      const baseAddrForDisplay = (ba) => abbreviateForDisplay(ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
+                      const startDisplay = isStartBase ? `BA (${baseAddrForDisplay(startBA || 'BA')})` : withName(startName, startLabel);
+                      const endDisplay = isEndBase ? `BA (${baseAddrForDisplay(endBA || 'BA')})` : withName(endName, endLabel);
+                      try {
+                        const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400', biasLatLng });
+                        const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
+                        const tripSummary = Buffer.isBuffer(mapResult) ? null : mapResult.tripSummary;
+                        const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
+                        doc.addPage();
+                        yPos = margin + 16;
+                        doc.setFontSize(10);
+                        doc.setFont('helvetica', 'normal');
+                        const mapRowMaxWidth = pageWidth - margin * 2;
+                        const mapLineHeight = 12;
+                        const drawMapRow = (text) => {
+                          const lines = doc.splitTextToSize(text, mapRowMaxWidth);
+                          lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeight; });
+                        };
+                        drawMapRow(`Cost Center Routes - ${costCenter} (Trip ${tripNum} of ${sortedCcEntries.length})`);
+                        drawMapRow(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
+                        drawMapRow(`Cost Center: ${costCenter || '—'}`);
+                        drawMapRow(`Starting Location: ${startDisplay || '—'}`);
+                        drawMapRow(`Ending Location: ${endDisplay || '—'}`);
+                        drawMapRow(`Miles Driven (Tracked by GPS): ${entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—'}`);
+                        yPos += 6;
+                        const imageWidth = pageWidth - (margin * 2);
+                        const imageHeight = (imageWidth * 400) / 600;
+                        doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
+                        yPos += imageHeight + 12;
+                        if (tripSummary && (tripSummary.distanceText || tripSummary.durationText)) {
+                          doc.setFontSize(9);
+                          doc.setFont('helvetica', 'normal');
+                          const tripLine = [tripSummary.distanceText, tripSummary.durationText].filter(Boolean).join(' · ');
+                          if (tripLine) { safeText(tripLine, margin, yPos); yPos += 10; }
+                        }
+                        yPos += 8;
+                      } catch (mapError) {
+                        debugError(`❌ Error generating map for cost center ${costCenter} trip ${tripNum}:`, mapError);
+                        doc.addPage();
+                        yPos = margin + 16;
+                        doc.setFontSize(10);
+                        doc.setFont('helvetica', 'normal');
+                        const mapRowMaxWidthErr = pageWidth - margin * 2;
+                        const mapLineHeightErr = 12;
+                        const drawMapRowErr = (text) => {
+                          const lines = doc.splitTextToSize(text, mapRowMaxWidthErr);
+                          lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeightErr; });
+                        };
+                        drawMapRowErr(`Cost Center Routes - ${costCenter} (Trip ${tripNum} of ${sortedCcEntries.length})`);
+                        drawMapRowErr(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
+                        drawMapRowErr(`Cost Center: ${costCenter || '—'}`);
+                        drawMapRowErr(`Starting Location: ${startDisplay || '—'}`);
+                        drawMapRowErr(`Ending Location: ${endDisplay || '—'}`);
+                        drawMapRowErr(`Miles Driven (Tracked by GPS): ${entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—'}`);
+                        yPos += 6;
+                        const placeholderH = 120;
+                        doc.setDrawColor(200, 200, 200);
+                        doc.setLineWidth(0.5);
+                        doc.rect(margin, yPos, pageWidth - margin * 2, placeholderH);
+                        yPos += placeholderH / 2 - 8;
+                        doc.setFontSize(11);
+                        doc.setFont('helvetica', 'normal');
+                        safeText('Map could not be generated for this trip.', pageWidth / 2, yPos, { align: 'center' });
+                        yPos += 14;
+                        safeText('Please add the route map manually.', pageWidth / 2, yPos, { align: 'center' });
+                        yPos += placeholderH / 2 - 6 + 8;
+                      }
+                    }
+
+                    onComplete();
+                    return;
                   } else if (mapViewMode === 'day') {
                     // Day mode: one map per trip (one page per mileage entry), zoomed to that route
                     const entriesByDate = {};
@@ -2640,27 +2773,9 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     }
                     const sortedDates = Object.keys(entriesByDate).sort();
                     for (const date of sortedDates) {
-                      const dayEntries = (entriesByDate[date] || []).map(entry => {
-                        const copy = { ...entry };
-                        let startAddr = getBestAddressForGeocoding(entry, 'start', baseAddress);
-                        let endAddr = getBestAddressForGeocoding(entry, 'end', baseAddress);
-                        const startIsExplicitBA = isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
-                        const endIsExplicitBA = isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
-                        const startFromParens = addressOnlyFromNotation((entry.startLocation || '').trim());
-                        const endFromParens = addressOnlyFromNotation((entry.endLocation || '').trim());
-                        const parensLookLikeAddress = (s) => s && (/\d{5}(-\d{4})?/.test(s) || /, [A-Z]{2}\s*\d/.test(s) || /, [A-Z]{2}$/.test(s));
-                        if (startIsExplicitBA && getBaseAddressLabel(startAddr, baseAddress, baseAddress2)) {
-                          copy.startLocationAddress = baseAddress || startAddr;
-                        } else {
-                          copy.startLocationAddress = (parensLookLikeAddress(startFromParens) ? startFromParens : null) || startAddr || (entry.startLocationAddress || '').trim();
-                        }
-                        if (endIsExplicitBA && getBaseAddressLabel(endAddr, baseAddress, baseAddress2)) {
-                          copy.endLocationAddress = baseAddress || endAddr;
-                        } else {
-                          copy.endLocationAddress = (parensLookLikeAddress(endFromParens) ? endFromParens : null) || endAddr || (entry.endLocationAddress || '').trim();
-                        }
-                        return copy;
-                      });
+                      const dayEntries = (entriesByDate[date] || []).map((entry) =>
+                        normalizeMileageEntryForPdfMaps(entry, baseAddress, baseAddress2)
+                      );
                       const dayRoutes = googleMapsService.collectRoutesForDay(dayEntries);
                       debugLog(`🗺️ Day ${date}: Found ${dayRoutes.length} routes (one map per route)`);
                       if (dayRoutes.length === 0) {
@@ -2685,15 +2800,6 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                         const baseAddrForDisplay = (ba) => abbreviateForDisplay(ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
                         const startDisplay = isStartBase ? `BA (${baseAddrForDisplay(startBA || 'BA')})` : withName(startName, startLabel);
                         const endDisplay = isEndBase ? `BA (${baseAddrForDisplay(endBA || 'BA')})` : withName(endName, endLabel);
-                        const formatMapDate = (d) => {
-                          if (!d) return '';
-                          const s = String(d).trim();
-                          if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-                            const [y, m, day] = s.slice(0, 10).split('-');
-                            return `${m}/${day}/${y.slice(-2)}`;
-                          }
-                          return s;
-                        };
                         try {
                           const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400', biasLatLng });
                           const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
@@ -2709,7 +2815,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                             const lines = doc.splitTextToSize(text, mapRowMaxWidth);
                             lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeight; });
                           };
-                          drawMapRow(`Date: ${formatMapDate(entry.date) || '—'}`);
+                          drawMapRow(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
                           drawMapRow(`Cost Center: ${costCenter || '—'}`);
                           drawMapRow(`Starting Location: ${startDisplay || '—'}`);
                           drawMapRow(`Ending Location: ${endDisplay || '—'}`);
@@ -2738,7 +2844,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                             const lines = doc.splitTextToSize(text, mapRowMaxWidthErr);
                             lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeightErr; });
                           };
-                          drawMapRowErr(`Date: ${formatMapDate(entry.date) || '—'}`);
+                          drawMapRowErr(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
                           drawMapRowErr(`Cost Center: ${costCenter || '—'}`);
                           drawMapRowErr(`Starting Location: ${startDisplay || '—'}`);
                           drawMapRowErr(`Ending Location: ${endDisplay || '—'}`);
@@ -2762,56 +2868,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     // Skip the cost center map if we did daily maps
                     onComplete();
                     return;
-                  }
-                  
-                  debugLog(`🗺️ Cost center mode: Collected ${mapPoints.length} map points`);
-                  if (mapPoints.length > 0) {
-                    try {
-                      debugLog(`🗺️ Downloading map image for ${mapPoints.length} points...`);
-                      const mapImage = await googleMapsService.downloadStaticMapImage(mapPoints, { size: '600x400' });
-                      debugLog(`🗺️ Map image downloaded: ${mapImage.length} bytes`);
-                      const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
-                      debugLog(`🗺️ Adding map image to PDF...`);
-                      
-                      // Add new page for map
-                      doc.addPage();
-                      yPos = margin + 20;
-                      
-                      // Add title
-                      doc.setFontSize(14);
-                      doc.setFont('helvetica', 'bold');
-                      safeText(`Cost Center Routes - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
-                      yPos += 30;
-                      
-                      // Add map image (600x400, scaled to fit page width)
-                      const imageWidth = pageWidth - (margin * 2);
-                      const imageHeight = (imageWidth * 400) / 600; // Maintain aspect ratio
-                      doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
-                      yPos += imageHeight + 20;
-                      debugLog(`✅ Map added to PDF for cost center ${costCenter}`);
-                    } catch (mapError) {
-                      debugError(`❌ Error generating map for cost center ${costCenter}:`, mapError);
-                      doc.addPage();
-                      yPos = margin + 20;
-                      doc.setFontSize(14);
-                      doc.setFont('helvetica', 'bold');
-                      safeText(`Cost Center Routes - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
-                      yPos += 30;
-                      const placeholderH = 120;
-                      doc.setDrawColor(200, 200, 200);
-                      doc.setLineWidth(0.5);
-                      doc.rect(margin, yPos, pageWidth - margin * 2, placeholderH);
-                      yPos += placeholderH / 2 - 8;
-                      doc.setFontSize(11);
-                      doc.setFont('helvetica', 'normal');
-                      safeText('Map could not be generated for this section.', pageWidth / 2, yPos, { align: 'center' });
-                      yPos += 14;
-                      safeText('Please add the route map(s) manually.', pageWidth / 2, yPos, { align: 'center' });
-                      yPos += placeholderH / 2 - 6 + 8;
-                    }
                   } else {
-                    debugLog(`⚠️ No map points found for cost center ${costCenter}`);
-                    console.warn(`No map points found for cost center: ${costCenter}`);
+                    debugLog(`⚠️ mapViewMode "${mapViewMode}" is not "costCenter" or "day"; skipping maps`);
                   }
                 } else {
                   debugLog(`⚠️ Map generation conditions not met for ${costCenter}`);

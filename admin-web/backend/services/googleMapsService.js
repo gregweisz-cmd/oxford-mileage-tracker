@@ -305,13 +305,31 @@ function generateStaticMapUrl(addressesOrPoints, options = {}) {
     params.append('zoom', String(options.zoom != null ? options.zoom : 14));
   }
 
-  // Markers: use lat,lng when available (more reliable), else address
+  // Markers: show explicit Start/End markers for finance readability.
+  // - First point => green "S"
+  // - Last point  => red "E"
+  // - Middle points => numbered blue markers (keeps existing behavior for multi-stop routes)
   points.forEach((p, index) => {
-    const label = (index + 1).toString();
+    const isFirst = index === 0;
+    const isLast = index === points.length - 1;
+    let label = (index + 1).toString();
+    let color = 'blue';
+
+    if (isFirst && points.length > 1) {
+      label = 'S';
+      color = 'green';
+    } else if (isLast && points.length > 1) {
+      label = 'E';
+      color = 'red';
+    } else if (points.length === 1) {
+      label = 'S';
+      color = 'green';
+    }
+
     const loc = (p.lat != null && p.lng != null)
       ? `${p.lat},${p.lng}`
       : encodeURIComponent(p.address || '');
-    params.append('markers', `color:blue|label:${label}|${loc}`);
+    params.append('markers', `color:${color}|label:${label}|${loc}`);
   });
 
   // Path: use lat,lng when available so the route actually draws (need 2+ points)
@@ -375,12 +393,29 @@ function generateStaticMapUrlFromRoutes(routes, options = {}) {
     params.append('zoom', String(options.zoom != null ? options.zoom : 14));
   }
 
+  // Mark first/last points as Start/End for finance PDFs.
   allPoints.forEach((p, index) => {
-    const label = (index + 1).toString();
+    const isFirst = index === 0;
+    const isLast = index === allPoints.length - 1;
+
+    let label = (index + 1).toString();
+    let color = 'blue';
+
+    if (allPoints.length === 1) {
+      label = 'S';
+      color = 'green';
+    } else if (isFirst) {
+      label = 'S';
+      color = 'green';
+    } else if (isLast) {
+      label = 'E';
+      color = 'red';
+    }
+
     const loc = (p.lat != null && p.lng != null)
       ? `${p.lat},${p.lng}`
       : encodeURIComponent(p.address || '');
-    params.append('markers', `color:blue|label:${label}|${loc}`);
+    params.append('markers', `color:${color}|label:${label}|${loc}`);
   });
 
   routes.forEach(route => {
@@ -468,7 +503,7 @@ async function getDirectionsEncodedPolyline(origin, destination) {
  * @param {Object} options - size, maptype
  * @returns {string} Static Map URL
  */
-function generateStaticMapUrlFromEncodedPolyline(encodedPolyline, options = {}) {
+function generateStaticMapUrlFromEncodedPolyline(encodedPolyline, origin, destination, options = {}) {
   if (!isConfigured()) {
     throw new Error('Google Maps API key is not configured');
   }
@@ -480,6 +515,27 @@ function generateStaticMapUrlFromEncodedPolyline(encodedPolyline, options = {}) 
   params.append('maptype', maptype);
   params.append('key', GOOGLE_MAPS_API_KEY);
   params.append('path', `enc:${encodedPolyline}`);
+
+  // Add explicit Start/End markers (finance team needs to see where the drive began/ended).
+  const toMarkerLoc = (p) => {
+    if (p && p.lat != null && p.lng != null && isValidLatLng(p.lat, p.lng)) {
+      return `${p.lat},${p.lng}`;
+    }
+    // Let URLSearchParams handle encoding for the full marker string.
+    return p && p.address ? p.address : '';
+  };
+
+  const startLoc = toMarkerLoc(origin);
+  const endLoc = toMarkerLoc(destination);
+
+  // Only append markers when we have something meaningful.
+  if (startLoc) {
+    params.append('markers', `color:green|label:S|${startLoc}`);
+  }
+  if (endLoc) {
+    params.append('markers', `color:red|label:E|${endLoc}`);
+  }
+
   return `${baseUrl}?${params.toString()}`;
 }
 
@@ -504,7 +560,7 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
     const destination = routes[0][1];
     const result = await getDirectionsResult(origin, destination);
     if (result) {
-      url = generateStaticMapUrlFromEncodedPolyline(result.polyline, options);
+      url = generateStaticMapUrlFromEncodedPolyline(result.polyline, origin, destination, options);
       debugLog('🗺️ Using Directions API route (driven path) for static map');
       if (result.distanceText || result.durationText) {
         tripSummary = {
@@ -539,7 +595,7 @@ async function downloadStaticMapImageFromRoutes(routes, options = {}) {
         const dest = resolvedRoutes[0][1];
         const result = await getDirectionsResult(origin, dest);
         if (result) {
-          url = generateStaticMapUrlFromEncodedPolyline(result.polyline, options);
+          url = generateStaticMapUrlFromEncodedPolyline(result.polyline, origin, dest, options);
           debugLog('🗺️ Using Directions API route (from resolved coords) for static map');
           if (result.distanceText || result.durationText) {
             tripSummary = {
