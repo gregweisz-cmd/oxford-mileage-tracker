@@ -1,6 +1,11 @@
 /**
- * Make Android adaptive foreground exactly match iOS-style square icon.
- * No trim/crop/transparency heuristics; just resize assets/icon.png to 1024.
+ * Build Android adaptive-icon foreground from the company logo.
+ *
+ * Source: assets/icon.png — Oxford House logo (same master as iOS `expo.icon`).
+ * Output: assets/adaptive-icon.png — 1024×1024, full-bleed: the logo fills the
+ * entire square (`fit: 'cover'`) so the launcher shows the mark edge-to-edge
+ * within the masked shape. White behind any transparency comes from
+ * app.json `android.adaptiveIcon.backgroundColor`.
  */
 const path = require('path');
 const sharp = require('sharp');
@@ -17,7 +22,7 @@ async function main() {
     .png()
     .toFile(outputPath);
 
-  console.log(`Wrote ${outputPath} from icon.png (${CANVAS}x${CANVAS}).`);
+  console.log(`Wrote ${outputPath} from company logo (icon.png) at ${CANVAS}×${CANVAS}, full-bleed.`);
 }
 
 main().catch((err) => {

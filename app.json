@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "23",
+      "buildNumber": "24",
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "associatedDomains": [
         "applinks:oxford-mileage-backend.onrender.com"
@@ -44,10 +44,10 @@
     },
     "android": {
       "package": "com.oxfordhouse.ohstafftracker",
-      "versionCode": 25,
+      "versionCode": 26,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#1C75BC"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "pan",

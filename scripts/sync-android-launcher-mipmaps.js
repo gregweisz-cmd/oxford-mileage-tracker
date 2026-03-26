@@ -1,11 +1,13 @@
 /**
- * Sync Android launcher mipmaps directly from assets/icon.png.
- * This mirrors iOS visual treatment: same square logo, just resized per density.
+ * Sync Android launcher mipmaps from the company logo (assets/icon.png).
+ * Full-bleed per density (`fit: 'cover'`) so the logo fills each launcher bitmap,
+ * matching the adaptive foreground built by pad-android-adaptive-icon.js.
  */
 const path = require('path');
 const sharp = require('sharp');
 
 const REPO = path.join(__dirname, '..');
+/** Master app / company logo — keep in sync with expo.icon and adaptive-icon source. */
 const ICON = path.join(REPO, 'assets', 'icon.png');
 const RES = path.join(REPO, 'android', 'app', 'src', 'main', 'res');
 
