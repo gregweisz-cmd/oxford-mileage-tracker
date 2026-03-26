@@ -44,7 +44,7 @@
     },
     "android": {
       "package": "com.oxfordhouse.ohstafftracker",
-      "versionCode": 19,
+      "versionCode": 20,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1C75BC"
