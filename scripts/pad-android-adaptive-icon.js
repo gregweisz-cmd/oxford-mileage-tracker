@@ -1,29 +1,44 @@
 /**
- * Regenerates assets/adaptive-icon.png so the foreground fits Android's adaptive-icon
- * safe zone. The 1024×1024 source maps to the 108dp layer; OEM masks crop the outer region,
- * so edge-to-edge art looks "zoomed". Important content should sit inside the central
- * ~66dp circle (~528px diameter in a 1024 canvas). For a square glyph, max side is ~373px
- * inside that circle — we use a slightly smaller target for breathing room.
+ * Regenerates assets/adaptive-icon.png for Android adaptive icons.
  *
- * Run: node scripts/pad-android-adaptive-icon.js
- * Then: npx expo prebuild --platform android (updates mipmap-*)
+ * Source: assets/icon.png (master app icon). We trim edge padding, then scale
+ * the artwork to fill the largest square inside Material's 66dp-diameter safe
+ * zone on a 108dp (=1024px) foreground layer so the launcher glyph reads large
+ * under circle/squircle masks.
+ *
+ * Run: npm run assets:android-adaptive-icon
+ * Then rebuild Android (EAS or npx expo prebuild --platform android).
  */
 const path = require('path');
 const sharp = require('sharp');
 
-/** Diameter in px of the "safe" circle in a 1024 (=108dp) adaptive foreground. */
-const SAFE_CIRCLE_DIAMETER_PX = 528;
-/** Max square side that fits inside that circle, minus a little margin. */
-const MAX_SQUARE_SIDE_PX = Math.floor(SAFE_CIRCLE_DIAMETER_PX / Math.sqrt(2)) - 8;
 const CANVAS = 1024;
+/**
+ * Round launcher masks use a circle over the full 108dp layer. The largest
+ * axis-aligned square that fits in that circle is inscribed in 1024px.
+ * (Material’s 66dp “safe” keyline is conservative and reads tiny on devices;
+ * we bias larger; squircle masks may softly clip corners.)
+ */
+const MAX_SQUARE_SIDE_PX = Math.floor(CANVAS / Math.sqrt(2)) - 16;
 
 async function main() {
-  const input = path.join(__dirname, '..', 'assets', 'adaptive-icon.png');
-  const resized = await sharp(input)
+  const repoRoot = path.join(__dirname, '..');
+  const inputPath = path.join(repoRoot, 'assets', 'icon.png');
+  const outputPath = path.join(repoRoot, 'assets', 'adaptive-icon.png');
+
+  let base = sharp(inputPath).ensureAlpha();
+  try {
+    base = base.trim({ threshold: 14 });
+  } catch {
+    base = sharp(inputPath).ensureAlpha();
+  }
+
+  const resized = await base
     .resize(MAX_SQUARE_SIDE_PX, MAX_SQUARE_SIDE_PX, {
-      fit: 'contain',
-      background: { r: 255, g: 255, b: 255, alpha: 1 },
+      fit: 'inside',
+      withoutEnlargement: false,
     })
+    .png()
     .toBuffer();
 
   await sharp({
@@ -36,10 +51,10 @@ async function main() {
   })
     .composite([{ input: resized, gravity: 'center' }])
     .png()
-    .toFile(input);
+    .toFile(outputPath);
 
   console.log(
-    `Updated ${input} (~${MAX_SQUARE_SIDE_PX}px artwork centered on ${CANVAS}px, transparent outer pad).`
+    `Wrote ${outputPath} — logo up to ${MAX_SQUARE_SIDE_PX}px (inscribed in ${CANVAS}px circle, ${CANVAS}px canvas).`
   );
 }
 
