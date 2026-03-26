@@ -49,7 +49,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [showLocationOptionsModal, setShowLocationOptionsModal] = useState(false);
   const [showStartLocationModal, setShowStartLocationModal] = useState(false);
   const [showEndLocationModal, setShowEndLocationModal] = useState(false);
+  /** Same choices as starting a trip (BA, favorites, Oxford search, manual) — not only the free-form capture modal. */
+  const [showEndLocationOptionsModal, setShowEndLocationOptionsModal] = useState(false);
   const [showOxfordHouseSearchModal, setShowOxfordHouseSearchModal] = useState(false);
+  const [oxfordHousePickerRole, setOxfordHousePickerRole] = useState<'start' | 'end'>('start');
   const [startLocationDetails, setStartLocationDetails] = useState<LocationDetails | null>(null);
   const [endLocationDetails, setEndLocationDetails] = useState<LocationDetails | null>(null);
   const [lastDestination, setLastDestination] = useState<LocationDetails | null>(null);
@@ -72,6 +75,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // false and would re-run the effect mid-end-trip, racing checkGpsTrackingStatus with save/goBack (iOS freeze).
   const isTrackingRef = useRef(isTracking);
   isTrackingRef.current = isTracking;
+  const lastAppliedEndFromFavoritesRef = useRef<string | null>(null);
 
   useEffect(() => {
     loadEmployee();
@@ -83,6 +87,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setShowLocationOptionsModal(false);
       setShowStartLocationModal(false);
       setShowEndLocationModal(false);
+      setShowEndLocationOptionsModal(false);
       setShowOxfordHouseSearchModal(false);
       setShowPurposeSuggestions(false);
     };
@@ -106,7 +111,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     React.useCallback(() => {
       // Check if we should show end modal (from route params)
       if (route?.params?.showEndModal && isTrackingRef.current) {
-        setShowEndLocationModal(true);
+        setShowEndLocationOptionsModal(true);
         // Clear the param so it doesn't show again on next focus
         navigation.setParams({ showEndModal: false });
       } else {
@@ -115,6 +120,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setShowStartLocationModal(false);
         if (!route?.params?.showEndModal) {
           setShowEndLocationModal(false);
+          setShowEndLocationOptionsModal(false);
         }
         setShowOxfordHouseSearchModal(false);
         setShowPurposeSuggestions(false);
@@ -130,7 +136,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // Watch for stop tracking request from global button
   useEffect(() => {
     if (shouldShowEndLocationModal && isTracking) {
-      setShowEndLocationModal(true);
+      setShowEndLocationOptionsModal(true);
       setShouldShowEndLocationModal(false); // Reset the flag
     }
   }, [shouldShowEndLocationModal, isTracking, setShouldShowEndLocationModal]);
@@ -240,6 +246,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     
     autoStartFromSavedAddress();
   }, [route?.params?.selectedAddress, currentEmployee, isTracking]);
+
+  // End trip using an address chosen from Saved Addresses while tracking
+  useEffect(() => {
+    const end = route?.params?.selectedEndAddress;
+    if (!end || !isTracking || !currentEmployee || !currentSession?.id) return;
+    const dedupeKey = `${currentSession.id}|${end.name}|${end.address}`;
+    if (lastAppliedEndFromFavoritesRef.current === dedupeKey) return;
+    lastAppliedEndFromFavoritesRef.current = dedupeKey;
+    navigation.setParams({ selectedEndAddress: undefined });
+    const details: LocationDetails = {
+      name: end.name,
+      address: end.address,
+      latitude: end.latitude,
+      longitude: end.longitude,
+    };
+    void handleEndLocationConfirm(details);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply once per navigation param + session
+  }, [route?.params?.selectedEndAddress, isTracking, currentEmployee, currentSession?.id]);
 
   const loadEmployee = async () => {
     try {
@@ -463,11 +487,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         startGpsTracking();
       } else if (option === 'favoriteAddresses') {
         console.log('🔍 GPS: Navigating to favorite addresses');
-        // Navigate to SavedAddressesScreen with fromGpsTracking flag
-        navigation.navigate('SavedAddresses', { fromGpsTracking: true });
+        navigation.navigate('SavedAddresses', { fromGpsTrackingStart: true });
       } else if (option === 'oxfordHouse') {
         console.log('🔍 GPS: Showing Oxford House search modal');
-        // Show Oxford House search modal
+        setOxfordHousePickerRole('start');
         setShowOxfordHouseSearchModal(true);
       } else if (option === 'newLocation') {
         console.log('🔍 GPS: Showing manual location entry modal');
@@ -525,26 +548,42 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleStopTracking = async () => {
-    // Show end location capture modal first
-    setShowEndLocationModal(true);
+    setShowEndLocationOptionsModal(true);
   };
 
-  const handleOxfordHouseSelected = (house: any) => {
-    // Convert Oxford House to LocationDetails format
-    const locationDetails: LocationDetails = {
-      name: house.name,
-      address: `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`
-    };
-    
-    setStartLocationDetails(locationDetails);
-    setShowOxfordHouseSearchModal(false);
-    startGpsTracking();
+  const handleEndLocationOption = (
+    option: 'baseAddress' | 'tripStart' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation'
+  ) => {
+    setShowEndLocationOptionsModal(false);
+    setTimeout(() => {
+      if (option === 'baseAddress' && currentEmployee?.baseAddress) {
+        void handleEndLocationConfirm({
+          name: 'BA',
+          address: currentEmployee.baseAddress,
+        });
+      } else if (option === 'tripStart' && startLocationDetails) {
+        void handleEndLocationConfirm({
+          name: startLocationDetails.name,
+          address: startLocationDetails.address?.trim() || startLocationDetails.name,
+          latitude: startLocationDetails.latitude,
+          longitude: startLocationDetails.longitude,
+        });
+      } else if (option === 'favoriteAddresses') {
+        navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
+      } else if (option === 'oxfordHouse') {
+        setOxfordHousePickerRole('end');
+        setShowOxfordHouseSearchModal(true);
+      } else if (option === 'newLocation') {
+        setShowEndLocationModal(true);
+      }
+    }, 100);
   };
 
   const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
     console.log('📍 End location confirmed:', locationDetails);
     setEndLocationDetails(locationDetails);
     setShowEndLocationModal(false);
+    setShowEndLocationOptionsModal(false);
     setIsEndingTracking(true);
 
     try {
@@ -598,6 +637,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setShowLocationOptionsModal(false);
         setShowStartLocationModal(false);
         setShowEndLocationModal(false);
+        setShowEndLocationOptionsModal(false);
         setShowOxfordHouseSearchModal(false);
         setShowPurposeSuggestions(false);
         setTrackingForm({
@@ -629,6 +669,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setShowLocationOptionsModal(false);
       setShowStartLocationModal(false);
       setShowEndLocationModal(false);
+      setShowEndLocationOptionsModal(false);
       setShowOxfordHouseSearchModal(false);
       setShowPurposeSuggestions(false);
       
@@ -644,7 +685,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     } catch (error) {
       console.error('Error stopping tracking:', error);
       setIsEndingTracking(false);
+      setShowEndLocationOptionsModal(false);
       Alert.alert('Error', 'Failed to stop GPS tracking');
+    }
+  };
+
+  const handleOxfordHouseSelected = (house: any) => {
+    const locationDetails: LocationDetails = {
+      name: house.name,
+      address: `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`,
+    };
+    setShowOxfordHouseSearchModal(false);
+    const role = oxfordHousePickerRole;
+    setOxfordHousePickerRole('start');
+    if (role === 'end') {
+      void handleEndLocationConfirm(locationDetails);
+    } else {
+      setStartLocationDetails(locationDetails);
+      startGpsTracking();
     }
   };
 
@@ -1056,6 +1114,94 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       </Modal>
       )}
 
+      {/* End location: same discovery paths as start (BA, favorites, Oxford search, manual) */}
+      {showEndLocationOptionsModal && (
+      <Modal
+        visible
+        transparent={true}
+        animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setShowEndLocationOptionsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Choose End Location</Text>
+            <Text style={styles.modalSubtitle}>Where did this trip end?</Text>
+
+            <TouchableOpacity
+              style={[styles.locationOptionButton, !currentEmployee?.baseAddress && styles.disabledButton]}
+              onPress={() => handleEndLocationOption('baseAddress')}
+              disabled={!currentEmployee?.baseAddress}
+            >
+              <MaterialIcons name="home" size={24} color="#2196F3" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>End at Base Address</Text>
+                <Text style={styles.locationOptionSubtitle}>
+                  {currentEmployee?.baseAddress || 'No base address set'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.locationOptionButton, !startLocationDetails && styles.disabledButton]}
+              onPress={() => handleEndLocationOption('tripStart')}
+              disabled={!startLocationDetails}
+            >
+              <MaterialIcons name="replay" size={24} color="#4CAF50" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Same as Trip Start</Text>
+                <Text style={styles.locationOptionSubtitle}>
+                  {startLocationDetails
+                    ? `${startLocationDetails.name} (${startLocationDetails.address || '—'})`
+                    : 'Start location not recorded for this session'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleEndLocationOption('favoriteAddresses')}
+            >
+              <MaterialIcons name="star" size={24} color="#FFC107" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Choose from Favorite Addresses</Text>
+                <Text style={styles.locationOptionSubtitle}>Select a saved location as your destination</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleEndLocationOption('oxfordHouse')}
+            >
+              <MaterialIcons name="home" size={24} color="#9C27B0" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Search Oxford Houses</Text>
+                <Text style={styles.locationOptionSubtitle}>Search and select from Oxford House locations</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleEndLocationOption('newLocation')}
+            >
+              <MaterialIcons name="add-location" size={24} color="#FF9800" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>Enter Destination Manually</Text>
+                <Text style={styles.locationOptionSubtitle}>Use GPS + name/address (same as manual mileage)</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalButtonSecondary}
+              onPress={() => setShowEndLocationOptionsModal(false)}
+            >
+              <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      )}
+
       {/* Start Location Capture Modal */}
       {showStartLocationModal && <LocationCaptureModal
         visible={showStartLocationModal}
@@ -1083,18 +1229,27 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         transparent={true}
         animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
         presentationStyle="overFullScreen"
-        onRequestClose={() => setShowOxfordHouseSearchModal(false)}
+        onRequestClose={() => {
+          setShowOxfordHouseSearchModal(false);
+          setOxfordHousePickerRole('start');
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Oxford House</Text>
-            <Text style={styles.modalSubtitle}>Choose your starting location from Oxford Houses</Text>
+            <Text style={styles.modalTitle}>
+              {oxfordHousePickerRole === 'end' ? 'Select End Location' : 'Select Oxford House'}
+            </Text>
+            <Text style={styles.modalSubtitle}>
+              {oxfordHousePickerRole === 'end'
+                ? 'Choose where this trip ended from Oxford Houses'
+                : 'Choose your starting location from Oxford Houses'}
+            </Text>
             
             <OxfordHouseSearchInput
               value=""
               onChangeText={() => {}}
               placeholder="Search for Oxford House..."
-              label="Start Location"
+              label={oxfordHousePickerRole === 'end' ? 'End Location' : 'Start Location'}
               onHouseSelected={handleOxfordHouseSelected}
               allowManualEntry={true}
               employeeId={currentEmployee?.id}
@@ -1102,7 +1257,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
             <TouchableOpacity
               style={styles.modalButtonSecondary}
-              onPress={() => setShowOxfordHouseSearchModal(false)}
+              onPress={() => {
+                setShowOxfordHouseSearchModal(false);
+                setOxfordHousePickerRole('start');
+              }}
             >
               <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
             </TouchableOpacity>

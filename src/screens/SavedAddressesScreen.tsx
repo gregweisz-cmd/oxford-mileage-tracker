@@ -44,6 +44,10 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   // Check if coming from MileageEntryScreen for address selection
   const fromMileageEntry = route?.params?.fromMileageEntry;
   const locationType = route?.params?.locationType; // 'start' or 'end'
+  /** Pick a favorite as GPS trip start (returns to GpsTracking with selectedAddress). */
+  const fromGpsTrackingStart = route?.params?.fromGpsTrackingStart === true;
+  /** Pick a favorite as GPS trip end while session is active (returns with selectedEndAddress). */
+  const fromGpsTrackingEnd = route?.params?.fromGpsTrackingEnd === true;
 
   const categories = ['Office', 'Client', 'Home', 'Other'];
 
@@ -207,6 +211,28 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
     );
   };
 
+  const handleSelectForGpsStartFavorite = (address: SavedAddress) => {
+    navigation.navigate('GpsTracking', {
+      selectedAddress: {
+        name: address.name,
+        address: address.address,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      },
+    });
+  };
+
+  const handleSelectForGpsEndFavorite = (address: SavedAddress) => {
+    navigation.navigate('GpsTracking', {
+      selectedEndAddress: {
+        name: address.name,
+        address: address.address,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      },
+    });
+  };
+
   const handleSelectForManualEntry = (address: SavedAddress) => {
     // Go back to MileageEntryScreen with the selected address (preserve entryId when editing)
     const params: any = {
@@ -254,7 +280,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
                     { text: 'Cancel', style: 'cancel' },
                     {
                       text: 'Start Tracking',
-                      onPress: async (odometerText) => {
+                      onPress: async (odometerText: string | undefined) => {
                         if (!odometerText || isNaN(Number(odometerText))) {
                           Alert.alert('Invalid Input', 'Please enter a valid odometer reading.');
                           return;
@@ -324,7 +350,6 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
         </View>
         <View style={styles.addressActions}>
           {fromMileageEntry ? (
-            // If coming from manual entry, show "Select" button
             <TouchableOpacity
               style={styles.selectButton}
               onPress={() => handleSelectForManualEntry(item)}
@@ -332,8 +357,23 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
               <MaterialIcons name="check-circle" size={20} color="#4CAF50" />
               <Text style={styles.selectButtonText}>Select</Text>
             </TouchableOpacity>
+          ) : fromGpsTrackingStart ? (
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() => handleSelectForGpsStartFavorite(item)}
+            >
+              <MaterialIcons name="check-circle" size={20} color="#4CAF50" />
+              <Text style={styles.selectButtonText}>Use as start</Text>
+            </TouchableOpacity>
+          ) : fromGpsTrackingEnd ? (
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() => handleSelectForGpsEndFavorite(item)}
+            >
+              <MaterialIcons name="check-circle" size={20} color="#2196F3" />
+              <Text style={styles.selectButtonText}>Use as end</Text>
+            </TouchableOpacity>
           ) : (
-            // Otherwise show GPS tracking button
             <TouchableOpacity
               style={[styles.selectButton, isTracking && styles.disabledButton]}
               onPress={() => handleSelectForGpsTracking(item)}
