@@ -18,6 +18,8 @@ Do **not** run `eas build` or publish an OTA until native build numbers are bump
 
 The script updates `app.json` (iOS `buildNumber`, Android `versionCode`, and optionally `version` / `runtimeVersion`) and runs `sync-native-version.js` so `android/app/build.gradle` matches.
 
+- **Avoid double bumps**: Keep `production.autoIncrement` **false** in `eas.json` when using this bump flow. If it is **true**, EAS increments again at build time and store numbers jump by **two** per release (e.g. 20 → 22).
+
 - **OTA only** (`eas update`): If you are **not** producing a new store binary, you usually **do not** bump native build numbers; only bump **`runtimeVersion`** (via `release:bump`) when the JS bundle must target a new runtime.
 
 ## 2. Commit version bumps
