@@ -15,7 +15,8 @@
     "release:bump": "node scripts/bump-store-version.js",
     "release:bump:build-only": "node scripts/bump-store-version.js --build-only",
     "release:sync-version": "node scripts/sync-native-version.js",
-    "assets:android-adaptive-icon": "node scripts/pad-android-adaptive-icon.js",
+    "assets:android-adaptive-icon": "node scripts/pad-android-adaptive-icon.js && node scripts/sync-android-launcher-mipmaps.js",
+    "assets:android-launcher-mipmaps": "node scripts/sync-android-launcher-mipmaps.js",
     "docs:pdf:tester-packets": "node docs/deployment/generate-tester-packets-pdf.js"
   },
   "dependencies": {
