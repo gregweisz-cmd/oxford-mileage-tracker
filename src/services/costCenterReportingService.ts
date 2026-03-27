@@ -150,13 +150,19 @@ export class CostCenterReportingService {
       const costCenterReceipts = data.receipts.reduce((sum, receipt) => sum + receipt.amount, 0);
       
       // Calculate per diem for this cost center
+      const stayedOvernightByDate = new Map<string, boolean>();
+      data.descriptionEntries.forEach((d) => {
+        const dDate = d.date instanceof Date ? d.date : new Date(d.date);
+        const key = dDate.toISOString().split('T')[0];
+        stayedOvernightByDate.set(key, !!d.stayedOvernight);
+      });
       const perDiemCalculation = await PerDiemService.calculateMonthlyPerDiem(
         employeeId,
         month,
         year,
         data.mileageEntries,
         employee || { id: employeeId, name: '', email: '', password: '', oxfordHouseId: '', position: '', baseAddress: '', costCenters: [], selectedCostCenters: [], createdAt: new Date(), updatedAt: new Date() },
-        data.receipts
+        stayedOvernightByDate
       );
       const costCenterPerDiem = perDiemCalculation.totalPerDiem;
       

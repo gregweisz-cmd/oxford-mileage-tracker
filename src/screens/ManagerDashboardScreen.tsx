@@ -95,6 +95,18 @@ export default function ManagerDashboardScreen({ navigation }: ManagerDashboardS
           selectedMonth.getMonth() + 1,
           selectedMonth.getFullYear()
         );
+
+        const dailyDescriptions = await DatabaseService.getDailyDescriptions(
+          employee.id,
+          selectedMonth.getMonth() + 1,
+          selectedMonth.getFullYear()
+        );
+        const stayedOvernightByDate = new Map<string, boolean>();
+        dailyDescriptions.forEach((d) => {
+          const dDate = d.date instanceof Date ? d.date : new Date(d.date);
+          const key = dDate.toISOString().split('T')[0];
+          stayedOvernightByDate.set(key, !!d.stayedOvernight);
+        });
         
         const totalMiles = monthEntries.reduce((sum, entry) => sum + entry.miles, 0);
         const totalReceipts = monthReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
@@ -107,7 +119,7 @@ export default function ManagerDashboardScreen({ navigation }: ManagerDashboardS
           selectedMonth.getFullYear(),
           monthEntries,
           employee,
-          monthReceipts
+          stayedOvernightByDate
         );
         
         const expenseBreakdown = PerDiemService.getExpenseBreakdown(

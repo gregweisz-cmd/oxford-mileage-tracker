@@ -1486,46 +1486,31 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             // Calculate Per Diem amount from receipts
             const perDiemFromReceipts = dayPerDiemReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
             
-            // Check if stayed overnight for this day
+            // Daily description: user attests "Stayed 50+ mi from BA" (per diem second criterion)
             const stayedOvernight = dayDescription?.stayedOvernight || false;
             
             // Calculate Per Diem based on rules if no receipts exist
-            // New requirement: Per Diem qualifies if stayedOvernight is checked AND 50+ miles from base address
+            // Rule: 8+ hours AND (100+ miles OR daily description "Stayed 50+ mi from BA")
             let calculatedPerDiem = perDiemFromReceipts;
             if (perDiemFromReceipts === 0) {
-              // Get employee's cost center
               const costCenterForPerDiem = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
               
-              // Calculate distance from base address (simplified: use total miles as proxy if no geocoding available)
-              // For now, if stayedOvernight is checked and there are mileage entries, assume they qualify
-              // In a full implementation, this would use geocoding to calculate actual distance
-              let distanceFromBase = 0;
-              if (stayedOvernight && totalDayMiles > 0) {
-                // If stayed overnight and has mileage, estimate they're at least 50 miles away
-                // This is a simplified check - in production, use actual geocoding
-                distanceFromBase = Math.max(totalDayMiles, 50); // Use miles traveled as proxy, minimum 50
-              }
-              
-              // Calculate Per Diem using rules
-              // Requirement: stayedOvernight must be true AND distanceFromBase >= 50
               try {
                 const perDiemResult = await PerDiemRulesService.calculatePerDiem(
                   costCenterForPerDiem,
                   dayWorkingHours,
                   totalDayMiles,
-                  distanceFromBase,
+                  0,
                   perDiemFromReceipts
                 );
 
-                // Match mobile rule: hours AND (miles OR (stayed overnight AND distance)).
                 const activeRule = perDiemResult.rule;
                 const minHours = activeRule?.minHours ?? 8;
                 const minMiles = activeRule?.minMiles ?? 100;
-                const minDistanceFromBase = activeRule?.minDistanceFromBase ?? 50;
                 const meetsHours = dayWorkingHours >= minHours;
                 const meetsMiles = totalDayMiles >= minMiles;
-                const meetsDistanceWhenOvernight = stayedOvernight && distanceFromBase >= minDistanceFromBase;
-                const qualifiesForPerDiem = meetsHours && (meetsMiles || meetsDistanceWhenOvernight);
+                const meetsStayedFromBa = stayedOvernight;
+                const qualifiesForPerDiem = meetsHours && (meetsMiles || meetsStayedFromBa);
 
                 if (qualifiesForPerDiem) {
                   if (activeRule?.useActualAmount) {
@@ -1538,7 +1523,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     hours: dayWorkingHours,
                     miles: totalDayMiles,
                     stayedOvernight,
-                    distanceFromBase,
                     amount: calculatedPerDiem,
                     rule: perDiemResult.rule
                   });
@@ -1547,12 +1531,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     hours: dayWorkingHours,
                     minHours,
                     minMiles,
-                    minDistanceFromBase,
                     stayedOvernight,
-                    distanceFromBase,
                     meetsHours,
                     meetsMiles,
-                    meetsDistanceWhenOvernight
+                    meetsStayedFromBa: meetsStayedFromBa
                   });
                 }
               } catch (error) {
@@ -6706,7 +6688,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     )}
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: supervisorMode ? '13%' : '15%' }}><strong>Date</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Activity Description</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '140px' }}><strong>Stayed overnight</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '140px' }}><strong>Stayed 50+ mi from BA</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '80px' }}><strong>Day Off</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '15%' }}><strong>Cost Center</strong></TableCell>
                   </TableRow>

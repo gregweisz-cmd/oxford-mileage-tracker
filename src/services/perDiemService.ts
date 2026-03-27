@@ -1,4 +1,4 @@
-import { MileageEntry, Employee, Receipt } from '../types';
+import { MileageEntry, Employee } from '../types';
 import { PerDiemRulesService, PerDiemRule } from './perDiemRulesService';
 import { DistanceService } from './distanceService';
 
@@ -37,7 +37,8 @@ export class PerDiemService {
     year: number,
     entries: MileageEntry[],
     employee: Employee,
-    receipts?: Receipt[]
+    /** YYYY-MM-DD → user marked "Stayed 50+ mi from BA" on daily description */
+    stayedOvernightByDate?: Map<string, boolean>
   ): Promise<PerDiemCalculation> {
     // Filter entries for the specified month
     const monthEntries = entries.filter(entry => {
@@ -52,13 +53,10 @@ export class PerDiemService {
     let totalPerDiem = 0;
     let eligibleDays = 0;
 
-    // Group receipts by date for overnight stay detection
-    const receiptsByDate = receipts ? this.groupReceiptsByDate(receipts) : new Map();
-    
     for (const [dateStr, dayEntries] of entriesByDate) {
-      const date = new Date(dateStr);
-      const dayReceipts = receiptsByDate.get(dateStr) || [];
-      const dayCalculation = await this.calculateDayPerDiem(date, dayEntries, employee, dayReceipts);
+      const date = new Date(dateStr + 'T12:00:00');
+      const stayedFiftyFromBa = stayedOvernightByDate?.get(dateStr) ?? false;
+      const dayCalculation = await this.calculateDayPerDiem(date, dayEntries, employee, stayedFiftyFromBa);
       
       breakdown.push(dayCalculation);
       
@@ -80,68 +78,42 @@ export class PerDiemService {
   }
 
   /**
-   * Calculate per diem for a single day
+   * Calculate per diem for a single day.
+   * Rule: 8+ hours AND (100+ miles OR daily description "Stayed 50+ mi from BA").
    */
   private static async calculateDayPerDiem(
     date: Date,
     dayEntries: MileageEntry[],
     employee: Employee,
-    dayReceipts: Receipt[] = []
+    /** From daily_descriptions.stayedOvernight — user attests 50+ mi from base */
+    stayedFiftyFromBa: boolean
   ): Promise<PerDiemDay> {
     const totalHours = dayEntries.reduce((sum, entry) => sum + (entry.hoursWorked || 0), 0);
     const totalMiles = dayEntries.reduce((sum, entry) => sum + entry.miles, 0);
-    
-    // Check for overnight stay - look for lodging receipts (Hotels/AirBnB)
-    const isOvernight = dayReceipts.some(receipt => 
-      receipt.category === 'Hotels/AirBnB' || 
-      receipt.category === 'Lodging' ||
-      receipt.vendor.toLowerCase().includes('hotel') ||
-      receipt.vendor.toLowerCase().includes('motel') ||
-      receipt.vendor.toLowerCase().includes('inn') ||
-      receipt.vendor.toLowerCase().includes('airbnb')
-    );
-    
-    // Calculate distance from base address using Google Maps geocoding
+
     const distanceFromBase = await this.calculateDistanceFromBase(dayEntries, employee.baseAddress);
-    
-    // New eligibility rules:
-    // 1. Must work 8+ hours (always required)
-    // 2. Must meet ONE of the following:
-    //    - Stay overnight away from base (50+ miles from base) OR
-    //    - Drive 100+ miles in the day
-    
+
     const meetsHoursRequirement = totalHours >= this.MIN_HOURS_FOR_PER_DIEM;
-    const isOvernightAwayFromBase = isOvernight && distanceFromBase >= this.MIN_DISTANCE_FROM_BASE;
     const droveEnough = totalMiles >= this.MIN_MILES_FOR_PER_DIEM;
-    
-    // Eligibility: 8+ hours AND (overnight 50+ miles away OR 100+ miles driven)
-    const isEligible = meetsHoursRequirement && (isOvernightAwayFromBase || droveEnough);
-    
+
+    const isEligible = meetsHoursRequirement && (droveEnough || stayedFiftyFromBa);
+
     let reason = '';
     let amount = 0;
-    
+
     if (!meetsHoursRequirement) {
       reason = `Not eligible: Only ${totalHours.toFixed(1)}h worked (8h required)`;
     } else if (isEligible) {
       amount = this.PER_DIEM_RATE;
-      if (isOvernightAwayFromBase) {
-        reason = `Eligible: Overnight stay ${distanceFromBase.toFixed(1)}mi from base + ${totalHours.toFixed(1)}h worked`;
+      if (stayedFiftyFromBa && !droveEnough) {
+        reason = `Eligible: 50+ mi from BA (daily description) + ${totalHours.toFixed(1)}h worked`;
       } else if (droveEnough) {
         reason = `Eligible: ${totalMiles.toFixed(1)}mi driven + ${totalHours.toFixed(1)}h worked`;
+      } else {
+        reason = `Eligible: ${totalHours.toFixed(1)}h worked`;
       }
     } else {
-      const missingCriteria = [];
-      if (!isOvernightAwayFromBase && !droveEnough) {
-        if (!isOvernight) {
-          missingCriteria.push('no overnight stay away from base');
-        } else {
-          missingCriteria.push(`overnight only ${distanceFromBase.toFixed(1)}mi from base (50mi required)`);
-        }
-        if (totalMiles < this.MIN_MILES_FOR_PER_DIEM) {
-          missingCriteria.push(`only ${totalMiles.toFixed(1)}mi driven (100mi required)`);
-        }
-      }
-      reason = `Not eligible: ${missingCriteria.join(', ')}`;
+      reason = `Not eligible: Need 100+ miles or "Stayed 50+ mi from BA" for the day`;
     }
 
     return {
@@ -149,7 +121,7 @@ export class PerDiemService {
       hoursWorked: totalHours,
       milesDriven: totalMiles,
       distanceFromBase,
-      isOvernight,
+      isOvernight: stayedFiftyFromBa,
       isEligible,
       reason,
       amount,
@@ -169,23 +141,6 @@ export class PerDiemService {
         grouped.set(dateStr, []);
       }
       grouped.get(dateStr)!.push(entry);
-    });
-    
-    return grouped;
-  }
-
-  /**
-   * Group receipts by date
-   */
-  private static groupReceiptsByDate(receipts: Receipt[]): Map<string, Receipt[]> {
-    const grouped = new Map<string, Receipt[]>();
-    
-    receipts.forEach(receipt => {
-      const dateStr = receipt.date.toISOString().split('T')[0]; // YYYY-MM-DD format
-      if (!grouped.has(dateStr)) {
-        grouped.set(dateStr, []);
-      }
-      grouped.get(dateStr)!.push(receipt);
     });
     
     return grouped;

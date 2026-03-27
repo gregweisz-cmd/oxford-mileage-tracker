@@ -360,106 +360,45 @@ export class SmartNotificationService {
   }
 
   /**
-   * Check for per diem eligibility today
+   * Check for per diem eligibility today (same rules as Per Diem screen: 8h + 100mi OR "Stayed 50+ mi from BA")
    */
   private static async checkPerDiemEligibility(
     employeeId: string,
     currentDate: Date
   ): Promise<SmartNotification | null> {
     try {
-      // Get employee to access base address
-      const employee = await DatabaseService.getEmployeeById(employeeId);
-      if (!employee || !employee.baseAddress) {
+      const { PerDiemAiService } = await import('./perDiemAiService');
+      const eligibility = await PerDiemAiService.checkPerDiemEligibility(employeeId, currentDate);
+      if (!eligibility.isEligible) {
         return null;
       }
 
-      // Get today's mileage and time tracking
-      const today = new Date(currentDate);
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const month = today.getMonth() + 1;
-      const year = today.getFullYear();
-      const [mileageRaw, timeRaw] = await Promise.all([
-        DatabaseService.getMileageEntries(employeeId, month, year),
-        DatabaseService.getTimeTrackingEntries(employeeId, month, year),
-      ]);
-      const mileageEntries = mileageRaw.filter(
-        (e) => e.date && new Date(e.date).toDateString() === currentDate.toDateString()
+      const month = currentDate.getMonth() + 1;
+      const year = currentDate.getFullYear();
+      const dayReceipts = await DatabaseService.getReceipts(employeeId, month, year);
+      const receipts = dayReceipts.filter(
+        (r) => r.date && new Date(r.date).toDateString() === currentDate.toDateString()
       );
-      const timeEntries = timeRaw.filter(
-        (e) => e.date && new Date(e.date).toDateString() === currentDate.toDateString()
+      const hasPerDiemReceipt = receipts.some(
+        (receipt) =>
+          receipt.category === 'Per Diem' &&
+          new Date(receipt.date).toDateString() === currentDate.toDateString()
       );
 
-      // Calculate total miles for today
-      const totalMiles = mileageEntries.reduce((sum, entry) => sum + (entry.miles || 0), 0);
-
-      // Calculate total hours for today (TimeTracking uses hours field directly)
-      const totalHours = timeEntries.reduce((sum, entry) => sum + (entry.hours || 0), 0);
-
-      // Try to get base address coordinates from saved addresses
-      let baseLat: number | undefined;
-      let baseLon: number | undefined;
-      try {
-        const savedAddresses = await DatabaseService.getSavedAddresses(employeeId);
-        const baseAddressMatch = savedAddresses.find(
-          addr => addr.address.toLowerCase() === employee.baseAddress.toLowerCase()
-        );
-        if (baseAddressMatch?.latitude && baseAddressMatch?.longitude) {
-          baseLat = baseAddressMatch.latitude;
-          baseLon = baseAddressMatch.longitude;
-        }
-      } catch (error) {
-        // If we can't get saved addresses, continue without coordinates
-        debugWarn('Could not get saved addresses for base address coordinates:', error);
+      if (hasPerDiemReceipt) {
+        return null;
       }
 
-      // Check for overnight distance (50+ miles from base)
-      const isOvernight = baseLat && baseLon 
-        ? await this.checkOvernightDistance(employeeId, currentDate, baseLat, baseLon)
-        : false;
-
-      // Check if user might be eligible for per diem
-      // Eligible if: 8+ hours AND (100+ miles OR overnight stay 50+ miles from base)
-      const isEligible = totalHours >= 8 && (totalMiles >= 100 || isOvernight);
-
-      if (isEligible) {
-        // Check if per diem already claimed for today
-        const dayReceipts = await DatabaseService.getReceipts(employeeId, month, year);
-        const receipts = dayReceipts.filter(
-          (r) => r.date && new Date(r.date).toDateString() === currentDate.toDateString()
-        );
-        const hasPerDiemReceipt = receipts.some(
-          receipt =>
-            receipt.category === 'Per Diem' &&
-            new Date(receipt.date).toDateString() === currentDate.toDateString()
-        );
-
-        if (!hasPerDiemReceipt) {
-          let message = `You've worked ${totalHours.toFixed(1)} hours`;
-          if (totalMiles >= 100) {
-            message += ` and driven ${totalMiles.toFixed(1)} miles today`;
-          }
-          if (isOvernight) {
-            message += ` and were 50+ miles away from base address overnight`;
-          }
-          message += `. You may be eligible for per diem.`;
-
-          return {
-            id: `per_diem_${currentDate.toISOString().split('T')[0]}`,
-            type: 'per_diem',
-            priority: 'medium',
-            title: 'Per Diem eligible today',
-            message: message,
-            actionLabel: 'Add Per Diem',
-            actionRoute: 'PerDiem',
-            timestamp: currentDate,
-          };
-        }
-      }
-
-      return null;
+      return {
+        id: `per_diem_${currentDate.toISOString().split('T')[0]}`,
+        type: 'per_diem',
+        priority: 'medium',
+        title: 'Per Diem eligible today',
+        message: `${eligibility.reason}. You may be eligible to claim per diem.`,
+        actionLabel: 'Add Per Diem',
+        actionRoute: 'PerDiem',
+        timestamp: currentDate,
+      };
     } catch (error) {
       debugWarn('Error checking per diem eligibility:', error);
       return null;

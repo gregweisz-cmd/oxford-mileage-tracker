@@ -778,7 +778,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                 )}
               </View>
 
-              {/* Stayed out of town - for per diem eligibility (50+ mi from base) */}
+              {/* Per diem: mark when stayed 50+ miles from base address (attestation) */}
               {!isDayOff && (
                 <View style={styles.section}>
                   <View style={styles.checkboxRow}>
@@ -791,7 +791,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                     >
                       {stayedOvernight && <MaterialIcons name="check" size={20} color="#007AFF" />}
                     </TouchableOpacity>
-                    <Text style={styles.checkboxLabel}>Stayed out of town (50+ miles from base)</Text>
+                    <Text style={styles.checkboxLabel}>Stayed 50+ miles from BA</Text>
                   </View>
                 </View>
               )}

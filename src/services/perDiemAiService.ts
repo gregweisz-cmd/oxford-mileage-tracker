@@ -30,7 +30,10 @@ export interface PerDiemEligibility {
   criteria: {
     hoursWorked: boolean;
     milesDriven: boolean;
+    /** Max distance from BA from mileage geocoding (informational). */
     distanceFromBase: boolean;
+    /** Daily description checkbox: user attests 50+ miles from base address. */
+    stayedFiftyFromBase: boolean;
   };
   details: {
     hoursWorked: number;
@@ -124,16 +127,18 @@ export class PerDiemAiService {
         return this.createIneligibleResponse('No data for this day');
       }
 
-      // Recompute details for this day for the full PerDiemEligibility response (hours, miles, distance)
+      // Recompute details for this day for the full PerDiemEligibility response (hours, miles, distance, checkbox)
       let hoursWorked = 0;
       let milesDriven = 0;
       let distanceFromBase = 0;
+      let stayedFiftyFromBa = false;
       try {
         const monthlyData = await BackendDataService.getMonthData(employeeId, month, year);
         const day = monthlyData.find(d => this.toLocalDateKey(d.date) === dateKey);
         if (day) {
           hoursWorked = day.totalHours;
           milesDriven = day.totalMiles || 0;
+          stayedFiftyFromBa = !!day.stayedOvernight;
           distanceFromBase = await this.calculateDistanceFromBase(
             day.mileageEntries || [],
             employee.baseAddress || ''
@@ -141,9 +146,10 @@ export class PerDiemAiService {
         }
       } catch {
         // fallback: try local
-        const [timeEntries, mileageEntries] = await Promise.all([
+        const [timeEntries, mileageEntries, dailyDescriptions] = await Promise.all([
           DatabaseService.getTimeTrackingEntries(employeeId),
-          DatabaseService.getMileageEntries(employeeId)
+          DatabaseService.getMileageEntries(employeeId),
+          DatabaseService.getDailyDescriptions(employeeId, month, year)
         ]);
         const dayTime = timeEntries.filter(e => this.toLocalDateKey(e.date) === dateKey);
         const dayMileage = mileageEntries.filter(e => this.toLocalDateKey(e.date) === dateKey);
@@ -152,12 +158,15 @@ export class PerDiemAiService {
           .reduce((s: number, e: any) => s + e.hours, 0);
         milesDriven = dayMileage.reduce((s, e) => s + e.miles, 0);
         distanceFromBase = await this.calculateDistanceFromBase(dayMileage, employee.baseAddress || '');
+        const desc = dailyDescriptions.find(d => this.toLocalDateKey(d.date) === dateKey);
+        stayedFiftyFromBa = !!desc?.stayedOvernight;
       }
 
       const criteria = {
         hoursWorked: hoursWorked >= this.MIN_HOURS,
         milesDriven: milesDriven >= this.MIN_MILES,
-        distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
+        distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE,
+        stayedFiftyFromBase: stayedFiftyFromBa
       };
       const confidence = this.calculateConfidence(criteria, {
         hoursWorked,
@@ -189,7 +198,7 @@ export class PerDiemAiService {
 
   /**
    * Get per-diem eligibility for every day in a month (for Per Diem screen labels).
-   * Rule: 8+ hours AND (100+ miles OR (stayed overnight AND 50+ mi from base)).
+   * Rule: 8+ hours AND (100+ miles OR daily description "Stayed 50+ mi from BA" checked).
    * Uses backend data first (same as dashboard), then local DB; uses local date keys and real distance.
    * Optimized: pre-calculates all distances in parallel to avoid sequential API calls.
    */
@@ -241,15 +250,14 @@ export class PerDiemAiService {
             ? dayMileageEntries.reduce((s, e) => s + e.miles, 0)
             : (day.totalMiles || 0);
           const distanceFromBase = this.getMaxDistanceFromCache(dayMileageEntries, distanceCache);
+          const stayedFiftyFromBase = !!stayedOvernight;
           const criteria = {
             hoursWorked: day.totalHours >= this.MIN_HOURS,
             milesDriven: milesDriven >= this.MIN_MILES,
-            distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
+            distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE,
+            stayedFiftyFromBase
           };
-          const isEligible = criteria.hoursWorked && (
-            criteria.milesDriven ||
-            (stayedOvernight && criteria.distanceFromBase)
-          );
+          const isEligible = criteria.hoursWorked && (criteria.milesDriven || stayedFiftyFromBase);
           const reason = this.generateEligibilityReason(
             criteria,
             {
@@ -257,7 +265,6 @@ export class PerDiemAiService {
               milesDriven,
               distanceFromBase
             },
-            stayedOvernight,
             isEligible
           );
           result.set(dateKey, { isEligible, reason });
@@ -302,16 +309,17 @@ export class PerDiemAiService {
         const { stayedOvernight } = descByDate.get(dateKey) || { stayedOvernight: false };
         const distanceFromBase = this.getMaxDistanceFromCache(dayMileage, distanceCache);
 
+        const stayedFiftyFromBase = !!stayedOvernight;
         const criteria = {
           hoursWorked: hoursWorked >= this.MIN_HOURS,
           milesDriven: milesDriven >= this.MIN_MILES,
-          distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE
+          distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE,
+          stayedFiftyFromBase
         };
-        const isEligible = criteria.hoursWorked && (criteria.milesDriven || (stayedOvernight && criteria.distanceFromBase));
+        const isEligible = criteria.hoursWorked && (criteria.milesDriven || stayedFiftyFromBase);
         const reason = this.generateEligibilityReason(
           criteria,
           { hoursWorked, milesDriven, distanceFromBase },
-          stayedOvernight,
           isEligible
         );
         result.set(dateKey, { isEligible, reason });
@@ -457,25 +465,29 @@ export class PerDiemAiService {
   }
 
   /**
-   * Generate eligibility reason (rule: 8+ hours AND (100+ mi OR stayed overnight 50+ mi from base))
+   * Generate eligibility reason (8+ hours AND (100+ mi OR "Stayed 50+ mi from BA" in daily description))
    */
   private static generateEligibilityReason(
-    criteria: { hoursWorked: boolean; milesDriven: boolean; distanceFromBase: boolean },
+    criteria: {
+      hoursWorked: boolean;
+      milesDriven: boolean;
+      distanceFromBase: boolean;
+      stayedFiftyFromBase: boolean;
+    },
     details: { hoursWorked: number; milesDriven: number; distanceFromBase: number },
-    stayedOvernight?: boolean,
-    isEligible?: boolean
+    isEligible: boolean
   ): string {
     if (isEligible) {
       const parts = [`${details.hoursWorked.toFixed(1)}h worked`];
       if (criteria.milesDriven) parts.push(`${details.milesDriven} mi`);
-      if (stayedOvernight && criteria.distanceFromBase) parts.push('stayed 50+ mi from base');
+      if (criteria.stayedFiftyFromBase) parts.push('50+ mi from BA');
       return `Eligible: ${parts.join(', ')}`;
     }
     if (!criteria.hoursWorked) {
       return `Not eligible: Need ${this.MIN_HOURS}+ hours worked`;
     }
-    if (!criteria.milesDriven && !(stayedOvernight && criteria.distanceFromBase)) {
-      return `Not eligible: Need ${this.MIN_MILES}+ miles OR stayed out of town 50+ mi from base`;
+    if (!criteria.milesDriven && !criteria.stayedFiftyFromBase) {
+      return `Not eligible: Need ${this.MIN_MILES}+ miles OR mark "Stayed 50+ mi from BA" for the day`;
     }
     return 'Not eligible';
   }
@@ -484,17 +496,21 @@ export class PerDiemAiService {
    * Calculate confidence score
    */
   private static calculateConfidence(
-    criteria: { hoursWorked: boolean; milesDriven: boolean; distanceFromBase: boolean },
+    criteria: {
+      hoursWorked: boolean;
+      milesDriven: boolean;
+      distanceFromBase: boolean;
+      stayedFiftyFromBase: boolean;
+    },
     details: { hoursWorked: number; milesDriven: number; distanceFromBase: number }
   ): number {
     let confidence = 0;
 
-    // Base confidence for meeting criteria
     if (criteria.hoursWorked) confidence += 40;
     if (criteria.milesDriven) confidence += 40;
-    if (criteria.distanceFromBase) confidence += 40;
+    if (criteria.stayedFiftyFromBase) confidence += 40;
+    if (criteria.distanceFromBase && !criteria.stayedFiftyFromBase) confidence += 20;
 
-    // Bonus for exceeding requirements
     if (details.hoursWorked > this.MIN_HOURS + 2) confidence += 10;
     if (details.milesDriven > this.MIN_MILES + 20) confidence += 10;
     if (details.distanceFromBase > this.MIN_DISTANCE_FROM_BASE + 20) confidence += 10;
@@ -512,7 +528,8 @@ export class PerDiemAiService {
       criteria: {
         hoursWorked: false,
         milesDriven: false,
-        distanceFromBase: false
+        distanceFromBase: false,
+        stayedFiftyFromBase: false
       },
       details: {
         hoursWorked: 0,

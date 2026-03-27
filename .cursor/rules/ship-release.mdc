@@ -26,6 +26,15 @@ The script updates `app.json` (iOS `buildNumber`, Android `versionCode`, and opt
 
 Commit `app.json`, `package.json` (if changed), `android/app/build.gradle` (if present), then push.
 
+## 2b. Web portal (Staff / Supervisor) — **not** part of EAS
+
+`eas build` does **not** deploy **`admin-web/`**. That React app is deployed separately (e.g. **Vercel**).
+
+- If the Git repo is connected to Vercel with **auto-deploy on `main`**, **pushing** after your Staff Portal changes is enough — Vercel will produce a fresh production build.
+- If auto-deploy is off or you need a manual trigger: Vercel Dashboard → project → **Deployments** → **Redeploy**, or from `admin-web/`: `npx vercel --prod` (logged in, project linked).
+
+Ship anything that touched **`admin-web/`** or shared API expectations **before** you rely on production web behavior.
+
 ## 3. Native builds (TestFlight / Play)
 
 ```bash

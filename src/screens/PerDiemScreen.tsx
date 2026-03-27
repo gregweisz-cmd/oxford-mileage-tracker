@@ -11,7 +11,6 @@ import {
   Modal,
   Image,
   InteractionManager,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -104,7 +103,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [monthlyLimit, setMonthlyLimit] = useState(350);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
-  /** Per-day eligibility from rule: 8+ hours AND (100+ mi OR stayed overnight 50+ mi from base) */
+  /** Per-day eligibility: 8+ hours AND (100+ mi OR daily description "Stayed 50+ mi from BA") */
   const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
   /** True after eligibility map has been computed for the current month (avoids blocking on Android) */
   const [eligibilityReady, setEligibilityReady] = useState(false);
@@ -207,7 +206,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       setHasUnsavedChanges(false);
       setLoading(false);
 
-      // Phase 2: eligibility (heavy on Android — many network distance calls). Run after UI paints.
+      // Phase 2: eligibility (distance lookups). Same path on iOS and Android — defer until after first paint.
       const runEligibility = () => {
         PerDiemAiService.getEligibilityForMonth(employee.id, month, year)
           .then((eligibilityMap) => {
@@ -221,14 +220,10 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           });
       };
 
-      if (Platform.OS === 'android') {
-        InteractionManager.runAfterInteractions(() => {
-          if (loadGen !== eligibilityLoadGenerationRef.current) return;
-          runEligibility();
-        });
-      } else {
+      InteractionManager.runAfterInteractions(() => {
+        if (loadGen !== eligibilityLoadGenerationRef.current) return;
         runEligibility();
-      }
+      });
     } catch (error) {
       Alert.alert('Error', 'Failed to load per diem data. Please try again.');
       if (__DEV__) {
