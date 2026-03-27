@@ -15,6 +15,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { KeyboardAwareScrollView } from '../components/KeyboardAwareScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -53,6 +54,13 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const [showModal, setShowModal] = useState(false);
   const [showPreferredNameModal, setShowPreferredNameModal] = useState(false);
   const [preferredNameInput, setPreferredNameInput] = useState('');
+
+  const appVersion = Constants.expoConfig?.version || 'Unknown';
+  const nativeBuild =
+    Platform.OS === 'android'
+      ? Constants.expoConfig?.android?.versionCode
+      : Constants.expoConfig?.ios?.buildNumber;
+  const appVersionLabel = nativeBuild ? `${appVersion} (build ${nativeBuild})` : appVersion;
 
 
   useEffect(() => {
@@ -393,6 +401,12 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
         'Suggestions as you type',
         inputPreferences?.autoCompleteEnabled ?? true,
         (value) => updateInputPreferences({ autoCompleteEnabled: value })
+      )}
+
+      {renderSettingRow(
+        'App Version',
+        'Installed version and build number',
+        appVersionLabel
       )}
     </View>
   );

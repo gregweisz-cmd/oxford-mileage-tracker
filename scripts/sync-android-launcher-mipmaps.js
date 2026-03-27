@@ -11,6 +11,7 @@ const REPO = path.join(__dirname, '..');
 /** Master app / company logo — keep in sync with expo.icon and adaptive-icon source. */
 const ICON = path.join(REPO, 'assets', 'icon.png');
 const RES = path.join(REPO, 'android', 'app', 'src', 'main', 'res');
+const SCALE = 0.75;
 
 const FOREGROUND_PX = {
   'mipmap-mdpi': 108,
@@ -29,9 +30,22 @@ const LEGACY_PX = {
 };
 
 async function writeWebp(size, outPath) {
-  await sharp(ICON)
+  const target = Math.max(1, Math.round(size * SCALE));
+  const logo = await sharp(ICON)
     .flatten({ background: '#FFFFFF' })
-    .resize(size, size, { fit: 'cover', position: 'centre' })
+    .resize(target, target, { fit: 'cover', position: 'centre' })
+    .png()
+    .toBuffer();
+
+  await sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 4,
+      background: '#FFFFFF',
+    },
+  })
+    .composite([{ input: logo, gravity: 'centre' }])
     .webp({ quality: 95 })
     .toFile(outPath);
 }
