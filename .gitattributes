@@ -1,0 +1,2 @@
+# Xcode runs shell scripts on macOS; CRLF in sourced env files breaks with ": command not found"
+ios/.xcode.env text eol=lf
