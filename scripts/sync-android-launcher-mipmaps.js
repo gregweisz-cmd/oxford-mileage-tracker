@@ -2,6 +2,7 @@
  * Sync Android launcher mipmaps from the company logo (assets/icon.png).
  * Full-bleed per density (`fit: 'cover'`) so the logo fills each launcher bitmap,
  * matching the adaptive foreground built by pad-android-adaptive-icon.js.
+ * Flatten to white first so Android visual matches iOS square icon.
  */
 const path = require('path');
 const sharp = require('sharp');
@@ -29,6 +30,7 @@ const LEGACY_PX = {
 
 async function writeWebp(size, outPath) {
   await sharp(ICON)
+    .flatten({ background: '#FFFFFF' })
     .resize(size, size, { fit: 'cover', position: 'centre' })
     .webp({ quality: 95 })
     .toFile(outPath);

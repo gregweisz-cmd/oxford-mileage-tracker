@@ -3,9 +3,8 @@
  *
  * Source: assets/icon.png — Oxford House logo (same master as iOS `expo.icon`).
  * Output: assets/adaptive-icon.png — 1024×1024, full-bleed: the logo fills the
- * entire square (`fit: 'cover'`) so the launcher shows the mark edge-to-edge
- * within the masked shape. White behind any transparency comes from
- * app.json `android.adaptiveIcon.backgroundColor`.
+ * entire square (`fit: 'cover'`) so the launcher shows the mark edge-to-edge.
+ * We flatten onto solid white first so Android and iOS render the same square.
  */
 const path = require('path');
 const sharp = require('sharp');
@@ -18,6 +17,7 @@ async function main() {
   const outputPath = path.join(repoRoot, 'assets', 'adaptive-icon.png');
 
   await sharp(inputPath)
+    .flatten({ background: '#FFFFFF' })
     .resize(CANVAS, CANVAS, { fit: 'cover', position: 'centre' })
     .png()
     .toFile(outputPath);
