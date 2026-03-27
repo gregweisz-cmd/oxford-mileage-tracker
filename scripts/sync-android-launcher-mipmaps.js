@@ -11,7 +11,7 @@ const REPO = path.join(__dirname, '..');
 /** Master app / company logo — keep in sync with expo.icon and adaptive-icon source. */
 const ICON = path.join(REPO, 'assets', 'icon.png');
 const RES = path.join(REPO, 'android', 'app', 'src', 'main', 'res');
-const SCALE = 0.75;
+const SCALE = 0.5625;
 
 const FOREGROUND_PX = {
   'mipmap-mdpi': 108,

@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "26",
+      "buildNumber": "27",
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "associatedDomains": [
         "applinks:oxford-mileage-backend.onrender.com"
@@ -44,7 +44,7 @@
     },
     "android": {
       "package": "com.oxfordhouse.ohstafftracker",
-      "versionCode": 28,
+      "versionCode": 29,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"

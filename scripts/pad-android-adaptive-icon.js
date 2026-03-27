@@ -10,7 +10,7 @@ const path = require('path');
 const sharp = require('sharp');
 
 const CANVAS = 1024;
-const SCALE = 0.75;
+const SCALE = 0.5625;
 
 async function main() {
   const repoRoot = path.join(__dirname, '..');
