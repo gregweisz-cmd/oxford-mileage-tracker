@@ -60,7 +60,7 @@ export interface Employee {
   oxfordHouseId: string;
   position: string; // Job title within the company
   role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts'; // Login role (separate from position/job title)
-  permissions?: Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'>; // Portal access permissions
+  permissions?: Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'>; // Portal access permissions
   phoneNumber: string;
   baseAddress: string;
   baseAddress2?: string;

@@ -80,13 +80,18 @@ const PORTAL_PERMISSIONS = [
     description: 'Review team reports and approve expenses',
   },
   {
+    id: 'senior_staff',
+    label: 'Senior Staff Portal',
+    description: 'Review team reports pending senior staff approval (before supervisor)',
+  },
+  {
     id: 'staff',
     label: 'Staff Portal',
     description: 'Manage your own expense reports and mileage',
   },
 ];
 
-const getDefaultPermissions = (role: string, position: string): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> => {
+const getDefaultPermissions = (role: string, position: string): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'> => {
   const normalizedRole = (role || '').toLowerCase();
   const normalizedPosition = (position || '').toLowerCase();
 
@@ -115,6 +120,9 @@ const getDefaultPermissions = (role: string, position: string): Array<'admin' | 
     }
     if (normalizedPosition.includes('supervisor') || normalizedPosition.includes('director') || normalizedPosition.includes('regional manager') || normalizedPosition.includes('manager')) {
       return ['supervisor', 'staff'];
+    }
+    if (normalizedPosition.includes('senior staff')) {
+      return ['senior_staff', 'staff'];
     }
   }
 
@@ -1652,7 +1660,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     value={editingEmployee.permissions || []}
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
-                      permissions: e.target.value as Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'>
+                      permissions: e.target.value as Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'>
                     })}
                     input={<OutlinedInput label="Portal Permissions" />}
                     renderValue={(selected) =>

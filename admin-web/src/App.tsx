@@ -41,6 +41,7 @@ const getAvailablePortalsForUser = (
       if (permission === 'finance') allowed.add('finance');
       if (permission === 'contracts') allowed.add('contracts');
       if (permission === 'supervisor') allowed.add('supervisor');
+      if (permission === 'senior_staff') allowed.add('senior_staff');
       if (permission === 'staff') allowed.add('staff');
     });
     if (normalizedPosition.includes('senior staff') || allowed.has('admin')) allowed.add('senior_staff');
@@ -85,21 +86,29 @@ const getAvailablePortalsForUser = (
   return ['staff'];
 };
 
-const normalizePermissionsValue = (value: unknown): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> => {
+const normalizePermissionsValue = (value: unknown): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'> => {
   const normalizeToken = (token: string) => {
     const normalized = token.toLowerCase().trim();
     if (normalized.includes('admin')) return 'admin';
     if (normalized.includes('finance')) return 'finance';
     if (normalized.includes('contracts')) return 'contracts';
     if (normalized.includes('supervisor')) return 'supervisor';
-    if (normalized.includes('staff')) return 'staff';
+    // Must be before generic "staff" — otherwise "senior_staff" matches "staff"
+    if (
+      normalized === 'senior_staff' ||
+      normalized.includes('senior_staff') ||
+      (normalized.includes('senior') && normalized.includes('staff'))
+    ) {
+      return 'senior_staff';
+    }
+    if (normalized === 'staff' || normalized.includes('staff')) return 'staff';
     return null;
   };
 
   const normalizeList = (list: string[]) =>
     list
       .map((item) => normalizeToken(item))
-      .filter((item): item is 'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff' => item !== null);
+      .filter((item): item is 'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff' => item !== null);
 
   if (Array.isArray(value)) {
     return normalizeList(value.map(String));

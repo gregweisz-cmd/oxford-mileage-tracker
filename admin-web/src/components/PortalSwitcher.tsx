@@ -145,21 +145,28 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   const getAvailablePortals = () => {
     const role = currentUser?.role?.toLowerCase() || '';
     const position = currentUser?.position?.toLowerCase() || '';
-    const normalizePermissions = (value: unknown): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff'> => {
+    const normalizePermissions = (value: unknown): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'> => {
       const normalizeToken = (token: string) => {
         const normalized = token.toLowerCase().trim();
         if (normalized.includes('admin')) return 'admin';
         if (normalized.includes('finance')) return 'finance';
         if (normalized.includes('contracts')) return 'contracts';
         if (normalized.includes('supervisor')) return 'supervisor';
-        if (normalized.includes('staff')) return 'staff';
+        if (
+          normalized === 'senior_staff' ||
+          normalized.includes('senior_staff') ||
+          (normalized.includes('senior') && normalized.includes('staff'))
+        ) {
+          return 'senior_staff';
+        }
+        if (normalized === 'staff' || normalized.includes('staff')) return 'staff';
         return null;
       };
 
       const normalizeList = (list: string[]) =>
         list
           .map((item) => normalizeToken(item))
-          .filter((item): item is 'admin' | 'finance' | 'contracts' | 'supervisor' | 'staff' => item !== null);
+          .filter((item): item is 'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff' => item !== null);
 
       if (Array.isArray(value)) {
         return normalizeList(value.map(String));
@@ -222,8 +229,12 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
           description: 'Review team reports and approve expenses'
         });
       }
-      // Senior Staff: just under Supervisor in hierarchy; show if admin or position includes "senior staff"
-      if (permissions.includes('admin') || position.toLowerCase().includes('senior staff')) {
+      // Senior Staff: explicit permission, admin, or job title includes "Senior Staff"
+      if (
+        permissions.includes('senior_staff') ||
+        permissions.includes('admin') ||
+        position.toLowerCase().includes('senior staff')
+      ) {
         availablePortals.push({
           id: 'senior_staff',
           name: 'Senior Staff Portal',
