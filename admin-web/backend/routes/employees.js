@@ -283,6 +283,25 @@ router.post('/api/employees/sync-from-external/apply', asyncHandler(async (req, 
 }));
 
 /**
+ * Merge duplicate employee rows that share the same email (keeps admin / logged-in account when possible).
+ * POST /api/employees/dedupe-by-email
+ */
+router.post('/api/employees/dedupe-by-email', asyncHandler(async (req, res) => {
+  try {
+    const result = await externalEmployeeSync.dedupeAllByEmail();
+    debugLog('[dedupe-by-email]', result);
+    res.json({
+      message: 'Duplicate emails merged where possible.',
+      duplicateEmails: result.duplicateEmails,
+      rowsRemoved: result.rowsRemoved,
+    });
+  } catch (err) {
+    debugError('❌ dedupe-by-email failed:', err);
+    res.status(500).json({ error: err.message || 'Dedupe failed' });
+  }
+}));
+
+/**
  * Get employee by ID
  */
 router.get('/api/employees/:id', (req, res) => {
@@ -497,6 +516,21 @@ router.post('/api/employees/bulk-create', async (req, res) => {
     }
     
     const employee = employees[index];
+
+    let existingByEmail;
+    try {
+      existingByEmail = await externalEmployeeSync.getEmployeeByEmail(employee.email);
+    } catch (lookupErr) {
+      results.failed++;
+      results.errors.push(`${employee.email || employee.name}: ${lookupErr.message}`);
+      return processEmployee(index + 1);
+    }
+    if (existingByEmail) {
+      results.failed++;
+      results.errors.push(`Email already exists: ${employee.email}`);
+      return processEmployee(index + 1);
+    }
+
     // Generate ID based on employee name
     const id = helpers.generateEmployeeId(employee.name);
     const now = new Date().toISOString();
@@ -591,6 +625,15 @@ router.post('/api/employees',
   validateEmail('email'),
   asyncHandler(async (req, res) => {
   const { name, email, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, preferredName, password } = req.body;
+
+  const existingByEmail = await externalEmployeeSync.getEmployeeByEmail(email);
+  if (existingByEmail) {
+    return res.status(409).json({
+      error: 'An employee with this email already exists.',
+      existingId: existingByEmail.id,
+    });
+  }
+
     const db = dbService.getDb();
   
   // Generate ID based on employee name

@@ -49,6 +49,7 @@ import {
   ArrowUpward,
   ArrowDownward,
   FilterList,
+  MergeType,
 } from '@mui/icons-material';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
@@ -214,6 +215,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     archives: Set<string>;
   }>({ creates: new Set(), updates: new Set(), archives: new Set() });
   const [syncApplyLoading, setSyncApplyLoading] = useState(false);
+  const [dedupeLoading, setDedupeLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -563,6 +565,36 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     }
   };
 
+  /** Merge duplicate database rows that share the same email (keeps admin / account with login when possible). */
+  const handleDedupeByEmail = async () => {
+    setDedupeLoading(true);
+    setSyncFromExternalMessage(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/employees/dedupe-by-email`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const n = typeof data.rowsRemoved === 'number' ? data.rowsRemoved : 0;
+        const emails = Array.isArray(data.duplicateEmails) ? data.duplicateEmails.length : 0;
+        setSyncFromExternalMessage({
+          type: 'success',
+          text:
+            n > 0
+              ? `Merged duplicate emails: removed ${n} extra row(s) (${emails} email(s) had duplicates).`
+              : 'No duplicate emails found — nothing to merge.',
+        });
+        if (onRefresh) onRefresh();
+      } else {
+        setSyncFromExternalMessage({ type: 'error', text: data.error || `Merge failed (${res.status})` });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Merge request failed';
+      setSyncFromExternalMessage({ type: 'error', text: msg });
+      debugError('dedupe-by-email failed', e);
+    } finally {
+      setDedupeLoading(false);
+    }
+  };
+
   // Multi-Select Management
   const handleSelectEmployee = (employeeId: string) => {
     setSelectedEmployees(prev => 
@@ -903,10 +935,22 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       variant="outlined"
                       startIcon={<CloudUpload />}
                       onClick={handleSyncFromExternalApi}
-                      disabled={syncFromExternalLoading}
+                      disabled={syncFromExternalLoading || dedupeLoading}
                     >
                       {syncFromExternalLoading ? 'Syncing...' : 'Sync from HR API'}
                     </Button>
+                    <Tooltip title="If the same person appears more than once (same email), merge into one account. Keeps the admin or logged-in row when possible.">
+                      <span>
+                        <Button
+                          variant="outlined"
+                          startIcon={<MergeType />}
+                          onClick={handleDedupeByEmail}
+                          disabled={dedupeLoading || syncFromExternalLoading}
+                        >
+                          {dedupeLoading ? 'Merging…' : 'Merge duplicate emails'}
+                        </Button>
+                      </span>
+                    </Tooltip>
                   </>
                 )}
               </Box>

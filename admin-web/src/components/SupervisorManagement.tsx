@@ -175,12 +175,21 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     organizeSupervisors();
   }, [employees, organizeSupervisors]);
 
-  /** Staff who have no supervisor (for warning alert on Supervisor tab). */
+  /** Staff who have no supervisor (for warning alert on Supervisor tab). One row per email (DB may have duplicate rows). */
   const getUnassignedStaff = () => {
-    return employees.filter(emp =>
-      !emp.supervisorId &&
-      !EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())
+    const list = employees.filter(
+      (emp) =>
+        !emp.supervisorId &&
+        !EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())
     );
+    const seen = new Set<string>();
+    return list.filter((emp) => {
+      const key = (emp.email || '').toLowerCase().trim();
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   };
 
   /** Everyone who can be assigned to a supervisor or senior staff: not a supervisor/senior staff by position, and not the selected person. */

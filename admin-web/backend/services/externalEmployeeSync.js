@@ -180,15 +180,15 @@ function getEmployeeByEmail(email) {
 }
 
 /**
- * Find all active employees with this email (for dedupe/archive step).
+ * All active rows for an email (full row — used to pick which duplicate to keep).
  * @param {string} email
- * @returns {Promise<Array<{ id: string, createdAt: string }>>}
+ * @returns {Promise<object[]>}
  */
-function getActiveEmployeeIdsByEmail(email) {
+function getActiveEmployeesByEmail(email) {
   return new Promise((resolve, reject) => {
     const db = dbService.getDb();
     db.all(
-      'SELECT id, createdAt FROM employees WHERE LOWER(TRIM(email)) = ? AND (archived IS NULL OR archived = 0) ORDER BY createdAt ASC, id ASC',
+      'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ? AND (archived IS NULL OR archived = 0)',
       [email.trim().toLowerCase()],
       (err, rows) => {
         if (err) reject(err);
@@ -196,6 +196,36 @@ function getActiveEmployeeIdsByEmail(email) {
       }
     );
   });
+}
+
+/**
+ * When multiple rows share an email, keep the one that should remain (admin/login over stale employee rows).
+ * @param {object[]} rows
+ * @returns {object}
+ */
+function pickCanonicalEmployeeRow(rows) {
+  if (!rows || rows.length === 0) return null;
+  if (rows.length === 1) return rows[0];
+  const roleRank = (r) => {
+    const role = String(r.role || 'employee').toLowerCase();
+    if (role === 'admin') return 50;
+    if (role === 'finance') return 45;
+    if (role === 'contracts') return 45;
+    if (role === 'supervisor') return 40;
+    return 10;
+  };
+  const scored = rows.map((r) => ({
+    r,
+    rank: roleRank(r) * 1000 + (r.lastLoginAt && String(r.lastLoginAt).trim() ? 100 : 0),
+  }));
+  scored.sort((a, b) => {
+    if (b.rank !== a.rank) return b.rank - a.rank;
+    const la = a.r.lastLoginAt || '';
+    const lb = b.r.lastLoginAt || '';
+    if (lb !== la) return lb.localeCompare(la);
+    return String(a.r.createdAt || '').localeCompare(String(b.r.createdAt || ''));
+  });
+  return scored[0].r;
 }
 
 /**
@@ -432,6 +462,9 @@ async function reassignAndDeleteDuplicate(keepId, duplicateId) {
     db.run('UPDATE employees SET supervisorId = ? WHERE supervisorId = ?', [keepId, duplicateId], (err) => (err ? reject(err) : resolve()));
   });
   await new Promise((resolve, reject) => {
+    db.run('UPDATE employees SET seniorStaffId = ? WHERE seniorStaffId = ?', [keepId, duplicateId], (err) => (err ? reject(err) : resolve()));
+  });
+  await new Promise((resolve, reject) => {
     db.run('DELETE FROM employees WHERE id = ?', [duplicateId], (err) => (err ? reject(err) : resolve()));
   });
 }
@@ -468,12 +501,20 @@ async function findDuplicateEmailsInDb() {
 async function removeDuplicateEmails(syncedEmails) {
   let removed = 0;
   const emailList = Array.from(syncedEmails);
-  console.log('[HR Sync] Checking for duplicates: %d emails from HR', emailList.length);
+  console.log('[HR Sync] Checking for duplicates: %d emails', emailList.length);
   for (const email of emailList) {
-    const rows = await getActiveEmployeeIdsByEmail(email);
+    const rows = await getActiveEmployeesByEmail(email);
     if (rows.length <= 1) continue;
-    console.log('[HR Sync] Duplicate email "%s": %d rows (keeping oldest, removing %d)', email, rows.length, rows.length - 1);
-    const [keep, ...toRemove] = rows;
+    const keep = pickCanonicalEmployeeRow(rows);
+    const toRemove = rows.filter((r) => r.id !== keep.id);
+    console.log(
+      '[HR Sync] Duplicate email "%s": %d rows (keeping %s role=%s, removing %d)',
+      email,
+      rows.length,
+      keep.id,
+      keep.role || 'employee',
+      toRemove.length
+    );
     for (const row of toRemove) {
       try {
         await reassignAndDeleteDuplicate(keep.id, row.id);
@@ -488,6 +529,17 @@ async function removeDuplicateEmails(syncedEmails) {
   }
   console.log('[HR Sync] Duplicate removal done: %d rows removed', removed);
   return removed;
+}
+
+/**
+ * Merge duplicate-by-email rows for every email that has more than one active employee.
+ * Safe to call anytime (e.g. after noticing duplicate Admin/Employee rows).
+ * @returns {Promise<{ duplicateEmails: string[], rowsRemoved: number }>}
+ */
+async function dedupeAllByEmail() {
+  const dups = await findDuplicateEmailsInDb();
+  const removed = await removeDuplicateEmails(dups);
+  return { duplicateEmails: Array.from(dups), rowsRemoved: removed };
 }
 
 /**
@@ -630,4 +682,6 @@ module.exports = {
   applySyncFromExternal,
   normalizeResponse,
   mapExternalToOur,
+  getEmployeeByEmail,
+  dedupeAllByEmail,
 };
