@@ -7,6 +7,25 @@ import { debugLog, debugError, debugWarn } from '../config/debug';
 // API Configuration
 // Use central config so mobile uses the same base URL (local IP) as the app
 import { API_BASE_URL } from '../config/api';
+import { getSyncMonthScope, monthDateBounds } from './syncScopeService';
+
+/** Pull only a calendar month from the API, or the full history (large; use sparingly). */
+export type SyncFromBackendScope =
+  | { month: number; year: number }
+  | { fullHistory: true };
+
+/** Options for {@link ApiSyncService.syncFromBackend}. */
+export type SyncFromBackendOptions = {
+  /** When true, do not run {@link SyncIntegrationService.processSyncQueue} at the start (caller already did). */
+  skipSyncQueue?: boolean;
+  /** When true, skip the pull if the last successful realtime pull was recent (reduces 429 storms). */
+  realtimePullThrottle?: boolean;
+};
+
+type OrphanCleanupScope = 'all' | { month: number; year: number };
+
+/** Cooldown between successful realtime-triggered full pulls (ms). */
+const REALTIME_PULL_COOLDOWN_MS = 12000;
 
 export interface ApiSyncConfig {
   baseUrl: string;
@@ -32,6 +51,8 @@ export interface SyncStatus {
 }
 
 export class ApiSyncService {
+  private static lastRealtimePullSuccessAt = 0;
+
   private static config: ApiSyncConfig = {
     baseUrl: API_BASE_URL,
     timeout: 10000, // 10 seconds
@@ -80,8 +101,9 @@ export class ApiSyncService {
 
   /**
    * Resolve backend employee ID for a local employee ID using email matching.
+   * Public so BackendDataService (direct API writes) uses the same ID as sync/mileage push.
    */
-  private static async resolveBackendEmployeeId(localEmployeeId?: string): Promise<string | null> {
+  static async resolveBackendEmployeeId(localEmployeeId?: string): Promise<string | null> {
     if (!localEmployeeId) return null;
     if (this.employeeIdCache.has(localEmployeeId)) {
       return this.employeeIdCache.get(localEmployeeId) || null;
@@ -97,9 +119,30 @@ export class ApiSyncService {
     return backendId;
   }
 
+  /** Call after login realigns local employee row id so stale cache entries are dropped. */
+  static clearEmployeeIdResolutionCache(): void {
+    this.employeeIdCache.clear();
+  }
+
   /**
    * Map backend employee IDs to local employee ID for local persistence.
    */
+  private static buildFilteredListUrl(
+    path: string,
+    employeeId?: string | null,
+    monthYear?: { month: number; year: number } | null
+  ): string {
+    const params: string[] = [];
+    if (employeeId) {
+      params.push(`employeeId=${encodeURIComponent(employeeId)}`);
+    }
+    if (monthYear) {
+      params.push(`month=${monthYear.month}`, `year=${monthYear.year}`);
+    }
+    const qs = params.length > 0 ? `?${params.join('&')}` : '';
+    return `${this.config.baseUrl}${path}${qs}`;
+  }
+
   private static mapEmployeeIdForLocal<T extends { employeeId?: string }>(
     items: T[],
     localEmployeeId?: string,
@@ -344,19 +387,39 @@ export class ApiSyncService {
   /**
    * Pull data from backend (source of truth). Use on first load (web or mobile), app foreground,
    * or realtime data_update — never right after a Save (Save = push only).
+   *
+   * When `employeeId` is set, defaults to the focused calendar month from {@link getSyncMonthScope}
+   * unless `scope` is `{ fullHistory: true }` or an explicit `{ month, year }`.
+   * When `employeeId` is omitted, entity lists are fetched without a month filter (legacy / admin-style pull).
    */
-  static async syncFromBackend(employeeId?: string): Promise<SyncResult> {
+  static async syncFromBackend(
+    employeeId?: string,
+    scope?: SyncFromBackendScope,
+    options?: SyncFromBackendOptions
+  ): Promise<SyncResult> {
     try {
       debugLog('📥 ApiSync: Syncing data from backend...');
-      
+
+      if (options?.realtimePullThrottle) {
+        const now = Date.now();
+        if (now - this.lastRealtimePullSuccessAt < REALTIME_PULL_COOLDOWN_MS) {
+          debugLog(
+            `📥 ApiSync: Skipping pull (realtime cooldown ${REALTIME_PULL_COOLDOWN_MS}ms) to reduce API load`
+          );
+          return { success: true, data: {}, timestamp: new Date() };
+        }
+      }
+
       // Process any pending sync operations (including deletions) before syncing from backend
       // This ensures local deletions are sent to backend before we fetch data
-      try {
-        const { SyncIntegrationService } = await import('./syncIntegrationService');
-        await SyncIntegrationService.processSyncQueue();
-      } catch (queueError) {
-        debugWarn('⚠️ ApiSync: Error processing sync queue before backend sync:', queueError);
-        // Continue with backend sync even if queue processing fails
+      if (!options?.skipSyncQueue) {
+        try {
+          const { SyncIntegrationService } = await import('./syncIntegrationService');
+          await SyncIntegrationService.processSyncQueue();
+        } catch (queueError) {
+          debugWarn('⚠️ ApiSync: Error processing sync queue before backend sync:', queueError);
+          // Continue with backend sync even if queue processing fails
+        }
       }
       
       const syncData: any = {};
@@ -364,13 +427,47 @@ export class ApiSyncService {
         ? await this.resolveBackendEmployeeId(employeeId)
         : null;
       const effectiveEmployeeId = backendEmployeeId || employeeId;
+
+      const useFullHistory =
+        !!scope && typeof scope === 'object' && 'fullHistory' in scope && scope.fullHistory === true;
+      const pullMonthYear: { month: number; year: number } | null =
+        !employeeId || useFullHistory
+          ? null
+          : scope && 'month' in scope
+            ? { month: scope.month, year: scope.year }
+            : getSyncMonthScope();
+      const orphanCleanup: OrphanCleanupScope =
+        employeeId && pullMonthYear ? pullMonthYear : 'all';
+
+      if (pullMonthYear) {
+        debugLog(
+          `📥 ApiSync: Pull scoped to month ${pullMonthYear.year}-${String(pullMonthYear.month).padStart(2, '0')}`
+        );
+      }
       
-      // Fetch employees
-      const employees = await this.fetchEmployees();
+      let employees: Employee[];
+      if (employeeId && effectiveEmployeeId) {
+        try {
+          const one = await this.fetchEmployee(effectiveEmployeeId);
+          employees = one ? [one] : [];
+          if (!one) {
+            debugWarn(
+              `⚠️ ApiSync: No employee profile from GET /employees/${effectiveEmployeeId}; skipping profile sync`
+            );
+          }
+        } catch (profileErr) {
+          debugWarn(
+            `⚠️ ApiSync: Could not fetch employee profile (network or rate limit); continuing pull without profile row`,
+            profileErr
+          );
+          employees = [];
+        }
+      } else {
+        employees = await this.fetchEmployees();
+      }
       syncData.employees = employees;
 
-      // Fetch mileage and receipts from backend so new devices (e.g. second phone) get full data
-      const mileageEntries = await this.fetchMileageEntries(effectiveEmployeeId);
+      const mileageEntries = await this.fetchMileageEntries(effectiveEmployeeId, pullMonthYear);
       const mappedMileageEntries = this.mapEmployeeIdForLocal(
         mileageEntries,
         employeeId,
@@ -378,7 +475,7 @@ export class ApiSyncService {
       );
       syncData.mileageEntries = mappedMileageEntries;
 
-      const receipts = await this.fetchReceipts(effectiveEmployeeId);
+      const receipts = await this.fetchReceipts(effectiveEmployeeId, pullMonthYear);
       const mappedReceipts = this.mapEmployeeIdForLocal(
         receipts,
         employeeId,
@@ -386,8 +483,7 @@ export class ApiSyncService {
       );
       syncData.receipts = mappedReceipts;
 
-      // Fetch time tracking
-      const timeTracking = await this.fetchTimeTracking(effectiveEmployeeId);
+      const timeTracking = await this.fetchTimeTracking(effectiveEmployeeId, pullMonthYear);
       const mappedTimeTracking = this.mapEmployeeIdForLocal(
         timeTracking,
         employeeId,
@@ -395,10 +491,9 @@ export class ApiSyncService {
       );
       syncData.timeTracking = mappedTimeTracking;
       
-      // Fetch daily descriptions (non-blocking - continue even if it fails)
       let mappedDailyDescriptions: DailyDescription[] = [];
       try {
-        const dailyDescriptions = await this.fetchDailyDescriptions(effectiveEmployeeId);
+        const dailyDescriptions = await this.fetchDailyDescriptions(effectiveEmployeeId, pullMonthYear);
         mappedDailyDescriptions = this.mapEmployeeIdForLocal(
           dailyDescriptions,
           employeeId,
@@ -410,10 +505,12 @@ export class ApiSyncService {
         syncData.dailyDescriptions = [];
       }
 
-      // Fetch daily odometer readings (starting odometer per day)
       let mappedDailyOdometer: DailyOdometerReading[] = [];
       try {
-        const dailyOdometerReadings = await this.fetchDailyOdometerReadings(effectiveEmployeeId);
+        const dailyOdometerReadings = await this.fetchDailyOdometerReadings(
+          effectiveEmployeeId,
+          pullMonthYear
+        );
         mappedDailyOdometer = this.mapEmployeeIdForLocal(
           dailyOdometerReadings,
           employeeId,
@@ -428,15 +525,11 @@ export class ApiSyncService {
       // Note: Per Diem rules are fetched on-demand in AddReceiptScreen
       // to avoid unnecessary API calls during general sync
       
-      // Sync all data to local database
-      // Backend is source of truth for employee assignments (cost centers, etc.)
-      await this.syncEmployeesToLocal(employees);
+      await this.syncEmployeesToLocal(employees, employeeId);
       await this.syncMileageEntriesToLocal(mappedMileageEntries);
-      await this.syncReceiptsToLocal(mappedReceipts, employeeId ?? undefined);
-      // Time tracking, daily descriptions, odometer (even if empty) to handle deletions
-      await this.syncTimeTrackingToLocal(mappedTimeTracking, effectiveEmployeeId);
-      // Always sync daily descriptions (even if empty array) to handle deletions
-      await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, effectiveEmployeeId);
+      await this.syncReceiptsToLocal(mappedReceipts, employeeId ?? undefined, orphanCleanup);
+      await this.syncTimeTrackingToLocal(mappedTimeTracking, employeeId ?? undefined, orphanCleanup);
+      await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, employeeId ?? undefined, orphanCleanup);
       await this.syncDailyOdometerReadingsToLocal(mappedDailyOdometer, effectiveEmployeeId);
       
       // Per Diem rules sync removed - now loaded on-demand in AddReceiptScreen
@@ -452,7 +545,11 @@ export class ApiSyncService {
         dailyDescriptions: mappedDailyDescriptions.length,
         dailyOdometerReadings: mappedDailyOdometer.length
       });
-      
+
+      if (options?.realtimePullThrottle) {
+        this.lastRealtimePullSuccessAt = Date.now();
+      }
+
       return {
         success: true,
         data: syncData,
@@ -478,9 +575,16 @@ export class ApiSyncService {
       
       for (const employee of employees) {
         try {
-          // Check if employee exists
-          const existingEmployee = await this.fetchEmployee(employee.id);
-          
+          let existingEmployee: Employee | null;
+          try {
+            existingEmployee = await this.fetchEmployee(employee.id);
+          } catch (verifyErr) {
+            const msg =
+              verifyErr instanceof Error ? verifyErr.message : 'Could not verify employee on server';
+            results.push({ success: false, id: employee.id, error: msg });
+            continue;
+          }
+
           if (existingEmployee) {
             // Update existing employee
             const response = await fetch(`${this.config.baseUrl}/employees/${employee.id}`, {
@@ -497,12 +601,15 @@ export class ApiSyncService {
                 costCenters: employee.costCenters
               })
             });
-            
+
             if (!response.ok) {
-              throw new Error(`Failed to update employee: ${response.statusText}`);
+              const detail = await response.text().catch(() => '');
+              throw new Error(
+                `Failed to update employee: HTTP ${response.status} ${response.statusText} ${detail.slice(0, 160)}`
+              );
             }
           } else {
-            // Create new employee
+            // Create new employee (only when GET returned 404 — never after rate-limit / network failure)
             const response = await fetch(`${this.config.baseUrl}/employees`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -517,9 +624,12 @@ export class ApiSyncService {
                 costCenters: employee.costCenters
               })
             });
-            
+
             if (!response.ok) {
-              throw new Error(`Failed to create employee: ${response.statusText}`);
+              const detail = await response.text().catch(() => '');
+              throw new Error(
+                `Failed to create employee: HTTP ${response.status} ${response.statusText} ${detail.slice(0, 160)}`
+              );
             }
           }
           
@@ -1493,46 +1603,65 @@ export class ApiSyncService {
    * Fetch single employee from backend
    */
   private static async fetchEmployee(id: string): Promise<Employee | null> {
-    try {
-      const response = await fetch(`${this.config.baseUrl}/employees/${id}`);
-      if (response.status === 404) {
-        return null;
-      }
-      if (!response.ok) {
-        throw new Error(`Failed to fetch employee: ${response.statusText}`);
-      }
-      
-      const emp = await response.json();
-      return {
-        id: emp.id,
-        name: emp.name,
-        email: emp.email,
-        password: emp.password || '',
-        oxfordHouseId: emp.oxfordHouseId,
-        position: emp.position,
-        phoneNumber: emp.phoneNumber,
-        baseAddress: emp.baseAddress,
-        baseAddress2: emp.baseAddress2 || '',
-        costCenters: Array.isArray(emp.costCenters) ? emp.costCenters : (emp.costCenters ? JSON.parse(emp.costCenters) : []),
-        selectedCostCenters: Array.isArray(emp.selectedCostCenters) ? emp.selectedCostCenters : (emp.selectedCostCenters ? JSON.parse(emp.selectedCostCenters) : []),
-        defaultCostCenter: emp.defaultCostCenter || '',
-        createdAt: new Date(emp.createdAt),
-        updatedAt: new Date(emp.updatedAt)
-      };
-    } catch (error) {
-      console.error('❌ ApiSync: Error fetching employee:', error);
+    const response = await fetch(
+      `${this.config.baseUrl}/employees/${encodeURIComponent(id)}`
+    );
+    if (response.status === 404) {
       return null;
     }
+    const detail = await response.text().catch(() => '');
+    if (response.status === 429) {
+      throw new Error(
+        `Failed to fetch employee: rate limited (429) ${detail.slice(0, 200)}`
+      );
+    }
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch employee: HTTP ${response.status} ${response.statusText} ${detail.slice(0, 200)}`
+      );
+    }
+    let emp: any;
+    try {
+      emp = JSON.parse(detail);
+    } catch {
+      throw new Error('Failed to fetch employee: invalid JSON response');
+    }
+    return {
+      id: emp.id,
+      name: emp.name,
+      preferredName: emp.preferredName || '',
+      email: emp.email,
+      password: emp.password || '',
+      oxfordHouseId: emp.oxfordHouseId,
+      position: emp.position,
+      phoneNumber: emp.phoneNumber,
+      baseAddress: emp.baseAddress,
+      baseAddress2: emp.baseAddress2 || '',
+      costCenters: Array.isArray(emp.costCenters)
+        ? emp.costCenters
+        : emp.costCenters
+          ? JSON.parse(emp.costCenters)
+          : [],
+      selectedCostCenters: Array.isArray(emp.selectedCostCenters)
+        ? emp.selectedCostCenters
+        : emp.selectedCostCenters
+          ? JSON.parse(emp.selectedCostCenters)
+          : [],
+      defaultCostCenter: emp.defaultCostCenter || '',
+      createdAt: new Date(emp.createdAt),
+      updatedAt: new Date(emp.updatedAt)
+    };
   }
 
   /**
    * Fetch mileage entries from backend
    */
-  private static async fetchMileageEntries(employeeId?: string): Promise<MileageEntry[]> {
+  private static async fetchMileageEntries(
+    employeeId?: string,
+    monthYear?: { month: number; year: number } | null
+  ): Promise<MileageEntry[]> {
     try {
-      const url = employeeId 
-        ? `${this.config.baseUrl}/mileage-entries?employeeId=${employeeId}`
-        : `${this.config.baseUrl}/mileage-entries`;
+      const url = this.buildFilteredListUrl('/mileage-entries', employeeId ?? null, monthYear ?? null);
       
       const response = await fetch(url);
       if (!response.ok) {
@@ -1568,10 +1697,11 @@ export class ApiSyncService {
   /**
    * Fetch receipts from backend
    */
-  private static async fetchReceipts(employeeId?: string): Promise<Receipt[]> {
-    const url = employeeId 
-      ? `${this.config.baseUrl}/receipts?employeeId=${employeeId}`
-      : `${this.config.baseUrl}/receipts`;
+  private static async fetchReceipts(
+    employeeId?: string,
+    monthYear?: { month: number; year: number } | null
+  ): Promise<Receipt[]> {
+    const url = this.buildFilteredListUrl('/receipts', employeeId ?? null, monthYear ?? null);
       
     const response = await fetch(url);
     if (!response.ok) {
@@ -1596,10 +1726,11 @@ export class ApiSyncService {
   /**
    * Fetch time tracking from backend
    */
-  private static async fetchTimeTracking(employeeId?: string): Promise<TimeTracking[]> {
-    const url = employeeId 
-      ? `${this.config.baseUrl}/time-tracking?employeeId=${employeeId}`
-      : `${this.config.baseUrl}/time-tracking`;
+  private static async fetchTimeTracking(
+    employeeId?: string,
+    monthYear?: { month: number; year: number } | null
+  ): Promise<TimeTracking[]> {
+    const url = this.buildFilteredListUrl('/time-tracking', employeeId ?? null, monthYear ?? null);
       
     const response = await fetch(url);
     if (!response.ok) {
@@ -1623,10 +1754,11 @@ export class ApiSyncService {
   /**
    * Fetch daily descriptions from backend
    */
-  private static async fetchDailyDescriptions(employeeId?: string): Promise<DailyDescription[]> {
-    const url = employeeId 
-      ? `${this.config.baseUrl}/daily-descriptions?employeeId=${employeeId}`
-      : `${this.config.baseUrl}/daily-descriptions`;
+  private static async fetchDailyDescriptions(
+    employeeId?: string,
+    monthYear?: { month: number; year: number } | null
+  ): Promise<DailyDescription[]> {
+    const url = this.buildFilteredListUrl('/daily-descriptions', employeeId ?? null, monthYear ?? null);
       
     const response = await fetch(url);
     if (!response.ok) {
@@ -1671,10 +1803,15 @@ export class ApiSyncService {
   /**
    * Fetch daily odometer readings from backend
    */
-  private static async fetchDailyOdometerReadings(employeeId?: string): Promise<DailyOdometerReading[]> {
-    const url = employeeId
-      ? `${this.config.baseUrl}/daily-odometer-readings?employeeId=${encodeURIComponent(employeeId)}`
-      : `${this.config.baseUrl}/daily-odometer-readings`;
+  private static async fetchDailyOdometerReadings(
+    employeeId?: string,
+    monthYear?: { month: number; year: number } | null
+  ): Promise<DailyOdometerReading[]> {
+    const url = this.buildFilteredListUrl(
+      '/daily-odometer-readings',
+      employeeId ?? null,
+      monthYear ?? null
+    );
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch daily odometer readings: ${response.statusText}`);
@@ -1795,7 +1932,11 @@ export class ApiSyncService {
   /**
    * Sync daily descriptions from backend to local database
    */
-  private static async syncDailyDescriptionsToLocal(dailyDescriptions: DailyDescription[], employeeId?: string | null): Promise<void> {
+  private static async syncDailyDescriptionsToLocal(
+    dailyDescriptions: DailyDescription[],
+    localEmployeeId?: string | null,
+    orphanCleanup: OrphanCleanupScope = 'all'
+  ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${dailyDescriptions.length} daily descriptions to local database...`);
       
@@ -1810,10 +1951,8 @@ export class ApiSyncService {
       const backendEmployeeIds = new Set(dailyDescriptions.map(d => d.employeeId).filter(Boolean));
       const backendDescriptionIds = new Set(dailyDescriptions.map(d => d.id).filter(Boolean));
       
-      // If we're syncing for a specific employee and the array is empty, 
-      // it means all descriptions were deleted - add that employee to cleanup list
-      if (employeeId && dailyDescriptions.length === 0) {
-        backendEmployeeIds.add(employeeId);
+      if (localEmployeeId && dailyDescriptions.length === 0) {
+        backendEmployeeIds.add(localEmployeeId);
       }
       
       // Helper function to clean odometer readings from description
@@ -1899,17 +2038,23 @@ export class ApiSyncService {
       }
       
       // Delete local descriptions that are not in the backend response
-      // This handles the case where descriptions were deleted on the backend
       if (backendEmployeeIds.size > 0) {
-        for (const employeeId of backendEmployeeIds) {
+        for (const empId of backendEmployeeIds) {
           try {
-            // Get all local descriptions for this employee
-            const localDescriptions = await database.getAllAsync(
-              'SELECT id FROM daily_descriptions WHERE employeeId = ?',
-              [employeeId]
-            ) as Array<{ id: string }>;
+            let localDescriptions: Array<{ id: string }>;
+            if (orphanCleanup === 'all') {
+              localDescriptions = (await database.getAllAsync(
+                'SELECT id FROM daily_descriptions WHERE employeeId = ?',
+                [empId]
+              )) as Array<{ id: string }>;
+            } else {
+              const { start, end } = monthDateBounds(orphanCleanup.month, orphanCleanup.year);
+              localDescriptions = (await database.getAllAsync(
+                'SELECT id FROM daily_descriptions WHERE employeeId = ? AND date >= ? AND date <= ?',
+                [empId, start, end]
+              )) as Array<{ id: string }>;
+            }
             
-            // Delete local descriptions that are not in backend response and not pending deletion
             for (const localDesc of localDescriptions) {
               if (!backendDescriptionIds.has(localDesc.id) && !pendingDeletionIds.has(localDesc.id)) {
                 debugLog(`🗑️ ApiSync: Deleting local daily description ${localDesc.id} - not found in backend (was deleted on backend)`);
@@ -1920,7 +2065,7 @@ export class ApiSyncService {
               }
             }
           } catch (error) {
-            console.error(`❌ ApiSync: Error cleaning up deleted daily descriptions for employee ${employeeId}:`, error);
+            console.error(`❌ ApiSync: Error cleaning up deleted daily descriptions for employee ${empId}:`, error);
           }
         }
       }
@@ -2033,8 +2178,13 @@ export class ApiSyncService {
    * Sync receipts from backend to local database.
    * Upserts all backend receipts; if localEmployeeId is provided, deletes local receipts
    * for that employee that are not in the backend list (so web-portal deletes stay deleted).
+   * When orphanCleanup is a month, only removes orphans in that calendar month (scoped pull).
    */
-  private static async syncReceiptsToLocal(receipts: Receipt[], localEmployeeId?: string): Promise<void> {
+  private static async syncReceiptsToLocal(
+    receipts: Receipt[],
+    localEmployeeId?: string,
+    orphanCleanup: OrphanCleanupScope = 'all'
+  ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
       
@@ -2122,10 +2272,19 @@ export class ApiSyncService {
           );
         } else {
           const placeholders = backendIds.map(() => '?').join(',');
-          const del = await database.runAsync(
-            `DELETE FROM receipts WHERE employeeId = ? AND id NOT IN (${placeholders})`,
-            [localEmployeeId, ...backendIds]
-          );
+          let del: { changes: number };
+          if (orphanCleanup === 'all') {
+            del = await database.runAsync(
+              `DELETE FROM receipts WHERE employeeId = ? AND id NOT IN (${placeholders})`,
+              [localEmployeeId, ...backendIds]
+            );
+          } else {
+            const { start, end } = monthDateBounds(orphanCleanup.month, orphanCleanup.year);
+            del = await database.runAsync(
+              `DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ? AND id NOT IN (${placeholders})`,
+              [localEmployeeId, start, end, ...backendIds]
+            );
+          }
           if (del.changes > 0) {
             debugLog(`🗑️ ApiSync: Removed ${del.changes} local receipt(s) not on backend (employee ${localEmployeeId})`);
           }
@@ -2138,14 +2297,23 @@ export class ApiSyncService {
     }
   }
 
-  /** Sync employee profiles from backend to local. Render is source of truth for cost centers and assignments. */
-  private static async syncEmployeesToLocal(employees: Employee[]): Promise<void> {
+  /**
+   * Sync employee profiles from backend to local. Render is source of truth for cost centers and assignments.
+   * When `loggedInLocalId` is set and exactly one row was fetched (GET /employees/:backendId), use it to look up
+   * the local SQLite row so updates apply when local id differs from backend canonical id.
+   */
+  private static async syncEmployeesToLocal(
+    employees: Employee[],
+    loggedInLocalId?: string
+  ): Promise<void> {
     try {
       if (!employees || employees.length === 0) return;
       debugLog(`📥 ApiSync: Syncing ${employees.length} employee profile(s) from backend to local...`);
       for (const backendEmp of employees) {
         try {
-          const local = await DatabaseService.getEmployeeById(backendEmp.id);
+          const localLookupId =
+            loggedInLocalId && employees.length === 1 ? loggedInLocalId : backendEmp.id;
+          const local = await DatabaseService.getEmployeeById(localLookupId);
           if (!local) continue;
           // Preserve local base address(es) when backend doesn't return them (e.g. API omits or returns empty)
           const baseAddress = (backendEmp.baseAddress != null && String(backendEmp.baseAddress).trim() !== '')
@@ -2154,7 +2322,7 @@ export class ApiSyncService {
           const baseAddress2 = (backendEmp.baseAddress2 != null && String(backendEmp.baseAddress2).trim() !== '')
             ? backendEmp.baseAddress2
             : (local.baseAddress2 ?? '');
-          await DatabaseService.updateEmployee(backendEmp.id, {
+          await DatabaseService.updateEmployee(localLookupId, {
             costCenters: backendEmp.costCenters ?? [],
             selectedCostCenters: (backendEmp.selectedCostCenters?.length ? backendEmp.selectedCostCenters : (backendEmp.costCenters ?? [])),
             defaultCostCenter: backendEmp.defaultCostCenter ?? backendEmp.costCenters?.[0] ?? '',
@@ -2166,7 +2334,7 @@ export class ApiSyncService {
             phoneNumber: backendEmp.phoneNumber ?? '',
             oxfordHouseId: backendEmp.oxfordHouseId ?? ''
           });
-          debugLog(`🔄 ApiSync: Updated local employee ${backendEmp.id} (${backendEmp.name}) from backend`);
+          debugLog(`🔄 ApiSync: Updated local employee ${localLookupId} (${backendEmp.name}) from backend`);
         } catch (err) {
           debugWarn(`⚠️ ApiSync: Failed to sync employee ${backendEmp.id} to local:`, err);
         }
@@ -2180,7 +2348,11 @@ export class ApiSyncService {
   /**
    * Sync time tracking from backend to local database
    */
-  private static async syncTimeTrackingToLocal(timeTracking: TimeTracking[], employeeId?: string | null): Promise<void> {
+  private static async syncTimeTrackingToLocal(
+    timeTracking: TimeTracking[],
+    localEmployeeId?: string | null,
+    orphanCleanup: OrphanCleanupScope = 'all'
+  ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${timeTracking.length} time tracking entries to local database...`);
       
@@ -2191,14 +2363,11 @@ export class ApiSyncService {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('timeTracking');
       
-      // Extract unique employee IDs from backend entries
       const backendEmployeeIds = new Set(timeTracking.map(t => t.employeeId).filter(Boolean));
       const backendTrackingIds = new Set(timeTracking.map(t => t.id).filter(Boolean));
       
-      // If we're syncing for a specific employee and the array is empty, 
-      // it means all entries were deleted - add that employee to cleanup list
-      if (employeeId && timeTracking.length === 0) {
-        backendEmployeeIds.add(employeeId);
+      if (localEmployeeId && timeTracking.length === 0) {
+        backendEmployeeIds.add(localEmployeeId);
       }
       
       // Update or create entries from backend
@@ -2273,18 +2442,23 @@ export class ApiSyncService {
         }
       }
       
-      // Delete local entries that are not in the backend response
-      // This handles the case where entries were deleted on the backend
       if (backendEmployeeIds.size > 0) {
         for (const empId of backendEmployeeIds) {
           try {
-            // Get all local time tracking entries for this employee
-            const localEntries = await database.getAllAsync(
-              'SELECT id FROM time_tracking WHERE employeeId = ?',
-              [empId]
-            ) as Array<{ id: string }>;
+            let localEntries: Array<{ id: string }>;
+            if (orphanCleanup === 'all') {
+              localEntries = (await database.getAllAsync(
+                'SELECT id FROM time_tracking WHERE employeeId = ?',
+                [empId]
+              )) as Array<{ id: string }>;
+            } else {
+              const { start, end } = monthDateBounds(orphanCleanup.month, orphanCleanup.year);
+              localEntries = (await database.getAllAsync(
+                'SELECT id FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?',
+                [empId, start, end]
+              )) as Array<{ id: string }>;
+            }
             
-            // Delete local entries that are not in backend response and not pending deletion
             for (const localEntry of localEntries) {
               if (!backendTrackingIds.has(localEntry.id) && !pendingDeletionIds.has(localEntry.id)) {
                 debugLog(`🗑️ ApiSync: Deleting local time tracking entry ${localEntry.id} - not found in backend (was deleted on backend)`);

@@ -13,6 +13,7 @@
 import { API_BASE_URL } from '../config/api';
 import { Employee, MileageEntry, Receipt, TimeTracking, DailyDescription } from '../types';
 import { UnifiedDayData } from './unifiedDataService';
+import { ApiSyncService } from './apiSyncService';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -83,6 +84,12 @@ export class BackendDataService {
     });
   }
 
+  /** Backend employee id for API query/body (matches ApiSyncService / mileage push). */
+  private static async apiEmployeeId(employeeId: string): Promise<string> {
+    const resolved = await ApiSyncService.resolveBackendEmployeeId(employeeId);
+    return resolved ?? employeeId;
+  }
+
   // ===== EMPLOYEES =====
 
   static async getEmployees(): Promise<Employee[]> {
@@ -90,11 +97,13 @@ export class BackendDataService {
   }
 
   static async getEmployee(employeeId: string): Promise<Employee> {
-    return this.fetchFromBackend<Employee>(`/employees/${employeeId}`);
+    const id = await this.apiEmployeeId(employeeId);
+    return this.fetchFromBackend<Employee>(`/employees/${id}`);
   }
 
   static async updateEmployee(employeeId: string, updates: Partial<Employee>): Promise<Employee> {
-    return this.writeToBackend<Employee>(`/employees/${employeeId}`, 'PUT', updates);
+    const id = await this.apiEmployeeId(employeeId);
+    return this.writeToBackend<Employee>(`/employees/${id}`, 'PUT', updates);
   }
 
   // ===== MILEAGE ENTRIES =====
@@ -107,7 +116,7 @@ export class BackendDataService {
     let endpoint = '/mileage-entries';
     const params = new URLSearchParams();
     
-    if (employeeId) params.append('employeeId', employeeId);
+    if (employeeId) params.append('employeeId', await this.apiEmployeeId(employeeId));
     if (month) params.append('month', month.toString());
     if (year) params.append('year', year.toString());
     
@@ -123,7 +132,8 @@ export class BackendDataService {
   }
 
   static async createMileageEntry(entry: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MileageEntry> {
-    return this.writeToBackend<MileageEntry>('/mileage-entries', 'POST', entry);
+    const employeeId = await this.apiEmployeeId(entry.employeeId);
+    return this.writeToBackend<MileageEntry>('/mileage-entries', 'POST', { ...entry, employeeId });
   }
 
   static async updateMileageEntry(entryId: string, updates: Partial<MileageEntry>): Promise<MileageEntry> {
@@ -144,7 +154,7 @@ export class BackendDataService {
     let endpoint = '/receipts';
     const params = new URLSearchParams();
     
-    if (employeeId) params.append('employeeId', employeeId);
+    if (employeeId) params.append('employeeId', await this.apiEmployeeId(employeeId));
     if (month) params.append('month', month.toString());
     if (year) params.append('year', year.toString());
     
@@ -160,7 +170,8 @@ export class BackendDataService {
   }
 
   static async createReceipt(receipt: Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>): Promise<Receipt> {
-    return this.writeToBackend<Receipt>('/receipts', 'POST', receipt);
+    const employeeId = await this.apiEmployeeId(receipt.employeeId);
+    return this.writeToBackend<Receipt>('/receipts', 'POST', { ...receipt, employeeId });
   }
 
   static async updateReceipt(receiptId: string, updates: Partial<Receipt>): Promise<Receipt> {
@@ -181,7 +192,7 @@ export class BackendDataService {
     let endpoint = '/time-tracking';
     const params = new URLSearchParams();
     
-    if (employeeId) params.append('employeeId', employeeId);
+    if (employeeId) params.append('employeeId', await this.apiEmployeeId(employeeId));
     if (month) params.append('month', month.toString());
     if (year) params.append('year', year.toString());
     
@@ -199,8 +210,10 @@ export class BackendDataService {
   static async createTimeTracking(entry: Omit<TimeTracking, 'id' | 'createdAt' | 'updatedAt'>): Promise<TimeTracking> {
     // Ensure date is in YYYY-MM-DD format for backend
     const dateStr = this.toLocalDateKey(entry.date);
+    const employeeId = await this.apiEmployeeId(entry.employeeId);
     return this.writeToBackend<TimeTracking>('/time-tracking', 'POST', {
       ...entry,
+      employeeId,
       date: dateStr
     });
   }
@@ -210,6 +223,9 @@ export class BackendDataService {
     const formattedUpdates = { ...updates };
     if (formattedUpdates.date) {
       formattedUpdates.date = this.toLocalDateKey(formattedUpdates.date as any) as any;
+    }
+    if (formattedUpdates.employeeId) {
+      formattedUpdates.employeeId = await this.apiEmployeeId(formattedUpdates.employeeId as string);
     }
     return this.writeToBackend<TimeTracking>(`/time-tracking/${entryId}`, 'PUT', formattedUpdates);
   }
@@ -228,7 +244,7 @@ export class BackendDataService {
     let endpoint = '/daily-descriptions';
     const params = new URLSearchParams();
     
-    if (employeeId) params.append('employeeId', employeeId);
+    if (employeeId) params.append('employeeId', await this.apiEmployeeId(employeeId));
     if (month) params.append('month', month.toString());
     if (year) params.append('year', year.toString());
     
@@ -246,8 +262,10 @@ export class BackendDataService {
   static async createDailyDescription(description: Omit<DailyDescription, 'id' | 'createdAt' | 'updatedAt'>): Promise<DailyDescription> {
     // Ensure date is in YYYY-MM-DD format for backend
     const dateStr = this.toLocalDateKey(description.date);
+    const employeeId = await this.apiEmployeeId(description.employeeId);
     return this.writeToBackend<DailyDescription>('/daily-descriptions', 'POST', {
       ...description,
+      employeeId,
       date: dateStr
     });
   }
@@ -580,14 +598,14 @@ export class BackendDataService {
   ): Promise<void> {
     const isEmpty = !description || description.trim() === '';
 
-    // If empty and user is not setting it as a day off, delete it
-    // Use descriptionId when available (from the day we're editing) for reliable delete
-    if (isEmpty && !dayOff) {
+    // If empty and not day off, delete the row only when there is nothing else to persist.
+    // "Stayed out of town" is stored on the same row; checkbox-only must upsert, not delete.
+    const keepRowForOutOfTown = stayedOvernight === true;
+    if (isEmpty && !dayOff && !keepRowForOutOfTown) {
       if (descriptionId) {
         await this.deleteDailyDescription(descriptionId);
         return;
       }
-      // Fallback: find by date (can fail with timezone/format mismatches)
       const month = date.getMonth() + 1;
       const year = date.getFullYear();
       const existingDescriptions = await this.getDailyDescriptions(employeeId, month, year);
@@ -622,7 +640,7 @@ export class BackendDataService {
         dayOff: dayOff || false, // Explicitly set dayOff to false if not provided
         dayOffType: dayOff ? dayOffType : null // Clear dayOffType if not a day off
       });
-    } else if (!isEmpty || dayOff) {
+    } else if (!isEmpty || dayOff || keepRowForOutOfTown) {
       await this.createDailyDescription({
         employeeId,
         date,

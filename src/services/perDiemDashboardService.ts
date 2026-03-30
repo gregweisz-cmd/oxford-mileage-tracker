@@ -1,7 +1,7 @@
 /**
  * Per Diem Dashboard Service
  * Provides Per Diem statistics and eligibility information for dashboard widgets
- * Eligibility rule: 8+ hours AND (100+ miles OR stayed overnight 50+ mi from base)
+ * Eligibility rule: 8+ hours AND (100+ miles OR Daily Hours "out of town" checkbox)
  */
 
 import { DatabaseService } from './database';
@@ -105,7 +105,7 @@ export class PerDiemDashboardService {
 
   /**
    * Analyze Per Diem eligibility for the entire month.
-   * Uses same rule as Per Diem screen: 8+ hours AND (100+ miles OR stayed overnight 50+ mi from base).
+   * Uses same rule as Per Diem screen: 8+ hours AND (100+ miles OR out-of-town checkbox).
    */
   private static async analyzeEligibilityForMonth(
     employee: Employee,
@@ -130,7 +130,7 @@ export class PerDiemDashboardService {
 
   /**
    * Check if employee is eligible for Per Diem today.
-   * Uses same rule: 8+ hours AND (100+ miles OR stayed overnight 50+ mi from base).
+   * Uses same rule: 8+ hours AND (100+ miles OR out-of-town checkbox).
    */
   private static async checkEligibilityForToday(
     employee: Employee
@@ -140,7 +140,9 @@ export class PerDiemDashboardService {
       const year = today.getFullYear();
       const month = today.getMonth() + 1;
       const eligibilityMap = await PerDiemAiService.getEligibilityForMonth(employee.id, month, year);
-      const dateKey = today.toISOString().split('T')[0];
+      const m = String(month).padStart(2, '0');
+      const d = String(today.getDate()).padStart(2, '0');
+      const dateKey = `${year}-${m}-${d}`;
       const dayResult = eligibilityMap.get(dateKey);
       return dayResult ?? { isEligible: false, reason: 'Unable to determine eligibility' };
     } catch (error) {

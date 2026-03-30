@@ -45,7 +45,8 @@ export type WebSocketEventType =
   | 'heartbeat_response'
   | 'error';
 
-const DATA_UPDATE_SYNC_DEBOUNCE_MS = 800;
+/** Wait for bursts of data_update to settle before push+pull (reduces duplicate work and 429s). */
+const DATA_UPDATE_SYNC_DEBOUNCE_MS = 4500;
 
 export class RealtimeSyncService {
   private static instance: RealtimeSyncService;
@@ -179,37 +180,71 @@ export class RealtimeSyncService {
 
   private handleDataUpdate(message: DataUpdateMessage): void {
     const { data } = message;
-    
-    // Only process updates for the current employee or global updates
-    if (data.employeeId && data.employeeId !== this.currentEmployeeId) {
-      debugLog('📡 Ignoring data update for different employee:', data.employeeId);
+
+    if (data.employeeId && this.currentEmployeeId) {
+      void this.whenSameEmployeeAsCurrent(data.employeeId, () => {
+        this.deliverDataUpdate(data);
+      });
       return;
     }
 
+    this.deliverDataUpdate(data);
+  }
+
+  /** Backend WebSocket uses canonical employee id; app may still use local SQLite id — treat as same after resolve. */
+  private async whenSameEmployeeAsCurrent(
+    messageEmployeeId: string,
+    onMatch: () => void
+  ): Promise<void> {
+    if (!this.currentEmployeeId) return;
+    if (messageEmployeeId === this.currentEmployeeId) {
+      onMatch();
+      return;
+    }
+    try {
+      const { ApiSyncService } = await import('./apiSyncService');
+      const [a, b] = await Promise.all([
+        ApiSyncService.resolveBackendEmployeeId(this.currentEmployeeId),
+        ApiSyncService.resolveBackendEmployeeId(messageEmployeeId),
+      ]);
+      const ca = a ?? this.currentEmployeeId;
+      const cb = b ?? messageEmployeeId;
+      if (ca === cb) {
+        onMatch();
+        return;
+      }
+    } catch {
+      // fall through to ignore
+    }
+    debugLog('📡 Ignoring data update for different employee:', messageEmployeeId);
+  }
+
+  private deliverDataUpdate(data: DataUpdateMessage['data']): void {
     debugLog(`📡 Data update: ${data.type} ${data.action}`, data.data);
     
-    // Emit the data update event
     this.emit('data_update', data);
-    
-    // Trigger sync if needed
+
     this.triggerSyncIfNeeded(data);
   }
 
   private handleNotification(message: NotificationMessage): void {
     const { data } = message;
-    
-    // Only show notifications for the current employee or global notifications
-    if (data.employeeId && data.employeeId !== this.currentEmployeeId) {
-      debugLog('📡 Ignoring notification for different employee:', data.employeeId);
+
+    if (data.employeeId && this.currentEmployeeId) {
+      void this.whenSameEmployeeAsCurrent(data.employeeId, () => {
+        this.deliverNotification(data);
+      });
       return;
     }
 
+    this.deliverNotification(data);
+  }
+
+  private deliverNotification(data: NotificationMessage['data']): void {
     debugLog(`📢 Notification: ${data.title} - ${data.message}`);
     
-    // Show native notification
     Alert.alert(data.title, data.message);
-    
-    // Emit the notification event
+
     this.emit('notification', data);
   }
 
@@ -233,7 +268,10 @@ export class RealtimeSyncService {
         const { SyncIntegrationService } = await import('./syncIntegrationService');
         const { ApiSyncService } = await import('./apiSyncService');
         await SyncIntegrationService.processSyncQueue();
-        await ApiSyncService.syncFromBackend(this.currentEmployeeId);
+        await ApiSyncService.syncFromBackend(this.currentEmployeeId, undefined, {
+          skipSyncQueue: true,
+          realtimePullThrottle: true
+        });
       } catch (error) {
         console.error('❌ Error syncing after real-time update:', error);
       } finally {

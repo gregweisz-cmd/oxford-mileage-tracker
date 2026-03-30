@@ -669,6 +669,53 @@ export class DatabaseService {
     await database.execAsync('DELETE FROM current_employee');
   }
 
+  /**
+   * When the device has an old local UUID but login returns the real backend id,
+   * rewrite all FKs so BackendDataService and SQLite stay consistent (fixes iOS/web mismatch).
+   */
+  static async realignEmployeeIdWithBackend(oldId: string, newId: string): Promise<void> {
+    if (oldId === newId) return;
+    const database = await getDatabase();
+    const collision = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM employees WHERE id = ?',
+      [newId]
+    );
+    if (collision) {
+      console.warn('⚠️ Database: realign skipped — employee id already exists locally:', newId);
+      return;
+    }
+    const tables = [
+      'mileage_entries',
+      'monthly_reports',
+      'weekly_reports',
+      'biweekly_reports',
+      'receipts',
+      'daily_odometer_readings',
+      'saved_addresses',
+      'time_tracking',
+      'daily_descriptions',
+      'cost_center_summaries',
+      'current_employee',
+    ];
+    await database.execAsync('BEGIN');
+    try {
+      for (const t of tables) {
+        await database.runAsync(`UPDATE ${t} SET employeeId = ? WHERE employeeId = ?`, [newId, oldId]);
+      }
+      await database.runAsync('UPDATE employees SET id = ? WHERE id = ?', [newId, oldId]);
+      await database.execAsync('COMMIT');
+    } catch (e) {
+      try {
+        await database.execAsync('ROLLBACK');
+      } catch {
+        // ignore
+      }
+      throw e;
+    }
+    const { ApiSyncService } = await import('./apiSyncService');
+    ApiSyncService.clearEmployeeIdResolutionCache();
+  }
+
   static async getCurrentEmployeeSession(): Promise<{employeeId: string, stayLoggedIn: boolean, hasCompletedOnboarding?: boolean, hasCompletedSetupWizard?: boolean} | null> {
     const database = await getDatabase();
     const result = await database.getFirstAsync('SELECT employeeId, stayLoggedIn, hasCompletedOnboarding, hasCompletedSetupWizard FROM current_employee') as any;

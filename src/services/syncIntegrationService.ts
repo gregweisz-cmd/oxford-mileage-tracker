@@ -4,6 +4,12 @@ import { ApiSyncService } from './apiSyncService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 
+function redactEntityForDebugLog(entity: unknown): unknown {
+  if (!entity || typeof entity !== 'object' || Array.isArray(entity)) return entity;
+  const o = entity as Record<string, unknown>;
+  return { ...o, ...(o.password !== undefined ? { password: '[redacted]' } : {}) };
+}
+
 export interface SyncQueueItem {
   id: string;
   operation: 'create' | 'update' | 'delete';
@@ -345,7 +351,7 @@ export class SyncIntegrationService {
       entityType,
       operationCount: operations.length,
       syncDataKeys: Object.keys(syncData),
-      sampleEntity: entities[0]
+      sampleEntity: redactEntityForDebugLog(entities[0])
     });
     
     const result = await ApiSyncService.syncToBackend(syncData);

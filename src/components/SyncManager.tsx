@@ -106,7 +106,7 @@ export const SyncManager: React.FC<SyncManagerProps> = ({
       console.log('📥 SyncManager: Starting sync from backend...');
       
       // Sync from backend
-      const result = await ApiSyncService.syncFromBackend(employeeId);
+      const result = await ApiSyncService.syncFromBackend(employeeId, { fullHistory: true });
 
       if (result.success) {
         setLastSyncResult('✅ Sync from backend completed successfully');

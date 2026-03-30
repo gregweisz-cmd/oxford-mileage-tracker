@@ -150,6 +150,7 @@ function buildDrivingSummaryFromMileage(
 
 export type CostCenterRow = {
   dateStr: string;
+  weekdayStr: string;
   day: number;
   description: string;
   dayOff: boolean;
@@ -186,6 +187,7 @@ export function buildCostCenterRows(params: {
   });
   return Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
+    const weekdayStr = new Date(currentYear, currentMonth - 1, day).toLocaleDateString('en-US', { weekday: 'long' });
     const dateStr = `${String(currentMonth).padStart(2, '0')}/${String(day).padStart(2, '0')}/${String(currentYear).slice(-2)}`;
     const normDate = normalizeDate(dateStr);
     const dayDescription = dailyDescriptions.find((d: any) => normalizeDate(d.date) === normDate);
@@ -218,7 +220,7 @@ export function buildCostCenterRows(params: {
       description = drivingSummary;
     }
     const perDiem = (dayDescription && (dayDescription.costCenter || costCenters[0]) === costCenter) ? (perDiemByDate[normDate] ?? 0) : 0;
-    return { dateStr, day, description, dayOff, dayOffType, hoursWorked, odometerStart: Math.round(odometerStart), odometerEnd, milesTraveled: Math.round(milesTraveled), mileageAmount, perDiem };
+    return { dateStr, weekdayStr, day, description, dayOff, dayOffType, hoursWorked, odometerStart: Math.round(odometerStart), odometerEnd, milesTraveled: Math.round(milesTraveled), mileageAmount, perDiem };
   });
 }
 
@@ -248,7 +250,12 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.day} sx={row.dayOff ? { bgcolor: '#e0e0e0', opacity: 0.6, '& td': { bgcolor: '#e0e0e0', opacity: 0.6 } } : {}}>
-              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{row.dateStr}</TableCell>
+              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                  <span>{row.dateStr}</span>
+                  <Typography variant="caption" color="text.secondary">{row.weekdayStr}</Typography>
+                </Box>
+              </TableCell>
               <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>{row.dayOff ? <Box sx={{ fontStyle: 'italic', color: 'text.secondary' }}>{row.dayOffType || 'Day Off'}</Box> : <Box component="span" sx={{ whiteSpace: 'pre-wrap' }}>{row.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}</Box>}</TableCell>
               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.hoursWorked ? row.hoursWorked.toFixed(1) : ''}</TableCell>
               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.odometerStart}</TableCell>
@@ -558,6 +565,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     return String(dateValue).split('T')[0];
   }, []);
+
+  const formatWeekdayForDateCell = React.useCallback((dateValue: any): string => {
+    const normalized = normalizeDate(dateValue);
+    const parts = normalized.split('-').map(Number);
+    if (parts.length === 3 && !parts.some((n) => Number.isNaN(n))) {
+      return new Date(parts[0], parts[1] - 1, parts[2]).toLocaleDateString('en-US', { weekday: 'long' });
+    }
+    const parsed = new Date(dateValue);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('en-US', { weekday: 'long' });
+    }
+    return '';
+  }, [normalizeDate]);
+
+  const getTimesheetHeaderWeekday = React.useCallback((day: number): string => {
+    return new Date(currentYear, currentMonth - 1, day).toLocaleDateString('en-US', { weekday: 'short' });
+  }, [currentMonth, currentYear]);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [cropModalReceipt, setCropModalReceipt] = useState<{ id: string; imageUri: string } | null>(null);
@@ -1495,6 +1519,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             if (perDiemFromReceipts === 0) {
               const costCenterForPerDiem = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
               
+
               try {
                 const perDiemResult = await PerDiemRulesService.calculatePerDiem(
                   costCenterForPerDiem,
@@ -1504,6 +1529,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   perDiemFromReceipts
                 );
 
+                // Match mobile rule: hours AND (miles OR out-of-town checkbox).
                 const activeRule = perDiemResult.rule;
                 const minHours = activeRule?.minHours ?? 8;
                 const minMiles = activeRule?.minMiles ?? 100;
@@ -6725,7 +6751,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             />
                           </TableCell>
                         )}
-                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{entry.date}</TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                            <span>{entry.date}</span>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatWeekdayForDateCell(entry.date)}
+                            </Typography>
+                          </Box>
+                        </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           {dailyDescriptionOptions.length > 0 && !dayDescription?.dayOff && !isAdminView ? (
                             <Autocomplete
@@ -7268,7 +7301,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   <Checkbox checked={isSelected} onChange={(e) => { const newSet = new Set(selectedMileageItems); if (e.target.checked) newSet.add(itemId); else newSet.delete(itemId); setSelectedMileageItems(newSet); }} size="small" />
                                 </TableCell>
                               )}
-                              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{row.dateStr}{needsRevision && <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />}</TableCell>
+                              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                                    <span>{row.dateStr}</span>
+                                    {needsRevision && <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 0.5, bgcolor: 'warning.main', color: 'white' }} />}
+                                  </Box>
+                                  <Typography variant="caption" color="text.secondary">{row.weekdayStr}</Typography>
+                                </Box>
+                              </TableCell>
                               <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>
                                 {row.dayOff ? <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap', color: 'text.secondary', fontStyle: 'italic' }}>{row.dayOffType || 'Day Off'}</Box> : <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap' }} tabIndex={-1} aria-readonly="true">{row.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}</Box>}
                               </TableCell>
@@ -7585,9 +7626,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               <Typography variant="caption" sx={{ fontSize: '0.65rem', lineHeight: 1 }}>
                                 {i + 1}
                               </Typography>
+                              <Typography variant="caption" sx={{ fontSize: '0.58rem', lineHeight: 1, color: 'text.secondary' }}>
+                                {getTimesheetHeaderWeekday(day)}
+                              </Typography>
                             </Box>
                           ) : (
-                            i + 1
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+                              <span>{i + 1}</span>
+                              <Typography variant="caption" sx={{ fontSize: '0.58rem', lineHeight: 1, color: 'text.secondary' }}>
+                                {getTimesheetHeaderWeekday(day)}
+                              </Typography>
+                            </Box>
                           )}
                         </TableCell>
                       );
@@ -7775,11 +7824,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 120, minWidth: 120, maxWidth: 120 }}><strong>Category</strong></TableCell>
-                    {Array.from({ length: daysInMonth }, (_, i) => (
-                      <TableCell key={i} align="center" sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
-                        {i + 1}
-                      </TableCell>
-                    ))}
+                    {Array.from({ length: daysInMonth }, (_, i) => {
+                      const day = i + 1;
+                      return (
+                        <TableCell key={i} align="center" sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+                            <span>{day}</span>
+                            <Typography variant="caption" sx={{ fontSize: '0.58rem', lineHeight: 1, color: 'text.secondary' }}>
+                              {getTimesheetHeaderWeekday(day)}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                      );
+                    })}
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }}><strong>TOTAL</strong></TableCell>
                   </TableRow>
                 </TableHead>

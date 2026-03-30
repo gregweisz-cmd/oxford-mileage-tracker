@@ -439,24 +439,22 @@ export class UnifiedDataService {
     // Check if description already exists for this day
     const existingDescription = await DatabaseService.getDailyDescriptionByDate(employeeId, date);
     
-    // If description is empty and not a day off, delete it
     const isEmpty = !description || description.trim() === '';
-    if (isEmpty && !dayOff && existingDescription) {
+    const keepRowForOutOfTown = stayedOvernight === true;
+
+    if (isEmpty && !dayOff && !keepRowForOutOfTown && existingDescription) {
       console.log(`🗑️ UnifiedDataService: Deleting daily description ${existingDescription.id} for date ${date.toISOString()}`);
       await DatabaseService.deleteDailyDescription(existingDescription.id);
       console.log(`✅ UnifiedDataService: Daily description deleted successfully`);
       return;
     }
-    
-    // If description is empty and not a day off but doesn't exist, nothing to delete
-    if (isEmpty && !dayOff && !existingDescription) {
+
+    if (isEmpty && !dayOff && !keepRowForOutOfTown && !existingDescription) {
       console.log(`ℹ️ UnifiedDataService: No description to delete for date ${date.toISOString()}`);
       return;
     }
-    
-    // If it's a day off or has content, update or create
+
     if (existingDescription) {
-      // Update existing description
       await DatabaseService.updateDailyDescription(existingDescription.id, {
         description,
         costCenter,
@@ -464,8 +462,7 @@ export class UnifiedDataService {
         dayOff,
         dayOffType
       });
-    } else if (!isEmpty || dayOff) {
-      // Create new description (only if not empty or is a day off)
+    } else if (!isEmpty || dayOff || keepRowForOutOfTown) {
       await DatabaseService.createDailyDescription({
         employeeId,
         date,

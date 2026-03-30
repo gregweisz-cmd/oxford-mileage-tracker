@@ -1,28 +1,8 @@
-import { Platform } from 'react-native';
 import { MileageEntry, TimeTracking, Employee } from '../types';
 import { DatabaseService } from './database';
 import { BackendDataService } from './backendDataService';
 import { DistanceService } from './distanceService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
-
-/** Android: fewer parallel distance/HTTP calls (less contention/timeouts). iOS: higher throughput. */
-const DISTANCE_LOOKUP_BATCH_SIZE = Platform.OS === 'android' ? 3 : 10;
-
-/** Run distance lookups in batches — avoids hundreds of simultaneous requests on Android. */
-async function runDistanceLookupsBatched(
-  addresses: string[],
-  lookup: (addr: string) => Promise<{ addr: string; distance: number }>
-): Promise<Map<string, number>> {
-  const cache = new Map<string, number>();
-  for (let i = 0; i < addresses.length; i += DISTANCE_LOOKUP_BATCH_SIZE) {
-    const chunk = addresses.slice(i, i + DISTANCE_LOOKUP_BATCH_SIZE);
-    const results = await Promise.all(chunk.map((addr) => lookup(addr)));
-    for (const { addr, distance } of results) {
-      cache.set(addr, distance);
-    }
-  }
-  return cache;
-}
 
 export interface PerDiemEligibility {
   isEligible: boolean;
@@ -30,10 +10,7 @@ export interface PerDiemEligibility {
   criteria: {
     hoursWorked: boolean;
     milesDriven: boolean;
-    /** Max distance from BA from mileage geocoding (informational). */
     distanceFromBase: boolean;
-    /** Daily description checkbox: user attests 50+ miles from base address. */
-    stayedFiftyFromBase: boolean;
   };
   details: {
     hoursWorked: number;
@@ -127,22 +104,22 @@ export class PerDiemAiService {
         return this.createIneligibleResponse('No data for this day');
       }
 
-      // Recompute details for this day for the full PerDiemEligibility response (hours, miles, distance, checkbox)
+      // Recompute details for this day for the full PerDiemEligibility response (hours, miles, distance)
       let hoursWorked = 0;
       let milesDriven = 0;
       let distanceFromBase = 0;
-      let stayedFiftyFromBa = false;
+      let stayedOvernight = false;
       try {
         const monthlyData = await BackendDataService.getMonthData(employeeId, month, year);
         const day = monthlyData.find(d => this.toLocalDateKey(d.date) === dateKey);
         if (day) {
           hoursWorked = day.totalHours;
           milesDriven = day.totalMiles || 0;
-          stayedFiftyFromBa = !!day.stayedOvernight;
           distanceFromBase = await this.calculateDistanceFromBase(
             day.mileageEntries || [],
             employee.baseAddress || ''
           );
+          stayedOvernight = day.stayedOvernight ?? false;
         }
       } catch {
         // fallback: try local
@@ -158,15 +135,15 @@ export class PerDiemAiService {
           .reduce((s: number, e: any) => s + e.hours, 0);
         milesDriven = dayMileage.reduce((s, e) => s + e.miles, 0);
         distanceFromBase = await this.calculateDistanceFromBase(dayMileage, employee.baseAddress || '');
-        const desc = dailyDescriptions.find(d => this.toLocalDateKey(d.date) === dateKey);
-        stayedFiftyFromBa = !!desc?.stayedOvernight;
+        const desc = dailyDescriptions.find((d) => this.toLocalDateKey(d.date) === dateKey);
+        stayedOvernight = desc?.stayedOvernight ?? false;
       }
 
       const criteria = {
         hoursWorked: hoursWorked >= this.MIN_HOURS,
         milesDriven: milesDriven >= this.MIN_MILES,
-        distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE,
-        stayedFiftyFromBase: stayedFiftyFromBa
+        distanceFromBase:
+          distanceFromBase >= this.MIN_DISTANCE_FROM_BASE || stayedOvernight
       };
       const confidence = this.calculateConfidence(criteria, {
         hoursWorked,
@@ -198,9 +175,10 @@ export class PerDiemAiService {
 
   /**
    * Get per-diem eligibility for every day in a month (for Per Diem screen labels).
-   * Rule: 8+ hours AND (100+ miles OR daily description "Stayed 50+ mi from BA" checked).
-   * Uses backend data first (same as dashboard), then local DB; uses local date keys and real distance.
-   * Optimized: pre-calculates all distances in parallel to avoid sequential API calls.
+   * Rule: 8+ hours AND (100+ miles OR "Stayed out of town (50+ mi from base)" on daily hours).
+   * The checkbox is employee attestation of 50+ mi; mileage geocoding is optional corroboration only.
+   * Uses backend data first (same as dashboard), then local DB; uses local date keys.
+   * Does not batch-geocode the whole month (avoids Nominatim 429 and slow loads); eligibility uses hours, miles, and checkbox only.
    */
   static async getEligibilityForMonth(
     employeeId: string,
@@ -232,8 +210,7 @@ export class PerDiemAiService {
           }
         }
 
-        // Pre-calculate all distances from base in parallel for performance
-        const distanceCache = await this.preCalculateDistancesFromBase(monthlyData, localMileageEntries, baseAddress);
+        const distanceCache = new Map<string, number>();
 
         const localMileageByDate = localMileageEntries.length > 0
           ? this.groupMileageByDate(localMileageEntries)
@@ -249,22 +226,23 @@ export class PerDiemAiService {
           const milesDriven = useLocalMiles
             ? dayMileageEntries.reduce((s, e) => s + e.miles, 0)
             : (day.totalMiles || 0);
-          const distanceFromBase = this.getMaxDistanceFromCache(dayMileageEntries, distanceCache);
-          const stayedFiftyFromBase = !!stayedOvernight;
+          const distanceFromMileage = this.getMaxDistanceFromCache(dayMileageEntries, distanceCache);
           const criteria = {
             hoursWorked: day.totalHours >= this.MIN_HOURS,
             milesDriven: milesDriven >= this.MIN_MILES,
-            distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE,
-            stayedFiftyFromBase
+            distanceFromBase:
+              distanceFromMileage >= this.MIN_DISTANCE_FROM_BASE || stayedOvernight
           };
-          const isEligible = criteria.hoursWorked && (criteria.milesDriven || stayedFiftyFromBase);
+          const isEligible =
+            criteria.hoursWorked && (criteria.milesDriven || stayedOvernight);
           const reason = this.generateEligibilityReason(
             criteria,
             {
               hoursWorked: day.totalHours,
               milesDriven,
-              distanceFromBase
+              distanceFromBase: distanceFromMileage
             },
+            stayedOvernight,
             isEligible
           );
           result.set(dateKey, { isEligible, reason });
@@ -281,8 +259,7 @@ export class PerDiemAiService {
         DatabaseService.getMileageEntries(employeeId, month, year)
       ]);
 
-      // Pre-calculate all distances from base in parallel
-      const distanceCache = await this.preCalculateDistancesFromBaseLocal(mileageEntries, baseAddress);
+      const distanceCache = new Map<string, number>();
 
       const daysInMonth = new Date(year, month, 0).getDate();
       const descByDate = new Map<string, { stayedOvernight: boolean }>();
@@ -307,19 +284,20 @@ export class PerDiemAiService {
           .reduce((s, e: any) => s + e.hours, 0);
         const milesDriven = dayMileage.reduce((s, e: any) => s + e.miles, 0);
         const { stayedOvernight } = descByDate.get(dateKey) || { stayedOvernight: false };
-        const distanceFromBase = this.getMaxDistanceFromCache(dayMileage, distanceCache);
+        const distanceFromMileage = this.getMaxDistanceFromCache(dayMileage, distanceCache);
 
-        const stayedFiftyFromBase = !!stayedOvernight;
         const criteria = {
           hoursWorked: hoursWorked >= this.MIN_HOURS,
           milesDriven: milesDriven >= this.MIN_MILES,
-          distanceFromBase: distanceFromBase >= this.MIN_DISTANCE_FROM_BASE,
-          stayedFiftyFromBase
+          distanceFromBase:
+            distanceFromMileage >= this.MIN_DISTANCE_FROM_BASE || stayedOvernight
         };
-        const isEligible = criteria.hoursWorked && (criteria.milesDriven || stayedFiftyFromBase);
+        const isEligible =
+          criteria.hoursWorked && (criteria.milesDriven || stayedOvernight);
         const reason = this.generateEligibilityReason(
           criteria,
-          { hoursWorked, milesDriven, distanceFromBase },
+          { hoursWorked, milesDriven, distanceFromBase: distanceFromMileage },
+          stayedOvernight,
           isEligible
         );
         result.set(dateKey, { isEligible, reason });
@@ -328,82 +306,6 @@ export class PerDiemAiService {
       debugError('PerDiemAI: getEligibilityForMonth error', error);
     }
     return result;
-  }
-
-  /**
-   * Pre-calculate distances from base for all unique addresses in parallel.
-   * Returns a Map<address, distance> for quick lookup.
-   */
-  private static async preCalculateDistancesFromBase(
-    monthlyData: any[],
-    localMileageEntries: MileageEntry[],
-    baseAddress: string
-  ): Promise<Map<string, number>> {
-    const distanceCache = new Map<string, number>();
-    if (!baseAddress) return distanceCache;
-
-    // Collect all unique addresses
-    const addresses = new Set<string>();
-    for (const day of monthlyData) {
-      for (const entry of (day.mileageEntries || [])) {
-        const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
-        const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
-        if (start && start !== 'BA') addresses.add(start);
-        if (end && end !== 'BA') addresses.add(end);
-      }
-    }
-    for (const entry of localMileageEntries) {
-      const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
-      const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
-      if (start && start !== 'BA') addresses.add(start);
-      if (end && end !== 'BA') addresses.add(end);
-    }
-
-    // Calculate all distances in parallel
-    const addressList = Array.from(addresses);
-    const batchMap = await runDistanceLookupsBatched(addressList, async (addr) => {
-      try {
-        const distance = await DistanceService.calculateDistance(baseAddress, addr);
-        return { addr, distance };
-      } catch {
-        return { addr, distance: 0 };
-      }
-    });
-    batchMap.forEach((distance, addr) => distanceCache.set(addr, distance));
-
-    return distanceCache;
-  }
-
-  /**
-   * Pre-calculate distances for local mileage entries.
-   */
-  private static async preCalculateDistancesFromBaseLocal(
-    mileageEntries: MileageEntry[],
-    baseAddress: string
-  ): Promise<Map<string, number>> {
-    const distanceCache = new Map<string, number>();
-    if (!baseAddress) return distanceCache;
-
-    const addresses = new Set<string>();
-    for (const entry of mileageEntries) {
-      const start = (entry.startLocationDetails?.address || entry.startLocation || '').trim();
-      const end = (entry.endLocationDetails?.address || entry.endLocation || '').trim();
-      if (start && start !== 'BA') addresses.add(start);
-      if (end && end !== 'BA') addresses.add(end);
-    }
-
-    const addressList = Array.from(addresses);
-    const batchMap = await runDistanceLookupsBatched(addressList, async (addr) => {
-      try {
-        const distance = await DistanceService.calculateDistance(baseAddress, addr);
-        return { addr, distance };
-      } catch {
-        return { addr, distance: 0 };
-      }
-    });
-    batchMap.forEach((distance, addr) => distanceCache.set(addr, distance));
-
-    return distanceCache;
   }
 
   /**
@@ -465,29 +367,25 @@ export class PerDiemAiService {
   }
 
   /**
-   * Generate eligibility reason (8+ hours AND (100+ mi OR "Stayed 50+ mi from BA" in daily description))
+   * Generate eligibility reason (rule: 8+ hours AND (100+ mi OR daily-hours "out of town" checkbox))
    */
   private static generateEligibilityReason(
-    criteria: {
-      hoursWorked: boolean;
-      milesDriven: boolean;
-      distanceFromBase: boolean;
-      stayedFiftyFromBase: boolean;
-    },
+    criteria: { hoursWorked: boolean; milesDriven: boolean; distanceFromBase: boolean },
     details: { hoursWorked: number; milesDriven: number; distanceFromBase: number },
-    isEligible: boolean
+    stayedOvernight?: boolean,
+    isEligible?: boolean
   ): string {
     if (isEligible) {
       const parts = [`${details.hoursWorked.toFixed(1)}h worked`];
       if (criteria.milesDriven) parts.push(`${details.milesDriven} mi`);
-      if (criteria.stayedFiftyFromBase) parts.push('50+ mi from BA');
+      else if (stayedOvernight) parts.push('stayed out of town (50+ mi from base)');
       return `Eligible: ${parts.join(', ')}`;
     }
     if (!criteria.hoursWorked) {
       return `Not eligible: Need ${this.MIN_HOURS}+ hours worked`;
     }
-    if (!criteria.milesDriven && !criteria.stayedFiftyFromBase) {
-      return `Not eligible: Need ${this.MIN_MILES}+ miles OR mark "Stayed 50+ mi from BA" for the day`;
+    if (!criteria.milesDriven && !stayedOvernight) {
+      return `Not eligible: Need ${this.MIN_MILES}+ miles driven OR stay out of town 50+ mi from base (Daily Hours checkbox)`;
     }
     return 'Not eligible';
   }
@@ -496,21 +394,17 @@ export class PerDiemAiService {
    * Calculate confidence score
    */
   private static calculateConfidence(
-    criteria: {
-      hoursWorked: boolean;
-      milesDriven: boolean;
-      distanceFromBase: boolean;
-      stayedFiftyFromBase: boolean;
-    },
+    criteria: { hoursWorked: boolean; milesDriven: boolean; distanceFromBase: boolean },
     details: { hoursWorked: number; milesDriven: number; distanceFromBase: number }
   ): number {
     let confidence = 0;
 
+    // Base confidence for meeting criteria
     if (criteria.hoursWorked) confidence += 40;
     if (criteria.milesDriven) confidence += 40;
-    if (criteria.stayedFiftyFromBase) confidence += 40;
-    if (criteria.distanceFromBase && !criteria.stayedFiftyFromBase) confidence += 20;
+    if (criteria.distanceFromBase) confidence += 40;
 
+    // Bonus for exceeding requirements
     if (details.hoursWorked > this.MIN_HOURS + 2) confidence += 10;
     if (details.milesDriven > this.MIN_MILES + 20) confidence += 10;
     if (details.distanceFromBase > this.MIN_DISTANCE_FROM_BASE + 20) confidence += 10;
@@ -528,8 +422,7 @@ export class PerDiemAiService {
       criteria: {
         hoursWorked: false,
         milesDriven: false,
-        distanceFromBase: false,
-        stayedFiftyFromBase: false
+        distanceFromBase: false
       },
       details: {
         hoursWorked: 0,

@@ -24,6 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { ApiSyncService } from '../services/apiSyncService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
+import { setSyncMonthScope } from '../services/syncScopeService';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -90,6 +91,10 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
       setFilterCategory(routeFilterCategory);
     }
   }, [routeFilterCategory]);
+
+  useEffect(() => {
+    setSyncMonthScope(selectedMonth, selectedYear);
+  }, [selectedMonth, selectedYear]);
 
   useEffect(() => {
     loadData();

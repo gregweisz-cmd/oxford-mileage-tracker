@@ -37,6 +37,7 @@ import { CostCenterImportService } from '../services/costCenterImportService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
 import { hapticLight } from '../utils/haptics';
+import { setSyncMonthScope } from '../services/syncScopeService';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 
@@ -103,6 +104,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [showMonthYearModal, setShowMonthYearModal] = useState(false);
+
+  useEffect(() => {
+    setSyncMonthScope(selectedMonth, selectedYear);
+  }, [selectedMonth, selectedYear]);
   
   // Smart notifications state
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);

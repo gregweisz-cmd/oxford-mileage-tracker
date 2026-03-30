@@ -23,6 +23,7 @@ import { PerDiemRulesService } from '../services/perDiemRulesService';
 import { PerDiemAiService } from '../services/perDiemAiService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { API_BASE_URL } from '../config/api';
+import { setSyncMonthScope } from '../services/syncScopeService';
 
 // Helper function to resolve image URI (handles both local files and backend URLs)
 function resolveImageUri(imageUri: string | undefined | null): string {
@@ -103,7 +104,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [monthlyLimit, setMonthlyLimit] = useState(350);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
-  /** Per-day eligibility: 8+ hours AND (100+ mi OR daily description "Stayed 50+ mi from BA") */
+  /** Per-day eligibility: 8+ hours AND (100+ mi OR Daily Hours "out of town" checkbox) */
   const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
   /** True after eligibility map has been computed for the current month (avoids blocking on Android) */
   const [eligibilityReady, setEligibilityReady] = useState(false);
@@ -111,6 +112,10 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const scrollToTodayPendingRef = useRef(false);
   /** Incremented so stale eligibility results are ignored if user changes month quickly */
   const eligibilityLoadGenerationRef = useRef(0);
+
+  useEffect(() => {
+    setSyncMonthScope(currentMonth.getMonth() + 1, currentMonth.getFullYear());
+  }, [currentMonth]);
 
   // Load when screen is focused or month changes (single path — avoids double load on mount)
   useFocusEffect(
@@ -562,6 +567,10 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     return `${month}/${day}/${year}`;
   };
 
+  const formatWeekday = (date: Date) => {
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  };
+
   const isViewingCurrentMonth =
     currentMonth.getMonth() === new Date().getMonth() &&
     currentMonth.getFullYear() === new Date().getFullYear();
@@ -705,6 +714,7 @@ const dateKey = toLocalDateKey(date);
               <View style={styles.dayHeader}>
                 <View>
                   <Text style={styles.dayDate}>{formatDate(date)}</Text>
+                  <Text style={styles.dayWeekday}>{formatWeekday(date)}</Text>
                   <Text style={[styles.eligibilityLabel, !eligibilityReady ? styles.eligibilityLabelPending : (isEligibleByRule ? styles.eligibilityLabelEligible : styles.eligibilityLabelNotEligible)]}>
                     {!eligibilityReady ? '…' : (isEligibleByRule ? 'Eligible' : 'Not eligible')}
                   </Text>
@@ -838,6 +848,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
+  },
+  dayWeekday: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
   eligibilityLabel: {
     fontSize: 12,

@@ -174,7 +174,7 @@ export const SyncTester: React.FC = () => {
     addTestResult('Testing sync from backend...');
     
     try {
-      const result = await ApiSyncService.syncFromBackend();
+      const result = await ApiSyncService.syncFromBackend(undefined, { fullHistory: true });
 
       if (result.success) {
         addTestResult(`✅ Sync from backend SUCCESS`);

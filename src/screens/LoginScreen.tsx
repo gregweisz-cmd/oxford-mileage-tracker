@@ -85,9 +85,15 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
           const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
 
           if (existingEmployee) {
-            // Backend (Render) is source of truth: overwrite local with API data
+            // Backend (Render) is source of truth: overwrite local with API data.
+            // If this device still has an old local UUID, realign SQLite + current session to backend id
+            // so direct API writes (hours, descriptions) hit the same employee as the web portal.
+            const canonicalId = employeeData.id;
             try {
-              await DatabaseService.updateEmployee(existingEmployee.id, {
+              if (existingEmployee.id !== canonicalId) {
+                await DatabaseService.realignEmployeeIdWithBackend(existingEmployee.id, canonicalId);
+              }
+              await DatabaseService.updateEmployee(canonicalId, {
                 name: employeeData.name,
                 email: employeeData.email,
                 password: password,
@@ -100,14 +106,13 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
                 defaultCostCenter: employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? ''
               });
               
-              const updatedEmployee = await DatabaseService.getEmployeeById(existingEmployee.id);
+              const updatedEmployee = await DatabaseService.getEmployeeById(canonicalId);
               if (!updatedEmployee) {
                 Alert.alert('Error', 'Failed to load updated employee data');
                 return;
               }
               
-              // Set current employee with the existing employee ID
-              await DatabaseService.setCurrentEmployee(existingEmployee.id, stayLoggedIn);
+              await DatabaseService.setCurrentEmployee(canonicalId, stayLoggedIn);
               console.log('✅ LoginScreen: Employee updated and logged in:', updatedEmployee.name);
               
               onLogin(updatedEmployee);

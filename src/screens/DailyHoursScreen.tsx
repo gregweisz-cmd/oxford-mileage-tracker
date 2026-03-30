@@ -25,6 +25,7 @@ import { COST_CENTERS } from '../constants/costCenters';
 import UnifiedHeader from '../components/UnifiedHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
+import { setSyncMonthScope } from '../services/syncScopeService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface DailyHoursScreenProps {
@@ -101,6 +102,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const selectedDayIndexRef = useRef<number>(-1);
   const dayLayoutsRef = useRef<Record<string, number>>({});
   const scrollToTodayPendingRef = useRef(false);
+
+  useEffect(() => {
+    setSyncMonthScope(currentMonth.getMonth() + 1, currentMonth.getFullYear());
+  }, [currentMonth]);
 
   // Load data when month changes
   useEffect(() => {
@@ -478,6 +483,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     return `${month}/${day}/${year}`;
   };
 
+  const formatWeekday = (date: Date) => {
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  };
+
   const getMonthName = (date: Date) => {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
@@ -651,6 +660,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                 >
                   <View style={styles.dayInfo}>
                     <Text style={styles.dayDate}>{formatDate(day.date)}</Text>
+                    <Text style={styles.dayWeekday}>{formatWeekday(day.date)}</Text>
                     {isDayOffDay ? (
                       <Text style={styles.dayOffBadge}>{dailyDesc.dayOffType}</Text>
                     ) : (
@@ -1067,6 +1077,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
+    marginBottom: 4,
+  },
+  dayWeekday: {
+    fontSize: 12,
+    color: '#666',
     marginBottom: 4,
   },
   dayHours: {
