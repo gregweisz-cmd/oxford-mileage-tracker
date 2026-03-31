@@ -222,6 +222,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     updates: Set<string>;
     archives: Set<string>;
   }>({ creates: new Set(), updates: new Set(), archives: new Set() });
+  const [syncPreviewIgnore, setSyncPreviewIgnore] = useState<{
+    updates: Set<string>;
+    archives: Set<string>;
+  }>({ updates: new Set(), archives: new Set() });
   const [syncApplyLoading, setSyncApplyLoading] = useState(false);
   const [dedupeLoading, setDedupeLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -512,6 +516,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           updates: new Set((plan.updates || []).map((u: { email: string }) => u.email)),
           archives: new Set((plan.archives || []).map((a: { id: string }) => a.id)),
         });
+        setSyncPreviewIgnore({ updates: new Set(), archives: new Set() });
         setSyncPreviewOpen(true);
       } else {
         setSyncFromExternalMessage({ type: 'error', text: data.error || `Preview failed (${res.status})` });
@@ -534,6 +539,15 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     });
   };
 
+  const handleSyncPreviewIgnoreToggle = (kind: 'updates' | 'archives', key: string, checked: boolean) => {
+    setSyncPreviewIgnore((prev) => {
+      const next = new Set(prev[kind]);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return { ...prev, [kind]: next };
+    });
+  };
+
   const handleSyncPreviewApply = async () => {
     if (!syncPreviewPlan) return;
     setSyncApplyLoading(true);
@@ -542,19 +556,32 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       const toCreate = syncPreviewPlan.creates.filter((c) => syncPreviewApproved.creates.has(c.email)).map((c) => c.email);
       const toUpdate = syncPreviewPlan.updates.filter((u) => syncPreviewApproved.updates.has(u.email)).map((u) => u.email);
       const toArchive = syncPreviewPlan.archives.filter((a) => syncPreviewApproved.archives.has(a.id)).map((a) => a.id);
+      const ignoreUpdates = syncPreviewPlan.updates.filter((u) => syncPreviewIgnore.updates.has(u.email)).map((u) => u.email);
+      const ignoreArchives = syncPreviewPlan.archives.filter((a) => syncPreviewIgnore.archives.has(a.id)).map((a) => a.id);
       const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toCreate, toUpdate, toArchive }),
+        body: JSON.stringify({ toCreate, toUpdate, toArchive, ignoreUpdates, ignoreArchives }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const { created = 0, updated = 0, archived = 0, duplicatesRemoved = 0, errors = [] } = data;
+        const {
+          created = 0,
+          updated = 0,
+          archived = 0,
+          duplicatesRemoved = 0,
+          ignoredUpdatesSaved = 0,
+          ignoredArchivesSaved = 0,
+          errors = [],
+        } = data;
         const parts = [];
         if (created) parts.push(`${created} created`);
         if (updated) parts.push(`${updated} updated`);
         if (archived) parts.push(`${archived} archived`);
         if (duplicatesRemoved) parts.push(`${duplicatesRemoved} duplicate(s) removed`);
+        if (ignoredUpdatesSaved || ignoredArchivesSaved) {
+          parts.push(`${ignoredUpdatesSaved + ignoredArchivesSaved} "don't ask again" saved`);
+        }
         setSyncFromExternalMessage({
           type: 'success',
           text: parts.length ? parts.join('; ') + (errors.length ? `. ${errors.length} issue(s) logged.` : '') : 'No changes applied.',
@@ -2372,6 +2399,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         onClose={() => {
           setSyncPreviewOpen(false);
           setSyncPreviewPlan(null);
+          setSyncPreviewIgnore({ updates: new Set(), archives: new Set() });
         }}
         maxWidth="sm"
         fullWidth
@@ -2406,14 +2434,30 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   </Typography>
                   <Box sx={{ maxHeight: 160, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 0.5 }}>
                     {syncPreviewPlan.updates.map((u) => (
-                      <Box key={u.email} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
-                        <Checkbox size="small" checked={syncPreviewApproved.updates.has(u.email)} onChange={(e) => handleSyncPreviewToggle('updates', u.email, e.target.checked)} />
-                        <ListItemText
-                          primary={`${u.name} (${u.email})`}
-                          secondary={u.previous ? `Name/position/cost centers will update from HR` : `${u.position} · ${(u.costCenters || []).join(', ')}`}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                          secondaryTypographyProps={{ variant: 'caption' }}
+                      <Box key={u.email} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.5 }}>
+                        <Checkbox
+                          size="small"
+                          checked={syncPreviewApproved.updates.has(u.email)}
+                          onChange={(e) => handleSyncPreviewToggle('updates', u.email, e.target.checked)}
                         />
+                        <Box sx={{ flex: 1 }}>
+                          <ListItemText
+                            primary={`${u.name} (${u.email})`}
+                            secondary={u.previous ? `Name/position/cost centers will update from HR` : `${u.position} · ${(u.costCenters || []).join(', ')}`}
+                            primaryTypographyProps={{ variant: 'body2' }}
+                            secondaryTypographyProps={{ variant: 'caption' }}
+                          />
+                          <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.25 }}>
+                            <Checkbox
+                              size="small"
+                              checked={syncPreviewIgnore.updates.has(u.email)}
+                              onChange={(e) => handleSyncPreviewIgnoreToggle('updates', u.email, e.target.checked)}
+                            />
+                            <Typography variant="caption" color="text.secondary">
+                              Don't ask again for this update
+                            </Typography>
+                          </Box>
+                        </Box>
                       </Box>
                     ))}
                   </Box>
@@ -2426,9 +2470,25 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   </Typography>
                   <Box sx={{ maxHeight: 160, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 0.5 }}>
                     {syncPreviewPlan.archives.map((a) => (
-                      <Box key={a.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
-                        <Checkbox size="small" checked={syncPreviewApproved.archives.has(a.id)} onChange={(e) => handleSyncPreviewToggle('archives', a.id, e.target.checked)} />
-                        <ListItemText primary={`${a.name} (${a.email})`} secondary="Will be archived" primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                      <Box key={a.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.5 }}>
+                        <Checkbox
+                          size="small"
+                          checked={syncPreviewApproved.archives.has(a.id)}
+                          onChange={(e) => handleSyncPreviewToggle('archives', a.id, e.target.checked)}
+                        />
+                        <Box sx={{ flex: 1 }}>
+                          <ListItemText primary={`${a.name} (${a.email})`} secondary="Will be archived" primaryTypographyProps={{ variant: 'body2' }} secondaryTypographyProps={{ variant: 'caption' }} />
+                          <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.25 }}>
+                            <Checkbox
+                              size="small"
+                              checked={syncPreviewIgnore.archives.has(a.id)}
+                              onChange={(e) => handleSyncPreviewIgnoreToggle('archives', a.id, e.target.checked)}
+                            />
+                            <Typography variant="caption" color="text.secondary">
+                              Don't ask again for this archive
+                            </Typography>
+                          </Box>
+                        </Box>
                       </Box>
                     ))}
                   </Box>
@@ -2441,7 +2501,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setSyncPreviewOpen(false); setSyncPreviewPlan(null); }}>
+          <Button onClick={() => { setSyncPreviewOpen(false); setSyncPreviewPlan(null); setSyncPreviewIgnore({ updates: new Set(), archives: new Set() }); }}>
             Cancel
           </Button>
           <Button variant="contained" onClick={handleSyncPreviewApply} disabled={syncApplyLoading || !syncPreviewPlan}>

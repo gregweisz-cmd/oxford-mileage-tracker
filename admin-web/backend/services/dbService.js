@@ -107,6 +107,17 @@ function ensureTablesExist() {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
+
+      // Persist "don't ask again" choices from HR sync review UI.
+      db.run(`CREATE TABLE IF NOT EXISTS hr_sync_ignored_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,          -- 'update' | 'archive'
+        targetType TEXT NOT NULL,      -- 'email' | 'employeeId'
+        targetValue TEXT NOT NULL,     -- lowercased email OR employee id
+        createdAt TEXT NOT NULL,
+        UNIQUE(action, targetType, targetValue)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_hr_sync_ignored_action_target ON hr_sync_ignored_changes(action, targetType, targetValue)`);
       
       // Add lastLoginAt and role columns if they don't exist (for existing databases)
       // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check if columns exist first

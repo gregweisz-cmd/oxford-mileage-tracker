@@ -229,6 +229,31 @@ function pickCanonicalEmployeeRow(rows) {
 }
 
 /**
+ * Keep local supervisor/senior-staff designation suffixes when HR updates titles.
+ * HR is source-of-truth for base title, but web-specific designations must persist.
+ * @param {string} incomingPosition
+ * @param {string} existingPosition
+ * @returns {string}
+ */
+function mergePositionPreservingDesignations(incomingPosition, existingPosition) {
+  const incoming = String(incomingPosition || '').trim();
+  const existing = String(existingPosition || '').trim();
+  const normalizedExisting = existing.toLowerCase();
+  const suffixes = [];
+
+  if (normalizedExisting.includes('senior staff') && !incoming.toLowerCase().includes('senior staff')) {
+    suffixes.push('Senior Staff');
+  }
+  if (normalizedExisting.includes('supervisor') && !incoming.toLowerCase().includes('supervisor')) {
+    suffixes.push('Supervisor');
+  }
+
+  if (suffixes.length === 0) return incoming || existing;
+  const base = incoming || existing || 'Staff';
+  return `${base} - ${suffixes.join(' - ')}`;
+}
+
+/**
  * Create or update one employee from mapped data
  * @param {object} mapped
  * @param {object} [existing] - existing row if update
@@ -255,7 +280,7 @@ async function upsertOne(mapped, existing) {
         [
           mapped.name,
           existing.preferredName || '',
-          mapped.position,
+          mergePositionPreservingDesignations(mapped.position, existing.position),
           mapped.phoneNumber || '',
           JSON.stringify(mapped.costCenters),
           JSON.stringify(existing.selectedCostCenters ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters) : mapped.costCenters),
@@ -373,11 +398,85 @@ async function fetchAndMapExternal() {
 }
 
 /**
+ * Load persisted "don't ask again" choices for HR sync preview/apply.
+ * - update ignores are keyed by email (case-insensitive)
+ * - archive ignores are keyed by employee id
+ * @returns {Promise<{ update: Set<string>, archive: Set<string> }>}
+ */
+async function getIgnoredHrSyncChanges() {
+  const db = dbService.getDb();
+  const rows = await new Promise((resolve, reject) => {
+    db.all(
+      'SELECT action, targetType, targetValue FROM hr_sync_ignored_changes',
+      [],
+      (err, r) => (err ? reject(err) : resolve(r || []))
+    );
+  });
+  const ignored = { update: new Set(), archive: new Set() };
+  for (const row of rows) {
+    const action = String(row.action || '').toLowerCase();
+    const targetType = String(row.targetType || '').toLowerCase();
+    const targetValue = String(row.targetValue || '').trim();
+    if (!targetValue) continue;
+    if (action === 'update' && targetType === 'email') {
+      ignored.update.add(targetValue.toLowerCase());
+    } else if (action === 'archive' && targetType === 'employeeid') {
+      ignored.archive.add(targetValue);
+    }
+  }
+  return ignored;
+}
+
+/**
+ * Persist "don't ask again" choices for HR sync preview/apply.
+ * @param {{ignoreUpdates?: string[], ignoreArchives?: string[]}} body
+ * @returns {Promise<{ignoredUpdatesSaved: number, ignoredArchivesSaved: number}>}
+ */
+async function saveIgnoredHrSyncChanges(body = {}) {
+  const ignoreUpdates = Array.isArray(body.ignoreUpdates)
+    ? body.ignoreUpdates.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const ignoreArchives = Array.isArray(body.ignoreArchives)
+    ? body.ignoreArchives.map((v) => String(v || '').trim()).filter(Boolean)
+    : [];
+  const db = dbService.getDb();
+  let ignoredUpdatesSaved = 0;
+  let ignoredArchivesSaved = 0;
+
+  for (const email of new Set(ignoreUpdates)) {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR IGNORE INTO hr_sync_ignored_changes (action, targetType, targetValue, createdAt)
+         VALUES (?, ?, ?, ?)`,
+        ['update', 'email', email, new Date().toISOString()],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+    ignoredUpdatesSaved++;
+  }
+
+  for (const employeeId of new Set(ignoreArchives)) {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR IGNORE INTO hr_sync_ignored_changes (action, targetType, targetValue, createdAt)
+         VALUES (?, ?, ?, ?)`,
+        ['archive', 'employeeId', employeeId, new Date().toISOString()],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+    ignoredArchivesSaved++;
+  }
+
+  return { ignoredUpdatesSaved, ignoredArchivesSaved };
+}
+
+/**
  * Preview what sync would do: returns creates, updates, and archives without writing.
  * @returns {Promise<{ creates: Array<{email,name,position,costCenters}>, updates: Array<{email,name,position,costCenters,previous}>, archives: Array<{id,name,email}> }>}
  */
 async function previewSyncFromExternal() {
   const mappedList = await fetchAndMapExternal();
+  const ignored = await getIgnoredHrSyncChanges();
   const syncedEmails = new Set(mappedList.map((m) => m.email.toLowerCase().trim()));
   const creates = [];
   const updates = [];
@@ -397,7 +496,7 @@ async function previewSyncFromExternal() {
         (existing.position || '') === (mapped.position || '') &&
         JSON.stringify(prevCC.sort()) === JSON.stringify((mapped.costCenters || []).sort()) &&
         (existing.phoneNumber || '') === (mapped.phoneNumber || '');
-      if (!same) {
+      if (!same && !ignored.update.has((mapped.email || '').toLowerCase().trim())) {
         updates.push({
           email: mapped.email,
           name: mapped.name,
@@ -419,6 +518,7 @@ async function previewSyncFromExternal() {
   });
   const archives = rows
     .filter((r) => !syncedEmails.has((r.email || '').toLowerCase().trim()))
+    .filter((r) => !ignored.archive.has(String(r.id || '').trim()))
     .map((r) => ({ id: r.id, name: r.name, email: r.email }));
   return { creates, updates, archives };
 }
@@ -552,6 +652,8 @@ async function applySyncFromExternal(body) {
   const toUpdate = Array.isArray(body.toUpdate) ? body.toUpdate.map((e) => String(e).trim().toLowerCase()) : [];
   const toArchive = Array.isArray(body.toArchive) ? body.toArchive.map((id) => String(id).trim()) : [];
   const mappedList = await fetchAndMapExternal();
+  const ignored = await getIgnoredHrSyncChanges();
+  const { ignoredUpdatesSaved, ignoredArchivesSaved } = await saveIgnoredHrSyncChanges(body || {});
   const stats = { synced: 0, created: 0, updated: 0, archived: 0, duplicatesRemoved: 0, errors: [] };
   const createSet = new Set(toCreate);
   const updateSet = new Set(toUpdate);
@@ -566,7 +668,7 @@ async function applySyncFromExternal(body) {
       } catch (err) {
         stats.errors.push(`${mapped.email}: ${err.message}`);
       }
-    } else if (existing && updateSet.has(emailKey)) {
+    } else if (existing && updateSet.has(emailKey) && !ignored.update.has(emailKey)) {
       try {
         await upsertOne(mapped, existing);
         stats.updated++;
@@ -579,6 +681,7 @@ async function applySyncFromExternal(body) {
   const archiveSet = new Set(toArchive);
   const db = dbService.getDb();
   for (const id of archiveSet) {
+    if (ignored.archive.has(id)) continue;
     try {
       await new Promise((resolve, reject) => {
         db.run('UPDATE employees SET archived = 1, updatedAt = ? WHERE id = ?', [new Date().toISOString(), id], (err) => (err ? reject(err) : resolve()));
@@ -588,6 +691,8 @@ async function applySyncFromExternal(body) {
       stats.errors.push(`Archive ${id}: ${err.message}`);
     }
   }
+  stats.ignoredUpdatesSaved = ignoredUpdatesSaved;
+  stats.ignoredArchivesSaved = ignoredArchivesSaved;
 
   // Remove duplicate local rows: (1) for everyone in the HR feed, (2) then any remaining duplicates in DB
   const allEmailsFromHr = new Set(mappedList.map((m) => m.email.toLowerCase().trim()));
