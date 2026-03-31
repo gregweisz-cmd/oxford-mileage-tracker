@@ -1234,13 +1234,19 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             employee.role === 'admin' ? 'error' :
                             employee.role === 'finance' ? 'warning' :
                             employee.role === 'supervisor' ? 'info' :
+                            employee.role === 'contracts' ? 'secondary' :
                             'default'
                           }
                           sx={{ 
                             textTransform: 'capitalize',
                             fontSize: '0.7rem',
                             height: 22,
-                            fontWeight: employee.role === 'admin' || employee.role === 'finance' ? 'bold' : 'normal'
+                            fontWeight:
+                              employee.role === 'admin' ||
+                              employee.role === 'finance' ||
+                              employee.role === 'contracts'
+                                ? 'bold'
+                                : 'normal',
                           }}
                         />
                       </TableCell>
