@@ -6,6 +6,8 @@ Save files **exactly** as named below (paths relative to this folder).
 
 | Filename | What to capture |
 |----------|-----------------|
+| `ios-apple-developer-team-invite.png` | **Mail** on iPhone: Apple’s **“You’re invited to join a development team”** email for **Oxford House, Inc.** — shows **Accept invitation**. |
+| `ios-testflight-email-view-in-testflight.png` | **Mail** on iPhone: **TestFlight** invitation email for **Oxford House Expense Tracker** — shows **View in TestFlight** button. |
 | `ios-app-store-testflight.png` | **App Store** on iPhone: the **TestFlight** app listing (GET / Open) — from [Apple’s TestFlight link](https://apps.apple.com/us/app/testflight/id899247664) or search “TestFlight.” |
 | `ios-testflight-oxford-app.png` | **TestFlight** app: **Oxford House Expense Tracker** on the detail screen showing **Install** or **Update** (and build/version if visible). |
 | `android-internal-test-landing.png` | After opening the **internal testing** link on Android: the **first meaningful screen** — e.g. Play Store tester opt-in, “You’re a tester,” or browser → Play (layout varies). |

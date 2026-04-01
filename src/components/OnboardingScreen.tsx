@@ -35,7 +35,8 @@ const slides: OnboardingSlide[] = [
   {
     icon: 'receipt',
     title: 'Capture Receipts',
-    description: 'Take photos of receipts and our OCR will extract vendor, amount, and date automatically.',
+    description:
+      'Take photos of receipts and our built in AI will attempt to extract vendor, amount, and date automatically. Make sure to verify because AI isn\'t perfect.',
     color: '#4CAF50',
   },
   {
@@ -53,7 +54,8 @@ const slides: OnboardingSlide[] = [
   {
     icon: 'location-on',
     title: 'Smart Per Diem',
-    description: 'Automatic per diem calculation based on your location, miles driven, and hours worked.',
+    description:
+      'Automatic per diem eligibility based on location, miles driven, and hours worked. Set your base address to get started—you choose which days to apply per diem.',
     color: '#F44336',
   },
 ];

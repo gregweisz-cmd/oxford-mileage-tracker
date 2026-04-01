@@ -16,6 +16,7 @@ import {
   Collapse,
   Alert,
   CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import {
   Notifications as NotificationsIcon,
@@ -26,6 +27,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Close as CloseIcon,
+  MarkEmailRead as MarkEmailReadIcon,
 } from '@mui/icons-material';
 import { NotificationsDialog } from './NotificationsDialog';
 import { debugError } from '../config/debug';
@@ -196,6 +198,20 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     }
   };
 
+  const markAllAsRead = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/read-all`, {
+        method: 'PUT',
+      });
+      if (response.ok) {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      debugError('Error marking all notifications as read:', error);
+    }
+  };
+
   const handleNotificationClick = (notification: Notification) => {
     // Mark as read
     if (!notification.isRead) {
@@ -258,7 +274,18 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
                 />
               )}
             </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {unreadCount > 0 && (
+                <Tooltip title="Marks every notification as read">
+                  <Button
+                    size="small"
+                    onClick={markAllAsRead}
+                    startIcon={<MarkEmailReadIcon />}
+                  >
+                    Clear all
+                  </Button>
+                </Tooltip>
+              )}
               {notifications.length > maxDisplay && (
                 <Button
                   size="small"

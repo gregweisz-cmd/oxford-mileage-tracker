@@ -35,6 +35,7 @@ import {
   AlertTitle,
   Checkbox,
   Tooltip,
+  Fab,
 } from '@mui/material';
 
 import {
@@ -50,6 +51,7 @@ import {
   ArrowDownward as ArrowDownwardIcon,
   Crop as CropIcon,
   Visibility as VisibilityIcon,
+  Save as SaveIcon,
 } from '@mui/icons-material';
 
 // PDF generation imports
@@ -9177,6 +9179,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }} 
         />
       </TabPanel>
+
+      {!supervisorMode && !isAdminView && (
+        <Fab
+          variant="extended"
+          color="primary"
+          aria-label="Save entries"
+          onClick={() => handleSaveReport()}
+          disabled={loading || uiLoading}
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: (theme) => theme.zIndex.snackbar + 2,
+          }}
+        >
+          <SaveIcon sx={{ mr: 1 }} />
+          Save Entries
+        </Fab>
+      )}
 
     </Container>
   );

@@ -15,6 +15,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'react-native';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
 import { API_BASE_URL } from '../config/api';
@@ -28,14 +30,182 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [savedBiometricCredentials, setSavedBiometricCredentials] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('Biometrics');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const passwordInputRef = useRef<TextInput>(null);
+  const CREDENTIALS_KEY = 'biometric_login_credentials_v1';
 
   useEffect(() => {
     loadEmployees();
+    initializeBiometricStatus();
   }, []);
+
+  const initializeBiometricStatus = async () => {
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      const hasSaved = !!(await SecureStore.getItemAsync(CREDENTIALS_KEY));
+
+      setBiometricAvailable(hasHardware && isEnrolled);
+      setSavedBiometricCredentials(hasSaved);
+
+      if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+        setBiometricLabel('Face ID');
+      } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+        setBiometricLabel('Touch ID');
+      } else {
+        setBiometricLabel('Biometrics');
+      }
+    } catch (error) {
+      console.warn('Biometric availability check failed:', error);
+      setBiometricAvailable(false);
+      setSavedBiometricCredentials(false);
+    }
+  };
+
+  const saveBiometricCredentials = async (loginEmail: string, loginPassword: string) => {
+    await SecureStore.setItemAsync(
+      CREDENTIALS_KEY,
+      JSON.stringify({
+        email: loginEmail.toLowerCase().trim(),
+        password: loginPassword,
+      })
+    );
+    setSavedBiometricCredentials(true);
+  };
+
+  const maybePromptEnableBiometric = async (loginEmail: string, loginPassword: string) => {
+    if (!biometricAvailable || savedBiometricCredentials) return;
+    Alert.alert(
+      `Enable ${biometricLabel}?`,
+      `Save your login securely so you can sign in with ${biometricLabel} next time.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Enable',
+          onPress: async () => {
+            try {
+              const authResult = await LocalAuthentication.authenticateAsync({
+                promptMessage: `Enable ${biometricLabel}`,
+                fallbackLabel: 'Use passcode',
+                cancelLabel: 'Cancel',
+              });
+              if (!authResult.success) return;
+              await saveBiometricCredentials(loginEmail, loginPassword);
+            } catch (error) {
+              console.error('Failed to enable biometric login:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const performLogin = async (loginEmail: string, loginPassword: string) => {
+    const backendUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '') || 'https://oxford-mileage-backend.onrender.com';
+    
+    try {
+      const response = await fetch(`${backendUrl}/api/employee-login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: loginEmail.toLowerCase(),
+          password: loginPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const employeeData = data;
+        const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
+
+        if (existingEmployee) {
+          const canonicalId = employeeData.id;
+          try {
+            if (existingEmployee.id !== canonicalId) {
+              await DatabaseService.realignEmployeeIdWithBackend(existingEmployee.id, canonicalId);
+            }
+            await DatabaseService.updateEmployee(canonicalId, {
+              name: employeeData.name,
+              email: employeeData.email,
+              password: loginPassword,
+              oxfordHouseId: employeeData.oxfordHouseId ?? existingEmployee.oxfordHouseId ?? '',
+              position: employeeData.position ?? existingEmployee.position ?? '',
+              phoneNumber: employeeData.phoneNumber ?? existingEmployee.phoneNumber ?? '',
+              baseAddress: employeeData.baseAddress ?? existingEmployee.baseAddress ?? '',
+              costCenters: employeeData.costCenters ?? [],
+              selectedCostCenters: (employeeData.selectedCostCenters?.length ? employeeData.selectedCostCenters : (employeeData.costCenters ?? [])),
+              defaultCostCenter: employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? ''
+            });
+            
+            const updatedEmployee = await DatabaseService.getEmployeeById(canonicalId);
+            if (!updatedEmployee) {
+              Alert.alert('Error', 'Failed to load updated employee data');
+              return false;
+            }
+            
+            await DatabaseService.setCurrentEmployee(canonicalId, stayLoggedIn);
+            await maybePromptEnableBiometric(loginEmail, loginPassword);
+            onLogin(updatedEmployee);
+            return true;
+          } catch (updateError) {
+            console.error('Failed to update employee:', updateError);
+            Alert.alert('Error', 'Failed to update employee record');
+            return false;
+          }
+        } else {
+          await DatabaseService.createEmployee({
+            id: employeeData.id,
+            name: employeeData.name,
+            email: employeeData.email,
+            password: loginPassword,
+            oxfordHouseId: employeeData.oxfordHouseId || '',
+            position: employeeData.position || '',
+            phoneNumber: employeeData.phoneNumber || '',
+            baseAddress: employeeData.baseAddress || '',
+            costCenters: employeeData.costCenters || [],
+            selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
+            defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
+          });
+          
+          await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
+          await maybePromptEnableBiometric(loginEmail, loginPassword);
+          onLogin(employeeData);
+          return true;
+        }
+      }
+    } catch (backendError) {
+      console.warn('Backend authentication failed, falling back to local:', backendError);
+    }
+    
+    const employee = employees.find(emp => 
+      emp.email.toLowerCase() === loginEmail.toLowerCase() &&
+      emp.password === loginPassword
+    );
+
+    if (employee) {
+      await DatabaseService.setCurrentEmployee(employee.id, stayLoggedIn);
+      await maybePromptEnableBiometric(loginEmail, loginPassword);
+      onLogin(employee);
+      return true;
+    }
+
+    Alert.alert(
+      'Login Failed',
+      'Invalid email or password. Please check your credentials and try again.',
+      [{ text: 'OK', style: 'default' }]
+    );
+    return false;
+  };
 
   const loadEmployees = async () => {
     try {
@@ -64,112 +234,45 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
     setLoading(true);
     try {
-      const backendUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '') || 'https://oxford-mileage-backend.onrender.com';
-      
-      try {
-        const response = await fetch(`${backendUrl}/api/employee-login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: email.toLowerCase(),
-            password: password,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-          const employeeData = data;
-          const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
-
-          if (existingEmployee) {
-            // Backend (Render) is source of truth: overwrite local with API data.
-            // If this device still has an old local UUID, realign SQLite + current session to backend id
-            // so direct API writes (hours, descriptions) hit the same employee as the web portal.
-            const canonicalId = employeeData.id;
-            try {
-              if (existingEmployee.id !== canonicalId) {
-                await DatabaseService.realignEmployeeIdWithBackend(existingEmployee.id, canonicalId);
-              }
-              await DatabaseService.updateEmployee(canonicalId, {
-                name: employeeData.name,
-                email: employeeData.email,
-                password: password,
-                oxfordHouseId: employeeData.oxfordHouseId ?? existingEmployee.oxfordHouseId ?? '',
-                position: employeeData.position ?? existingEmployee.position ?? '',
-                phoneNumber: employeeData.phoneNumber ?? existingEmployee.phoneNumber ?? '',
-                baseAddress: employeeData.baseAddress ?? existingEmployee.baseAddress ?? '',
-                costCenters: employeeData.costCenters ?? [],
-                selectedCostCenters: (employeeData.selectedCostCenters?.length ? employeeData.selectedCostCenters : (employeeData.costCenters ?? [])),
-                defaultCostCenter: employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? ''
-              });
-              
-              const updatedEmployee = await DatabaseService.getEmployeeById(canonicalId);
-              if (!updatedEmployee) {
-                Alert.alert('Error', 'Failed to load updated employee data');
-                return;
-              }
-              
-              await DatabaseService.setCurrentEmployee(canonicalId, stayLoggedIn);
-              console.log('✅ LoginScreen: Employee updated and logged in:', updatedEmployee.name);
-              
-              onLogin(updatedEmployee);
-              return;
-            } catch (updateError) {
-              console.error('Failed to update employee:', updateError);
-              Alert.alert('Error', 'Failed to update employee record');
-              return;
-            }
-          } else {
-            // Create new employee with backend data
-            await DatabaseService.createEmployee({
-              id: employeeData.id,
-              name: employeeData.name,
-              email: employeeData.email,
-              password: password,
-              oxfordHouseId: employeeData.oxfordHouseId || '',
-              position: employeeData.position || '',
-              phoneNumber: employeeData.phoneNumber || '',
-              baseAddress: employeeData.baseAddress || '',
-              costCenters: employeeData.costCenters || [],
-              selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
-              defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
-            });
-            
-            // Set current employee with the new employee ID
-            await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
-            
-            onLogin(employeeData);
-            return;
-          }
-        }
-      } catch (backendError) {
-        console.warn('Backend authentication failed, falling back to local:', backendError);
-      }
-      
-      // Fallback to local authentication
-      const employee = employees.find(emp => 
-        emp.email.toLowerCase() === email.toLowerCase() &&
-        emp.password === password
-      );
-
-      if (employee) {
-        await DatabaseService.setCurrentEmployee(employee.id, stayLoggedIn);
-        onLogin(employee);
-      } else {
-        Alert.alert(
-          'Login Failed',
-          'Invalid email or password. Please check your credentials and try again.',
-          [{ text: 'OK', style: 'default' }]
-        );
-      }
+      await performLogin(email, password);
     } catch (error) {
       console.error('Login error:', error);
       Alert.alert('Error', 'Failed to log in. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    if (!biometricAvailable || !savedBiometricCredentials) return;
+    setBiometricLoading(true);
+    try {
+      const authResult = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Sign in with ${biometricLabel}`,
+        fallbackLabel: 'Use passcode',
+        cancelLabel: 'Cancel',
+      });
+      if (!authResult.success) return;
+
+      const credentialsJson = await SecureStore.getItemAsync(CREDENTIALS_KEY);
+      if (!credentialsJson) {
+        setSavedBiometricCredentials(false);
+        Alert.alert('Biometric Login', 'No saved credentials found.');
+        return;
+      }
+      const credentials = JSON.parse(credentialsJson);
+      if (!credentials?.email || !credentials?.password) {
+        Alert.alert('Biometric Login', 'Saved credentials are invalid. Please sign in manually once.');
+        return;
+      }
+      setEmail(credentials.email);
+      setPassword(credentials.password);
+      await performLogin(credentials.email, credentials.password);
+    } catch (error) {
+      console.error('Biometric login failed:', error);
+      Alert.alert('Biometric Login', 'Unable to sign in with biometrics. Please use email and password.');
+    } finally {
+      setBiometricLoading(false);
     }
   };
 
@@ -283,6 +386,19 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               {loading ? 'Signing In...' : 'Sign In'}
             </Text>
           </TouchableOpacity>
+
+          {biometricAvailable && savedBiometricCredentials && (
+            <TouchableOpacity
+              style={[styles.biometricButton, biometricLoading && styles.loginButtonDisabled]}
+              onPress={handleBiometricLogin}
+              disabled={biometricLoading || loading}
+            >
+              <MaterialIcons name="fingerprint" size={22} color="#1C75BC" />
+              <Text style={styles.biometricButtonText}>
+                {biometricLoading ? `Checking ${biometricLabel}...` : `Use ${biometricLabel}`}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         </ScrollView>
@@ -396,6 +512,22 @@ const styles = StyleSheet.create({
   loginButtonText: {
     color: '#fff',
     fontSize: 18,
+    fontWeight: '600',
+  },
+  biometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#1C75BC',
+    borderRadius: 12,
+    paddingVertical: 14,
+    backgroundColor: '#fff',
+  },
+  biometricButtonText: {
+    marginLeft: 8,
+    color: '#1C75BC',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

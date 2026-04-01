@@ -40,6 +40,7 @@ import { hapticLight } from '../utils/haptics';
 import { setSyncMonthScope } from '../services/syncScopeService';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
+const FIRST_LOGIN_PORTAL_TIP_KEY_PREFIX = 'first_login_portal_tip_shown:';
 
 interface HomeScreenProps {
   navigation: any;
@@ -445,6 +446,40 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     });
     return () => subscription.remove();
   }, [currentEmployee?.id]);
+
+  // One-time tip after first login: explore the app, then use the web portal from a computer.
+  useEffect(() => {
+    if (loading || !currentEmployee?.id) return;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const interactionHandle = InteractionManager.runAfterInteractions(() => {
+      timeoutId = setTimeout(async () => {
+        if (cancelled) return;
+        try {
+          const key = `${FIRST_LOGIN_PORTAL_TIP_KEY_PREFIX}${currentEmployee.id}`;
+          const shown = await AsyncStorage.getItem(key);
+          if (shown === '1' || cancelled) return;
+          Alert.alert(
+            'Welcome',
+            'Take a few minutes to explore the features in this app.\n\nWhen you can, open the Staff web portal from your computer\'s browser (monthly report, approvals, and more):\nhttps://oxford-mileage-tracker.vercel.app/login\n\nHow-to PDFs: https://oxford-mileage-tracker.vercel.app/support.html',
+            [
+              {
+                text: 'OK',
+                onPress: () => AsyncStorage.setItem(key, '1'),
+              },
+            ]
+          );
+        } catch {
+          // ignore storage failures
+        }
+      }, 500);
+    });
+    return () => {
+      cancelled = true;
+      interactionHandle.cancel();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [loading, currentEmployee?.id]);
 
   // Refresh only local data without syncing from backend
   const refreshLocalDataOnly = async () => {

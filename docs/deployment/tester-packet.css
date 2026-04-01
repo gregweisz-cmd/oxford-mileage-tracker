@@ -93,6 +93,19 @@ h4 {
   color: #333;
 }
 
+/* iMessage-style platform accents for tester instructions (iOS = blue, Android = green) */
+.platform-ios h3,
+.platform-ios h4 {
+  color: #007aff;
+  border-bottom-color: rgba(0, 122, 255, 0.35);
+}
+
+.platform-android h3,
+.platform-android h4 {
+  color: #34c759;
+  border-bottom-color: rgba(52, 199, 89, 0.35);
+}
+
 /* Phone-sized on Letter (~3in wide), centered — not full page width */
 /* Side-by-side: small phone-sized shot + caption (saves vertical space in PDF) */
 .screenshot-with-caption {

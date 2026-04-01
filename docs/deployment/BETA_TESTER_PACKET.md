@@ -25,12 +25,30 @@ You must continue to:
 
 ## 3. Get access (mobile and web)
 
+<div class="platform-ios">
+
 ### iPhone (primary tester path)
 
-1. Install **TestFlight** from the App Store: [Download TestFlight](https://apps.apple.com/us/app/testflight/id899247664).  
+1. **Accept the Apple Developer Program team invite** for **Oxford House, Inc.** You will get an email with the subject **“You’re invited to join a development team.”** Tap **Accept invitation** in that message (see the screenshot below).
+2. **Notify Goose** after you have accepted. Goose will then send the **TestFlight** invitation to the correct **Apple ID / iCloud** email.
+3. Install **TestFlight** from the App Store: [Download TestFlight](https://apps.apple.com/us/app/testflight/id899247664).  
    Printed URL: `https://apps.apple.com/us/app/testflight/id899247664`
-2. You will be invited using your **Apple ID / iCloud** email.
-3. If your iCloud or TestFlight email is **not** your work email, tell Goose so the invite goes to the right account.
+4. When you receive the **TestFlight** invitation email, **open it on your iPhone** and tap **View in TestFlight** (see the second screenshot below). Do not rely on desktop-only steps for this link.
+5. If your iCloud or TestFlight email is **not** your work email, tell Goose so invites go to the right account.
+
+### Visual reference — Apple Developer team invite email
+
+<div class="screenshot-with-caption">
+<img src="images/tester-packet/ios-apple-developer-team-invite.png" alt="Apple email inviting you to join Oxford House development team" />
+<div class="screenshot-caption"><em>Apple Developer — <strong>You’re invited to join a development team</strong> for <strong>Oxford House, Inc.</strong> Accept this invitation first, then tell Goose.</em></div>
+</div>
+
+### Visual reference — TestFlight invitation email (tap View in TestFlight)
+
+<div class="screenshot-with-caption">
+<img src="images/tester-packet/ios-testflight-email-view-in-testflight.png" alt="TestFlight email with View in TestFlight button" />
+<div class="screenshot-caption"><em>Open this email <strong>on your phone</strong> and tap <strong>View in TestFlight</strong>.</em></div>
+</div>
 
 ### Visual reference — iPhone (TestFlight in the App Store)
 
@@ -45,6 +63,10 @@ You must continue to:
 <img src="images/tester-packet/ios-testflight-oxford-app.png" alt="Oxford House app in TestFlight" />
 <div class="screenshot-caption"><em>TestFlight — <strong>Oxford House Expense Tracker</strong> with <strong>Install</strong> or <strong>Update</strong>. Your screen may show a different build number.</em></div>
 </div>
+
+</div>
+
+<div class="platform-android">
 
 ### Android
 
@@ -66,9 +88,13 @@ You must continue to:
 <div class="screenshot-caption"><em>Google Play — internal test listing when a <strong>new build</strong> is ready. Tap the blue <strong>Update</strong> button. You may see the package name and “(unreviewed)” plus a note that this is a test build — that is normal for internal testing.</em></div>
 </div>
 
+</div>
+
 ### Getting the latest build (updates)
 
 When we release a new test build, use the steps below so you are not stuck on an old version.
+
+<div class="platform-ios">
 
 #### iPhone — TestFlight
 
@@ -77,12 +103,18 @@ When we release a new test build, use the steps below so you are not stuck on an
 3. If a new build is available, tap **Update** (or open the app from TestFlight and tap **Install** / **Update** when prompted).
 4. TestFlight may also **notify** you when a new build is ready — check **Settings** in TestFlight for notification preferences.
 
+</div>
+
+<div class="platform-android">
+
 #### Android — Google Play (internal testing)
 
 1. Open the **Google Play Store** app.
 2. Go to **Manage apps & device** → **Updates** (or open **My apps** and find the app), or search for **Oxford House Expense Tracker** and open the store listing.
 3. If the internal testing track has a newer **version**, tap **Update**.
 4. If you do not see an update, pull the **Updates** screen to refresh, or open the internal test link again — sometimes the Play Store needs a moment to show the new build.
+
+</div>
 
 ### Web portals
 
@@ -129,6 +161,8 @@ Use this form for **every** issue, improvement idea, or concern (one submission 
 **[Submit Tester Feedback Form](https://forms.gle/vmUf6qzESDk5uTai8)**
 
 Printed URL: `https://forms.gle/vmUf6qzESDk5uTai8`
+
+**Quick link (same form):** [Expense Tracker — Feedback](https://tinyurl.com/ExpenseTracker-Feedback) — `https://tinyurl.com/ExpenseTracker-Feedback` (also on the [Support page](https://oxford-mileage-tracker.vercel.app/support.html)).
 
 Below is what each field is for—fill in every item that applies to your report.
 
