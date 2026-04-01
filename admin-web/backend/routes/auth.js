@@ -90,7 +90,10 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
   // Find employee by email (case-insensitive so mobile and web match)
   const emailTrim = (email || '').toString().trim();
   db.get(
-    'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ?',
+    `SELECT * FROM employees
+     WHERE LOWER(TRIM(email)) = ?
+     ORDER BY CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END, createdAt ASC, id ASC
+     LIMIT 1`,
     [emailTrim.toLowerCase()],
     async (err, employee) => {
       if (err) {
@@ -100,6 +103,11 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
       
       if (!employee) {
         return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Never allow archived records to authenticate.
+      if (employee.archived === 1) {
+        return res.status(403).json({ error: 'This account is archived. Please contact your administrator.' });
       }
 
       // Per-user lockout: if account is locked, reject before checking password
@@ -349,7 +357,10 @@ router.post('/api/employee-login', async (req, res) => {
   // Find employee by email (case-insensitive so mobile and web always get the same record)
   const emailTrim = (email || '').toString().trim();
   db.get(
-    'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ?',
+    `SELECT * FROM employees
+     WHERE LOWER(TRIM(email)) = ?
+     ORDER BY CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END, createdAt ASC, id ASC
+     LIMIT 1`,
     [emailTrim.toLowerCase()],
     async (err, employee) => {
       if (err) {
@@ -359,6 +370,10 @@ router.post('/api/employee-login', async (req, res) => {
       
       if (!employee) {
         return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      if (employee.archived === 1) {
+        return res.status(403).json({ error: 'This account is archived. Please contact your administrator.' });
       }
 
       // Per-user lockout (same as web login)
