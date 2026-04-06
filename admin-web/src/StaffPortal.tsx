@@ -61,7 +61,6 @@ import {
 import { useRealtimeSync, useRealtimeStatus } from './hooks/useRealtimeSync';
 
 // Per Diem Rules imports
-import { PerDiemRulesService } from './services/perDiemRulesService';
 
 import { MileageEntryForm, MileageEntryFormData } from './components/DataEntryForms';
 import { PerDiemTab } from './components/PerDiemTab';
@@ -86,6 +85,7 @@ import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistor
 
 // Address formatting utility
 import { formatLocationNameAndAddress } from './utils/addressFormatter';
+import { parseCalendarYearMonthFromStoredDate, parseCalendarYmdParts, formatStoredDateForDisplay } from './utils/calendarDate';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
@@ -184,8 +184,8 @@ export function buildCostCenterRows(params: {
   const baseAddress = employee?.baseAddress;
   const baseAddress2 = employee?.baseAddress2;
   const currentMonthTime = rawTimeEntries.filter((t: any) => {
-    const d = new Date(t.date);
-    return d.getUTCMonth() + 1 === currentMonth && d.getUTCFullYear() === currentYear;
+    const ym = parseCalendarYearMonthFromStoredDate(t.date);
+    return ym && ym.month === currentMonth && ym.year === currentYear;
   });
   return Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
@@ -194,14 +194,14 @@ export function buildCostCenterRows(params: {
     const normDate = normalizeDate(dateStr);
     const dayDescription = dailyDescriptions.find((d: any) => normalizeDate(d.date) === normDate);
     const mileageForDayAndCC = currentMonthMileageList.filter((e: any) => {
-      const d = new Date(e.date);
-      return d.getUTCDate() === day && d.getUTCMonth() + 1 === currentMonth && d.getUTCFullYear() === currentYear &&
+      const p = parseCalendarYmdParts(e.date);
+      return !!p && p.day === day && p.month === currentMonth && p.year === currentYear &&
         ((e.costCenter || costCenters[0]) === costCenter);
     });
     const withMiles = mileageForDayAndCC.filter((e: any) => (e.miles || 0) > 0);
     const timeForDayAndCC = currentMonthTime.filter((t: any) => {
-      const d = new Date(t.date);
-      return d.getUTCDate() === day && ((t.costCenter || costCenters[0]) === costCenter);
+      const p = parseCalendarYmdParts(t.date);
+      return !!p && p.day === day && ((t.costCenter || costCenters[0]) === costCenter);
     });
     const hoursWorked = timeForDayAndCC.reduce((s: number, t: any) => s + (Number(t.hours) || 0), 0);
     const milesTraveled = withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0), 0);
@@ -1299,24 +1299,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
           
           const currentMonthMileage = mileageEntries.filter((entry: any) => {
-            const entryDate = new Date(entry.date);
-            const entryMonth = entryDate.getUTCMonth() + 1; // Use UTC to avoid timezone issues
-            const entryYear = entryDate.getUTCFullYear();
-            return entryMonth === currentMonth && entryYear === currentYear;
+            const ym = parseCalendarYearMonthFromStoredDate(entry.date);
+            return ym && ym.month === currentMonth && ym.year === currentYear;
           });
           
           const currentMonthReceipts = receipts.filter((receipt: any) => {
-            const receiptDate = new Date(receipt.date);
-            const receiptMonth = receiptDate.getUTCMonth() + 1;
-            const receiptYear = receiptDate.getUTCFullYear();
-            return receiptMonth === currentMonth && receiptYear === currentYear;
+            const ym = parseCalendarYearMonthFromStoredDate(receipt.date);
+            return ym && ym.month === currentMonth && ym.year === currentYear;
           });
           
           const currentMonthTimeTracking = timeTracking.filter((tracking: any) => {
-            const trackingDate = new Date(tracking.date);
-            const trackingMonth = trackingDate.getUTCMonth() + 1;
-            const trackingYear = trackingDate.getUTCFullYear();
-            return trackingMonth === currentMonth && trackingYear === currentYear;
+            const ym = parseCalendarYearMonthFromStoredDate(tracking.date);
+            return ym && ym.month === currentMonth && ym.year === currentYear;
           });
           
           // Data filtered for current month
@@ -1330,6 +1324,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               day: '2-digit', 
               year: '2-digit' 
             });
+            /** Canonical calendar key for APIs (toDateKey) — do not compare locale dateStr to YYYY-MM-DD. */
+            const dateKeyYmd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             
             // Find ALL mileage entries for this day (use UTC to avoid timezone issues)
             const dayMileageEntries = currentMonthMileage.filter((entry: any) => {
@@ -1436,8 +1432,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             // Get odometer start: prefer daily_odometer_readings for this date, else first entry's odometerReading
             const firstEntry = dayMileageEntriesWithMiles.length > 0 ? dayMileageEntriesWithMiles[0] : null;
             const lastEntry = dayMileageEntriesWithMiles.length > 0 ? dayMileageEntriesWithMiles[dayMileageEntriesWithMiles.length - 1] : null;
-            const odometerStart = (dailyOdometerMap[dateStr] != null && dailyOdometerMap[dateStr] > 0)
-              ? dailyOdometerMap[dateStr]
+            const odometerStart = (dailyOdometerMap[dateKeyYmd] != null && dailyOdometerMap[dateKeyYmd] > 0)
+              ? dailyOdometerMap[dateKeyYmd]
               : (firstEntry?.odometerReading || 0);
             
             // Calculate odometer end = start + total miles for the day
@@ -1473,7 +1469,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
             // Find ALL time tracking entries for this exact day.
             const dayTimeTrackingEntries = currentMonthTimeTracking.filter(
-              (tracking: any) => toDateKey(tracking) === dateStr
+              (tracking: any) => toDateKey(tracking) === dateKeyYmd
             );
             
             // Build hours breakdown from time tracking entries
@@ -1506,69 +1502,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             
             // Find Per Diem receipts for this exact day.
             const dayPerDiemReceipts = currentMonthReceipts.filter(
-              (receipt: any) => toDateKey(receipt) === dateStr && receipt.category === 'Per Diem'
+              (receipt: any) => toDateKey(receipt) === dateKeyYmd && receipt.category === 'Per Diem'
             );
             
-            // Calculate Per Diem amount from receipts
+            // Per diem on the summary / daily table = claimed amounts only (Per Diem category receipts).
+            // Matches Per Diem tab and mobile: users claim days there (optional receipt image); we must not
+            // auto-credit rule-eligible days here — that inflated totals (e.g. 30 × $35 = $1050) vs $0 claimed.
             const perDiemFromReceipts = dayPerDiemReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
-            
-            // Daily description: user attests "Stayed 50+ mi from BA" (per diem second criterion)
-            const stayedOvernight = dayDescription?.stayedOvernight || false;
-            
-            // Calculate Per Diem based on rules if no receipts exist
-            // Rule: 8+ hours AND (100+ miles OR daily description "Stayed 50+ mi from BA")
-            let calculatedPerDiem = perDiemFromReceipts;
-            if (perDiemFromReceipts === 0) {
-              const costCenterForPerDiem = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
-              
-
-              try {
-                const perDiemResult = await PerDiemRulesService.calculatePerDiem(
-                  costCenterForPerDiem,
-                  dayWorkingHours,
-                  totalDayMiles,
-                  0,
-                  perDiemFromReceipts
-                );
-
-                // Match mobile rule: hours AND (miles OR out-of-town checkbox).
-                const activeRule = perDiemResult.rule;
-                const minHours = activeRule?.minHours ?? 8;
-                const minMiles = activeRule?.minMiles ?? 100;
-                const meetsHours = dayWorkingHours >= minHours;
-                const meetsMiles = totalDayMiles >= minMiles;
-                const meetsStayedFromBa = stayedOvernight;
-                const qualifiesForPerDiem = meetsHours && (meetsMiles || meetsStayedFromBa);
-
-                if (qualifiesForPerDiem) {
-                  if (activeRule?.useActualAmount) {
-                    calculatedPerDiem = Math.min(perDiemFromReceipts, activeRule.maxAmount);
-                  } else {
-                    calculatedPerDiem = activeRule?.maxAmount ?? perDiemResult.amount;
-                  }
-                  debugVerbose(`💰 StaffPortal: Calculated Per Diem for ${employee.name} on ${dateStr}:`, {
-                    costCenter: costCenterForPerDiem,
-                    hours: dayWorkingHours,
-                    miles: totalDayMiles,
-                    stayedOvernight,
-                    amount: calculatedPerDiem,
-                    rule: perDiemResult.rule
-                  });
-                } else {
-                  debugVerbose(`💰 StaffPortal: Per Diem not qualified for ${employee.name} on ${dateStr}:`, {
-                    hours: dayWorkingHours,
-                    minHours,
-                    minMiles,
-                    stayedOvernight,
-                    meetsHours,
-                    meetsMiles,
-                    meetsStayedFromBa: meetsStayedFromBa
-                  });
-                }
-              } catch (error) {
-                debugError('❌ StaffPortal: Error calculating Per Diem:', error);
-              }
-            }
+            const calculatedPerDiem = perDiemFromReceipts;
             
             // Include costCenter*Hours and categoryHours so sync-to-source persists time_tracking (doesn't wipe)
             const costCenterHoursPayload: { [key: string]: number } = {};
@@ -1631,11 +1572,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const totalReceipts = currentMonthReceipts.reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
           const totalHours = currentMonthTimeTracking.reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
           
-          // Per diem total from daily entries (built from API/receipts/rules)
-          const totalPerDiemFromDailyEntries = dedupedDailyEntries.reduce((sum: number, e: any) => sum + (e.perDiem || 0), 0);
+          // Per diem: claimed Per Diem receipts (same source as Per Diem tab / app). Cap $350/mo default.
           const totalPerDiemFromReceipts = currentMonthReceipts
             .filter((receipt: any) => receipt.category === 'Per Diem')
             .reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
+          const PER_DIEM_MONTHLY_CAP = 350;
+          const perDiemSummaryTotal = Math.min(totalPerDiemFromReceipts, PER_DIEM_MONTHLY_CAP);
           
           // Create employee expense data with real data
           const expenseData: EmployeeExpenseData = {
@@ -1664,7 +1606,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             parkingTolls: 0,
             groundTransportation: 0,
             hotelsAirbnb: 0,
-            perDiem: totalPerDiemFromDailyEntries, // Sum of daily table
+            perDiem: perDiemSummaryTotal,
             phoneInternetFax: totalReceipts - totalPerDiemFromReceipts, // Exclude Per Diem from other receipts
             shippingPostage: 0,
             printingCopying: 0,
@@ -1800,11 +1742,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             setEmployeeData(expenseData);
             const formattedReceipts = currentMonthReceipts.map((receipt: any) => ({
               id: receipt.id,
-              date: new Date(receipt.date).toLocaleDateString('en-US', { 
-                month: '2-digit', 
-                day: '2-digit', 
-                year: '2-digit' 
-              }),
+              date: formatStoredDateForDisplay(receipt.date),
               amount: receipt.amount,
               vendor: receipt.vendor,
               description: receipt.description,
@@ -2211,10 +2149,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     // Calculate category hours for status indicators from rawTimeEntries
     const currentMonthTimeTracking = rawTimeEntries.filter((t: any) => {
-      const trackingDate = new Date(t.date);
-      const trackingMonth = trackingDate.getUTCMonth() + 1;
-      const trackingYear = trackingDate.getUTCFullYear();
-      return trackingMonth === currentMonth && trackingYear === currentYear;
+      const ym = parseCalendarYearMonthFromStoredDate(t.date);
+      return ym && ym.month === currentMonth && ym.year === currentYear;
     });
     
     const gaHours = currentMonthTimeTracking

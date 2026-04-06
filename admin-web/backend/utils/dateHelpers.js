@@ -11,12 +11,14 @@ const { debugWarn } = require('../debug');
  */
 function normalizeDateString(dateValue) {
   if (!dateValue) return '';
-  
-  // If already in YYYY-MM-DD format, return as-is
-  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-    return dateValue;
+
+  // Prefer calendar YYYY-MM-DD from the start of the string (covers "2026-04-01" and ISO timestamps).
+  // Using UTC components from ISO for calendar intent caused off-by-one (e.g. April 1 local → March 31 UTC).
+  if (typeof dateValue === 'string') {
+    const ymd = dateValue.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (ymd) return ymd[1];
   }
-  
+
   // Try to parse as Date object
   let date;
   if (dateValue instanceof Date) {
