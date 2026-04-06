@@ -8160,22 +8160,35 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         >
                           <EditIcon />
                         </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => {
-                            setReceipts(receipts.filter(r => r.id !== receipt.id));
-                            // Update phone/internet/fax total
-                            const updatedData = {
-                              ...employeeData,
-                              phoneInternetFax: receipts
-                                .filter(r => r.id !== receipt.id)
-                                .reduce((sum, r) => sum + r.amount, 0)
-                            };
-                            setEmployeeData(updatedData);
-                          }}
+                        <Tooltip
+                          title={
+                            receipt.category === 'Per Diem'
+                              ? 'Per Diem receipts must be removed from the Per Diem tab (uncheck the day and save).'
+                              : ''
+                          }
+                          arrow
                         >
-                          <DeleteIcon />
-                        </IconButton>
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={receipt.category === 'Per Diem'}
+                              onClick={() => {
+                                if (receipt.category === 'Per Diem') return;
+                                setReceipts(receipts.filter(r => r.id !== receipt.id));
+                                // Update phone/internet/fax total
+                                const updatedData = {
+                                  ...employeeData,
+                                  phoneInternetFax: receipts
+                                    .filter(r => r.id !== receipt.id)
+                                    .reduce((sum, r) => sum + r.amount, 0)
+                                };
+                                setEmployeeData(updatedData);
+                              }}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
                       </TableCell>
                       </TableRow>
                     );
