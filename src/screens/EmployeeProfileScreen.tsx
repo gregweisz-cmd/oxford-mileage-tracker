@@ -475,6 +475,7 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '88%',
   },
   modalTitle: {
     fontSize: 18,

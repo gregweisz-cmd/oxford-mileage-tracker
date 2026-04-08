@@ -152,6 +152,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       padding: 20,
       width: '90%',
       maxWidth: 400,
+      maxHeight: '88%',
     },
     modalTitle: {
       fontSize: 18,
