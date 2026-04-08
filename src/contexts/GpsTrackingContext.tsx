@@ -1,7 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { GpsTrackingSession, LocationDetails } from '../types';
+import {
+  GPS_STATIONARY_ACTION_END,
+  StationaryNotificationService,
+} from '../services/stationaryNotificationService';
 
 interface GpsTrackingContextType {
   isTracking: boolean;
@@ -62,6 +67,27 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
       }
     });
     return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    let responseSubscription: Notifications.EventSubscription | undefined;
+    let mounted = true;
+    (async () => {
+      await StationaryNotificationService.initialize();
+      if (!mounted) return;
+      responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        const actionId = response.actionIdentifier;
+        const type = (response.notification.request.content.data as any)?.type;
+        if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_END) {
+          requestStopTracking();
+        }
+      });
+    })();
+
+    return () => {
+      mounted = false;
+      responseSubscription?.remove();
+    };
   }, []);
 
   useEffect(() => {

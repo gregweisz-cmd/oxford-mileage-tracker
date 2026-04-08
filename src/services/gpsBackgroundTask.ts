@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { debugLog } from '../config/debug';
+import { StationaryNotificationService } from './stationaryNotificationService';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 export { LOCATION_TASK_NAME };
@@ -27,9 +28,15 @@ export interface PersistedGpsState {
   lastLocation: { latitude: number; longitude: number };
   totalDistance: number;
   stationaryStartTime: number | null;
+  hasSeenVehicleSpeed?: boolean;
+  stationaryAlertPending?: boolean;
+  stationaryAlertLastPromptAt?: number | null;
 }
 
 const MOVEMENT_THRESHOLD_MILES = 5 / 1609.34; // 5 meters in miles
+const VEHICLE_SPEED_THRESHOLD_MPH = 8;
+const STATIONARY_THRESHOLD_MS = 5 * 60 * 1000;
+const STATIONARY_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 const R = 3959; // Earth radius in miles
 
 function toRadians(degrees: number): number {
@@ -73,15 +80,45 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const latest = data.locations[data.locations.length - 1];
     const newLat = latest.coords.latitude;
     const newLon = latest.coords.longitude;
+    const speedMph = Math.max(0, (latest.coords.speed ?? 0) * 2.23694);
 
     const distance = calculateDistance(lastLat, lastLon, newLat, newLon);
+    const now = Date.now();
 
-    if (distance > MOVEMENT_THRESHOLD_MILES) {
+    if (typeof state.hasSeenVehicleSpeed !== 'boolean') {
+      state.hasSeenVehicleSpeed = false;
+    }
+    if (typeof state.stationaryAlertPending !== 'boolean') {
+      state.stationaryAlertPending = false;
+    }
+    if (typeof state.stationaryAlertLastPromptAt === 'undefined') {
+      state.stationaryAlertLastPromptAt = null;
+    }
+
+    if (speedMph >= VEHICLE_SPEED_THRESHOLD_MPH) {
+      state.hasSeenVehicleSpeed = true;
       state.stationaryStartTime = null;
-    } else if (distance > 0.001 && !state.stationaryStartTime) {
-      state.stationaryStartTime = Date.now();
-    } else if (distance < 0.001 && !state.stationaryStartTime) {
-      state.stationaryStartTime = Date.now();
+      state.stationaryAlertPending = false;
+    } else if (distance > MOVEMENT_THRESHOLD_MILES) {
+      state.stationaryStartTime = null;
+      state.stationaryAlertPending = false;
+    } else if (state.hasSeenVehicleSpeed) {
+      if (!state.stationaryStartTime) {
+        state.stationaryStartTime = now;
+      }
+
+      const hasExceededStationaryThreshold =
+        now - state.stationaryStartTime >= STATIONARY_THRESHOLD_MS;
+      const cooldownComplete =
+        !state.stationaryAlertLastPromptAt ||
+        now - state.stationaryAlertLastPromptAt >= STATIONARY_ALERT_COOLDOWN_MS;
+
+      if (hasExceededStationaryThreshold && cooldownComplete && !state.stationaryAlertPending) {
+        state.stationaryAlertPending = true;
+        await StationaryNotificationService.scheduleStationaryAlert(state.session.id);
+        state.stationaryAlertPending = false;
+        state.stationaryAlertLastPromptAt = now;
+      }
     }
 
     state.totalDistance += distance;

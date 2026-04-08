@@ -179,6 +179,9 @@ export class GpsTrackingService {
         },
         totalDistance: 0,
         stationaryStartTime: null,
+        hasSeenVehicleSpeed: false,
+        stationaryAlertPending: false,
+        stationaryAlertLastPromptAt: null,
       };
       await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(persistedState));
 
@@ -346,6 +349,30 @@ export class GpsTrackingService {
       };
     } catch {
       // Ignore sync errors
+    }
+  }
+
+  static async hasPendingStationaryAlert(): Promise<boolean> {
+    try {
+      const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (!raw) return false;
+      const state: PersistedGpsState = JSON.parse(raw);
+      return !!state.stationaryAlertPending;
+    } catch {
+      return false;
+    }
+  }
+
+  static async consumeStationaryAlertPrompt(): Promise<void> {
+    try {
+      const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (!raw) return;
+      const state: PersistedGpsState = JSON.parse(raw);
+      state.stationaryAlertPending = false;
+      state.stationaryAlertLastPromptAt = Date.now();
+      await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // Ignore storage errors for non-critical UX prompts
     }
   }
 

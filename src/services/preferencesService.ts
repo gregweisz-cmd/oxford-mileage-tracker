@@ -14,6 +14,8 @@ export interface UserPreferences {
   showRecentEntriesCount: number;
   defaultMapView: 'standard' | 'satellite' | 'hybrid';
   dashboardTileOrder: string[]; // Order of dashboard action tiles
+  gpsStartLocationOptionOrder: string[]; // Order of start tracking location options
+  gpsEndLocationOptionOrder: string[]; // Order of stop tracking location options
   
   // Notification Preferences
   enableSyncNotifications: boolean;
@@ -44,6 +46,20 @@ const DEFAULT_PREFERENCES: UserPreferences = {
     'hours-description',
     'per-diem',
     'saved-addresses',
+  ],
+  gpsStartLocationOptionOrder: [
+    'lastDestination',
+    'baseAddress',
+    'favoriteAddresses',
+    'oxfordHouse',
+    'newLocation',
+  ],
+  gpsEndLocationOptionOrder: [
+    'baseAddress',
+    'tripStart',
+    'favoriteAddresses',
+    'oxfordHouse',
+    'newLocation',
   ],
   
   // Notification defaults

@@ -93,8 +93,8 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             try {
               const authResult = await LocalAuthentication.authenticateAsync({
                 promptMessage: `Enable ${biometricLabel}`,
-                fallbackLabel: 'Use passcode',
                 cancelLabel: 'Cancel',
+                disableDeviceFallback: true,
               });
               if (!authResult.success) return;
               await saveBiometricCredentials(loginEmail, loginPassword);
@@ -249,8 +249,8 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     try {
       const authResult = await LocalAuthentication.authenticateAsync({
         promptMessage: `Sign in with ${biometricLabel}`,
-        fallbackLabel: 'Use passcode',
         cancelLabel: 'Cancel',
+        disableDeviceFallback: true,
       });
       if (!authResult.success) return;
 

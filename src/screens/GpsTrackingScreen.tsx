@@ -35,6 +35,20 @@ interface GpsTrackingScreenProps {
   route?: any;
 }
 
+type StartLocationOption =
+  | 'lastDestination'
+  | 'baseAddress'
+  | 'favoriteAddresses'
+  | 'oxfordHouse'
+  | 'newLocation';
+
+type EndLocationOption =
+  | 'baseAddress'
+  | 'tripStart'
+  | 'favoriteAddresses'
+  | 'oxfordHouse'
+  | 'newLocation';
+
 export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
   const { colors } = useTheme();
   const { isTracking, currentSession, currentDistance, setCurrentDistance, startTracking, stopTracking, shouldShowEndLocationModal, setShouldShowEndLocationModal } = useGpsTracking();
@@ -51,6 +65,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [showEndLocationModal, setShowEndLocationModal] = useState(false);
   /** Same choices as starting a trip (BA, favorites, Oxford search, manual) — not only the free-form capture modal. */
   const [showEndLocationOptionsModal, setShowEndLocationOptionsModal] = useState(false);
+  const [isEditingStartLocationOptions, setIsEditingStartLocationOptions] = useState(false);
+  const [isEditingEndLocationOptions, setIsEditingEndLocationOptions] = useState(false);
+  const [startLocationOptionOrder, setStartLocationOptionOrder] = useState<StartLocationOption[]>([
+    'lastDestination',
+    'baseAddress',
+    'favoriteAddresses',
+    'oxfordHouse',
+    'newLocation',
+  ]);
+  const [endLocationOptionOrder, setEndLocationOptionOrder] = useState<EndLocationOption[]>([
+    'baseAddress',
+    'tripStart',
+    'favoriteAddresses',
+    'oxfordHouse',
+    'newLocation',
+  ]);
   const [showOxfordHouseSearchModal, setShowOxfordHouseSearchModal] = useState(false);
   const [oxfordHousePickerRole, setOxfordHousePickerRole] = useState<'start' | 'end'>('start');
   const [startLocationDetails, setStartLocationDetails] = useState<LocationDetails | null>(null);
@@ -98,6 +128,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     try {
       const prefs = await PreferencesService.getPreferences();
       setShowGpsDuration(prefs.showGpsDuration);
+      setStartLocationOptionOrder(
+        (prefs.gpsStartLocationOptionOrder?.filter((option): option is StartLocationOption =>
+          ['lastDestination', 'baseAddress', 'favoriteAddresses', 'oxfordHouse', 'newLocation'].includes(option)
+        ) || ['lastDestination', 'baseAddress', 'favoriteAddresses', 'oxfordHouse', 'newLocation']) as StartLocationOption[]
+      );
+      setEndLocationOptionOrder(
+        (prefs.gpsEndLocationOptionOrder?.filter((option): option is EndLocationOption =>
+          ['baseAddress', 'tripStart', 'favoriteAddresses', 'oxfordHouse', 'newLocation'].includes(option)
+        ) || ['baseAddress', 'tripStart', 'favoriteAddresses', 'oxfordHouse', 'newLocation']) as EndLocationOption[]
+      );
     } catch (error) {
       console.error('Error loading preferences:', error);
     }
@@ -500,6 +540,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }, 100);
   };
 
+  const moveStartLocationOption = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= startLocationOptionOrder.length) return;
+    const newOrder = [...startLocationOptionOrder];
+    [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
+    setStartLocationOptionOrder(newOrder);
+    await PreferencesService.updatePreferences({
+      gpsStartLocationOptionOrder: newOrder,
+    });
+  };
+
   const startGpsTracking = async () => {
     try {
       setIsStartingTracking(true);
@@ -577,6 +628,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setShowEndLocationModal(true);
       }
     }, 100);
+  };
+
+  const moveEndLocationOption = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= endLocationOptionOrder.length) return;
+    const newOrder = [...endLocationOptionOrder];
+    [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
+    setEndLocationOptionOrder(newOrder);
+    await PreferencesService.updatePreferences({
+      gpsEndLocationOptionOrder: newOrder,
+    });
   };
 
   const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
@@ -1030,75 +1092,92 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Choose Starting Location</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Choose Starting Location</Text>
+              <TouchableOpacity
+                style={styles.rearrangeButton}
+                onPress={() => setIsEditingStartLocationOptions(!isEditingStartLocationOptions)}
+              >
+                <MaterialIcons name={isEditingStartLocationOptions ? 'check' : 'edit'} size={18} color="#2196F3" />
+                <Text style={styles.rearrangeButtonText}>
+                  {isEditingStartLocationOptions ? 'Done' : 'Rearrange'}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.modalSubtitle}>Where are you starting your trip from?</Text>
-
-            <TouchableOpacity
-              style={[styles.locationOptionButton, !lastDestination && styles.disabledButton]}
-              onPress={() => {
-                console.log('🔍 GPS: Last destination button pressed');
-                handleLocationOption('lastDestination');
-              }}
-              disabled={!lastDestination}
-            >
-              <MaterialIcons name="location-on" size={24} color="#4CAF50" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Start from Last Destination</Text>
-                <Text style={styles.locationOptionSubtitle}>
-                  {lastDestination ? `${lastDestination.name} (${lastDestination.address})` : 'No previous destination found'}
-                </Text>
+            {isEditingStartLocationOptions ? (
+              <View style={styles.editHintContainer}>
+                <MaterialIcons name="info" size={16} color="#2196F3" />
+                <Text style={styles.editHintText}>Use ↑ ↓ to rearrange options</Text>
               </View>
-            </TouchableOpacity>
+            ) : null}
 
-            <TouchableOpacity
-              style={[styles.locationOptionButton, !currentEmployee?.baseAddress && styles.disabledButton]}
-              onPress={() => {
-                console.log('🔍 GPS: Base address button pressed');
-                handleLocationOption('baseAddress');
-              }}
-              disabled={!currentEmployee?.baseAddress}
-            >
-              <MaterialIcons name="home" size={24} color="#2196F3" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Start from Base Address</Text>
-                <Text style={styles.locationOptionSubtitle}>
-                  {currentEmployee?.baseAddress || 'No base address set'}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            {startLocationOptionOrder.map((option, index) => {
+              const isDisabled =
+                (option === 'lastDestination' && !lastDestination) ||
+                (option === 'baseAddress' && !currentEmployee?.baseAddress);
+              const iconName =
+                option === 'lastDestination' ? 'location-on' :
+                option === 'baseAddress' ? 'home' :
+                option === 'favoriteAddresses' ? 'star' :
+                option === 'oxfordHouse' ? 'home' : 'add-location';
+              const iconColor =
+                option === 'lastDestination' ? '#4CAF50' :
+                option === 'baseAddress' ? '#2196F3' :
+                option === 'favoriteAddresses' ? '#FFC107' :
+                option === 'oxfordHouse' ? '#9C27B0' : '#FF9800';
+              const title =
+                option === 'lastDestination' ? 'Start from Last Destination' :
+                option === 'baseAddress' ? 'Start from Base Address' :
+                option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
+                option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter New Starting Point';
+              const subtitle =
+                option === 'lastDestination'
+                  ? (lastDestination ? `${lastDestination.name} (${lastDestination.address})` : 'No previous destination found')
+                  : option === 'baseAddress'
+                    ? (currentEmployee?.baseAddress || 'No base address set')
+                    : option === 'favoriteAddresses'
+                      ? 'Select from your saved favorite locations'
+                      : option === 'oxfordHouse'
+                        ? 'Search and select from Oxford House locations'
+                        : 'Manually enter location name and address';
 
-            <TouchableOpacity
-              style={styles.locationOptionButton}
-              onPress={() => handleLocationOption('favoriteAddresses')}
-            >
-              <MaterialIcons name="star" size={24} color="#FFC107" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Choose from Favorite Addresses</Text>
-                <Text style={styles.locationOptionSubtitle}>Select from your saved favorite locations</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.locationOptionButton}
-              onPress={() => handleLocationOption('oxfordHouse')}
-            >
-              <MaterialIcons name="home" size={24} color="#9C27B0" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Search Oxford Houses</Text>
-                <Text style={styles.locationOptionSubtitle}>Search and select from Oxford House locations</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.locationOptionButton}
-              onPress={() => handleLocationOption('newLocation')}
-            >
-              <MaterialIcons name="add-location" size={24} color="#FF9800" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Enter New Starting Point</Text>
-                <Text style={styles.locationOptionSubtitle}>Manually enter location name and address</Text>
-              </View>
-            </TouchableOpacity>
+              return (
+                <View key={option}>
+                  <TouchableOpacity
+                    style={[styles.locationOptionButton, isDisabled && styles.disabledButton]}
+                    onPress={() => handleLocationOption(option)}
+                    disabled={isDisabled}
+                  >
+                    <MaterialIcons name={iconName as any} size={24} color={iconColor} />
+                    <View style={styles.locationOptionText}>
+                      <Text style={styles.locationOptionTitle}>{title}</Text>
+                      <Text style={styles.locationOptionSubtitle}>{subtitle}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {isEditingStartLocationOptions ? (
+                    <View style={styles.reorderButtons}>
+                      {index > 0 ? (
+                        <TouchableOpacity
+                          style={styles.reorderButton}
+                          onPress={() => void moveStartLocationOption(index, 'up')}
+                        >
+                          <MaterialIcons name="arrow-upward" size={16} color="#2196F3" />
+                        </TouchableOpacity>
+                      ) : null}
+                      {index < startLocationOptionOrder.length - 1 ? (
+                        <TouchableOpacity
+                          style={styles.reorderButton}
+                          onPress={() => void moveStartLocationOption(index, 'down')}
+                        >
+                          <MaterialIcons name="arrow-downward" size={16} color="#2196F3" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
 
             <TouchableOpacity
               style={styles.modalButtonSecondary}
@@ -1125,71 +1204,94 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Choose End Location</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Choose End Location</Text>
+              <TouchableOpacity
+                style={styles.rearrangeButton}
+                onPress={() => setIsEditingEndLocationOptions(!isEditingEndLocationOptions)}
+              >
+                <MaterialIcons name={isEditingEndLocationOptions ? 'check' : 'edit'} size={18} color="#2196F3" />
+                <Text style={styles.rearrangeButtonText}>
+                  {isEditingEndLocationOptions ? 'Done' : 'Rearrange'}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.modalSubtitle}>Where did this trip end?</Text>
-
-            <TouchableOpacity
-              style={[styles.locationOptionButton, !currentEmployee?.baseAddress && styles.disabledButton]}
-              onPress={() => handleEndLocationOption('baseAddress')}
-              disabled={!currentEmployee?.baseAddress}
-            >
-              <MaterialIcons name="home" size={24} color="#2196F3" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>End at Base Address</Text>
-                <Text style={styles.locationOptionSubtitle}>
-                  {currentEmployee?.baseAddress || 'No base address set'}
-                </Text>
+            {isEditingEndLocationOptions ? (
+              <View style={styles.editHintContainer}>
+                <MaterialIcons name="info" size={16} color="#2196F3" />
+                <Text style={styles.editHintText}>Use ↑ ↓ to rearrange options</Text>
               </View>
-            </TouchableOpacity>
+            ) : null}
 
-            <TouchableOpacity
-              style={[styles.locationOptionButton, !startLocationDetails && styles.disabledButton]}
-              onPress={() => handleEndLocationOption('tripStart')}
-              disabled={!startLocationDetails}
-            >
-              <MaterialIcons name="replay" size={24} color="#4CAF50" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Same as Trip Start</Text>
-                <Text style={styles.locationOptionSubtitle}>
-                  {startLocationDetails
-                    ? `${startLocationDetails.name} (${startLocationDetails.address || '—'})`
-                    : 'Start location not recorded for this session'}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            {endLocationOptionOrder.map((option, index) => {
+              const isDisabled =
+                (option === 'baseAddress' && !currentEmployee?.baseAddress) ||
+                (option === 'tripStart' && !startLocationDetails);
+              const iconName =
+                option === 'baseAddress' ? 'home' :
+                option === 'tripStart' ? 'replay' :
+                option === 'favoriteAddresses' ? 'star' :
+                option === 'oxfordHouse' ? 'home' : 'add-location';
+              const iconColor =
+                option === 'baseAddress' ? '#2196F3' :
+                option === 'tripStart' ? '#4CAF50' :
+                option === 'favoriteAddresses' ? '#FFC107' :
+                option === 'oxfordHouse' ? '#9C27B0' : '#FF9800';
+              const title =
+                option === 'baseAddress' ? 'End at Base Address' :
+                option === 'tripStart' ? 'Same as Trip Start' :
+                option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
+                option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter Destination Manually';
+              const subtitle =
+                option === 'baseAddress'
+                  ? (currentEmployee?.baseAddress || 'No base address set')
+                  : option === 'tripStart'
+                    ? (startLocationDetails
+                      ? `${startLocationDetails.name} (${startLocationDetails.address || '—'})`
+                      : 'Start location not recorded for this session')
+                    : option === 'favoriteAddresses'
+                      ? 'Select a saved location as your destination'
+                      : option === 'oxfordHouse'
+                        ? 'Search and select from Oxford House locations'
+                        : 'Use GPS + name/address (same as manual mileage)';
 
-            <TouchableOpacity
-              style={styles.locationOptionButton}
-              onPress={() => handleEndLocationOption('favoriteAddresses')}
-            >
-              <MaterialIcons name="star" size={24} color="#FFC107" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Choose from Favorite Addresses</Text>
-                <Text style={styles.locationOptionSubtitle}>Select a saved location as your destination</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.locationOptionButton}
-              onPress={() => handleEndLocationOption('oxfordHouse')}
-            >
-              <MaterialIcons name="home" size={24} color="#9C27B0" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Search Oxford Houses</Text>
-                <Text style={styles.locationOptionSubtitle}>Search and select from Oxford House locations</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.locationOptionButton}
-              onPress={() => handleEndLocationOption('newLocation')}
-            >
-              <MaterialIcons name="add-location" size={24} color="#FF9800" />
-              <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>Enter Destination Manually</Text>
-                <Text style={styles.locationOptionSubtitle}>Use GPS + name/address (same as manual mileage)</Text>
-              </View>
-            </TouchableOpacity>
+              return (
+                <View key={option}>
+                  <TouchableOpacity
+                    style={[styles.locationOptionButton, isDisabled && styles.disabledButton]}
+                    onPress={() => handleEndLocationOption(option)}
+                    disabled={isDisabled}
+                  >
+                    <MaterialIcons name={iconName as any} size={24} color={iconColor} />
+                    <View style={styles.locationOptionText}>
+                      <Text style={styles.locationOptionTitle}>{title}</Text>
+                      <Text style={styles.locationOptionSubtitle}>{subtitle}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {isEditingEndLocationOptions ? (
+                    <View style={styles.reorderButtons}>
+                      {index > 0 ? (
+                        <TouchableOpacity
+                          style={styles.reorderButton}
+                          onPress={() => void moveEndLocationOption(index, 'up')}
+                        >
+                          <MaterialIcons name="arrow-upward" size={16} color="#2196F3" />
+                        </TouchableOpacity>
+                      ) : null}
+                      {index < endLocationOptionOrder.length - 1 ? (
+                        <TouchableOpacity
+                          style={styles.reorderButton}
+                          onPress={() => void moveEndLocationOption(index, 'down')}
+                        >
+                          <MaterialIcons name="arrow-downward" size={16} color="#2196F3" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
 
             <TouchableOpacity
               style={styles.modalButtonSecondary}
@@ -1622,18 +1724,55 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 400,
   },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
-    textAlign: 'center',
+    textAlign: 'left',
+    flex: 1,
+  },
+  rearrangeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    marginLeft: 10,
+  },
+  rearrangeButtonText: {
+    color: '#2196F3',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   modalSubtitle: {
     fontSize: 14,
     color: '#666',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  editHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  editHintText: {
+    marginLeft: 6,
+    color: '#1565C0',
+    fontSize: 13,
+    fontWeight: '500',
   },
   locationOptionButton: {
     flexDirection: 'row',
@@ -1677,6 +1816,21 @@ const styles = StyleSheet.create({
     color: '#2196F3',
     fontSize: 16,
     fontWeight: '600',
+  },
+  reorderButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: -6,
+    marginBottom: 10,
+    gap: 12,
+  },
+  reorderButton: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#2196F3',
   },
   // Cost Center Selector Styles
   costCenterSelector: {
