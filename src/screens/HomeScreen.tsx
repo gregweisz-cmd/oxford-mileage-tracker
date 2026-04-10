@@ -38,6 +38,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SmartNotificationService, SmartNotification } from '../services/smartNotificationService';
 import { hapticLight } from '../utils/haptics';
 import { setSyncMonthScope } from '../services/syncScopeService';
+import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 const FIRST_LOGIN_PORTAL_TIP_KEY_PREFIX = 'first_login_portal_tip_shown:';
@@ -1563,11 +1564,18 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           <View style={dynamicStyles.modalContent}>
             <Text style={dynamicStyles.modalTitle}>Edit Base Address</Text>
             
-            <TextInput
-              style={dynamicStyles.textInput}
+            <GooglePlacesAddressInput
               value={baseAddressStreet}
               onChangeText={setBaseAddressStreet}
               placeholder="Street Address"
+              style={dynamicStyles.textInput}
+              onPlaceSelected={(details) => {
+                const parsed = parseBaseAddressForMobile(details.formattedAddress);
+                setBaseAddressStreet(parsed.street || details.formattedAddress);
+                setBaseAddressCity(parsed.city);
+                setBaseAddressState(parsed.state);
+                setBaseAddressZip(parsed.zip);
+              }}
             />
             <TextInput
               style={dynamicStyles.textInput}

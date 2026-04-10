@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
 import * as Location from 'expo-location';
+import GooglePlacesAddressInput from './GooglePlacesAddressInput';
 
 interface SetupWizardProps {
   employee: Employee;
@@ -227,20 +228,13 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
         Enter your primary work location. This will be used as the starting point for mileage
         calculations.
       </Text>
-      <TextInput
-        ref={baseAddressInputRef}
-        style={styles.textInput}
-        placeholder="Enter base address..."
-        placeholderTextColor="#999"
+      <GooglePlacesAddressInput
         value={baseAddress}
         onChangeText={setBaseAddress}
+        placeholder="Enter base address..."
         multiline
         numberOfLines={3}
-        onFocus={() => {
-          setTimeout(() => {
-            scrollViewRef.current?.scrollToEnd({ animated: true });
-          }, 300);
-        }}
+        style={styles.textInput}
       />
       <TouchableOpacity style={styles.locationButton} onPress={handleGetCurrentLocation}>
         <MaterialIcons name="my-location" size={20} color="#2196F3" />

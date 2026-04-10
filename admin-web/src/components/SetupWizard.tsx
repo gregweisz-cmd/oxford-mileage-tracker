@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import SignatureCanvas from 'react-signature-canvas';
 import { EmployeeApiService } from '../services/employeeApiService';
+import { WebGooglePlacesService, WebAddressPrediction } from '../services/googlePlacesService';
 
 interface SetupWizardProps {
   employee: any;
@@ -108,6 +109,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
   const [phoneNumber, setPhoneNumber] = useState(employee?.phoneNumber || '');
   const [signature, setSignature] = useState<string | null>(employee?.signature || null);
   const [signatureTab, setSignatureTab] = useState(0); // 0 = draw, 1 = upload
+  const [addressPredictions, setAddressPredictions] = useState<WebAddressPrediction[]>([]);
   
   // Signature canvas ref
   const signatureRef = useRef<SignatureCanvas>(null);
@@ -150,6 +152,26 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
       description: 'Please sign using your mouse or touchscreen.',
     },
   ];
+
+  const handleAddressSearch = async (value: string) => {
+    setBaseAddressStreet(value);
+    if (!WebGooglePlacesService.isConfigured()) return;
+    const predictions = await WebGooglePlacesService.getPredictions(
+      `${value} ${baseAddressCity} ${baseAddressState} ${baseAddressZip}`.trim()
+    );
+    setAddressPredictions(predictions.slice(0, 6));
+  };
+
+  const handleSelectPrediction = async (prediction: WebAddressPrediction) => {
+    const details = await WebGooglePlacesService.getDetails(prediction.placeId);
+    const formatted = details?.formattedAddress || prediction.description;
+    const parsed = parseBaseAddress(formatted);
+    setBaseAddressStreet(parsed.street || formatted);
+    setBaseAddressCity(parsed.city);
+    setBaseAddressState(parsed.state);
+    setBaseAddressZip(parsed.zip);
+    setAddressPredictions([]);
+  };
 
   const validateStep = (step: number): boolean => {
     setError('');
@@ -324,11 +346,25 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
               fullWidth
               label="Street Address"
               value={baseAddressStreet}
-              onChange={(e) => setBaseAddressStreet(e.target.value)}
+              onChange={(e) => void handleAddressSearch(e.target.value)}
               placeholder="e.g., 123 Main St"
               required
               sx={{ mb: 2 }}
             />
+            {addressPredictions.length > 0 && (
+              <Paper variant="outlined" sx={{ mb: 2, maxHeight: 220, overflow: 'auto' }}>
+                {addressPredictions.map((prediction) => (
+                  <Button
+                    key={prediction.placeId}
+                    fullWidth
+                    sx={{ justifyContent: 'flex-start', textTransform: 'none', px: 2, py: 1.2 }}
+                    onClick={() => void handleSelectPrediction(prediction)}
+                  >
+                    {prediction.description}
+                  </Button>
+                ))}
+              </Paper>
+            )}
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 fullWidth

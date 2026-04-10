@@ -55,6 +55,7 @@ import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import { debugLog, debugError } from '../config/debug';
+import GooglePlacesTextField from './GooglePlacesTextField';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -1732,13 +1733,17 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   />
                 </Box>
                 
-                <TextField
+                <GooglePlacesTextField
                   fullWidth
                   label="Base Address"
                   value={editingEmployee.baseAddress}
-                  onChange={(e) => setEditingEmployee({
+                  onChange={(value) => setEditingEmployee({
                     ...editingEmployee,
-                    baseAddress: e.target.value
+                    baseAddress: value
+                  })}
+                  onPlaceSelected={(address) => setEditingEmployee({
+                    ...editingEmployee,
+                    baseAddress: address
                   })}
                 />
                 
@@ -2007,13 +2012,17 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               </Select>
             </FormControl>
             
-            <TextField
+            <GooglePlacesTextField
               fullWidth
               label="Base Address"
               value={bulkEditData.baseAddress || ''}
-              onChange={(e) => setBulkEditData({
+              onChange={(value) => setBulkEditData({
                 ...bulkEditData,
-                baseAddress: e.target.value
+                baseAddress: value
+              })}
+              onPlaceSelected={(address) => setBulkEditData({
+                ...bulkEditData,
+                baseAddress: address
               })}
               sx={{ mb: 2 }}
             />

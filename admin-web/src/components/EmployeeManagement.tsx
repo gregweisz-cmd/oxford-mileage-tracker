@@ -60,6 +60,7 @@ import {
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 import { debugError } from '../config/debug';
+import GooglePlacesTextField from './GooglePlacesTextField';
 
 interface Employee {
   id: string;
@@ -1006,24 +1007,26 @@ const EmployeeManagement: React.FC = () => {
               margin="normal"
             />
             
-            <TextField
+            <GooglePlacesTextField
               fullWidth
               label="Base Address *"
               multiline
               rows={3}
               value={formData.baseAddress}
-              onChange={(e) => setFormData({ ...formData, baseAddress: e.target.value })}
+              onChange={(value) => setFormData({ ...formData, baseAddress: value })}
+              onPlaceSelected={(address) => setFormData({ ...formData, baseAddress: address })}
               margin="normal"
               required
             />
             
-            <TextField
+            <GooglePlacesTextField
               fullWidth
               label="Base Address 2"
               multiline
               rows={2}
               value={formData.baseAddress2}
-              onChange={(e) => setFormData({ ...formData, baseAddress2: e.target.value })}
+              onChange={(value) => setFormData({ ...formData, baseAddress2: value })}
+              onPlaceSelected={(address) => setFormData({ ...formData, baseAddress2: address })}
               margin="normal"
               placeholder="Additional address line (optional)"
             />

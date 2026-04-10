@@ -35,6 +35,7 @@ import { Tabs, Tab } from '@mui/material';
 import { Employee } from '../types';
 import { formatNameForDisplay } from '../utils/employeeUtils';
 import { debugLog, debugError } from '../config/debug';
+import GooglePlacesTextField from './GooglePlacesTextField';
 
 interface SupervisorManagementProps {
   employees: Employee[];
@@ -879,10 +880,11 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
               onChange={(e) => setEditFormData({ ...editFormData, phoneNumber: e.target.value })}
               fullWidth
             />
-            <TextField
+            <GooglePlacesTextField
               label="Base Address"
               value={editFormData.baseAddress || ''}
-              onChange={(e) => setEditFormData({ ...editFormData, baseAddress: e.target.value })}
+              onChange={(value) => setEditFormData({ ...editFormData, baseAddress: value })}
+              onPlaceSelected={(address) => setEditFormData({ ...editFormData, baseAddress: address })}
               fullWidth
               required
               multiline

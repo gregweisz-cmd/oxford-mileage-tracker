@@ -4,7 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, Platform, AppState } from 'react-native';
 import { useFonts } from 'expo-font';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useReactNavigationDevTools } from '@dev-plugins/react-navigation';
@@ -15,6 +15,7 @@ import GlobalGpsStopButton from './src/components/GlobalGpsStopButton';
 import GlobalGpsReturnButton from './src/components/GlobalGpsReturnButton';
 import { useGpsTracking } from './src/contexts/GpsTrackingContext';
 import { AppInitializer } from './src/services/appInitializer';
+import { OtaUpdatePromptService } from './src/services/otaUpdatePromptService';
 import { DatabaseService } from './src/services/database';
 // Removed: Using backend employee data only
 // import { TestDataService } from './src/services/testDataService';
@@ -103,10 +104,21 @@ export default function App() {
     LogoutService.setLogoutCallback(handleLogout);
   }, []);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void OtaUpdatePromptService.checkAndPromptIfAvailable();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   const initializeApp = async () => {
     try {
       // Initialize the app
       await AppInitializer.initialize();
+      await OtaUpdatePromptService.checkAndPromptIfAvailable();
       
       // NO MORE TEST DATA OR DEMO DATA - using backend employee list only
       // Employees will be synced from backend on login

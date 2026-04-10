@@ -13,6 +13,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import { LocationDetails } from '../types';
+import { GooglePlacesService } from '../services/googlePlacesService';
 
 interface EnhancedLocationInputProps {
   value: string;
@@ -27,8 +28,9 @@ interface EnhancedLocationInputProps {
 interface LocationSuggestion {
   name: string;
   address: string;
-  type: 'saved' | 'recent' | 'oxford_house';
+  type: 'saved' | 'recent' | 'oxford_house' | 'google';
   lastUsed?: Date;
+  placeId?: string;
 }
 
 export default function EnhancedLocationInput({
@@ -129,6 +131,21 @@ export default function EnhancedLocationInput({
         console.error('Error loading Oxford Houses:', error);
       }
 
+      // Add Google Places predictions
+      try {
+        const googlePredictions = await GooglePlacesService.getAddressPredictions(searchText);
+        googlePredictions.forEach((prediction) => {
+          suggestions.push({
+            name: prediction.description.split(',')[0] || prediction.description,
+            address: prediction.description,
+            type: 'google',
+            placeId: prediction.placeId,
+          });
+        });
+      } catch (error) {
+        console.log('Google predictions unavailable:', error);
+      }
+
       setLocationSuggestions(suggestions.slice(0, 8)); // Limit to 8 suggestions (increased to accommodate Oxford Houses)
     } catch (error) {
       console.error('Error loading location suggestions:', error);
@@ -143,13 +160,26 @@ export default function EnhancedLocationInput({
     // Update text immediately
     onChangeText(locationText);
     
-    const details: LocationDetails = {
-      name: suggestion.name,
-      address: suggestion.address,
-    };
-    
-    setLocationDetails(details);
-    onLocationDetailsChange(details);
+    if (suggestion.type === 'google' && suggestion.placeId) {
+      void (async () => {
+        const place = await GooglePlacesService.getAddressDetails(suggestion.placeId!);
+        const details: LocationDetails = {
+          name: place?.name || suggestion.name,
+          address: place?.formattedAddress || suggestion.address,
+          latitude: place?.latitude,
+          longitude: place?.longitude,
+        };
+        setLocationDetails(details);
+        onLocationDetailsChange(details);
+      })();
+    } else {
+      const details: LocationDetails = {
+        name: suggestion.name,
+        address: suggestion.address,
+      };
+      setLocationDetails(details);
+      onLocationDetailsChange(details);
+    }
     
     // Hide suggestions immediately
     setShowSuggestions(false);
@@ -252,9 +282,9 @@ export default function EnhancedLocationInput({
               activeOpacity={0.7}
             >
               <MaterialIcons 
-                name={item.type === 'saved' ? 'bookmark' : item.type === 'oxford_house' ? 'home' : 'history'} 
+                name={item.type === 'saved' ? 'bookmark' : item.type === 'oxford_house' ? 'home' : item.type === 'google' ? 'place' : 'history'} 
                 size={16} 
-                color={item.type === 'saved' ? '#4CAF50' : item.type === 'oxford_house' ? '#2196F3' : '#FF9800'} 
+                color={item.type === 'saved' ? '#4CAF50' : item.type === 'oxford_house' ? '#2196F3' : item.type === 'google' ? '#4285F4' : '#FF9800'} 
               />
               <View style={styles.suggestionContent}>
                 <Text style={styles.suggestionName}>{item.name}</Text>

@@ -15,6 +15,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { LocationDetails, Employee } from '../types';
 import { DatabaseService } from '../services/database';
+import GooglePlacesAddressInput from './GooglePlacesAddressInput';
 
 interface LocationCaptureModalProps {
   visible: boolean;
@@ -171,14 +172,29 @@ export default function LocationCaptureModal({
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Address *</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
+            <GooglePlacesAddressInput
               value={locationAddress}
               onChangeText={setLocationAddress}
               placeholder="Enter or confirm the address..."
-              placeholderTextColor="#999"
               multiline={true}
               numberOfLines={3}
+              onPlaceSelected={(details) => {
+                setLocationAddress(details.formattedAddress);
+                if (details.latitude && details.longitude) {
+                  setCurrentLocation({
+                    coords: {
+                      latitude: details.latitude,
+                      longitude: details.longitude,
+                      altitude: null,
+                      accuracy: null,
+                      altitudeAccuracy: null,
+                      heading: null,
+                      speed: null,
+                    },
+                    timestamp: Date.now(),
+                  } as any);
+                }
+              }}
             />
           </View>
 

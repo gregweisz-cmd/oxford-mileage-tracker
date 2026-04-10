@@ -48,6 +48,7 @@ import AddressSelector from './AddressSelector';
 import { debugLog, debugError } from '../config/debug';
 import { formatAddressFromParts, parseAddressToParts, emptyAddressParts } from '../utils/addressFormatter';
 import type { AddressParts } from '../utils/addressFormatter';
+import GooglePlacesTextField from './GooglePlacesTextField';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
@@ -466,10 +467,16 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                 <LocationIcon fontSize="small" /> Start Location
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
-                <TextField
+                <GooglePlacesTextField
                   label="Street Address"
                   value={startAddressParts.street}
-                  onChange={(e) => updateStartAddressPart('street', e.target.value)}
+                  onChange={(value) => updateStartAddressPart('street', value)}
+                  onPlaceSelected={(address) => {
+                    const parsed = parseAddressToParts(address);
+                    setStartAddressParts(parsed);
+                    setFormData((prev) => ({ ...prev, startLocation: formatAddressFromParts(parsed) }));
+                    if (errors.startLocation) setErrors((prev) => ({ ...prev, startLocation: '' }));
+                  }}
                   error={!!errors.startLocation}
                   helperText={errors.startLocation}
                   size="small"
@@ -519,10 +526,16 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                 <LocationIcon fontSize="small" /> End Location
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
-                <TextField
+                <GooglePlacesTextField
                   label="Street Address"
                   value={endAddressParts.street}
-                  onChange={(e) => updateEndAddressPart('street', e.target.value)}
+                  onChange={(value) => updateEndAddressPart('street', value)}
+                  onPlaceSelected={(address) => {
+                    const parsed = parseAddressToParts(address);
+                    setEndAddressParts(parsed);
+                    setFormData((prev) => ({ ...prev, endLocation: formatAddressFromParts(parsed) }));
+                    if (errors.endLocation) setErrors((prev) => ({ ...prev, endLocation: '' }));
+                  }}
                   error={!!errors.endLocation}
                   helperText={errors.endLocation}
                   size="small"

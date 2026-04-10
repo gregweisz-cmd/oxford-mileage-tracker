@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
 import { parseBaseAddress, formatBaseAddress } from '../utils/addressParse';
+import GooglePlacesTextField from './GooglePlacesTextField';
 
 interface UserSettingsProps {
   employeeId: string;
@@ -532,13 +533,28 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <Box>
                 <Typography variant="subtitle2" gutterBottom>Base Address 1</Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <TextField
+                  <GooglePlacesTextField
                     label="Street Address"
                     value={profile.baseAddresses.address1.street}
-                    onChange={(e) => setProfile(prev => ({
+                    onChange={(value) => setProfile(prev => ({
                       ...prev,
-                      baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, street: e.target.value } }
+                      baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, street: value } }
                     }))}
+                    onPlaceSelected={(address) => {
+                      const parsed = parseBaseAddress(address);
+                      setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: {
+                          ...prev.baseAddresses,
+                          address1: {
+                            street: parsed.street || prev.baseAddresses.address1.street,
+                            city: parsed.city,
+                            state: parsed.state,
+                            zip: parsed.zip,
+                          }
+                        }
+                      }));
+                    }}
                     fullWidth
                     size="small"
                     placeholder="e.g. 230 Wagner St"
@@ -583,13 +599,28 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <Box>
                 <Typography variant="subtitle2" gutterBottom>Base Address 2 (optional)</Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <TextField
+                  <GooglePlacesTextField
                     label="Street Address"
                     value={profile.baseAddresses.address2.street}
-                    onChange={(e) => setProfile(prev => ({
+                    onChange={(value) => setProfile(prev => ({
                       ...prev,
-                      baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, street: e.target.value } }
+                      baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, street: value } }
                     }))}
+                    onPlaceSelected={(address) => {
+                      const parsed = parseBaseAddress(address);
+                      setProfile(prev => ({
+                        ...prev,
+                        baseAddresses: {
+                          ...prev.baseAddresses,
+                          address2: {
+                            street: parsed.street || prev.baseAddresses.address2.street,
+                            city: parsed.city,
+                            state: parsed.state,
+                            zip: parsed.zip,
+                          }
+                        }
+                      }));
+                    }}
                     fullWidth
                     size="small"
                     placeholder="e.g. 123 Main St"

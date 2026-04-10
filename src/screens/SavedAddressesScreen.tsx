@@ -18,6 +18,7 @@ import { DatabaseService } from '../services/database';
 import { SavedAddress, Employee } from '../types';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
+import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 
 interface SavedAddressesScreenProps {
   navigation: any;
@@ -439,11 +440,21 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           />
 
           <Text style={styles.fieldLabel}>Street Address</Text>
-          <TextInput
+          <GooglePlacesAddressInput
             style={styles.input}
             placeholder="123 Main St"
             value={formData.street}
             onChangeText={(value) => handleInputChange('street', value)}
+            onPlaceSelected={(details) => {
+              const parsed = parseAddressToForm(details.formattedAddress);
+              setFormData((prev) => ({
+                ...prev,
+                street: parsed.street || prev.street,
+                city: parsed.city,
+                state: parsed.state,
+                zip: parsed.zip,
+              }));
+            }}
             placeholderTextColor="#999"
           />
 

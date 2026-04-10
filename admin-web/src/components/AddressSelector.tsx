@@ -29,6 +29,7 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
+import { WebGooglePlacesService, WebAddressPrediction } from '../services/googlePlacesService';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -96,6 +97,8 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const [selectedState, setSelectedState] = useState<string>('');
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [recentAddresses, setRecentAddresses] = useState<Array<{ address: string; name?: string }>>([]);
+  const [googleQuery, setGoogleQuery] = useState('');
+  const [googlePredictions, setGooglePredictions] = useState<WebAddressPrediction[]>([]);
 
   const RECENT_STORAGE_KEY = `recentAddresses_${employeeId}`;
   const RECENT_MAX = 15;
@@ -344,8 +347,30 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   const handleClose = () => {
     setSearchQuery('');
+    setGoogleQuery('');
+    setGooglePredictions([]);
     setActiveTab(0);
     onClose();
+  };
+
+  const handleGoogleSearch = async (query: string) => {
+    setGoogleQuery(query);
+    if (!WebGooglePlacesService.isConfigured() || query.trim().length < 3) {
+      setGooglePredictions([]);
+      return;
+    }
+    const predictions = await WebGooglePlacesService.getPredictions(query);
+    setGooglePredictions(predictions.slice(0, 10));
+  };
+
+  const handleSelectGooglePrediction = async (prediction: WebAddressPrediction) => {
+    const details = await WebGooglePlacesService.getDetails(prediction.placeId);
+    const resolved = details?.formattedAddress || prediction.description;
+    handleSelectAddress(resolved, {
+      name: resolved.split(',')[0],
+      latitude: details?.latitude,
+      longitude: details?.longitude,
+    });
   };
 
   return (
@@ -384,6 +409,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           <Tab icon={<LocationIcon />} label="Frequent" />
           <Tab icon={<BusinessIcon />} label="Oxford Houses" />
           <Tab icon={<HistoryIcon />} label="Recent" />
+          <Tab icon={<LocationIcon />} label="Google" />
         </Tabs>
 
         {/* Base Addresses Tab */}
@@ -577,6 +603,47 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                 </ListItem>
               ))}
             </List>
+          )}
+        </TabPanel>
+
+        {/* Google Places Tab */}
+        <TabPanel value={activeTab} index={5}>
+          {!WebGooglePlacesService.isConfigured() ? (
+            <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+              Google Places API key is not configured for the web portal.
+            </Typography>
+          ) : (
+            <>
+              <TextField
+                fullWidth
+                placeholder="Search any address..."
+                value={googleQuery}
+                onChange={(e) => void handleGoogleSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ mb: 2 }}
+              />
+              {googlePredictions.length === 0 ? (
+                <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+                  Start typing to search Google address predictions.
+                </Typography>
+              ) : (
+                <List>
+                  {googlePredictions.map((prediction) => (
+                    <ListItem key={prediction.placeId} disablePadding>
+                      <ListItemButton onClick={() => void handleSelectGooglePrediction(prediction)}>
+                        <ListItemText primary={prediction.description} />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </>
           )}
         </TabPanel>
       </DialogContent>

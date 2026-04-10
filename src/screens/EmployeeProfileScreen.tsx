@@ -15,6 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
+import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 
 interface EmployeeProfileScreenProps {
   navigation: any;
@@ -228,14 +229,19 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
         {/* Address Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Address Information</Text>
-          
-          {renderField(
-            'Base Address',
-            formData.baseAddress,
-            (text) => setFormData(prev => ({ ...prev, baseAddress: text })),
-            'Enter your base address (BA)',
-            true
-          )}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>Base Address</Text>
+            <GooglePlacesAddressInput
+              value={formData.baseAddress}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, baseAddress: text }))}
+              onPlaceSelected={(details) =>
+                setFormData(prev => ({ ...prev, baseAddress: details.formattedAddress }))
+              }
+              placeholder="Enter your base address (BA)"
+              style={[styles.fieldInput, styles.multilineInput]}
+              editable={editing}
+            />
+          </View>
         </View>
 
         {/* Cost Centers */}
