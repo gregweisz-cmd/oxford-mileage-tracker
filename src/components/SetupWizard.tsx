@@ -13,6 +13,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
@@ -25,6 +26,7 @@ interface SetupWizardProps {
 }
 
 const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
+  const insets = useSafeAreaInsets();
   const [currentStep, setCurrentStep] = useState(0);
   const [baseAddress, setBaseAddress] = useState(employee.baseAddress || '');
   const [defaultCostCenter, setDefaultCostCenter] = useState(
@@ -260,7 +262,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
           Select your default cost center. This will be pre-selected for new entries.
         </Text>
         {availableCostCenters.length === 0 ? (
-          <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyStateInline}>
             <MaterialIcons name="warning" size={48} color="#FF9800" />
             <Text style={styles.emptyStateText}>
               No cost centers have been assigned to you yet.
@@ -286,9 +288,9 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
                 </TouchableOpacity>
               )}
             </View>
-            <ScrollView style={styles.costCenterList} showsVerticalScrollIndicator={false}>
+            <View style={styles.costCenterList}>
               {filteredCostCenters.length === 0 ? (
-                <View style={styles.emptyStateContainer}>
+                <View style={styles.emptyStateInline}>
                   <Text style={styles.emptyStateText}>
                     No cost centers match your search.
                   </Text>
@@ -322,7 +324,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
                   </TouchableOpacity>
                 ))
               )}
-            </ScrollView>
+            </View>
           </>
         )}
       </View>
@@ -438,7 +440,15 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.container}>
-          <View style={[styles.header, { backgroundColor: currentStepInfo.color }]}>
+          <View
+            style={[
+              styles.header,
+              {
+                backgroundColor: currentStepInfo.color,
+                paddingTop: Math.max(insets.top, 12) + 12,
+              },
+            ]}
+          >
             <MaterialIcons name={currentStepInfo.icon as any} size={48} color="#fff" />
             <Text style={styles.headerTitle}>{currentStepInfo.title}</Text>
             <Text style={styles.headerDescription}>{currentStepInfo.description}</Text>
@@ -473,14 +483,18 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
           <ScrollView
             ref={scrollViewRef}
             style={styles.content}
-            contentContainerStyle={{ paddingBottom: 100 }}
-            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingBottom: 24,
+              flexGrow: 1,
+            }}
+            showsVerticalScrollIndicator
             keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
           >
             {renderStepContent()}
           </ScrollView>
 
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             {currentStep > 0 && (
               <TouchableOpacity style={styles.backButton} onPress={handleBack}>
                 <MaterialIcons name="arrow-back" size={20} color="#666" />
@@ -523,8 +537,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    paddingTop: 60,
-    paddingBottom: 30,
+    paddingBottom: 20,
     paddingHorizontal: 20,
     alignItems: 'center',
   },
@@ -573,10 +586,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    minHeight: 0,
     paddingHorizontal: 20,
   },
   stepContent: {
-    flex: 1,
+    paddingBottom: 8,
   },
   stepDescription: {
     fontSize: 16,
@@ -627,8 +641,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   costCenterList: {
-    flex: 1,
     marginBottom: 16,
+  },
+  emptyStateInline: {
+    paddingVertical: 24,
+    paddingHorizontal: 12,
+    alignItems: 'center',
   },
   costCenterItem: {
     flexDirection: 'row',
@@ -649,6 +667,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 16,
     color: '#333',
+    flexShrink: 1,
   },
   selectedCostCenterText: {
     fontWeight: '600',
@@ -744,13 +763,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginRight: 8,
-  },
-  emptyStateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
   },
   emptyStateText: {
     fontSize: 16,

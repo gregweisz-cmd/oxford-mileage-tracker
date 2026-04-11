@@ -51,6 +51,7 @@ import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import DetailedReportView from './DetailedReportView';
 import { NotificationBell } from './NotificationBell';
 import { CostCenterManagement } from './CostCenterManagement';
+import ContractBudgetEditor from './ContractBudgetEditor';
 import { CostCenter, CostCenterApiService } from '../services/costCenterApiService';
 
 // Keyboard shortcuts
@@ -979,6 +980,7 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
         <Tab label="Needs Revision" />
         <Tab label="Reports & Analytics" />
         <Tab label="Cost Center Management" />
+        <Tab label="Contract caps" />
       </Tabs>
 
       {/* Filters */}
@@ -1266,6 +1268,11 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
       {/* Cost Center Management - Per Diem rules and Google Map creator for reporting */}
       <TabPanel value={activeTab} index={5}>
         <CostCenterManagement />
+      </TabPanel>
+
+      {/* Monthly contract caps by cost center (supervisors see utilization in Supervisor Portal) */}
+      <TabPanel value={activeTab} index={6}>
+        <ContractBudgetEditor contractsUserId={contractsUserId} />
       </TabPanel>
 
       {/* Pending Review Tab */}

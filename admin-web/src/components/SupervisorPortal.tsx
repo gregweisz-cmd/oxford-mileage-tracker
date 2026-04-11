@@ -55,6 +55,7 @@ import {
   Assignment as AssignmentIcon,
   People as PeopleIcon,
   Assessment as AssessmentIcon,
+  PieChart as PieChartIcon,
   // FilterList as FilterListIcon, // Currently unused
   Refresh as RefreshIcon,
   Download as DownloadIcon,
@@ -74,6 +75,7 @@ import StaffPortal from '../StaffPortal';
 import { useErrorPrompt, isHttpClientError } from '../contexts/ErrorPromptContext';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
+import SupervisorContractUtilizationTab from './SupervisorContractUtilizationTab';
 import { NotificationBell } from './NotificationBell';
 import DetailedReportView from './DetailedReportView';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
@@ -1095,6 +1097,11 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                 iconPosition="start"
               />
               <Tab 
+                icon={<PieChartIcon />} 
+                label="Contract utilization" 
+                iconPosition="start"
+              />
+              <Tab 
                 icon={<AssessmentIcon />} 
                 label="Analytics" 
                 iconPosition="start"
@@ -1492,8 +1499,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
             </Box>
           )}
 
-          {/* Analytics Tab */}
+          {/* Contract utilization (team cost centers vs monthly caps) */}
           {activeTab === 3 && (
+            <SupervisorContractUtilizationTab supervisorId={supervisorId} />
+          )}
+
+          {/* Analytics Tab */}
+          {activeTab === 4 && (
             <Box sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom>
                 Team Performance Analytics

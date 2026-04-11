@@ -480,6 +480,22 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
+      db.run(`CREATE TABLE IF NOT EXISTS contract_cost_center_budgets (
+        id TEXT PRIMARY KEY,
+        costCenter TEXT NOT NULL,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        capMiles REAL,
+        capPerDiemAmount REAL,
+        capReceiptsAmount REAL,
+        capReceiptCount INTEGER,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(costCenter, year, month)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_contract_budgets_cc_ym ON contract_cost_center_budgets(costCenter, year, month)`);
+
       // Create expense reports table for complete report persistence
       db.run(`CREATE TABLE IF NOT EXISTS expense_reports (
         id TEXT PRIMARY KEY,
@@ -1172,6 +1188,22 @@ function createSampleDatabase() {
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);
+
+        db.run(`CREATE TABLE IF NOT EXISTS contract_cost_center_budgets (
+          id TEXT PRIMARY KEY,
+          costCenter TEXT NOT NULL,
+          year INTEGER NOT NULL,
+          month INTEGER NOT NULL,
+          capMiles REAL,
+          capPerDiemAmount REAL,
+          capReceiptsAmount REAL,
+          capReceiptCount INTEGER,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          UNIQUE(costCenter, year, month)
+        )`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_contract_budgets_cc_ym ON contract_cost_center_budgets(costCenter, year, month)`);
 
         // Insert sample data
         const now = new Date().toISOString();

@@ -62,6 +62,33 @@ describe('SupervisorPortal dashboard', () => {
     mockFetch.mockImplementation((input: RequestInfo) => {
       const url = typeof input === 'string' ? input : input.toString();
 
+      if (url.includes('team-cost-centers')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ costCenters: [] }),
+        }) as Promise<Response>;
+      }
+      if (url.includes('cost-center-utilization')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            costCenter: 'X',
+            year: 2026,
+            month: 1,
+            dateRange: { start: '2026-01-01', end: '2026-01-31' },
+            teamMemberCount: 0,
+            totalMiles: 0,
+            mileageTripCount: 0,
+            perDiemReceiptTotal: 0,
+            perDiemReceiptCount: 0,
+            otherReceiptsTotal: 0,
+            otherReceiptCount: 0,
+            totalReceiptsTotal: 0,
+            totalReceiptCount: 0,
+            budget: null,
+          }),
+        }) as Promise<Response>;
+      }
       if (url.includes('/team') || url.includes('/expense-reports?teamSupervisorId=')) {
         return Promise.resolve({
           ok: true,

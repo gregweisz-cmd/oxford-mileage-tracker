@@ -13,6 +13,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -27,6 +28,7 @@ interface LoginScreenProps {
 }
 
 export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -302,9 +304,16 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       <StatusBar style="dark" />
       
       <WrapperComponent {...wrapperProps}>
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContainer,
+            { paddingBottom: Math.max(insets.bottom, 24) + 24 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator
+        >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 24 }]}>
           <Image 
             source={require('../../assets/oxford-house-logo.png')}
             style={styles.logo}
@@ -417,8 +426,7 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#E6E6E6',
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingBottom: 32,
     paddingHorizontal: 20,
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -442,9 +450,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   formContainer: {
-    flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 40,
+    paddingTop: 32,
+    paddingBottom: 8,
   },
   inputContainer: {
     flexDirection: 'row',
