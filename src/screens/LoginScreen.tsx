@@ -11,6 +11,7 @@ import {
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -278,10 +279,40 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
       if (!authResult.success) {
         if (authResult.error !== 'user_cancel' && authResult.error !== 'system_cancel') {
+          const code = authResult.error || 'unknown';
+          const openSettingsCodes = new Set([
+            'not_available',
+            'not_enrolled',
+            'passcode_not_set',
+            'user_fallback',
+            'lockout',
+          ]);
+          const needsSettings = openSettingsCodes.has(code);
+          const detailsByCode: Record<string, string> = {
+            not_available: `${biometricLabel} is not available for this app on this device.`,
+            not_enrolled: `No ${biometricLabel} enrollment was found.`,
+            passcode_not_set: 'A device passcode is required before biometrics can be used.',
+            lockout: `${biometricLabel} is temporarily locked due to failed attempts.`,
+            user_fallback: `${biometricLabel} could not continue.`,
+            authentication_failed: `${biometricLabel} did not match.`,
+            timeout: `${biometricLabel} timed out.`,
+          };
           Alert.alert(
             'Biometric Login',
-            `Unable to verify ${biometricLabel}. Please try again or use email and password.`
+            `${detailsByCode[code] || `Unable to verify ${biometricLabel}.`}\n\nError: ${code}`,
+            needsSettings
+              ? [
+                  { text: 'Use Password', style: 'cancel' },
+                  {
+                    text: 'Open Settings',
+                    onPress: () => {
+                      void Linking.openSettings();
+                    },
+                  },
+                ]
+              : [{ text: 'OK', style: 'default' }]
           );
+          await initializeBiometricStatus();
         }
         return;
       }
