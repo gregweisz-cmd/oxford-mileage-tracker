@@ -198,11 +198,14 @@ export default function OnboardingScreen({ employeeId, onComplete }: OnboardingS
         <TouchableOpacity
           style={[
             styles.nextButton,
-            { backgroundColor: slides[currentSlide].color, flex: currentSlide === 0 ? 1 : 0.5 },
+            {
+              backgroundColor: slides[currentSlide].color,
+              flex: currentSlide === 0 ? 1 : undefined,
+            },
           ]}
           onPress={handleNext}
         >
-          <Text style={styles.nextButtonText}>
+          <Text style={styles.nextButtonText} numberOfLines={1}>
             {currentSlide === slides.length - 1 ? 'Get Started' : 'Next'}
           </Text>
           {currentSlide < slides.length - 1 && (
@@ -300,11 +303,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: 12,
     gap: 8,
+    minWidth: 140,
   },
   nextButtonText: {
     fontSize: 16,
     color: '#fff',
     fontWeight: '600',
+    flexShrink: 0,
   },
 });
 
