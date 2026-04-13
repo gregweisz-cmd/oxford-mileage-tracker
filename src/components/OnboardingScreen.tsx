@@ -191,7 +191,7 @@ export default function OnboardingScreen({ employeeId, onComplete }: OnboardingS
         {currentSlide > 0 && (
           <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
             <MaterialIcons name="arrow-back" size={24} color="#666" />
-            <Text style={styles.previousButtonText}>Previous</Text>
+            <Text style={styles.previousButtonText} numberOfLines={1}>Previous</Text>
           </TouchableOpacity>
         )}
         
@@ -289,6 +289,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 24,
     gap: 8,
+    minHeight: 52,
   },
   previousButtonText: {
     fontSize: 16,

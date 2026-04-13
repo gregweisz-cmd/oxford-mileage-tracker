@@ -498,13 +498,13 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
             {currentStep > 0 && (
               <TouchableOpacity style={styles.backButton} onPress={handleBack}>
                 <MaterialIcons name="arrow-back" size={20} color="#666" />
-                <Text style={styles.backButtonText}>Back</Text>
+                <Text style={styles.backButtonText} numberOfLines={1}>Back</Text>
               </TouchableOpacity>
             )}
             <View style={styles.footerRight}>
               {currentStep === steps.length - 1 && (
                 <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-                  <Text style={styles.skipButtonText}>Skip</Text>
+                  <Text style={styles.skipButtonText} numberOfLines={1}>Skip</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -516,7 +516,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <Text style={styles.nextButtonText}>
+                    <Text style={styles.nextButtonText} numberOfLines={1}>
                       {currentStep === steps.length - 1 ? 'Complete Setup' : 'Next'}
                     </Text>
                     <MaterialIcons name="arrow-forward" size={20} color="#fff" />
@@ -730,26 +730,32 @@ const styles = StyleSheet.create({
   footerRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    minWidth: 0,
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 20,
+    minHeight: 48,
   },
   backButtonText: {
     marginLeft: 4,
     fontSize: 16,
     color: '#666',
+    flexShrink: 1,
   },
   skipButton: {
     paddingVertical: 12,
     paddingHorizontal: 20,
     marginRight: 12,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   skipButtonText: {
     fontSize: 16,
     color: '#666',
+    flexShrink: 1,
   },
   nextButton: {
     flexDirection: 'row',
@@ -757,12 +763,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
+    minHeight: 48,
+    maxWidth: '100%',
   },
   nextButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
     marginRight: 8,
+    flexShrink: 1,
   },
   emptyStateText: {
     fontSize: 16,

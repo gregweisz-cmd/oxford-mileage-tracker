@@ -12,6 +12,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +31,8 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  const logoSize = Math.round(Math.max(88, Math.min(120, 120 / Math.max(1, fontScale))));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -371,7 +374,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 24 }]}>
           <Image 
             source={require('../../assets/oxford-house-logo.png')}
-            style={styles.logo}
+            style={[styles.logo, { width: logoSize, height: logoSize }]}
             resizeMode="contain"
           />
           <Text style={styles.title}>Oxford House Expense Tracker</Text>
@@ -446,7 +449,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             onPress={handleLogin}
             disabled={loading}
           >
-            <Text style={styles.loginButtonText}>
+            <Text style={styles.loginButtonText} numberOfLines={1}>
               {loading ? 'Signing In...' : 'Sign In'}
             </Text>
           </TouchableOpacity>
@@ -458,7 +461,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
               disabled={biometricLoading || loading}
             >
               <MaterialIcons name="fingerprint" size={22} color="#1C75BC" />
-              <Text style={styles.biometricButtonText}>
+              <Text style={styles.biometricButtonText} numberOfLines={1}>
                 {biometricLoading ? `Checking ${biometricLabel}...` : `Use ${biometricLabel}`}
               </Text>
             </TouchableOpacity>
@@ -488,8 +491,6 @@ const styles = StyleSheet.create({
     borderBottomColor: '#D6D6D6',
   },
   logo: {
-    width: 120,
-    height: 120,
     marginBottom: 10,
   },
   title: {
@@ -556,6 +557,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     fontWeight: '500',
+    flexShrink: 1,
   },
   loginButton: {
     backgroundColor: '#2196F3',
@@ -585,12 +587,15 @@ const styles = StyleSheet.create({
     borderColor: '#1C75BC',
     borderRadius: 12,
     paddingVertical: 14,
+    paddingHorizontal: 16,
     backgroundColor: '#fff',
+    minHeight: 52,
   },
   biometricButtonText: {
     marginLeft: 8,
     color: '#1C75BC',
     fontSize: 16,
     fontWeight: '600',
+    flexShrink: 1,
   },
 });
