@@ -32,20 +32,16 @@ export default function GooglePlacesAddressInput({
 }: GooglePlacesAddressInputProps) {
   const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
   const [showPredictions, setShowPredictions] = useState(false);
+  const [debugStatus, setDebugStatus] = useState('');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!GooglePlacesService.isConfigured()) {
-      setPredictions([]);
-      setShowPredictions(false);
-      return;
-    }
-
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     if (!value || value.trim().length < 3) {
       setPredictions([]);
       setShowPredictions(false);
+      setDebugStatus('');
       return;
     }
 
@@ -54,9 +50,13 @@ export default function GooglePlacesAddressInput({
         const results = await GooglePlacesService.getAddressPredictions(value);
         setPredictions(results);
         setShowPredictions(results.length > 0);
+        const info = GooglePlacesService.getLastDebugInfo();
+        setDebugStatus(`${info.source.toUpperCase()}: ${info.status}${info.errorMessage ? ` (${info.errorMessage})` : ''}`);
       } catch {
         setPredictions([]);
         setShowPredictions(false);
+        const info = GooglePlacesService.getLastDebugInfo();
+        setDebugStatus(`${info.source.toUpperCase()}: ${info.status}${info.errorMessage ? ` (${info.errorMessage})` : ''}`);
       }
     }, 250);
 
@@ -104,6 +104,7 @@ export default function GooglePlacesAddressInput({
           />
         </View>
       ) : null}
+      {debugStatus ? <Text style={styles.debugText}>Places Debug: {debugStatus}</Text> : null}
     </View>
   );
 }
@@ -149,5 +150,10 @@ const styles = StyleSheet.create({
     color: '#333',
     fontSize: 14,
     flex: 1,
+  },
+  debugText: {
+    marginTop: 6,
+    fontSize: 11,
+    color: '#777',
   },
 });

@@ -12,6 +12,8 @@ import {
   Image,
   InteractionManager,
   ActivityIndicator,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -104,6 +106,8 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [monthlyLimit, setMonthlyLimit] = useState(350);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [isNearListBottom, setIsNearListBottom] = useState(false);
   /** Per-day eligibility: 8+ hours AND (100+ mi OR Daily Hours "out of town" checkbox) */
   const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
   /** True after eligibility map has been computed for the current month (avoids blocking on Android) */
@@ -116,6 +120,19 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   useEffect(() => {
     setSyncMonthScope(currentMonth.getMonth() + 1, currentMonth.getFullYear());
   }, [currentMonth]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Load when screen is focused or month changes (single path — avoids double load on mount)
   useFocusEffect(
@@ -571,6 +588,14 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     return date.toLocaleDateString('en-US', { weekday: 'long' });
   };
 
+  const handleDaysListScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const nearBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140;
+    if (nearBottom !== isNearListBottom) {
+      setIsNearListBottom(nearBottom);
+    }
+  };
+
   const isViewingCurrentMonth =
     currentMonth.getMonth() === new Date().getMonth() &&
     currentMonth.getFullYear() === new Date().getFullYear();
@@ -699,7 +724,13 @@ const dateKey = toLocalDateKey(date);
       </View>
 
       {/* Days List */}
-      <ScrollView ref={scrollViewRef} style={styles.daysList} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.daysList}
+        showsVerticalScrollIndicator={false}
+        onScroll={handleDaysListScroll}
+        scrollEventThrottle={16}
+      >
         {daysArray.map(({ day, date, dateKey, entry }) => {
           const perDiemEntry = entry || {
             date,
@@ -770,7 +801,7 @@ const dateKey = toLocalDateKey(date);
       </ScrollView>
 
       {/* Floating Save Button */}
-      {hasUnsavedChanges && (
+      {hasUnsavedChanges && !isKeyboardVisible && !isNearListBottom && (
         <View style={styles.saveButtonContainer}>
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}

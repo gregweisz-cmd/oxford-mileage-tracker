@@ -9,6 +9,7 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const emailService = require('../services/emailService');
 const distanceService = require('../services/distanceService');
+const googleMapsService = require('../services/googleMapsService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // ===== DISTANCE (Google Maps - Calculate miles) =====
@@ -33,6 +34,48 @@ router.get('/api/distance', async (req, res) => {
   } catch (err) {
     debugError('Distance calculation failed:', err.message);
     return res.status(400).json({ error: err.message || 'Failed to calculate distance' });
+  }
+});
+
+// ===== PLACES (Autocomplete / Details for mobile address entry; server-side key) =====
+
+router.get('/api/places/autocomplete', async (req, res) => {
+  const input = req.query.input;
+  if (!input || String(input).trim().length < 3) {
+    return res.status(400).json({ error: 'Query param "input" is required (min 3 characters)' });
+  }
+  if (!googleMapsService.isConfigured()) {
+    return res.status(503).json({ error: 'Google Maps API key is not configured' });
+  }
+  try {
+    const data = await googleMapsService.placeAutocomplete(input);
+    if (data.status === 'SERVICE_UNAVAILABLE') {
+      return res.status(503).json({ error: 'Google Maps API key is not configured' });
+    }
+    return res.json(data);
+  } catch (err) {
+    debugError('Places autocomplete route failed:', err.message);
+    return res.status(500).json({ error: err.message || 'Places autocomplete failed' });
+  }
+});
+
+router.get('/api/places/details', async (req, res) => {
+  const placeId = req.query.place_id;
+  if (!placeId || !String(placeId).trim()) {
+    return res.status(400).json({ error: 'Query param "place_id" is required' });
+  }
+  if (!googleMapsService.isConfigured()) {
+    return res.status(503).json({ error: 'Google Maps API key is not configured' });
+  }
+  try {
+    const data = await googleMapsService.placeDetails(String(placeId).trim());
+    if (data.status === 'SERVICE_UNAVAILABLE') {
+      return res.status(503).json({ error: 'Google Maps API key is not configured' });
+    }
+    return res.json(data);
+  } catch (err) {
+    debugError('Places details route failed:', err.message);
+    return res.status(500).json({ error: err.message || 'Place details failed' });
   }
 });
 

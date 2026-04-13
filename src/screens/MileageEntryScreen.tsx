@@ -420,6 +420,33 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const focusNextAfterOdometer = () => {
+    // Progress to the next actionable field in the flow, even when
+    // purpose is rendered as a picker instead of a TextInput.
+    if (!formData.startLocation?.trim()) {
+      Keyboard.dismiss();
+      handleLocationSelection('start');
+      return;
+    }
+    if (!formData.endLocation?.trim()) {
+      Keyboard.dismiss();
+      handleLocationSelection('end');
+      return;
+    }
+    if (travelReasons.length > 0) {
+      Keyboard.dismiss();
+      setShowPurposePickerModal(true);
+      return;
+    }
+    if (purposeInputRef.current) {
+      purposeInputRef.current.focus();
+      return;
+    }
+    if (milesInputRef.current) {
+      milesInputRef.current.focus();
+    }
+  };
+
   const handleSelectStartLocation = (address: any) => {
     setFormData(prev => ({ ...prev, startLocation: address.name }));
   };
@@ -1102,9 +1129,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
               placeholderTextColor="#999"
               returnKeyType="next"
               blurOnSubmit={false}
-              onSubmitEditing={() => {
-                purposeInputRef.current?.focus();
-              }}
+              onSubmitEditing={focusNextAfterOdometer}
             />
             <Text style={styles.helpText}>
               Enter the odometer reading at the start of this trip

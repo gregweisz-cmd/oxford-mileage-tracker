@@ -722,6 +722,62 @@ function imageBufferToDataUrl(imageBuffer, mimeType = 'image/png') {
   return `data:${mimeType};base64,${base64}`;
 }
 
+const PLACES_AUTOCOMPLETE_MAX_INPUT = 200;
+
+/**
+ * Places Autocomplete (legacy REST). Uses server key — enables mobile apps without embedding the key.
+ * @param {string} input
+ * @returns {Promise<{ status: string, predictions?: Array, error_message?: string }>}
+ */
+async function placeAutocomplete(input) {
+  if (!isConfigured()) {
+    return { status: 'SERVICE_UNAVAILABLE', predictions: [] };
+  }
+  const query = String(input || '').trim();
+  if (query.length < 3 || query.length > PLACES_AUTOCOMPLETE_MAX_INPUT) {
+    return { status: 'INVALID_REQUEST', predictions: [] };
+  }
+  try {
+    const url =
+      'https://maps.googleapis.com/maps/api/place/autocomplete/json' +
+      `?input=${encodeURIComponent(query)}` +
+      '&components=country:us' +
+      '&language=en' +
+      `&key=${GOOGLE_MAPS_API_KEY}`;
+    const response = await axios.get(url, { timeout: 8000 });
+    return response.data;
+  } catch (err) {
+    debugError('Places Autocomplete failed:', err.message);
+    return { status: 'ERROR', predictions: [], error_message: err.message };
+  }
+}
+
+/**
+ * Place Details (legacy REST) for lat/lng after user picks a prediction.
+ * @param {string} placeId
+ */
+async function placeDetails(placeId) {
+  if (!isConfigured()) {
+    return { status: 'SERVICE_UNAVAILABLE' };
+  }
+  if (!placeId || typeof placeId !== 'string' || placeId.length > 512) {
+    return { status: 'INVALID_REQUEST' };
+  }
+  try {
+    const url =
+      'https://maps.googleapis.com/maps/api/place/details/json' +
+      `?place_id=${encodeURIComponent(placeId)}` +
+      '&fields=name,formatted_address,geometry' +
+      '&language=en' +
+      `&key=${GOOGLE_MAPS_API_KEY}`;
+    const response = await axios.get(url, { timeout: 8000 });
+    return response.data;
+  } catch (err) {
+    debugError('Place Details failed:', err.message);
+    return { status: 'ERROR', error_message: err.message };
+  }
+}
+
 module.exports = {
   isConfigured,
   geocodeToLatLng,
@@ -738,6 +794,8 @@ module.exports = {
   generateStaticMapUrlFromRoutes,
   downloadStaticMapImage,
   downloadStaticMapImageFromRoutes,
-  imageBufferToDataUrl
+  imageBufferToDataUrl,
+  placeAutocomplete,
+  placeDetails
 };
 

@@ -95,6 +95,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const [recentDescriptions, setRecentDescriptions] = useState<string[]>([]);
   const [descriptionOptions, setDescriptionOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [showDescriptionPickerModal, setShowDescriptionPickerModal] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [isNearModalBottom, setIsNearModalBottom] = useState(false);
   
   // Refs for scroll position management
   const scrollViewRef = useRef<ScrollView>(null);
@@ -115,6 +117,23 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
 
   useEffect(() => {
     getDailyDescriptionOptions().then((opts) => setDescriptionOptions(opts));
+  }, []);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, []);
 
   /**
@@ -264,10 +283,19 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     setSelectedCostCenter(costCenter);
 
     setHasUnsavedChanges(false);
+    setIsNearModalBottom(false);
     setShowEditModal(true);
   };
 
   const markHoursDirty = () => setHasUnsavedChanges(true);
+
+  const handleModalScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const nearBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140;
+    if (nearBottom !== isNearModalBottom) {
+      setIsNearModalBottom(nearBottom);
+    }
+  };
 
   const handleClearDay = () => {
     if (!selectedDay || !currentEmployee) return;
@@ -441,6 +469,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
 
   const closeEditModalWithoutSave = () => {
     setHasUnsavedChanges(false);
+    setIsNearModalBottom(false);
     setShowEditModal(false);
   };
 
@@ -736,6 +765,8 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
               style={styles.modalContent}
               contentContainerStyle={{ paddingBottom: hasUnsavedChanges ? 120 : 40 }}
               showsVerticalScrollIndicator={false}
+              onScroll={handleModalScroll}
+              scrollEventThrottle={16}
             >
               {/* Day Off Section */}
               <View style={styles.section}>
@@ -936,7 +967,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
               </View>
             </ScrollView>
 
-            {hasUnsavedChanges && (
+            {hasUnsavedChanges && !isKeyboardVisible && !isNearModalBottom && (
               <View
                 style={[
                   styles.hoursFloatingSaveContainer,
