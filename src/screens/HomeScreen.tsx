@@ -270,7 +270,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     monthlyMileageButton: {
       backgroundColor: colors.card,
       borderRadius: 12,
-      padding: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.1,
@@ -280,14 +281,9 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       borderLeftColor: colors.primary,
     },
     monthlyMileageTitle: {
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: 'bold',
       color: colors.text,
-      marginBottom: 2,
-    },
-    monthlyMileageSubtitle: {
-      fontSize: 14,
-      color: colors.textSecondary,
     },
     quickActionsTitle: {
       fontSize: 18,
@@ -1445,9 +1441,6 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               </View>
               <View style={styles.monthlyMileageTextContainer}>
                 <Text style={dynamicStyles.monthlyMileageTitle}>Monthly Mileage Summary</Text>
-                <Text style={dynamicStyles.monthlyMileageSubtitle}>
-                  {totalMilesThisMonth.toFixed(1)} miles • {recentEntries.length} entries • {new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                </Text>
               </View>
               <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
             </View>
@@ -2314,7 +2307,8 @@ const styles = StyleSheet.create({
   monthlyMileageButton: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -2328,9 +2322,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   monthlyMileageIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#e3f2fd',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2340,14 +2334,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   monthlyMileageTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 2,
-  },
-  monthlyMileageSubtitle: {
-    fontSize: 14,
-    color: '#666',
   },
   // Quick Actions Styles
   quickActionsContainer: {
