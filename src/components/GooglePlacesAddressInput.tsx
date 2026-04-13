@@ -127,10 +127,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   dropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#ddd',
@@ -138,6 +134,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     maxHeight: 220,
     zIndex: 10,
+    overflow: 'hidden',
   },
   item: {
     flexDirection: 'row',
