@@ -246,22 +246,46 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   };
 
   const handleBiometricLogin = async () => {
-    if (!biometricAvailable || !savedBiometricCredentials) return;
     setBiometricLoading(true);
     try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      const credentialsJson = await SecureStore.getItemAsync(CREDENTIALS_KEY);
+
+      if (!hasHardware || !isEnrolled) {
+        setBiometricAvailable(false);
+        Alert.alert(
+          'Biometric Login',
+          `${biometricLabel} is not available right now. Please sign in with email and password.`
+        );
+        return;
+      }
+
+      if (!credentialsJson) {
+        setSavedBiometricCredentials(false);
+        Alert.alert(
+          'Biometric Login',
+          'No saved biometric credentials found. Please sign in manually once and re-enable biometrics.'
+        );
+        return;
+      }
+
       const authResult = await LocalAuthentication.authenticateAsync({
         promptMessage: `Sign in with ${biometricLabel}`,
         cancelLabel: 'Cancel',
         disableDeviceFallback: true,
       });
-      if (!authResult.success) return;
 
-      const credentialsJson = await SecureStore.getItemAsync(CREDENTIALS_KEY);
-      if (!credentialsJson) {
-        setSavedBiometricCredentials(false);
-        Alert.alert('Biometric Login', 'No saved credentials found.');
+      if (!authResult.success) {
+        if (authResult.error !== 'user_cancel' && authResult.error !== 'system_cancel') {
+          Alert.alert(
+            'Biometric Login',
+            `Unable to verify ${biometricLabel}. Please try again or use email and password.`
+          );
+        }
         return;
       }
+
       const credentials = JSON.parse(credentialsJson);
       if (!credentials?.email || !credentials?.password) {
         Alert.alert('Biometric Login', 'Saved credentials are invalid. Please sign in manually once.');
@@ -294,7 +318,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const WrapperComponent = Platform.OS === 'web' ? View : TouchableWithoutFeedback;
   const wrapperProps = Platform.OS === 'web' 
     ? {} 
-    : { onPress: Keyboard.dismiss };
+    : { onPress: Keyboard.dismiss, accessible: false as const };
 
   return (
     <KeyboardAvoidingView 
