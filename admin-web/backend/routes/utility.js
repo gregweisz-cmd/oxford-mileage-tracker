@@ -79,6 +79,27 @@ router.get('/api/places/details', async (req, res) => {
   }
 });
 
+router.get('/api/places/reverse-geocode', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'Query params "lat" and "lng" are required' });
+  }
+  if (!googleMapsService.isConfigured()) {
+    return res.status(503).json({ error: 'Google Maps API key is not configured' });
+  }
+  try {
+    const data = await googleMapsService.reverseGeocodeLatLng(lat, lng);
+    if (data.status === 'SERVICE_UNAVAILABLE') {
+      return res.status(503).json({ error: 'Google Maps API key is not configured' });
+    }
+    return res.json(data);
+  } catch (err) {
+    debugError('Places reverse geocode route failed:', err.message);
+    return res.status(500).json({ error: err.message || 'Places reverse geocode failed' });
+  }
+});
+
 // ===== SAVED ADDRESSES =====
 
 router.get('/api/saved-addresses', (req, res) => {

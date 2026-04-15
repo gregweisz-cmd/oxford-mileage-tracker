@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
   Alert,
   Modal,
   Keyboard,
+  BackHandler,
   TouchableWithoutFeedback,
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -97,7 +99,13 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const [showDescriptionPickerModal, setShowDescriptionPickerModal] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isNearModalBottom, setIsNearModalBottom] = useState(false);
-  
+  /** Snapshot when day editor opens — avoids FAB jumping when Android gesture insets fluctuate. */
+  const [modalFabBottom, setModalFabBottom] = useState(28);
+  const isNearModalBottomRef = useRef(false);
+  /** Android: after keyboard dismiss, ignore scroll metrics briefly (adjustPan causes bogus onScroll / layout thrash). */
+  const modalScrollQuietUntilRef = useRef(0);
+  const androidKeyboardHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Refs for scroll position management
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef<number>(0);
@@ -119,22 +127,75 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     getDailyDescriptionOptions().then((opts) => setDescriptionOptions(opts));
   }, []);
 
+  /** iOS: while the day editor modal is open, disable stack interactive pop so edge swipe doesn't fight the RN Modal (partial move, no dismiss). */
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    navigation.setOptions({
+      gestureEnabled: !showEditModal,
+    });
+  }, [navigation, showEditModal]);
+
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
     const showSub = Keyboard.addListener(showEvent, () => {
+      if (Platform.OS === 'android' && androidKeyboardHideTimerRef.current != null) {
+        clearTimeout(androidKeyboardHideTimerRef.current);
+        androidKeyboardHideTimerRef.current = null;
+      }
       setIsKeyboardVisible(true);
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
-      setIsKeyboardVisible(false);
+      if (Platform.OS === 'ios') {
+        setIsKeyboardVisible(false);
+        return;
+      }
+      if (androidKeyboardHideTimerRef.current != null) {
+        clearTimeout(androidKeyboardHideTimerRef.current);
+      }
+      androidKeyboardHideTimerRef.current = setTimeout(() => {
+        androidKeyboardHideTimerRef.current = null;
+        InteractionManager.runAfterInteractions(() => {
+          modalScrollQuietUntilRef.current = Date.now() + 320;
+          setIsKeyboardVisible(false);
+        });
+      }, 140);
     });
 
     return () => {
       showSub.remove();
       hideSub.remove();
+      if (androidKeyboardHideTimerRef.current != null) {
+        clearTimeout(androidKeyboardHideTimerRef.current);
+        androidKeyboardHideTimerRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (showEditModal) {
+      if (androidKeyboardHideTimerRef.current != null) {
+        clearTimeout(androidKeyboardHideTimerRef.current);
+        androidKeyboardHideTimerRef.current = null;
+      }
+      modalScrollQuietUntilRef.current = 0;
+      return;
+    }
+    if (androidKeyboardHideTimerRef.current != null) {
+      clearTimeout(androidKeyboardHideTimerRef.current);
+      androidKeyboardHideTimerRef.current = null;
+    }
+    setIsKeyboardVisible(false);
+    modalScrollQuietUntilRef.current = 0;
+  }, [showEditModal]);
+
+  useLayoutEffect(() => {
+    if (!showEditModal) return;
+    // Snapshot when modal opens; omit insets.bottom from deps — it can oscillate on Android gesture nav.
+    setModalFabBottom(Math.max(20, insets.bottom + 8));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEditModal]);
 
   /**
    * Loads description templates and recent descriptions from AsyncStorage
@@ -283,19 +344,35 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     setSelectedCostCenter(costCenter);
 
     setHasUnsavedChanges(false);
+    isNearModalBottomRef.current = false;
     setIsNearModalBottom(false);
     setShowEditModal(true);
   };
 
   const markHoursDirty = () => setHasUnsavedChanges(true);
 
-  const handleModalScroll = (event: any) => {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const nearBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140;
-    if (nearBottom !== isNearModalBottom) {
-      setIsNearModalBottom(nearBottom);
+  /** Hysteresis so tiny scroll / layout changes do not flip the floating Save on/off at the threshold. */
+  const handleModalScroll = useCallback((event: any) => {
+    if (Platform.OS === 'android' && Date.now() < modalScrollQuietUntilRef.current) {
+      return;
     }
-  };
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const scrollable = Math.max(0, contentSize.height - layoutMeasurement.height);
+    const distanceFromBottom = scrollable - contentOffset.y;
+    const enterNearBottomPx = 72;
+    const exitNearBottomPx = 168;
+
+    let next = isNearModalBottomRef.current;
+    if (isNearModalBottomRef.current) {
+      if (distanceFromBottom > exitNearBottomPx) next = false;
+    } else {
+      if (distanceFromBottom < enterNearBottomPx) next = true;
+    }
+    if (next !== isNearModalBottomRef.current) {
+      isNearModalBottomRef.current = next;
+      setIsNearModalBottom(next);
+    }
+  }, []);
 
   const handleClearDay = () => {
     if (!selectedDay || !currentEmployee) return;
@@ -467,11 +544,28 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     }
   };
 
-  const closeEditModalWithoutSave = () => {
+  const closeEditModalWithoutSave = useCallback(() => {
     setHasUnsavedChanges(false);
+    isNearModalBottomRef.current = false;
     setIsNearModalBottom(false);
+    setShowDayOffDropdown(false);
+    setShowDescriptionPickerModal(false);
     setShowEditModal(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !showEditModal) return;
+    const onBack = () => {
+      if (showDescriptionPickerModal) {
+        setShowDescriptionPickerModal(false);
+        return true;
+      }
+      closeEditModalWithoutSave();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => sub.remove();
+  }, [showEditModal, showDescriptionPickerModal, closeEditModalWithoutSave]);
 
   const handleDescriptionTemplateSelect = (template: string) => {
     if (template === 'Custom...') {
@@ -744,21 +838,66 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           visible={showEditModal}
           animationType="slide"
           presentationStyle="pageSheet"
+          onRequestClose={() => {
+            if (showDescriptionPickerModal) {
+              setShowDescriptionPickerModal(false);
+              return;
+            }
+            closeEditModalWithoutSave();
+          }}
         >
           <KeyboardAvoidingView
             style={styles.modalKeyboardAvoid}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+            enabled={Platform.OS === 'ios'}
           >
           <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={closeEditModalWithoutSave}>
-                <Text style={styles.cancelButton}>Cancel</Text>
-              </TouchableOpacity>
+            <View
+              style={[
+                styles.modalHeader,
+                Platform.OS === 'android' && { paddingTop: Math.max(18, insets.top + 8) },
+              ]}
+            >
+              {Platform.OS === 'android' ? (
+                !isNearModalBottom ? (
+                  <TouchableOpacity
+                    onPress={closeEditModalWithoutSave}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={styles.cancelButton}>Cancel</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.modalHeaderSpacer} />
+                )
+              ) : (
+                <TouchableOpacity
+                  onPress={closeEditModalWithoutSave}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Text style={styles.cancelButton}>Cancel</Text>
+                </TouchableOpacity>
+              )}
               <Text style={styles.modalTitle}>
                 {selectedDay ? formatDate(selectedDay.date) : ''}
               </Text>
-              <View style={styles.modalHeaderSpacer} />
+              {Platform.OS === 'android' ? (
+                !isNearModalBottom ? (
+                  <TouchableOpacity
+                    onPress={handleSave}
+                    disabled={saving || !hasUnsavedChanges}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={[styles.saveButton, (saving || !hasUnsavedChanges) && styles.saveButtonDisabled]}>
+                      {saving ? 'Saving...' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.modalHeaderSpacer} />
+                )
+              ) : (
+                <View style={styles.modalHeaderSpacer} />
+              )}
             </View>
 
             <ScrollView
@@ -958,20 +1097,22 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
 
               {/* Save and Clear Day buttons at bottom of form */}
               <View style={styles.modalSaveSection}>
-                <TouchableOpacity style={styles.modalSaveButton} onPress={handleSave} activeOpacity={0.8}>
-                  <Text style={styles.modalSaveButtonText}>Save</Text>
-                </TouchableOpacity>
+                {Platform.OS !== 'android' && (
+                  <TouchableOpacity style={styles.modalSaveButton} onPress={handleSave} activeOpacity={0.8}>
+                    <Text style={styles.modalSaveButtonText}>Save</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={styles.modalClearButton} onPress={handleClearDay} activeOpacity={0.8}>
                   <Text style={styles.modalClearButtonText}>Clear Day</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
 
-            {hasUnsavedChanges && !isKeyboardVisible && !isNearModalBottom && (
+            {Platform.OS === 'ios' && hasUnsavedChanges && !isKeyboardVisible && !isNearModalBottom && (
               <View
                 style={[
                   styles.hoursFloatingSaveContainer,
-                  { bottom: Math.max(20, insets.bottom + 8) },
+                  { bottom: modalFabBottom },
                 ]}
               >
                 <TouchableOpacity
@@ -1185,6 +1326,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#007AFF',
     fontWeight: '600',
+  },
+  saveButtonDisabled: {
+    color: '#999',
   },
   modalSaveSection: {
     paddingHorizontal: 16,

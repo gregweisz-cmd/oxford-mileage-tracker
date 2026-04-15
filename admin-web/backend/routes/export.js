@@ -2009,6 +2009,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       }); // Close costCenterQuery callback for time tracking summary
       }; // Close generateTimesheetAndFinalizePDF function
       
+      let carryForwardOdometer = null;
       const processCostCenterSheet = (costCenter, index, onComplete, baseAddress, baseAddress2) => {
         // Always start each cost center sheet on a new page
         // But only if we're not already at the top of a page
@@ -2354,9 +2355,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
               }
               const totalDayMiles = withMiles.reduce((sum, e) => sum + (e.miles || 0), 0);
               const firstEntry = withMiles[0];
-              const lastEntry = withMiles[withMiles.length - 1];
               const odometerStart = firstEntry ? (firstEntry.odometerReading || 0) : 0;
-              const odometerEnd = lastEntry ? (lastEntry.odometerReading || 0) : odometerStart + totalDayMiles;
+              const odometerEnd = firstEntry ? Math.round(odometerStart + totalDayMiles) : odometerStart;
               dailyDataMap[day] = {
                 date: firstEntry ? firstEntry.date : null,
                 description: drivingSummary,
@@ -2469,6 +2469,31 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   }
                 }
               });
+            }
+
+            // Keep odometer continuity across cost centers in report order.
+            const firstMileageEntryForCostCenter = entriesForCostCenter
+              .filter(e => Number(e.miles || 0) > 0)
+              .sort((a, b) => new Date(a.createdAt || a.date).getTime() - new Date(b.createdAt || b.date).getTime())[0];
+            let runningOdometer = carryForwardOdometer;
+            if (runningOdometer == null && firstMileageEntryForCostCenter) {
+              runningOdometer = Number(firstMileageEntryForCostCenter.odometerReading) || 0;
+            }
+            for (let day = 1; day <= daysInMonth; day++) {
+              const dayData = dailyDataMap[day];
+              if (!dayData) continue;
+              const dayMiles = Number(dayData.miles || 0);
+              if (dayMiles <= 0) continue;
+              const odometerStartForDay = runningOdometer != null
+                ? runningOdometer
+                : (Number(dayData.odometerStart) || 0);
+              const odometerEndForDay = Math.round(odometerStartForDay + dayMiles);
+              dayData.odometerStart = Math.round(odometerStartForDay);
+              dayData.odometerEnd = odometerEndForDay;
+              runningOdometer = odometerEndForDay;
+            }
+            if (runningOdometer != null) {
+              carryForwardOdometer = runningOdometer;
             }
             
             // Calculate totals for this cost center

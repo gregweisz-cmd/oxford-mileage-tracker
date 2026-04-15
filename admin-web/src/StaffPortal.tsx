@@ -179,14 +179,16 @@ export function buildCostCenterRows(params: {
   perDiemByDate: Record<string, number>;
   formatLocationNameAndAddress: (n: string | undefined, a: string, b?: string, b2?: string) => string;
   employee?: { baseAddress?: string; baseAddress2?: string };
+  startingOdometer?: number;
 }): CostCenterRow[] {
-  const { currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter, costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee } = params;
+  const { currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter, costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee, startingOdometer } = params;
   const baseAddress = employee?.baseAddress;
   const baseAddress2 = employee?.baseAddress2;
   const currentMonthTime = rawTimeEntries.filter((t: any) => {
     const ym = parseCalendarYearMonthFromStoredDate(t.date);
     return ym && ym.month === currentMonth && ym.year === currentYear;
   });
+  let runningOdometer = startingOdometer;
   return Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const weekdayStr = new Date(currentYear, currentMonth - 1, day).toLocaleDateString('en-US', { weekday: 'long' });
@@ -207,8 +209,12 @@ export function buildCostCenterRows(params: {
     const milesTraveled = withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0), 0);
     const mileageAmount = withMiles.length ? withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0) * 0.445, 0) : 0;
     const firstEntry = withMiles[0];
-    const odometerStart = firstEntry?.odometerReading ?? 0;
-    const odometerEnd = firstEntry ? Math.round(odometerStart + milesTraveled) : odometerStart;
+    const hasMileage = withMiles.length > 0;
+    const odometerStart = hasMileage ? (runningOdometer ?? firstEntry?.odometerReading ?? 0) : 0;
+    const odometerEnd = hasMileage ? Math.round(odometerStart + milesTraveled) : odometerStart;
+    if (hasMileage) {
+      runningOdometer = odometerEnd;
+    }
     let description: string;
     let dayOff = false;
     let dayOffType: string | null = null;
@@ -224,6 +230,68 @@ export function buildCostCenterRows(params: {
     const perDiem = (dayDescription && (dayDescription.costCenter || costCenters[0]) === costCenter) ? (perDiemByDate[normDate] ?? 0) : 0;
     return { dateStr, weekdayStr, day, description, dayOff, dayOffType, hoursWorked, odometerStart: Math.round(odometerStart), odometerEnd, milesTraveled: Math.round(milesTraveled), mileageAmount, perDiem };
   });
+}
+
+function buildCostCenterRowsForIndex(params: {
+  currentMonthMileageList: any[];
+  dailyDescriptions: any[];
+  rawTimeEntries: any[];
+  costCenters: string[];
+  costCenterIndex: number;
+  daysInMonth: number;
+  currentMonth: number;
+  currentYear: number;
+  normalizeDate: (d: any) => string;
+  perDiemByDate: Record<string, number>;
+  formatLocationNameAndAddress: (n: string | undefined, a: string, b?: string, b2?: string) => string;
+  employee?: { baseAddress?: string; baseAddress2?: string };
+}): CostCenterRow[] {
+  const {
+    currentMonthMileageList,
+    dailyDescriptions,
+    rawTimeEntries,
+    costCenters,
+    costCenterIndex,
+    daysInMonth,
+    currentMonth,
+    currentYear,
+    normalizeDate,
+    perDiemByDate,
+    formatLocationNameAndAddress,
+    employee
+  } = params;
+
+  let runningOdometer: number | undefined = undefined;
+  let targetRows: CostCenterRow[] = [];
+
+  for (let i = 0; i <= costCenterIndex; i += 1) {
+    const rows = buildCostCenterRows({
+      currentMonthMileageList,
+      dailyDescriptions,
+      rawTimeEntries,
+      costCenter: costCenters[i] || '',
+      costCenters,
+      daysInMonth,
+      currentMonth,
+      currentYear,
+      normalizeDate,
+      perDiemByDate,
+      formatLocationNameAndAddress,
+      employee,
+      startingOdometer: runningOdometer
+    });
+
+    const lastMileageRow = [...rows].reverse().find((row) => row.milesTraveled > 0);
+    if (lastMileageRow) {
+      runningOdometer = lastMileageRow.odometerEnd;
+    }
+
+    if (i === costCenterIndex) {
+      targetRows = rows;
+    }
+  }
+
+  return targetRows;
 }
 
 /** Renders the cost center travel table from pre-built rows (from buildCostCenterRows). */
@@ -7196,12 +7264,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 </TableHead>
                 <TableBody>
                   {(() => {
-                    const costCenterRowsCC1 = buildCostCenterRows({
+                    const costCenterRowsCC1 = buildCostCenterRowsForIndex({
                       currentMonthMileageList,
                       dailyDescriptions,
                       rawTimeEntries,
-                      costCenter: employeeData.costCenters[0] || '',
                       costCenters: employeeData.costCenters,
+                      costCenterIndex: 0,
                       daysInMonth,
                       currentMonth,
                       currentYear,
@@ -7355,7 +7423,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[1], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 1, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
@@ -7384,7 +7452,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[2], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 2, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
@@ -7413,7 +7481,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[3], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 3, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
@@ -7442,7 +7510,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRows({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter: employeeData.costCenters[4], costCenters: employeeData.costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 4, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>

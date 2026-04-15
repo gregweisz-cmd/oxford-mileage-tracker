@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import {
   AddressDetails,
@@ -32,7 +32,6 @@ export default function GooglePlacesAddressInput({
 }: GooglePlacesAddressInputProps) {
   const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
   const [showPredictions, setShowPredictions] = useState(false);
-  const [debugStatus, setDebugStatus] = useState('');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -41,7 +40,6 @@ export default function GooglePlacesAddressInput({
     if (!value || value.trim().length < 3) {
       setPredictions([]);
       setShowPredictions(false);
-      setDebugStatus('');
       return;
     }
 
@@ -50,13 +48,9 @@ export default function GooglePlacesAddressInput({
         const results = await GooglePlacesService.getAddressPredictions(value);
         setPredictions(results);
         setShowPredictions(results.length > 0);
-        const info = GooglePlacesService.getLastDebugInfo();
-        setDebugStatus(`${info.source.toUpperCase()}: ${info.status}${info.errorMessage ? ` (${info.errorMessage})` : ''}`);
       } catch {
         setPredictions([]);
         setShowPredictions(false);
-        const info = GooglePlacesService.getLastDebugInfo();
-        setDebugStatus(`${info.source.toUpperCase()}: ${info.status}${info.errorMessage ? ` (${info.errorMessage})` : ''}`);
       }
     }, 250);
 
@@ -91,20 +85,28 @@ export default function GooglePlacesAddressInput({
       />
       {showPredictions ? (
         <View style={styles.dropdown}>
-          <FlatList
-            data={predictions}
-            keyExtractor={(item) => item.placeId}
+          {/*
+            Do not use FlatList here: this component often sits inside a parent ScrollView
+            (e.g. LocationCaptureModal). Nested VirtualizedList + ScrollView breaks suggestions on iOS.
+          */}
+          <ScrollView
             keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.item} onPress={() => void selectPrediction(item)}>
+            nestedScrollEnabled={Platform.OS === 'android'}
+            style={styles.dropdownScroll}
+          >
+            {predictions.map((item) => (
+              <TouchableOpacity
+                key={item.placeId}
+                style={styles.item}
+                onPress={() => void selectPrediction(item)}
+              >
                 <MaterialIcons name="place" size={16} color="#666" />
                 <Text style={styles.itemText}>{item.description}</Text>
               </TouchableOpacity>
-            )}
-          />
+            ))}
+          </ScrollView>
         </View>
       ) : null}
-      {debugStatus ? <Text style={styles.debugText}>Places Debug: {debugStatus}</Text> : null}
     </View>
   );
 }
@@ -137,6 +139,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
     overflow: 'hidden',
   },
+  dropdownScroll: {
+    maxHeight: 220,
+  },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -150,10 +155,5 @@ const styles = StyleSheet.create({
     color: '#333',
     fontSize: 14,
     flex: 1,
-  },
-  debugText: {
-    marginTop: 6,
-    fontSize: 11,
-    color: '#777',
   },
 });

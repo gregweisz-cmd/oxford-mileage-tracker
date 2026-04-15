@@ -16,6 +16,7 @@ import * as Location from 'expo-location';
 import { LocationDetails, Employee } from '../types';
 import { DatabaseService } from '../services/database';
 import GooglePlacesAddressInput from './GooglePlacesAddressInput';
+import { GooglePlacesService } from '../services/googlePlacesService';
 
 interface LocationCaptureModalProps {
   visible: boolean;
@@ -63,17 +64,25 @@ export default function LocationCaptureModal({
       
       setCurrentLocation(location);
       
-      // Try to get address from coordinates
+      // Try fuller Google geocoding first, then fall back to Expo reverse geocode.
       try {
-        const addressResponse = await Location.reverseGeocodeAsync({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        });
-        
-        if (addressResponse.length > 0) {
-          const address = addressResponse[0];
-          const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
-          setLocationAddress(formattedAddress);
+        const preciseAddress = await GooglePlacesService.getAddressFromCoordinates(
+          location.coords.latitude,
+          location.coords.longitude
+        );
+        if (preciseAddress) {
+          setLocationAddress(preciseAddress);
+        } else {
+          const addressResponse = await Location.reverseGeocodeAsync({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          });
+          
+          if (addressResponse.length > 0) {
+            const address = addressResponse[0];
+            const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
+            setLocationAddress(formattedAddress);
+          }
         }
       } catch (error) {
         console.log('Could not get address from coordinates:', error);
@@ -196,6 +205,9 @@ export default function LocationCaptureModal({
                 }
               }}
             />
+            <Text style={styles.helpText}>
+              Confirm the street number before saving this location.
+            </Text>
           </View>
 
           {/* Return to BA Quick Action - Only show for end locations */}

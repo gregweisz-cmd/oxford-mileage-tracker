@@ -778,6 +778,33 @@ async function placeDetails(placeId) {
   }
 }
 
+/**
+ * Reverse geocode coordinates into a human-readable street address.
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<{ status: string, results?: Array, error_message?: string }>}
+ */
+async function reverseGeocodeLatLng(lat, lng) {
+  if (!isConfigured()) {
+    return { status: 'SERVICE_UNAVAILABLE', results: [] };
+  }
+  if (!isValidLatLng(lat, lng)) {
+    return { status: 'INVALID_REQUEST', results: [] };
+  }
+  try {
+    const url =
+      'https://maps.googleapis.com/maps/api/geocode/json' +
+      `?latlng=${encodeURIComponent(`${lat},${lng}`)}` +
+      '&language=en' +
+      `&key=${GOOGLE_MAPS_API_KEY}`;
+    const response = await axios.get(url, { timeout: 8000 });
+    return response.data;
+  } catch (err) {
+    debugError('Reverse geocode failed:', err.message);
+    return { status: 'ERROR', results: [], error_message: err.message };
+  }
+}
+
 module.exports = {
   isConfigured,
   geocodeToLatLng,
@@ -796,6 +823,7 @@ module.exports = {
   downloadStaticMapImageFromRoutes,
   imageBufferToDataUrl,
   placeAutocomplete,
-  placeDetails
+  placeDetails,
+  reverseGeocodeLatLng
 };
 

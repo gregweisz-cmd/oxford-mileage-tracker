@@ -741,18 +741,18 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
     setLoading(true);
     try {
-      // Check if this is the first mileage entry of the day
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Scope daily odometer to the selected entry date (not "today")
+      const entryDate = new Date(formData.date);
+      entryDate.setHours(0, 0, 0, 0);
       
-      const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, today);
+      const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, entryDate);
       
       // If no daily odometer reading exists, create one from the current odometer reading
       if (!existingReading && formData.odometerReading) {
         console.log('📝 Creating daily odometer reading from manual entry:', formData.odometerReading);
         await DatabaseService.createDailyOdometerReading({
           employeeId: currentEmployee.id,
-          date: today,
+          date: entryDate,
           odometerReading: Number(formData.odometerReading),
           notes: 'Auto-captured from first manual mileage entry'
         });

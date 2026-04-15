@@ -108,6 +108,9 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [saving, setSaving] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isNearListBottom, setIsNearListBottom] = useState(false);
+  const isNearListBottomRef = useRef(false);
+  const listScrollQuietUntilRef = useRef(0);
+  const androidKeyboardHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Per-day eligibility: 8+ hours AND (100+ mi OR Daily Hours "out of town" checkbox) */
   const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
   /** True after eligibility map has been computed for the current month (avoids blocking on Android) */
@@ -122,15 +125,46 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   }, [currentMonth]);
 
   useEffect(() => {
+    isNearListBottomRef.current = false;
+    setIsNearListBottom(false);
+    listScrollQuietUntilRef.current = 0;
+  }, [currentMonth]);
+
+  useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
-    const showSub = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+    const showSub = Keyboard.addListener(showEvent, () => {
+      if (Platform.OS === 'android' && androidKeyboardHideTimerRef.current != null) {
+        clearTimeout(androidKeyboardHideTimerRef.current);
+        androidKeyboardHideTimerRef.current = null;
+      }
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      if (Platform.OS === 'ios') {
+        setIsKeyboardVisible(false);
+        return;
+      }
+      if (androidKeyboardHideTimerRef.current != null) {
+        clearTimeout(androidKeyboardHideTimerRef.current);
+      }
+      androidKeyboardHideTimerRef.current = setTimeout(() => {
+        androidKeyboardHideTimerRef.current = null;
+        InteractionManager.runAfterInteractions(() => {
+          listScrollQuietUntilRef.current = Date.now() + 320;
+          setIsKeyboardVisible(false);
+        });
+      }, 140);
+    });
 
     return () => {
       showSub.remove();
       hideSub.remove();
+      if (androidKeyboardHideTimerRef.current != null) {
+        clearTimeout(androidKeyboardHideTimerRef.current);
+        androidKeyboardHideTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -589,10 +623,24 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   };
 
   const handleDaysListScroll = (event: any) => {
+    if (Platform.OS === 'android' && Date.now() < listScrollQuietUntilRef.current) {
+      return;
+    }
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const nearBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140;
-    if (nearBottom !== isNearListBottom) {
-      setIsNearListBottom(nearBottom);
+    const scrollable = Math.max(0, contentSize.height - layoutMeasurement.height);
+    const distanceFromBottom = scrollable - contentOffset.y;
+    const enterNearBottomPx = 72;
+    const exitNearBottomPx = 168;
+
+    let next = isNearListBottomRef.current;
+    if (isNearListBottomRef.current) {
+      if (distanceFromBottom > exitNearBottomPx) next = false;
+    } else {
+      if (distanceFromBottom < enterNearBottomPx) next = true;
+    }
+    if (next !== isNearListBottomRef.current) {
+      isNearListBottomRef.current = next;
+      setIsNearListBottom(next);
     }
   };
 

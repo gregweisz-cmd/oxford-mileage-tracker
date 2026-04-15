@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { GpsTrackingSession, LocationDetails } from '../types';
 import { LOCATION_TASK_NAME, GPS_TRACKING_STORAGE_KEY, PersistedGpsState } from './gpsBackgroundTask';
+import { GooglePlacesService } from './googlePlacesService';
 
 export class GpsTrackingService {
   private static currentSession: GpsTrackingSession | null = null;
@@ -405,6 +406,15 @@ export class GpsTrackingService {
 
   private static async reverseGeocode(coords: Location.LocationObjectCoords): Promise<string> {
     try {
+      // Prefer Google geocoding (via backend proxy) for fuller street-level addresses.
+      const preciseAddress = await GooglePlacesService.getAddressFromCoordinates(
+        coords.latitude,
+        coords.longitude
+      );
+      if (preciseAddress) {
+        return preciseAddress;
+      }
+
       const result = await Location.reverseGeocodeAsync({
         latitude: coords.latitude,
         longitude: coords.longitude,

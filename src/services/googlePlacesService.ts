@@ -27,6 +27,14 @@ interface PlaceDetailsResponse {
   error_message?: string;
 }
 
+interface ReverseGeocodeResponse {
+  status: string;
+  results?: Array<{
+    formatted_address?: string;
+  }>;
+  error_message?: string;
+}
+
 export interface AddressPrediction {
   placeId: string;
   description: string;
@@ -141,7 +149,10 @@ export class GooglePlacesService {
     if (fromBackend !== null) return fromBackend;
 
     if (!this.getApiKey()) {
-      this.setDebugInfo({ source: 'none', status: 'NO_CLIENT_KEY' });
+      // Backend already recorded HTTP_503, REQUEST_DENIED, etc. — do not clobber with NO_CLIENT_KEY.
+      if (this.lastDebugInfo.source !== 'backend') {
+        this.setDebugInfo({ source: 'none', status: 'NO_CLIENT_KEY' });
+      }
       return [];
     }
 
@@ -201,5 +212,45 @@ export class GooglePlacesService {
       latitude: data.result.geometry?.location?.lat,
       longitude: data.result.geometry?.location?.lng,
     };
+  }
+
+  static async getAddressFromCoordinates(latitude: number, longitude: number): Promise<string | null> {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+    try {
+      const url =
+        `${apiBaseTrimmed()}/places/reverse-geocode` +
+        `?lat=${encodeURIComponent(String(latitude))}` +
+        `&lng=${encodeURIComponent(String(longitude))}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = (await response.json()) as ReverseGeocodeResponse;
+        if (data.status === 'OK' && data.results && data.results.length > 0) {
+          const best = data.results[0].formatted_address?.trim();
+          if (best) return best;
+        }
+      }
+    } catch {
+      // Fall through to client key path.
+    }
+
+    const key = this.getApiKey();
+    if (!key) return null;
+
+    try {
+      const url =
+        'https://maps.googleapis.com/maps/api/geocode/json' +
+        `?latlng=${encodeURIComponent(`${latitude},${longitude}`)}` +
+        '&language=en' +
+        `&key=${encodeURIComponent(key)}`;
+      const response = await fetch(url);
+      const data = (await response.json()) as ReverseGeocodeResponse;
+      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+        return null;
+      }
+      return data.results[0].formatted_address?.trim() || null;
+    } catch {
+      return null;
+    }
   }
 }
