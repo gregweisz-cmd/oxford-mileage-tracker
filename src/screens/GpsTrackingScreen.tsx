@@ -10,6 +10,8 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  FlatList,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -25,10 +27,10 @@ import { CostCenterAiService, CostCenterSuggestion } from '../services/costCente
 import { getTravelReasons, TravelReason } from '../services/travelReasonsService';
 import SimpleNavigationButton from '../components/SimpleNavigationButton';
 import UnifiedHeader from '../components/UnifiedHeader';
-import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
 import { useTheme } from '../contexts/ThemeContext';
 import { COST_CENTERS } from '../constants/costCenters';
 import { PreferencesService } from '../services/preferencesService';
+import { OxfordHouseService } from '../services/oxfordHouseService';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -83,6 +85,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   ]);
   const [showOxfordHouseSearchModal, setShowOxfordHouseSearchModal] = useState(false);
   const [oxfordHousePickerRole, setOxfordHousePickerRole] = useState<'start' | 'end'>('start');
+  const [oxfordHouseSearchQuery, setOxfordHouseSearchQuery] = useState('');
+  const [oxfordHouseResults, setOxfordHouseResults] = useState<any[]>([]);
+  const [oxfordHouseAllHouses, setOxfordHouseAllHouses] = useState<any[]>([]);
+  const [oxfordHouseLoading, setOxfordHouseLoading] = useState(false);
+  const [oxfordHouseSelectedState, setOxfordHouseSelectedState] = useState<string>('');
+  const [oxfordHouseAvailableStates, setOxfordHouseAvailableStates] = useState<string[]>([]);
+  const [isOxfordHouseStatePickerVisible, setIsOxfordHouseStatePickerVisible] = useState(false);
   const [startLocationDetails, setStartLocationDetails] = useState<LocationDetails | null>(null);
   const [endLocationDetails, setEndLocationDetails] = useState<LocationDetails | null>(null);
   const [lastDestination, setLastDestination] = useState<LocationDetails | null>(null);
@@ -768,6 +777,91 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
   };
 
+  // Oxford House search functions (same UX as Manual Entry screen)
+  const loadOxfordHouses = async () => {
+    try {
+      setOxfordHouseLoading(true);
+      await OxfordHouseService.initializeOxfordHouses();
+      const houses = await OxfordHouseService.getAllOxfordHouses();
+
+      setOxfordHouseAllHouses(houses);
+
+      const states = Array.from(new Set(houses.map(h => h.state))).sort();
+      setOxfordHouseAvailableStates(states);
+
+      if (currentEmployee?.baseAddress) {
+        const extractedState = OxfordHouseService.extractStateFromAddress(currentEmployee.baseAddress);
+        if (extractedState && states.includes(extractedState)) {
+          setOxfordHouseSelectedState(extractedState);
+          setOxfordHouseResults(houses.filter(h => h.state === extractedState));
+        } else {
+          setOxfordHouseResults(houses);
+        }
+      } else {
+        setOxfordHouseResults(houses);
+      }
+    } catch (error) {
+      console.error('Error loading Oxford Houses:', error);
+    } finally {
+      setOxfordHouseLoading(false);
+    }
+  };
+
+  const performOxfordHouseSearch = (query: string) => {
+    if (!query.trim()) {
+      if (oxfordHouseSelectedState) {
+        setOxfordHouseResults(oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState));
+      } else {
+        setOxfordHouseResults(oxfordHouseAllHouses);
+      }
+      return;
+    }
+
+    const searchLower = query.toLowerCase().trim();
+    const housesToSearch = oxfordHouseSelectedState
+      ? oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState)
+      : oxfordHouseAllHouses;
+
+    const filtered = housesToSearch.filter((house: any) =>
+      house.name.toLowerCase().includes(searchLower) ||
+      house.address.toLowerCase().includes(searchLower) ||
+      house.city.toLowerCase().includes(searchLower) ||
+      house.state.toLowerCase().includes(searchLower) ||
+      house.zipCode.includes(searchLower)
+    );
+    setOxfordHouseResults(filtered);
+  };
+
+  const handleOxfordHouseStateFilterChange = (state: string) => {
+    setOxfordHouseSelectedState(state);
+    if (!oxfordHouseSearchQuery.trim()) {
+      const filtered = state
+        ? oxfordHouseAllHouses.filter(h => h.state === state)
+        : oxfordHouseAllHouses;
+      setOxfordHouseResults(filtered);
+      return;
+    }
+    const searchLower = oxfordHouseSearchQuery.toLowerCase().trim();
+    const housesToSearch = state
+      ? oxfordHouseAllHouses.filter(h => h.state === state)
+      : oxfordHouseAllHouses;
+    setOxfordHouseResults(
+      housesToSearch.filter((house: any) =>
+        house.name.toLowerCase().includes(searchLower) ||
+        house.address.toLowerCase().includes(searchLower) ||
+        house.city.toLowerCase().includes(searchLower) ||
+        house.state.toLowerCase().includes(searchLower) ||
+        house.zipCode.includes(searchLower)
+      )
+    );
+  };
+
+  useEffect(() => {
+    if (showOxfordHouseSearchModal) {
+      loadOxfordHouses();
+    }
+  }, [showOxfordHouseSearchModal]);
+
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -1340,51 +1434,163 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         currentEmployee={currentEmployee}
       />}
 
-      {/* Oxford House Search Modal */}
+      {/* Oxford House Search Modal - same experience as Manual Entry */}
       {showOxfordHouseSearchModal && (
-      <Modal
-        visible
-        transparent={true}
-        animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
-        presentationStyle="overFullScreen"
-        onRequestClose={() => {
-          setShowOxfordHouseSearchModal(false);
-          setOxfordHousePickerRole('start');
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {oxfordHousePickerRole === 'end' ? 'Select End Location' : 'Select Oxford House'}
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {oxfordHousePickerRole === 'end'
-                ? 'Choose where this trip ended from Oxford Houses'
-                : 'Choose your starting location from Oxford Houses'}
-            </Text>
-            
-            <OxfordHouseSearchInput
-              value=""
-              onChangeText={() => {}}
-              placeholder="Search for Oxford House..."
-              label={oxfordHousePickerRole === 'end' ? 'End Location' : 'Start Location'}
-              onHouseSelected={handleOxfordHouseSelected}
-              allowManualEntry={true}
-              employeeId={currentEmployee?.id}
-            />
+        <Modal
+          visible
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => {
+            setShowOxfordHouseSearchModal(false);
+            setOxfordHousePickerRole('start');
+          }}
+        >
+          <KeyboardAvoidingView
+            style={styles.modalContainer}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>
+                    {oxfordHousePickerRole === 'end' ? 'Select End Location' : 'Search Oxford Houses'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowOxfordHouseSearchModal(false);
+                      setOxfordHousePickerRole('start');
+                    }}
+                    style={styles.closeButton}
+                  >
+                    <MaterialIcons name="close" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
 
-            <TouchableOpacity
-              style={styles.modalButtonSecondary}
-              onPress={() => {
-                setShowOxfordHouseSearchModal(false);
-                setOxfordHousePickerRole('start');
-              }}
-            >
-              <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+                <View style={styles.searchContainer}>
+                  <TextInput
+                    style={styles.searchInput}
+                    value={oxfordHouseSearchQuery}
+                    onChangeText={(text) => {
+                      setOxfordHouseSearchQuery(text);
+                      performOxfordHouseSearch(text);
+                    }}
+                    placeholder="Type house name, city, or address..."
+                    placeholderTextColor="#999"
+                  />
+                  <MaterialIcons name="search" size={24} color="#666" style={styles.searchInputIcon} />
+                </View>
+
+                {oxfordHouseAvailableStates.length > 0 && (
+                  <View style={styles.stateFilterContainer}>
+                    <Text style={styles.stateFilterLabel}>Filter by State:</Text>
+                    <TouchableOpacity
+                      style={styles.statePickerButton}
+                      onPress={() => setIsOxfordHouseStatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.statePickerText}>
+                        {oxfordHouseSelectedState ? oxfordHouseSelectedState : 'All States'}
+                      </Text>
+                      <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View style={styles.manualEntryContainer}>
+                  <TouchableOpacity
+                    style={styles.manualEntryButton}
+                    onPress={() => {
+                      setShowOxfordHouseSearchModal(false);
+                      if (oxfordHousePickerRole === 'end') setShowEndLocationModal(true);
+                      else setShowStartLocationModal(true);
+                    }}
+                  >
+                    <MaterialIcons name="edit" size={20} color="#2196F3" />
+                    <Text style={styles.manualEntryText}>Enter location manually</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {oxfordHouseLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <Text style={styles.oxfordHouseLoadingText}>Loading Oxford Houses...</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={oxfordHouseResults}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.houseItem}
+                        onPress={() => handleOxfordHouseSelected(item)}
+                      >
+                        <View style={styles.houseInfo}>
+                          <Text style={styles.houseName}>{item.name}</Text>
+                          <Text style={styles.houseAddress}>{item.address}, {item.city}, {item.state} {item.zipCode}</Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={24} color="#666" />
+                      </TouchableOpacity>
+                    )}
+                    style={styles.resultsList}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={
+                      <View style={styles.emptyContainer}>
+                        <MaterialIcons name="search-off" size={48} color="#ccc" />
+                        <Text style={styles.emptyText}>No Oxford Houses found</Text>
+                        <Text style={styles.emptySubtext}>Try a different search term or state</Text>
+                      </View>
+                    }
+                  />
+                )}
+
+                {isOxfordHouseStatePickerVisible && (
+                  <View style={styles.statePickerOverlay}>
+                    <View style={styles.statePickerOverlayContent}>
+                      <View style={styles.statePickerOverlayHeader}>
+                        <Text style={styles.statePickerOverlayTitle}>Select State</Text>
+                        <TouchableOpacity
+                          onPress={() => setIsOxfordHouseStatePickerVisible(false)}
+                          style={styles.statePickerOverlayCloseButton}
+                        >
+                          <MaterialIcons name="close" size={24} color="#666" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <FlatList
+                        data={['', ...oxfordHouseAvailableStates]}
+                        keyExtractor={(item, index) => index.toString()}
+                        style={styles.statePickerOverlayList}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={[
+                              styles.statePickerOverlayItem,
+                              oxfordHouseSelectedState === item && styles.statePickerOverlayItemSelected
+                            ]}
+                            onPress={() => {
+                              handleOxfordHouseStateFilterChange(item);
+                              setIsOxfordHouseStatePickerVisible(false);
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.statePickerOverlayItemText,
+                                oxfordHouseSelectedState === item && styles.statePickerOverlayItemTextSelected
+                              ]}
+                            >
+                              {item || 'All States'}
+                            </Text>
+                            {oxfordHouseSelectedState === item && (
+                              <MaterialIcons name="check" size={20} color="#2196F3" />
+                            )}
+                          </TouchableOpacity>
+                        )}
+                      />
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       )}
 
       {/* Ending Tracking Loading Overlay */}
@@ -1727,6 +1933,10 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1746,6 +1956,188 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     textAlign: 'center',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+  },
+  searchInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  searchInputIcon: {
+    padding: 12,
+  },
+  stateFilterContainer: {
+    paddingBottom: 10,
+  },
+  stateFilterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  statePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    height: 50,
+  },
+  statePickerText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  manualEntryContainer: {
+    paddingBottom: 10,
+  },
+  manualEntryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  manualEntryText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#2196F3',
+    fontWeight: '500',
+  },
+  resultsList: {
+    flex: 1,
+    width: '100%',
+    marginTop: 8,
+  },
+  houseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  houseInfo: {
+    flex: 1,
+  },
+  houseName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  houseAddress: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  oxfordHouseLoadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+  },
+  statePickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  statePickerOverlayContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '90%',
+    maxHeight: '85%',
+    minHeight: '70%',
+    height: '80%',
+  },
+  statePickerOverlayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  statePickerOverlayTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  statePickerOverlayCloseButton: {
+    padding: 4,
+  },
+  statePickerOverlayList: {
+    flex: 1,
+  },
+  statePickerOverlayItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    minHeight: 48,
+  },
+  statePickerOverlayItemSelected: {
+    backgroundColor: '#f0f8ff',
+  },
+  statePickerOverlayItemText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  statePickerOverlayItemTextSelected: {
+    color: '#2196F3',
+    fontWeight: '600',
   },
   modalTopActionRow: {
     flexDirection: 'row',
