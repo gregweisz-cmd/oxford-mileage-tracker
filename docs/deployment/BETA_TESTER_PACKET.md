@@ -270,4 +270,57 @@ Use this as a **quality** list during beta:
 
 ---
 
+## 8. Current beta priorities (please test first)
+
+These are the highest-priority checks for the current beta cycle.
+
+### A) GPS start/stop location precision (mobile)
+
+Goal: confirm addresses are more complete (street number + street + city/state) when starting or stopping GPS trips.
+
+1. Go to **GPS Tracking** and start a trip.
+2. Choose **Enter New Starting Point** and allow location capture.
+3. Confirm the app shows a full address (not just street name).
+4. Stop tracking and choose end location capture.
+5. Confirm the end address is also detailed and accurate.
+
+Please verify the on-screen reminder to **confirm the street number** appears during location capture.
+
+### B) Manual mileage date-scoped odometer (mobile)
+
+Goal: confirm manual entries only set starting odometer for the selected date.
+
+1. In **Add Mileage Entry**, pick an older date (example: `4/2/26`) and save a manual entry with a starting odometer.
+2. Open a different date (example: today).
+3. Verify the previous date's odometer does **not** auto-fill this new date unless that date already has its own reading.
+
+### C) Hours & Descriptions Save/Cancel behavior on Android
+
+Goal: confirm Save button no longer "dances" after keyboard dismiss and header buttons are easy to tap.
+
+1. On Android, open **Hours & Descriptions** and edit a day.
+2. Type in a field, tap keyboard **Done**, and watch the Save/Cancel controls.
+3. Verify controls are stable and tappable.
+4. Scroll near the bottom and verify header actions hide as expected.
+
+### D) Multi-cost-center odometer continuity (web + export)
+
+Goal: verify odometer carries forward across cost centers in report order.
+
+1. Use an employee with multiple cost centers and mileage in the same month.
+2. Open Staff report cost-center tabs in order (CC1, CC2, CC3...).
+3. Confirm CC2 starts where CC1 ended, CC3 starts where CC2 ended, etc.
+4. Export and confirm PDF/export values match the same carry-forward behavior.
+
+---
+
+## 9. What to include in reports for these priorities
+
+- Device + OS version (example: Moto G Stylus 5G 2024, Android version).
+- App path used (GPS Tracking, Add Mileage Entry, Hours & Descriptions, Staff Portal).
+- Exact date(s) used while testing.
+- Screenshot of values shown before and after save/export.
+
+---
+
 *Oxford House Expense Tracker — beta testing packet.*

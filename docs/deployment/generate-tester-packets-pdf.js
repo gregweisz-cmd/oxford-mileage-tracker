@@ -24,7 +24,7 @@ function loadCss() {
 
 const combinedCss = loadCss();
 
-const files = ['ALPHA_TESTER_PACKET.md', 'BETA_TESTER_PACKET.md'];
+const files = ['ALPHA_TESTER_PACKET.md', 'BETA_TESTER_PACKET.md', 'BETA_TESTER_ONE_PAGER.md'];
 
 /**
  * Inline local images as data URIs so Puppeteer setContent() can render them.

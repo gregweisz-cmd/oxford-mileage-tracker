@@ -2,7 +2,7 @@
 
 Checklist for capturing and saving screenshots used by the how-to PDFs. Use **exact filenames**; save paths are under each section.
 
-**Current focus:** Start with Mobile App (11), then Staff Portal (22), then Supervisor (6) and Admin (15). All web portals use the same login — one shared screenshot: `web-portal-login.png`. All screenshots cleared — capture fresh after app/portal updates.
+**Current focus:** Keep screenshots aligned with each release update. All web portals use the same login screenshot: `web-portal-login.png`.
 
 **Optional:** Use [TODAY_RUN_ORDER.md](TODAY_RUN_ORDER.md) as a run list if it exists (same screens in capture order).
 
@@ -23,7 +23,7 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 - [x] `settings-screen.png` — Settings
 - [x] `saved-addresses-screen.png` — Saved addresses list
 
-**Mobile subtotal:** 0 / 10
+**Mobile subtotal:** 10 / 10
 
 ---
 
@@ -32,18 +32,18 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 - [x] `web-portal-login.png` — Login (shared by all web portals — Staff, Supervisor, Admin, Senior Staff)
 - [x] `staff-portal-portal-switcher.png` — Portal switcher with Staff selected (optional for staff-only guide; regular staff don’t see the switcher—capture by logging in as supervisor/admin, then open switcher and select Staff)
 - [x] `staff-portal-dashboard.png` — Dashboard/overview
-- [ ] `staff-portal-month-year-selector.png` — Zoomed-in month/year selector controls (top of portal)
-- [ ] `staff-portal-navigation-tabs.png` — Zoomed-in top tab navigation bar (Approval Cover Sheet, Summary Sheet, Mileage, etc.)
+- [x] `staff-portal-month-year-selector.png` — Zoomed-in month/year selector controls (top of portal)
+- [x] `staff-portal-navigation-tabs.png` — Zoomed-in top tab navigation bar (Approval Cover Sheet, Summary Sheet, Mileage, etc.)
 - [x] `staff-portal-submit.png` — Submit report button or dialog
 - [x] `staff-portal-overview.png` — Overview with tabs
-- [ ] `staff-portal-overview-tab-navigation.png` — Zoomed tab-navigation strip from portal overview (Approval Cover Sheet through Per Diem)
+- [x] `staff-portal-overview-tab-navigation.png` — Zoomed tab-navigation strip from portal overview (Approval Cover Sheet through Per Diem)
 - [x] `staff-portal-mileage-tab.png` — Mileage Entries tab (date, start/end, miles, cost center, actions)
-- [ ] `staff-portal-mileage-editing-window.png` — Mileage entry editing view after clicking a table cell
-- [ ] `staff-portal-add-mileage-entry-window.png` — Add Mileage Entry popup/window with required fields
+- [x] `staff-portal-mileage-editing-window.png` — Mileage entry editing view after clicking a table cell
+- [x] `staff-portal-add-mileage-entry-window.png` — Add Mileage Entry popup/window with required fields
 - [x] `staff-portal-receipts-tab.png` — Receipts tab (Crop option)
-- [ ] `staff-portal-receipt-details-view.png` — Receipt details view with full image and editable fields
-- [ ] `staff-portal-receipt-crop-dialog.png` — Crop dialog for a receipt image (selection box + Apply)
-- [ ] `staff-portal-upload-receipt-dialog.png` — Add/Upload Receipt dialog from the web portal
+- [x] `staff-portal-receipt-details-view.png` — Receipt details view with full image and editable fields
+- [x] `staff-portal-receipt-crop-dialog.png` — Crop dialog for a receipt image (selection box + Apply)
+- [x] `staff-portal-upload-receipt-dialog.png` — Add/Upload Receipt dialog from the web portal
 - [x] `staff-portal-hours-tab.png` — Hours Worked tab
 - [x] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
 - [x] `staff-portal-monthly-summary.png` — Monthly Summary tab
@@ -52,7 +52,7 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 - [x] `staff-portal-notifications.png` — Notification bell/panel
 - [x] `staff-portal-settings.png` — Settings / preferences
 
-**Staff subtotal:** 14 / 22
+**Staff subtotal:** 22 / 22
 
 ---
 
@@ -73,33 +73,33 @@ Optional screenshots for the Senior Staff how-to guide. (There is no separate Se
 - [x] `supervisor-portal-dashboard.png` — **Analytics** tab (Team Performance Analytics: KPIs and expense trend)
 - [x] `supervisor-portal-overview.png` — Portal with tabs visible (Approvals, Reports, Team, Analytics)
 - [x] `supervisor-portal-approvals.png` — **Approvals** tab (reports pending your review)
-- [ ] `supervisor-portal-reports.png` — **Reports** tab (all team reports, filters)
+- [x] `supervisor-portal-reports.png` — **Reports** tab (all team reports, filters)
 - [x] `supervisor-portal-team.png` — **Team** tab (team members list)
 - [x] `supervisor-portal-notifications.png` — Notification bell panel
 
-**Supervisor subtotal:** 5 / 6
+**Supervisor subtotal:** 6 / 6
 
 ---
 
 ## 5. Admin Portal (15) — save to `images/screenshots/web-portal/`
 
 - [x] `admin-portal-employee-management.png` — **Employee Management** → Individual Management (current employees table, Add Employee, Sync from HR, View Archived, search)
-- [ ] `admin-portal-add-employee-button.png` — Zoomed screenshot showing the **Add Employee** button
+- [x] `admin-portal-add-employee-button.png` — Zoomed screenshot showing the **Add Employee** button
 - [x] `admin-portal-employee-form.png` — Add/Edit Employee form
 - [x] `admin-portal-sync-from-hr.png` — Sync from HR API (cloud icon; can be in same frame as employee management)
-- [ ] `admin-portal-sync-review-changes.png` — Sync from HR API → “Review Changes” prompt/dialog
+- [x] `admin-portal-sync-review-changes.png` — Sync from HR API → “Review Changes” prompt/dialog
 - [x] `admin-portal-supervisor-management.png` — **Supervisor Management** tab
 - [x] `admin-portal-cost-centers.png` — **Cost Center Management** tab
-- [ ] `admin-portal-per-diem-rules-dialog.png` — Cost Center Management → **Edit Rules** prompt/dialog
-- [ ] `admin-portal-edit-cost-center-dialog.png` — Cost Center Management → Edit Cost Center prompt/dialog
+- [x] `admin-portal-per-diem-rules-dialog.png` — Cost Center Management → **Edit Rules** prompt/dialog
+- [x] `admin-portal-edit-cost-center-dialog.png` — Cost Center Management → Edit Cost Center prompt/dialog
 - [x] `admin-portal-reports-analytics.png` — **Reports & Analytics** tab
 - [x] `admin-portal-travel-reasons.png` — **Travel Reasons** tab
 - [x] `admin-portal-daily-description.png` — **Daily Description** (options) tab
 - [x] `admin-portal-system-settings.png` — **System Settings** tab
 - [x] `admin-portal-notifications.png` — Notification bell panel
-- [ ] `admin-portal-edit-pencil-icon.png` — Small screenshot showing the pencil/edit icon in the Actions column
+- [x] `admin-portal-edit-pencil-icon.png` — Small screenshot showing the pencil/edit icon in the Actions column
 
-**Admin subtotal:** 10 / 15
+**Admin subtotal:** 15 / 15
 
 ---
 
@@ -123,9 +123,9 @@ See **`docs/deployment/images/tester-packet/README.md`** for full capture notes.
 | Mobile App       | 10       | —        |
 | Staff Portal     | 22       | —        |
 | Senior Staff     | —        | 3        |
-| Supervisor       | 5        | —        |
+| Supervisor       | 6        | —        |
 | Admin Portal     | 15       | —        |
 | Tester packets   | 4        | —        |
-| **Total**        | **56**   | **4**    |
+| **Total**        | **57**   | **4**    |
 
 To mark done: change `- [ ]` to `- [x]` for each screenshot you've saved.
