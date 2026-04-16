@@ -318,7 +318,18 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     }
   };
 
+  const isPerDiemReceipt = (receipt: Receipt): boolean =>
+    (receipt.category || '').trim().toLowerCase() === 'per diem';
+
   const deleteReceipt = (receipt: Receipt) => {
+    if (isPerDiemReceipt(receipt)) {
+      Alert.alert(
+        'Per Diem Receipts Cannot Be Deleted Here',
+        'Use the Per Diem checkbox workflow to add or remove Per Diem entries.'
+      );
+      return;
+    }
+
     Alert.alert(
       'Delete Receipt',
       `Are you sure you want to delete this receipt from ${receipt.vendor}?`,
@@ -565,7 +576,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   };
 
   const selectAllReceipts = () => {
-    const allIds = new Set(receipts.map(receipt => receipt.id));
+    const allIds = new Set(receipts.filter(receipt => !isPerDiemReceipt(receipt)).map(receipt => receipt.id));
     setSelectedReceiptIds(allIds);
   };
 
@@ -579,8 +590,17 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
       return;
     }
 
-    const selectedCount = selectedReceiptIds.size;
     const selectedReceipts = receipts.filter(receipt => selectedReceiptIds.has(receipt.id));
+    const perDiemSelectedCount = selectedReceipts.filter(isPerDiemReceipt).length;
+    if (perDiemSelectedCount > 0) {
+      Alert.alert(
+        'Per Diem Receipts Cannot Be Deleted Here',
+        'Remove any selected Per Diem receipts and use the Per Diem checkbox workflow instead.'
+      );
+      return;
+    }
+
+    const selectedCount = selectedReceipts.length;
     const totalAmount = selectedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
     
     // Build summary of what will be deleted
@@ -609,8 +629,9 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
               setLoading(true);
               
               // Delete receipts one by one to track successes and failures
+              const selectedIds = Array.from(selectedReceiptIds);
               const deleteResults = await Promise.allSettled(
-                Array.from(selectedReceiptIds).map(id => DatabaseService.deleteReceipt(id))
+                selectedIds.map(id => DatabaseService.deleteReceipt(id))
               );
               
               const successCount = deleteResults.filter(result => result.status === 'fulfilled').length;
@@ -619,7 +640,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
               // Log any failures for debugging
               deleteResults.forEach((result, index) => {
                 if (result.status === 'rejected') {
-                  const receiptId = Array.from(selectedReceiptIds)[index];
+                  const receiptId = selectedIds[index];
                   console.error(`Failed to delete receipt ${receiptId}:`, result.reason);
                 }
               });
@@ -1047,12 +1068,19 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                 </TouchableOpacity>
 
                 {!multiSelectMode && (
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => deleteReceipt(receipt)}
-                  >
-                    <MaterialIcons name="delete" size={20} color="#f44336" />
-                  </TouchableOpacity>
+                  isPerDiemReceipt(receipt) ? (
+                    <View style={styles.perDiemLockedBadge}>
+                      <MaterialIcons name="lock" size={14} color="#757575" />
+                      <Text style={styles.perDiemLockedText}>Per Diem</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => deleteReceipt(receipt)}
+                    >
+                      <MaterialIcons name="delete" size={20} color="#f44336" />
+                    </TouchableOpacity>
+                  )
                 )}
               </View>
             ))
@@ -1560,6 +1588,21 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: 8,
     marginLeft: 8,
+  },
+  perDiemLockedBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#f0f0f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  perDiemLockedText: {
+    marginLeft: 4,
+    fontSize: 11,
+    color: '#757575',
+    fontWeight: '600',
   },
   modalContainer: {
     flex: 1,

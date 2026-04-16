@@ -33,10 +33,13 @@ export interface PersistedGpsState {
   stationaryAlertLastPromptAt?: number | null;
 }
 
-const MOVEMENT_THRESHOLD_MILES = 5 / 1609.34; // 5 meters in miles
+// GPS jitter while stationary can easily fluctuate 5-15m, especially in urban areas.
+// Use a wider threshold so we don't keep resetting stationary detection while parked.
+const MOVEMENT_THRESHOLD_MILES = 25 / 1609.34; // 25 meters in miles
 const VEHICLE_SPEED_THRESHOLD_MPH = 8;
 const STATIONARY_THRESHOLD_MS = 5 * 60 * 1000;
 const STATIONARY_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
+const MIN_TRIP_DISTANCE_FOR_STATIONARY_ALERT_MILES = 0.25; // 1/4 mile
 const R = 3959; // Earth radius in miles
 
 function toRadians(degrees: number): number {
@@ -95,10 +98,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       state.stationaryAlertLastPromptAt = null;
     }
 
+    const hasTraveledMeaningfully = state.totalDistance >= MIN_TRIP_DISTANCE_FOR_STATIONARY_ALERT_MILES;
+
     if (speedMph >= VEHICLE_SPEED_THRESHOLD_MPH) {
       state.hasSeenVehicleSpeed = true;
       state.stationaryStartTime = null;
       state.stationaryAlertPending = false;
+    } else if (!state.hasSeenVehicleSpeed && hasTraveledMeaningfully) {
+      // Some devices intermittently report null/0 speed in background updates.
+      // Fall back to observed trip distance so stationary reminders can still trigger.
+      state.hasSeenVehicleSpeed = true;
     } else if (distance > MOVEMENT_THRESHOLD_MILES) {
       state.stationaryStartTime = null;
       state.stationaryAlertPending = false;

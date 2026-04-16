@@ -322,7 +322,16 @@ export default function App() {
                 animationEnabled: Platform.OS !== 'ios',
               }}
             />
-            <Stack.Screen name="Receipts" component={ReceiptsScreen} />
+            <Stack.Screen
+              name="Receipts"
+              component={ReceiptsScreen}
+              options={{
+                // Keep gestures enabled, but require a tighter edge swipe region on Android
+                // so normal vertical scrolling doesn't accidentally trigger back navigation.
+                gestureEnabled: true,
+                gestureResponseDistance: Platform.OS === 'android' ? 18 : undefined,
+              }}
+            />
             <Stack.Screen name="AddReceipt" component={AddReceiptScreen} />
             <Stack.Screen name="ReceiptCrop" component={ReceiptCropScreen} />
             <Stack.Screen name="DailyHours" component={DailyHoursScreen} />
