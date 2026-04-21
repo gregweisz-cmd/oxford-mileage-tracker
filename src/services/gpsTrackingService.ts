@@ -244,7 +244,7 @@ export class GpsTrackingService {
       void AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY).catch(() => {});
 
       this.currentSession.endTime = new Date();
-      this.currentSession.totalMiles = Math.round(this.totalDistance * 10) / 10;
+      this.currentSession.totalMiles = Math.round(this.totalDistance);
       this.currentSession.isActive = false;
 
       if (presetEndLocation) {
@@ -396,7 +396,7 @@ export class GpsTrackingService {
   }
 
   static getCurrentDistance(): number {
-    const distance = Math.round(this.totalDistance * 10) / 10;
+    const distance = Math.round(this.totalDistance);
     return distance;
   }
 

@@ -351,7 +351,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         if (lastTravelDay) {
           const dateText = lastTravelDay.date.toLocaleDateString();
           setLastTravelDayEndingOdometerNote(
-            `Ending odometer of last travel day (${dateText}): ${lastTravelDay.endingOdometer.toFixed(1)}`
+            `Ending odometer of last travel day (${dateText}): ${Math.round(lastTravelDay.endingOdometer)}`
           );
         } else {
           setLastTravelDayEndingOdometerNote('');
@@ -1037,7 +1037,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       const completedSession = await stopTracking(locationDetails);
       
       // Use GPS-tracked miles
-      const actualMiles = completedSession?.totalMiles || 0;
+      const actualMiles = Math.round(completedSession?.totalMiles || 0);
       
       if (completedSession && currentEmployee) {
         console.log('🚗 GPS Trip completed, saving to database:', {
@@ -1093,7 +1093,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         });
         setSelectedCostCenter('');
 
-        const message = `Trip completed!\nDistance: ${actualMiles.toFixed(1)} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`;
+        const message = `Trip completed!\nDistance: ${actualMiles} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`;
         // Auto-return to Home after save and show completion popup.
         navigation.reset({
           index: 0,
@@ -1252,11 +1252,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const formatDistance = (miles: number): string => {
-    if (miles < 0.1) {
-      return `${(miles * 5280).toFixed(0)} ft`;
-    } else {
-      return `${miles.toFixed(1)} mi`;
-    }
+    return `${Math.round(miles)} mi`;
   };
 
   return (

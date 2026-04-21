@@ -162,7 +162,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     }
 
     state.totalDistance += distance;
-    state.session.totalMiles = Math.round(state.totalDistance * 10) / 10;
+    state.session.totalMiles = Math.round(state.totalDistance);
     state.lastLocation = { latitude: newLat, longitude: newLon };
     state.lastLocationTimestamp = latestTimestamp;
 

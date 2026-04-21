@@ -180,7 +180,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       }
       const dateText = lastTravelDay.date.toLocaleDateString();
       setLastTravelDayEndingOdometerNote(
-        `Ending odometer of last travel day (${dateText}): ${lastTravelDay.endingOdometer.toFixed(1)}`
+        `Ending odometer of last travel day (${dateText}): ${Math.round(lastTravelDay.endingOdometer)}`
       );
     };
 
@@ -670,13 +670,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         endAddress
       );
       
-      setFormData(prev => ({ ...prev, miles: distance.toString() }));
+      setFormData(prev => ({ ...prev, miles: Math.round(distance).toString() }));
       
       // Get info about the calculation method used
       const info = DistanceService.getDistanceCalculationInfo();
       const methodText = info.hasGoogleMapsApi ? 'Google Maps route' : 'estimated driving distance';
       
-      Alert.alert('Success', `Distance calculated: ${distance} miles\n\nMethod: ${methodText}`);
+      Alert.alert('Success', `Distance calculated: ${Math.round(distance)} miles\n\nMethod: ${methodText}`);
     } catch (error) {
       console.error('Error calculating distance:', error);
       
@@ -792,7 +792,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         startLocationDetails: startLocationDetails,
         endLocationDetails: endLocationDetails,
         purpose: formData.purpose.trim(),
-        miles: Number(formData.miles),
+        miles: Math.round(Number(formData.miles)),
         notes: formData.notes.trim(),
         isGpsTracked: formData.isGpsTracked,
         costCenter: selectedCostCenter,
