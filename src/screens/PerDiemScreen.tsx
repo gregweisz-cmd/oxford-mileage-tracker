@@ -83,6 +83,18 @@ function toLocalDateKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Stable YYYY-MM-DD key from Date/string without timezone day-shift. */
+function toDateKey(value: Date | string | undefined | null): string {
+  if (!value) return '';
+  if (value instanceof Date) return toLocalDateKey(value);
+  const raw = String(value);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const parsed = new Date(raw);
+  if (isNaN(parsed.getTime())) return '';
+  return toLocalDateKey(parsed);
+}
+
 /**
  * Per Diem Screen Component
  * 
@@ -230,12 +242,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
         const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
         const dateKey = toLocalDateKey(date);
 
-        const existingReceipt = perDiemReceipts.find(r => {
-          const receiptDate = new Date(r.date);
-          return receiptDate.getDate() === day &&
-                 receiptDate.getMonth() === currentMonth.getMonth() &&
-                 receiptDate.getFullYear() === currentMonth.getFullYear();
-        });
+        const existingReceipt = perDiemReceipts.find(r => toDateKey(r.date) === dateKey);
 
         if (existingReceipt) {
           entriesMap.set(dateKey, {
@@ -471,12 +478,10 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           entry.date.getMonth() + 1,
           entry.date.getFullYear()
         );
+        const targetDateKey = toLocalDateKey(entry.date);
         const existingReceipt = receipts.find(r => {
           if (r.category !== 'Per Diem') return false;
-          const receiptDate = new Date(r.date);
-          return receiptDate.getDate() === entry.date.getDate() &&
-                 receiptDate.getMonth() === entry.date.getMonth() &&
-                 receiptDate.getFullYear() === entry.date.getFullYear();
+          return toDateKey(r.date) === targetDateKey;
         });
         
         if (existingReceipt) {

@@ -613,24 +613,30 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
     
     // 2b. Sync time tracking hours - SIMPLE LOGIC: Whatever is in the UI is what gets saved
     // Step 1: Delete ALL time tracking entries for this month (we'll recreate only what's in dailyEntries)
-    await new Promise((resolve, reject) => {
-      db.run(
-        'DELETE FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?',
-        [employeeId, startDate, endDate],
-        function(deleteErr) {
-          if (deleteErr) {
-            debugError(`❌ Error deleting time tracking for month:`, deleteErr);
-            reject(deleteErr);
-          } else {
-            debugLog(`🗑️ Deleted ${this.changes} existing time tracking entries for month ${month}/${year}`);
-            resolve();
-          }
-        }
+    // Guardrail: if dailyEntries is missing, do NOT wipe existing month hours.
+    if (!Array.isArray(reportData.dailyEntries)) {
+      debugWarn(
+        `⚠️ sync-to-source skipped time_tracking rewrite for ${month}/${year}: reportData.dailyEntries is not an array`
       );
-    });
+    } else {
+      await new Promise((resolve, reject) => {
+        db.run(
+          'DELETE FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?',
+          [employeeId, startDate, endDate],
+          function(deleteErr) {
+            if (deleteErr) {
+              debugError(`❌ Error deleting time tracking for month:`, deleteErr);
+              reject(deleteErr);
+            } else {
+              debugLog(`🗑️ Deleted ${this.changes} existing time tracking entries for month ${month}/${year}`);
+              resolve();
+            }
+          }
+        );
+      });
     
     // Step 2: Save ONLY what's in dailyEntries (exactly what user sees in UI)
-    if (reportData.dailyEntries && reportData.dailyEntries.length > 0) {
+    if (reportData.dailyEntries.length > 0) {
       const costCenters = reportData.costCenters || [];
       
       for (const entry of reportData.dailyEntries) {
@@ -642,10 +648,20 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
           }
           
           // Save cost center hours (exactly as shown in UI)
+          // Some clients can send hoursWorked but omit costCenter*Hours. In that case,
+          // preserve total working hours by assigning to cost center 0 as a fallback.
+          const hasExplicitCostCenterHours = costCenters.some((_, i) => {
+            const explicitValue = Number(entry[`costCenter${i}Hours`]);
+            return Number.isFinite(explicitValue) && explicitValue > 0;
+          });
+          const fallbackWorkingHours =
+            !hasExplicitCostCenterHours && Number(entry.hoursWorked) > 0 ? Number(entry.hoursWorked) : 0;
+
           for (let i = 0; i < costCenters.length; i++) {
             const costCenterName = costCenters[i];
             const hoursProperty = `costCenter${i}Hours`;
-            const hours = entry[hoursProperty] || 0;
+            const explicitHours = Number(entry[hoursProperty]) || 0;
+            const hours = fallbackWorkingHours > 0 && i === 0 ? fallbackWorkingHours : explicitHours;
             
             // Only save if hours > 0 (empty = already deleted in step 1)
             if (hours > 0) {
@@ -662,6 +678,11 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
                       reject(insertErr);
                     } else {
                       debugLog(`✅ Saved ${hours} hours for ${costCenterName} on ${dateStr} (exactly as shown in UI)`);
+                      if (fallbackWorkingHours > 0 && i === 0) {
+                        debugWarn(
+                          `⚠️ Applied hoursWorked fallback (${fallbackWorkingHours}) for ${dateStr} because costCenter*Hours were missing`
+                        );
+                      }
                       resolve();
                     }
                   }
@@ -705,6 +726,7 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
       }
     } else {
       debugLog(`ℹ️ No daily entries in array - all hours for month ${month}/${year} deleted (empty array = delete all)`);
+    }
     }
     
     // NOTE: Mileage entries are NOT synced from dailyEntries
