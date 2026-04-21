@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -119,9 +120,6 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [isNearListBottom, setIsNearListBottom] = useState(false);
-  const isNearListBottomRef = useRef(false);
-  const listScrollQuietUntilRef = useRef(0);
   const androidKeyboardHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Per-day eligibility: 8+ hours AND (100+ mi OR Daily Hours "out of town" checkbox) */
   const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
@@ -136,11 +134,12 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     setSyncMonthScope(currentMonth.getMonth() + 1, currentMonth.getFullYear());
   }, [currentMonth]);
 
+  /** Block Android hardware back while save is in progress (modal must stay until done). */
   useEffect(() => {
-    isNearListBottomRef.current = false;
-    setIsNearListBottom(false);
-    listScrollQuietUntilRef.current = 0;
-  }, [currentMonth]);
+    if (!saving) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [saving]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -164,7 +163,6 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       androidKeyboardHideTimerRef.current = setTimeout(() => {
         androidKeyboardHideTimerRef.current = null;
         InteractionManager.runAfterInteractions(() => {
-          listScrollQuietUntilRef.current = Date.now() + 320;
           setIsKeyboardVisible(false);
         });
       }, 140);
@@ -298,6 +296,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   };
 
   const handleToggleEligible = (dateKey: string) => {
+    if (saving) return;
     const entry = perDiemEntries.get(dateKey);
     if (!entry) return;
     
@@ -337,6 +336,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   };
 
   const handleAmountChange = (dateKey: string, amount: string) => {
+    if (saving) return;
     const entry = perDiemEntries.get(dateKey);
     if (!entry || !entry.isEligible) return;
     
@@ -375,6 +375,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   };
 
   const handleImagePicker = async (dateKey: string) => {
+    if (saving) return;
     setSelectedDay(perDiemEntries.get(dateKey)?.date || null);
     
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -627,28 +628,6 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     return date.toLocaleDateString('en-US', { weekday: 'long' });
   };
 
-  const handleDaysListScroll = (event: any) => {
-    if (Platform.OS === 'android' && Date.now() < listScrollQuietUntilRef.current) {
-      return;
-    }
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const scrollable = Math.max(0, contentSize.height - layoutMeasurement.height);
-    const distanceFromBottom = scrollable - contentOffset.y;
-    const enterNearBottomPx = 72;
-    const exitNearBottomPx = 168;
-
-    let next = isNearListBottomRef.current;
-    if (isNearListBottomRef.current) {
-      if (distanceFromBottom > exitNearBottomPx) next = false;
-    } else {
-      if (distanceFromBottom < enterNearBottomPx) next = true;
-    }
-    if (next !== isNearListBottomRef.current) {
-      isNearListBottomRef.current = next;
-      setIsNearListBottom(next);
-    }
-  };
-
   const isViewingCurrentMonth =
     currentMonth.getMonth() === new Date().getMonth() &&
     currentMonth.getFullYear() === new Date().getFullYear();
@@ -711,8 +690,8 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-const dateKey = toLocalDateKey(date);
-        return { day, date, dateKey, entry: perDiemEntries.get(dateKey) };
+    const dateKey = toLocalDateKey(date);
+    return { day, date, dateKey, entry: perDiemEntries.get(dateKey) };
   });
 
   return (
@@ -780,9 +759,10 @@ const dateKey = toLocalDateKey(date);
       <ScrollView
         ref={scrollViewRef}
         style={styles.daysList}
+        contentContainerStyle={{
+          paddingBottom: hasUnsavedChanges && !isKeyboardVisible ? 100 : 24,
+        }}
         showsVerticalScrollIndicator={false}
-        onScroll={handleDaysListScroll}
-        scrollEventThrottle={16}
       >
         {daysArray.map(({ day, date, dateKey, entry }) => {
           const perDiemEntry = entry || {
@@ -806,6 +786,7 @@ const dateKey = toLocalDateKey(date);
                 <TouchableOpacity
                   style={styles.checkbox}
                   onPress={() => handleToggleEligible(dateKey)}
+                  disabled={saving}
                 >
                   {perDiemEntry.isEligible && (
                     <MaterialIcons name="check" size={20} color="#007AFF" />
@@ -822,6 +803,7 @@ const dateKey = toLocalDateKey(date);
                       value={perDiemEntry.amount.toString()}
                       onChangeText={(text) => handleAmountChange(dateKey, text)}
                       keyboardType="numeric"
+                      editable={!saving}
                     />
                   </View>
                   
@@ -832,6 +814,7 @@ const dateKey = toLocalDateKey(date);
                         <TouchableOpacity
                           style={styles.deleteImageButton}
                           onPress={() => handleDeletePerDiem(dateKey)}
+                          disabled={saving}
                         >
                           <MaterialIcons name="delete" size={20} color="#FF3B30" />
                         </TouchableOpacity>
@@ -840,6 +823,7 @@ const dateKey = toLocalDateKey(date);
                       <TouchableOpacity
                         style={styles.addImageButton}
                         onPress={() => handleImagePicker(dateKey)}
+                        disabled={saving}
                       >
                         <MaterialIcons name="add-photo-alternate" size={24} color="#007AFF" />
                         <Text style={styles.addImageText}>Add Receipt (Optional)</Text>
@@ -853,9 +837,9 @@ const dateKey = toLocalDateKey(date);
         })}
       </ScrollView>
 
-      {/* Floating Save Button */}
-      {hasUnsavedChanges && !isKeyboardVisible && !isNearListBottom && (
-        <View style={styles.saveButtonContainer}>
+      {/* Floating Save Button — always visible when unsaved (not hidden at list bottom). */}
+      {hasUnsavedChanges && !isKeyboardVisible && (
+        <View style={styles.saveButtonContainer} pointerEvents="box-none">
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
             onPress={handleSaveAll}
@@ -868,6 +852,17 @@ const dateKey = toLocalDateKey(date);
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Blocks all interaction while save runs; prevents taps that loadData would wipe. */}
+      <Modal visible={saving} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.savingOverlay} pointerEvents="auto">
+          <View style={styles.savingCard}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.savingTitle}>Saving per diem</Text>
+            <Text style={styles.savingSubtitle}>Please wait — do not leave this screen.</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1117,5 +1112,39 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  savingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  savingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    minWidth: 260,
+    maxWidth: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  savingTitle: {
+    marginTop: 16,
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+  },
+  savingSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
   },
 });
