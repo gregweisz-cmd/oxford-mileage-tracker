@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { GpsTrackingSession, LocationDetails } from '../types';
 import {
   GPS_STATIONARY_ACTION_END,
+  GPS_STATIONARY_ACTION_KEEP,
   StationaryNotificationService,
 } from '../services/stationaryNotificationService';
 
@@ -40,6 +41,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const [showMapOverlay, setShowMapOverlay] = useState(false);
   const [shouldShowEndLocationModal, setShouldShowEndLocationModal] = useState(false);
   const [restoredTrackingOnLaunch, setRestoredTrackingOnLaunch] = useState(false);
+  const [showStationaryPrompt, setShowStationaryPrompt] = useState(false);
   const restoredRef = useRef(false);
 
   // Restore session from storage on mount (handles app kill/restart during tracking)
@@ -70,22 +72,42 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   }, []);
 
   useEffect(() => {
+    let receivedSubscription: Notifications.EventSubscription | undefined;
     let responseSubscription: Notifications.EventSubscription | undefined;
     let mounted = true;
+
+    const openStationaryPrompt = async () => {
+      if (!GpsTrackingService.isTracking()) return;
+      setShowStationaryPrompt(true);
+      await GpsTrackingService.consumeStationaryAlertPrompt();
+    };
+
     (async () => {
       await StationaryNotificationService.initialize();
       if (!mounted) return;
+      receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+        const type = (notification.request.content.data as any)?.type;
+        if (type === 'gps_stationary') {
+          void openStationaryPrompt();
+        }
+      });
       responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
         const actionId = response.actionIdentifier;
         const type = (response.notification.request.content.data as any)?.type;
         if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_END) {
+          setShowStationaryPrompt(false);
           requestStopTracking();
+        } else if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_KEEP) {
+          setShowStationaryPrompt(false);
+        } else if (type === 'gps_stationary') {
+          void openStationaryPrompt();
         }
       });
     })();
 
     return () => {
       mounted = false;
+      receivedSubscription?.remove();
       responseSubscription?.remove();
     };
   }, []);
@@ -138,6 +160,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
       setIsTracking(false);
       setCurrentDistance(0);
       setShowMapOverlay(false);
+      setShowStationaryPrompt(false);
       return completedSession;
     } catch (error) {
       console.error('Error stopping tracking:', error);
@@ -181,6 +204,38 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   return (
     <GpsTrackingContext.Provider value={value}>
       {children}
+      <Modal
+        visible={showStationaryPrompt && isTracking}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowStationaryPrompt(false)}
+      >
+        <View style={styles.stationaryOverlay}>
+          <View style={styles.stationaryCard}>
+            <Text style={styles.stationaryTitle}>Still tracking your trip</Text>
+            <Text style={styles.stationaryBody}>
+              We detected you are no longer moving at driving speed. Do you want to end tracking?
+            </Text>
+            <View style={styles.stationaryActions}>
+              <TouchableOpacity
+                style={styles.stationarySecondaryButton}
+                onPress={() => setShowStationaryPrompt(false)}
+              >
+                <Text style={styles.stationarySecondaryButtonText}>Continue Tracking</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.stationaryPrimaryButton}
+                onPress={() => {
+                  setShowStationaryPrompt(false);
+                  requestStopTracking();
+                }}
+              >
+                <Text style={styles.stationaryPrimaryButtonText}>End Tracking</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </GpsTrackingContext.Provider>
   );
 }
@@ -192,3 +247,60 @@ export function useGpsTracking(): GpsTrackingContextType {
   }
   return context;
 }
+
+const styles = StyleSheet.create({
+  stationaryOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  stationaryCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+  },
+  stationaryTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 8,
+  },
+  stationaryBody: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  stationaryActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  stationarySecondaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  stationarySecondaryButtonText: {
+    color: '#2196F3',
+    fontWeight: '600',
+  },
+  stationaryPrimaryButton: {
+    flex: 1,
+    backgroundColor: '#f44336',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  stationaryPrimaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+});

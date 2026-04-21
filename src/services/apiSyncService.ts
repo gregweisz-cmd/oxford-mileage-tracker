@@ -1984,7 +1984,7 @@ export class ApiSyncService {
           const existing = await database.getFirstAsync(
             'SELECT id, updatedAt FROM daily_descriptions WHERE id = ?',
             [desc.id]
-          );
+          ) as { id: string; updatedAt?: string | Date } | null;
           
           // If it doesn't exist locally, it might have been deleted
           // Don't restore deleted descriptions from backend
@@ -2097,7 +2097,7 @@ export class ApiSyncService {
           const existing = await database.getFirstAsync(
             'SELECT id, updatedAt FROM mileage_entries WHERE id = ?',
             [entry.id]
-          );
+          ) as { id: string; updatedAt?: string | Date } | null;
           
           // Convert date to YYYY-MM-DD format only (timezone-safe)
           const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
@@ -2190,6 +2190,8 @@ export class ApiSyncService {
       
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
+      const { SyncIntegrationService } = await import('./syncIntegrationService');
+      const pendingUpsertIds = SyncIntegrationService.getPendingUpsertIds('receipt');
       
       for (const receipt of receipts) {
         try {
@@ -2202,7 +2204,7 @@ export class ApiSyncService {
           const existing = await database.getFirstAsync(
             'SELECT id, updatedAt FROM receipts WHERE id = ?',
             [receipt.id]
-          );
+          ) as { id: string; updatedAt?: string | Date } | null;
           
           // Convert date to YYYY-MM-DD format only (timezone-safe)
           const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
@@ -2271,22 +2273,36 @@ export class ApiSyncService {
             `📥 ApiSync: Backend returned 0 receipts for employee ${localEmployeeId}; keeping local receipts (no orphan cleanup)`
           );
         } else {
-          const placeholders = backendIds.map(() => '?').join(',');
-          let del: { changes: number };
+          let localReceipts: Array<{ id: string }>;
           if (orphanCleanup === 'all') {
-            del = await database.runAsync(
-              `DELETE FROM receipts WHERE employeeId = ? AND id NOT IN (${placeholders})`,
-              [localEmployeeId, ...backendIds]
-            );
+            localReceipts = (await database.getAllAsync(
+              'SELECT id FROM receipts WHERE employeeId = ?',
+              [localEmployeeId]
+            )) as Array<{ id: string }>;
           } else {
             const { start, end } = monthDateBounds(orphanCleanup.month, orphanCleanup.year);
-            del = await database.runAsync(
-              `DELETE FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ? AND id NOT IN (${placeholders})`,
-              [localEmployeeId, start, end, ...backendIds]
-            );
+            localReceipts = (await database.getAllAsync(
+              'SELECT id FROM receipts WHERE employeeId = ? AND date >= ? AND date <= ?',
+              [localEmployeeId, start, end]
+            )) as Array<{ id: string }>;
           }
-          if (del.changes > 0) {
-            debugLog(`🗑️ ApiSync: Removed ${del.changes} local receipt(s) not on backend (employee ${localEmployeeId})`);
+
+          let deletedCount = 0;
+          for (const localReceipt of localReceipts) {
+            const isOnBackend = backendIds.includes(localReceipt.id);
+            const isPendingUpsert = pendingUpsertIds.has(localReceipt.id);
+            if (!isOnBackend && !isPendingUpsert) {
+              await database.runAsync('DELETE FROM receipts WHERE id = ?', [localReceipt.id]);
+              deletedCount += 1;
+            }
+          }
+          if (deletedCount > 0) {
+            debugLog(`🗑️ ApiSync: Removed ${deletedCount} local receipt(s) not on backend (employee ${localEmployeeId})`);
+          }
+          if (pendingUpsertIds.size > 0) {
+            debugLog(
+              `ℹ️ ApiSync: Preserved ${pendingUpsertIds.size} pending local receipt(s) during orphan cleanup`
+            );
           }
         }
       }
@@ -2388,7 +2404,7 @@ export class ApiSyncService {
           const existing = await database.getFirstAsync(
             'SELECT id, updatedAt FROM time_tracking WHERE id = ?',
             [tracking.id]
-          );
+          ) as { id: string; updatedAt?: string | Date } | null;
           
           // Convert date to YYYY-MM-DD format only (timezone-safe)
           const trackingDate = tracking.date instanceof Date ? tracking.date : new Date(tracking.date);

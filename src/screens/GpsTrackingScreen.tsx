@@ -16,16 +16,16 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Location from 'expo-location';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { DatabaseService } from '../services/database';
-import { GpsTrackingSession, Employee, LocationDetails } from '../types';
+import { GpsTrackingSession, Employee, LocationDetails, OxfordHouse, SavedAddress } from '../types';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import { formatLocation } from '../utils/locationFormatter';
 import LocationCaptureModal from '../components/LocationCaptureModal';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
 import { CostCenterAiService, CostCenterSuggestion } from '../services/costCenterAiService';
 import { getTravelReasons, TravelReason } from '../services/travelReasonsService';
-import SimpleNavigationButton from '../components/SimpleNavigationButton';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { useTheme } from '../contexts/ThemeContext';
 import { COST_CENTERS } from '../constants/costCenters';
@@ -51,9 +51,15 @@ type EndLocationOption =
   | 'oxfordHouse'
   | 'newLocation';
 
+type StartLocationSuggestion = {
+  details: LocationDetails;
+  reason: string;
+  confidenceLabel: 'Strong match' | 'Address match' | 'Nearby match';
+};
+
 export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
   const { colors } = useTheme();
-  const { isTracking, currentSession, currentDistance, setCurrentDistance, startTracking, stopTracking, shouldShowEndLocationModal, setShouldShowEndLocationModal } = useGpsTracking();
+  const { isTracking, currentSession, startTracking, stopTracking, shouldShowEndLocationModal, setShouldShowEndLocationModal } = useGpsTracking();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [showGpsDuration, setShowGpsDuration] = useState(false);
   const [trackingForm, setTrackingForm] = useState({
@@ -92,6 +98,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [oxfordHouseSelectedState, setOxfordHouseSelectedState] = useState<string>('');
   const [oxfordHouseAvailableStates, setOxfordHouseAvailableStates] = useState<string[]>([]);
   const [isOxfordHouseStatePickerVisible, setIsOxfordHouseStatePickerVisible] = useState(false);
+  const [isDetectingStartSuggestions, setIsDetectingStartSuggestions] = useState(false);
+  const [startLocationSuggestions, setStartLocationSuggestions] = useState<
+    Partial<Record<StartLocationOption, StartLocationSuggestion>>
+  >({});
+  const [isDetectingEndSuggestions, setIsDetectingEndSuggestions] = useState(false);
+  const [endLocationSuggestions, setEndLocationSuggestions] = useState<
+    Partial<Record<EndLocationOption, StartLocationSuggestion>>
+  >({});
   const [startLocationDetails, setStartLocationDetails] = useState<LocationDetails | null>(null);
   const [endLocationDetails, setEndLocationDetails] = useState<LocationDetails | null>(null);
   const [lastDestination, setLastDestination] = useState<LocationDetails | null>(null);
@@ -105,6 +119,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [showCostCenterSuggestions, setShowCostCenterSuggestions] = useState(false);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
+  const [lastTravelDayEndingOdometerNote, setLastTravelDayEndingOdometerNote] = useState('');
   const [isEditingOdometer, setIsEditingOdometer] = useState(false);
   const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
@@ -185,10 +200,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // Watch for stop tracking request from global button
   useEffect(() => {
     if (shouldShowEndLocationModal && isTracking) {
-      setShowEndLocationOptionsModal(true);
+      openEndLocationOptions();
       setShouldShowEndLocationModal(false); // Reset the flag
     }
-  }, [shouldShowEndLocationModal, isTracking, setShouldShowEndLocationModal]);
+  }, [shouldShowEndLocationModal, isTracking, setShouldShowEndLocationModal, currentEmployee, startLocationDetails]);
 
   // Separate effect for timer that only restarts when session ID changes
   useEffect(() => {
@@ -330,6 +345,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         
         // Check if GPS tracking has been started today
         await checkGpsTrackingStatus(employee.id);
+
+        const today = new Date();
+        const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(employee.id, today);
+        if (lastTravelDay) {
+          const dateText = lastTravelDay.date.toLocaleDateString();
+          setLastTravelDayEndingOdometerNote(
+            `Ending odometer of last travel day (${dateText}): ${lastTravelDay.endingOdometer.toFixed(1)}`
+          );
+        } else {
+          setLastTravelDayEndingOdometerNote('');
+        }
       }
       
       // Set base address as default start location if available
@@ -509,9 +535,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const handleStartTracking = async () => {
     if (!validateForm() || !currentEmployee) return;
 
-    console.log('🔍 GPS: Starting GPS tracking, showing location options modal');
-    // Show location options modal first
-    setShowLocationOptionsModal(true);
+    console.log('🔍 GPS: Starting GPS tracking, showing location options');
+    openStartLocationOptions();
   };
 
   const handleLocationOption = (option: 'lastDestination' | 'baseAddress' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation') => {
@@ -527,20 +552,36 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setStartLocationDetails(lastDestination);
         startGpsTracking();
       } else if (option === 'baseAddress' && currentEmployee?.baseAddress) {
-        console.log('🔍 GPS: Using base address:', currentEmployee.baseAddress);
-        // Use base address as starting point
-        setStartLocationDetails({
-          name: 'Base Address',
-          address: currentEmployee.baseAddress
-        });
+        const suggested = startLocationSuggestions.baseAddress;
+        if (suggested) {
+          setStartLocationDetails(suggested.details);
+        } else {
+          console.log('🔍 GPS: Using base address:', currentEmployee.baseAddress);
+          setStartLocationDetails({
+            name: 'BA',
+            address: currentEmployee.baseAddress
+          });
+        }
         startGpsTracking();
       } else if (option === 'favoriteAddresses') {
-        console.log('🔍 GPS: Navigating to favorite addresses');
-        navigation.navigate('SavedAddresses', { fromGpsTrackingStart: true });
+        const suggested = startLocationSuggestions.favoriteAddresses;
+        if (suggested) {
+          setStartLocationDetails(suggested.details);
+          startGpsTracking();
+        } else {
+          console.log('🔍 GPS: Navigating to favorite addresses');
+          navigation.navigate('SavedAddresses', { fromGpsTrackingStart: true });
+        }
       } else if (option === 'oxfordHouse') {
-        console.log('🔍 GPS: Showing Oxford House search modal');
-        setOxfordHousePickerRole('start');
-        setShowOxfordHouseSearchModal(true);
+        const suggested = startLocationSuggestions.oxfordHouse;
+        if (suggested) {
+          setStartLocationDetails(suggested.details);
+          startGpsTracking();
+        } else {
+          console.log('🔍 GPS: Showing Oxford House search modal');
+          setOxfordHousePickerRole('start');
+          setShowOxfordHouseSearchModal(true);
+        }
       } else if (option === 'newLocation') {
         console.log('🔍 GPS: Showing manual location entry modal');
         // Show manual location entry modal
@@ -557,6 +598,320 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setStartLocationOptionOrder(newOrder);
     await PreferencesService.updatePreferences({
       gpsStartLocationOptionOrder: newOrder,
+    });
+  };
+
+  const normalizeAddress = (value: string): string =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\b(street|st|road|rd|avenue|ave|boulevard|blvd|drive|dr|lane|ln|court|ct)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const toRadians = (degrees: number): number => degrees * (Math.PI / 180);
+
+  const calculateDistanceMiles = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const earthRadiusMiles = 3959;
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRadians(lat1)) *
+        Math.cos(toRadians(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    return earthRadiusMiles * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  };
+
+  const addressesLikelyMatch = (first: string, second: string): boolean => {
+    const a = normalizeAddress(first);
+    const b = normalizeAddress(second);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return a.includes(b) || b.includes(a);
+  };
+
+  const getConfidenceLabel = (distanceMatch: boolean, addressMatch: boolean): StartLocationSuggestion['confidenceLabel'] => {
+    if (distanceMatch && addressMatch) return 'Strong match';
+    if (addressMatch) return 'Address match';
+    return 'Nearby match';
+  };
+
+  const detectStartLocationSuggestions = async () => {
+    if (!currentEmployee) return;
+    const suggestions: Partial<Record<StartLocationOption, StartLocationSuggestion>> = {};
+
+    try {
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+      if (permission.status !== 'granted') {
+        setStartLocationSuggestions({});
+        return;
+      }
+
+      const currentPosition = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        timeout: 12000,
+      });
+
+      const currentLat = currentPosition.coords.latitude;
+      const currentLon = currentPosition.coords.longitude;
+      let currentAddress =
+        (await GooglePlacesService.getAddressFromCoordinates(currentLat, currentLon)) || '';
+      if (!currentAddress) {
+        const geocode = await Location.reverseGeocodeAsync({
+          latitude: currentLat,
+          longitude: currentLon,
+        });
+        if (geocode.length > 0) {
+          const first = geocode[0];
+          currentAddress =
+            `${first.street || ''} ${first.city || ''}, ${first.region || ''} ${first.postalCode || ''}`.trim();
+        }
+      }
+
+      if (
+        currentEmployee.baseAddress &&
+        currentAddress &&
+        addressesLikelyMatch(currentAddress, currentEmployee.baseAddress)
+      ) {
+        suggestions.baseAddress = {
+          details: {
+            name: 'BA',
+            address: currentEmployee.baseAddress,
+            latitude: currentLat,
+            longitude: currentLon,
+          },
+          reason: 'You appear to be at your Base Address.',
+          confidenceLabel: 'Address match',
+        };
+      }
+
+      const [savedAddresses, oxfordHouses] = await Promise.all([
+        DatabaseService.getSavedAddresses(currentEmployee.id),
+        OxfordHouseService.getAllOxfordHouses(),
+      ]);
+
+      const matchedSavedAddress = savedAddresses
+        .map((saved: SavedAddress) => {
+          const distanceMatch =
+            typeof saved.latitude === 'number' &&
+            typeof saved.longitude === 'number' &&
+            calculateDistanceMiles(currentLat, currentLon, saved.latitude, saved.longitude) <= 0.12;
+          const addressMatch = !!currentAddress && addressesLikelyMatch(currentAddress, saved.address);
+          return { saved, distanceMatch, addressMatch };
+        })
+        .find((candidate) => candidate.distanceMatch || candidate.addressMatch);
+
+      if (matchedSavedAddress) {
+        suggestions.favoriteAddresses = {
+          details: {
+            name: matchedSavedAddress.saved.name,
+            address: matchedSavedAddress.saved.address,
+            latitude: matchedSavedAddress.saved.latitude ?? currentLat,
+            longitude: matchedSavedAddress.saved.longitude ?? currentLon,
+          },
+          reason: `Looks like you're at saved address "${matchedSavedAddress.saved.name}".`,
+          confidenceLabel: getConfidenceLabel(
+            matchedSavedAddress.distanceMatch,
+            matchedSavedAddress.addressMatch
+          ),
+        };
+      }
+
+      const matchedOxfordHouse = oxfordHouses.find((house: OxfordHouse) => {
+        const houseAddress = `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`;
+        return !!currentAddress && addressesLikelyMatch(currentAddress, houseAddress);
+      });
+
+      if (matchedOxfordHouse) {
+        suggestions.oxfordHouse = {
+          details: {
+            name: matchedOxfordHouse.name,
+            address: `${matchedOxfordHouse.address}, ${matchedOxfordHouse.city}, ${matchedOxfordHouse.state} ${matchedOxfordHouse.zipCode}`,
+            latitude: currentLat,
+            longitude: currentLon,
+          },
+          reason: `Looks like you're at ${matchedOxfordHouse.name}.`,
+          confidenceLabel: 'Address match',
+        };
+      }
+    } catch (error) {
+      console.log('Unable to detect start location suggestions:', error);
+    }
+
+    setStartLocationSuggestions(suggestions);
+  };
+
+  const openStartLocationOptions = () => {
+    setShowLocationOptionsModal(true);
+    setStartLocationSuggestions({});
+    setIsDetectingStartSuggestions(true);
+    void detectStartLocationSuggestions().finally(() => {
+      setIsDetectingStartSuggestions(false);
+    });
+  };
+
+  const orderedStartLocationOptions = useMemo(() => {
+    if (isEditingStartLocationOptions) {
+      return startLocationOptionOrder;
+    }
+
+    const suggested = startLocationOptionOrder.filter((option) => !!startLocationSuggestions[option]);
+    const unsuggested = startLocationOptionOrder.filter((option) => !startLocationSuggestions[option]);
+    return [...suggested, ...unsuggested];
+  }, [isEditingStartLocationOptions, startLocationOptionOrder, startLocationSuggestions]);
+
+  const detectEndLocationSuggestions = async () => {
+    if (!currentEmployee) return;
+    const suggestions: Partial<Record<EndLocationOption, StartLocationSuggestion>> = {};
+
+    try {
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+      if (permission.status !== 'granted') {
+        setEndLocationSuggestions({});
+        return;
+      }
+
+      const currentPosition = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        timeout: 12000,
+      });
+
+      const currentLat = currentPosition.coords.latitude;
+      const currentLon = currentPosition.coords.longitude;
+      let currentAddress =
+        (await GooglePlacesService.getAddressFromCoordinates(currentLat, currentLon)) || '';
+      if (!currentAddress) {
+        const geocode = await Location.reverseGeocodeAsync({
+          latitude: currentLat,
+          longitude: currentLon,
+        });
+        if (geocode.length > 0) {
+          const first = geocode[0];
+          currentAddress =
+            `${first.street || ''} ${first.city || ''}, ${first.region || ''} ${first.postalCode || ''}`.trim();
+        }
+      }
+
+      if (
+        currentEmployee.baseAddress &&
+        currentAddress &&
+        addressesLikelyMatch(currentAddress, currentEmployee.baseAddress)
+      ) {
+        suggestions.baseAddress = {
+          details: {
+            name: 'BA',
+            address: currentEmployee.baseAddress,
+            latitude: currentLat,
+            longitude: currentLon,
+          },
+          reason: 'You appear to be at your Base Address.',
+          confidenceLabel: 'Address match',
+        };
+      }
+
+      if (startLocationDetails) {
+        const tripStartAddress = startLocationDetails.address?.trim() || startLocationDetails.name;
+        const tripStartDistanceMatch =
+          typeof startLocationDetails.latitude === 'number' &&
+          typeof startLocationDetails.longitude === 'number' &&
+          calculateDistanceMiles(
+            currentLat,
+            currentLon,
+            startLocationDetails.latitude,
+            startLocationDetails.longitude
+          ) <= 0.12;
+        const tripStartAddressMatch =
+          !!currentAddress && addressesLikelyMatch(currentAddress, tripStartAddress);
+
+        if (tripStartDistanceMatch || tripStartAddressMatch) {
+          suggestions.tripStart = {
+            details: {
+              name: startLocationDetails.name,
+              address: tripStartAddress,
+              latitude: startLocationDetails.latitude ?? currentLat,
+              longitude: startLocationDetails.longitude ?? currentLon,
+            },
+            reason: 'Looks like you are back at your trip start location.',
+            confidenceLabel: getConfidenceLabel(tripStartDistanceMatch, tripStartAddressMatch),
+          };
+        }
+      }
+
+      const [savedAddresses, oxfordHouses] = await Promise.all([
+        DatabaseService.getSavedAddresses(currentEmployee.id),
+        OxfordHouseService.getAllOxfordHouses(),
+      ]);
+
+      const matchedSavedAddress = savedAddresses
+        .map((saved: SavedAddress) => {
+          const distanceMatch =
+            typeof saved.latitude === 'number' &&
+            typeof saved.longitude === 'number' &&
+            calculateDistanceMiles(currentLat, currentLon, saved.latitude, saved.longitude) <= 0.12;
+          const addressMatch = !!currentAddress && addressesLikelyMatch(currentAddress, saved.address);
+          return { saved, distanceMatch, addressMatch };
+        })
+        .find((candidate) => candidate.distanceMatch || candidate.addressMatch);
+
+      if (matchedSavedAddress) {
+        suggestions.favoriteAddresses = {
+          details: {
+            name: matchedSavedAddress.saved.name,
+            address: matchedSavedAddress.saved.address,
+            latitude: matchedSavedAddress.saved.latitude ?? currentLat,
+            longitude: matchedSavedAddress.saved.longitude ?? currentLon,
+          },
+          reason: `Looks like you're at saved address "${matchedSavedAddress.saved.name}".`,
+          confidenceLabel: getConfidenceLabel(
+            matchedSavedAddress.distanceMatch,
+            matchedSavedAddress.addressMatch
+          ),
+        };
+      }
+
+      const matchedOxfordHouse = oxfordHouses.find((house: OxfordHouse) => {
+        const houseAddress = `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`;
+        return !!currentAddress && addressesLikelyMatch(currentAddress, houseAddress);
+      });
+
+      if (matchedOxfordHouse) {
+        suggestions.oxfordHouse = {
+          details: {
+            name: matchedOxfordHouse.name,
+            address: `${matchedOxfordHouse.address}, ${matchedOxfordHouse.city}, ${matchedOxfordHouse.state} ${matchedOxfordHouse.zipCode}`,
+            latitude: currentLat,
+            longitude: currentLon,
+          },
+          reason: `Looks like you're at ${matchedOxfordHouse.name}.`,
+          confidenceLabel: 'Address match',
+        };
+      }
+    } catch (error) {
+      console.log('Unable to detect end location suggestions:', error);
+    }
+
+    setEndLocationSuggestions(suggestions);
+  };
+
+  const openEndLocationOptions = () => {
+    setShowEndLocationOptionsModal(true);
+    setEndLocationSuggestions({});
+    setIsDetectingEndSuggestions(true);
+    void detectEndLocationSuggestions().finally(() => {
+      setIsDetectingEndSuggestions(false);
     });
   };
 
@@ -608,7 +963,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleStopTracking = async () => {
-    setShowEndLocationOptionsModal(true);
+    openEndLocationOptions();
   };
 
   const handleEndLocationOption = (
@@ -617,22 +972,42 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setShowEndLocationOptionsModal(false);
     setTimeout(() => {
       if (option === 'baseAddress' && currentEmployee?.baseAddress) {
-        void handleEndLocationConfirm({
-          name: 'BA',
-          address: currentEmployee.baseAddress,
-        });
+        const suggested = endLocationSuggestions.baseAddress;
+        if (suggested) {
+          void handleEndLocationConfirm(suggested.details);
+        } else {
+          void handleEndLocationConfirm({
+            name: 'BA',
+            address: currentEmployee.baseAddress,
+          });
+        }
       } else if (option === 'tripStart' && startLocationDetails) {
-        void handleEndLocationConfirm({
-          name: startLocationDetails.name,
-          address: startLocationDetails.address?.trim() || startLocationDetails.name,
-          latitude: startLocationDetails.latitude,
-          longitude: startLocationDetails.longitude,
-        });
+        const suggested = endLocationSuggestions.tripStart;
+        if (suggested) {
+          void handleEndLocationConfirm(suggested.details);
+        } else {
+          void handleEndLocationConfirm({
+            name: startLocationDetails.name,
+            address: startLocationDetails.address?.trim() || startLocationDetails.name,
+            latitude: startLocationDetails.latitude,
+            longitude: startLocationDetails.longitude,
+          });
+        }
       } else if (option === 'favoriteAddresses') {
-        navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
+        const suggested = endLocationSuggestions.favoriteAddresses;
+        if (suggested) {
+          void handleEndLocationConfirm(suggested.details);
+        } else {
+          navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
+        }
       } else if (option === 'oxfordHouse') {
-        setOxfordHousePickerRole('end');
-        setShowOxfordHouseSearchModal(true);
+        const suggested = endLocationSuggestions.oxfordHouse;
+        if (suggested) {
+          void handleEndLocationConfirm(suggested.details);
+        } else {
+          setOxfordHousePickerRole('end');
+          setShowOxfordHouseSearchModal(true);
+        }
       } else if (option === 'newLocation') {
         setShowEndLocationModal(true);
       }
@@ -916,12 +1291,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         </View>
 
-        {/* Simple Navigation Button */}
-        <SimpleNavigationButton 
-          isTracking={isTracking}
-          currentDistance={currentDistance}
-        />
-
         {/* Current Stats */}
         {useMemo(() => isTracking && showGpsDuration && (
           <View style={styles.statsContainer}>
@@ -956,6 +1325,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     purposeInputRef.current?.focus();
                   }}
                 />
+                {lastTravelDayEndingOdometerNote ? (
+                  <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
+                ) : null}
               </View>
             )}
             
@@ -976,6 +1348,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       <MaterialIcons name="edit" size={16} color="#2196F3" />
                       <Text style={styles.editOdometerButtonText}>Edit</Text>
                     </TouchableOpacity>
+                    {lastTravelDayEndingOdometerNote ? (
+                      <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
+                    ) : null}
                   </View>
                 ) : (
                   <View style={styles.odometerEditContainer}>
@@ -1161,18 +1536,21 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         </View>
 
         {/* Instructions */}
-        <View style={styles.instructionsContainer}>
-          <Text style={styles.instructionsTitle}>How GPS Tracking Works:</Text>
-          <Text style={styles.instructionsText}>
-            • Enter the purpose of your trip{'\n'}
-            • Tap "Start GPS Tracking" and confirm your start location{'\n'}
-            • The app will automatically track your route and distance{'\n'}
-            • Tap "Stop Tracking" and confirm your end location{'\n'}
-            • Your trip will be automatically saved with detailed location info{'\n'}
-            • Vehicle is automatically set to "Personal Vehicle"{'\n'}
-            • Make sure location services are enabled for accurate tracking
-          </Text>
-        </View>
+        {!isTracking && (
+          <View style={styles.instructionsContainer}>
+            <Text style={styles.instructionsTitle}>How GPS Tracking Works:</Text>
+            <Text style={styles.instructionsText}>
+              • Enter the purpose of your trip{'\n'}
+              • Tap "Start GPS Tracking" to auto-detect your current address{'\n'}
+              • Confirm the address and choose a location name{'\n'}
+              • The app will automatically track your route and distance{'\n'}
+              • Tap "Stop Tracking" and confirm your current end location{'\n'}
+              • Your trip will be automatically saved with detailed location info{'\n'}
+              • Vehicle is automatically set to "Personal Vehicle"{'\n'}
+              • Make sure location services are enabled for accurate tracking
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Location Options Modal */}
@@ -1212,8 +1590,18 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   <Text style={styles.editHintText}>Use ↑ ↓ to rearrange options</Text>
                 </View>
               ) : null}
+              {isDetectingStartSuggestions ? (
+                <View style={styles.startSuggestionHintContainer}>
+                  <ActivityIndicator size="small" color="#2196F3" />
+                  <Text style={styles.startSuggestionHintText}>
+                    Checking your current location for smart suggestions...
+                  </Text>
+                </View>
+              ) : null}
 
-              {startLocationOptionOrder.map((option, index) => {
+              {orderedStartLocationOptions.map((option) => {
+                const index = startLocationOptionOrder.indexOf(option);
+                const suggestion = startLocationSuggestions[option];
                 const isDisabled =
                   (option === 'lastDestination' && !lastDestination) ||
                   (option === 'baseAddress' && !currentEmployee?.baseAddress);
@@ -1233,7 +1621,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
                   option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter New Starting Point';
                 const subtitle =
-                  option === 'lastDestination'
+                  suggestion
+                    ? suggestion.reason
+                    : option === 'lastDestination'
                     ? (lastDestination ? `${lastDestination.name} (${lastDestination.address})` : 'No previous destination found')
                     : option === 'baseAddress'
                       ? (currentEmployee?.baseAddress || 'No base address set')
@@ -1254,6 +1644,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       <View style={styles.locationOptionText}>
                         <Text style={styles.locationOptionTitle}>{title}</Text>
                         <Text style={styles.locationOptionSubtitle}>{subtitle}</Text>
+                        {suggestion ? (
+                          <View style={styles.startSuggestionBadge}>
+                            <Text style={styles.startSuggestionBadgeText}>
+                              Suggested • {suggestion.confidenceLabel}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     </TouchableOpacity>
                     {isEditingStartLocationOptions ? (
@@ -1332,8 +1729,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   <Text style={styles.editHintText}>Use ↑ ↓ to rearrange options</Text>
                 </View>
               ) : null}
+              {isDetectingEndSuggestions ? (
+                <View style={styles.startSuggestionHintContainer}>
+                  <ActivityIndicator size="small" color="#2196F3" />
+                  <Text style={styles.startSuggestionHintText}>
+                    Checking your current location for smart suggestions...
+                  </Text>
+                </View>
+              ) : null}
 
               {endLocationOptionOrder.map((option, index) => {
+                const suggestion = endLocationSuggestions[option];
                 const isDisabled =
                   (option === 'baseAddress' && !currentEmployee?.baseAddress) ||
                   (option === 'tripStart' && !startLocationDetails);
@@ -1353,7 +1759,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
                   option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter Destination Manually';
                 const subtitle =
-                  option === 'baseAddress'
+                  suggestion
+                    ? suggestion.reason
+                    : option === 'baseAddress'
                     ? (currentEmployee?.baseAddress || 'No base address set')
                     : option === 'tripStart'
                       ? (startLocationDetails
@@ -1376,6 +1784,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       <View style={styles.locationOptionText}>
                         <Text style={styles.locationOptionTitle}>{title}</Text>
                         <Text style={styles.locationOptionSubtitle}>{subtitle}</Text>
+                        {suggestion ? (
+                          <View style={styles.startSuggestionBadge}>
+                            <Text style={styles.startSuggestionBadgeText}>
+                              Suggested • {suggestion.confidenceLabel}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     </TouchableOpacity>
                     {isEditingEndLocationOptions ? (
@@ -2189,6 +2604,37 @@ const styles = StyleSheet.create({
     color: '#1565C0',
     fontSize: 13,
     fontWeight: '500',
+  },
+  startSuggestionHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  startSuggestionHintText: {
+    marginLeft: 8,
+    color: '#1565C0',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  startSuggestionBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  startSuggestionBadgeText: {
+    color: '#2E7D32',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   locationOptionButton: {
     flexDirection: 'row',

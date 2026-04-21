@@ -5,6 +5,7 @@ import { debugLog, debugError, debugWarn } from '../config/debug';
 import { GpsTrackingSession, LocationDetails } from '../types';
 import { LOCATION_TASK_NAME, GPS_TRACKING_STORAGE_KEY, PersistedGpsState } from './gpsBackgroundTask';
 import { GooglePlacesService } from './googlePlacesService';
+import { StationaryNotificationService } from './stationaryNotificationService';
 
 export class GpsTrackingService {
   private static currentSession: GpsTrackingSession | null = null;
@@ -178,11 +179,13 @@ export class GpsTrackingService {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
         },
+        lastLocationTimestamp: location.timestamp,
         totalDistance: 0,
         stationaryStartTime: null,
         hasSeenVehicleSpeed: false,
         stationaryAlertPending: false,
         stationaryAlertLastPromptAt: null,
+        stationaryAlertScheduledId: null,
       };
       await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(persistedState));
 
@@ -190,7 +193,8 @@ export class GpsTrackingService {
       const taskOptions: Location.LocationTaskOptions = {
         accuracy: Location.Accuracy.Balanced,
         timeInterval: 15000,
-        distanceInterval: 15,
+        // Keep periodic updates flowing even while stopped so idle-state logic can run reliably.
+        distanceInterval: 0,
         showsBackgroundLocationIndicator: true,
       };
 
@@ -218,6 +222,12 @@ export class GpsTrackingService {
    */
   static async stopTracking(presetEndLocation?: LocationDetails): Promise<GpsTrackingSession | null> {
     try {
+      const rawState = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (rawState) {
+        const persistedState: PersistedGpsState = JSON.parse(rawState);
+        await StationaryNotificationService.cancelScheduledAlert(persistedState.stationaryAlertScheduledId);
+      }
+
       if (!this.currentSession) {
         // Don't block UI on location stop / storage clearing.
         void Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
@@ -304,7 +314,7 @@ export class GpsTrackingService {
         const taskOptions: Location.LocationTaskOptions = {
           accuracy: Location.Accuracy.Balanced,
           timeInterval: 15000,
-          distanceInterval: 15,
+          distanceInterval: 0,
           showsBackgroundLocationIndicator: true,
         };
         if (Platform.OS === 'android') {

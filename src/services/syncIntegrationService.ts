@@ -540,6 +540,20 @@ export class SyncIntegrationService {
   }
 
   /**
+   * Get IDs of items pending create/update for a specific entity type.
+   * Useful to avoid deleting unsynced local records during backend pull cleanup.
+   */
+  static getPendingUpsertIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading'): Set<string> {
+    const pendingIds = new Set<string>();
+    this.syncQueue.forEach(item => {
+      if ((item.operation === 'create' || item.operation === 'update') && item.entityType === entityType && item.data?.id) {
+        pendingIds.add(item.data.id);
+      }
+    });
+    return pendingIds;
+  }
+
+  /**
    * Clear the sync queue
    */
   static clearSyncQueue(): void {

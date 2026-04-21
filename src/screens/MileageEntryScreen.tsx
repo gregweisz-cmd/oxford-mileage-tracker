@@ -75,6 +75,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const [isCostCenterAutoSelected, setIsCostCenterAutoSelected] = useState(false);
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
   const [hasExistingEntriesToday, setHasExistingEntriesToday] = useState(false);
+  const [lastTravelDayEndingOdometerNote, setLastTravelDayEndingOdometerNote] = useState('');
   
   // Location selection modal states
   const [showLocationOptionsModal, setShowLocationOptionsModal] = useState(false);
@@ -162,6 +163,29 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       checkExistingEntriesForDate(formData.date);
     }
   }, [formData.date, currentEmployee, isEditing]);
+
+  useEffect(() => {
+    const loadLastTravelDayEndingOdometer = async () => {
+      if (!currentEmployee || isEditing) {
+        setLastTravelDayEndingOdometerNote('');
+        return;
+      }
+      const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(
+        currentEmployee.id,
+        formData.date
+      );
+      if (!lastTravelDay) {
+        setLastTravelDayEndingOdometerNote('');
+        return;
+      }
+      const dateText = lastTravelDay.date.toLocaleDateString();
+      setLastTravelDayEndingOdometerNote(
+        `Ending odometer of last travel day (${dateText}): ${lastTravelDay.endingOdometer.toFixed(1)}`
+      );
+    };
+
+    void loadLastTravelDayEndingOdometer();
+  }, [currentEmployee, formData.date, isEditing]);
 
   // Load purpose suggestions when both locations are entered
   useEffect(() => {
@@ -1134,6 +1158,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             <Text style={styles.helpText}>
               Enter the odometer reading at the start of this trip
             </Text>
+            {lastTravelDayEndingOdometerNote ? (
+              <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
+            ) : null}
           </View>
         ) : (
           <View style={styles.inputGroup}>
@@ -1146,6 +1173,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                   : 'Odometer reading from existing entry for this date'
                 }
               </Text>
+              {lastTravelDayEndingOdometerNote ? (
+                <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
+              ) : null}
             </View>
           </View>
         )}

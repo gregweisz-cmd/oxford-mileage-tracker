@@ -1835,6 +1835,58 @@ export class DatabaseService {
     }));
   }
 
+  static async getLastTravelDayEndingOdometer(
+    employeeId: string,
+    beforeDate?: Date
+  ): Promise<{ date: Date; startingOdometer: number; totalMiles: number; endingOdometer: number } | null> {
+    const entries = await this.getMileageEntries(employeeId);
+    if (!entries.length) return null;
+
+    const cutoff = beforeDate ? new Date(beforeDate) : new Date();
+    cutoff.setHours(0, 0, 0, 0);
+
+    const filteredEntries = entries.filter((entry) => {
+      const d = new Date(entry.date);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime() < cutoff.getTime();
+    });
+    if (!filteredEntries.length) return null;
+
+    const entriesByDay = new Map<string, MileageEntry[]>();
+    filteredEntries.forEach((entry) => {
+      const d = new Date(entry.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`;
+      const existing = entriesByDay.get(key) || [];
+      existing.push(entry);
+      entriesByDay.set(key, existing);
+    });
+
+    const latestDayKey = Array.from(entriesByDay.keys()).sort().pop();
+    if (!latestDayKey) return null;
+
+    const [year, month, day] = latestDayKey.split('-').map(Number);
+    const latestDay = new Date(year, month - 1, day);
+    const latestDayEntries = entriesByDay.get(latestDayKey) || [];
+    const totalMiles = latestDayEntries.reduce((sum, entry) => sum + (Number(entry.miles) || 0), 0);
+
+    const dailyReading = await this.getDailyOdometerReading(employeeId, latestDay);
+    const fallbackStart = latestDayEntries.reduce((min, entry) => {
+      const reading = Number(entry.odometerReading) || 0;
+      return min === null ? reading : Math.min(min, reading);
+    }, null as number | null) ?? undefined;
+    const startingOdometer = dailyReading?.odometerReading ?? fallbackStart ?? 0;
+    const endingOdometer = startingOdometer + totalMiles;
+
+    return {
+      date: latestDay,
+      startingOdometer,
+      totalMiles,
+      endingOdometer,
+    };
+  }
+
   static async updateDailyOdometerReading(id: string, updates: Partial<DailyOdometerReading>): Promise<void> {
     const database = await getDatabase();
     const now = new Date().toISOString();
@@ -2552,7 +2604,7 @@ export class DatabaseService {
       costCenter: data.costCenter,
       stayedOvernight: data.stayedOvernight || false,
       dayOff: data.dayOff || false,
-      dayOffType: data.dayOffType || null,
+      dayOffType: data.dayOffType || undefined,
       createdAt: new Date(now),
       updatedAt: new Date(now)
     };

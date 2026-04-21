@@ -26,17 +26,18 @@ export interface PersistedGpsState {
     notes?: string;
   };
   lastLocation: { latitude: number; longitude: number };
+  lastLocationTimestamp?: number | null;
   totalDistance: number;
   stationaryStartTime: number | null;
   hasSeenVehicleSpeed?: boolean;
   stationaryAlertPending?: boolean;
   stationaryAlertLastPromptAt?: number | null;
+  stationaryAlertScheduledId?: string | null;
+  nonDrivingCandidateStartTime?: number | null;
 }
 
-// GPS jitter while stationary can easily fluctuate 5-15m, especially in urban areas.
-// Use a wider threshold so we don't keep resetting stationary detection while parked.
-const MOVEMENT_THRESHOLD_MILES = 25 / 1609.34; // 25 meters in miles
 const VEHICLE_SPEED_THRESHOLD_MPH = 8;
+const NON_DRIVING_GRACE_MS = 90 * 1000; // avoid false positives during slow parking-lot maneuvering
 const STATIONARY_THRESHOLD_MS = 5 * 60 * 1000;
 const STATIONARY_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 const MIN_TRIP_DISTANCE_FOR_STATIONARY_ALERT_MILES = 0.25; // 1/4 mile
@@ -83,10 +84,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const latest = data.locations[data.locations.length - 1];
     const newLat = latest.coords.latitude;
     const newLon = latest.coords.longitude;
+    const latestTimestamp = typeof latest.timestamp === 'number' ? latest.timestamp : Date.now();
     const speedMph = Math.max(0, (latest.coords.speed ?? 0) * 2.23694);
 
     const distance = calculateDistance(lastLat, lastLon, newLat, newLon);
     const now = Date.now();
+    const previousTimestamp = state.lastLocationTimestamp ?? now;
+    const elapsedMs = Math.max(1000, latestTimestamp - previousTimestamp);
+    const inferredSpeedMph = distance / (elapsedMs / 3600000);
+    const isDrivingLikeSpeed =
+      speedMph >= VEHICLE_SPEED_THRESHOLD_MPH || inferredSpeedMph >= VEHICLE_SPEED_THRESHOLD_MPH;
 
     if (typeof state.hasSeenVehicleSpeed !== 'boolean') {
       state.hasSeenVehicleSpeed = false;
@@ -97,27 +104,49 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     if (typeof state.stationaryAlertLastPromptAt === 'undefined') {
       state.stationaryAlertLastPromptAt = null;
     }
+    if (typeof state.stationaryAlertScheduledId === 'undefined') {
+      state.stationaryAlertScheduledId = null;
+    }
+    if (typeof state.nonDrivingCandidateStartTime === 'undefined') {
+      state.nonDrivingCandidateStartTime = null;
+    }
+    if (typeof state.lastLocationTimestamp === 'undefined') {
+      state.lastLocationTimestamp = now;
+    }
 
     const hasTraveledMeaningfully = state.totalDistance >= MIN_TRIP_DISTANCE_FOR_STATIONARY_ALERT_MILES;
-
-    if (speedMph >= VEHICLE_SPEED_THRESHOLD_MPH) {
+    if (isDrivingLikeSpeed) {
       state.hasSeenVehicleSpeed = true;
       state.stationaryStartTime = null;
+      state.nonDrivingCandidateStartTime = null;
       state.stationaryAlertPending = false;
+      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      state.stationaryAlertScheduledId = null;
     } else if (!state.hasSeenVehicleSpeed && hasTraveledMeaningfully) {
       // Some devices intermittently report null/0 speed in background updates.
       // Fall back to observed trip distance so stationary reminders can still trigger.
       state.hasSeenVehicleSpeed = true;
-    } else if (distance > MOVEMENT_THRESHOLD_MILES) {
-      state.stationaryStartTime = null;
-      state.stationaryAlertPending = false;
     } else if (state.hasSeenVehicleSpeed) {
-      if (!state.stationaryStartTime) {
-        state.stationaryStartTime = now;
+      if (!state.nonDrivingCandidateStartTime) {
+        state.nonDrivingCandidateStartTime = now;
+      }
+
+      // Keep counting any non-driving window as "stationary enough" for reminders.
+      // GPS jitter or walking after parking should not suppress the prompt.
+      const nonDrivingGraceComplete =
+        now - state.nonDrivingCandidateStartTime >= NON_DRIVING_GRACE_MS;
+
+      if (nonDrivingGraceComplete && !state.stationaryStartTime) {
+        state.stationaryStartTime = state.nonDrivingCandidateStartTime + NON_DRIVING_GRACE_MS;
+        await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+        state.stationaryAlertScheduledId = await StationaryNotificationService.scheduleDelayedStationaryAlert(
+          state.session.id,
+          STATIONARY_THRESHOLD_MS
+        );
       }
 
       const hasExceededStationaryThreshold =
-        now - state.stationaryStartTime >= STATIONARY_THRESHOLD_MS;
+        !!state.stationaryStartTime && now - state.stationaryStartTime >= STATIONARY_THRESHOLD_MS;
       const cooldownComplete =
         !state.stationaryAlertLastPromptAt ||
         now - state.stationaryAlertLastPromptAt >= STATIONARY_ALERT_COOLDOWN_MS;
@@ -127,12 +156,15 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
         await StationaryNotificationService.scheduleStationaryAlert(state.session.id);
         state.stationaryAlertPending = false;
         state.stationaryAlertLastPromptAt = now;
+        await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+        state.stationaryAlertScheduledId = null;
       }
     }
 
     state.totalDistance += distance;
     state.session.totalMiles = Math.round(state.totalDistance * 10) / 10;
     state.lastLocation = { latitude: newLat, longitude: newLon };
+    state.lastLocationTimestamp = latestTimestamp;
 
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     if (Platform.OS === 'ios') {
