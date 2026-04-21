@@ -177,6 +177,15 @@ export class ApiSyncService {
     return new Date(dateStr);
   }
 
+  /** Calendar day in local time for API/SQLite receipt `date` fields (avoid UTC off-by-one). */
+  private static receiptDateToYyyyMmDd(value: Date | string): string {
+    const d = value instanceof Date ? value : this.parseDateSafe(String(value));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   /**
    * Initialize the API sync service (non-blocking)
    */
@@ -1108,7 +1117,8 @@ export class ApiSyncService {
                 
                 if (isFileNotFound) {
                   // Only create notification for current month receipts
-                  const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
+                  const receiptDate =
+                    receipt.date instanceof Date ? receipt.date : this.parseDateSafe(String(receipt.date));
                   const now = new Date();
                   const isCurrentMonth = receiptDate.getMonth() === now.getMonth() && 
                                         receiptDate.getFullYear() === now.getFullYear();
@@ -1122,7 +1132,7 @@ export class ApiSyncService {
                       if (existingReceipt) {
                         // Create notification for missing receipt image
                         const { SmartNotificationService } = await import('./smartNotificationService');
-                        const notification = SmartNotificationService.createMissingImageNotification(
+                        SmartNotificationService.createMissingImageNotification(
                           receipt.employeeId,
                           receipt.id,
                           receipt.vendor || 'Unknown',
@@ -1169,7 +1179,8 @@ export class ApiSyncService {
               
               if (isFileNotFound) {
                 // Only create notification for current month receipts
-                const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
+                const receiptDate =
+                  receipt.date instanceof Date ? receipt.date : this.parseDateSafe(String(receipt.date));
                 const now = new Date();
                 const isCurrentMonth = receiptDate.getMonth() === now.getMonth() && 
                                       receiptDate.getFullYear() === now.getFullYear();
@@ -1183,7 +1194,7 @@ export class ApiSyncService {
                     if (existingReceipt) {
                       // Create notification for missing receipt image
                       const { SmartNotificationService } = await import('./smartNotificationService');
-                      const notification = SmartNotificationService.createMissingImageNotification(
+                      SmartNotificationService.createMissingImageNotification(
                         receipt.employeeId,
                         receipt.id,
                         receipt.vendor || 'Unknown',
@@ -1216,7 +1227,7 @@ export class ApiSyncService {
           const receiptData = {
             id: receipt.id, // Include ID to prevent duplicates on backend
             employeeId: employeeIdToSend,
-            date: receipt.date instanceof Date ? receipt.date.toISOString() : new Date(receipt.date).toISOString(),
+            date: this.receiptDateToYyyyMmDd(receipt.date as Date | string),
             amount: receipt.amount,
             vendor: receipt.vendor || '',
             description: receipt.description || '',
@@ -1712,7 +1723,7 @@ export class ApiSyncService {
     return data.map((receipt: any) => ({
       id: receipt.id,
       employeeId: receipt.employeeId,
-      date: new Date(receipt.date),
+      date: this.parseDateSafe(receipt.date),
       amount: receipt.amount,
       vendor: receipt.vendor,
       description: receipt.description,
@@ -2206,9 +2217,7 @@ export class ApiSyncService {
             [receipt.id]
           ) as { id: string; updatedAt?: string | Date } | null;
           
-          // Convert date to YYYY-MM-DD format only (timezone-safe)
-          const receiptDate = receipt.date instanceof Date ? receipt.date : new Date(receipt.date);
-          const dateOnly = `${receiptDate.getFullYear()}-${String(receiptDate.getMonth() + 1).padStart(2, '0')}-${String(receiptDate.getDate()).padStart(2, '0')}`;
+          const dateOnly = this.receiptDateToYyyyMmDd(receipt.date as Date | string);
           
           // Get receipt's updatedAt timestamp for comparison
           const receiptUpdatedAt = receipt.updatedAt instanceof Date ? receipt.updatedAt.toISOString() : (receipt.updatedAt || new Date().toISOString());

@@ -69,6 +69,14 @@ export class DatabaseService {
     return `${year}-${month}-${day}`;
   }
 
+  /** Store receipt `date` as YYYY-MM-DD only — never UTC ISO (avoids off-by-one in Per Diem / lists). */
+  private static receiptDateToSql(value: Date | string): string {
+    if (value instanceof Date) return this.toLocalDateKey(value);
+    const s = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return this.toLocalDateKey(this.parseDateSafe(s));
+  }
+
   private static async syncToApi(operation: string, data: any) {
     try {
       // Increment pending changes counter
@@ -1334,7 +1342,7 @@ export class DatabaseService {
     
     await database.runAsync(
       'INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, receipt.employeeId, receipt.date.toISOString(), receipt.amount, receipt.vendor, receipt.description || '', receipt.category, receipt.imageUri, receipt.fileType || 'image', receipt.costCenter || '', now, now]
+      [id, receipt.employeeId, this.receiptDateToSql(receipt.date as Date | string), receipt.amount, receipt.vendor, receipt.description || '', receipt.category, receipt.imageUri, receipt.fileType || 'image', receipt.costCenter || '', now, now]
     );
 
     const newReceipt = {
@@ -1370,7 +1378,7 @@ export class DatabaseService {
     
     return result.map((row: any) => ({
       ...row,
-      date: new Date(row.date),
+      date: this.parseDateSafe(row.date),
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
@@ -1461,7 +1469,7 @@ export class DatabaseService {
       const processedRecentReceipts = recentReceipts.map((row: any) => ({
         id: row.id,
         employeeId: row.employeeId,
-        date: new Date(row.date),
+        date: this.parseDateSafe(row.date),
         amount: row.amount,
         vendor: row.vendor,
         description: row.description,
@@ -1508,7 +1516,7 @@ export class DatabaseService {
       const processedReceipts = monthlyReceipts.map((row: any) => ({
         id: row.id,
         employeeId: row.employeeId,
-        date: new Date(row.date),
+        date: this.parseDateSafe(row.date),
         amount: row.amount,
         vendor: row.vendor,
         description: row.description,
@@ -1603,7 +1611,7 @@ export class DatabaseService {
     
     return result.map((row: any) => ({
       ...row,
-      date: new Date(row.date),
+      date: this.parseDateSafe(row.date),
       fileType: row.fileType || 'image', // Default to 'image' for backward compatibility
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
@@ -1612,16 +1620,20 @@ export class DatabaseService {
 
   static async getReceiptsByCategoryAndDate(employeeId: string, category: string, date: Date): Promise<Receipt[]> {
     const database = await getDatabase();
-    const dateStr = date.toISOString().split('T')[0]; // Get YYYY-MM-DD format
-    
+    const key = this.toLocalDateKey(date);
+
     const result = await database.getAllAsync(
-      'SELECT * FROM receipts WHERE employeeId = ? AND category = ? AND date(date) = date(?)',
-      [employeeId, category, dateStr]
+      'SELECT * FROM receipts WHERE employeeId = ? AND category = ?',
+      [employeeId, category]
     );
-    
-    return result.map((row: any) => ({
+
+    const rows = (result as any[]).filter(
+      (row) => this.toLocalDateKey(this.parseDateSafe(row.date)) === key
+    );
+
+    return rows.map((row: any) => ({
       ...row,
-      date: new Date(row.date),
+      date: this.parseDateSafe(row.date),
       fileType: row.fileType || 'image', // Default to 'image' for backward compatibility
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
@@ -1642,7 +1654,7 @@ export class DatabaseService {
     }
     if (receipt.date !== undefined) {
       updates.push('date = ?');
-      values.push(receipt.date instanceof Date ? receipt.date.toISOString() : receipt.date);
+      values.push(this.receiptDateToSql(receipt.date as Date | string));
     }
     if (receipt.amount !== undefined) {
       updates.push('amount = ?');
@@ -2225,7 +2237,7 @@ export class DatabaseService {
     return {
       id: result.id,
       employeeId: result.employeeId,
-      date: new Date(result.date),
+      date: this.parseDateSafe(result.date),
       amount: result.amount,
       vendor: result.vendor,
       description: result.description,

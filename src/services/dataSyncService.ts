@@ -96,7 +96,7 @@ export class DataSyncService {
         id: receipt.id,
         employeeId: receipt.employeeId,
         employeeName: mobileData.employees.find(emp => emp.id === receipt.employeeId)?.name || 'Unknown',
-        date: receipt.date.toISOString(),
+        date: `${receipt.date.getFullYear()}-${String(receipt.date.getMonth() + 1).padStart(2, '0')}-${String(receipt.date.getDate()).padStart(2, '0')}`,
         amount: receipt.amount,
         vendor: receipt.vendor,
         description: receipt.description,
