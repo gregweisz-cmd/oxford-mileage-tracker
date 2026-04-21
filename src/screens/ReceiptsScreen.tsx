@@ -198,7 +198,11 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
       if (employee) {
         setCurrentEmployee(employee);
 
-        // Get receipts for the selected month/year (local DB; pull-to-refresh loads from server first)
+        await DatabaseService.dedupePerDiemReceiptsForMonth(
+          employee.id,
+          selectedMonth,
+          selectedYear
+        );
         const employeeReceipts = await DatabaseService.getReceipts(
           employee.id,
           selectedMonth,

@@ -1739,6 +1739,61 @@ export class DatabaseService {
     debugLog('✅ Database: Receipt deleted, rows affected:', result.changes);
   }
 
+  /**
+   * Remove duplicate Per Diem receipts for the same employee + calendar day in a month.
+   * Keeps the row with the latest updatedAt (ties: lexicographically greater id).
+   * Queues backend DELETEs for removed rows when any were removed.
+   */
+  static async dedupePerDiemReceiptsForMonth(
+    employeeId: string,
+    month: number,
+    year: number
+  ): Promise<number> {
+    const receipts = await this.getReceipts(employeeId, month, year);
+    const perDiem = receipts.filter((r) => r.category === 'Per Diem');
+    const byDay = new Map<string, Receipt[]>();
+
+    for (const r of perDiem) {
+      const dayKey = this.receiptDateToSql(r.date as Date | string);
+      if (!dayKey) continue;
+      const list = byDay.get(dayKey) ?? [];
+      list.push(r);
+      byDay.set(dayKey, list);
+    }
+
+    let removed = 0;
+    for (const [, group] of byDay) {
+      if (group.length <= 1) continue;
+      const sorted = [...group].sort((a, b) => {
+        const ta = a.updatedAt instanceof Date ? a.updatedAt.getTime() : 0;
+        const tb = b.updatedAt instanceof Date ? b.updatedAt.getTime() : 0;
+        if (tb !== ta) return tb - ta;
+        return String(b.id).localeCompare(String(a.id));
+      });
+      const keep = sorted[0];
+      for (let i = 1; i < sorted.length; i++) {
+        await this.deleteReceipt(sorted[i].id);
+        removed++;
+      }
+      if (__DEV__ && sorted.length > 1) {
+        debugLog(
+          `🧹 Database: Deduped Per Diem for ${employeeId} day ${this.receiptDateToSql(keep.date as Date | string)}: kept ${keep.id}, removed ${sorted.length - 1}`
+        );
+      }
+    }
+
+    if (removed > 0) {
+      try {
+        const { SyncIntegrationService } = await import('./syncIntegrationService');
+        await SyncIntegrationService.processSyncQueue();
+      } catch (err) {
+        debugWarn('Database: Dedupe Per Diem — sync queue flush failed (deletes queued for retry):', err);
+      }
+    }
+
+    return removed;
+  }
+
   // Daily Odometer Reading methods
   static async createDailyOdometerReading(reading: Omit<DailyOdometerReading, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }, skipSync = false): Promise<DailyOdometerReading> {
     const id = reading.id || this.generateId();

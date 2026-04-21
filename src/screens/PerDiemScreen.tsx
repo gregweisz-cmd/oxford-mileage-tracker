@@ -212,11 +212,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       const month = currentMonth.getMonth() + 1;
       const year = currentMonth.getFullYear();
 
-      // Phase 1: rule + receipts only (fast — no distance API storm)
-      const [rule, receipts] = await Promise.all([
-        costCenter ? PerDiemRulesService.getPerDiemRule(costCenter) : Promise.resolve(null),
-        DatabaseService.getReceipts(employee.id, month, year),
-      ]);
+      const rule = costCenter ? await PerDiemRulesService.getPerDiemRule(costCenter) : null;
 
       if (loadGen !== eligibilityLoadGenerationRef.current) return;
 
@@ -226,6 +222,11 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       setMonthlyLimit(limit);
 
       const maxPerDay = (rule as any)?.maxAmount ?? 35;
+
+      await DatabaseService.dedupePerDiemReceiptsForMonth(employee.id, month, year);
+      const receipts = await DatabaseService.getReceipts(employee.id, month, year);
+
+      if (loadGen !== eligibilityLoadGenerationRef.current) return;
 
       const perDiemReceipts = receipts.filter(r => r.category === 'Per Diem');
       const entriesMap = new Map<string, PerDiemEntry>();
@@ -423,6 +424,12 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           await savePerDiemEntry(entry, entry.imageUri);
         }
       }
+
+      await DatabaseService.dedupePerDiemReceiptsForMonth(
+        currentEmployee.id,
+        currentMonth.getMonth() + 1,
+        currentMonth.getFullYear()
+      );
       
       // Sync all receipts to backend at once
       const allReceipts = await DatabaseService.getReceipts(
