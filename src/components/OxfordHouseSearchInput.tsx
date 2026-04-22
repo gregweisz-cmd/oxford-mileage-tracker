@@ -16,6 +16,7 @@ import { OxfordHouse, SavedAddress } from '../types';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import { SavedAddressService } from '../services/savedAddressService';
 import { DatabaseService } from '../services/database';
+import { ApiSyncService } from '../services/apiSyncService';
 
 type SearchResultItem = OxfordHouse & {
   isSavedAddress?: boolean;
@@ -116,6 +117,11 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
 
   const loadSavedAddresses = async (employeeId: string) => {
     try {
+      try {
+        await ApiSyncService.syncFromBackend(employeeId);
+      } catch (syncError) {
+        console.warn('OxfordHouseSearchInput: backend sync failed before loading saved addresses:', syncError);
+      }
       const addresses = await SavedAddressService.getAllSavedAddresses(employeeId);
       setSavedAddresses(addresses);
     } catch (error) {

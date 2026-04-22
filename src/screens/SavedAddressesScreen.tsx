@@ -19,6 +19,7 @@ import { SavedAddress, Employee } from '../types';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
+import { ApiSyncService } from '../services/apiSyncService';
 
 interface SavedAddressesScreenProps {
   navigation: any;
@@ -73,6 +74,12 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
       }
       
       setCurrentEmployee(employee);
+
+      try {
+        await ApiSyncService.syncFromBackend(employee.id);
+      } catch (syncError) {
+        console.warn('SavedAddressesScreen: backend sync failed before loading local list:', syncError);
+      }
       
       // Load saved addresses
       const addresses = await DatabaseService.getSavedAddresses(employee.id);
