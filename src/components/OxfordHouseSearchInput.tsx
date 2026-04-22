@@ -15,6 +15,14 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { OxfordHouse, SavedAddress } from '../types';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import { SavedAddressService } from '../services/savedAddressService';
+import { DatabaseService } from '../services/database';
+
+type SearchResultItem = OxfordHouse & {
+  isSavedAddress?: boolean;
+  isRecentAddress?: boolean;
+  isFrequentAddress?: boolean;
+  sourceAddress?: string;
+};
 
 interface OxfordHouseSearchInputProps {
   value: string;
@@ -41,11 +49,13 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
 }) => {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<OxfordHouse[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
   const [allHouses, setAllHouses] = useState<OxfordHouse[]>([]);
   const [loading, setLoading] = useState(false);
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]); // New state for saved addresses
+  const [recentAddresses, setRecentAddresses] = useState<SearchResultItem[]>([]);
+  const [frequentAddresses, setFrequentAddresses] = useState<SearchResultItem[]>([]);
   const [selectedState, setSelectedState] = useState<string>(''); // State filter
   const [availableStates, setAvailableStates] = useState<string[]>([]); // List of states
   const [isStatePickerVisible, setIsStatePickerVisible] = useState(false);
@@ -54,6 +64,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     loadOxfordHouses();
     if (employeeId) {
       loadSavedAddresses(employeeId); // Load saved addresses on mount
+      loadFrequentAndRecentAddresses(employeeId);
     }
   }, [employeeId]);
 
@@ -65,16 +76,8 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
   }, [autoOpen]);
 
   useEffect(() => {
-    if (searchQuery.trim()) {
-      performSearch(searchQuery);
-    } else if (selectedState) {
-      // If no search query but state is selected, show only houses from that state
-      const filteredByState = allHouses.filter(h => h.state === selectedState);
-      setSearchResults(filteredByState);
-    } else {
-      setSearchResults(allHouses);
-    }
-  }, [searchQuery, allHouses, selectedState]);
+    performSearch(searchQuery);
+  }, [searchQuery, allHouses, selectedState, recentAddresses, frequentAddresses]);
 
 
   const loadOxfordHouses = async () => {
@@ -120,13 +123,93 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     }
   };
 
+  const loadFrequentAndRecentAddresses = async (employeeId: string) => {
+    try {
+      const entries = await DatabaseService.getMileageEntries(employeeId);
+      const recentMap = new Map<string, SearchResultItem>();
+      const frequency = new Map<string, { count: number; item: SearchResultItem }>();
+
+      const toResult = (name: string, address: string, kind: 'recent' | 'frequent'): SearchResultItem | null => {
+        const n = (name || '').trim();
+        const a = (address || '').trim();
+        if (!a) return null;
+        const title = n || a.split(',')[0] || 'Location';
+        return {
+          id: `${kind}-${title}-${a}`.toLowerCase().replace(/\s+/g, '-'),
+          name: title,
+          address: a,
+          city: '',
+          state: '',
+          zipCode: '',
+          phoneNumber: '',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          sourceAddress: a,
+          isRecentAddress: kind === 'recent',
+          isFrequentAddress: kind === 'frequent',
+        } as SearchResultItem;
+      };
+
+      const ingest = (name: string, address: string) => {
+        const item = toResult(name, address, 'recent');
+        if (!item) return;
+        const key = item.sourceAddress!.toLowerCase();
+        if (!recentMap.has(key)) {
+          recentMap.set(key, item);
+        }
+        const prev = frequency.get(key);
+        if (prev) {
+          prev.count += 1;
+        } else {
+          frequency.set(key, { count: 1, item });
+        }
+      };
+
+      entries.forEach((entry) => {
+        ingest(entry.startLocationDetails?.name || '', entry.startLocationDetails?.address || entry.startLocation);
+        ingest(entry.endLocationDetails?.name || '', entry.endLocationDetails?.address || entry.endLocation);
+      });
+
+      const recent = Array.from(recentMap.values()).slice(0, 10).map((item) => ({
+        ...item,
+        isRecentAddress: true,
+        isFrequentAddress: false,
+      }));
+      const frequent = Array.from(frequency.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10)
+        .map(({ item }) => ({
+          ...item,
+          isRecentAddress: false,
+          isFrequentAddress: true,
+        }));
+
+      setRecentAddresses(recent);
+      setFrequentAddresses(frequent);
+    } catch (error) {
+      console.error('Error loading frequent/recent addresses:', error);
+      setRecentAddresses([]);
+      setFrequentAddresses([]);
+    }
+  };
+
   const performSearch = async (query: string) => {
     try {
       const oxfordResults = await OxfordHouseService.searchOxfordHouses(query, selectedState);
       const savedResults = await SavedAddressService.searchSavedAddresses(query, employeeId);
+      const q = query.trim().toLowerCase();
+      const filterHistory = (items: SearchResultItem[]) =>
+        items.filter((item) =>
+          !q ||
+          item.name.toLowerCase().includes(q) ||
+          (item.sourceAddress || item.address || '').toLowerCase().includes(q)
+        );
+
+      const recentResults = filterHistory(recentAddresses);
+      const frequentResults = filterHistory(frequentAddresses);
       
-      // Combine results with saved addresses first
-      const combinedResults = [...savedResults.map(addr => ({
+      // Combine results with saved, recent/frequent, then Oxford Houses
+      const combinedResults: SearchResultItem[] = [...savedResults.map(addr => ({
         id: addr.id,
         name: addr.name,
         address: addr.address,
@@ -136,10 +219,19 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
         phoneNumber: '',
         createdAt: addr.createdAt,
         updatedAt: addr.updatedAt,
-        isSavedAddress: true // Flag to identify saved addresses
-      })), ...oxfordResults];
-      
-      setSearchResults(combinedResults);
+        isSavedAddress: true, // Flag to identify saved addresses
+        sourceAddress: addr.address,
+      } as SearchResultItem)), ...recentResults, ...frequentResults, ...oxfordResults];
+
+      const seen = new Set<string>();
+      const deduped = combinedResults.filter((item) => {
+        const key = (item.sourceAddress || item.address || '').trim().toLowerCase();
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setSearchResults(deduped);
     } catch (error) {
       console.error('Error searching:', error);
     }
@@ -194,7 +286,40 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     setIsManualEntry(false);
   };
 
-  const renderHouseItem = ({ item }: { item: any }) => (
+  const handleSaveAddress = async (item: SearchResultItem) => {
+    if (!employeeId) {
+      Alert.alert('No Employee', 'Please select an employee first.');
+      return;
+    }
+    const address = (item.sourceAddress || item.address || '').trim();
+    if (!address) {
+      Alert.alert('Missing Address', 'This location does not have a savable address.');
+      return;
+    }
+    const exists = savedAddresses.some((a) => a.address.trim().toLowerCase() === address.toLowerCase());
+    if (exists) {
+      Alert.alert('Already Saved', 'This address is already in your Saved addresses.');
+      return;
+    }
+    try {
+      await SavedAddressService.createSavedAddress({
+        employeeId,
+        name: item.name || address.split(',')[0] || 'Saved Address',
+        address,
+        category: item.isFrequentAddress ? 'Client' : 'Other',
+      });
+      await loadSavedAddresses(employeeId);
+      Alert.alert('Saved', 'Address added to Saved addresses.');
+      if (searchQuery.trim()) {
+        await performSearch(searchQuery);
+      }
+    } catch (error) {
+      console.error('Error saving address from search results:', error);
+      Alert.alert('Save Failed', 'Could not save this address.');
+    }
+  };
+
+  const renderHouseItem = ({ item }: { item: SearchResultItem }) => (
     <TouchableOpacity
       style={styles.wazeHouseItem}
       onPress={() => handleHouseSelect(item)}
@@ -230,7 +355,18 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
           </View>
         )}
       </View>
-      <MaterialIcons name="chevron-right" size={24} color="#2196F3" />
+      <View style={styles.itemActions}>
+        {!item.isSavedAddress && (
+          <TouchableOpacity
+            onPress={() => handleSaveAddress(item)}
+            style={styles.inlineSaveButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="bookmark-add" size={22} color="#2196F3" />
+          </TouchableOpacity>
+        )}
+        <MaterialIcons name="chevron-right" size={24} color="#2196F3" />
+      </View>
     </TouchableOpacity>
   );
 
@@ -451,10 +587,10 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
                   contentContainerStyle={searchResults.length === 0 ? styles.emptyListContent : undefined}
                   ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
                   ListHeaderComponent={
-                    searchResults.length > 0 && searchResults.some(r => r.isSavedAddress) ? (
+                    searchResults.length > 0 && searchResults.some(r => r.isSavedAddress || r.isRecentAddress || r.isFrequentAddress) ? (
                       <View style={styles.sectionHeader}>
                         <MaterialIcons name="history" size={18} color="#666" />
-                        <Text style={styles.sectionHeaderText}>Recent & Saved</Text>
+                        <Text style={styles.sectionHeaderText}>Recent, Frequent & Saved</Text>
                       </View>
                     ) : null
                   }
@@ -1043,6 +1179,16 @@ const styles = StyleSheet.create({
   wazeHousePhone: {
     fontSize: 13,
     color: '#999',
+  },
+  itemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  inlineSaveButton: {
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: '#EAF4FF',
   },
   wazeSavedLabel: {
     fontSize: 12,
