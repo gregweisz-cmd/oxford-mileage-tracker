@@ -35,6 +35,7 @@ export default function GooglePlacesAddressInput({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<TextInput | null>(null);
   const suppressNextLookupRef = useRef(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   useEffect(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -58,7 +59,8 @@ export default function GooglePlacesAddressInput({
       try {
         const results = await GooglePlacesService.getAddressPredictions(value);
         setPredictions(results);
-        setShowPredictions(results.length > 0);
+        // Never reopen suggestions unless the input is currently focused.
+        setShowPredictions(isInputFocused && results.length > 0);
       } catch {
         setPredictions([]);
         setShowPredictions(false);
@@ -68,7 +70,7 @@ export default function GooglePlacesAddressInput({
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [value]);
+  }, [value, isInputFocused]);
 
   const selectPrediction = async (item: AddressPrediction) => {
     suppressNextLookupRef.current = true;
@@ -96,8 +98,14 @@ export default function GooglePlacesAddressInput({
         multiline={multiline}
         numberOfLines={numberOfLines}
         editable={editable}
-        onFocus={() => setShowPredictions(predictions.length > 0)}
-        onBlur={() => setShowPredictions(false)}
+        onFocus={() => {
+          setIsInputFocused(true);
+          setShowPredictions(predictions.length > 0);
+        }}
+        onBlur={() => {
+          setIsInputFocused(false);
+          setShowPredictions(false);
+        }}
       />
       {showPredictions ? (
         <View style={styles.dropdown}>
