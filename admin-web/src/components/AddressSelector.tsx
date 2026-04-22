@@ -29,6 +29,8 @@ import {
   Business as BusinessIcon,
   History as HistoryIcon,
   BookmarkAdd as BookmarkAddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
 
@@ -175,7 +177,38 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       // Load saved addresses (from saved_addresses table if exists)
       const savedResponse = await fetch(`${API_BASE_URL}/api/saved-addresses?employeeId=${employeeId}`);
       if (savedResponse.ok) {
-        const saved = await savedResponse.json();
+        let saved = await savedResponse.json();
+
+        // Migrate legacy local-only saved addresses to backend so mobile can sync them.
+        const serverAddressSet = new Set(
+          (saved || []).map((s: SavedAddress) => (s.address || '').trim().toLowerCase()).filter(Boolean)
+        );
+        const toMigrate = localSaved.filter(
+          (addr) => !!addr.address?.trim() && !serverAddressSet.has(addr.address.trim().toLowerCase())
+        );
+        if (toMigrate.length > 0) {
+          await Promise.all(
+            toMigrate.map((addr) =>
+              fetch(`${API_BASE_URL}/api/saved-addresses`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  employeeId,
+                  name: addr.name || addr.address.split(',')[0] || 'Saved Address',
+                  address: addr.address,
+                  latitude: addr.latitude,
+                  longitude: addr.longitude,
+                  category: '',
+                }),
+              }).catch(() => null)
+            )
+          );
+          const refreshed = await fetch(`${API_BASE_URL}/api/saved-addresses?employeeId=${employeeId}`);
+          if (refreshed.ok) {
+            saved = await refreshed.json();
+          }
+        }
+
         const merged = [...saved, ...localSaved];
         const deduped = merged.filter((addr: SavedAddress, idx: number, arr: SavedAddress[]) =>
           arr.findIndex((a) =>
@@ -487,6 +520,49 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const isAddressSaved = (address: string): boolean =>
     savedAddresses.some((s) => (s.address || '').trim().toLowerCase() === (address || '').trim().toLowerCase());
 
+  const handleEditSavedAddress = async (saved: SavedAddress) => {
+    const nextName = window.prompt('Edit saved address name', saved.name || '')?.trim();
+    if (!nextName) return;
+    const nextAddress = window.prompt('Edit saved address', saved.address || '')?.trim();
+    if (!nextAddress) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/saved-addresses/${saved.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: nextName,
+          address: nextAddress,
+          latitude: saved.latitude,
+          longitude: saved.longitude,
+          category: '',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update saved address (${response.status})`);
+      }
+      await loadSavedAddresses();
+    } catch (error) {
+      debugError('Error updating saved address:', error);
+    }
+  };
+
+  const handleDeleteSavedAddress = async (saved: SavedAddress) => {
+    const confirmed = window.confirm(`Delete saved address "${saved.name}"?`);
+    if (!confirmed) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/saved-addresses/${saved.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to delete saved address (${response.status})`);
+      }
+      await loadSavedAddresses();
+    } catch (error) {
+      debugError('Error deleting saved address:', error);
+    }
+  };
+
   return (
     <Dialog 
       open={open} 
@@ -568,6 +644,29 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                   >
                     <ListItemText primary={saved.name} secondary={saved.address} />
                   </ListItemButton>
+                  <Tooltip title="Edit saved address">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditSavedAddress(saved);
+                      }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete saved address">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSavedAddress(saved);
+                      }}
+                      sx={{ mr: 1 }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </ListItem>
               ))}
             </List>

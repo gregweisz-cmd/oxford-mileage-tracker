@@ -174,6 +174,63 @@ router.post('/api/saved-addresses', (req, res) => {
   );
 });
 
+router.put('/api/saved-addresses/:id', (req, res) => {
+  const db = dbService.getDb();
+  const { id } = req.params;
+  const { name, address, latitude, longitude, category } = req.body || {};
+  const now = new Date().toISOString();
+
+  if (!String(name || '').trim() || !String(address || '').trim()) {
+    res.status(400).json({ error: 'name and address are required' });
+    return;
+  }
+
+  db.run(
+    `UPDATE saved_addresses
+     SET name = ?, address = ?, latitude = ?, longitude = ?, category = ?, updatedAt = ?
+     WHERE id = ?`,
+    [
+      String(name).trim(),
+      String(address).trim(),
+      Number.isFinite(Number(latitude)) ? Number(latitude) : null,
+      Number.isFinite(Number(longitude)) ? Number(longitude) : null,
+      String(category || '').trim(),
+      now,
+      id,
+    ],
+    function(err) {
+      if (err) {
+        debugError('❌ Error updating saved address:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Saved address not found' });
+        return;
+      }
+      res.json({ message: 'Saved address updated', id, updatedAt: now });
+    }
+  );
+});
+
+router.delete('/api/saved-addresses/:id', (req, res) => {
+  const db = dbService.getDb();
+  const { id } = req.params;
+
+  db.run('DELETE FROM saved_addresses WHERE id = ?', [id], function(err) {
+    if (err) {
+      debugError('❌ Error deleting saved address:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (this.changes === 0) {
+      res.status(404).json({ error: 'Saved address not found' });
+      return;
+    }
+    res.json({ message: 'Saved address deleted', id });
+  });
+});
+
 // ===== OXFORD HOUSES =====
 
 // Cache for Oxford Houses data

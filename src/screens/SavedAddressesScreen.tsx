@@ -20,6 +20,7 @@ import UnifiedHeader from '../components/UnifiedHeader';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { ApiSyncService } from '../services/apiSyncService';
+import { API_BASE_URL } from '../config/api';
 
 interface SavedAddressesScreenProps {
   navigation: any;
@@ -169,6 +170,20 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
 
     try {
       if (editingAddress) {
+        const response = await fetch(`${API_BASE_URL}/saved-addresses/${editingAddress.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            address: addressString,
+            category: formData.category,
+            latitude: editingAddress.latitude,
+            longitude: editingAddress.longitude,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to update saved address on backend (${response.status})`);
+        }
         await DatabaseService.updateSavedAddress(editingAddress.id, {
           name: formData.name.trim(),
           address: addressString,
@@ -206,6 +221,12 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           style: 'destructive',
           onPress: async () => {
             try {
+              const response = await fetch(`${API_BASE_URL}/saved-addresses/${address.id}`, {
+                method: 'DELETE',
+              });
+              if (!response.ok) {
+                throw new Error(`Failed to delete saved address on backend (${response.status})`);
+              }
               await DatabaseService.deleteSavedAddress(address.id);
               Alert.alert('Success', 'Address deleted successfully');
               await loadData(); // Refresh the list
