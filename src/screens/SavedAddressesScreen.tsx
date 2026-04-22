@@ -128,18 +128,24 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
     if (parts.length === 0) return { street: '', city: '', state: '', zip: '' };
     if (parts.length === 1) return { street: parts[0], city: '', state: '', zip: '' };
     if (parts.length === 2) return { street: parts[0], city: parts[1], state: '', zip: '' };
-    const last = parts[parts.length - 1];
-    const stateZipMatch = last.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
-    const street = parts.slice(0, -2).join(', ');
-    const city = parts[parts.length - 2];
-    if (stateZipMatch) {
-      return { street, city, state: stateZipMatch[1].toUpperCase(), zip: stateZipMatch[2] };
+    const street = parts[0];
+    const city = parts[1];
+    const remainder = parts.slice(2).join(', ');
+
+    // Handles common Google Places format: "Street, City, ST 12345, USA"
+    const stateZipInRemainder = remainder.match(/\b([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)\b/);
+    if (stateZipInRemainder) {
+      return {
+        street,
+        city,
+        state: stateZipInRemainder[1].toUpperCase(),
+        zip: stateZipInRemainder[2],
+      };
     }
-    const lastSpace = last.lastIndexOf(' ');
-    if (lastSpace > 0) {
-      return { street, city, state: last.slice(0, lastSpace).trim().toUpperCase(), zip: last.slice(lastSpace + 1).trim() };
-    }
-    return { street, city, state: last, zip: '' };
+
+    // Fallback for "Street, City, ST" or other custom formats
+    const fallbackToken = parts[parts.length - 1];
+    return { street, city, state: fallbackToken.toUpperCase(), zip: '' };
   };
 
   const handleAddAddress = () => {
