@@ -177,7 +177,7 @@ router.post('/api/saved-addresses', (req, res) => {
 router.put('/api/saved-addresses/:id', (req, res) => {
   const db = dbService.getDb();
   const { id } = req.params;
-  const { name, address, latitude, longitude, category } = req.body || {};
+  const { employeeId, name, address, latitude, longitude, category } = req.body || {};
   const now = new Date().toISOString();
 
   if (!String(name || '').trim() || !String(address || '').trim()) {
@@ -204,11 +204,41 @@ router.put('/api/saved-addresses/:id', (req, res) => {
         res.status(500).json({ error: err.message });
         return;
       }
-      if (this.changes === 0) {
-        res.status(404).json({ error: 'Saved address not found' });
+      if (this.changes > 0) {
+        res.json({ message: 'Saved address updated', id, updatedAt: now });
         return;
       }
-      res.json({ message: 'Saved address updated', id, updatedAt: now });
+
+      // Upsert behavior for mobile sync: create row when id doesn't yet exist on backend.
+      if (!String(employeeId || '').trim()) {
+        res.status(404).json({ error: 'Saved address not found and employeeId missing for create' });
+        return;
+      }
+
+      db.run(
+        `INSERT INTO saved_addresses (
+          id, employeeId, name, address, latitude, longitude, category, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          String(employeeId).trim(),
+          String(name).trim(),
+          String(address).trim(),
+          Number.isFinite(Number(latitude)) ? Number(latitude) : null,
+          Number.isFinite(Number(longitude)) ? Number(longitude) : null,
+          String(category || '').trim(),
+          now,
+          now,
+        ],
+        function(insertErr) {
+          if (insertErr) {
+            debugError('❌ Error upserting saved address:', insertErr);
+            res.status(500).json({ error: insertErr.message });
+            return;
+          }
+          res.status(201).json({ message: 'Saved address created', id, createdAt: now, updatedAt: now });
+        }
+      );
     }
   );
 });

@@ -281,6 +281,7 @@ export class ApiSyncService {
     timeTracking?: TimeTracking[];
     dailyDescriptions?: DailyDescription[];
     dailyOdometerReadings?: DailyOdometerReading[];
+    savedAddresses?: SavedAddress[];
   }): Promise<SyncResult> {
     try {
       debugLog('📤 ApiSync: Syncing data to backend...');
@@ -330,6 +331,13 @@ export class ApiSyncService {
       if (data.dailyOdometerReadings && data.dailyOdometerReadings.length > 0) {
         const odometerResult = await this.syncDailyOdometerReadings(data.dailyOdometerReadings);
         results.push(odometerResult);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // Sync saved addresses
+      if (data.savedAddresses && data.savedAddresses.length > 0) {
+        const savedAddressesResult = await this.syncSavedAddresses(data.savedAddresses);
+        results.push(savedAddressesResult);
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
@@ -1561,6 +1569,64 @@ export class ApiSyncService {
   }
 
   /**
+   * Sync saved addresses to backend
+   */
+  private static async syncSavedAddresses(entries: SavedAddress[]): Promise<SyncResult> {
+    try {
+      const results = [];
+      for (const entry of entries) {
+        try {
+          if (results.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+
+          const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
+          const employeeIdToSend = backendEmployeeId || entry.employeeId;
+
+          const response = await fetch(`${this.config.baseUrl}/saved-addresses/${entry.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              employeeId: employeeIdToSend,
+              name: entry.name || '',
+              address: entry.address || '',
+              latitude: entry.latitude ?? null,
+              longitude: entry.longitude ?? null,
+              category: entry.category || '',
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || response.statusText);
+          }
+          results.push({ success: true, id: entry.id });
+        } catch (error) {
+          results.push({ success: false, id: entry.id, error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+      }
+
+      const allSuccessful = results.every((r: any) => r.success);
+      const failedResults = results.filter((r: any) => !r.success && r.error);
+      const errorMessages = failedResults.map((r: any) => r.error).filter(Boolean);
+      return {
+        success: allSuccessful,
+        data: results,
+        error: errorMessages.length > 0
+          ? errorMessages.join('; ')
+          : (allSuccessful ? undefined : 'One or more saved address sync operations failed'),
+        timestamp: new Date(),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date(),
+      };
+    }
+  }
+
+  /**
    * Fetch employees from backend
    */
   private static async fetchEmployees(): Promise<Employee[]> {
@@ -2561,6 +2627,15 @@ export class ApiSyncService {
       const database = await getDatabaseConnection();
 
       const backendIds = new Set(savedAddresses.map((a) => a.id).filter(Boolean));
+      let pendingDeletionIds = new Set<string>();
+      let pendingUpsertIds = new Set<string>();
+      try {
+        const { SyncIntegrationService } = await import('./syncIntegrationService');
+        pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('savedAddress');
+        pendingUpsertIds = SyncIntegrationService.getPendingUpsertIds('savedAddress');
+      } catch {
+        // Ignore queue lookup failures and continue with backend truth.
+      }
 
       for (const addr of savedAddresses) {
         if (!addr.id) continue;
@@ -2612,7 +2687,7 @@ export class ApiSyncService {
         [localEmployeeId]
       ) as Array<{ id: string }>;
       for (const row of localRows) {
-        if (!backendIds.has(row.id)) {
+        if (!backendIds.has(row.id) && !pendingDeletionIds.has(row.id) && !pendingUpsertIds.has(row.id)) {
           await database.runAsync('DELETE FROM saved_addresses WHERE id = ?', [row.id]);
         }
       }

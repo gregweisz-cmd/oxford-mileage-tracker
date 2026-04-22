@@ -13,7 +13,7 @@ function redactEntityForDebugLog(entity: unknown): unknown {
 export interface SyncQueueItem {
   id: string;
   operation: 'create' | 'update' | 'delete';
-  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading';
+  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress';
   data: any;
   timestamp: Date;
   retryCount: number;
@@ -115,7 +115,7 @@ export class SyncIntegrationService {
    */
   static queueSyncOperation(
     operation: 'create' | 'update' | 'delete',
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
     data: any
   ): void {
     // Validate data before queuing
@@ -287,7 +287,7 @@ export class SyncIntegrationService {
    * Process a group of operations for a specific entity type
    */
   private static async processEntityGroup(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
     operations: SyncQueueItem[]
   ): Promise<void> {
     try {
@@ -333,7 +333,7 @@ export class SyncIntegrationService {
    * Process create/update operations
    */
   private static async processCreateUpdateOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
     operations: SyncQueueItem[]
   ): Promise<void> {
     const entities = operations.map(op => op.data);
@@ -344,6 +344,7 @@ export class SyncIntegrationService {
     const key = normalizedType === 'mileageEntry' ? 'mileageEntries' :
                 normalizedType === 'timeTracking' ? 'timeTracking' :
                 normalizedType === 'dailyOdometerReading' ? 'dailyOdometerReadings' :
+                normalizedType === 'savedAddress' ? 'savedAddresses' :
                 `${normalizedType}s`;
     syncData[key] = entities;
     
@@ -368,7 +369,7 @@ export class SyncIntegrationService {
    * Process delete operations
    */
   private static async processDeleteOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
     operations: SyncQueueItem[]
   ): Promise<void> {
     // For delete operations, we need to make individual API calls
@@ -411,6 +412,8 @@ export class SyncIntegrationService {
         return `${baseUrl}/daily-descriptions/${id}`;
       case 'dailyOdometerReading':
         return `${baseUrl}/daily-odometer-readings/${id}`;
+      case 'savedAddress':
+        return `${baseUrl}/saved-addresses/${id}`;
       default:
         throw new Error(`Unknown entity type: ${entityType}`);
     }
@@ -529,7 +532,7 @@ export class SyncIntegrationService {
   /**
    * Get IDs of items pending deletion for a specific entity type
    */
-  static getPendingDeletionIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading'): Set<string> {
+  static getPendingDeletionIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress'): Set<string> {
     const pendingIds = new Set<string>();
     this.syncQueue.forEach(item => {
       if (item.operation === 'delete' && item.entityType === entityType && item.data?.id) {
@@ -543,7 +546,7 @@ export class SyncIntegrationService {
    * Get IDs of items pending create/update for a specific entity type.
    * Useful to avoid deleting unsynced local records during backend pull cleanup.
    */
-  static getPendingUpsertIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading'): Set<string> {
+  static getPendingUpsertIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress'): Set<string> {
     const pendingIds = new Set<string>();
     this.syncQueue.forEach(item => {
       if ((item.operation === 'create' || item.operation === 'update') && item.entityType === entityType && item.data?.id) {

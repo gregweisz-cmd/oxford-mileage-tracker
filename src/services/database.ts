@@ -98,6 +98,8 @@ export class DatabaseService {
         entityType = 'dailyDescription';
       } else if (operation === 'addDailyOdometerReading') {
         entityType = 'dailyOdometerReading';
+      } else if (operation === 'addSavedAddress' || operation === 'updateSavedAddress') {
+        entityType = 'savedAddress';
       } else {
         entityType = operation.replace('add', '').replace('update', '').toLowerCase();
       }
@@ -2240,11 +2242,17 @@ export class DatabaseService {
       `UPDATE saved_addresses SET ${setClause}, updatedAt = ? WHERE id = ?`,
       [...values, now, id] as any[]
     );
+
+    const updatedAddress = await this.getSavedAddress(id);
+    if (updatedAddress) {
+      await this.syncToApi('updateSavedAddress', updatedAddress);
+    }
   }
 
   static async deleteSavedAddress(id: string): Promise<void> {
     const database = await getDatabase();
     await database.runAsync('DELETE FROM saved_addresses WHERE id = ?', [id]);
+    queueSyncOperation('delete', 'savedAddress', { id });
   }
 
 

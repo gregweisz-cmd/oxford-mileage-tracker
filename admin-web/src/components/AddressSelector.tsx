@@ -69,6 +69,7 @@ interface AddressSelectorProps {
 
 interface SavedAddress {
   id: string;
+  employeeId?: string;
   name: string;
   address: string;
   latitude?: number;
@@ -531,6 +532,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          employeeId: saved.employeeId || employeeId,
           name: nextName,
           address: nextAddress,
           latitude: saved.latitude,
