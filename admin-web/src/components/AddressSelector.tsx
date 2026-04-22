@@ -173,6 +173,36 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       if (mileageResponse.ok) {
         const entries = await mileageResponse.json();
 
+        const looksFullAddress = (value: string): boolean => {
+          const s = (value || '').trim();
+          if (!s) return false;
+          // Typical full-address traits: comma-separated city/state or zip.
+          return s.includes(',') || /\d{5}(-\d{4})?/.test(s);
+        };
+
+        const extractAddressFromDisplay = (value: string): string => {
+          const s = (value || '').trim();
+          // Common format: "Name (123 Main St, City, ST 12345)"
+          const paren = s.match(/\(([^)]+)\)\s*$/);
+          if (paren && looksFullAddress(paren[1])) return paren[1].trim();
+          return looksFullAddress(s) ? s : '';
+        };
+
+        // Build a best-effort map from location names to known full addresses.
+        const nameToAddress = new Map<string, string>();
+        const tryRemember = (nameField?: string, locationField?: string, addressField?: string) => {
+          const name = (nameField || '').trim();
+          if (!name) return;
+          const fromAddress = extractAddressFromDisplay(addressField || '');
+          const fromLocation = extractAddressFromDisplay(locationField || '');
+          const best = fromAddress || fromLocation;
+          if (best) nameToAddress.set(name.toLowerCase(), best);
+        };
+        entries.forEach((entry: any) => {
+          tryRemember(entry.startLocationName, entry.startLocation, entry.startLocationAddress);
+          tryRemember(entry.endLocationName, entry.endLocation, entry.endLocationAddress);
+        });
+
         const pickAddress = (
           addressField: string | undefined,
           locationField: string | undefined,
@@ -183,9 +213,18 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           const name = (nameField || '').trim();
           // Recover from older rows where "*Address" was incorrectly stored as only the location name.
           if (address && name && address.toLowerCase() === name.toLowerCase() && location) {
+            const parsedLocation = extractAddressFromDisplay(location);
+            if (parsedLocation) return parsedLocation;
+            const remembered = nameToAddress.get(name.toLowerCase());
+            if (remembered) return remembered;
             return location;
           }
-          return address || location;
+          const parsedAddress = extractAddressFromDisplay(address);
+          if (parsedAddress) return parsedAddress;
+          const parsedLocation = extractAddressFromDisplay(location);
+          if (parsedLocation) return parsedLocation;
+          const remembered = name ? nameToAddress.get(name.toLowerCase()) : '';
+          return remembered || address || location;
         };
         
         // Count address occurrences
