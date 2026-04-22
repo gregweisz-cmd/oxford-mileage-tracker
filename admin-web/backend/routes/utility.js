@@ -103,6 +103,7 @@ router.get('/api/places/reverse-geocode', async (req, res) => {
 // ===== SAVED ADDRESSES =====
 
 router.get('/api/saved-addresses', (req, res) => {
+  const db = dbService.getDb();
   const { employeeId } = req.query;
   
   if (!employeeId) {
@@ -110,9 +111,67 @@ router.get('/api/saved-addresses', (req, res) => {
     return;
   }
 
-  // For now, return empty array since we don't have a saved_addresses table yet
-  // This can be implemented later when the table is created
-  res.json([]);
+  db.all(
+    'SELECT * FROM saved_addresses WHERE employeeId = ? ORDER BY name COLLATE NOCASE ASC',
+    [employeeId],
+    (err, rows) => {
+      if (err) {
+        debugError('❌ Error fetching saved addresses:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows || []);
+    }
+  );
+});
+
+router.post('/api/saved-addresses', (req, res) => {
+  const db = dbService.getDb();
+  const { employeeId, name, address, latitude, longitude, category } = req.body || {};
+
+  if (!employeeId || !String(name || '').trim() || !String(address || '').trim()) {
+    res.status(400).json({ error: 'employeeId, name, and address are required' });
+    return;
+  }
+
+  const id = `saved-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  const payload = [
+    id,
+    String(employeeId),
+    String(name).trim(),
+    String(address).trim(),
+    Number.isFinite(Number(latitude)) ? Number(latitude) : null,
+    Number.isFinite(Number(longitude)) ? Number(longitude) : null,
+    String(category || '').trim(),
+    now,
+    now,
+  ];
+
+  db.run(
+    `INSERT INTO saved_addresses (
+      id, employeeId, name, address, latitude, longitude, category, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    payload,
+    function(err) {
+      if (err) {
+        debugError('❌ Error creating saved address:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.status(201).json({
+        id,
+        employeeId: String(employeeId),
+        name: String(name).trim(),
+        address: String(address).trim(),
+        latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : null,
+        longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : null,
+        category: String(category || '').trim(),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  );
 });
 
 // ===== OXFORD HOUSES =====

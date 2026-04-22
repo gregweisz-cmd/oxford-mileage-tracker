@@ -301,6 +301,18 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
+      db.run(`CREATE TABLE IF NOT EXISTS saved_addresses (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        address TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        category TEXT DEFAULT '',
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+
       // Create monthly reports table for approval workflow
       db.run(`CREATE TABLE IF NOT EXISTS monthly_reports (
         id TEXT PRIMARY KEY,
@@ -1135,6 +1147,18 @@ function createSampleDatabase() {
           hours REAL NOT NULL,
           description TEXT,
           costCenter TEXT DEFAULT '',
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        )`);
+
+        db.run(`CREATE TABLE IF NOT EXISTS saved_addresses (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          name TEXT NOT NULL,
+          address TEXT NOT NULL,
+          latitude REAL,
+          longitude REAL,
+          category TEXT DEFAULT '',
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);

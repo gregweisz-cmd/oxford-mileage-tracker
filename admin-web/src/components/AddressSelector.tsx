@@ -432,21 +432,49 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
     onClose();
   };
 
-  const saveAddressToSaved = (address: string, locationData?: any) => {
+  const saveAddressToSaved = async (address: string, locationData?: any) => {
     const addressTrimmed = (address || '').trim();
     if (!addressTrimmed) return;
     const name = (locationData?.name || addressTrimmed.split(',')[0] || 'Saved Address').trim();
-    const next: SavedAddress = {
+    const exists = savedAddresses.some((s) => s.address.trim().toLowerCase() === addressTrimmed.toLowerCase());
+    if (exists) return;
+
+    let created: SavedAddress = {
       id: `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       name,
       address: addressTrimmed,
       latitude: locationData?.latitude,
       longitude: locationData?.longitude,
     };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/saved-addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId,
+          name,
+          address: addressTrimmed,
+          latitude: locationData?.latitude,
+          longitude: locationData?.longitude,
+          category: '',
+        }),
+      });
+      if (response.ok) {
+        const serverSaved = await response.json();
+        created = {
+          ...created,
+          ...serverSaved,
+        };
+      }
+    } catch {
+      // Keep local fallback copy so this still works offline.
+    }
+
     setSavedAddresses((prev) => {
       const exists = prev.some((s) => s.address.trim().toLowerCase() === addressTrimmed.toLowerCase());
       if (exists) return prev;
-      const updated = [next, ...prev].slice(0, 50);
+      const updated = [created, ...prev].slice(0, 50);
       try {
         localStorage.setItem(SAVED_STORAGE_KEY, JSON.stringify(updated));
       } catch {

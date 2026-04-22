@@ -499,6 +499,20 @@ export class ApiSyncService {
         backendEmployeeId
       );
       syncData.timeTracking = mappedTimeTracking;
+
+      let mappedSavedAddresses: SavedAddress[] = [];
+      try {
+        const savedAddresses = await this.fetchSavedAddresses(effectiveEmployeeId);
+        mappedSavedAddresses = this.mapEmployeeIdForLocal(
+          savedAddresses,
+          employeeId,
+          backendEmployeeId
+        ) as SavedAddress[];
+        syncData.savedAddresses = mappedSavedAddresses;
+      } catch (error) {
+        debugWarn(`⚠️ ApiSync: Failed to fetch saved addresses (continuing sync):`, error);
+        syncData.savedAddresses = [];
+      }
       
       let mappedDailyDescriptions: DailyDescription[] = [];
       try {
@@ -538,6 +552,7 @@ export class ApiSyncService {
       await this.syncMileageEntriesToLocal(mappedMileageEntries);
       await this.syncReceiptsToLocal(mappedReceipts, employeeId ?? undefined, orphanCleanup);
       await this.syncTimeTrackingToLocal(mappedTimeTracking, employeeId ?? undefined, orphanCleanup);
+      await this.syncSavedAddressesToLocal(mappedSavedAddresses, employeeId ?? undefined);
       await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, employeeId ?? undefined, orphanCleanup);
       await this.syncDailyOdometerReadingsToLocal(mappedDailyOdometer, effectiveEmployeeId);
       
@@ -551,6 +566,7 @@ export class ApiSyncService {
         mileageEntries: mappedMileageEntries.length,
         receipts: mappedReceipts.length,
         timeTracking: mappedTimeTracking.length,
+        savedAddresses: mappedSavedAddresses.length,
         dailyDescriptions: mappedDailyDescriptions.length,
         dailyOdometerReadings: mappedDailyOdometer.length
       });
@@ -1763,6 +1779,31 @@ export class ApiSyncService {
   }
 
   /**
+   * Fetch saved addresses from backend
+   */
+  private static async fetchSavedAddresses(employeeId?: string | null): Promise<SavedAddress[]> {
+    if (!employeeId) return [];
+    const response = await fetch(
+      `${this.config.baseUrl}/saved-addresses?employeeId=${encodeURIComponent(employeeId)}`
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch saved addresses: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return (data || []).map((entry: any) => ({
+      id: entry.id,
+      employeeId: entry.employeeId,
+      name: entry.name || '',
+      address: entry.address || '',
+      latitude: entry.latitude ?? undefined,
+      longitude: entry.longitude ?? undefined,
+      category: entry.category || '',
+      createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date(),
+      updatedAt: entry.updatedAt ? new Date(entry.updatedAt) : new Date(),
+    }));
+  }
+
+  /**
    * Fetch daily descriptions from backend
    */
   private static async fetchDailyDescriptions(
@@ -2502,6 +2543,83 @@ export class ApiSyncService {
       debugLog(`✅ ApiSync: Time tracking sync completed`);
     } catch (error) {
       console.error('❌ ApiSync: Error syncing time tracking to local database:', error);
+    }
+  }
+
+  /**
+   * Sync saved addresses from backend to local database
+   */
+  private static async syncSavedAddressesToLocal(
+    savedAddresses: SavedAddress[],
+    localEmployeeId?: string | null
+  ): Promise<void> {
+    try {
+      if (!localEmployeeId) return;
+      debugLog(`📥 ApiSync: Syncing ${savedAddresses.length} saved addresses to local database...`);
+
+      const { getDatabaseConnection } = await import('../utils/databaseConnection');
+      const database = await getDatabaseConnection();
+
+      const backendIds = new Set(savedAddresses.map((a) => a.id).filter(Boolean));
+
+      for (const addr of savedAddresses) {
+        if (!addr.id) continue;
+        const existing = await database.getFirstAsync(
+          'SELECT id FROM saved_addresses WHERE id = ?',
+          [addr.id]
+        ) as { id: string } | null;
+
+        const createdAt = addr.createdAt instanceof Date ? addr.createdAt.toISOString() : new Date().toISOString();
+        const updatedAt = addr.updatedAt instanceof Date ? addr.updatedAt.toISOString() : new Date().toISOString();
+        if (existing) {
+          await database.runAsync(
+            `UPDATE saved_addresses SET
+              employeeId = ?, name = ?, address = ?, latitude = ?, longitude = ?, category = ?, updatedAt = ?
+            WHERE id = ?`,
+            [
+              addr.employeeId || localEmployeeId,
+              addr.name || '',
+              addr.address || '',
+              addr.latitude ?? null,
+              addr.longitude ?? null,
+              addr.category || '',
+              updatedAt,
+              addr.id,
+            ]
+          );
+        } else {
+          await database.runAsync(
+            `INSERT INTO saved_addresses (
+              id, employeeId, name, address, latitude, longitude, category, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              addr.id,
+              addr.employeeId || localEmployeeId,
+              addr.name || '',
+              addr.address || '',
+              addr.latitude ?? null,
+              addr.longitude ?? null,
+              addr.category || '',
+              createdAt,
+              updatedAt,
+            ]
+          );
+        }
+      }
+
+      const localRows = await database.getAllAsync(
+        'SELECT id FROM saved_addresses WHERE employeeId = ?',
+        [localEmployeeId]
+      ) as Array<{ id: string }>;
+      for (const row of localRows) {
+        if (!backendIds.has(row.id)) {
+          await database.runAsync('DELETE FROM saved_addresses WHERE id = ?', [row.id]);
+        }
+      }
+
+      debugLog(`✅ ApiSync: Saved addresses sync completed`);
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing saved addresses to local database:', error);
     }
   }
 
