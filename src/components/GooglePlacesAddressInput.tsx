@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import {
   AddressDetails,
@@ -33,9 +33,20 @@ export default function GooglePlacesAddressInput({
   const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
   const [showPredictions, setShowPredictions] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<TextInput | null>(null);
+  const suppressNextLookupRef = useRef(false);
 
   useEffect(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+    // When the user taps a suggestion, we set the chosen value into the input.
+    // Skip one lookup cycle so the dropdown doesn't immediately reopen.
+    if (suppressNextLookupRef.current) {
+      suppressNextLookupRef.current = false;
+      setPredictions([]);
+      setShowPredictions(false);
+      return;
+    }
 
     if (!value || value.trim().length < 3) {
       setPredictions([]);
@@ -60,9 +71,12 @@ export default function GooglePlacesAddressInput({
   }, [value]);
 
   const selectPrediction = async (item: AddressPrediction) => {
+    suppressNextLookupRef.current = true;
     onChangeText(item.description);
     setShowPredictions(false);
     setPredictions([]);
+    inputRef.current?.blur();
+    Keyboard.dismiss();
     if (!onPlaceSelected) return;
     const details = await GooglePlacesService.getAddressDetails(item.placeId);
     if (details) {
@@ -73,6 +87,7 @@ export default function GooglePlacesAddressInput({
   return (
     <View style={styles.container}>
       <TextInput
+        ref={inputRef}
         style={[styles.input, multiline && styles.textArea, style]}
         value={value}
         onChangeText={onChangeText}
@@ -82,6 +97,7 @@ export default function GooglePlacesAddressInput({
         numberOfLines={numberOfLines}
         editable={editable}
         onFocus={() => setShowPredictions(predictions.length > 0)}
+        onBlur={() => setShowPredictions(false)}
       />
       {showPredictions ? (
         <View style={styles.dropdown}>
