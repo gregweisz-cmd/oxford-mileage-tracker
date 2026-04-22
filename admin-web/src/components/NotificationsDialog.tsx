@@ -101,7 +101,7 @@ interface NotificationsDialogProps {
   onClose: () => void;
   employeeId: string;
   role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
-  onUpdate?: (options?: { markAllAsRead?: boolean }) => void;
+  onUpdate?: (options?: { markAllAsRead?: boolean; unreadCount?: number }) => void;
   onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
 }
 
@@ -169,10 +169,14 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
         method: 'PUT',
       });
       if (response.ok) {
-        setNotifications(prev =>
-          prev.map(n => (n.id === notificationId ? { ...n, isRead: true, readAt: new Date().toISOString() } : n))
+        const now = new Date().toISOString();
+        const nextNotifications = notifications.map(n =>
+          (n.id === notificationId ? { ...n, isRead: true, readAt: now } : n)
         );
-        onUpdate?.();
+        setNotifications(nextNotifications);
+        onUpdate?.({
+          unreadCount: nextNotifications.filter(n => !n.isRead).length
+        });
       }
     } catch (error) {
       showError('Error marking notification as read');
@@ -185,11 +189,11 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
         method: 'PUT',
       });
       if (response.ok) {
-        setNotifications(prev =>
-          prev.map(n => ({ ...n, isRead: true, readAt: new Date().toISOString() }))
-        );
+        const now = new Date().toISOString();
+        const nextNotifications = notifications.map(n => ({ ...n, isRead: true, readAt: now }));
+        setNotifications(nextNotifications);
         showSuccess('All notifications marked as read');
-        onUpdate?.({ markAllAsRead: true });
+        onUpdate?.({ markAllAsRead: true, unreadCount: 0 });
       }
     } catch (error) {
       showError('Error marking all notifications as read');
@@ -202,9 +206,12 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
         method: 'DELETE',
       });
       if (response.ok) {
-        setNotifications(prev => prev.filter(n => n.id !== notificationId));
+        const nextNotifications = notifications.filter(n => n.id !== notificationId);
+        setNotifications(nextNotifications);
         showSuccess('Notification deleted');
-        onUpdate?.();
+        onUpdate?.({
+          unreadCount: nextNotifications.filter(n => !n.isRead).length
+        });
       }
     } catch (error) {
       showError('Error deleting notification');

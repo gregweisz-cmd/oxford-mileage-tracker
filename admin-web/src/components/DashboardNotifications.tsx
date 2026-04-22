@@ -40,6 +40,7 @@ interface Notification {
   title: string;
   message: string;
   isRead: boolean;
+  isDismissible?: boolean;
   createdAt: string;
   reportId?: string;
   employeeId?: string;
@@ -198,17 +199,20 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     }
   };
 
-  const markAllAsRead = async () => {
+  const clearAllNotifications = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/read-all`, {
-        method: 'PUT',
+      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/clear-all`, {
+        method: 'DELETE',
       });
       if (response.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        setUnreadCount(0);
+        setNotifications(prev => {
+          const remaining = prev.filter(n => !n.isDismissible);
+          setUnreadCount(remaining.filter(n => !n.isRead).length);
+          return remaining;
+        });
       }
     } catch (error) {
-      debugError('Error marking all notifications as read:', error);
+      debugError('Error clearing notifications:', error);
     }
   };
 
@@ -228,6 +232,13 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
         metadata.year
       );
     }
+  };
+
+  const handleNotificationsUpdate = (options?: { unreadCount?: number }) => {
+    if (typeof options?.unreadCount === 'number') {
+      setUnreadCount(Math.max(0, options.unreadCount));
+    }
+    fetchNotifications();
   };
 
   const displayedNotifications = expanded
@@ -276,10 +287,10 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {unreadCount > 0 && (
-                <Tooltip title="Marks every notification as read">
+                <Tooltip title="Deletes all dismissible notifications">
                   <Button
                     size="small"
-                    onClick={markAllAsRead}
+                    onClick={clearAllNotifications}
                     startIcon={<MarkEmailReadIcon />}
                   >
                     Clear all
@@ -381,7 +392,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
         }}
         employeeId={employeeId}
         role={role}
-        onUpdate={fetchNotifications}
+        onUpdate={handleNotificationsUpdate}
         onReportClick={onReportClick}
       />
     </>

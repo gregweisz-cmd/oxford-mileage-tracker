@@ -135,6 +135,32 @@ router.put('/api/notifications/:recipientId/read-all', (req, res) => {
 });
 
 /**
+ * Clear all dismissible notifications for a user
+ * DELETE /api/notifications/:recipientId/clear-all
+ */
+router.delete('/api/notifications/:recipientId/clear-all', (req, res) => {
+  const db = dbService.getDb();
+  const { recipientId } = req.params;
+
+  db.run(
+    'DELETE FROM notifications WHERE recipientId = ? AND isDismissible = 1',
+    [recipientId],
+    function(err) {
+      if (err) {
+        debugError('❌ Error clearing notifications:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      res.json({
+        message: 'Notifications cleared',
+        count: this.changes || 0
+      });
+    }
+  );
+});
+
+/**
  * Delete/dismiss a notification
  * DELETE /api/notifications/:id
  */

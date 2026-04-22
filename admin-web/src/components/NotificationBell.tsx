@@ -53,11 +53,16 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
     }, 500);
   };
 
-  const handleNotificationsUpdate = (options?: { markAllAsRead?: boolean }) => {
+  const handleNotificationsUpdate = (options?: { markAllAsRead?: boolean; unreadCount?: number }) => {
+    if (typeof options?.unreadCount === 'number') {
+      setUnreadCount(Math.max(0, options.unreadCount));
+    }
     if (options?.markAllAsRead) {
       setUnreadCount(0);
     }
-    fetchUnreadCount();
+    setTimeout(() => {
+      fetchUnreadCount();
+    }, 150);
   };
 
   return (
