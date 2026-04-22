@@ -18,6 +18,7 @@ import {
   InputAdornment,
   Chip,
   Divider,
+  Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -27,9 +28,9 @@ import {
   Bookmark as BookmarkIcon,
   Business as BusinessIcon,
   History as HistoryIcon,
+  BookmarkAdd as BookmarkAddIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
-import { WebGooglePlacesService, WebAddressPrediction } from '../services/googlePlacesService';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -97,10 +98,9 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const [selectedState, setSelectedState] = useState<string>('');
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [recentAddresses, setRecentAddresses] = useState<Array<{ address: string; name?: string }>>([]);
-  const [googleQuery, setGoogleQuery] = useState('');
-  const [googlePredictions, setGooglePredictions] = useState<WebAddressPrediction[]>([]);
 
   const RECENT_STORAGE_KEY = `recentAddresses_${employeeId}`;
+  const SAVED_STORAGE_KEY = `savedAddresses_${employeeId}`;
   const RECENT_MAX = 15;
 
   const loadEmployeeData = useCallback(async () => {
@@ -154,16 +154,41 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   }, [open, employeeId, loadEmployeeData, RECENT_STORAGE_KEY, RECENT_MAX]);
 
   const loadSavedAddresses = async () => {
+    let localSaved: SavedAddress[] = [];
+    try {
+      const localRaw = localStorage.getItem(SAVED_STORAGE_KEY);
+      const parsed = localRaw ? JSON.parse(localRaw) : [];
+      if (Array.isArray(parsed)) {
+        localSaved = parsed.filter((a) => a && a.address).map((a, i) => ({
+          id: String(a.id || `local-${i}`),
+          name: String(a.name || 'Saved Address'),
+          address: String(a.address || ''),
+          latitude: a.latitude,
+          longitude: a.longitude,
+        }));
+      }
+    } catch {
+      localSaved = [];
+    }
+
     try {
       // Load saved addresses (from saved_addresses table if exists)
       const savedResponse = await fetch(`${API_BASE_URL}/api/saved-addresses?employeeId=${employeeId}`);
       if (savedResponse.ok) {
         const saved = await savedResponse.json();
-        setSavedAddresses(saved);
+        const merged = [...saved, ...localSaved];
+        const deduped = merged.filter((addr: SavedAddress, idx: number, arr: SavedAddress[]) =>
+          arr.findIndex((a) =>
+            (a.address || '').trim().toLowerCase() === (addr.address || '').trim().toLowerCase()
+          ) === idx
+        );
+        setSavedAddresses(deduped);
+        return;
       }
     } catch (error) {
       debugError('Error loading saved addresses:', error);
     }
+    setSavedAddresses(localSaved);
   };
 
   const loadFrequentAddresses = async () => {
@@ -403,31 +428,36 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   const handleClose = () => {
     setSearchQuery('');
-    setGoogleQuery('');
-    setGooglePredictions([]);
     setActiveTab(0);
     onClose();
   };
 
-  const handleGoogleSearch = async (query: string) => {
-    setGoogleQuery(query);
-    if (!WebGooglePlacesService.isConfigured() || query.trim().length < 3) {
-      setGooglePredictions([]);
-      return;
-    }
-    const predictions = await WebGooglePlacesService.getPredictions(query);
-    setGooglePredictions(predictions.slice(0, 10));
-  };
-
-  const handleSelectGooglePrediction = async (prediction: WebAddressPrediction) => {
-    const details = await WebGooglePlacesService.getDetails(prediction.placeId);
-    const resolved = details?.formattedAddress || prediction.description;
-    handleSelectAddress(resolved, {
-      name: resolved.split(',')[0],
-      latitude: details?.latitude,
-      longitude: details?.longitude,
+  const saveAddressToSaved = (address: string, locationData?: any) => {
+    const addressTrimmed = (address || '').trim();
+    if (!addressTrimmed) return;
+    const name = (locationData?.name || addressTrimmed.split(',')[0] || 'Saved Address').trim();
+    const next: SavedAddress = {
+      id: `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      address: addressTrimmed,
+      latitude: locationData?.latitude,
+      longitude: locationData?.longitude,
+    };
+    setSavedAddresses((prev) => {
+      const exists = prev.some((s) => s.address.trim().toLowerCase() === addressTrimmed.toLowerCase());
+      if (exists) return prev;
+      const updated = [next, ...prev].slice(0, 50);
+      try {
+        localStorage.setItem(SAVED_STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // ignore local storage failures
+      }
+      return updated;
     });
   };
+
+  const isAddressSaved = (address: string): boolean =>
+    savedAddresses.some((s) => (s.address || '').trim().toLowerCase() === (address || '').trim().toLowerCase());
 
   return (
     <Dialog 
@@ -465,7 +495,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           <Tab icon={<LocationIcon />} label="Frequent" />
           <Tab icon={<BusinessIcon />} label="Oxford Houses" />
           <Tab icon={<HistoryIcon />} label="Recent" />
-          <Tab icon={<LocationIcon />} label="Google" />
         </Tabs>
 
         {/* Base Addresses Tab */}
@@ -551,6 +580,25 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                   >
                     <ListItemText primary={frequent.name} secondary={frequent.address} />
                   </ListItemButton>
+                  <Tooltip title={isAddressSaved(frequent.address) ? 'Already saved' : 'Save address'}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={isAddressSaved(frequent.address)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          saveAddressToSaved(frequent.address, {
+                            name: frequent.name,
+                            latitude: frequent.latitude,
+                            longitude: frequent.longitude,
+                          });
+                        }}
+                        sx={{ mr: 1 }}
+                      >
+                        <BookmarkAddIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                 </ListItem>
               ))}
             </List>
@@ -656,50 +704,24 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                       secondary={recent.name ? recent.address : undefined}
                     />
                   </ListItemButton>
+                  <Tooltip title={isAddressSaved(recent.address) ? 'Already saved' : 'Save address'}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={isAddressSaved(recent.address)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          saveAddressToSaved(recent.address, recent.name ? { name: recent.name } : undefined);
+                        }}
+                        sx={{ mr: 1 }}
+                      >
+                        <BookmarkAddIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                 </ListItem>
               ))}
             </List>
-          )}
-        </TabPanel>
-
-        {/* Google Places Tab */}
-        <TabPanel value={activeTab} index={5}>
-          {!WebGooglePlacesService.isConfigured() ? (
-            <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
-              Google Places API key is not configured for the web portal.
-            </Typography>
-          ) : (
-            <>
-              <TextField
-                fullWidth
-                placeholder="Search any address..."
-                value={googleQuery}
-                onChange={(e) => void handleGoogleSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{ mb: 2 }}
-              />
-              {googlePredictions.length === 0 ? (
-                <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
-                  Start typing to search Google address predictions.
-                </Typography>
-              ) : (
-                <List>
-                  {googlePredictions.map((prediction) => (
-                    <ListItem key={prediction.placeId} disablePadding>
-                      <ListItemButton onClick={() => void handleSelectGooglePrediction(prediction)}>
-                        <ListItemText primary={prediction.description} />
-                      </ListItemButton>
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </>
           )}
         </TabPanel>
       </DialogContent>
