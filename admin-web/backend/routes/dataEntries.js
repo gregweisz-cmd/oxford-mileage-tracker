@@ -161,9 +161,9 @@ router.post('/api/mileage-entries', (req, res) => {
   // If address is missing but location name exists, use name as fallback for address
   // This ensures addresses are always populated when location names are provided
   const normalizedStartLocationName = startLocationName || startLocation || '';
-  const normalizedStartLocationAddress = startLocationAddress || (startLocationName ? startLocationName : startLocation) || '';
+  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
   const normalizedEndLocationName = endLocationName || endLocation || '';
-  const normalizedEndLocationAddress = endLocationAddress || (endLocationName ? endLocationName : endLocation) || '';
+  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
 
   // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
   db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {
@@ -303,9 +303,9 @@ router.put('/api/mileage-entries/:id', (req, res) => {
   // Normalize manual entry locations into name/address fields if missing
   // This ensures addresses are always populated when location names are provided
   const normalizedStartLocationName = startLocationName || startLocation || '';
-  const normalizedStartLocationAddress = startLocationAddress || (startLocationName ? startLocationName : startLocation) || '';
+  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
   const normalizedEndLocationName = endLocationName || endLocation || '';
-  const normalizedEndLocationAddress = endLocationAddress || (endLocationName ? endLocationName : endLocation) || '';
+  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
 
   // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
   db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {

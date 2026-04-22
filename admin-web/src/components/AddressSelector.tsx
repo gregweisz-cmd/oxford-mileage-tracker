@@ -172,18 +172,34 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       const mileageResponse = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}`);
       if (mileageResponse.ok) {
         const entries = await mileageResponse.json();
+
+        const pickAddress = (
+          addressField: string | undefined,
+          locationField: string | undefined,
+          nameField: string | undefined
+        ): string => {
+          const address = (addressField || '').trim();
+          const location = (locationField || '').trim();
+          const name = (nameField || '').trim();
+          // Recover from older rows where "*Address" was incorrectly stored as only the location name.
+          if (address && name && address.toLowerCase() === name.toLowerCase() && location) {
+            return location;
+          }
+          return address || location;
+        };
         
         // Count address occurrences
         const addressCount: { [key: string]: { count: number; location?: any } } = {};
         entries.forEach((entry: any) => {
-          if (entry.startLocationAddress) {
-            const key = entry.startLocationAddress;
+          const startAddress = pickAddress(entry.startLocationAddress, entry.startLocation, entry.startLocationName);
+          if (startAddress) {
+            const key = startAddress;
             if (!addressCount[key]) {
               addressCount[key] = { 
                 count: 0,
                 location: {
                   name: entry.startLocationName,
-                  address: entry.startLocationAddress,
+                  address: startAddress,
                   latitude: entry.startLocationLat,
                   longitude: entry.startLocationLng,
                 }
@@ -191,14 +207,15 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
             }
             addressCount[key].count++;
           }
-          if (entry.endLocationAddress) {
-            const key = entry.endLocationAddress;
+          const endAddress = pickAddress(entry.endLocationAddress, entry.endLocation, entry.endLocationName);
+          if (endAddress) {
+            const key = endAddress;
             if (!addressCount[key]) {
               addressCount[key] = { 
                 count: 0,
                 location: {
                   name: entry.endLocationName,
-                  address: entry.endLocationAddress,
+                  address: endAddress,
                   latitude: entry.endLocationLat,
                   longitude: entry.endLocationLng,
                 }
