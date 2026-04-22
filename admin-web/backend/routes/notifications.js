@@ -135,7 +135,7 @@ router.put('/api/notifications/:recipientId/read-all', (req, res) => {
 });
 
 /**
- * Clear all dismissible notifications for a user
+ * Clear all read dismissible notifications for a user
  * DELETE /api/notifications/:recipientId/clear-all
  */
 router.delete('/api/notifications/:recipientId/clear-all', (req, res) => {
@@ -143,7 +143,7 @@ router.delete('/api/notifications/:recipientId/clear-all', (req, res) => {
   const { recipientId } = req.params;
 
   db.run(
-    'DELETE FROM notifications WHERE recipientId = ? AND isDismissible = 1',
+    'DELETE FROM notifications WHERE recipientId = ? AND isDismissible = 1 AND isRead = 1',
     [recipientId],
     function(err) {
       if (err) {

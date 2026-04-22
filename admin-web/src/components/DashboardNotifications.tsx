@@ -199,6 +199,20 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     }
   };
 
+  const markAllAsRead = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/read-all`, {
+        method: 'PUT',
+      });
+      if (response.ok) {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      debugError('Error marking all notifications as read:', error);
+    }
+  };
+
   const clearAllNotifications = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/clear-all`, {
@@ -206,7 +220,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
       });
       if (response.ok) {
         setNotifications(prev => {
-          const remaining = prev.filter(n => !n.isDismissible);
+          const remaining = prev.filter(n => !(n.isDismissible && n.isRead));
           setUnreadCount(remaining.filter(n => !n.isRead).length);
           return remaining;
         });
@@ -246,6 +260,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     : notifications.filter(n => !n.isRead).slice(0, maxDisplay);
 
   const hasMoreNotifications = notifications.length > displayedNotifications.length;
+  const clearableCount = notifications.filter(n => n.isDismissible && n.isRead).length;
 
   if (loading && notifications.length === 0) {
     return (
@@ -287,11 +302,22 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {unreadCount > 0 && (
-                <Tooltip title="Deletes all dismissible notifications">
+                <Tooltip title={`Marks all unread notifications as read (${unreadCount})`}>
+                  <Button
+                    size="small"
+                    onClick={markAllAsRead}
+                    startIcon={<MarkEmailReadIcon />}
+                  >
+                    Mark All As Read
+                  </Button>
+                </Tooltip>
+              )}
+              {clearableCount > 0 && (
+                <Tooltip title={`Deletes all read notifications (${clearableCount})`}>
                   <Button
                     size="small"
                     onClick={clearAllNotifications}
-                    startIcon={<MarkEmailReadIcon />}
+                    startIcon={<CloseIcon />}
                   >
                     Clear all
                   </Button>
