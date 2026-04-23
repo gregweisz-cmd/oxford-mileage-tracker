@@ -3122,12 +3122,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Handle receipt image upload
   const handleReceiptImageUpload = async (receiptId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
+    const fileName = (file?.name || '').toLowerCase();
+    const fileExt = fileName.includes('.') ? fileName.split('.').pop() || '' : '';
+    const mime = (file?.type || '').toLowerCase();
+    const isPdfUpload = mime === 'application/pdf' || fileExt === 'pdf';
+    const isImageUpload =
+      mime.startsWith('image/') ||
+      ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif'].includes(fileExt);
+
+    if (file && (isImageUpload || isPdfUpload)) {
       const reader = new FileReader();
       reader.onload = async (e) => {
-        const result = e.target?.result as string;
+        let result = e.target?.result as string;
+        // Some HEIC/HEIF files selected from desktop can come through as octet-stream.
+        // Normalize MIME in the data URL so backend/client can treat it as an image.
+        if (typeof result === 'string' && result.startsWith('data:application/octet-stream;base64,')) {
+          if (isPdfUpload) {
+            result = result.replace('data:application/octet-stream;base64,', 'data:application/pdf;base64,');
+          } else {
+            const fallbackMime = fileExt === 'heif' ? 'image/heif' : (fileExt === 'heic' ? 'image/heic' : 'image/jpeg');
+            result = result.replace('data:application/octet-stream;base64,', `data:${fallbackMime};base64,`);
+          }
+        }
         // Update the receipt with the new file
-        const isPdfUpload = file.type === 'application/pdf';
         const uploadedFileType: 'pdf' | 'image' = isPdfUpload ? 'pdf' : 'image';
         const updatedReceipts: ReceiptData[] = receipts.map(receipt =>
           receipt.id === receiptId 
@@ -3172,7 +3189,50 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
       reader.readAsDataURL(file);
     } else {
-      alert('Please upload an image file or PDF.');
+      alert('Please upload an image file (including HEIC/HEIF) or PDF.');
+    }
+  };
+
+  const handleRemoveReceiptPhoto = async (receiptId: string) => {
+    const confirmed = window.confirm('Remove the photo/PDF from this receipt?');
+    if (!confirmed) return;
+
+    const updatedReceipts: ReceiptData[] = receipts.map((receipt) =>
+      receipt.id === receiptId
+        ? { ...receipt, imageUri: '', fileType: 'image' }
+        : receipt
+    );
+    setReceipts(updatedReceipts);
+    setReceiptImageLoadErrors((prev) => {
+      const next = new Set(prev);
+      next.delete(receiptId);
+      return next;
+    });
+    if (employeeData) {
+      setEmployeeData({ ...employeeData, receipts: updatedReceipts } as any);
+    }
+
+    try {
+      const receipt = updatedReceipts.find((r) => r.id === receiptId);
+      if (!receipt) return;
+      const response = await fetch(`${API_BASE_URL}/api/receipts/${receiptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...receipt,
+          imageUri: '',
+          fileType: 'image',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to remove receipt photo (${response.status})`);
+      }
+      await syncReportData();
+      showSuccess('Receipt photo removed');
+    } catch (error) {
+      debugError('Error removing receipt photo:', error);
+      showError('Failed to remove receipt photo. Please try again.');
+      refreshTimesheetData(employeeData || null).catch(() => {});
     }
   };
 
@@ -8121,7 +8181,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             }}>
                               <input
                                 type="file"
-                                accept="image/*,application/pdf"
+                                accept="image/*,.heic,.heif,application/pdf"
                                 style={{ display: 'none' }}
                                 id={`receipt-upload-${receipt.id}`}
                                 onChange={(e) => handleReceiptImageUpload(receipt.id, e)}
@@ -8146,7 +8206,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   </Box>
                                 );
                               })()}
-                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} id={`receipt-change-${receipt.id}`} onChange={(e) => handleReceiptImageUpload(receipt.id, e)} />
+                              <input type="file" accept="image/*,.heic,.heif,application/pdf" style={{ display: 'none' }} id={`receipt-change-${receipt.id}`} onChange={(e) => handleReceiptImageUpload(receipt.id, e)} />
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                                 {receipt.fileType === 'pdf' || isPdfReceiptUri(raw) ? (
                                   <>
@@ -8212,6 +8272,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
                                 >
                                   Upload new
+                                </Button>
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  variant="outlined"
+                                  startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
+                                  onClick={() => handleRemoveReceiptPhoto(receipt.id)}
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                >
+                                  Remove photo
                                 </Button>
                               </Box>
                             </Box>
