@@ -6558,6 +6558,41 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 </TableHead>
                 <TableBody>
                   {currentMonthMileageList.map((entry: any, index: number) => {
+                      const currentDateKey = normalizeDate(entry.date);
+                      const prevDateKey = index > 0 ? normalizeDate(currentMonthMileageList[index - 1]?.date) : '';
+                      const nextDateKey = index < currentMonthMileageList.length - 1
+                        ? normalizeDate(currentMonthMileageList[index + 1]?.date)
+                        : '';
+                      const isStartOfDay = index === 0 || currentDateKey !== prevDateKey;
+                      const isEndOfDay = index === currentMonthMileageList.length - 1 || currentDateKey !== nextDateKey;
+                      const canMoveUp = index > 0 && currentDateKey === prevDateKey;
+                      const canMoveDown = index < currentMonthMileageList.length - 1 && currentDateKey === nextDateKey;
+                      const dayEntryCount = isStartOfDay
+                        ? currentMonthMileageList.filter((m: any) => normalizeDate(m.date) === currentDateKey).length
+                        : 0;
+                      const formatMileageDate = (value: any) => {
+                        const normalizedDate = normalizeDate(value);
+                        const dateParts = normalizedDate.split('-');
+                        if (dateParts.length === 3) {
+                          const [year, month, day] = dateParts.map(Number);
+                          const date = new Date(year, month - 1, day);
+                          return date.toLocaleDateString('en-US', {
+                            month: '2-digit',
+                            day: '2-digit',
+                            year: '2-digit'
+                          });
+                        }
+                        try {
+                          const date = new Date(value);
+                          return date.toLocaleDateString('en-US', {
+                            month: '2-digit',
+                            day: '2-digit',
+                            year: '2-digit'
+                          });
+                        } catch {
+                          return String(value || '');
+                        }
+                      };
                       const mileageAmount = (entry.miles || 0) * 0.445; // Standard mileage rate ($0.445 per mile)
                       const baseAddress = employeeData?.baseAddress;
                       const baseAddress2 = employeeData?.baseAddress2;
@@ -6579,65 +6614,66 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         : (formatLocationNameAndAddress(entry.endLocationName, endAddr, baseAddress, baseAddress2) || entry.endLocationName || endAddr || 'N/A');
                       
                       return (
-                        <TableRow key={entry.id} sx={{ bgcolor: entry.needsRevision ? 'warning.light' : 'transparent' }}>
+                        <React.Fragment key={entry.id}>
+                          {isStartOfDay && (
+                            <TableRow>
+                              <TableCell
+                                colSpan={8}
+                                sx={{
+                                  border: '1px solid #90caf9',
+                                  borderTop: '2px solid #1976d2',
+                                  p: 0.75,
+                                  bgcolor: 'rgba(25, 118, 210, 0.08)',
+                                }}
+                              >
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.dark' }}>
+                                  {formatMileageDate(entry.date)} - {dayEntryCount} entr{dayEntryCount === 1 ? 'y' : 'ies'} (reorder only within this day)
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        <TableRow
+                          sx={{
+                            bgcolor: entry.needsRevision ? 'warning.light' : 'transparent',
+                            ...(isEndOfDay
+                              ? { '& td': { borderBottom: '2px solid #90caf9 !important' } }
+                              : {}),
+                          }}
+                        >
                           <TableCell sx={{ border: '1px solid #ccc', p: 0.5, verticalAlign: 'middle' }}>
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
                               <IconButton
                                 size="small"
                                 onClick={() => {
-                                  if (index <= 0) return;
+                                  if (!canMoveUp) return;
                                   const newOrder = [...currentMonthMileageList];
                                   [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
                                   handleMileageReorder(newOrder.map((e: any) => e.id));
                                 }}
-                                disabled={index === 0}
+                                disabled={!canMoveUp}
                                 sx={{ p: 0.25 }}
-                                title="Move up"
+                                title={canMoveUp ? 'Move up' : 'Can only reorder within same day'}
                               >
                                 <ArrowUpwardIcon fontSize="small" />
                               </IconButton>
                               <IconButton
                                 size="small"
                                 onClick={() => {
-                                  if (index >= currentMonthMileageList.length - 1) return;
+                                  if (!canMoveDown) return;
                                   const newOrder = [...currentMonthMileageList];
                                   [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
                                   handleMileageReorder(newOrder.map((e: any) => e.id));
                                 }}
-                                disabled={index === currentMonthMileageList.length - 1}
+                                disabled={!canMoveDown}
                                 sx={{ p: 0.25 }}
-                                title="Move down"
+                                title={canMoveDown ? 'Move down' : 'Can only reorder within same day'}
                               >
                                 <ArrowDownwardIcon fontSize="small" />
                               </IconButton>
                             </Box>
                           </TableCell>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                            {(() => {
-                              // Use normalizeDate to get YYYY-MM-DD format, then parse and format consistently
-                              const normalizedDate = normalizeDate(entry.date);
-                              const dateParts = normalizedDate.split('-');
-                              if (dateParts.length === 3) {
-                                const [year, month, day] = dateParts.map(Number);
-                                const date = new Date(year, month - 1, day);
-                                return date.toLocaleDateString('en-US', {
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  year: '2-digit'
-                                });
-                              }
-                              // Fallback to original formatting if normalization fails
-                              try {
-                                const date = new Date(entry.date);
-                                return date.toLocaleDateString('en-US', {
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  year: '2-digit'
-                                });
-                              } catch {
-                                return entry.date;
-                              }
-                            })()}
+                            {formatMileageDate(entry.date)}
                             {entry.needsRevision && (
                               <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
                             )}
@@ -6677,6 +6713,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             </Box>
                           </TableCell>
                         </TableRow>
+                        </React.Fragment>
                       );
                     })}
                   {currentMonthMileageList.length === 0 && (
