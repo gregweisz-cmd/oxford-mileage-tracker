@@ -2494,6 +2494,7 @@ export class ApiSyncService {
       // Check sync queue for pending deletions to avoid overwriting them
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('timeTracking');
+      const pendingUpsertIds = SyncIntegrationService.getPendingUpsertIds('timeTracking');
       
       const backendEmployeeIds = new Set(timeTracking.map(t => t.employeeId).filter(Boolean));
       const backendTrackingIds = new Set(timeTracking.map(t => t.id).filter(Boolean));
@@ -2592,7 +2593,11 @@ export class ApiSyncService {
             }
             
             for (const localEntry of localEntries) {
-              if (!backendTrackingIds.has(localEntry.id) && !pendingDeletionIds.has(localEntry.id)) {
+              if (
+                !backendTrackingIds.has(localEntry.id) &&
+                !pendingDeletionIds.has(localEntry.id) &&
+                !pendingUpsertIds.has(localEntry.id)
+              ) {
                 debugLog(`🗑️ ApiSync: Deleting local time tracking entry ${localEntry.id} - not found in backend (was deleted on backend)`);
                 await database.runAsync(
                   'DELETE FROM time_tracking WHERE id = ?',

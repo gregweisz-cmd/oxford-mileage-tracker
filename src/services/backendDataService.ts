@@ -524,39 +524,30 @@ export class BackendDataService {
       return entryDayStr === dayStr || sameDay;
     });
 
-    for (const entry of dayEntries) {
-      try {
-        await this.deleteTimeTracking(entry.id);
-      } catch (error) {
-        console.error(`❌ BackendDataService: Error deleting entry ${entry.id}:`, error);
-      }
-    }
+    type DesiredEntry = {
+      category: string;
+      costCenter: string;
+      hours: number;
+    };
+    const desiredEntries: DesiredEntry[] = [];
 
-    let entriesCreated = 0;
     if (costCenterHours && Object.keys(costCenterHours).length > 0) {
-      for (const [ccName, hours] of Object.entries(costCenterHours)) {
+      for (const [ccName, rawHours] of Object.entries(costCenterHours)) {
+        const hours = Number(rawHours) || 0;
         if (hours > 0) {
-          await this.createTimeTracking({
-            employeeId,
-            date,
+          desiredEntries.push({
             category: 'Working Hours',
+            costCenter: ccName === 'Unassigned' ? '' : ccName,
             hours,
-            description: '',
-            costCenter: ccName === 'Unassigned' ? '' : ccName
           });
-          entriesCreated++;
         }
       }
     } else if (hoursBreakdown.workingHours != null && hoursBreakdown.workingHours > 0) {
-      await this.createTimeTracking({
-        employeeId,
-        date,
+      desiredEntries.push({
         category: 'Working Hours',
-        hours: hoursBreakdown.workingHours,
-        description: '',
-        costCenter: targetCostCenter
+        costCenter: targetCostCenter || '',
+        hours: Number(hoursBreakdown.workingHours) || 0,
       });
-      entriesCreated++;
     }
 
     const categories = [
@@ -569,16 +560,73 @@ export class BackendDataService {
     for (const { key, category } of categories) {
       const hours = hoursBreakdown[key as keyof typeof hoursBreakdown];
       if (hours != null && hours > 0) {
+        desiredEntries.push({
+          category,
+          costCenter: '',
+          hours: Number(hours) || 0,
+        });
+      }
+    }
+
+    const toKey = (category: string, costCenter: string): string =>
+      `${(category || '').trim().toLowerCase()}|${(costCenter || '').trim().toLowerCase()}`;
+
+    // Keep one existing row per (category, costCenter) key for update; delete duplicates.
+    const existingByKey = new Map<string, TimeTracking>();
+    const duplicateExisting: TimeTracking[] = [];
+    for (const entry of dayEntries) {
+      const key = toKey(entry.category || '', entry.costCenter || '');
+      const current = existingByKey.get(key);
+      if (!current) {
+        existingByKey.set(key, entry);
+        continue;
+      }
+      const currentUpdatedAt = current.updatedAt ? new Date(current.updatedAt).getTime() : 0;
+      const entryUpdatedAt = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
+      if (entryUpdatedAt > currentUpdatedAt) {
+        duplicateExisting.push(current);
+        existingByKey.set(key, entry);
+      } else {
+        duplicateExisting.push(entry);
+      }
+    }
+
+    const desiredKeySet = new Set(desiredEntries.map(e => toKey(e.category, e.costCenter)));
+
+    // Update existing matching rows and create missing rows.
+    for (const desired of desiredEntries) {
+      const key = toKey(desired.category, desired.costCenter);
+      const existing = existingByKey.get(key);
+      if (existing) {
+        await this.updateTimeTracking(existing.id, {
+          employeeId,
+          date,
+          category: desired.category as any,
+          hours: desired.hours,
+          description: '',
+          costCenter: desired.costCenter,
+        });
+      } else {
         await this.createTimeTracking({
           employeeId,
           date,
-          category: category as any,
-          hours,
+          category: desired.category as any,
+          hours: desired.hours,
           description: '',
-          costCenter: ''
+          costCenter: desired.costCenter,
         });
-        entriesCreated++;
       }
+    }
+
+    // Delete rows no longer needed and any duplicates.
+    for (const entry of dayEntries) {
+      const key = toKey(entry.category || '', entry.costCenter || '');
+      if (!desiredKeySet.has(key)) {
+        await this.deleteTimeTracking(entry.id);
+      }
+    }
+    for (const duplicate of duplicateExisting) {
+      await this.deleteTimeTracking(duplicate.id);
     }
   }
 
