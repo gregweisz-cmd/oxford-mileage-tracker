@@ -611,31 +611,17 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
       debugLog(`ℹ️ No daily descriptions in array - all descriptions for month ${month}/${year} deleted (empty array = delete all)`);
     }
     
-    // 2b. Sync time tracking hours - SIMPLE LOGIC: Whatever is in the UI is what gets saved
-    // Step 1: Delete ALL time tracking entries for this month (we'll recreate only what's in dailyEntries)
-    // Guardrail: if dailyEntries is missing, do NOT wipe existing month hours.
+    // 2b. Sync time tracking hours
+    // IMPORTANT: Never do destructive month-wide delete here.
+    // This endpoint can be triggered by non-timesheet actions (signatures, receipt edits, etc.),
+    // so payloads may be partial/stale and previously could wipe out saved hours.
+    // We now only upsert what is explicitly present in dailyEntries.
     if (!Array.isArray(reportData.dailyEntries)) {
       debugWarn(
-        `⚠️ sync-to-source skipped time_tracking rewrite for ${month}/${year}: reportData.dailyEntries is not an array`
+        `⚠️ sync-to-source skipped time_tracking upsert for ${month}/${year}: reportData.dailyEntries is not an array`
       );
     } else {
-      await new Promise((resolve, reject) => {
-        db.run(
-          'DELETE FROM time_tracking WHERE employeeId = ? AND date >= ? AND date <= ?',
-          [employeeId, startDate, endDate],
-          function(deleteErr) {
-            if (deleteErr) {
-              debugError(`❌ Error deleting time tracking for month:`, deleteErr);
-              reject(deleteErr);
-            } else {
-              debugLog(`🗑️ Deleted ${this.changes} existing time tracking entries for month ${month}/${year}`);
-              resolve();
-            }
-          }
-        );
-      });
-    
-    // Step 2: Save ONLY what's in dailyEntries (exactly what user sees in UI)
+    // Save ONLY what's in dailyEntries (exactly what user sees in UI) via upsert
     if (reportData.dailyEntries.length > 0) {
       const costCenters = reportData.costCenters || [];
       
@@ -670,7 +656,16 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
               
               await new Promise((resolve, reject) => {
                 db.run(
-                  'INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  `INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     employeeId = excluded.employeeId,
+                     date = excluded.date,
+                     category = excluded.category,
+                     hours = excluded.hours,
+                     description = excluded.description,
+                     costCenter = excluded.costCenter,
+                     updatedAt = excluded.updatedAt`,
                   [id, employeeId, dateStr, '', hours, '', costCenterName, now, now],
                   (insertErr) => {
                     if (insertErr) {
@@ -703,7 +698,16 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
                 
                 await new Promise((resolve, reject) => {
                   db.run(
-                    'INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    `INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     ON CONFLICT(id) DO UPDATE SET
+                       employeeId = excluded.employeeId,
+                       date = excluded.date,
+                       category = excluded.category,
+                       hours = excluded.hours,
+                       description = excluded.description,
+                       costCenter = excluded.costCenter,
+                       updatedAt = excluded.updatedAt`,
                     [id, employeeId, dateStr, category, hours, '', '', now, now],
                     (insertErr) => {
                       if (insertErr) {
@@ -725,7 +729,7 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
         }
       }
     } else {
-      debugLog(`ℹ️ No daily entries in array - all hours for month ${month}/${year} deleted (empty array = delete all)`);
+      debugLog(`ℹ️ No daily entries in array - time tracking left unchanged for month ${month}/${year}`);
     }
     }
     
