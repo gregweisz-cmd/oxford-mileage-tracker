@@ -181,17 +181,15 @@ export function ScrollToOnFocusView({ children }: { children: React.ReactNode })
       if (ctx) {
         ctx.notifyFocusHandled();
         if (Platform.OS === 'android') {
-          // Prefer native focused-input scrolling so multiline/taller fields behave
-          // exactly like single-line inputs. Keep wrapper Y as a fallback.
+          // Use native focused-input scrolling only. Wrapper-Y fallback can push
+          // already-visible inputs downward on focus due to stale layout coordinates.
           const doScroll = () => {
             ctx.scrollInputHandleIntoView(focusTarget);
-            ctx.scrollToY(yRef.current);
           };
           scheduleScrollAndroid(doScroll);
         } else {
           setTimeout(() => {
             ctx.scrollInputHandleIntoView(focusTarget);
-            scrollToFocused();
           }, FOCUS_SCROLL_DELAY_MS);
         }
       }
