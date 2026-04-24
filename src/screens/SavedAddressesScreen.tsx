@@ -21,6 +21,7 @@ import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { ApiSyncService } from '../services/apiSyncService';
 import { API_BASE_URL } from '../config/api';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface SavedAddressesScreenProps {
   navigation: any;
@@ -459,19 +460,22 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           <Text style={styles.modalTitle}>
             {editingAddress ? 'Edit Address' : 'Add New Address'}
           </Text>
-          <ScrollView
+          <KeyboardAwareScrollView
             style={styles.modalScroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
           >
-          <TextInput
-            style={styles.input}
-            placeholder="Address Name (e.g., Main Office)"
-            value={formData.name}
-            onChangeText={(value) => handleInputChange('name', value)}
-            placeholderTextColor="#999"
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              style={styles.input}
+              placeholder="Address Name (e.g., Main Office)"
+              value={formData.name}
+              onChangeText={(value) => handleInputChange('name', value)}
+              placeholderTextColor="#999"
+            />
+          </ScrollToOnFocusView>
 
           <Text style={styles.fieldLabel}>Street Address</Text>
           <GooglePlacesAddressInput
@@ -493,38 +497,44 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           />
 
           <Text style={styles.fieldLabel}>City</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="City"
-            value={formData.city}
-            onChangeText={(value) => handleInputChange('city', value)}
-            placeholderTextColor="#999"
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              style={styles.input}
+              placeholder="City"
+              value={formData.city}
+              onChangeText={(value) => handleInputChange('city', value)}
+              placeholderTextColor="#999"
+            />
+          </ScrollToOnFocusView>
 
           <View style={styles.addressRow}>
             <View style={styles.addressHalf}>
               <Text style={styles.fieldLabel}>State</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="NC"
-                value={formData.state}
-                onChangeText={(value) => handleInputChange('state', value.toUpperCase().slice(0, 2))}
-                placeholderTextColor="#999"
-                maxLength={2}
-                autoCapitalize="characters"
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  placeholder="NC"
+                  value={formData.state}
+                  onChangeText={(value) => handleInputChange('state', value.toUpperCase().slice(0, 2))}
+                  placeholderTextColor="#999"
+                  maxLength={2}
+                  autoCapitalize="characters"
+                />
+              </ScrollToOnFocusView>
             </View>
             <View style={styles.addressHalf}>
               <Text style={styles.fieldLabel}>Zip</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="28203"
-                value={formData.zip}
-                onChangeText={(value) => handleInputChange('zip', value.replace(/\D/g, '').slice(0, 10))}
-                placeholderTextColor="#999"
-                keyboardType="number-pad"
-                maxLength={10}
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  placeholder="28203"
+                  value={formData.zip}
+                  onChangeText={(value) => handleInputChange('zip', value.replace(/\D/g, '').slice(0, 10))}
+                  placeholderTextColor="#999"
+                  keyboardType="number-pad"
+                  maxLength={10}
+                />
+              </ScrollToOnFocusView>
             </View>
           </View>
 
@@ -573,7 +583,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
               </Text>
             </TouchableOpacity>
           </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
       </KeyboardAvoidingView>
