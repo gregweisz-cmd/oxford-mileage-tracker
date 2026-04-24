@@ -206,6 +206,29 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
     setError(null);
   };
 
+  const handleSelectAllEligibleDays = () => {
+    const next = new Map(entries);
+    let changed = false;
+
+    eligibilityByDay.forEach((eligibility, dateKey) => {
+      if (!eligibility.isEligible) return;
+      const entry = next.get(dateKey);
+      if (!entry || entry.isEligible) return;
+      next.set(dateKey, { ...entry, isEligible: true });
+      changed = true;
+    });
+
+    if (!changed) {
+      setError('All eligible days are already selected.');
+      setTimeout(() => setError(null), 4000);
+      return;
+    }
+
+    setEntries(next);
+    setHasUnsavedChanges(true);
+    setError(null);
+  };
+
   const handleSave = async () => {
     if (!hasUnsavedChanges) return;
     if (!employeeId?.trim()) {
@@ -317,6 +340,14 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           <Typography variant="subtitle1" sx={{ minWidth: 160 }}>
             {new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleSelectAllEligibleDays}
+            disabled={saving || loading}
+          >
+            Select all eligible days
+          </Button>
           {onGoToToday && (
             <Button size="small" startIcon={<TodayIcon />} onClick={onGoToToday}>
               Go to today
