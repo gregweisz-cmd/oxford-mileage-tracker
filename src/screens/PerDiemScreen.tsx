@@ -376,6 +376,38 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     setMonthlyTotal(previewTotal);
   };
 
+  const handleSelectAllEligibleDays = () => {
+    if (saving || !eligibilityReady) return;
+
+    const nextMap = new Map(perDiemEntries);
+    let changed = false;
+
+    eligibilityByDay.forEach((eligibility, dateKey) => {
+      if (!eligibility.isEligible) return;
+      const entry = nextMap.get(dateKey);
+      if (!entry) return;
+      if (entry.isEligible) return;
+      nextMap.set(dateKey, {
+        ...entry,
+        isEligible: true,
+      });
+      changed = true;
+    });
+
+    if (!changed) {
+      Alert.alert('No changes', 'All eligible days are already selected.');
+      return;
+    }
+
+    setPerDiemEntries(nextMap);
+    setHasUnsavedChanges(true);
+
+    const previewTotal = Array.from(nextMap.values())
+      .filter(e => e.isEligible)
+      .reduce((sum, e) => sum + e.amount, 0);
+    setMonthlyTotal(previewTotal);
+  };
+
   const handleImagePicker = async (dateKey: string) => {
     if (saving) return;
     setSelectedDay(perDiemEntries.get(dateKey)?.date || null);
@@ -755,6 +787,14 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
         <Text style={styles.summaryRemaining}>
           Remaining: ${Math.max(0, monthlyLimit - monthlyTotal).toFixed(2)}
         </Text>
+        <TouchableOpacity
+          style={[styles.selectAllEligibleButton, (!eligibilityReady || saving) && styles.selectAllEligibleButtonDisabled]}
+          onPress={handleSelectAllEligibleDays}
+          disabled={!eligibilityReady || saving}
+        >
+          <MaterialIcons name="done-all" size={18} color="#fff" style={styles.selectAllEligibleButtonIcon} />
+          <Text style={styles.selectAllEligibleButtonText}>Select all eligible days</Text>
+        </TouchableOpacity>
         {!eligibilityReady && !loading && (
           <View style={styles.eligibilityBanner}>
             <ActivityIndicator size="small" color="#007AFF" />
@@ -1074,6 +1114,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     textAlign: 'right',
+  },
+  selectAllEligibleButton: {
+    marginTop: 12,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectAllEligibleButtonDisabled: {
+    opacity: 0.5,
+  },
+  selectAllEligibleButtonIcon: {
+    marginRight: 6,
+  },
+  selectAllEligibleButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   eligibilityBanner: {
     flexDirection: 'row',
