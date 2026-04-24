@@ -16,8 +16,8 @@ import {
 } from 'react-native';
 
 const KEYBOARD_TOP_OFFSET = Platform.OS === 'android' ? 180 : 120;
-const INPUT_BOTTOM_GAP = Platform.OS === 'android' ? 56 : 32;
-const EXTRA_SCROLL_BUFFER = Platform.OS === 'android' ? 20 : 12;
+const INPUT_BOTTOM_GAP = Platform.OS === 'android' ? 96 : 48;
+const EXTRA_SCROLL_BUFFER = Platform.OS === 'android' ? 32 : 16;
 
 type KeyboardAwareScrollViewProps = ScrollViewProps & {
   children: React.ReactNode;
