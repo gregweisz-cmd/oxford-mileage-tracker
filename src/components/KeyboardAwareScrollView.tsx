@@ -6,6 +6,9 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   Platform,
+  Dimensions,
+  UIManager,
+  findNodeHandle,
   type ScrollViewProps,
   type NativeSyntheticEvent,
   type TextInputFocusEventData,
@@ -13,6 +16,8 @@ import {
 } from 'react-native';
 
 const KEYBOARD_TOP_OFFSET = Platform.OS === 'android' ? 180 : 120;
+const INPUT_BOTTOM_GAP = 16;
+const EXTRA_SCROLL_BUFFER = 8;
 
 type KeyboardAwareScrollViewProps = ScrollViewProps & {
   children: React.ReactNode;
@@ -42,32 +47,57 @@ export function KeyboardAwareScrollView({
   const scrollRef = useRef<ScrollView>(null);
   const currentScrollYRef = useRef(0);
   const lastFocusHandledAtRef = useRef(0);
-  const lastFocusStartScrollYRef = useRef(0);
+  const keyboardHeightRef = useRef(0);
 
   const scrollInputHandleIntoView = useCallback((target?: number | null) => {
-    const focusStartY = currentScrollYRef.current;
-    lastFocusStartScrollYRef.current = focusStartY;
+    const resolvedTarget =
+      typeof target === 'number'
+        ? target
+        : target
+          ? findNodeHandle(target as any)
+          : null;
     const fallbackFocusedInput =
       (TextInput.State as any)?.currentlyFocusedInput?.() ||
       (TextInput.State as any)?.currentlyFocusedField?.();
-    const inputHandle = target ?? fallbackFocusedInput;
+    const inputHandle = resolvedTarget ?? fallbackFocusedInput;
     if (!inputHandle) return;
-    const responder = scrollRef.current as any;
-    if (responder?.scrollResponderScrollNativeHandleToKeyboard) {
-      responder.scrollResponderScrollNativeHandleToKeyboard(
+    const keyboardHeight = keyboardHeightRef.current;
+    const windowHeight = Dimensions.get('window').height;
+    const keyboardTop = keyboardHeight > 0 ? windowHeight - keyboardHeight : windowHeight;
+
+    requestAnimationFrame(() => {
+      UIManager.measure(
         inputHandle,
-        focusScrollOffset,
-        true
-      );
-      // Guard against regression where focusing an already-visible field
-      // scrolls downward and hides it under the keyboard.
-      setTimeout(() => {
-        if (currentScrollYRef.current > focusStartY) {
-          scrollRef.current?.scrollTo({ y: focusStartY, animated: false });
+        (_x, _y, _width, height, _pageX, pageY) => {
+          if (!height || pageY == null) return;
+          const inputBottom = pageY + height;
+          const visibleBottom = keyboardTop - INPUT_BOTTOM_GAP;
+          const overlap = inputBottom - visibleBottom;
+
+          // Never scroll downward on focus; only scroll up when overlapped by keyboard.
+          if (overlap > 0) {
+            const nextY = Math.max(0, currentScrollYRef.current + overlap + EXTRA_SCROLL_BUFFER);
+            scrollRef.current?.scrollTo({ y: nextY, animated: true });
+          }
         }
-      }, 140);
-    }
+      );
+    });
   }, [focusScrollOffset]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event: any) => {
+      keyboardHeightRef.current = event?.endCoordinates?.height ?? 0;
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      keyboardHeightRef.current = 0;
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
