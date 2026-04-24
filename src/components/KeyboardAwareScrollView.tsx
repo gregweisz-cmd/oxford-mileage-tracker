@@ -62,7 +62,7 @@ export function KeyboardAwareScrollView({
       // Guard against regression where focusing an already-visible field
       // scrolls downward and hides it under the keyboard.
       setTimeout(() => {
-        if (currentScrollYRef.current < focusStartY) {
+        if (currentScrollYRef.current > focusStartY) {
           scrollRef.current?.scrollTo({ y: focusStartY, animated: false });
         }
       }, 140);
