@@ -136,15 +136,20 @@ const FOCUS_SCROLL_DELAY_MS = 100;
  * using the Y from onLayout. Avoids measureLayout which can trigger ref warnings.
  */
 function scheduleScrollAndroid(doScroll: () => void) {
-
+  let keyboardEventHandled = false;
   const sub = Keyboard.addListener('keyboardDidShow', () => {
+    keyboardEventHandled = true;
     sub.remove();
     requestAnimationFrame(doScroll);
   });
 
-  [150, 350, 500].forEach((delay) => {
+  [150, 350, 500].forEach((delay, index) => {
     setTimeout(() => {
-      sub.remove();
+      // Keep the keyboardDidShow listener alive for early fallback attempts so we
+      // still get one final accurate scroll after keyboard fully opens.
+      if (!keyboardEventHandled && index === 2) {
+        sub.remove();
+      }
       requestAnimationFrame(doScroll);
     }, delay);
   });
