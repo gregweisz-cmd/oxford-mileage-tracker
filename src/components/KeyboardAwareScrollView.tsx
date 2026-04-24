@@ -22,7 +22,7 @@ type KeyboardAwareScrollViewProps = ScrollViewProps & {
 
 const ScrollToOnFocusContext = React.createContext<{
   scrollToY: (y: number) => void;
-  scrollFocusedInputIntoView: () => void;
+  scrollInputHandleIntoView: (target?: number | null) => void;
   notifyFocusHandled: () => void;
 } | null>(null);
 
@@ -43,15 +43,16 @@ export function KeyboardAwareScrollView({
   const currentScrollYRef = useRef(0);
   const lastFocusHandledAtRef = useRef(0);
 
-  const scrollFocusedInputIntoView = useCallback(() => {
-    const currentlyFocusedInput =
+  const scrollInputHandleIntoView = useCallback((target?: number | null) => {
+    const fallbackFocusedInput =
       (TextInput.State as any)?.currentlyFocusedInput?.() ||
       (TextInput.State as any)?.currentlyFocusedField?.();
-    if (!currentlyFocusedInput) return;
+    const inputHandle = target ?? fallbackFocusedInput;
+    if (!inputHandle) return;
     const responder = scrollRef.current as any;
     if (responder?.scrollResponderScrollNativeHandleToKeyboard) {
       responder.scrollResponderScrollNativeHandleToKeyboard(
-        currentlyFocusedInput,
+        inputHandle,
         focusScrollOffset,
         true
       );
@@ -66,12 +67,12 @@ export function KeyboardAwareScrollView({
       if (Platform.OS === 'android' && Date.now() - lastFocusHandledAtRef.current < 900) {
         return;
       }
-      requestAnimationFrame(scrollFocusedInputIntoView);
+      requestAnimationFrame(() => scrollInputHandleIntoView());
     });
     return () => {
       keyboardShowSub.remove();
     };
-  }, [scrollFocusedInputIntoView]);
+  }, [scrollInputHandleIntoView]);
 
   const scrollToFocusedInput = useCallback(
     (y: number) => {
@@ -93,10 +94,10 @@ export function KeyboardAwareScrollView({
   const contextValue = useMemo(
     () => ({
       scrollToY: scrollToFocusedInput,
-      scrollFocusedInputIntoView,
+      scrollInputHandleIntoView,
       notifyFocusHandled,
     }),
-    [scrollToFocusedInput, scrollFocusedInputIntoView, notifyFocusHandled]
+    [scrollToFocusedInput, scrollInputHandleIntoView, notifyFocusHandled]
   );
 
   return (
@@ -182,13 +183,13 @@ export function ScrollToOnFocusView({ children }: { children: React.ReactNode })
           // Prefer native focused-input scrolling so multiline/taller fields behave
           // exactly like single-line inputs. Keep wrapper Y as a fallback.
           const doScroll = () => {
-            ctx.scrollFocusedInputIntoView();
+            ctx.scrollInputHandleIntoView(e?.nativeEvent?.target);
             ctx.scrollToY(yRef.current);
           };
           scheduleScrollAndroid(doScroll);
         } else {
           setTimeout(() => {
-            ctx.scrollFocusedInputIntoView();
+            ctx.scrollInputHandleIntoView(e?.nativeEvent?.target);
             scrollToFocused();
           }, FOCUS_SCROLL_DELAY_MS);
         }
