@@ -31,6 +31,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { COST_CENTERS } from '../constants/costCenters';
 import { PreferencesService } from '../services/preferencesService';
 import { OxfordHouseService } from '../services/oxfordHouseService';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -1264,7 +1265,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         onHomePress={() => navigation.navigate('Home')}
       />
 
-      <ScrollView 
+      <KeyboardAwareScrollView
         style={styles.content} 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={true}
@@ -1272,6 +1273,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         keyboardDismissMode="on-drag"
         scrollEventThrottle={16}
         nestedScrollEnabled={true}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
         {/* Tracking Status */}
         <View style={styles.statusContainer}>
@@ -1307,20 +1309,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             {!hasStartedGpsToday && (
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Starting Odometer Reading *</Text>
-                <TextInput
-                  ref={odometerInputRef}
-                  style={styles.input}
-                  value={trackingForm.odometerReading}
-                  onChangeText={(value) => handleInputChange('odometerReading', value)}
-                  placeholder="e.g., 12345"
-                  keyboardType="numeric"
-                  placeholderTextColor="#999"
-                  returnKeyType="next"
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => {
-                    purposeInputRef.current?.focus();
-                  }}
-                />
+                <ScrollToOnFocusView>
+                  <TextInput
+                    ref={odometerInputRef}
+                    style={styles.input}
+                    value={trackingForm.odometerReading}
+                    onChangeText={(value) => handleInputChange('odometerReading', value)}
+                    placeholder="e.g., 12345"
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => {
+                      purposeInputRef.current?.focus();
+                    }}
+                  />
+                </ScrollToOnFocusView>
                 {lastTravelDayEndingOdometerNote ? (
                   <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
                 ) : null}
@@ -1350,15 +1354,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   </View>
                 ) : (
                   <View style={styles.odometerEditContainer}>
-                    <TextInput
-                      style={styles.input}
-                      value={trackingForm.odometerReading}
-                      onChangeText={(value) => handleInputChange('odometerReading', value)}
-                      placeholder="e.g., 12345"
-                      keyboardType="numeric"
-                      placeholderTextColor="#999"
-                      autoFocus={true}
-                    />
+                    <ScrollToOnFocusView>
+                      <TextInput
+                        style={styles.input}
+                        value={trackingForm.odometerReading}
+                        onChangeText={(value) => handleInputChange('odometerReading', value)}
+                        placeholder="e.g., 12345"
+                        keyboardType="numeric"
+                        placeholderTextColor="#999"
+                        autoFocus={true}
+                      />
+                    </ScrollToOnFocusView>
                     <View style={styles.odometerEditButtons}>
                       <TouchableOpacity
                         style={styles.saveOdometerButton}
@@ -1439,18 +1445,20 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Notes (Optional)</Text>
-              <TextInput
-                ref={notesInputRef}
-                style={[styles.input, styles.textArea]}
-                value={trackingForm.notes}
-                onChangeText={(value) => handleInputChange('notes', value)}
-                placeholder="Additional notes about this trip..."
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={3}
-                returnKeyType="done"
-                blurOnSubmit={true}
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  ref={notesInputRef}
+                  style={[styles.input, styles.textArea]}
+                  value={trackingForm.notes}
+                  onChangeText={(value) => handleInputChange('notes', value)}
+                  placeholder="Additional notes about this trip..."
+                  placeholderTextColor="#999"
+                  multiline
+                  numberOfLines={3}
+                  returnKeyType="done"
+                  blurOnSubmit={true}
+                />
+              </ScrollToOnFocusView>
             </View>
 
             {/* Cost Center Selector - only show if user has multiple cost centers */}
@@ -1547,7 +1555,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             </Text>
           </View>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Location Options Modal */}
       {showLocationOptionsModal && (

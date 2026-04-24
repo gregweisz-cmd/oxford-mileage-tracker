@@ -1,7 +1,8 @@
-import React, { useRef, useCallback, useMemo } from 'react';
+import React, { useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
+  TextInput,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
@@ -37,6 +38,31 @@ export function KeyboardAwareScrollView({
   ...scrollViewProps
 }: KeyboardAwareScrollViewProps) {
   const scrollRef = useRef<ScrollView>(null);
+
+  const scrollFocusedInputIntoView = useCallback(() => {
+    const currentlyFocusedInput =
+      (TextInput.State as any)?.currentlyFocusedInput?.() ||
+      (TextInput.State as any)?.currentlyFocusedField?.();
+    if (!currentlyFocusedInput) return;
+    const responder = scrollRef.current as any;
+    if (responder?.scrollResponderScrollNativeHandleToKeyboard) {
+      responder.scrollResponderScrollNativeHandleToKeyboard(
+        currentlyFocusedInput,
+        focusScrollOffset,
+        true
+      );
+    }
+  }, [focusScrollOffset]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const keyboardShowSub = Keyboard.addListener(showEvent, () => {
+      requestAnimationFrame(scrollFocusedInputIntoView);
+    });
+    return () => {
+      keyboardShowSub.remove();
+    };
+  }, [scrollFocusedInputIntoView]);
 
   const scrollToFocusedInput = useCallback(
     (y: number) => {
