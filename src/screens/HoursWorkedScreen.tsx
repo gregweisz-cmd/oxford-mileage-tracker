@@ -18,6 +18,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataService';
 import { Employee } from '../types';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface HoursWorkedScreenProps {
   navigation: any;
@@ -273,43 +274,47 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sectionLabel}>Hours per cost center</Text>
             {(currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || []).map((cc) => (
               <View key={cc} style={styles.inputRow}>
                 <Text style={styles.inputLabel} numberOfLines={1}>{cc}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={timeTrackingInputs[`cc:${cc}`]?.toString() ?? '0'}
-                  onChangeText={(text) => {
-                    const value = parseFloat(text) || 0;
-                    setTimeTrackingInputs(prev => ({ ...prev, [`cc:${cc}`]: value }));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  selectTextOnFocus
-                  returnKeyType="done"
-                  blurOnSubmit
-                />
+                <ScrollToOnFocusView>
+                  <TextInput
+                    style={styles.input}
+                    value={timeTrackingInputs[`cc:${cc}`]?.toString() ?? '0'}
+                    onChangeText={(text) => {
+                      const value = parseFloat(text) || 0;
+                      setTimeTrackingInputs(prev => ({ ...prev, [`cc:${cc}`]: value }));
+                    }}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    selectTextOnFocus
+                    returnKeyType="done"
+                    blurOnSubmit
+                  />
+                </ScrollToOnFocusView>
               </View>
             ))}
             <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Other</Text>
             {CATEGORY_HOURS_LABELS.map((category) => (
               <View key={category} style={styles.inputRow}>
                 <Text style={styles.inputLabel}>{category}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={timeTrackingInputs[category]?.toString() ?? '0'}
-                  onChangeText={(text) => {
-                    const value = parseFloat(text) || 0;
-                    setTimeTrackingInputs(prev => ({ ...prev, [category]: value }));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  selectTextOnFocus
-                  returnKeyType="done"
-                  blurOnSubmit
-                />
+                <ScrollToOnFocusView>
+                  <TextInput
+                    style={styles.input}
+                    value={timeTrackingInputs[category]?.toString() ?? '0'}
+                    onChangeText={(text) => {
+                      const value = parseFloat(text) || 0;
+                      setTimeTrackingInputs(prev => ({ ...prev, [category]: value }));
+                    }}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    selectTextOnFocus
+                    returnKeyType="done"
+                    blurOnSubmit
+                  />
+                </ScrollToOnFocusView>
               </View>
             ))}
             <View style={styles.totalSection}>
@@ -318,7 +323,7 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
                 {Object.values(timeTrackingInputs).reduce((sum, hours) => sum + (typeof hours === 'number' ? hours : 0), 0)}
               </Text>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
         </KeyboardAvoidingView>
       </Modal>

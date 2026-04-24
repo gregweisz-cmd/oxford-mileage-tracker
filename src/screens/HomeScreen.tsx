@@ -39,6 +39,7 @@ import { SmartNotificationService, SmartNotification } from '../services/smartNo
 import { hapticLight } from '../utils/haptics';
 import { setSyncMonthScope } from '../services/syncScopeService';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 const FIRST_LOGIN_PORTAL_TIP_KEY_PREFIX = 'first_login_portal_tip_shown:';
@@ -1553,45 +1554,53 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         animationType="slide"
         onRequestClose={() => setShowBaseAddressModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAwareScrollView contentContainerStyle={styles.modalOverlay} keyboardShouldPersistTaps="handled">
           <View style={dynamicStyles.modalContent}>
             <Text style={dynamicStyles.modalTitle}>Edit Base Address</Text>
             
-            <GooglePlacesAddressInput
-              value={baseAddressStreet}
-              onChangeText={setBaseAddressStreet}
-              placeholder="Street Address"
-              style={dynamicStyles.textInput}
-              onPlaceSelected={(details) => {
-                const parsed = parseBaseAddressForMobile(details.formattedAddress);
-                setBaseAddressStreet(parsed.street || details.formattedAddress);
-                setBaseAddressCity(parsed.city);
-                setBaseAddressState(parsed.state);
-                setBaseAddressZip(parsed.zip);
-              }}
-            />
-            <TextInput
-              style={dynamicStyles.textInput}
-              value={baseAddressCity}
-              onChangeText={setBaseAddressCity}
-              placeholder="City"
-            />
+            <ScrollToOnFocusView>
+              <GooglePlacesAddressInput
+                value={baseAddressStreet}
+                onChangeText={setBaseAddressStreet}
+                placeholder="Street Address"
+                style={dynamicStyles.textInput}
+                onPlaceSelected={(details) => {
+                  const parsed = parseBaseAddressForMobile(details.formattedAddress);
+                  setBaseAddressStreet(parsed.street || details.formattedAddress);
+                  setBaseAddressCity(parsed.city);
+                  setBaseAddressState(parsed.state);
+                  setBaseAddressZip(parsed.zip);
+                }}
+              />
+            </ScrollToOnFocusView>
+            <ScrollToOnFocusView>
+              <TextInput
+                style={dynamicStyles.textInput}
+                value={baseAddressCity}
+                onChangeText={setBaseAddressCity}
+                placeholder="City"
+              />
+            </ScrollToOnFocusView>
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TextInput
-                style={[dynamicStyles.textInput, { flex: 1 }]}
-                value={baseAddressState}
-                onChangeText={(t) => setBaseAddressState(t.toUpperCase().slice(0, 2))}
-                placeholder="State (e.g. NC)"
-                maxLength={2}
-              />
-              <TextInput
-                style={[dynamicStyles.textInput, { flex: 1 }]}
-                value={baseAddressZip}
-                onChangeText={(t) => setBaseAddressZip(t.replace(/\D/g, '').slice(0, 10))}
-                placeholder="ZIP Code"
-                keyboardType="number-pad"
-                maxLength={10}
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={[dynamicStyles.textInput, { flex: 1 }]}
+                  value={baseAddressState}
+                  onChangeText={(t) => setBaseAddressState(t.toUpperCase().slice(0, 2))}
+                  placeholder="State (e.g. NC)"
+                  maxLength={2}
+                />
+              </ScrollToOnFocusView>
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={[dynamicStyles.textInput, { flex: 1 }]}
+                  value={baseAddressZip}
+                  onChangeText={(t) => setBaseAddressZip(t.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="ZIP Code"
+                  keyboardType="number-pad"
+                  maxLength={10}
+                />
+              </ScrollToOnFocusView>
             </View>
             
             <View style={styles.modalButtons}>
@@ -1610,7 +1619,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAwareScrollView>
       </Modal>
 
       {/* Cost Centers Modal */}

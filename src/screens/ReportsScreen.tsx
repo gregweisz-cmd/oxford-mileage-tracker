@@ -20,6 +20,7 @@ import { MonthlyReportService, MonthlyReport as MonthlyReportStatus } from '../s
 import { ReportCompletenessService } from '../services/reportCompletenessService';
 import { MonthlyReport, MileageEntry, Employee } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface ReportsScreenProps {
   navigation: any;
@@ -865,41 +866,47 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Webhook URL *</Text>
-              <TextInput
-                style={styles.input}
-                value={slackConfig.webhookUrl}
-                onChangeText={(value) => setSlackConfig(prev => ({ ...prev, webhookUrl: value }))}
-                placeholder="https://hooks.slack.com/services/..."
-                placeholderTextColor="#999"
-                autoCapitalize="none"
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={slackConfig.webhookUrl}
+                  onChangeText={(value) => setSlackConfig(prev => ({ ...prev, webhookUrl: value }))}
+                  placeholder="https://hooks.slack.com/services/..."
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+              </ScrollToOnFocusView>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Channel *</Text>
-              <TextInput
-                style={styles.input}
-                value={slackConfig.channel}
-                onChangeText={(value) => setSlackConfig(prev => ({ ...prev, channel: value }))}
-                placeholder="#mileage-reports"
-                placeholderTextColor="#999"
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={slackConfig.channel}
+                  onChangeText={(value) => setSlackConfig(prev => ({ ...prev, channel: value }))}
+                  placeholder="#mileage-reports"
+                  placeholderTextColor="#999"
+                />
+              </ScrollToOnFocusView>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Bot Token (Optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={slackConfig.botToken}
-                onChangeText={(value) => setSlackConfig(prev => ({ ...prev, botToken: value }))}
-                placeholder="xoxb-..."
-                placeholderTextColor="#999"
-                autoCapitalize="none"
-                secureTextEntry
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={slackConfig.botToken}
+                  onChangeText={(value) => setSlackConfig(prev => ({ ...prev, botToken: value }))}
+                  placeholder="xoxb-..."
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                  secureTextEntry
+                />
+              </ScrollToOnFocusView>
             </View>
 
             <Text style={styles.helpText}>
@@ -908,7 +915,7 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
               2. Add a webhook URL or bot token{'\n'}
               3. Configure the channel where reports will be posted
             </Text>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
         </KeyboardAvoidingView>
       </Modal>

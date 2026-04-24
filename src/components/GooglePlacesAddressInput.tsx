@@ -6,6 +6,7 @@ import {
   AddressPrediction,
   GooglePlacesService,
 } from '../services/googlePlacesService';
+import { ScrollToOnFocusView } from './KeyboardAwareScrollView';
 
 interface GooglePlacesAddressInputProps {
   value: string;
@@ -88,25 +89,27 @@ export default function GooglePlacesAddressInput({
 
   return (
     <View style={styles.container}>
-      <TextInput
-        ref={inputRef}
-        style={[styles.input, multiline && styles.textArea, style]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={placeholderTextColor}
-        multiline={multiline}
-        numberOfLines={numberOfLines}
-        editable={editable}
-        onFocus={() => {
-          setIsInputFocused(true);
-          setShowPredictions(predictions.length > 0);
-        }}
-        onBlur={() => {
-          setIsInputFocused(false);
-          setShowPredictions(false);
-        }}
-      />
+      <ScrollToOnFocusView>
+        <TextInput
+          ref={inputRef}
+          style={[styles.input, multiline && styles.textArea, style]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={placeholderTextColor}
+          multiline={multiline}
+          numberOfLines={numberOfLines}
+          editable={editable}
+          onFocus={() => {
+            setIsInputFocused(true);
+            setShowPredictions(predictions.length > 0);
+          }}
+          onBlur={() => {
+            setIsInputFocused(false);
+            setShowPredictions(false);
+          }}
+        />
+      </ScrollToOnFocusView>
       {showPredictions ? (
         <View style={styles.dropdown}>
           {/*

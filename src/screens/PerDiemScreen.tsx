@@ -27,6 +27,7 @@ import { PerDiemAiService } from '../services/perDiemAiService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { API_BASE_URL } from '../config/api';
 import { setSyncMonthScope } from '../services/syncScopeService';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 // Helper function to resolve image URI (handles both local files and backend URLs)
 function resolveImageUri(imageUri: string | undefined | null): string {
@@ -763,7 +764,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       </View>
 
       {/* Days List */}
-      <ScrollView
+      <KeyboardAwareScrollView
         ref={scrollViewRef}
         style={styles.daysList}
         contentContainerStyle={{
@@ -805,13 +806,15 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
                 <View style={styles.dayContent}>
                   <View style={styles.amountRow}>
                     <Text style={styles.amountLabel}>Amount ($)</Text>
-                    <TextInput
-                      style={styles.amountInput}
-                      value={perDiemEntry.amount.toString()}
-                      onChangeText={(text) => handleAmountChange(dateKey, text)}
-                      keyboardType="numeric"
-                      editable={!saving}
-                    />
+                    <ScrollToOnFocusView>
+                      <TextInput
+                        style={styles.amountInput}
+                        value={perDiemEntry.amount.toString()}
+                        onChangeText={(text) => handleAmountChange(dateKey, text)}
+                        keyboardType="numeric"
+                        editable={!saving}
+                      />
+                    </ScrollToOnFocusView>
                   </View>
                   
                   <View style={styles.imageRow}>
@@ -842,7 +845,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
             </View>
           );
         })}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Floating Save Button — always visible when unsaved (not hidden at list bottom). */}
       {hasUnsavedChanges && !isKeyboardVisible && (

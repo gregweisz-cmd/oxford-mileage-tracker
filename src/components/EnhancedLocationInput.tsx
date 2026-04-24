@@ -8,12 +8,15 @@ import {
   Modal,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import { LocationDetails } from '../types';
 import { GooglePlacesService } from '../services/googlePlacesService';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 
 interface EnhancedLocationInputProps {
   value: string;
@@ -344,48 +347,62 @@ function LocationDetailsModal({ visible, locationDetails, onSave, onCancel }: Lo
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Location Details</Text>
-            <TouchableOpacity onPress={onCancel}>
-              <MaterialIcons name="close" size={24} color="#666" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.modalBody}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Location Name *</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g., Oxford House Charlotte, Client Office"
-                placeholderTextColor="#999"
-              />
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        >
+          <KeyboardAwareScrollView
+            style={styles.modalContent}
+            contentContainerStyle={styles.modalContentContainer}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Location Details</Text>
+              <TouchableOpacity onPress={onCancel}>
+                <MaterialIcons name="close" size={24} color="#666" />
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Full Address *</Text>
-              <TextInput
-                style={[styles.modalInput, styles.addressInput]}
-                value={address}
-                onChangeText={setAddress}
-                placeholder="e.g., 123 Main St, Charlotte, NC 28215"
-                placeholderTextColor="#999"
-                multiline
-              />
-            </View>
-          </View>
+            <View style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Location Name *</Text>
+                <ScrollToOnFocusView>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="e.g., Oxford House Charlotte, Client Office"
+                    placeholderTextColor="#999"
+                  />
+                </ScrollToOnFocusView>
+              </View>
 
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-              <Text style={styles.saveButtonText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Full Address *</Text>
+                <ScrollToOnFocusView>
+                  <TextInput
+                    style={[styles.modalInput, styles.addressInput]}
+                    value={address}
+                    onChangeText={setAddress}
+                    placeholder="e.g., 123 Main St, Charlotte, NC 28215"
+                    placeholderTextColor="#999"
+                    multiline
+                  />
+                </ScrollToOnFocusView>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAwareScrollView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -508,10 +525,16 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 20,
     width: '90%',
     maxWidth: 400,
     maxHeight: '88%',
+  },
+  modalKeyboardAvoid: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalContentContainer: {
+    padding: 20,
   },
   modalHeader: {
     flexDirection: 'row',

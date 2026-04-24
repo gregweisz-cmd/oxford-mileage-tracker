@@ -8,10 +8,13 @@ import {
   FlatList,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { SavedAddress, Employee } from '../types';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 
 interface AddressSelectorProps {
   visible: boolean;
@@ -140,67 +143,81 @@ export default function AddressSelector({
       onRequestClose={() => setShowSaveModal(false)}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Save to Favorites</Text>
-          
-          <TextInput
-            style={styles.input}
-            placeholder="Address Name (e.g., Main Office)"
-            value={saveFormData.name}
-            onChangeText={(value) => setSaveFormData(prev => ({ ...prev, name: value }))}
-            placeholderTextColor="#999"
-          />
-          
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Full Address"
-            value={saveFormData.address}
-            onChangeText={(value) => setSaveFormData(prev => ({ ...prev, address: value }))}
-            multiline
-            numberOfLines={3}
-            placeholderTextColor="#999"
-          />
-          
-          <View style={styles.categoryContainer}>
-            <Text style={styles.categoryLabel}>Category:</Text>
-            <View style={styles.categoryButtons}>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={category}
-                  style={[
-                    styles.categoryButton,
-                    saveFormData.category === category && styles.categoryButtonSelected,
-                  ]}
-                  onPress={() => setSaveFormData(prev => ({ ...prev, category }))}
-                >
-                  <Text
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        >
+          <KeyboardAwareScrollView
+            style={styles.modalContent}
+            contentContainerStyle={styles.modalContentContainer}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.modalTitle}>Save to Favorites</Text>
+            
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.input}
+                placeholder="Address Name (e.g., Main Office)"
+                value={saveFormData.name}
+                onChangeText={(value) => setSaveFormData(prev => ({ ...prev, name: value }))}
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
+            
+            <ScrollToOnFocusView>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Full Address"
+                value={saveFormData.address}
+                onChangeText={(value) => setSaveFormData(prev => ({ ...prev, address: value }))}
+                multiline
+                numberOfLines={3}
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
+            
+            <View style={styles.categoryContainer}>
+              <Text style={styles.categoryLabel}>Category:</Text>
+              <View style={styles.categoryButtons}>
+                {categories.map((category) => (
+                  <TouchableOpacity
+                    key={category}
                     style={[
-                      styles.categoryButtonText,
-                      saveFormData.category === category && styles.categoryButtonTextSelected,
+                      styles.categoryButton,
+                      saveFormData.category === category && styles.categoryButtonSelected,
                     ]}
+                    onPress={() => setSaveFormData(prev => ({ ...prev, category }))}
                   >
-                    {category}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.categoryButtonText,
+                        saveFormData.category === category && styles.categoryButtonTextSelected,
+                      ]}
+                    >
+                      {category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
-          
-          <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setShowSaveModal(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveAddress}
-            >
-              <Text style={styles.saveButtonText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowSaveModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleSaveAddress}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAwareScrollView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -391,9 +408,16 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 20,
     width: '90%',
     maxWidth: 400,
+    maxHeight: '88%',
+  },
+  modalKeyboardAvoid: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalContentContainer: {
+    padding: 20,
   },
   modalTitle: {
     fontSize: 18,

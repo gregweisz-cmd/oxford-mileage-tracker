@@ -20,6 +20,7 @@ import { PerDiemRulesService, PerDiemRule } from '../services/perDiemRulesServic
 import EesRulesService, { EesRule } from '../services/eesRulesService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface AdminScreenProps {
   navigation: any;
@@ -481,13 +482,15 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
           </ScrollView>
         </View>
 
-        <TextInput
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search employees..."
-          placeholderTextColor="#999"
-        />
+        <ScrollToOnFocusView>
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search employees..."
+            placeholderTextColor="#999"
+          />
+        </ScrollToOnFocusView>
       </View>
 
 
@@ -608,7 +611,7 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
         >
         <View style={styles.modalOverlay}>
-          <ScrollView
+          <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
           >
@@ -618,13 +621,15 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
             </Text>
             
             <Text style={styles.fieldLabel}>Position:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={editPosition}
-              onChangeText={setEditPosition}
-              placeholder="Enter position..."
-              placeholderTextColor="#999"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={editPosition}
+                onChangeText={setEditPosition}
+                placeholder="Enter position..."
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Cost Center:</Text>
             <ScrollView style={styles.costCenterSelector} nestedScrollEnabled>
@@ -666,7 +671,7 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -684,7 +689,7 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
         >
         <View style={styles.modalOverlay}>
-          <ScrollView
+          <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
           >
@@ -694,62 +699,74 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
             </Text>
             
             <Text style={styles.fieldLabel}>Cost Center:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={ruleForm.costCenter}
-              onChangeText={(value) => setRuleForm(prev => ({ ...prev, costCenter: value }))}
-              placeholder="Enter cost center..."
-              placeholderTextColor="#999"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={ruleForm.costCenter}
+                onChangeText={(value) => setRuleForm(prev => ({ ...prev, costCenter: value }))}
+                placeholder="Enter cost center..."
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Max Amount:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={ruleForm.maxAmount}
-              onChangeText={(value) => setRuleForm(prev => ({ ...prev, maxAmount: value }))}
-              placeholder="35"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={ruleForm.maxAmount}
+                onChangeText={(value) => setRuleForm(prev => ({ ...prev, maxAmount: value }))}
+                placeholder="35"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Min Hours:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={ruleForm.minHours}
-              onChangeText={(value) => setRuleForm(prev => ({ ...prev, minHours: value }))}
-              placeholder="8"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={ruleForm.minHours}
+                onChangeText={(value) => setRuleForm(prev => ({ ...prev, minHours: value }))}
+                placeholder="8"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Min Miles:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={ruleForm.minMiles}
-              onChangeText={(value) => setRuleForm(prev => ({ ...prev, minMiles: value }))}
-              placeholder="100"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={ruleForm.minMiles}
+                onChangeText={(value) => setRuleForm(prev => ({ ...prev, minMiles: value }))}
+                placeholder="100"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Min Distance From Base:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={ruleForm.minDistanceFromBase}
-              onChangeText={(value) => setRuleForm(prev => ({ ...prev, minDistanceFromBase: value }))}
-              placeholder="50"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={ruleForm.minDistanceFromBase}
+                onChangeText={(value) => setRuleForm(prev => ({ ...prev, minDistanceFromBase: value }))}
+                placeholder="50"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Description:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={ruleForm.description}
-              onChangeText={(value) => setRuleForm(prev => ({ ...prev, description: value }))}
-              placeholder="Enter description..."
-              placeholderTextColor="#999"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={ruleForm.description}
+                onChangeText={(value) => setRuleForm(prev => ({ ...prev, description: value }))}
+                placeholder="Enter description..."
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -767,7 +784,7 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -785,7 +802,7 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
         >
         <View style={styles.modalOverlay}>
-          <ScrollView
+          <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
           >
@@ -795,32 +812,38 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
             </Text>
             
             <Text style={styles.fieldLabel}>Cost Center:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={eesRuleForm.costCenter}
-              onChangeText={(value) => setEesRuleForm(prev => ({ ...prev, costCenter: value }))}
-              placeholder="Enter cost center..."
-              placeholderTextColor="#999"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={eesRuleForm.costCenter}
+                onChangeText={(value) => setEesRuleForm(prev => ({ ...prev, costCenter: value }))}
+                placeholder="Enter cost center..."
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Max Amount:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={eesRuleForm.maxAmount}
-              onChangeText={(value) => setEesRuleForm(prev => ({ ...prev, maxAmount: value }))}
-              placeholder="600"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={eesRuleForm.maxAmount}
+                onChangeText={(value) => setEesRuleForm(prev => ({ ...prev, maxAmount: value }))}
+                placeholder="600"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+              />
+            </ScrollToOnFocusView>
             
             <Text style={styles.fieldLabel}>Description:</Text>
-            <TextInput
-              style={styles.textInput}
-              value={eesRuleForm.description}
-              onChangeText={(value) => setEesRuleForm(prev => ({ ...prev, description: value }))}
-              placeholder="Enter description..."
-              placeholderTextColor="#999"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.textInput}
+                value={eesRuleForm.description}
+                onChangeText={(value) => setEesRuleForm(prev => ({ ...prev, description: value }))}
+                placeholder="Enter description..."
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -838,7 +861,7 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
               </TouchableOpacity>
             </View>
           </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
         </KeyboardAvoidingView>
       </Modal>

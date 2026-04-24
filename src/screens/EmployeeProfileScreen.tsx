@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface EmployeeProfileScreenProps {
   navigation: any;
@@ -158,16 +159,18 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
     return (
       <View style={styles.fieldContainer}>
         <Text style={styles.fieldLabel}>{label}</Text>
-        <TextInput
-          style={[styles.fieldInput, multiline && styles.multilineInput]}
-          value={displayValue}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor="#999"
-          editable={editing}
-          multiline={multiline}
-          numberOfLines={multiline ? 3 : 1}
-        />
+        <ScrollToOnFocusView>
+          <TextInput
+            style={[styles.fieldInput, multiline && styles.multilineInput]}
+            value={displayValue}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor="#999"
+            editable={editing}
+            multiline={multiline}
+            numberOfLines={multiline ? 3 : 1}
+          />
+        </ScrollToOnFocusView>
       </View>
     );
   };
@@ -192,7 +195,7 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Profile Info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
@@ -231,16 +234,18 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
           <Text style={styles.sectionTitle}>Address Information</Text>
           <View style={styles.fieldContainer}>
             <Text style={styles.fieldLabel}>Base Address</Text>
-            <GooglePlacesAddressInput
-              value={formData.baseAddress}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, baseAddress: text }))}
-              onPlaceSelected={(details) =>
-                setFormData(prev => ({ ...prev, baseAddress: details.formattedAddress }))
-              }
-              placeholder="Enter your base address (BA)"
-              style={[styles.fieldInput, styles.multilineInput]}
-              editable={editing}
-            />
+            <ScrollToOnFocusView>
+              <GooglePlacesAddressInput
+                value={formData.baseAddress}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, baseAddress: text }))}
+                onPlaceSelected={(details) =>
+                  setFormData(prev => ({ ...prev, baseAddress: details.formattedAddress }))
+                }
+                placeholder="Enter your base address (BA)"
+                style={[styles.fieldInput, styles.multilineInput]}
+                editable={editing}
+              />
+            </ScrollToOnFocusView>
           </View>
         </View>
 
@@ -288,7 +293,7 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
             </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Add Cost Center Modal */}
       <Modal
@@ -306,14 +311,16 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Cost Center</Text>
             
-            <TextInput
-              style={styles.modalInput}
-              value={newCostCenter}
-              onChangeText={setNewCostCenter}
-              placeholder="Enter cost center code"
-              placeholderTextColor="#999"
-              autoCapitalize="characters"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.modalInput}
+                value={newCostCenter}
+                onChangeText={setNewCostCenter}
+                placeholder="Enter cost center code"
+                placeholderTextColor="#999"
+                autoCapitalize="characters"
+              />
+            </ScrollToOnFocusView>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity

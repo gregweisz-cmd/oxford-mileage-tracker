@@ -13,6 +13,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { DailyOdometerReading } from '../types';
 import { DatabaseService } from '../services/database';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 
 interface DailyOdometerModalProps {
   visible: boolean;
@@ -101,35 +102,40 @@ export const DailyOdometerModal: React.FC<DailyOdometerModalProps> = ({
               Please enter your starting odometer reading for today
             </Text>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Odometer Reading *</Text>
-              <TextInput
-                style={styles.input}
-                value={odometerReading}
-                onChangeText={setOdometerReading}
-                placeholder="e.g., 123456"
-                placeholderTextColor="#999"
-                keyboardType="numeric"
-                maxLength={8}
-              />
-            </View>
+            <KeyboardAwareScrollView keyboardShouldPersistTaps="handled">
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Odometer Reading *</Text>
+                <ScrollToOnFocusView>
+                  <TextInput
+                    style={styles.input}
+                    value={odometerReading}
+                    onChangeText={setOdometerReading}
+                    placeholder="e.g., 123456"
+                    placeholderTextColor="#999"
+                    keyboardType="numeric"
+                    maxLength={8}
+                  />
+                </ScrollToOnFocusView>
+              </View>
 
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Notes (Optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Any additional notes..."
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Notes (Optional)</Text>
+                <ScrollToOnFocusView>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="Any additional notes..."
+                    placeholderTextColor="#999"
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+                </ScrollToOnFocusView>
+              </View>
 
-            <View style={styles.buttonContainer}>
+              <View style={styles.buttonContainer}>
               <TouchableOpacity
                 style={[styles.button, styles.cancelButton]}
                 onPress={handleCancel}
@@ -147,7 +153,8 @@ export const DailyOdometerModal: React.FC<DailyOdometerModalProps> = ({
                   {loading ? 'Saving...' : 'Save Reading'}
                 </Text>
               </TouchableOpacity>
-            </View>
+              </View>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </KeyboardAvoidingView>

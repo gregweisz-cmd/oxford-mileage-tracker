@@ -8,9 +8,12 @@ import {
   FlatList,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getCostCenters } from '../constants/costCenters';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 
 interface CostCenterSelectorProps {
   visible: boolean;
@@ -81,6 +84,11 @@ function CostCenterSelector({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        >
         <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Select Cost Center</Text>
@@ -89,16 +97,18 @@ function CostCenterSelector({
             </TouchableOpacity>
           </View>
 
-          <View style={styles.searchContainer}>
-            <MaterialIcons name="search" size={20} color="#999" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search cost centers..."
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholderTextColor="#999"
-            />
-          </View>
+          <ScrollToOnFocusView>
+            <View style={styles.searchContainer}>
+              <MaterialIcons name="search" size={20} color="#999" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search cost centers..."
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholderTextColor="#999"
+              />
+            </View>
+          </ScrollToOnFocusView>
 
           {loading ? (
             <View style={styles.loadingState}>
@@ -115,13 +125,15 @@ function CostCenterSelector({
             </View>
           ) : (
             <>
-              <FlatList
-                data={filteredCostCenters}
-                renderItem={renderCostCenterItem}
-                keyExtractor={(item, index) => `${item}-${index}`}
-                style={styles.list}
-                showsVerticalScrollIndicator={false}
-              />
+              <KeyboardAwareScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+                <FlatList
+                  data={filteredCostCenters}
+                  renderItem={renderCostCenterItem}
+                  keyExtractor={(item, index) => `${item}-${index}`}
+                  style={styles.list}
+                  showsVerticalScrollIndicator={false}
+                />
+              </KeyboardAwareScrollView>
 
               {filteredCostCenters.length === 0 && !loading && (
                 <View style={styles.emptyState}>
@@ -135,6 +147,7 @@ function CostCenterSelector({
             </>
           )}
         </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -153,6 +166,9 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     minHeight: '60%',
     paddingBottom: 20,
+  },
+  keyboardAvoid: {
+    width: '100%',
   },
   header: {
     flexDirection: 'row',

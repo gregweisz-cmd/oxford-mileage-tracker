@@ -29,6 +29,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { setSyncMonthScope } from '../services/syncScopeService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface DailyHoursScreenProps {
   navigation: any;
@@ -900,7 +901,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
               )}
             </View>
 
-            <ScrollView
+            <KeyboardAwareScrollView
               style={styles.modalContent}
               contentContainerStyle={{ paddingBottom: hasUnsavedChanges ? 120 : 40 }}
               showsVerticalScrollIndicator={false}
@@ -1037,13 +1038,15 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                 )}
                 
                 {isDayOff && (
-                  <TextInput
-                    style={[styles.descriptionInput, styles.disabledInput]}
-                    value={dayOffType}
-                    editable={false}
-                    placeholder="Day Off"
-                    placeholderTextColor="#999"
-                  />
+                  <ScrollToOnFocusView>
+                    <TextInput
+                      style={[styles.descriptionInput, styles.disabledInput]}
+                      value={dayOffType}
+                      editable={false}
+                      placeholder="Day Off"
+                      placeholderTextColor="#999"
+                    />
+                  </ScrollToOnFocusView>
                 )}
               </View>
 
@@ -1054,36 +1057,40 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                   {(currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || []).map((cc) => (
                     <View key={cc} style={styles.inputRow}>
                       <Text style={styles.inputLabel} numberOfLines={1}>{cc}</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={timeTrackingInputs[`cc:${cc}`]?.toString() ?? '0'}
-                        onChangeText={(text) => {
-                          const value = parseFloat(text) || 0;
-                          markHoursDirty();
-                          setTimeTrackingInputs(prev => ({ ...prev, [`cc:${cc}`]: value }));
-                        }}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        selectTextOnFocus
-                      />
+                      <ScrollToOnFocusView>
+                        <TextInput
+                          style={styles.input}
+                          value={timeTrackingInputs[`cc:${cc}`]?.toString() ?? '0'}
+                          onChangeText={(text) => {
+                            const value = parseFloat(text) || 0;
+                            markHoursDirty();
+                            setTimeTrackingInputs(prev => ({ ...prev, [`cc:${cc}`]: value }));
+                          }}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          selectTextOnFocus
+                        />
+                      </ScrollToOnFocusView>
                     </View>
                   ))}
                   <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Other</Text>
                   {CATEGORY_HOURS_LABELS.map((category) => (
                     <View key={category} style={styles.inputRow}>
                       <Text style={styles.inputLabel}>{category}</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={timeTrackingInputs[category]?.toString() ?? '0'}
-                        onChangeText={(text) => {
-                          const value = parseFloat(text) || 0;
-                          markHoursDirty();
-                          setTimeTrackingInputs(prev => ({ ...prev, [category]: value }));
-                        }}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        selectTextOnFocus
-                      />
+                      <ScrollToOnFocusView>
+                        <TextInput
+                          style={styles.input}
+                          value={timeTrackingInputs[category]?.toString() ?? '0'}
+                          onChangeText={(text) => {
+                            const value = parseFloat(text) || 0;
+                            markHoursDirty();
+                            setTimeTrackingInputs(prev => ({ ...prev, [category]: value }));
+                          }}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          selectTextOnFocus
+                        />
+                      </ScrollToOnFocusView>
                     </View>
                   ))}
                   <View style={styles.totalSection}>
@@ -1106,7 +1113,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                   <Text style={styles.modalClearButtonText}>Clear Day</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
 
             {Platform.OS === 'ios' && hasUnsavedChanges && !isKeyboardVisible && !isNearModalBottom && (
               <View

@@ -38,6 +38,7 @@ export function KeyboardAwareScrollView({
   ...scrollViewProps
 }: KeyboardAwareScrollViewProps) {
   const scrollRef = useRef<ScrollView>(null);
+  const currentScrollYRef = useRef(0);
 
   const scrollFocusedInputIntoView = useCallback(() => {
     const currentlyFocusedInput =
@@ -55,6 +56,10 @@ export function KeyboardAwareScrollView({
   }, [focusScrollOffset]);
 
   useEffect(() => {
+    if (Platform.OS === 'android') {
+      // Android focus handlers already drive scroll; avoid competing keyboard-show scroll.
+      return;
+    }
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const keyboardShowSub = Keyboard.addListener(showEvent, () => {
       requestAnimationFrame(scrollFocusedInputIntoView);
@@ -67,8 +72,10 @@ export function KeyboardAwareScrollView({
   const scrollToFocusedInput = useCallback(
     (y: number) => {
       const offset = Math.max(0, y - focusScrollOffset);
+      // Never scroll backward on focus because stale layout values can push inputs under keyboard.
+      const nextY = Math.max(currentScrollYRef.current, offset);
       scrollRef.current?.scrollTo({
-        y: offset,
+        y: nextY,
         animated: Platform.OS !== 'android',
       });
     },
@@ -88,6 +95,13 @@ export function KeyboardAwareScrollView({
           ref={scrollRef}
           style={[{ flex: 1 }, style]}
           contentContainerStyle={contentContainerStyle}
+          onScroll={(e) => {
+            currentScrollYRef.current = e.nativeEvent.contentOffset.y;
+            if (typeof scrollViewProps.onScroll === 'function') {
+              scrollViewProps.onScroll(e);
+            }
+          }}
+          scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}

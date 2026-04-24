@@ -19,6 +19,7 @@ import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
 import * as Location from 'expo-location';
 import GooglePlacesAddressInput from './GooglePlacesAddressInput';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 
 interface SetupWizardProps {
   employee: Employee;
@@ -47,7 +48,6 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
   const [isSaving, setIsSaving] = useState(false);
   
   // Refs for keyboard handling
-  const scrollViewRef = useRef<ScrollView>(null);
   const baseAddressInputRef = useRef<TextInput>(null);
   const workStartHourInputRef = useRef<TextInput>(null);
   const workEndHourInputRef = useRef<TextInput>(null);
@@ -230,14 +230,16 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
         Enter your primary work location. This will be used as the starting point for mileage
         calculations.
       </Text>
-      <GooglePlacesAddressInput
-        value={baseAddress}
-        onChangeText={setBaseAddress}
-        placeholder="Enter base address..."
-        multiline
-        numberOfLines={3}
-        style={styles.textInput}
-      />
+      <ScrollToOnFocusView>
+        <GooglePlacesAddressInput
+          value={baseAddress}
+          onChangeText={setBaseAddress}
+          placeholder="Enter base address..."
+          multiline
+          numberOfLines={3}
+          style={styles.textInput}
+        />
+      </ScrollToOnFocusView>
       <TouchableOpacity style={styles.locationButton} onPress={handleGetCurrentLocation}>
         <MaterialIcons name="my-location" size={20} color="#2196F3" />
         <Text style={styles.locationButtonText}>Use Current Location</Text>
@@ -275,13 +277,15 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
           <>
             <View style={styles.searchContainer}>
               <MaterialIcons name="search" size={20} color="#999" />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search cost centers..."
-                placeholderTextColor="#999"
-                value={costCenterSearchText}
-                onChangeText={setCostCenterSearchText}
-              />
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search cost centers..."
+                  placeholderTextColor="#999"
+                  value={costCenterSearchText}
+                  onChangeText={setCostCenterSearchText}
+                />
+              </ScrollToOnFocusView>
               {costCenterSearchText.length > 0 && (
                 <TouchableOpacity onPress={() => setCostCenterSearchText('')}>
                   <MaterialIcons name="close" size={20} color="#999" />
@@ -339,21 +343,18 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
       <View style={styles.workHoursContainer}>
         <View style={styles.workHoursItem}>
           <Text style={styles.workHoursLabel}>Work Start Hour (0-23):</Text>
-          <TextInput
-            ref={workStartHourInputRef}
-            style={styles.workHoursInput}
-            placeholder="9"
-            placeholderTextColor="#999"
-            value={typicalWorkStartHour}
-            onChangeText={setTypicalWorkStartHour}
-            keyboardType="numeric"
-            maxLength={2}
-            onFocus={() => {
-              setTimeout(() => {
-                scrollViewRef.current?.scrollToEnd({ animated: true });
-              }, 300);
-            }}
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              ref={workStartHourInputRef}
+              style={styles.workHoursInput}
+              placeholder="9"
+              placeholderTextColor="#999"
+              value={typicalWorkStartHour}
+              onChangeText={setTypicalWorkStartHour}
+              keyboardType="numeric"
+              maxLength={2}
+            />
+          </ScrollToOnFocusView>
           {typicalWorkStartHour && !isNaN(parseInt(typicalWorkStartHour, 10)) && (
             <Text style={styles.workHoursDisplay}>
               ({parseInt(typicalWorkStartHour, 10) % 12 || 12}:00 {parseInt(typicalWorkStartHour, 10) >= 12 ? 'PM' : 'AM'})
@@ -362,21 +363,18 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
         </View>
         <View style={styles.workHoursItem}>
           <Text style={styles.workHoursLabel}>Work End Hour (0-23):</Text>
-          <TextInput
-            ref={workEndHourInputRef}
-            style={styles.workHoursInput}
-            placeholder="17"
-            placeholderTextColor="#999"
-            value={typicalWorkEndHour}
-            onChangeText={setTypicalWorkEndHour}
-            keyboardType="numeric"
-            maxLength={2}
-            onFocus={() => {
-              setTimeout(() => {
-                scrollViewRef.current?.scrollToEnd({ animated: true });
-              }, 300);
-            }}
-          />
+          <ScrollToOnFocusView>
+            <TextInput
+              ref={workEndHourInputRef}
+              style={styles.workHoursInput}
+              placeholder="17"
+              placeholderTextColor="#999"
+              value={typicalWorkEndHour}
+              onChangeText={setTypicalWorkEndHour}
+              keyboardType="numeric"
+              maxLength={2}
+            />
+          </ScrollToOnFocusView>
           {typicalWorkEndHour && !isNaN(parseInt(typicalWorkEndHour, 10)) && (
             <Text style={styles.workHoursDisplay}>
               ({parseInt(typicalWorkEndHour, 10) % 12 || 12}:00 {parseInt(typicalWorkEndHour, 10) >= 12 ? 'PM' : 'AM'})
@@ -395,20 +393,17 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
       <Text style={styles.stepDescription}>
         Enter your current vehicle odometer reading. This step is optional and can be skipped.
       </Text>
-      <TextInput
-        ref={odometerInputRef}
-        style={styles.textInput}
-        placeholder="Enter odometer reading..."
-        placeholderTextColor="#999"
-        value={initialOdometer}
-        onChangeText={setInitialOdometer}
-        keyboardType="numeric"
-        onFocus={() => {
-          setTimeout(() => {
-            scrollViewRef.current?.scrollToEnd({ animated: true });
-          }, 300);
-        }}
-      />
+      <ScrollToOnFocusView>
+        <TextInput
+          ref={odometerInputRef}
+          style={styles.textInput}
+          placeholder="Enter odometer reading..."
+          placeholderTextColor="#999"
+          value={initialOdometer}
+          onChangeText={setInitialOdometer}
+          keyboardType="numeric"
+        />
+      </ScrollToOnFocusView>
       <Text style={styles.hintText}>
         You can add this later from the Home screen if needed.
       </Text>
@@ -480,8 +475,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
             Step {currentStep + 1} of {steps.length}
           </Text>
 
-          <ScrollView
-            ref={scrollViewRef}
+          <KeyboardAwareScrollView
             style={styles.content}
             contentContainerStyle={{
               paddingBottom: 24,
@@ -492,7 +486,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
             nestedScrollEnabled
           >
             {renderStepContent()}
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             {currentStep > 0 && (

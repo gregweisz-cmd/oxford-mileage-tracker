@@ -17,6 +17,7 @@ import { LocationDetails, Employee } from '../types';
 import { DatabaseService } from '../services/database';
 import GooglePlacesAddressInput from './GooglePlacesAddressInput';
 import { GooglePlacesService } from '../services/googlePlacesService';
+import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 
 interface LocationCaptureModalProps {
   visible: boolean;
@@ -162,7 +163,7 @@ export default function LocationCaptureModal({
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>{title}</Text>
           
-          <ScrollView
+          <KeyboardAwareScrollView
             style={styles.modalScrollView}
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
@@ -170,41 +171,45 @@ export default function LocationCaptureModal({
           >
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Location Name *</Text>
-            <TextInput
-              style={styles.input}
-              value={locationName}
-              onChangeText={setLocationName}
-              placeholder="e.g., Office, Client Site, Home"
-              placeholderTextColor="#999"
-            />
+            <ScrollToOnFocusView>
+              <TextInput
+                style={styles.input}
+                value={locationName}
+                onChangeText={setLocationName}
+                placeholder="e.g., Office, Client Site, Home"
+                placeholderTextColor="#999"
+              />
+            </ScrollToOnFocusView>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Address *</Text>
-            <GooglePlacesAddressInput
-              value={locationAddress}
-              onChangeText={setLocationAddress}
-              placeholder="Enter or confirm the address..."
-              multiline={true}
-              numberOfLines={3}
-              onPlaceSelected={(details) => {
-                setLocationAddress(details.formattedAddress);
-                if (details.latitude && details.longitude) {
-                  setCurrentLocation({
-                    coords: {
-                      latitude: details.latitude,
-                      longitude: details.longitude,
-                      altitude: null,
-                      accuracy: null,
-                      altitudeAccuracy: null,
-                      heading: null,
-                      speed: null,
-                    },
-                    timestamp: Date.now(),
-                  } as any);
-                }
-              }}
-            />
+            <ScrollToOnFocusView>
+              <GooglePlacesAddressInput
+                value={locationAddress}
+                onChangeText={setLocationAddress}
+                placeholder="Enter or confirm the address..."
+                multiline={true}
+                numberOfLines={3}
+                onPlaceSelected={(details) => {
+                  setLocationAddress(details.formattedAddress);
+                  if (details.latitude && details.longitude) {
+                    setCurrentLocation({
+                      coords: {
+                        latitude: details.latitude,
+                        longitude: details.longitude,
+                        altitude: null,
+                        accuracy: null,
+                        altitudeAccuracy: null,
+                        heading: null,
+                        speed: null,
+                      },
+                      timestamp: Date.now(),
+                    } as any);
+                  }
+                }}
+              />
+            </ScrollToOnFocusView>
             <Text style={styles.helpText}>
               Confirm the street number before saving this location.
             </Text>
@@ -279,7 +284,7 @@ export default function LocationCaptureModal({
               </View>
             )}
           </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
           
           <View style={styles.modalButtons}>
             <TouchableOpacity
