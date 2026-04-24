@@ -42,8 +42,11 @@ export function KeyboardAwareScrollView({
   const scrollRef = useRef<ScrollView>(null);
   const currentScrollYRef = useRef(0);
   const lastFocusHandledAtRef = useRef(0);
+  const lastFocusStartScrollYRef = useRef(0);
 
   const scrollInputHandleIntoView = useCallback((target?: number | null) => {
+    const focusStartY = currentScrollYRef.current;
+    lastFocusStartScrollYRef.current = focusStartY;
     const fallbackFocusedInput =
       (TextInput.State as any)?.currentlyFocusedInput?.() ||
       (TextInput.State as any)?.currentlyFocusedField?.();
@@ -56,6 +59,13 @@ export function KeyboardAwareScrollView({
         focusScrollOffset,
         true
       );
+      // Guard against regression where focusing an already-visible field
+      // scrolls downward and hides it under the keyboard.
+      setTimeout(() => {
+        if (currentScrollYRef.current < focusStartY) {
+          scrollRef.current?.scrollTo({ y: focusStartY, animated: false });
+        }
+      }, 140);
     }
   }, [focusScrollOffset]);
 
