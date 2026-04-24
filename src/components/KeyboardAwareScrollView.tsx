@@ -22,6 +22,7 @@ type KeyboardAwareScrollViewProps = ScrollViewProps & {
 
 const ScrollToOnFocusContext = React.createContext<{
   scrollToY: (y: number) => void;
+  scrollFocusedInputIntoView: () => void;
   notifyFocusHandled: () => void;
 } | null>(null);
 
@@ -90,8 +91,12 @@ export function KeyboardAwareScrollView({
   }, []);
 
   const contextValue = useMemo(
-    () => ({ scrollToY: scrollToFocusedInput, notifyFocusHandled }),
-    [scrollToFocusedInput, notifyFocusHandled]
+    () => ({
+      scrollToY: scrollToFocusedInput,
+      scrollFocusedInputIntoView,
+      notifyFocusHandled,
+    }),
+    [scrollToFocusedInput, scrollFocusedInputIntoView, notifyFocusHandled]
   );
 
   return (
@@ -130,8 +135,7 @@ const FOCUS_SCROLL_DELAY_MS = 100;
  * On Android: scroll when keyboard is shown (keyboardDidShow) and with delayed fallbacks
  * using the Y from onLayout. Avoids measureLayout which can trigger ref warnings.
  */
-function scheduleScrollAndroid(scrollToY: (y: number) => void, y: number) {
-  const doScroll = () => scrollToY(y);
+function scheduleScrollAndroid(doScroll: () => void) {
 
   const sub = Keyboard.addListener('keyboardDidShow', () => {
     sub.remove();
@@ -170,9 +174,18 @@ export function ScrollToOnFocusView({ children }: { children: React.ReactNode })
       if (ctx) {
         ctx.notifyFocusHandled();
         if (Platform.OS === 'android') {
-          scheduleScrollAndroid(ctx.scrollToY, yRef.current);
+          // Prefer native focused-input scrolling so multiline/taller fields behave
+          // exactly like single-line inputs. Keep wrapper Y as a fallback.
+          const doScroll = () => {
+            ctx.scrollFocusedInputIntoView();
+            ctx.scrollToY(yRef.current);
+          };
+          scheduleScrollAndroid(doScroll);
         } else {
-          setTimeout(scrollToFocused, FOCUS_SCROLL_DELAY_MS);
+          setTimeout(() => {
+            ctx.scrollFocusedInputIntoView();
+            scrollToFocused();
+          }, FOCUS_SCROLL_DELAY_MS);
         }
       }
       const arr = React.Children.toArray(children);
