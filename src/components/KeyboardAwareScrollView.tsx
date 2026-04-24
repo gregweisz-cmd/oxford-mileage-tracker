@@ -22,6 +22,7 @@ type KeyboardAwareScrollViewProps = ScrollViewProps & {
 
 const ScrollToOnFocusContext = React.createContext<{
   scrollToY: (y: number) => void;
+  notifyFocusHandled: () => void;
 } | null>(null);
 
 /**
@@ -39,6 +40,7 @@ export function KeyboardAwareScrollView({
 }: KeyboardAwareScrollViewProps) {
   const scrollRef = useRef<ScrollView>(null);
   const currentScrollYRef = useRef(0);
+  const lastFocusHandledAtRef = useRef(0);
 
   const scrollFocusedInputIntoView = useCallback(() => {
     const currentlyFocusedInput =
@@ -56,12 +58,13 @@ export function KeyboardAwareScrollView({
   }, [focusScrollOffset]);
 
   useEffect(() => {
-    if (Platform.OS === 'android') {
-      // Android focus handlers already drive scroll; avoid competing keyboard-show scroll.
-      return;
-    }
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const keyboardShowSub = Keyboard.addListener(showEvent, () => {
+      // On Android, skip keyboard-show auto-scroll when we just handled focus-driven scroll.
+      // This avoids the previous double-scroll conflict while still helping unwrapped inputs.
+      if (Platform.OS === 'android' && Date.now() - lastFocusHandledAtRef.current < 900) {
+        return;
+      }
       requestAnimationFrame(scrollFocusedInputIntoView);
     });
     return () => {
@@ -82,7 +85,14 @@ export function KeyboardAwareScrollView({
     [focusScrollOffset]
   );
 
-  const contextValue = useMemo(() => ({ scrollToY: scrollToFocusedInput }), [scrollToFocusedInput]);
+  const notifyFocusHandled = useCallback(() => {
+    lastFocusHandledAtRef.current = Date.now();
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({ scrollToY: scrollToFocusedInput, notifyFocusHandled }),
+    [scrollToFocusedInput, notifyFocusHandled]
+  );
 
   return (
     <ScrollToOnFocusContext.Provider value={contextValue}>
@@ -158,6 +168,7 @@ export function ScrollToOnFocusView({ children }: { children: React.ReactNode })
   const handleFocus = useCallback(
     (e: NativeSyntheticEvent<TextInputFocusEventData>) => {
       if (ctx) {
+        ctx.notifyFocusHandled();
         if (Platform.OS === 'android') {
           scheduleScrollAndroid(ctx.scrollToY, yRef.current);
         } else {

@@ -9,7 +9,6 @@ import {
   Modal,
   TextInput,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -67,7 +66,12 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
       await DatabaseService.initDatabase();
       
       // Get current employee
-      const employee = await DatabaseService.getCurrentEmployee();
+      let employee = await DatabaseService.getCurrentEmployee();
+      if (!employee) {
+        // First open after navigation can race app/session hydration; retry once before backing out.
+        await new Promise(resolve => setTimeout(resolve, 300));
+        employee = await DatabaseService.getCurrentEmployee();
+      }
       
       if (!employee) {
         Alert.alert('Error', 'No employee logged in');
@@ -450,22 +454,20 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
         resetForm();
       }}
     >
-      <KeyboardAvoidingView
-        style={styles.modalKeyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.modalOverlay}
+        keyboardShouldPersistTaps="handled"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
       >
-      <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>
             {editingAddress ? 'Edit Address' : 'Add New Address'}
           </Text>
-          <KeyboardAwareScrollView
+          <ScrollView
             style={styles.modalScroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 8 }}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
           >
           <ScrollToOnFocusView>
             <TextInput
@@ -583,10 +585,9 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
               </Text>
             </TouchableOpacity>
           </View>
-          </KeyboardAwareScrollView>
+          </ScrollView>
         </View>
-      </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </Modal>
   );
 
