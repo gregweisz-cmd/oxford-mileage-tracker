@@ -66,6 +66,11 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
       if (nextState === 'active' && GpsTrackingService.isTracking()) {
         await GpsTrackingService.syncFromStorage();
         refreshTrackingStatus();
+        const hasPendingAlert = await GpsTrackingService.hasPendingStationaryAlert();
+        if (hasPendingAlert) {
+          setShowStationaryPrompt(true);
+          await GpsTrackingService.consumeStationaryAlertPrompt();
+        }
       }
     });
     return () => sub.remove();
@@ -96,9 +101,11 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
         const type = (response.notification.request.content.data as any)?.type;
         if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_END) {
           setShowStationaryPrompt(false);
+          void GpsTrackingService.consumeStationaryAlertPrompt();
           requestStopTracking();
         } else if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_KEEP) {
           setShowStationaryPrompt(false);
+          void GpsTrackingService.consumeStationaryAlertPrompt();
         } else if (type === 'gps_stationary') {
           void openStationaryPrompt();
         }

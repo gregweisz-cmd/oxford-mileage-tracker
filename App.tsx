@@ -47,8 +47,9 @@ const Stack = createStackNavigator<RootStackParamList>();
 
 /** Overlay for GPS buttons; uses pointerEvents="none" on GPS Start so scroll works */
 function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteName: string; navigationRef: React.RefObject<any> }) {
-  const { isTracking, restoredTrackingOnLaunch } = useGpsTracking();
+  const { isTracking, restoredTrackingOnLaunch, shouldShowEndLocationModal } = useGpsTracking();
   const hasNavigatedForRestore = useRef(false);
+  const hasNavigatedForStopRequestRef = useRef(false);
   const passThroughOnGpsScreen = currentRouteName === 'GpsTracking' && !isTracking;
 
   // When we restored a session after app was killed, navigate back to GpsTracking
@@ -58,6 +59,21 @@ function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteNam
       navigationRef.current.navigate('GpsTracking');
     }
   }, [isTracking, restoredTrackingOnLaunch, currentRouteName, navigationRef]);
+
+  // Ensure stop requests originating outside the GPS screen (e.g. stationary modal/notifications)
+  // always bring users to the GPS screen where the end-location flow can complete.
+  useEffect(() => {
+    if (!shouldShowEndLocationModal) {
+      hasNavigatedForStopRequestRef.current = false;
+      return;
+    }
+    if (!navigationRef.current) return;
+    if (currentRouteName === 'GpsTracking') return;
+    if (hasNavigatedForStopRequestRef.current) return;
+
+    hasNavigatedForStopRequestRef.current = true;
+    navigationRef.current.navigate('GpsTracking', { showEndModal: true });
+  }, [shouldShowEndLocationModal, currentRouteName, navigationRef]);
 
   return (
     <View

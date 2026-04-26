@@ -175,8 +175,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   useFocusEffect(
     React.useCallback(() => {
       // Check if we should show end modal (from route params)
-      if (route?.params?.showEndModal && isTrackingRef.current) {
-        setShowEndLocationOptionsModal(true);
+      if (route?.params?.showEndModal) {
+        if (isTrackingRef.current) {
+          openEndLocationOptions();
+        } else {
+          Alert.alert('No active trip', 'There is no active GPS trip to end right now.');
+        }
         // Clear the param so it doesn't show again on next focus
         navigation.setParams({ showEndModal: false });
       } else {

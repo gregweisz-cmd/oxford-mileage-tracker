@@ -113,6 +113,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     if (typeof state.lastLocationTimestamp === 'undefined') {
       state.lastLocationTimestamp = now;
     }
+    await StationaryNotificationService.initialize();
 
     const hasTraveledMeaningfully = state.totalDistance >= MIN_TRIP_DISTANCE_FOR_STATIONARY_ALERT_MILES;
     if (isDrivingLikeSpeed) {
@@ -154,7 +155,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       if (hasExceededStationaryThreshold && cooldownComplete && !state.stationaryAlertPending) {
         state.stationaryAlertPending = true;
         await StationaryNotificationService.scheduleStationaryAlert(state.session.id);
-        state.stationaryAlertPending = false;
         state.stationaryAlertLastPromptAt = now;
         await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
         state.stationaryAlertScheduledId = null;
