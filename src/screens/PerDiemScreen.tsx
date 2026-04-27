@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -128,8 +128,23 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [eligibilityReady, setEligibilityReady] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollToTodayPendingRef = useRef(false);
+  const dayCardYByDateKeyRef = useRef<Record<string, number>>({});
   /** Incremented so stale eligibility results are ignored if user changes month quickly */
   const eligibilityLoadGenerationRef = useRef(0);
+  const registerDayCardLayout = useCallback((dateKey: string, y: number) => {
+    dayCardYByDateKeyRef.current[dateKey] = y;
+  }, []);
+
+  const scrollToDateKey = useCallback((dateKey: string, animated: boolean) => {
+    const y = dayCardYByDateKeyRef.current[dateKey];
+    if (typeof y !== 'number') return false;
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(0, y - 12),
+      animated,
+    });
+    return true;
+  }, []);
+
 
   useEffect(() => {
     setSyncMonthScope(currentMonth.getMonth() + 1, currentMonth.getFullYear());
@@ -679,12 +694,15 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       scrollToTodayPendingRef.current = true;
       return;
     }
-    const dayIndex = now.getDate() - 1;
-    const estimatedRowHeight = 100;
-    scrollViewRef.current?.scrollTo({
-      y: Math.max(0, dayIndex * estimatedRowHeight),
-      animated: true,
-    });
+    const dateKey = toLocalDateKey(now);
+    if (!scrollToDateKey(dateKey, true)) {
+      // Fallback only before layout positions are available.
+      const dayIndex = now.getDate() - 1;
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(0, dayIndex * 92),
+        animated: true,
+      });
+    }
   };
 
   useEffect(() => {
@@ -695,15 +713,18 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       currentMonth.getFullYear() === now.getFullYear();
     if (!isCurrent) return;
     scrollToTodayPendingRef.current = false;
-    const dayIndex = now.getDate() - 1;
     const id = setTimeout(() => {
-      scrollViewRef.current?.scrollTo({
-        y: Math.max(0, dayIndex * 100),
-        animated: true,
-      });
+      const dateKey = toLocalDateKey(now);
+      if (!scrollToDateKey(dateKey, true)) {
+        const dayIndex = now.getDate() - 1;
+        scrollViewRef.current?.scrollTo({
+          y: Math.max(0, dayIndex * 92),
+          animated: true,
+        });
+      }
     }, 200);
     return () => clearTimeout(id);
-  }, [loading, currentMonth]);
+  }, [loading, currentMonth, scrollToDateKey]);
 
   if (loading) {
     return (
@@ -822,7 +843,11 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
           const isEligibleByRule = dayEligibility?.isEligible ?? false;
           
           return (
-            <View key={dateKey} style={styles.dayCard}>
+            <View
+              key={dateKey}
+              style={styles.dayCard}
+              onLayout={(e) => registerDayCardLayout(dateKey, e.nativeEvent.layout.y)}
+            >
               <View style={styles.dayHeader}>
                 <View>
                   <Text style={styles.dayDate}>{formatDate(date)}</Text>
