@@ -61,6 +61,8 @@ import {
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 import { debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
+import { toCanonicalAddress } from '../utils/locationSelection';
+import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
 
 interface Employee {
   id: string;
@@ -393,6 +395,19 @@ const EmployeeManagement: React.FC = () => {
     resetForm();
   };
 
+  const updateBaseAddressPart = (
+    field: 'baseAddress' | 'baseAddress2',
+    part: 'street' | 'city' | 'state' | 'zip',
+    value: string
+  ) => {
+    const parsed = parseBaseAddress(formData[field] || '');
+    const next = { ...parsed, [part]: value };
+    setFormData({
+      ...formData,
+      [field]: formatBaseAddress(next.street, next.city, next.state, next.zip),
+    });
+  };
+
   const handleSave = async () => {
     setLoading(true);
     setError(null);
@@ -415,8 +430,8 @@ const EmployeeManagement: React.FC = () => {
         email: formData.email.trim().toLowerCase(),
         position: formData.position.trim(),
         phoneNumber: formData.phoneNumber.trim(),
-        baseAddress: formData.baseAddress.trim(),
-        baseAddress2: formData.baseAddress2.trim(),
+        baseAddress: toCanonicalAddress(formData.baseAddress),
+        baseAddress2: toCanonicalAddress(formData.baseAddress2),
         costCenters: JSON.stringify(formData.costCenters),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -1007,29 +1022,78 @@ const EmployeeManagement: React.FC = () => {
               margin="normal"
             />
             
-            <GooglePlacesTextField
-              fullWidth
-              label="Base Address *"
-              multiline
-              rows={3}
-              value={formData.baseAddress}
-              onChange={(value) => setFormData({ ...formData, baseAddress: value })}
-              onPlaceSelected={(address) => setFormData({ ...formData, baseAddress: address })}
-              margin="normal"
-              required
-            />
-            
-            <GooglePlacesTextField
-              fullWidth
-              label="Base Address 2"
-              multiline
-              rows={2}
-              value={formData.baseAddress2}
-              onChange={(value) => setFormData({ ...formData, baseAddress2: value })}
-              onPlaceSelected={(address) => setFormData({ ...formData, baseAddress2: address })}
-              margin="normal"
-              placeholder="Additional address line (optional)"
-            />
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                Base Address *
+              </Typography>
+              <GooglePlacesTextField
+                fullWidth
+                label="Street Address"
+                value={parseBaseAddress(formData.baseAddress || '').street}
+                onChange={(value) => updateBaseAddressPart('baseAddress', 'street', value)}
+                onPlaceSelected={(address) => setFormData({ ...formData, baseAddress: toCanonicalAddress(address) })}
+                margin="dense"
+                required
+              />
+              <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5 }}>
+                <TextField
+                  label="City"
+                  value={parseBaseAddress(formData.baseAddress || '').city}
+                  onChange={(e) => updateBaseAddressPart('baseAddress', 'city', e.target.value)}
+                  fullWidth
+                  required
+                />
+                <TextField
+                  label="State"
+                  value={parseBaseAddress(formData.baseAddress || '').state}
+                  onChange={(e) => updateBaseAddressPart('baseAddress', 'state', e.target.value.toUpperCase().slice(0, 2))}
+                  sx={{ width: 100 }}
+                  required
+                />
+                <TextField
+                  label="ZIP"
+                  value={parseBaseAddress(formData.baseAddress || '').zip}
+                  onChange={(e) => updateBaseAddressPart('baseAddress', 'zip', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  sx={{ width: 130 }}
+                  required
+                />
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                Base Address 2
+              </Typography>
+              <GooglePlacesTextField
+                fullWidth
+                label="Street Address"
+                value={parseBaseAddress(formData.baseAddress2 || '').street}
+                onChange={(value) => updateBaseAddressPart('baseAddress2', 'street', value)}
+                onPlaceSelected={(address) => setFormData({ ...formData, baseAddress2: toCanonicalAddress(address) })}
+                margin="dense"
+                placeholder="Optional"
+              />
+              <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5 }}>
+                <TextField
+                  label="City"
+                  value={parseBaseAddress(formData.baseAddress2 || '').city}
+                  onChange={(e) => updateBaseAddressPart('baseAddress2', 'city', e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label="State"
+                  value={parseBaseAddress(formData.baseAddress2 || '').state}
+                  onChange={(e) => updateBaseAddressPart('baseAddress2', 'state', e.target.value.toUpperCase().slice(0, 2))}
+                  sx={{ width: 100 }}
+                />
+                <TextField
+                  label="ZIP"
+                  value={parseBaseAddress(formData.baseAddress2 || '').zip}
+                  onChange={(e) => updateBaseAddressPart('baseAddress2', 'zip', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  sx={{ width: 130 }}
+                />
+              </Box>
+            </Box>
             
             <FormControl fullWidth margin="normal">
               <InputLabel>Cost Centers</InputLabel>

@@ -56,6 +56,8 @@ import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
+import { toCanonicalAddress } from '../utils/locationSelection';
+import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -730,6 +732,31 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setDefaultCostCenter('Program Services');
     setShowEmployeeDialog(true);
     setShowEmployeeCostCenterDropdown(true); // Open dropdown by default
+  };
+
+  const updateEditingEmployeeBaseAddressPart = (
+    part: 'street' | 'city' | 'state' | 'zip',
+    value: string
+  ) => {
+    if (!editingEmployee) return;
+    const parsed = parseBaseAddress(editingEmployee.baseAddress || '');
+    const next = { ...parsed, [part]: value };
+    setEditingEmployee({
+      ...editingEmployee,
+      baseAddress: formatBaseAddress(next.street, next.city, next.state, next.zip),
+    });
+  };
+
+  const updateBulkBaseAddressPart = (
+    part: 'street' | 'city' | 'state' | 'zip',
+    value: string
+  ) => {
+    const parsed = parseBaseAddress((bulkEditData.baseAddress as string) || '');
+    const next = { ...parsed, [part]: value };
+    setBulkEditData({
+      ...bulkEditData,
+      baseAddress: formatBaseAddress(next.street, next.city, next.state, next.zip),
+    });
   };
 
   const handleSaveEmployee = async () => {
@@ -1733,19 +1760,38 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   />
                 </Box>
                 
-                <GooglePlacesTextField
-                  fullWidth
-                  label="Base Address"
-                  value={editingEmployee.baseAddress}
-                  onChange={(value) => setEditingEmployee({
-                    ...editingEmployee,
-                    baseAddress: value
-                  })}
-                  onPlaceSelected={(address) => setEditingEmployee({
-                    ...editingEmployee,
-                    baseAddress: address
-                  })}
-                />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <GooglePlacesTextField
+                    fullWidth
+                    label="Street Address"
+                    value={parseBaseAddress(editingEmployee.baseAddress || '').street}
+                    onChange={(value) => updateEditingEmployeeBaseAddressPart('street', value)}
+                    onPlaceSelected={(address) => setEditingEmployee({
+                      ...editingEmployee,
+                      baseAddress: toCanonicalAddress(address)
+                    })}
+                  />
+                  <Box sx={{ display: 'flex', gap: 1.5 }}>
+                    <TextField
+                      fullWidth
+                      label="City"
+                      value={parseBaseAddress(editingEmployee.baseAddress || '').city}
+                      onChange={(e) => updateEditingEmployeeBaseAddressPart('city', e.target.value)}
+                    />
+                    <TextField
+                      label="State"
+                      value={parseBaseAddress(editingEmployee.baseAddress || '').state}
+                      onChange={(e) => updateEditingEmployeeBaseAddressPart('state', e.target.value.toUpperCase().slice(0, 2))}
+                      sx={{ width: 100 }}
+                    />
+                    <TextField
+                      label="ZIP"
+                      value={parseBaseAddress(editingEmployee.baseAddress || '').zip}
+                      onChange={(e) => updateEditingEmployeeBaseAddressPart('zip', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      sx={{ width: 130 }}
+                    />
+                  </Box>
+                </Box>
                 
                 {/* Supervisor Assignment */}
                 <FormControl fullWidth>
@@ -2012,20 +2058,38 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               </Select>
             </FormControl>
             
-            <GooglePlacesTextField
-              fullWidth
-              label="Base Address"
-              value={bulkEditData.baseAddress || ''}
-              onChange={(value) => setBulkEditData({
-                ...bulkEditData,
-                baseAddress: value
-              })}
-              onPlaceSelected={(address) => setBulkEditData({
-                ...bulkEditData,
-                baseAddress: address
-              })}
-              sx={{ mb: 2 }}
-            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
+              <GooglePlacesTextField
+                fullWidth
+                label="Street Address"
+                value={parseBaseAddress((bulkEditData.baseAddress as string) || '').street}
+                onChange={(value) => updateBulkBaseAddressPart('street', value)}
+                onPlaceSelected={(address) => setBulkEditData({
+                  ...bulkEditData,
+                  baseAddress: toCanonicalAddress(address)
+                })}
+              />
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <TextField
+                  fullWidth
+                  label="City"
+                  value={parseBaseAddress((bulkEditData.baseAddress as string) || '').city}
+                  onChange={(e) => updateBulkBaseAddressPart('city', e.target.value)}
+                />
+                <TextField
+                  label="State"
+                  value={parseBaseAddress((bulkEditData.baseAddress as string) || '').state}
+                  onChange={(e) => updateBulkBaseAddressPart('state', e.target.value.toUpperCase().slice(0, 2))}
+                  sx={{ width: 100 }}
+                />
+                <TextField
+                  label="ZIP"
+                  value={parseBaseAddress((bulkEditData.baseAddress as string) || '').zip}
+                  onChange={(e) => updateBulkBaseAddressPart('zip', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  sx={{ width: 130 }}
+                />
+              </Box>
+            </Box>
             
             {/* Supervisor Assignment */}
             <FormControl fullWidth sx={{ mb: 2 }}>

@@ -49,6 +49,7 @@ import { debugLog, debugError } from '../config/debug';
 import { formatAddressFromParts, parseAddressToParts, emptyAddressParts } from '../utils/addressFormatter';
 import type { AddressParts } from '../utils/addressFormatter';
 import GooglePlacesTextField from './GooglePlacesTextField';
+import { makeCanonicalLocationSelection } from '../utils/locationSelection';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
@@ -329,14 +330,22 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
 
   const handleSelectAddress = (address: string, locationData?: { name?: string }) => {
     debugLog('📍 MileageEntryForm: Address selected:', address, 'Type:', addressSelectorType);
-    const parts = parseAddressToParts(address);
-    const name = locationData?.name?.trim() || '';
+    const selection = makeCanonicalLocationSelection({
+      name: locationData?.name,
+      address,
+      source: (locationData as any)?.source,
+      sourceId: (locationData as any)?.sourceId,
+      latitude: (locationData as any)?.latitude,
+      longitude: (locationData as any)?.longitude,
+    });
+    const parts = parseAddressToParts(selection.address);
+    const name = selection.name;
     if (addressSelectorType === 'start') {
-      setFormData(prev => ({ ...prev, startLocation: address, startLocationName: name || prev.startLocationName }));
+      setFormData(prev => ({ ...prev, startLocation: selection.address, startLocationName: name || prev.startLocationName }));
       setStartAddressParts(parts);
       setErrors(prev => ({ ...prev, startLocation: '' }));
     } else {
-      setFormData(prev => ({ ...prev, endLocation: address, endLocationName: name || prev.endLocationName }));
+      setFormData(prev => ({ ...prev, endLocation: selection.address, endLocationName: name || prev.endLocationName }));
       setEndAddressParts(parts);
       setErrors(prev => ({ ...prev, endLocation: '' }));
     }

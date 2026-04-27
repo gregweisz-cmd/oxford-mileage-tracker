@@ -19,7 +19,7 @@ const { uploadLimiter } = require('../middleware/rateLimiter');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { checkAndNotify50PlusHours } = require('../services/notificationService');
 const websocketService = require('../services/websocketService');
-const { normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
+const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
 
 // Set up uploads directory and multer (use UPLOAD_DIR on Render persistent disk)
 const uploadsDir = config.upload.directory;
@@ -161,9 +161,9 @@ router.post('/api/mileage-entries', (req, res) => {
   // If address is missing but location name exists, use name as fallback for address
   // This ensures addresses are always populated when location names are provided
   const normalizedStartLocationName = startLocationName || startLocation || '';
-  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
+  const normalizedStartLocationAddress = normalizeAddressLine(startLocationAddress || startLocation || '');
   const normalizedEndLocationName = endLocationName || endLocation || '';
-  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
+  const normalizedEndLocationAddress = normalizeAddressLine(endLocationAddress || endLocation || '');
 
   // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
   db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {
@@ -177,10 +177,10 @@ router.post('/api/mileage-entries', (req, res) => {
     const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
     const finalStartLocation = normStart ? normStart.display : (startLocation || '');
     const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
-    const finalStartAddr = normStart ? normStart.address : normalizedStartLocationAddress;
+    const finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
     const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
     const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
-    const finalEndAddr = normEnd ? normEnd.address : normalizedEndLocationAddress;
+    const finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
 
   // Check if entry with this ID already exists
   db.get('SELECT id, sortOrder FROM mileage_entries WHERE id = ?', [entryId], (checkErr, existingRow) => {
@@ -303,9 +303,9 @@ router.put('/api/mileage-entries/:id', (req, res) => {
   // Normalize manual entry locations into name/address fields if missing
   // This ensures addresses are always populated when location names are provided
   const normalizedStartLocationName = startLocationName || startLocation || '';
-  const normalizedStartLocationAddress = startLocationAddress || startLocation || '';
+  const normalizedStartLocationAddress = normalizeAddressLine(startLocationAddress || startLocation || '');
   const normalizedEndLocationName = endLocationName || endLocation || '';
-  const normalizedEndLocationAddress = endLocationAddress || endLocation || '';
+  const normalizedEndLocationAddress = normalizeAddressLine(endLocationAddress || endLocation || '');
 
   // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
   db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {
@@ -319,10 +319,10 @@ router.put('/api/mileage-entries/:id', (req, res) => {
     const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
     const finalStartLocation = normStart ? normStart.display : (startLocation || '');
     const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
-    const finalStartAddr = normStart ? normStart.address : normalizedStartLocationAddress;
+    const finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
     const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
     const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
-    const finalEndAddr = normEnd ? normEnd.address : normalizedEndLocationAddress;
+    const finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
 
   db.run(
     'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',

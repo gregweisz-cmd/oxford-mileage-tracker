@@ -160,6 +160,7 @@ interface TeamReport {
   currentApproverId?: string | null;
   currentApproverName?: string | null;
   escalationDueAt?: string | null;
+  submissionType?: string;
 }
 
 interface SupervisorComment {
@@ -305,6 +306,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           currentApproverId: report.currentApproverId ?? null,
           currentApproverName: report.currentApproverName ?? null,
           escalationDueAt: report.escalationDueAt ?? null,
+          submissionType: report.submissionType || reportData.submissionType || 'monthly_submission',
         };
       });
 
@@ -369,7 +371,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   }, [calculateDashboardStats]);
 
   const handleApproveReport = async (reportId: string) => {
-    if (!supervisorCertificationAcknowledged) {
+    const report = teamReports.find((r) => r.id === reportId);
+    const requiresSupervisorCertification = (report?.submissionType || '').toLowerCase() !== 'weekly_checkup';
+
+    if (requiresSupervisorCertification && !supervisorCertificationAcknowledged) {
       alert('Please acknowledge the certification statement before approving the report.');
       return;
     }
@@ -383,7 +388,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           action: 'approve',
           approverId: supervisorId,
           approverName: supervisorName,
-          supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
+          supervisorCertificationAcknowledged: requiresSupervisorCertification ? supervisorCertificationAcknowledged : false,
         }),
       });
 
@@ -481,8 +486,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       return;
     }
     
+    const requiresSupervisorCertification = (report.submissionType || '').toLowerCase() !== 'weekly_checkup';
+
     // Check if supervisor certification is acknowledged
-    if (!supervisorCertificationAcknowledged) {
+    if (requiresSupervisorCertification && !supervisorCertificationAcknowledged) {
       const shouldAcknowledge = window.confirm('Please acknowledge the certification statement before approving. Would you like to acknowledge now?');
       if (shouldAcknowledge) {
         setSupervisorCertificationAcknowledged(true);
@@ -506,7 +513,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           action: 'approve',
           approverId: supervisorId,
           approverName: supervisorName,
-          supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
+          supervisorCertificationAcknowledged: requiresSupervisorCertification ? supervisorCertificationAcknowledged : false,
         }),
       });
 
@@ -1578,24 +1585,25 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                 </>
               )}
 
-              {/* Certification Statement */}
-              <Box sx={{ mt: 3, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
-                <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
-                  By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
-                </Typography>
-                
-                {/* Supervisor Acknowledgment Checkbox */}
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Checkbox
-                    checked={supervisorCertificationAcknowledged}
-                    onChange={(e) => setSupervisorCertificationAcknowledged(e.target.checked)}
-                    size="small"
-                  />
-                  <Typography variant="body2" component="div">
-                    Supervisor: I have read and agree to the certification statement above
+              {(selectedReport?.submissionType || '').toLowerCase() !== 'weekly_checkup' && (
+                <Box sx={{ mt: 3, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
+                  <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
+                    By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
                   </Typography>
+                  
+                  {/* Supervisor Acknowledgment Checkbox */}
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Checkbox
+                      checked={supervisorCertificationAcknowledged}
+                      onChange={(e) => setSupervisorCertificationAcknowledged(e.target.checked)}
+                      size="small"
+                    />
+                    <Typography variant="body2" component="div">
+                      Supervisor: I have read and agree to the certification statement above
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
+              )}
 
               <Box sx={{ mt: 3, mb: 2 }}>
                 <Button

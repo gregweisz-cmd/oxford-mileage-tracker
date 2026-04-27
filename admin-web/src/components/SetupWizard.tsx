@@ -31,56 +31,12 @@ import {
 import SignatureCanvas from 'react-signature-canvas';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { WebGooglePlacesService, WebAddressPrediction } from '../services/googlePlacesService';
+import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
+import { toCanonicalAddress } from '../utils/locationSelection';
 
 interface SetupWizardProps {
   employee: any;
   onComplete: () => void;
-}
-
-/** Parse a single-line base address into street, city, state, zip. */
-function parseBaseAddress(full: string): { street: string; city: string; state: string; zip: string } {
-  let street = '';
-  let city = '';
-  let state = '';
-  let zip = '';
-  const raw = (full || '').trim();
-  if (!raw) return { street, city, state, zip };
-  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 3) {
-    const last = parts[parts.length - 1];
-    const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
-    if (match) {
-      state = match[1];
-      zip = match[2];
-      city = parts[parts.length - 2];
-      street = parts.slice(0, -2).join(', ');
-      return { street, city, state, zip };
-    }
-  }
-  if (parts.length >= 2) {
-    const last = parts[parts.length - 1];
-    const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
-    if (match) {
-      state = match[1];
-      zip = match[2];
-      street = parts[0];
-      return { street, city, state, zip };
-    }
-  }
-  street = raw;
-  return { street, city, state, zip };
-}
-
-/** Build single-line base address from street, city, state, zip. */
-function formatBaseAddress(street: string, city: string, state: string, zip: string): string {
-  const s = (street || '').trim();
-  const c = (city || '').trim();
-  const st = (state || '').trim();
-  const z = (zip || '').trim();
-  if (!s) return '';
-  if (c && st && z) return `${s}, ${c}, ${st} ${z}`;
-  if (st && z) return `${s}, ${st} ${z}`;
-  return s;
 }
 
 const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
@@ -164,7 +120,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
 
   const handleSelectPrediction = async (prediction: WebAddressPrediction) => {
     const details = await WebGooglePlacesService.getDetails(prediction.placeId);
-    const formatted = details?.formattedAddress || prediction.description;
+    const formatted = toCanonicalAddress(details?.formattedAddress || prediction.description);
     const parsed = parseBaseAddress(formatted);
     setBaseAddressStreet(parsed.street || formatted);
     setBaseAddressCity(parsed.city);

@@ -36,6 +36,18 @@ export interface OxfordHouse {
 export interface LocationDetails {
   name: string;
   address: string;
+  source?:
+    | 'baseAddress'
+    | 'baseAddress2'
+    | 'saved'
+    | 'oxfordHouse'
+    | 'manual'
+    | 'recent'
+    | 'frequent'
+    | 'lastDestination'
+    | 'tripStart'
+    | 'google';
+  sourceId?: string;
   latitude?: number;
   longitude?: number;
 }

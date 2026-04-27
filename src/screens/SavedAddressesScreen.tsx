@@ -21,6 +21,8 @@ import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { ApiSyncService } from '../services/apiSyncService';
 import { API_BASE_URL } from '../config/api';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { formatAddressParts, parseAddressParts } from '../utils/addressFormatter';
+import { makeLocationDetails } from '../utils/locationSelection';
 
 interface SavedAddressesScreenProps {
   navigation: any;
@@ -116,41 +118,22 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const buildAddressString = () => {
-    const { street, city, state, zip } = formData;
-    const s = street.trim();
-    const c = city.trim();
-    const st = state.trim();
-    const z = zip.trim();
-    if (!s) return '';
-    const parts = [s];
-    if (c) parts.push(c);
-    if (st || z) parts.push([st, z].filter(Boolean).join(' '));
-    return parts.join(', ');
+    return formatAddressParts({
+      street: formData.street,
+      city: formData.city,
+      state: formData.state,
+      zipCode: formData.zip,
+    });
   };
 
   const parseAddressToForm = (address: string) => {
-    const parts = address.split(',').map((s) => s.trim()).filter(Boolean);
-    if (parts.length === 0) return { street: '', city: '', state: '', zip: '' };
-    if (parts.length === 1) return { street: parts[0], city: '', state: '', zip: '' };
-    if (parts.length === 2) return { street: parts[0], city: parts[1], state: '', zip: '' };
-    const street = parts[0];
-    const city = parts[1];
-    const remainder = parts.slice(2).join(', ');
-
-    // Handles common Google Places format: "Street, City, ST 12345, USA"
-    const stateZipInRemainder = remainder.match(/\b([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)\b/);
-    if (stateZipInRemainder) {
-      return {
-        street,
-        city,
-        state: stateZipInRemainder[1].toUpperCase(),
-        zip: stateZipInRemainder[2],
-      };
-    }
-
-    // Fallback for "Street, City, ST" or other custom formats
-    const fallbackToken = parts[parts.length - 1];
-    return { street, city, state: fallbackToken.toUpperCase(), zip: '' };
+    const parsed = parseAddressParts(address);
+    return {
+      street: parsed.street || '',
+      city: parsed.city || '',
+      state: parsed.state || '',
+      zip: parsed.zipCode || '',
+    };
   };
 
   const handleAddAddress = () => {
@@ -252,36 +235,44 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const handleSelectForGpsStartFavorite = (address: SavedAddress) => {
+    const location = makeLocationDetails({
+      name: address.name,
+      address: address.address,
+      source: 'saved',
+      sourceId: address.id,
+      latitude: address.latitude,
+      longitude: address.longitude,
+    });
     navigation.navigate('GpsTracking', {
-      selectedAddress: {
-        name: address.name,
-        address: address.address,
-        latitude: address.latitude,
-        longitude: address.longitude,
-      },
+      selectedAddress: location,
     });
   };
 
   const handleSelectForGpsEndFavorite = (address: SavedAddress) => {
+    const location = makeLocationDetails({
+      name: address.name,
+      address: address.address,
+      source: 'saved',
+      sourceId: address.id,
+      latitude: address.latitude,
+      longitude: address.longitude,
+    });
     navigation.navigate('GpsTracking', {
-      selectedEndAddress: {
-        name: address.name,
-        address: address.address,
-        latitude: address.latitude,
-        longitude: address.longitude,
-      },
+      selectedEndAddress: location,
     });
   };
 
   const handleSelectForManualEntry = (address: SavedAddress) => {
     // Go back to MileageEntryScreen with the selected address (preserve entryId when editing)
     const params: any = {
-      selectedAddress: {
+      selectedAddress: makeLocationDetails({
         name: address.name,
         address: address.address,
+        source: 'saved',
+        sourceId: address.id,
         latitude: address.latitude,
         longitude: address.longitude,
-      },
+      }),
       locationType: locationType, // 'start' or 'end'
     };
     if (route.params?.entryId) {

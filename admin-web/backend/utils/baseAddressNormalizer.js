@@ -28,6 +28,30 @@ const STATE_ABBR = {
   'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY'
 };
 
+function normalizeAddressLine(address) {
+  const raw = (address || '').trim();
+  if (!raw) return '';
+
+  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+
+  const street = parts[0];
+  const city = parts.length > 2 ? parts[1] : '';
+  const trailing = parts.length > 2 ? parts.slice(2).join(', ') : parts[1];
+  const stateZipMatch = trailing.match(/\b([A-Za-z]{2}|[A-Za-z]+(?:\s+[A-Za-z]+)*)\s*(\d{5}(?:-\d{4})?)?\b/);
+
+  if (stateZipMatch) {
+    const stateRaw = (stateZipMatch[1] || '').trim().toLowerCase();
+    const state = (STATE_ABBR[stateRaw] || stateRaw.toUpperCase()).slice(0, 2);
+    const zip = (stateZipMatch[2] || '').trim();
+    const line2 = [city, state].filter(Boolean).join(', ');
+    return `${street}${line2 ? `, ${line2}` : ''}${zip ? ` ${zip}` : ''}`.trim();
+  }
+
+  return [street, parts.slice(1).join(', ')].filter(Boolean).join(', ');
+}
+
 function abbreviateForDisplay(addr) {
   if (!addr || typeof addr !== 'string') return addr;
   let s = addr
@@ -71,4 +95,4 @@ function normalizeLocationForStorage(name, address, baseAddress, baseAddress2) {
   };
 }
 
-module.exports = { getBaseAddressLabel, abbreviateForDisplay, normalizeLocationForStorage };
+module.exports = { getBaseAddressLabel, abbreviateForDisplay, normalizeAddressLine, normalizeLocationForStorage };

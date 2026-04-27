@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, List, ListItemButton, ListItemText, Paper, TextField, TextFieldProps } from '@mui/material';
 import { WebAddressPrediction, WebGooglePlacesService } from '../services/googlePlacesService';
+import { toCanonicalAddress } from '../utils/locationSelection';
 
 interface GooglePlacesTextFieldProps extends Omit<TextFieldProps, 'onChange'> {
   value: string;
@@ -60,7 +61,7 @@ const GooglePlacesTextField: React.FC<GooglePlacesTextFieldProps> = ({
     setPredictions([]);
 
     const details = await WebGooglePlacesService.getDetails(prediction.placeId);
-    const selectedAddress = details?.formattedAddress || prediction.description;
+    const selectedAddress = toCanonicalAddress(details?.formattedAddress || prediction.description);
     onChange(selectedAddress);
     onPlaceSelected?.(selectedAddress);
   };

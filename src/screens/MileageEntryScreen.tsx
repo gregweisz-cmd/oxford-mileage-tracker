@@ -25,6 +25,11 @@ import { formatLocationForInput } from '../utils/locationFormatter';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
 import { OxfordHouseService } from '../services/oxfordHouseService';
+import {
+  filterOxfordHousesForPicker,
+  getAvailableOxfordHouseStates,
+  getDefaultOxfordHouseSelection,
+} from '../utils/oxfordHousePicker';
 import EnhancedLocationInput from '../components/EnhancedLocationInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { DuplicateDetectionService } from '../services/duplicateDetectionService';
@@ -550,13 +555,15 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           setFormData(prev => ({ ...prev, startLocation: 'BA' }));
           setStartLocationDetails({
             name: 'BA',
-            address: currentEmployee.baseAddress
+            address: currentEmployee.baseAddress,
+            source: 'baseAddress',
           });
         } else {
           setFormData(prev => ({ ...prev, endLocation: 'BA' }));
           setEndLocationDetails({
             name: 'BA',
-            address: currentEmployee.baseAddress
+            address: currentEmployee.baseAddress,
+            source: 'baseAddress',
           });
         }
       } else if (option === 'favoriteAddresses') {
@@ -949,22 +956,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       setOxfordHouseAllHouses(houses);
       
       // Extract unique states from houses
-      const states = Array.from(new Set(houses.map(h => h.state))).sort();
+      const states = getAvailableOxfordHouseStates(houses);
       setOxfordHouseAvailableStates(states);
       
       // Set default state filter based on employee's base address
-      if (currentEmployee?.baseAddress) {
-        const extractedState = OxfordHouseService.extractStateFromAddress(currentEmployee.baseAddress);
-        if (extractedState && states.includes(extractedState)) {
-          setOxfordHouseSelectedState(extractedState);
-          const filteredHouses = houses.filter(h => h.state === extractedState);
-          setOxfordHouseResults(filteredHouses);
-        } else {
-          setOxfordHouseResults(houses);
-        }
-      } else {
-        setOxfordHouseResults(houses);
-      }
+      const defaultSelection = getDefaultOxfordHouseSelection(houses, currentEmployee?.baseAddress);
+      setOxfordHouseSelectedState(defaultSelection.selectedState);
+      setOxfordHouseResults(defaultSelection.results);
     } catch (error) {
       console.error('Error loading Oxford Houses:', error);
     } finally {
@@ -973,31 +971,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   const performOxfordHouseSearch = (query: string) => {
-    if (!query.trim()) {
-      // If no query, show all houses or filtered by state
-      if (oxfordHouseSelectedState) {
-        const filtered = oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState);
-        setOxfordHouseResults(filtered);
-      } else {
-        setOxfordHouseResults(oxfordHouseAllHouses);
-      }
-      return;
-    }
-
-    const searchLower = query.toLowerCase().trim();
-    // Always search from the full list of houses
-    let housesToSearch = oxfordHouseSelectedState
-      ? oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState)
-      : oxfordHouseAllHouses;
-
-    const filtered = housesToSearch.filter(house =>
-      house.name.toLowerCase().includes(searchLower) ||
-      house.address.toLowerCase().includes(searchLower) ||
-      house.city.toLowerCase().includes(searchLower) ||
-      house.state.toLowerCase().includes(searchLower) ||
-      house.zipCode.includes(searchLower)
+    setOxfordHouseResults(
+      filterOxfordHousesForPicker(oxfordHouseAllHouses, oxfordHouseSelectedState, query)
     );
-    setOxfordHouseResults(filtered);
   };
 
   const handleOxfordHouseStateFilterChange = (state: string) => {
@@ -1014,6 +990,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       setStartLocationDetails({
         name: house.name,
         address: house.address,
+        source: 'oxfordHouse',
+        sourceId: house.id,
         city: house.city,
         state: house.state,
         zipCode: house.zipCode,
@@ -1025,6 +1003,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       setEndLocationDetails({
         name: house.name,
         address: house.address,
+        source: 'oxfordHouse',
+        sourceId: house.id,
         city: house.city,
         state: house.state,
         zipCode: house.zipCode,

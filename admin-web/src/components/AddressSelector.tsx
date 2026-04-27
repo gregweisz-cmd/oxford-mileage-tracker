@@ -33,6 +33,7 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
+import { makeCanonicalLocationSelection } from '../utils/locationSelection';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -456,8 +457,16 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   };
 
   const handleSelectAddress = (address: string, locationData?: any) => {
-    addToRecent(address, locationData?.name);
-    onSelectAddress(address, locationData);
+    const selection = makeCanonicalLocationSelection({
+      address,
+      name: locationData?.name,
+      source: locationData?.source,
+      sourceId: locationData?.sourceId,
+      latitude: locationData?.latitude,
+      longitude: locationData?.longitude,
+    });
+    addToRecent(selection.address, selection.name);
+    onSelectAddress(selection.address, selection);
   };
 
   const handleClose = () => {
@@ -613,9 +622,16 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
             <List>
               {baseAddresses.map((address, index) => (
                 <ListItem key={index} disablePadding>
-                  <ListItemButton onClick={() => handleSelectAddress(address, { name: 'BA' })}>
+                  <ListItemButton
+                    onClick={() =>
+                      handleSelectAddress(address, {
+                        name: index === 0 ? 'BA' : 'BA2',
+                        source: index === 0 ? 'baseAddress' : 'baseAddress2',
+                      })
+                    }
+                  >
                     <ListItemText
-                      primary="BA"
+                      primary={index === 0 ? 'BA' : 'BA2'}
                       secondary={address}
                     />
                   </ListItemButton>
@@ -639,6 +655,8 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                     onClick={() =>
                       handleSelectAddress(saved.address, {
                         name: saved.name,
+                        source: 'saved',
+                        sourceId: saved.id,
                         latitude: saved.latitude,
                         longitude: saved.longitude,
                       })
@@ -694,6 +712,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                         if (resolved) {
                           handleSelectAddress(resolved.address, {
                             name: resolved.name,
+                            source: 'frequent',
                             latitude: frequent.latitude,
                             longitude: frequent.longitude,
                           });
@@ -702,6 +721,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                       }
                       handleSelectAddress(address, {
                         name,
+                        source: 'frequent',
                         latitude: frequent.latitude,
                         longitude: frequent.longitude,
                       });
@@ -799,7 +819,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                         onClick={() =>
                           handleSelectAddress(
                             formattedAddress,
-                            { name: house.name, fullAddress: formattedAddress }
+                            { name: house.name, source: 'oxfordHouse', sourceId: house.name, fullAddress: formattedAddress }
                           )
                         }
                       >
@@ -827,7 +847,14 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
             <List>
               {recentAddresses.map((recent, index) => (
                 <ListItem key={`${recent.address}-${index}`} disablePadding>
-                  <ListItemButton onClick={() => handleSelectAddress(recent.address, recent.name ? { name: recent.name } : undefined)}>
+                  <ListItemButton
+                    onClick={() =>
+                      handleSelectAddress(
+                        recent.address,
+                        recent.name ? { name: recent.name, source: 'recent' } : { source: 'recent' }
+                      )
+                    }
+                  >
                     <ListItemText
                       primary={recent.name || recent.address}
                       secondary={recent.name ? recent.address : undefined}

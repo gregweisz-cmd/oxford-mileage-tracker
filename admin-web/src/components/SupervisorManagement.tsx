@@ -36,6 +36,8 @@ import { Employee } from '../types';
 import { formatNameForDisplay } from '../utils/employeeUtils';
 import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
+import { toCanonicalAddress } from '../utils/locationSelection';
+import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
 
 interface SupervisorManagementProps {
   employees: Employee[];
@@ -311,6 +313,18 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       oxfordHouseId: employee.oxfordHouseId,
     });
     setEditDialogOpen(true);
+  };
+
+  const updateEditBaseAddressPart = (
+    part: 'street' | 'city' | 'state' | 'zip',
+    value: string
+  ) => {
+    const parsed = parseBaseAddress((editFormData.baseAddress as string) || '');
+    const next = { ...parsed, [part]: value };
+    setEditFormData({
+      ...editFormData,
+      baseAddress: formatBaseAddress(next.street, next.city, next.state, next.zip),
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -880,16 +894,39 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
               onChange={(e) => setEditFormData({ ...editFormData, phoneNumber: e.target.value })}
               fullWidth
             />
-            <GooglePlacesTextField
-              label="Base Address"
-              value={editFormData.baseAddress || ''}
-              onChange={(value) => setEditFormData({ ...editFormData, baseAddress: value })}
-              onPlaceSelected={(address) => setEditFormData({ ...editFormData, baseAddress: address })}
-              fullWidth
-              required
-              multiline
-              rows={2}
-            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <GooglePlacesTextField
+                label="Street Address"
+                value={parseBaseAddress((editFormData.baseAddress as string) || '').street}
+                onChange={(value) => updateEditBaseAddressPart('street', value)}
+                onPlaceSelected={(address) => setEditFormData({ ...editFormData, baseAddress: toCanonicalAddress(address) })}
+                fullWidth
+                required
+              />
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <TextField
+                  label="City"
+                  value={parseBaseAddress((editFormData.baseAddress as string) || '').city}
+                  onChange={(e) => updateEditBaseAddressPart('city', e.target.value)}
+                  fullWidth
+                  required
+                />
+                <TextField
+                  label="State"
+                  value={parseBaseAddress((editFormData.baseAddress as string) || '').state}
+                  onChange={(e) => updateEditBaseAddressPart('state', e.target.value.toUpperCase().slice(0, 2))}
+                  sx={{ width: 100 }}
+                  required
+                />
+                <TextField
+                  label="ZIP"
+                  value={parseBaseAddress((editFormData.baseAddress as string) || '').zip}
+                  onChange={(e) => updateEditBaseAddressPart('zip', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  sx={{ width: 130 }}
+                  required
+                />
+              </Box>
+            </Box>
             <TextField
               label="Oxford House ID"
               value={editFormData.oxfordHouseId || ''}

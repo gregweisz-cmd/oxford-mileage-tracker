@@ -18,6 +18,7 @@ import { DatabaseService } from '../services/database';
 import GooglePlacesAddressInput from './GooglePlacesAddressInput';
 import { GooglePlacesService } from '../services/googlePlacesService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
+import { makeLocationDetails } from '../utils/locationSelection';
 
 interface LocationCaptureModalProps {
   visible: boolean;
@@ -97,29 +98,36 @@ export default function LocationCaptureModal({
   };
 
   const handleConfirm = async () => {
-    if (!locationName.trim()) {
-      Alert.alert('Validation Error', 'Please enter a location name');
+    const trimmedName = locationName.trim();
+    const trimmedAddress = locationAddress.trim();
+
+    if (!trimmedName && !trimmedAddress) {
+      Alert.alert('Validation Error', 'Please enter a location address');
       return;
     }
-    
+
+    // Allow address-only manual entry by deriving a display name from the address.
+    const finalName = trimmedName || trimmedAddress.split(',')[0]?.trim() || 'Location';
+
     // If address is empty, use location name as fallback to ensure address is always populated
     // This prevents issues where reverse geocoding fails or returns incomplete addresses
-    const finalAddress = locationAddress.trim() || locationName.trim();
+    const finalAddress = trimmedAddress || finalName;
 
-    const locationDetails: LocationDetails = {
-      name: locationName.trim(),
+    const locationDetails: LocationDetails = makeLocationDetails({
+      name: finalName,
       address: finalAddress,
+      source: 'manual',
       latitude: currentLocation?.coords.latitude,
       longitude: currentLocation?.coords.longitude,
-    };
+    });
 
     // Save to favorites if checkbox is checked
     if (saveToFavorites && currentEmployee) {
       try {
         await DatabaseService.createSavedAddress({
           employeeId: currentEmployee.id,
-          name: locationName.trim(),
-          address: locationAddress.trim(),
+          name: finalName,
+          address: finalAddress,
           latitude: currentLocation?.coords.latitude,
           longitude: currentLocation?.coords.longitude,
           category: category,

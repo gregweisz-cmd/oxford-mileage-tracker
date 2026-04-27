@@ -4,6 +4,67 @@ import { DatabaseService } from './database';
 import { API_BASE_URL } from '../config/api';
 
 export class OxfordHouseService {
+  private static readonly STATE_NAME_TO_CODE: Record<string, string> = {
+    alabama: 'AL',
+    alaska: 'AK',
+    arizona: 'AZ',
+    arkansas: 'AR',
+    california: 'CA',
+    colorado: 'CO',
+    connecticut: 'CT',
+    delaware: 'DE',
+    florida: 'FL',
+    georgia: 'GA',
+    hawaii: 'HI',
+    idaho: 'ID',
+    illinois: 'IL',
+    indiana: 'IN',
+    iowa: 'IA',
+    kansas: 'KS',
+    kentucky: 'KY',
+    louisiana: 'LA',
+    maine: 'ME',
+    maryland: 'MD',
+    massachusetts: 'MA',
+    michigan: 'MI',
+    minnesota: 'MN',
+    mississippi: 'MS',
+    missouri: 'MO',
+    montana: 'MT',
+    nebraska: 'NE',
+    nevada: 'NV',
+    'new hampshire': 'NH',
+    'new jersey': 'NJ',
+    'new mexico': 'NM',
+    'new york': 'NY',
+    'north carolina': 'NC',
+    'north dakota': 'ND',
+    ohio: 'OH',
+    oklahoma: 'OK',
+    oregon: 'OR',
+    pennsylvania: 'PA',
+    'rhode island': 'RI',
+    'south carolina': 'SC',
+    'south dakota': 'SD',
+    tennessee: 'TN',
+    texas: 'TX',
+    utah: 'UT',
+    vermont: 'VT',
+    virginia: 'VA',
+    washington: 'WA',
+    'west virginia': 'WV',
+    wisconsin: 'WI',
+    wyoming: 'WY',
+    'district of columbia': 'DC',
+  };
+
+  static normalizeState(state: string | null | undefined): string {
+    const trimmed = (state || '').trim();
+    if (!trimmed) return '';
+    const upper = trimmed.toUpperCase();
+    if (/^[A-Z]{2}$/.test(upper)) return upper;
+    return this.STATE_NAME_TO_CODE[trimmed.toLowerCase()] || upper;
+  }
   // Comprehensive Oxford House data - realistic addresses and phone numbers
   private static readonly SAMPLE_HOUSES: Omit<OxfordHouse, 'id' | 'createdAt' | 'updatedAt'>[] = [
     // Charlotte Area Houses
@@ -292,6 +353,16 @@ export class OxfordHouseService {
   private static cacheTimestamp: number | null = null;
   private static readonly CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+  private static getSampleHouses(): OxfordHouse[] {
+    return this.SAMPLE_HOUSES.map((house, index) => ({
+      id: `sample_oh_${index}`,
+      ...house,
+      state: this.normalizeState(house.state),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+  }
+
   static async initializeOxfordHouses(): Promise<void> {
     try {
       console.log('Initializing Oxford Houses from backend API...');
@@ -309,9 +380,14 @@ export class OxfordHouseService {
         if (localHouses.length > 0) {
           console.log(`⚠️ Using ${localHouses.length} Oxford Houses from local database`);
           this.cachedHouses = localHouses;
+        } else {
+          console.warn('⚠️ Local Oxford Houses unavailable, using built-in fallback houses');
+          this.cachedHouses = this.getSampleHouses();
         }
       } catch (dbError) {
         console.error('Error loading from local database:', dbError);
+        console.warn('⚠️ Falling back to built-in Oxford Houses');
+        this.cachedHouses = this.getSampleHouses();
       }
     }
   }
@@ -341,7 +417,7 @@ export class OxfordHouseService {
         name: house.name,
         address: house.address,
         city: house.city,
-        state: house.state,
+        state: this.normalizeState(house.state),
         zipCode: house.zip,
         phoneNumber: house.phoneNumber || '',
         createdAt: new Date(),
@@ -372,10 +448,16 @@ export class OxfordHouseService {
       
       // Try local database as fallback
       try {
-        return await DatabaseService.getOxfordHouses();
+        const localHouses = await DatabaseService.getOxfordHouses();
+        if (localHouses.length > 0) {
+          return localHouses;
+        }
+        console.warn('⚠️ No Oxford Houses in local database, using built-in fallback houses');
+        return this.getSampleHouses();
       } catch (dbError) {
         console.error('Error loading from local database:', dbError);
-        return [];
+        console.warn('⚠️ Falling back to built-in Oxford Houses');
+        return this.getSampleHouses();
       }
     }
   }
@@ -390,8 +472,9 @@ export class OxfordHouseService {
     
     // Apply state filter first if provided
     if (filterState) {
+      const normalizedFilterState = this.normalizeState(filterState);
       filteredHouses = filteredHouses.filter(house => 
-        house.state.toLowerCase() === filterState.toLowerCase()
+        this.normalizeState(house.state) === normalizedFilterState
       );
     }
     
@@ -412,16 +495,32 @@ export class OxfordHouseService {
   
   static async getOxfordHousesByState(state: string): Promise<OxfordHouse[]> {
     const allHouses = await this.getAllOxfordHouses();
+    const normalizedState = this.normalizeState(state);
     return allHouses.filter(house => 
-      house.state.toLowerCase() === state.toLowerCase()
+      this.normalizeState(house.state) === normalizedState
     );
   }
   
   static extractStateFromAddress(address: string): string | null {
-    // Try to extract state abbreviation from address
-    // Common patterns: "City, ST Zip" or "City, ST" or just "ST"
-    const stateMatch = address.match(/,\s*([A-Z]{2})[\s,]/);
-    return stateMatch ? stateMatch[1] : null;
+    const normalizedAddress = (address || '').trim();
+    if (!normalizedAddress) return null;
+
+    // Prefer explicit 2-letter state abbreviations (case-insensitive).
+    const abbreviationMatch = normalizedAddress.match(/\b([A-Za-z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?$/);
+    if (abbreviationMatch) {
+      const normalized = this.normalizeState(abbreviationMatch[1]);
+      if (normalized.length === 2) return normalized;
+    }
+
+    // Fallback for full state names in base addresses.
+    const lowerAddress = normalizedAddress.toLowerCase();
+    for (const [stateName, code] of Object.entries(this.STATE_NAME_TO_CODE)) {
+      if (lowerAddress.includes(stateName)) {
+        return code;
+      }
+    }
+
+    return null;
   }
 
   static async getOxfordHouseById(id: string): Promise<OxfordHouse | null> {

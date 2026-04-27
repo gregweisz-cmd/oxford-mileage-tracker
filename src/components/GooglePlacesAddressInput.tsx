@@ -7,6 +7,7 @@ import {
   GooglePlacesService,
 } from '../services/googlePlacesService';
 import { ScrollToOnFocusView } from './KeyboardAwareScrollView';
+import { toCanonicalAddress } from '../utils/locationSelection';
 
 interface GooglePlacesAddressInputProps {
   value: string;
@@ -75,7 +76,7 @@ export default function GooglePlacesAddressInput({
 
   const selectPrediction = async (item: AddressPrediction) => {
     suppressNextLookupRef.current = true;
-    onChangeText(item.description);
+    onChangeText(toCanonicalAddress(item.description));
     setShowPredictions(false);
     setPredictions([]);
     inputRef.current?.blur();
@@ -83,7 +84,10 @@ export default function GooglePlacesAddressInput({
     if (!onPlaceSelected) return;
     const details = await GooglePlacesService.getAddressDetails(item.placeId);
     if (details) {
-      onPlaceSelected(details);
+      onPlaceSelected({
+        ...details,
+        formattedAddress: toCanonicalAddress(details.formattedAddress),
+      });
     }
   };
 

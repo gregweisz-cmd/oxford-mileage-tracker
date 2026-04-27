@@ -31,6 +31,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import { COST_CENTERS } from '../constants/costCenters';
 import { PreferencesService } from '../services/preferencesService';
 import { OxfordHouseService } from '../services/oxfordHouseService';
+import {
+  filterOxfordHousesForPicker,
+  getAvailableOxfordHouseStates,
+  getDefaultOxfordHouseSelection,
+} from '../utils/oxfordHousePicker';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface GpsTrackingScreenProps {
@@ -368,6 +373,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setStartLocationDetails({
           name: 'BA',
           address: employee.baseAddress,
+          source: 'baseAddress',
           latitude: undefined,
           longitude: undefined
         });
@@ -564,7 +570,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           console.log('🔍 GPS: Using base address:', currentEmployee.baseAddress);
           setStartLocationDetails({
             name: 'BA',
-            address: currentEmployee.baseAddress
+            address: currentEmployee.baseAddress,
+            source: 'baseAddress',
           });
         }
         startGpsTracking();
@@ -1145,6 +1152,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     const locationDetails: LocationDetails = {
       name: house.name,
       address: `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`,
+      source: 'oxfordHouse',
+      sourceId: house.id,
     };
     setShowOxfordHouseSearchModal(false);
     const role = oxfordHousePickerRole;
@@ -1166,20 +1175,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
       setOxfordHouseAllHouses(houses);
 
-      const states = Array.from(new Set(houses.map(h => h.state))).sort();
+      const states = getAvailableOxfordHouseStates(houses);
       setOxfordHouseAvailableStates(states);
 
-      if (currentEmployee?.baseAddress) {
-        const extractedState = OxfordHouseService.extractStateFromAddress(currentEmployee.baseAddress);
-        if (extractedState && states.includes(extractedState)) {
-          setOxfordHouseSelectedState(extractedState);
-          setOxfordHouseResults(houses.filter(h => h.state === extractedState));
-        } else {
-          setOxfordHouseResults(houses);
-        }
-      } else {
-        setOxfordHouseResults(houses);
-      }
+      const defaultSelection = getDefaultOxfordHouseSelection(houses, currentEmployee?.baseAddress);
+      setOxfordHouseSelectedState(defaultSelection.selectedState);
+      setOxfordHouseResults(defaultSelection.results);
     } catch (error) {
       console.error('Error loading Oxford Houses:', error);
     } finally {
@@ -1188,56 +1189,23 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const performOxfordHouseSearch = (query: string) => {
-    if (!query.trim()) {
-      if (oxfordHouseSelectedState) {
-        setOxfordHouseResults(oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState));
-      } else {
-        setOxfordHouseResults(oxfordHouseAllHouses);
-      }
-      return;
-    }
-
-    const searchLower = query.toLowerCase().trim();
-    const housesToSearch = oxfordHouseSelectedState
-      ? oxfordHouseAllHouses.filter(h => h.state === oxfordHouseSelectedState)
-      : oxfordHouseAllHouses;
-
-    const filtered = housesToSearch.filter((house: any) =>
-      house.name.toLowerCase().includes(searchLower) ||
-      house.address.toLowerCase().includes(searchLower) ||
-      house.city.toLowerCase().includes(searchLower) ||
-      house.state.toLowerCase().includes(searchLower) ||
-      house.zipCode.includes(searchLower)
+    setOxfordHouseResults(
+      filterOxfordHousesForPicker(oxfordHouseAllHouses, oxfordHouseSelectedState, query)
     );
-    setOxfordHouseResults(filtered);
   };
 
   const handleOxfordHouseStateFilterChange = (state: string) => {
     setOxfordHouseSelectedState(state);
-    if (!oxfordHouseSearchQuery.trim()) {
-      const filtered = state
-        ? oxfordHouseAllHouses.filter(h => h.state === state)
-        : oxfordHouseAllHouses;
-      setOxfordHouseResults(filtered);
-      return;
-    }
-    const searchLower = oxfordHouseSearchQuery.toLowerCase().trim();
-    const housesToSearch = state
-      ? oxfordHouseAllHouses.filter(h => h.state === state)
-      : oxfordHouseAllHouses;
     setOxfordHouseResults(
-      housesToSearch.filter((house: any) =>
-        house.name.toLowerCase().includes(searchLower) ||
-        house.address.toLowerCase().includes(searchLower) ||
-        house.city.toLowerCase().includes(searchLower) ||
-        house.state.toLowerCase().includes(searchLower) ||
-        house.zipCode.includes(searchLower)
-      )
+      filterOxfordHousesForPicker(oxfordHouseAllHouses, state, oxfordHouseSearchQuery)
     );
   };
 
   useEffect(() => {
     if (showOxfordHouseSearchModal) {
+      // Always start GPS picker from a clean search state.
+      setOxfordHouseSearchQuery('');
+      setIsOxfordHouseStatePickerVisible(false);
       loadOxfordHouses();
     }
   }, [showOxfordHouseSearchModal]);
@@ -1873,7 +1841,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
             <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
+              <View style={styles.oxfordHouseModalContent}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>
                     {oxfordHousePickerRole === 'end' ? 'Select End Location' : 'Search Oxford Houses'}
@@ -1933,37 +1901,43 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   </TouchableOpacity>
                 </View>
 
-                {oxfordHouseLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <Text style={styles.oxfordHouseLoadingText}>Loading Oxford Houses...</Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={oxfordHouseResults}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={styles.houseItem}
-                        onPress={() => handleOxfordHouseSelected(item)}
-                      >
-                        <View style={styles.houseInfo}>
-                          <Text style={styles.houseName}>{item.name}</Text>
-                          <Text style={styles.houseAddress}>{item.address}, {item.city}, {item.state} {item.zipCode}</Text>
+                <View style={styles.oxfordHouseResultsContainer}>
+                  {oxfordHouseLoading ? (
+                    <View style={styles.loadingContainer}>
+                      <Text style={styles.oxfordHouseLoadingText}>Loading Oxford Houses...</Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={oxfordHouseResults}
+                      keyExtractor={(item) => item.id}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={styles.houseItem}
+                          onPress={() => handleOxfordHouseSelected(item)}
+                        >
+                          <View style={styles.houseInfo}>
+                            <Text style={styles.houseName}>{item.name}</Text>
+                            <Text style={styles.houseAddress} numberOfLines={2} ellipsizeMode="tail">
+                              {item.address}, {item.city}, {item.state} {item.zipCode}
+                            </Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={24} color="#666" />
+                        </TouchableOpacity>
+                      )}
+                      style={styles.resultsList}
+                      contentContainerStyle={oxfordHouseResults.length === 0 ? styles.resultsEmptyContainer : undefined}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                      ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                          <MaterialIcons name="search-off" size={48} color="#ccc" />
+                          <Text style={styles.emptyText}>No Oxford Houses found</Text>
+                          <Text style={styles.emptySubtext}>Try a different search term or state</Text>
                         </View>
-                        <MaterialIcons name="chevron-right" size={24} color="#666" />
-                      </TouchableOpacity>
-                    )}
-                    style={styles.resultsList}
-                    showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={
-                      <View style={styles.emptyContainer}>
-                        <MaterialIcons name="search-off" size={48} color="#ccc" />
-                        <Text style={styles.emptyText}>No Oxford Houses found</Text>
-                        <Text style={styles.emptySubtext}>Try a different search term or state</Text>
-                      </View>
-                    }
-                  />
-                )}
+                      }
+                    />
+                  )}
+                </View>
 
                 {isOxfordHouseStatePickerVisible && (
                   <View style={styles.statePickerOverlay}>
@@ -2374,6 +2348,16 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     maxHeight: '88%',
   },
+  oxfordHouseModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '88%',
+    minHeight: 420,
+    overflow: 'hidden',
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -2436,6 +2420,11 @@ const styles = StyleSheet.create({
   manualEntryContainer: {
     paddingBottom: 10,
   },
+  oxfordHouseResultsContainer: {
+    marginTop: 2,
+    minHeight: 180,
+    maxHeight: 280,
+  },
   manualEntryButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2452,14 +2441,17 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   resultsList: {
-    flex: 1,
     width: '100%',
-    marginTop: 8,
+    marginTop: 6,
+  },
+  resultsEmptyContainer: {
+    flexGrow: 1,
   },
   houseItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -2475,7 +2467,7 @@ const styles = StyleSheet.create({
   houseAddress: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 2,
+    lineHeight: 20,
   },
   loadingContainer: {
     flex: 1,

@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
 import { parseBaseAddress, formatBaseAddress } from '../utils/addressParse';
+import { toCanonicalAddress } from '../utils/locationSelection';
 import GooglePlacesTextField from './GooglePlacesTextField';
 
 interface UserSettingsProps {
@@ -541,7 +542,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                       baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, street: value } }
                     }))}
                     onPlaceSelected={(address) => {
-                      const parsed = parseBaseAddress(address);
+                      const parsed = parseBaseAddress(toCanonicalAddress(address));
                       setProfile(prev => ({
                         ...prev,
                         baseAddresses: {
@@ -607,7 +608,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                       baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, street: value } }
                     }))}
                     onPlaceSelected={(address) => {
-                      const parsed = parseBaseAddress(address);
+                      const parsed = parseBaseAddress(toCanonicalAddress(address));
                       setProfile(prev => ({
                         ...prev,
                         baseAddresses: {
