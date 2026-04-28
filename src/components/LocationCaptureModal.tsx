@@ -27,6 +27,7 @@ interface LocationCaptureModalProps {
   title: string;
   locationType: 'start' | 'end';
   currentEmployee?: Employee | null;
+  initialLocation?: Partial<LocationDetails> | null;
 }
 
 export default function LocationCaptureModal({
@@ -35,7 +36,8 @@ export default function LocationCaptureModal({
   onConfirm,
   title,
   locationType,
-  currentEmployee
+  currentEmployee,
+  initialLocation
 }: LocationCaptureModalProps) {
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
@@ -46,11 +48,38 @@ export default function LocationCaptureModal({
 
   useEffect(() => {
     if (visible) {
-      getCurrentLocation();
-    }
-  }, [visible]);
+      const hasInitialAddress = !!initialLocation?.address;
 
-  const getCurrentLocation = async () => {
+      if (initialLocation?.name) {
+        setLocationName(initialLocation.name);
+      }
+      if (initialLocation?.address) {
+        setLocationAddress(initialLocation.address);
+      }
+      if (
+        typeof initialLocation?.latitude === 'number' &&
+        typeof initialLocation?.longitude === 'number'
+      ) {
+        setCurrentLocation({
+          coords: {
+            latitude: initialLocation.latitude,
+            longitude: initialLocation.longitude,
+            altitude: null,
+            accuracy: null,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+          },
+          timestamp: Date.now(),
+        } as any);
+      }
+
+      // Keep a fresh GPS fix, but avoid overwriting a prefilled suggestion.
+      getCurrentLocation(hasInitialAddress);
+    }
+  }, [visible, initialLocation]);
+
+  const getCurrentLocation = async (preserveAddress: boolean = false) => {
     try {
       setLoading(true);
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -72,7 +101,7 @@ export default function LocationCaptureModal({
           location.coords.latitude,
           location.coords.longitude
         );
-        if (preciseAddress) {
+        if (preciseAddress && !preserveAddress) {
           setLocationAddress(preciseAddress);
         } else {
           const addressResponse = await Location.reverseGeocodeAsync({
@@ -83,7 +112,9 @@ export default function LocationCaptureModal({
           if (addressResponse.length > 0) {
             const address = addressResponse[0];
             const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
-            setLocationAddress(formattedAddress);
+            if (!preserveAddress) {
+              setLocationAddress(formattedAddress);
+            }
           }
         }
       } catch (error) {

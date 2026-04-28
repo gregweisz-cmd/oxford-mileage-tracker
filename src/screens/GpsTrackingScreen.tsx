@@ -97,6 +97,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   ]);
   const [showOxfordHouseSearchModal, setShowOxfordHouseSearchModal] = useState(false);
   const [oxfordHousePickerRole, setOxfordHousePickerRole] = useState<'start' | 'end'>('start');
+  const [manualStartInitialLocation, setManualStartInitialLocation] = useState<Partial<LocationDetails> | null>(null);
+  const [manualEndInitialLocation, setManualEndInitialLocation] = useState<Partial<LocationDetails> | null>(null);
   const [oxfordHouseSearchQuery, setOxfordHouseSearchQuery] = useState('');
   const [oxfordHouseResults, setOxfordHouseResults] = useState<any[]>([]);
   const [oxfordHouseAllHouses, setOxfordHouseAllHouses] = useState<any[]>([]);
@@ -597,6 +599,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       } else if (option === 'newLocation') {
         console.log('🔍 GPS: Showing manual location entry modal');
         // Show manual location entry modal
+        const suggested = startLocationSuggestions.newLocation;
+        setManualStartInitialLocation(suggested?.details || null);
         setShowStartLocationModal(true);
       }
     }, 100);
@@ -756,6 +760,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           confidenceLabel: 'Address match',
         };
       }
+
+      if (currentAddress) {
+        suggestions.newLocation = {
+          details: {
+            name: currentAddress.split(',')[0]?.trim() || 'Current Location',
+            address: currentAddress,
+            latitude: currentLat,
+            longitude: currentLon,
+          },
+          reason: 'Suggested from your current GPS location. Verify and edit if needed.',
+          confidenceLabel: 'Address match',
+        };
+      }
     } catch (error) {
       console.log('Unable to detect start location suggestions:', error);
     }
@@ -911,6 +928,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           confidenceLabel: 'Address match',
         };
       }
+
+      if (currentAddress) {
+        suggestions.newLocation = {
+          details: {
+            name: currentAddress.split(',')[0]?.trim() || 'Current Location',
+            address: currentAddress,
+            latitude: currentLat,
+            longitude: currentLon,
+          },
+          reason: 'Suggested from your current GPS location. Verify and edit if needed.',
+          confidenceLabel: 'Address match',
+        };
+      }
     } catch (error) {
       console.log('Unable to detect end location suggestions:', error);
     }
@@ -971,6 +1001,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const handleStartLocationConfirm = async (locationDetails: LocationDetails) => {
     setStartLocationDetails(locationDetails);
     setShowStartLocationModal(false);
+    setManualStartInitialLocation(null);
     startGpsTracking();
   };
 
@@ -1021,6 +1052,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           setShowOxfordHouseSearchModal(true);
         }
       } else if (option === 'newLocation') {
+        const suggested = endLocationSuggestions.newLocation;
+        setManualEndInitialLocation(suggested?.details || null);
         setShowEndLocationModal(true);
       }
     }, 100);
@@ -1041,6 +1074,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     console.log('📍 End location confirmed:', locationDetails);
     setEndLocationDetails(locationDetails);
     setShowEndLocationModal(false);
+    setManualEndInitialLocation(null);
     setShowEndLocationOptionsModal(false);
     setIsEndingTracking(true);
 
@@ -1808,21 +1842,29 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       {/* Start Location Capture Modal */}
       {showStartLocationModal && <LocationCaptureModal
         visible={showStartLocationModal}
-        onClose={() => setShowStartLocationModal(false)}
+        onClose={() => {
+          setShowStartLocationModal(false);
+          setManualStartInitialLocation(null);
+        }}
         onConfirm={handleStartLocationConfirm}
         title="Capture Start Location"
         locationType="start"
         currentEmployee={currentEmployee}
+        initialLocation={manualStartInitialLocation}
       />}
 
       {/* End Location Capture Modal - no "Cancel tracking" option; closing just returns to map and keeps tracking */}
       {showEndLocationModal && <LocationCaptureModal
         visible={showEndLocationModal}
-        onClose={() => setShowEndLocationModal(false)}
+        onClose={() => {
+          setShowEndLocationModal(false);
+          setManualEndInitialLocation(null);
+        }}
         onConfirm={handleEndLocationConfirm}
         title="Capture End Location"
         locationType="end"
         currentEmployee={currentEmployee}
+        initialLocation={manualEndInitialLocation}
       />}
 
       {/* Oxford House Search Modal - same experience as Manual Entry */}
