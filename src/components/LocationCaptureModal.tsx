@@ -19,6 +19,7 @@ import GooglePlacesAddressInput from './GooglePlacesAddressInput';
 import { GooglePlacesService } from '../services/googlePlacesService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 import { makeLocationDetails } from '../utils/locationSelection';
+import { formatAddressParts, parseAddressParts } from '../utils/addressFormatter';
 
 interface LocationCaptureModalProps {
   visible: boolean;
@@ -41,10 +42,21 @@ export default function LocationCaptureModal({
 }: LocationCaptureModalProps) {
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
+  const [locationCity, setLocationCity] = useState('');
+  const [locationState, setLocationState] = useState('');
+  const [locationZip, setLocationZip] = useState('');
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveToFavorites, setSaveToFavorites] = useState(false);
   const [category, setCategory] = useState('Other');
+
+  const applyParsedAddress = (addressText: string) => {
+    const parsed = parseAddressParts(addressText);
+    setLocationAddress(parsed.street || addressText || '');
+    setLocationCity(parsed.city || '');
+    setLocationState((parsed.state || '').toUpperCase().slice(0, 2));
+    setLocationZip((parsed.zipCode || '').replace(/\D/g, '').slice(0, 10));
+  };
 
   useEffect(() => {
     if (visible) {
@@ -54,7 +66,7 @@ export default function LocationCaptureModal({
         setLocationName(initialLocation.name);
       }
       if (initialLocation?.address) {
-        setLocationAddress(initialLocation.address);
+        applyParsedAddress(initialLocation.address);
       }
       if (
         typeof initialLocation?.latitude === 'number' &&
@@ -102,7 +114,7 @@ export default function LocationCaptureModal({
           location.coords.longitude
         );
         if (preciseAddress && !preserveAddress) {
-          setLocationAddress(preciseAddress);
+          applyParsedAddress(preciseAddress);
         } else {
           const addressResponse = await Location.reverseGeocodeAsync({
             latitude: location.coords.latitude,
@@ -113,7 +125,7 @@ export default function LocationCaptureModal({
             const address = addressResponse[0];
             const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
             if (!preserveAddress) {
-              setLocationAddress(formattedAddress);
+              applyParsedAddress(formattedAddress);
             }
           }
         }
@@ -131,9 +143,18 @@ export default function LocationCaptureModal({
   const saveLocation = async () => {
     const trimmedName = locationName.trim();
     const trimmedAddress = locationAddress.trim();
+    const trimmedCity = locationCity.trim();
+    const trimmedState = locationState.trim().toUpperCase();
+    const trimmedZip = locationZip.trim();
+    const composedAddress = formatAddressParts({
+      street: trimmedAddress,
+      city: trimmedCity,
+      state: trimmedState,
+      zipCode: trimmedZip,
+    });
 
-    if (!trimmedName && !trimmedAddress) {
-      Alert.alert('Validation Error', 'Please enter a location address');
+    if (!trimmedName && !trimmedAddress && !composedAddress) {
+      Alert.alert('Validation Error', 'Please enter a location name or address');
       return;
     }
 
@@ -142,7 +163,7 @@ export default function LocationCaptureModal({
 
     // If address is empty, use location name as fallback to ensure address is always populated
     // This prevents issues where reverse geocoding fails or returns incomplete addresses
-    const finalAddress = trimmedAddress || finalName;
+    const finalAddress = composedAddress || trimmedAddress || finalName;
 
     const locationDetails: LocationDetails = makeLocationDetails({
       name: finalName,
@@ -173,40 +194,24 @@ export default function LocationCaptureModal({
     onConfirm(locationDetails);
     setLocationName('');
     setLocationAddress('');
+    setLocationCity('');
+    setLocationState('');
+    setLocationZip('');
     setCurrentLocation(null);
     setSaveToFavorites(false);
     setCategory('Other');
   };
 
   const handleConfirm = async () => {
-    const trimmedName = locationName.trim();
-    const trimmedAddress = locationAddress.trim();
-    const finalName = trimmedName || trimmedAddress.split(',')[0]?.trim() || 'Location';
-    const finalAddress = trimmedAddress || finalName;
-
-    if (locationType === 'end') {
-      Alert.alert(
-        'Confirm End Location',
-        `Location Name: ${finalName}\nAddress: ${finalAddress}\n\nSave this end location?`,
-        [
-          { text: 'Edit', style: 'cancel' },
-          {
-            text: 'Confirm',
-            onPress: () => {
-              void saveLocation();
-            },
-          },
-        ]
-      );
-      return;
-    }
-
     await saveLocation();
   };
 
   const handleCancel = () => {
     setLocationName('');
     setLocationAddress('');
+    setLocationCity('');
+    setLocationState('');
+    setLocationZip('');
     setCurrentLocation(null);
     setSaveToFavorites(false);
     setCategory('Other');
@@ -257,7 +262,7 @@ export default function LocationCaptureModal({
                 multiline={true}
                 numberOfLines={3}
                 onPlaceSelected={(details) => {
-                  setLocationAddress(details.formattedAddress);
+                  applyParsedAddress(details.formattedAddress);
                   if (details.latitude && details.longitude) {
                     setCurrentLocation({
                       coords: {
@@ -278,6 +283,48 @@ export default function LocationCaptureModal({
             <Text style={styles.helpText}>
               Confirm the street number before saving this location.
             </Text>
+          </View>
+
+          <View style={styles.cityStateRow}>
+            <View style={[styles.inputGroup, styles.cityInput]}>
+              <Text style={styles.label}>City</Text>
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={locationCity}
+                  onChangeText={setLocationCity}
+                  placeholder="City"
+                  placeholderTextColor="#999"
+                />
+              </ScrollToOnFocusView>
+            </View>
+            <View style={[styles.inputGroup, styles.stateInput]}>
+              <Text style={styles.label}>State</Text>
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={locationState}
+                  onChangeText={(value) => setLocationState(value.toUpperCase().slice(0, 2))}
+                  placeholder="ST"
+                  placeholderTextColor="#999"
+                  autoCapitalize="characters"
+                  maxLength={2}
+                />
+              </ScrollToOnFocusView>
+            </View>
+            <View style={[styles.inputGroup, styles.zipInput]}>
+              <Text style={styles.label}>Zip</Text>
+              <ScrollToOnFocusView>
+                <TextInput
+                  style={styles.input}
+                  value={locationZip}
+                  onChangeText={(value) => setLocationZip(value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="Zip"
+                  placeholderTextColor="#999"
+                  keyboardType="numeric"
+                />
+              </ScrollToOnFocusView>
+            </View>
           </View>
 
           {/* Return to BA Quick Action - Only show for end locations */}
@@ -363,7 +410,7 @@ export default function LocationCaptureModal({
               style={styles.modalButtonPrimary}
               onPress={handleConfirm}
             >
-              <Text style={styles.modalButtonPrimaryText}>Confirm</Text>
+              <Text style={styles.modalButtonPrimaryText}>Save</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -553,6 +600,19 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  cityStateRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cityInput: {
+    flex: 2,
+  },
+  stateInput: {
+    flex: 1,
+  },
+  zipInput: {
+    flex: 1.2,
   },
 });
 
