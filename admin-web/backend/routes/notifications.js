@@ -317,7 +317,11 @@ router.post('/api/notifications/test-email', async (req, res) => {
 
     return res.json({
       success: true,
+      to: employee.email,
+      provider: result.provider || 'unknown',
       messageId: result.messageId || null,
+      accepted: Array.isArray(result.accepted) ? result.accepted : undefined,
+      rejected: Array.isArray(result.rejected) ? result.rejected : undefined,
       message: notificationsDisabled
         ? `Test email sent to ${employee.email}. Note: regular email notifications are currently disabled for this user.`
         : `Test email sent to ${employee.email}`,

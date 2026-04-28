@@ -422,7 +422,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       if (!response.ok) {
         throw new Error(data.error || 'Failed to send test email');
       }
-      showMessage('success', data.message || 'Test email sent.');
+      const provider = data.provider ? ` via ${String(data.provider).toUpperCase()}` : '';
+      const messageId = data.messageId ? ` (messageId: ${data.messageId})` : '';
+      showMessage('success', `${data.message || 'Test email sent.'}${provider}${messageId}`);
     } catch (error) {
       debugError('Error sending test email:', error);
       showMessage('error', error instanceof Error ? error.message : 'Failed to send test email.');
