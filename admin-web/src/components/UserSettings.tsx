@@ -109,6 +109,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info' | '', text: string }>({ type: '', text: '' });
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [testEmailLoading, setTestEmailLoading] = useState(false);
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const loadUserProfile = useCallback(async () => {
@@ -398,6 +399,35 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!employeeId) {
+      showMessage('error', 'Employee ID is missing.');
+      return;
+    }
+    setTestEmailLoading(true);
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+      const response = await fetch(`${API_BASE_URL}/api/notifications/test-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ employeeId }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send test email');
+      }
+      showMessage('success', data.message || 'Test email sent.');
+    } catch (error) {
+      debugError('Error sending test email:', error);
+      showMessage('error', error instanceof Error ? error.message : 'Failed to send test email.');
+    } finally {
+      setTestEmailLoading(false);
     }
   };
 
@@ -824,6 +854,15 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                 }
                 label="Email Notifications"
               />
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleSendTestEmail}
+                disabled={testEmailLoading || !profile.email}
+                sx={{ width: 'fit-content' }}
+              >
+                {testEmailLoading ? 'Sending Test Email...' : 'Send Test Email'}
+              </Button>
             </Box>
           </CardContent>
         </Card>

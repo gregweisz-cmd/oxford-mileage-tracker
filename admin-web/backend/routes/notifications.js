@@ -7,8 +7,22 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const notificationService = require('../services/notificationService');
+const emailService = require('../services/emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { notificationPollingLimiter } = require('../middleware/rateLimiter');
+
+function parsePreferences(preferences) {
+  if (!preferences) return {};
+  if (typeof preferences === 'object') return preferences;
+  if (typeof preferences === 'string') {
+    try {
+      return JSON.parse(preferences);
+    } catch (error) {
+      return {};
+    }
+  }
+  return {};
+}
 
 /**
  * Get all notifications for a user (unified endpoint)
@@ -247,6 +261,57 @@ router.post('/api/notifications/test', async (req, res) => {
   } catch (error) {
     debugError('❌ Error creating test notification:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Send a test email to the current user.
+ * POST /api/notifications/test-email
+ */
+router.post('/api/notifications/test-email', async (req, res) => {
+  const { employeeId } = req.body;
+  if (!employeeId) {
+    return res.status(400).json({ error: 'employeeId is required' });
+  }
+
+  try {
+    const employee = await dbService.getEmployeeById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    if (!employee.email) {
+      return res.status(400).json({ error: 'No email address is set for this user' });
+    }
+
+    const prefs = parsePreferences(employee.preferences);
+    if (prefs.notificationsEnabled === false || prefs.emailNotifications === false) {
+      return res.status(400).json({
+        error: 'Email notifications are disabled in user settings. Enable them and save settings first.',
+      });
+    }
+
+    const result = await emailService.sendEmail({
+      to: employee.email,
+      subject: 'Oxford House Expense Tracker - Test Email',
+      text: `Hello ${employee.preferredName || employee.name || 'there'},\n\nThis is a test email from Oxford House Expense Tracker.\n\nIf you received this, your email notification setup is working.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto;">
+          <h2 style="color: #1976d2;">Test Email</h2>
+          <p>Hello ${employee.preferredName || employee.name || 'there'},</p>
+          <p>This is a test email from <strong>Oxford House Expense Tracker</strong>.</p>
+          <p>If you received this, your email notification setup is working.</p>
+        </div>
+      `,
+    });
+
+    if (!result.success) {
+      return res.status(500).json({ error: result.error || 'Failed to send test email' });
+    }
+
+    return res.json({ success: true, message: `Test email sent to ${employee.email}` });
+  } catch (error) {
+    debugError('❌ Error sending test email:', error);
+    return res.status(500).json({ error: 'Failed to send test email' });
   }
 });
 
