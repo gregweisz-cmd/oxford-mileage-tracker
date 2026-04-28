@@ -183,7 +183,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     React.useCallback(() => {
       // Check if we should show end modal (from route params)
       if (route?.params?.showEndModal) {
-        if (isTracking || isTrackingRef.current) {
+        if (isTrackingRef.current) {
           openManualEndLocationModal();
         } else {
           // If tracking state is still hydrating after navigation, queue the end-flow flag.
@@ -207,7 +207,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (currentEmployee) {
         checkGpsTrackingStatus(currentEmployee.id);
       }
-    }, [currentEmployee, route?.params?.showEndModal, navigation, isTracking, setShouldShowEndLocationModal])
+    }, [currentEmployee, route?.params?.showEndModal, navigation, setShouldShowEndLocationModal])
   );
 
   // Watch for stop tracking request from global button
@@ -338,7 +338,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       latitude: end.latitude,
       longitude: end.longitude,
     };
-    void handleEndLocationConfirm(details);
+    openEndLocationModalWithDetails(details);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- apply once per navigation param + session
   }, [route?.params?.selectedEndAddress, isTracking, currentEmployee, currentSession?.id]);
 
@@ -973,6 +973,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       });
   };
 
+  const openEndLocationModalWithDetails = (details: Partial<LocationDetails> | null) => {
+    setShowEndLocationOptionsModal(false);
+    setManualEndInitialLocation(details || null);
+    setShowEndLocationModal(true);
+  };
+
   const startGpsTracking = async () => {
     try {
       setIsStartingTracking(true);
@@ -1033,9 +1039,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (option === 'baseAddress' && currentEmployee?.baseAddress) {
         const suggested = endLocationSuggestions.baseAddress;
         if (suggested) {
-          void handleEndLocationConfirm(suggested.details);
+          openEndLocationModalWithDetails(suggested.details);
         } else {
-          void handleEndLocationConfirm({
+          openEndLocationModalWithDetails({
             name: 'BA',
             address: currentEmployee.baseAddress,
           });
@@ -1043,9 +1049,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       } else if (option === 'tripStart' && startLocationDetails) {
         const suggested = endLocationSuggestions.tripStart;
         if (suggested) {
-          void handleEndLocationConfirm(suggested.details);
+          openEndLocationModalWithDetails(suggested.details);
         } else {
-          void handleEndLocationConfirm({
+          openEndLocationModalWithDetails({
             name: startLocationDetails.name,
             address: startLocationDetails.address?.trim() || startLocationDetails.name,
             latitude: startLocationDetails.latitude,
@@ -1055,22 +1061,21 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       } else if (option === 'favoriteAddresses') {
         const suggested = endLocationSuggestions.favoriteAddresses;
         if (suggested) {
-          void handleEndLocationConfirm(suggested.details);
+          openEndLocationModalWithDetails(suggested.details);
         } else {
           navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
         }
       } else if (option === 'oxfordHouse') {
         const suggested = endLocationSuggestions.oxfordHouse;
         if (suggested) {
-          void handleEndLocationConfirm(suggested.details);
+          openEndLocationModalWithDetails(suggested.details);
         } else {
           setOxfordHousePickerRole('end');
           setShowOxfordHouseSearchModal(true);
         }
       } else if (option === 'newLocation') {
         const suggested = endLocationSuggestions.newLocation;
-        setManualEndInitialLocation(suggested?.details || null);
-        setShowEndLocationModal(true);
+        openEndLocationModalWithDetails(suggested?.details || null);
       }
     }, 100);
   };
@@ -1209,7 +1214,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     const role = oxfordHousePickerRole;
     setOxfordHousePickerRole('start');
     if (role === 'end') {
-      void handleEndLocationConfirm(locationDetails);
+      openEndLocationModalWithDetails(locationDetails);
     } else {
       setStartLocationDetails(locationDetails);
       startGpsTracking();
