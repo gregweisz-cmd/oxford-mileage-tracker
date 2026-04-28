@@ -284,9 +284,13 @@ router.post('/api/notifications/test-email', async (req, res) => {
     }
 
     const prefs = parsePreferences(employee.preferences);
-    if (prefs.notificationsEnabled === false || prefs.emailNotifications === false) {
-      return res.status(400).json({
-        error: 'Email notifications are disabled in user settings. Enable them and save settings first.',
+    const notificationsDisabled = prefs.notificationsEnabled === false || prefs.emailNotifications === false;
+
+    const isEmailConfigured = await emailService.verifyEmailConfig();
+    if (!isEmailConfigured) {
+      return res.status(500).json({
+        error: 'Email service is not configured on the server.',
+        hint: 'Set AWS SES or SMTP environment variables on Render (and ensure EMAIL_FROM is valid).',
       });
     }
 
@@ -305,10 +309,19 @@ router.post('/api/notifications/test-email', async (req, res) => {
     });
 
     if (!result.success) {
-      return res.status(500).json({ error: result.error || 'Failed to send test email' });
+      return res.status(500).json({
+        error: result.error || 'Failed to send test email',
+        hint: 'Check Render logs for AWS SES/SMTP provider rejection details.',
+      });
     }
 
-    return res.json({ success: true, message: `Test email sent to ${employee.email}` });
+    return res.json({
+      success: true,
+      messageId: result.messageId || null,
+      message: notificationsDisabled
+        ? `Test email sent to ${employee.email}. Note: regular email notifications are currently disabled for this user.`
+        : `Test email sent to ${employee.email}`,
+    });
   } catch (error) {
     debugError('❌ Error sending test email:', error);
     return res.status(500).json({ error: 'Failed to send test email' });
