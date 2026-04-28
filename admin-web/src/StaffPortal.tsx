@@ -9298,7 +9298,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <UserSettings 
           employeeId={employeeId} 
           onSettingsUpdate={(settings) => {
-            // Optional callback when settings are updated
+            // Keep settings + report signature state aligned so "Save Entries"
+            // does not re-apply an older in-memory signature.
+            if (typeof settings?.signature !== 'undefined') {
+              const nextSignature = settings.signature || null;
+              setSavedSignature(nextSignature);
+              setSignatureImage(nextSignature);
+              setEmployeeData((prev: any) => prev ? { ...prev, signature: nextSignature } : prev);
+            }
             debugLog('Settings updated:', settings);
           }} 
         />
