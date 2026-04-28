@@ -97,7 +97,7 @@ export default function LocationCaptureModal({
     }
   };
 
-  const handleConfirm = async () => {
+  const saveLocation = async () => {
     const trimmedName = locationName.trim();
     const trimmedAddress = locationAddress.trim();
 
@@ -145,6 +145,32 @@ export default function LocationCaptureModal({
     setCurrentLocation(null);
     setSaveToFavorites(false);
     setCategory('Other');
+  };
+
+  const handleConfirm = async () => {
+    const trimmedName = locationName.trim();
+    const trimmedAddress = locationAddress.trim();
+    const finalName = trimmedName || trimmedAddress.split(',')[0]?.trim() || 'Location';
+    const finalAddress = trimmedAddress || finalName;
+
+    if (locationType === 'end') {
+      Alert.alert(
+        'Confirm End Location',
+        `Location Name: ${finalName}\nAddress: ${finalAddress}\n\nSave this end location?`,
+        [
+          { text: 'Edit', style: 'cancel' },
+          {
+            text: 'Confirm',
+            onPress: () => {
+              void saveLocation();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    await saveLocation();
   };
 
   const handleCancel = () => {

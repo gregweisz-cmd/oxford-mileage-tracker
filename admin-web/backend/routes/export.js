@@ -490,16 +490,74 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
     }
   };
   
-  // Helper function to check if cost center has Google Maps enabled
+  // Helper function to check if cost center has Google Maps enabled.
+  // Uses resilient matching (name/code/contains) so aliases like
+  // "PS-UNFUNDED" can still map to "Program Services".
   const isCostCenterMapsEnabled = (costCenterName) => {
     return new Promise((resolve) => {
-      db.get('SELECT enableGoogleMaps FROM cost_centers WHERE name = ?', [costCenterName], (err, row) => {
-        if (err || !row) {
-          resolve(false);
-          return;
+      if (!costCenterName || !String(costCenterName).trim()) {
+        resolve(false);
+        return;
+      }
+
+      const normalize = (value) =>
+        String(value || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '');
+
+      const requestedRaw = String(costCenterName).trim();
+      const requested = normalize(requestedRaw);
+
+      // Try direct name/code match first (fast path).
+      db.get(
+        `SELECT enableGoogleMaps, name, code
+         FROM cost_centers
+         WHERE LOWER(name) = LOWER(?) OR LOWER(COALESCE(code, '')) = LOWER(?)`,
+        [requestedRaw, requestedRaw],
+        (directErr, directRow) => {
+          if (!directErr && directRow) {
+            resolve(!!directRow.enableGoogleMaps);
+            return;
+          }
+
+          // Fallback to fuzzy match against all centers.
+          db.all(
+            'SELECT enableGoogleMaps, name, code FROM cost_centers',
+            [],
+            (allErr, rows) => {
+              if (allErr || !rows || rows.length === 0) {
+                resolve(false);
+                return;
+              }
+
+              const matched = rows.find((row) => {
+                const dbName = normalize(row.name);
+                const dbCode = normalize(row.code);
+                if (!dbName && !dbCode) return false;
+
+                return (
+                  requested === dbName ||
+                  requested === dbCode ||
+                  dbName.includes(requested) ||
+                  requested.includes(dbName) ||
+                  (dbCode && (dbCode.includes(requested) || requested.includes(dbCode)))
+                );
+              });
+
+              if (matched) {
+                debugLog(
+                  `🗺️ Cost center map match: "${requestedRaw}" -> "${matched.name}" (${matched.code || 'no-code'})`
+                );
+                resolve(!!matched.enableGoogleMaps);
+                return;
+              }
+
+              debugLog(`🗺️ No map-enabled cost center match for "${requestedRaw}"`);
+              resolve(false);
+            }
+          );
         }
-        resolve(row.enableGoogleMaps === 1);
-      });
+      );
     });
   };
   

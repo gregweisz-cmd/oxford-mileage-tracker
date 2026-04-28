@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Card,
@@ -108,6 +108,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info' | '', text: string }>({ type: '', text: '' });
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const loadUserProfile = useCallback(async () => {
     try {
@@ -385,8 +386,18 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         const result = e.target?.result as string;
         setProfile(prev => ({ ...prev, signature: result }));
         showMessage('success', 'Signature updated successfully!');
+        if (signatureInputRef.current) {
+          signatureInputRef.current.value = '';
+        }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const openSignaturePicker = () => {
+    if (signatureInputRef.current) {
+      signatureInputRef.current.value = '';
+      signatureInputRef.current.click();
     }
   };
 
@@ -679,6 +690,14 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             </Typography>
 
             <Box sx={{ mb: 2 }}>
+              <input
+                accept="image/*"
+                style={{ display: 'none' }}
+                id="signature-input"
+                type="file"
+                ref={signatureInputRef}
+                onChange={handleSignatureChange}
+              />
               {profile.signature ? (
                 <Box sx={{ 
                   border: 1, 
@@ -697,10 +716,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                   <Box sx={{ display: 'flex', gap: 0.5, position: 'absolute', top: 4, right: 4 }}>
                     <IconButton
                       size="small"
-                      onClick={() => {
-                        const input = document.getElementById('signature-input');
-                        input?.click();
-                      }}
+                      onClick={openSignaturePicker}
                       sx={{ bgcolor: 'white', '&:hover': { bgcolor: 'grey.100' } }}
                     >
                       <EditIcon />
@@ -709,6 +725,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                       size="small"
                       onClick={() => {
                         setProfile(prev => ({ ...prev, signature: '' }));
+                        if (signatureInputRef.current) {
+                          signatureInputRef.current.value = '';
+                        }
                         showMessage('info', 'Signature removed. Click "Save Settings" to confirm.');
                       }}
                       sx={{ bgcolor: 'white', '&:hover': { bgcolor: 'error.light', color: 'error.main' } }}
@@ -734,19 +753,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     No signature uploaded
                   </Typography>
-                  <input
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    id="signature-input"
-                    type="file"
-                    onChange={handleSignatureChange}
-                  />
                   <Button
                     variant="outlined"
-                    onClick={() => {
-                      const input = document.getElementById('signature-input');
-                      input?.click();
-                    }}
+                    onClick={openSignaturePicker}
                   >
                     Upload Signature
                   </Button>
