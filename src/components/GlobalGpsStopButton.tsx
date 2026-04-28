@@ -51,10 +51,9 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
           text: 'End & save trip',
           style: 'default',
           onPress: () => {
+            requestStopTracking();
             if (currentRouteName !== 'GpsTracking') {
               navigation.navigate('GpsTracking', { showEndModal: true });
-            } else {
-              requestStopTracking();
             }
           },
         },

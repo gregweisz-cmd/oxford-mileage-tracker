@@ -183,10 +183,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     React.useCallback(() => {
       // Check if we should show end modal (from route params)
       if (route?.params?.showEndModal) {
-        if (isTrackingRef.current) {
+        if (isTracking || isTrackingRef.current) {
           openEndLocationOptions();
         } else {
-          Alert.alert('No active trip', 'There is no active GPS trip to end right now.');
+          // If tracking state is still hydrating after navigation, queue the end-flow flag.
+          setShouldShowEndLocationModal(true);
         }
         // Clear the param so it doesn't show again on next focus
         navigation.setParams({ showEndModal: false });
@@ -206,7 +207,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (currentEmployee) {
         checkGpsTrackingStatus(currentEmployee.id);
       }
-    }, [currentEmployee, route?.params?.showEndModal, navigation])
+    }, [currentEmployee, route?.params?.showEndModal, navigation, isTracking, setShouldShowEndLocationModal])
   );
 
   // Watch for stop tracking request from global button
