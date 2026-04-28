@@ -184,7 +184,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       // Check if we should show end modal (from route params)
       if (route?.params?.showEndModal) {
         if (isTracking || isTrackingRef.current) {
-          openEndLocationOptions();
+          openManualEndLocationModal();
         } else {
           // If tracking state is still hydrating after navigation, queue the end-flow flag.
           setShouldShowEndLocationModal(true);
@@ -213,7 +213,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // Watch for stop tracking request from global button
   useEffect(() => {
     if (shouldShowEndLocationModal && isTracking) {
-      openEndLocationOptions();
+      openManualEndLocationModal();
       setShouldShowEndLocationModal(false); // Reset the flag
     }
   }, [shouldShowEndLocationModal, isTracking, setShouldShowEndLocationModal, currentEmployee, startLocationDetails]);
@@ -947,6 +947,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
 
     setEndLocationSuggestions(suggestions);
+    return suggestions;
   };
 
   const openEndLocationOptions = () => {
@@ -956,6 +957,20 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     void detectEndLocationSuggestions().finally(() => {
       setIsDetectingEndSuggestions(false);
     });
+  };
+
+  const openManualEndLocationModal = () => {
+    setShowEndLocationOptionsModal(false);
+    setIsDetectingEndSuggestions(true);
+    void detectEndLocationSuggestions()
+      .then((suggestions) => {
+        const suggested = suggestions?.newLocation;
+        setManualEndInitialLocation(suggested?.details || null);
+        setShowEndLocationModal(true);
+      })
+      .finally(() => {
+        setIsDetectingEndSuggestions(false);
+      });
   };
 
   const startGpsTracking = async () => {
@@ -1007,7 +1022,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleStopTracking = async () => {
-    openEndLocationOptions();
+    openManualEndLocationModal();
   };
 
   const handleEndLocationOption = (
