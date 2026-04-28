@@ -20,7 +20,7 @@ const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || '
 const EMAIL_USER = process.env.EMAIL_USER || process.env.SMTP_USER || '';
 const EMAIL_PASS = process.env.EMAIL_PASS || process.env.SMTP_PASSWORD || process.env.SMTP_APP_PASSWORD || '';
 
-const EMAIL_FROM = process.env.EMAIL_FROM || 'greg.weisz@oxfordhouse.org';
+const EMAIL_FROM = process.env.EMAIL_FROM || 'no-reply@oxfordhouse.org';
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tracker';
 // Email notifications are enabled by default when credentials are configured.
 // Set EMAIL_ENABLED=false to hard-disable all outbound email.
@@ -177,7 +177,7 @@ async function sendEmailViaSES({ to, subject, text, html }) {
 
     const response = await Promise.race([sendPromise, timeoutPromise]);
     debugLog(`✅ Email sent via AWS SES to ${to}: ${response.MessageId}`);
-    return { success: true, messageId: response.MessageId };
+    return { success: true, messageId: response.MessageId, provider: 'ses' };
   } catch (error) {
     debugError('❌ Error sending email via AWS SES:', error.message);
     
@@ -228,7 +228,13 @@ async function sendEmailViaSMTP({ to, subject, text, html }) {
 
     const info = await emailTransporter.sendMail(mailOptions);
     debugLog(`✅ Email sent via SMTP to ${to}: ${info.messageId}`);
-    return { success: true, messageId: info.messageId };
+    return {
+      success: true,
+      messageId: info.messageId,
+      provider: 'smtp',
+      accepted: info.accepted || [],
+      rejected: info.rejected || [],
+    };
   } catch (error) {
     debugError('❌ Error sending email via SMTP:', error.message);
     return { success: false, error: error.message };
