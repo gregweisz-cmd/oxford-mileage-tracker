@@ -148,6 +148,27 @@ h4 {
   color: #222;
 }
 
+/* Feature screenshots: larger centered image with caption below (used for first key setup visuals). */
+.screenshot-with-caption.screenshot-feature {
+  display: block;
+  margin: 8pt auto 14pt;
+  text-align: center;
+}
+
+.screenshot-with-caption.screenshot-feature img.packet-screenshot,
+.screenshot-with-caption.screenshot-feature img {
+  width: 75%;
+  max-width: 75%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.screenshot-with-caption.screenshot-feature .screenshot-caption {
+  width: 75%;
+  margin: 8pt auto 0;
+  text-align: left;
+}
+
 p.screenshot-missing {
   font-size: 10pt;
   color: #666;

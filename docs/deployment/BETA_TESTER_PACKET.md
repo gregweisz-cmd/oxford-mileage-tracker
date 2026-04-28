@@ -38,14 +38,14 @@ You must continue to:
 
 ### Visual reference — Apple Developer team invite email
 
-<div class="screenshot-with-caption">
+<div class="screenshot-with-caption screenshot-feature">
 <img src="images/tester-packet/ios-apple-developer-team-invite.png" alt="Apple email inviting you to join Oxford House development team" />
 <div class="screenshot-caption"><em>Apple Developer — <strong>You’re invited to join a development team</strong> for <strong>Oxford House, Inc.</strong> Accept this invitation first, then tell Goose.</em></div>
 </div>
 
 ### Visual reference — TestFlight invitation email (tap View in TestFlight)
 
-<div class="screenshot-with-caption">
+<div class="screenshot-with-caption screenshot-feature">
 <img src="images/tester-packet/ios-testflight-email-view-in-testflight.png" alt="TestFlight email with View in TestFlight button" />
 <div class="screenshot-caption"><em>Open this email <strong>on your phone</strong> and tap <strong>View in TestFlight</strong>.</em></div>
 </div>
@@ -98,7 +98,7 @@ When we release a new test build, use the steps below so you are not stuck on an
 
 #### iPhone — TestFlight
 
-1. Open the **TestFlight** app (purple icon).
+1. Open the **TestFlight** app (black icon with a blue propeller).
 2. Tap **Oxford House Expense Tracker** (or your app name in the list).
 3. If a new build is available, tap **Update** (or open the app from TestFlight and tap **Install** / **Update** when prompted).
 4. TestFlight may also **notify** you when a new build is ready — check **Settings** in TestFlight for notification preferences.
@@ -118,10 +118,8 @@ When we release a new test build, use the steps below so you are not stuck on an
 
 ### Web portals
 
-| Portal | Access (link + printed URL) |
-|--------|----------------------------|
-| Staff | [Staff Portal Login](https://oxford-mileage-tracker.vercel.app/login)<br>Printed URL: `https://oxford-mileage-tracker.vercel.app/login` |
-| Supervisor | [Supervisor Portal Login](https://oxford-mileage-tracker.vercel.app/login)<br>Printed URL: `https://oxford-mileage-tracker.vercel.app/login` |
+- Web Portal Login: [https://oxford-mileage-tracker.vercel.app/login](https://oxford-mileage-tracker.vercel.app/login)
+- Printed URL: `https://oxford-mileage-tracker.vercel.app/login`
 
 ---
 

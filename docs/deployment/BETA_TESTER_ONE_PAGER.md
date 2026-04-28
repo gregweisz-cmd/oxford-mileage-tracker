@@ -1,6 +1,6 @@
 # Oxford House Expense Tracker - Beta One-Pager
 
-Use this quick guide to get set up and focus on the highest-value testing this week.
+Use this quick guide for setup, access, and reporting during beta.
 
 ## 1) Beta mission
 
@@ -24,30 +24,7 @@ Use this quick guide to get set up and focus on the highest-value testing this w
 
 - Web Portal Login: [https://oxford-mileage-tracker.vercel.app/login](https://oxford-mileage-tracker.vercel.app/login)
 
-## 3) Highest-priority tests this cycle
-
-### A. GPS address precision (mobile)
-
-- Start and stop GPS trips using location capture.
-- Verify addresses are complete (street number + street + city/state).
-- Confirm the reminder to verify street number is shown.
-
-### B. Manual mileage date behavior (mobile)
-
-- Save a manual mileage entry on an older date.
-- Switch to a different date and verify odometer does not carry over incorrectly.
-
-### C. Hours and Descriptions controls (Android)
-
-- Edit a day, dismiss keyboard with Done, and verify Save/Cancel controls stay stable and tappable.
-- Scroll near the bottom and verify header actions hide as expected.
-
-### D. Cost-center odometer continuity (web + export)
-
-- For multi-cost-center users, verify CC2 starts where CC1 ends, CC3 starts where CC2 ends, etc.
-- Confirm exported report values match tab behavior.
-
-## 4) Submit feedback
+## 3) Submit feedback
 
 - Feedback form: [https://forms.gle/vmUf6qzESDk5uTai8](https://forms.gle/vmUf6qzESDk5uTai8)
 - Quick link: [https://tinyurl.com/ExpenseTracker-Feedback](https://tinyurl.com/ExpenseTracker-Feedback)
@@ -58,6 +35,12 @@ When submitting, include:
 - App area tested (GPS, Mileage Entry, Hours, Staff Portal, Export)
 - Exact date(s) used
 - Screenshot or screen recording when possible
+
+## 4) Release cadence and updates
+
+- We may ship multiple beta updates each week.
+- On mobile, install updates as soon as they appear in TestFlight/Google Play Internal Testing.
+- On web, refresh/reload if behavior looks outdated.
 
 ## 5) Reference docs
 
