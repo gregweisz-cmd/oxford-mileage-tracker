@@ -11,6 +11,27 @@ const websocketService = require('../services/websocketService');
 const emailService = require('../services/emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
+function parsePreferences(preferences) {
+  if (!preferences) return {};
+  if (typeof preferences === 'object') return preferences;
+  if (typeof preferences === 'string') {
+    try {
+      return JSON.parse(preferences);
+    } catch (error) {
+      return {};
+    }
+  }
+  return {};
+}
+
+function isEmailAllowedForEmployee(employee) {
+  if (!employee || !employee.email) return false;
+  const prefs = parsePreferences(employee.preferences);
+  if (prefs.notificationsEnabled === false) return false;
+  if (prefs.emailNotifications === false) return false;
+  return true;
+}
+
 // ===== REPORT APPROVAL SYSTEM API ENDPOINTS =====
 
 // Submit report for approval
@@ -82,14 +103,14 @@ router.post('/api/reports/submit', (req, res) => {
           }
           // Send email notification to supervisor (async, don't wait)
           db.all(
-            'SELECT id, email, name FROM employees WHERE id IN (?, ?)',
+            'SELECT id, email, name, preferences FROM employees WHERE id IN (?, ?)',
             [employeeId, supervisorId],
             async (emailErr, employees) => {
               if (!emailErr && employees && employees.length >= 1) {
                 const employee = employees.find(e => e.id === employeeId);
                 const supervisor = employees.find(e => e.id === supervisorId);
                 
-                if (employee && supervisor && supervisor.email) {
+                if (employee && supervisor && isEmailAllowedForEmployee(supervisor)) {
                   // Get report period for email
                   db.get(
                     'SELECT period FROM monthly_reports WHERE id = ?',
@@ -245,10 +266,10 @@ router.post('/api/reports/approve', (req, res) => {
               // Send email notification to employee (async, don't wait)
               if (finalEmployeeId) {
                 db.get(
-                  'SELECT email, name FROM employees WHERE id = ?',
+                  'SELECT email, name, preferences FROM employees WHERE id = ?',
                   [finalEmployeeId],
                   async (empErr, employee) => {
-                    if (!empErr && employee && employee.email) {
+                    if (!empErr && employee && isEmailAllowedForEmployee(employee)) {
                       db.get(
                         'SELECT period FROM monthly_reports WHERE id = ?',
                         [reportId],
@@ -320,10 +341,10 @@ router.post('/api/reports/reject', (req, res) => {
               // Send email notification to employee (async, don't wait)
               if (finalEmployeeId) {
                 db.get(
-                  'SELECT email, name FROM employees WHERE id = ?',
+                  'SELECT email, name, preferences FROM employees WHERE id = ?',
                   [finalEmployeeId],
                   async (empErr, employee) => {
-                    if (!empErr && employee && employee.email) {
+                    if (!empErr && employee && isEmailAllowedForEmployee(employee)) {
                       db.get(
                         'SELECT period FROM monthly_reports WHERE id = ?',
                         [reportId],
@@ -395,10 +416,10 @@ router.post('/api/reports/request-revision', (req, res) => {
               // Send email notification to employee (async, don't wait)
               if (finalEmployeeId) {
                 db.get(
-                  'SELECT email, name FROM employees WHERE id = ?',
+                  'SELECT email, name, preferences FROM employees WHERE id = ?',
                   [finalEmployeeId],
                   async (empErr, employee) => {
-                    if (!empErr && employee && employee.email) {
+                    if (!empErr && employee && isEmailAllowedForEmployee(employee)) {
                       db.get(
                         'SELECT period FROM monthly_reports WHERE id = ?',
                         [reportId],

@@ -7,6 +7,27 @@ const dbService = require('./dbService');
 const emailService = require('./emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
+function parsePreferences(preferences) {
+  if (!preferences) return {};
+  if (typeof preferences === 'object') return preferences;
+  if (typeof preferences === 'string') {
+    try {
+      return JSON.parse(preferences);
+    } catch (error) {
+      debugWarn('⚠️ Failed to parse employee preferences JSON');
+    }
+  }
+  return {};
+}
+
+function shouldSendEmailForRecipient(recipient) {
+  if (!recipient || !recipient.email) return false;
+  const prefs = parsePreferences(recipient.preferences);
+  if (prefs.notificationsEnabled === false) return false;
+  if (prefs.emailNotifications === false) return false;
+  return true;
+}
+
 /**
  * Create a notification and optionally send email
  * @param {Object} options - Notification options
@@ -105,7 +126,7 @@ async function createNotification({
     });
 
     // Send email notification if requested and recipient has email
-    if (shouldSendEmail && recipient && recipient.email) {
+    if (shouldSendEmail && shouldSendEmailForRecipient(recipient)) {
       // Get report if provided
       let report = null;
       if (reportId) {
@@ -129,6 +150,8 @@ async function createNotification({
         report,
         actor: actor || (actorId && actorName ? { id: actorId, name: actorName } : null),
       });
+    } else if (shouldSendEmail && recipient?.email) {
+      debugLog(`📧 Skipping email notification for ${recipient.id} due to user preferences`);
     }
 
     return notificationId;

@@ -66,6 +66,7 @@ interface UserProfile {
     theme: 'light' | 'dark';
     emailNotifications: boolean;
     smsNotifications: boolean;
+    profilePicture?: string;
   };
   signature?: string;
   profilePicture?: string;
@@ -154,6 +155,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           theme: 'light' as 'light' | 'dark',
           emailNotifications: true,
           smsNotifications: false,
+          profilePicture: '',
         };
         if (employeeData.preferences) {
           try {
@@ -185,6 +187,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           signature: employeeData.signature || '',
           oxfordHouseId: employeeData.oxfordHouseId || '',
           preferences: preferences,
+          profilePicture: preferences?.profilePicture || '',
         }));
       } else {
         throw new Error('Failed to load employee data');
@@ -271,19 +274,18 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       
       // Prepare data for API update
       const updateData = {
+        settingsSource: 'user-settings',
         name: profile.name,
         preferredName: profile.preferredName || '', // Ensure empty string is sent, not undefined
         email: profile.email,
-        oxfordHouseId: profile.oxfordHouseId || '',
-        position: profile.position,
         phoneNumber: formattedPhoneNumber,
         baseAddress: formatBaseAddress(profile.baseAddresses.address1.street, profile.baseAddresses.address1.city, profile.baseAddresses.address1.state, profile.baseAddresses.address1.zip),
         baseAddress2: formatBaseAddress(profile.baseAddresses.address2.street, profile.baseAddresses.address2.city, profile.baseAddresses.address2.state, profile.baseAddresses.address2.zip),
-        costCenters: JSON.stringify(profile.costCenters),
-        selectedCostCenters: JSON.stringify(profile.costCenters),
-        defaultCostCenter: profile.costCenters[0] || '',
         signature: profile.signature,
-        preferences: JSON.stringify(profile.preferences), // Save preferences including theme
+        preferences: JSON.stringify({
+          ...profile.preferences,
+          profilePicture: profile.profilePicture || '',
+        }), // Save user-scoped preferences and profile picture
       };
       
       // Update via API
@@ -298,9 +300,14 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       
       if (response.ok) {
         await response.json();
+        const savedProfile = {
+          ...profile,
+          phoneNumber: formattedPhoneNumber,
+        };
+        setProfile(savedProfile);
         showMessage('success', 'Profile updated successfully!');
         if (onSettingsUpdate) {
-          onSettingsUpdate(profile);
+          onSettingsUpdate(savedProfile);
         }
         // Reload the profile to confirm changes were saved
         await loadUserProfile();
@@ -478,8 +485,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               <TextField
                 label="Position"
                 value={profile.position}
-                onChange={(e) => setProfile(prev => ({ ...prev, position: e.target.value }))}
                 sx={{ minWidth: 200 }}
+                InputProps={{ readOnly: true }}
+                helperText="Managed by HR sync and administrators"
               />
               <TextField
                 label="Phone Number"

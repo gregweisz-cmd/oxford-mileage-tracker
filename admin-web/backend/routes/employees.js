@@ -757,7 +757,10 @@ router.put('/api/employees/:id', async (req, res) => {
       : (currentEmployee.preferredName || '');
     const email = updateData.email !== undefined ? (updateData.email || currentEmployee.email || '') : (currentEmployee.email || '');
     const oxfordHouseId = updateData.oxfordHouseId !== undefined ? (updateData.oxfordHouseId || '') : (currentEmployee.oxfordHouseId || '');
-    const position = updateData.position !== undefined ? (updateData.position || currentEmployee.position || '') : (currentEmployee.position || '');
+    const isUserSettingsUpdate = updateData.settingsSource === 'user-settings';
+    const position = isUserSettingsUpdate
+      ? (currentEmployee.position || '')
+      : (updateData.position !== undefined ? (updateData.position || currentEmployee.position || '') : (currentEmployee.position || ''));
     // Validate and set role (defaults to existing role or 'employee' if not provided or invalid)
     const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
     const currentRole = currentEmployee.role || 'employee';
