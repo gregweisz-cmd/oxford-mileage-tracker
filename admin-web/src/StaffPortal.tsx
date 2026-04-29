@@ -1378,16 +1378,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const monthName = monthNames[currentMonth - 1];
           const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
           
-          // Fetch real data from backend APIs using rate-limited API
+          // Fetch real data from backend APIs using rate-limited API.
+          // Keep each request isolated so one transient failure doesn't blank the whole report.
           const { apiFetch } = await import('./services/rateLimitedApi');
+          const safeApiFetch = async (url: string, fallbackBody: string = '[]') => {
+            try {
+              return await apiFetch(url);
+            } catch (fetchError) {
+              debugWarn(`⚠️ StaffPortal: API request failed for ${url}`, fetchError);
+              return new Response(fallbackBody, { status: 503, statusText: 'Fallback response' });
+            }
+          };
           const [mileageResponse, receiptsResponse, timeTrackingResponse, dailyDescriptionsResponse, dailyOdometerResponse, reportResponse, expenseReportResponse] = await Promise.all([
-            apiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/daily-descriptions?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/daily-odometer-readings?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/monthly-reports?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/expense-reports/${effectiveEmployeeId}/${currentMonth}/${currentYear}`).catch(() => ({ ok: false } as Response)) // Load expense report if it exists
+            safeApiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            safeApiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            safeApiFetch(`/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            safeApiFetch(`/api/daily-descriptions?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            safeApiFetch(`/api/daily-odometer-readings?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            safeApiFetch(`/api/monthly-reports?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+            safeApiFetch(`/api/expense-reports/${effectiveEmployeeId}/${currentMonth}/${currentYear}`, '{}') // Load expense report if it exists
           ]);
           
           const mileageEntries = mileageResponse.ok ? await mileageResponse.json() : [];
@@ -1472,8 +1481,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             } catch (error) {
               debugWarn('Could not parse expense report data:', error);
             }
-          } else {
-            // No expense report exists for this month - clear checkbox states for new month
+          } else if (expenseReportResponse && expenseReportResponse.status === 404) {
+            // No expense report exists for this month - clear checkbox/signature state for a new report.
             setEmployeeCertificationAcknowledged(false);
             setSupervisorCertificationAcknowledged(false);
             setSignatureImage(null);
@@ -1484,6 +1493,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             setReportApprovedAt(null);
             setCurrentApprovalStage(null);
             setCurrentApproverName(null);
+          } else {
+            // Transient fetch issue (network/rate-limit/etc): preserve in-memory checkbox/signature state
+            // to avoid showing unchecked/cleared values that are actually saved.
+            debugWarn(
+              `⚠️ StaffPortal: Could not load expense report ${effectiveEmployeeId}/${currentMonth}/${currentYear} (status ${expenseReportResponse?.status ?? 'unknown'}). Preserving local certification/signature state.`
+            );
           }
           
           const currentMonthMileage = mileageEntries.filter((entry: any) => {
