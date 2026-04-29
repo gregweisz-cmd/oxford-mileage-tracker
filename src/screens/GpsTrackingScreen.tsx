@@ -1092,6 +1092,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     });
   };
 
+  const withTimeout = async <T,>(
+    task: Promise<T>,
+    timeoutMs: number,
+    label: string
+  ): Promise<T> => {
+    return await Promise.race([
+      task,
+      new Promise<T>((_, reject) => {
+        setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  };
+
   const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
     // Safety guard: if any path tries to auto-submit a non-manual end location,
     // force the user back through the editable end-location modal first.
@@ -1109,7 +1122,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
     try {
       // Pass confirmed end location so we skip a slow post-stop GPS fix (avoids UI freeze on many devices)
-      const completedSession = await stopTracking(locationDetails);
+      const completedSession = await withTimeout(
+        stopTracking(locationDetails),
+        12000,
+        'Stop tracking'
+      );
       
       // Use GPS-tracked miles
       const actualMiles = Math.round(completedSession?.totalMiles || 0);
@@ -1129,29 +1146,40 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           isGpsTracked: true
         });
 
-        await DatabaseService.createMileageEntry({
-          employeeId: currentEmployee.id,
-          oxfordHouseId: currentEmployee.oxfordHouseId,
-          date: completedSession.startTime,
-          odometerReading: completedSession.odometerReading,
-          startLocation: startLocationDetails?.name || startLocationDetails?.address || completedSession.startLocation || 'Unknown',
-          endLocation: locationDetails.name || locationDetails.address || completedSession.endLocation || 'Unknown',
-          startLocationDetails: startLocationDetails || undefined,
-          endLocationDetails: locationDetails, // Use the parameter directly instead of state
-          purpose: completedSession.purpose,
-          miles: actualMiles, // Use calculated miles from odometer if available
-          notes: completedSession.notes,
-          isGpsTracked: true,
-          costCenter: selectedCostCenter,
-        });
+        let mileageSaved = true;
+        try {
+          await withTimeout(
+            DatabaseService.createMileageEntry({
+              employeeId: currentEmployee.id,
+              oxfordHouseId: currentEmployee.oxfordHouseId,
+              date: completedSession.startTime,
+              odometerReading: completedSession.odometerReading,
+              startLocation: startLocationDetails?.name || startLocationDetails?.address || completedSession.startLocation || 'Unknown',
+              endLocation: locationDetails.name || locationDetails.address || completedSession.endLocation || 'Unknown',
+              startLocationDetails: startLocationDetails || undefined,
+              endLocationDetails: locationDetails, // Use the parameter directly instead of state
+              purpose: completedSession.purpose,
+              miles: actualMiles, // Use calculated miles from odometer if available
+              notes: completedSession.notes,
+              isGpsTracked: true,
+              costCenter: selectedCostCenter,
+            }),
+            12000,
+            'Save trip data'
+          );
+        } catch (saveError) {
+          mileageSaved = false;
+          console.error('⚠️ GPS trip save timed out/faulted:', saveError);
+        }
 
-        console.log('✅ GPS Trip saved successfully!');
+        if (mileageSaved) {
+          console.log('✅ GPS Trip saved successfully!');
+        }
 
         // Update last destination for next trip
         console.log('🔍 GPS: Updating last destination:', locationDetails.name);
         setLastDestination(locationDetails);
 
-        setIsEndingTracking(false);
         setTrackingTime(0);
         setStartLocationDetails(null);
         setEndLocationDetails(null);
@@ -1168,7 +1196,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         });
         setSelectedCostCenter('');
 
-        const message = `Trip completed!\nDistance: ${actualMiles} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}`;
+        const saveWarning = mileageSaved
+          ? ''
+          : '\n\nWarning: Trip ended, but saving took too long. Please check your mileage list and refresh if needed.';
+        const message = `Trip completed!\nDistance: ${actualMiles} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}${saveWarning}`;
         // Auto-return to Home after save and show completion popup.
         navigation.reset({
           index: 0,
@@ -1179,7 +1210,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         }, Platform.OS === 'ios' ? 250 : 200);
         return;
       } else {
-        setIsEndingTracking(false);
+        setShowEndLocationOptionsModal(false);
       }
 
       setTrackingTime(0);
@@ -1205,9 +1236,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setSelectedCostCenter('');
     } catch (error) {
       console.error('Error stopping tracking:', error);
-      setIsEndingTracking(false);
       setShowEndLocationOptionsModal(false);
       Alert.alert('Error', 'Failed to stop GPS tracking');
+    } finally {
+      setIsEndingTracking(false);
     }
   };
 

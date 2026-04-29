@@ -255,30 +255,42 @@ export default function LocationCaptureModal({
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Address *</Text>
             <ScrollToOnFocusView>
-              <GooglePlacesAddressInput
-                value={locationAddress}
-                onChangeText={setLocationAddress}
-                placeholder="Enter or confirm the address..."
-                multiline={true}
-                numberOfLines={3}
-                onPlaceSelected={(details) => {
-                  applyParsedAddress(details.formattedAddress);
-                  if (details.latitude && details.longitude) {
-                    setCurrentLocation({
-                      coords: {
-                        latitude: details.latitude,
-                        longitude: details.longitude,
-                        altitude: null,
-                        accuracy: null,
-                        altitudeAccuracy: null,
-                        heading: null,
-                        speed: null,
-                      },
-                      timestamp: Date.now(),
-                    } as any);
-                  }
-                }}
-              />
+              {locationType === 'end' ? (
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={locationAddress}
+                  onChangeText={setLocationAddress}
+                  placeholder="Enter or confirm the address..."
+                  placeholderTextColor="#999"
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              ) : (
+                <GooglePlacesAddressInput
+                  value={locationAddress}
+                  onChangeText={setLocationAddress}
+                  placeholder="Enter or confirm the address..."
+                  multiline={true}
+                  numberOfLines={3}
+                  onPlaceSelected={(details) => {
+                    applyParsedAddress(details.formattedAddress);
+                    if (details.latitude && details.longitude) {
+                      setCurrentLocation({
+                        coords: {
+                          latitude: details.latitude,
+                          longitude: details.longitude,
+                          altitude: null,
+                          accuracy: null,
+                          altitudeAccuracy: null,
+                          heading: null,
+                          speed: null,
+                        },
+                        timestamp: Date.now(),
+                      } as any);
+                    }
+                  }}
+                />
+              )}
             </ScrollToOnFocusView>
             <Text style={styles.helpText}>
               Confirm the street number before saving this location.
