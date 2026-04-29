@@ -92,6 +92,7 @@ import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShort
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 import ReceiptImageCropModal from './components/ReceiptImageCropModal';
 import { ConfirmDeleteDialog } from './components/ConfirmDeleteDialog';
+import { CostCenterApiService } from './services/costCenterApiService';
 
 // Date picker imports
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -162,12 +163,32 @@ export type CostCenterRow = {
   odometerEnd: number;
   milesTraveled: number;
   mileageAmount: number;
+  airRailBus: number;
+  vehicleRentalFuel: number;
+  parkingTolls: number;
+  groundTransportation: number;
+  lodging: number;
   perDiem: number;
 };
+
+function normalizeCostCenterForMatch(value: string): string {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function mapReceiptToTravelCategory(categoryValue: string): keyof Pick<CostCenterRow, 'airRailBus' | 'vehicleRentalFuel' | 'parkingTolls' | 'groundTransportation' | 'lodging'> | null {
+  const category = String(categoryValue || '').toLowerCase();
+  if (category.includes('air') || category.includes('rail') || category.includes('bus') || category.includes('flight')) return 'airRailBus';
+  if (category.includes('vehicle') || category.includes('rental') || category.includes('fuel')) return 'vehicleRentalFuel';
+  if (category.includes('parking') || category.includes('toll')) return 'parkingTolls';
+  if (category.includes('ground') || category.includes('transportation') || category.includes('taxi') || category.includes('uber') || category.includes('lyft')) return 'groundTransportation';
+  if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) return 'lodging';
+  return null;
+}
 
 /** Build rows for a cost center tab from raw mileage + daily descriptions (so each entry's cost center tag is respected). */
 export function buildCostCenterRows(params: {
   currentMonthMileageList: any[];
+  receipts: any[];
   dailyDescriptions: any[];
   rawTimeEntries: any[];
   costCenter: string;
@@ -181,7 +202,7 @@ export function buildCostCenterRows(params: {
   employee?: { baseAddress?: string; baseAddress2?: string };
   startingOdometer?: number;
 }): CostCenterRow[] {
-  const { currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenter, costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee, startingOdometer } = params;
+  const { currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenter, costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee, startingOdometer } = params;
   const baseAddress = employee?.baseAddress;
   const baseAddress2 = employee?.baseAddress2;
   const currentMonthTime = rawTimeEntries.filter((t: any) => {
@@ -201,6 +222,25 @@ export function buildCostCenterRows(params: {
         ((e.costCenter || costCenters[0]) === costCenter);
     });
     const withMiles = mileageForDayAndCC.filter((e: any) => (e.miles || 0) > 0);
+    const receiptsForDayAndCC = (receipts || []).filter((receipt: any) => {
+      const p = parseCalendarYmdParts(receipt.date);
+      const cc = receipt.costCenter || costCenters[0] || '';
+      return !!p && p.day === day && p.month === currentMonth && p.year === currentYear &&
+        normalizeCostCenterForMatch(cc) === normalizeCostCenterForMatch(costCenter);
+    });
+    const travelReceiptTotals = {
+      airRailBus: 0,
+      vehicleRentalFuel: 0,
+      parkingTolls: 0,
+      groundTransportation: 0,
+      lodging: 0,
+    };
+    receiptsForDayAndCC.forEach((receipt: any) => {
+      const key = mapReceiptToTravelCategory(receipt.category);
+      if (key) {
+        (travelReceiptTotals as any)[key] += Number(receipt.amount) || 0;
+      }
+    });
     const timeForDayAndCC = currentMonthTime.filter((t: any) => {
       const p = parseCalendarYmdParts(t.date);
       return !!p && p.day === day && ((t.costCenter || costCenters[0]) === costCenter);
@@ -228,12 +268,31 @@ export function buildCostCenterRows(params: {
       description = drivingSummary;
     }
     const perDiem = (dayDescription && (dayDescription.costCenter || costCenters[0]) === costCenter) ? (perDiemByDate[normDate] ?? 0) : 0;
-    return { dateStr, weekdayStr, day, description, dayOff, dayOffType, hoursWorked, odometerStart: Math.round(odometerStart), odometerEnd, milesTraveled: Math.round(milesTraveled), mileageAmount, perDiem };
+    return {
+      dateStr,
+      weekdayStr,
+      day,
+      description,
+      dayOff,
+      dayOffType,
+      hoursWorked,
+      odometerStart: Math.round(odometerStart),
+      odometerEnd,
+      milesTraveled: Math.round(milesTraveled),
+      mileageAmount,
+      airRailBus: travelReceiptTotals.airRailBus,
+      vehicleRentalFuel: travelReceiptTotals.vehicleRentalFuel,
+      parkingTolls: travelReceiptTotals.parkingTolls,
+      groundTransportation: travelReceiptTotals.groundTransportation,
+      lodging: travelReceiptTotals.lodging,
+      perDiem
+    };
   });
 }
 
 function buildCostCenterRowsForIndex(params: {
   currentMonthMileageList: any[];
+  receipts: any[];
   dailyDescriptions: any[];
   rawTimeEntries: any[];
   costCenters: string[];
@@ -267,6 +326,7 @@ function buildCostCenterRowsForIndex(params: {
   for (let i = 0; i <= costCenterIndex; i += 1) {
     const rows = buildCostCenterRows({
       currentMonthMileageList,
+      receipts: params.receipts,
       dailyDescriptions,
       rawTimeEntries,
       costCenter: costCenters[i] || '',
@@ -301,6 +361,11 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
   const subHours = rows.reduce((s, r) => s + r.hoursWorked, 0);
   const subMiles = rows.reduce((s, r) => s + r.milesTraveled, 0);
   const subMileage = rows.reduce((s, r) => s + r.mileageAmount, 0);
+  const subAirRailBus = rows.reduce((s, r) => s + r.airRailBus, 0);
+  const subVehicleRentalFuel = rows.reduce((s, r) => s + r.vehicleRentalFuel, 0);
+  const subParkingTolls = rows.reduce((s, r) => s + r.parkingTolls, 0);
+  const subGroundTransportation = rows.reduce((s, r) => s + r.groundTransportation, 0);
+  const subLodging = rows.reduce((s, r) => s + r.lodging, 0);
   const subPerDiem = rows.reduce((s, r) => s + r.perDiem, 0);
   return (
     <TableContainer component={Paper} sx={{ overflow: 'auto' }}>
@@ -314,6 +379,11 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
             <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Odometer End</TableCell>
             <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Miles Traveled</TableCell>
             <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Mileage ($)</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Air / Rail / Bus</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Vehicle Rental / Fuel</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Parking / Tolls</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Ground Transportation</TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Lodging Hotel / AirBnB</TableCell>
             <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>Per Diem ($)</TableCell>
           </TableRow>
         </TableHead>
@@ -332,6 +402,11 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.odometerEnd}</TableCell>
               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.milesTraveled}</TableCell>
               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.mileageAmount.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.airRailBus.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.vehicleRentalFuel.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.parkingTolls.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.groundTransportation.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.lodging.toFixed(2)}</TableCell>
               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.perDiem.toFixed(2)}</TableCell>
             </TableRow>
           ))}
@@ -342,6 +417,11 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
             <TableCell colSpan={2} sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
             <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subMiles}</strong></TableCell>
             <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subMileage.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subAirRailBus.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subVehicleRentalFuel.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subParkingTolls.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subGroundTransportation.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subLodging.toFixed(2)}</strong></TableCell>
             <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
           </TableRow>
         </TableBody>
@@ -397,6 +477,8 @@ interface EmployeeExpenseData {
   year: number;
   dateCompleted: string;
   costCenters: string[];
+  selectedCostCenters?: string[];
+  defaultCostCenter?: string;
   
   // Summary totals
   totalMiles: number;
@@ -607,6 +689,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       .catch(() => setDailyDescriptionOptions([]));
   }, []);
 
+  useEffect(() => {
+    const loadCostCenterOptions = async () => {
+      try {
+        const all = await CostCenterApiService.getAllCostCenters();
+        const names = (all || [])
+          .filter((cc: any) => cc?.isActive !== false)
+          .map((cc: any) => String(cc.name || '').trim())
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
+        setAllCostCenterOptions(names);
+      } catch (error) {
+        debugWarn('Failed to load cost center options for cover sheet:', error);
+      }
+    };
+    loadCostCenterOptions();
+  }, []);
+
   // Helper function to normalize dates to YYYY-MM-DD format (stable ref for useMemo deps)
   const normalizeDate = React.useCallback((dateValue: any): string => {
     if (!dateValue) return '';
@@ -687,6 +786,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingCostCenterIndex, setEditingCostCenterIndex] = useState<number>(0);
   const [summaryEditDialogOpen, setSummaryEditDialogOpen] = useState(false);
   const [receiptTotalsByCategory, setReceiptTotalsByCategory] = useState<{[key: string]: number}>({});
+  const [allCostCenterOptions, setAllCostCenterOptions] = useState<string[]>([]);
   
   // Submission type dialog state
   const [submissionTypeDialogOpen, setSubmissionTypeDialogOpen] = useState(false);
@@ -1693,38 +1793,54 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             expenseData.costCenterBreakdowns = currentReport.reportData.costCenterBreakdowns;
           }
           
-          // Calculate receipt totals by category for validation
+          // Calculate receipt totals by category and by cost center index.
           const categoryTotals: {[key: string]: number} = {};
+          const categoryTotalsByCostCenter: {[key: string]: number[]} = {};
+          const normalizeCostCenterKey = (value: string) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const resolveCostCenterIndex = (receiptCostCenter?: string) => {
+            if (!receiptCostCenter) return 0;
+            const normalized = normalizeCostCenterKey(receiptCostCenter);
+            const direct = (employee.costCenters || []).findIndex((cc: string) => normalizeCostCenterKey(cc) === normalized);
+            return direct >= 0 ? direct : 0;
+          };
+          const addCategoryAmount = (categoryKey: string, amount: number, costCenterIndex: number) => {
+            categoryTotals[categoryKey] = (categoryTotals[categoryKey] || 0) + amount;
+            if (!categoryTotalsByCostCenter[categoryKey]) {
+              categoryTotalsByCostCenter[categoryKey] = new Array(employee.costCenters.length).fill(0);
+            }
+            categoryTotalsByCostCenter[categoryKey][costCenterIndex] += amount;
+          };
           // Reduced logging for performance
           currentMonthReceipts.forEach((receipt: any) => {
             const category = receipt.category?.toLowerCase() || '';
             const amount = receipt.amount || 0;
+            const costCenterIndex = resolveCostCenterIndex(receipt.costCenter);
             
             // Map receipt categories to summary sheet categories
             if (category.includes('air') || category.includes('rail') || category.includes('bus') || category.includes('flight')) {
-              categoryTotals['airRailBus'] = (categoryTotals['airRailBus'] || 0) + amount;
+              addCategoryAmount('airRailBus', amount, costCenterIndex);
               // Reduced logging for performance
               // debugLog(`✅ Matched to airRailBus: total now = $${categoryTotals['airRailBus']}`);
             } else if (category.includes('vehicle') || category.includes('rental') || category.includes('fuel')) {
-              categoryTotals['vehicleRentalFuel'] = (categoryTotals['vehicleRentalFuel'] || 0) + amount;
+              addCategoryAmount('vehicleRentalFuel', amount, costCenterIndex);
             } else if (category.includes('parking') || category.includes('toll')) {
-              categoryTotals['parkingTolls'] = (categoryTotals['parkingTolls'] || 0) + amount;
+              addCategoryAmount('parkingTolls', amount, costCenterIndex);
             } else if (category.includes('ground') || category.includes('transportation') || category.includes('taxi') || category.includes('uber') || category.includes('lyft')) {
-              categoryTotals['groundTransportation'] = (categoryTotals['groundTransportation'] || 0) + amount;
+              addCategoryAmount('groundTransportation', amount, costCenterIndex);
             } else if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) {
-              categoryTotals['hotelsAirbnb'] = (categoryTotals['hotelsAirbnb'] || 0) + amount;
+              addCategoryAmount('hotelsAirbnb', amount, costCenterIndex);
             } else if (category.includes('phone') || category.includes('internet') || category.includes('fax')) {
-              categoryTotals['phoneInternetFax'] = (categoryTotals['phoneInternetFax'] || 0) + amount;
+              addCategoryAmount('phoneInternetFax', amount, costCenterIndex);
             } else if (category.includes('shipping') || category.includes('postage')) {
-              categoryTotals['shippingPostage'] = (categoryTotals['shippingPostage'] || 0) + amount;
+              addCategoryAmount('shippingPostage', amount, costCenterIndex);
             } else if (category.includes('printing') || category.includes('copying')) {
-              categoryTotals['printingCopying'] = (categoryTotals['printingCopying'] || 0) + amount;
+              addCategoryAmount('printingCopying', amount, costCenterIndex);
             } else if (category.includes('supplies') || category.includes('office')) {
-              categoryTotals['officeSupplies'] = (categoryTotals['officeSupplies'] || 0) + amount;
+              addCategoryAmount('officeSupplies', amount, costCenterIndex);
             } else if (category.includes('ees')) {
-              categoryTotals['eesReceipt'] = (categoryTotals['eesReceipt'] || 0) + amount;
+              addCategoryAmount('eesReceipt', amount, costCenterIndex);
             } else if (category.includes('other') && category !== 'per diem') {
-              categoryTotals['other'] = (categoryTotals['other'] || 0) + amount;
+              addCategoryAmount('other', amount, costCenterIndex);
             }
           });
           // Reduced logging for performance
@@ -1737,11 +1853,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Helper function to auto-populate a category
           const autoPopulateCategory = (categoryKey: string, receiptTotal: number, currentValue: number) => {
-            if (receiptTotal > 0 && (currentValue === 0 || currentValue === undefined || currentValue === null)) {
-              (autoPopulatedData as any)[categoryKey] = receiptTotal;
-              if (!autoPopulatedData.costCenterBreakdowns) autoPopulatedData.costCenterBreakdowns = {};
-              if (!autoPopulatedData.costCenterBreakdowns[categoryKey]) (autoPopulatedData.costCenterBreakdowns as any)[categoryKey] = [];
-              (autoPopulatedData.costCenterBreakdowns as any)[categoryKey][0] = receiptTotal;
+            if (receiptTotal <= 0) return;
+            (autoPopulatedData as any)[categoryKey] = receiptTotal;
+            if (!autoPopulatedData.costCenterBreakdowns) autoPopulatedData.costCenterBreakdowns = {};
+            (autoPopulatedData.costCenterBreakdowns as any)[categoryKey] =
+              (categoryTotalsByCostCenter[categoryKey] || new Array(employee.costCenters.length).fill(0)).slice();
+            if (currentValue !== receiptTotal) {
               needsUpdate = true;
             }
           };
@@ -1777,12 +1894,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             }
           }
           
-          // Initialize otherExpenses array if not present
-          if (!expenseData.otherExpenses) {
-            expenseData.otherExpenses = expenseData.other && expenseData.other > 0 
-              ? [{ amount: expenseData.other, description: '', id: Date.now().toString() }]
-              : [];
-          }
+          // Keep receipt-category "Other" entries visible in Other Expenses with per-cost-center placement.
+          const receiptBackedOtherExpenses = currentMonthReceipts
+            .filter((receipt: any) => {
+              const c = (receipt.category || '').toLowerCase();
+              return c.includes('other') && c !== 'per diem' && (receipt.amount || 0) > 0;
+            })
+            .map((receipt: any) => ({
+              amount: Number(receipt.amount || 0),
+              description: receipt.description || 'other expense',
+              id: `receipt-${receipt.id}`,
+              costCenterIndex: resolveCostCenterIndex(receipt.costCenter),
+            }));
+          const manualOtherExpenses = (expenseData.otherExpenses || [])
+            .filter((entry: any) => !(String(entry?.id || '').startsWith('receipt-')));
+          expenseData.otherExpenses = [...receiptBackedOtherExpenses, ...manualOtherExpenses];
+          expenseData.other = (expenseData.otherExpenses || []).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
           
           // Calculate category hours for status indicators (gaHours, holidayHours, ptoHours)
           const gaHours = currentMonthTimeTracking
@@ -5131,6 +5258,76 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     return 0;
   };
 
+  const getOtherExpensesAmountForCostCenter = (costCenterIndex: number): number => {
+    if (!employeeData?.otherExpenses) return 0;
+    return employeeData.otherExpenses.reduce((sum, entry) => {
+      const entryCostCenterIndex = entry.costCenterIndex ?? 0;
+      return entryCostCenterIndex === costCenterIndex ? sum + (entry.amount || 0) : sum;
+    }, 0);
+  };
+
+  const getSummarySubtotalForCostCenter = (costCenterIndex: number): number => {
+    const categoryKeys = [
+      'airRailBus',
+      'vehicleRentalFuel',
+      'parkingTolls',
+      'groundTransportation',
+      'hotelsAirbnb',
+      'perDiem',
+      'phoneInternetFax',
+      'shippingPostage',
+      'printingCopying',
+      'officeSupplies',
+      'eesReceipt',
+    ];
+    const categorySubtotal = categoryKeys.reduce(
+      (sum, key) => sum + getCostCenterAmount(key, costCenterIndex),
+      0
+    );
+    return categorySubtotal + getOtherExpensesAmountForCostCenter(costCenterIndex);
+  };
+
+  const handleCoverSheetCostCentersChange = async (event: any) => {
+    if (!employeeData) return;
+    const rawValue = event.target.value;
+    const nextCostCenters = (Array.isArray(rawValue) ? rawValue : String(rawValue).split(','))
+      .map((v: string) => String(v || '').trim())
+      .filter(Boolean);
+    if (nextCostCenters.length === 0) return;
+
+    const nextDefault = nextCostCenters.includes(employeeData.defaultCostCenter || '')
+      ? (employeeData.defaultCostCenter || '')
+      : nextCostCenters[0];
+
+    const updated = {
+      ...employeeData,
+      costCenters: nextCostCenters,
+      selectedCostCenters: nextCostCenters,
+      defaultCostCenter: nextDefault,
+    };
+    setEmployeeData(updated);
+
+    try {
+      await syncReportData({
+        costCenters: nextCostCenters,
+        selectedCostCenters: nextCostCenters,
+        defaultCostCenter: nextDefault,
+      });
+      await fetch(`${API_BASE_URL}/api/employees/${employeeData.employeeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          costCenters: nextCostCenters,
+          selectedCostCenters: nextCostCenters,
+          defaultCostCenter: nextDefault,
+          settingsSource: 'user-settings',
+        }),
+      });
+    } catch (error) {
+      debugError('Error updating cost centers from cover sheet selector:', error);
+    }
+  };
+
   const handleEditSummaryItem = (field: string, label: string, index?: number) => {
     if (!employeeData) return;
     
@@ -5240,14 +5437,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           updatedData.otherExpenses[editingSummaryItem.index] = {
             amount: newValue,
             description: editingSummaryDescription,
-            id: updatedData.otherExpenses[editingSummaryItem.index]?.id || Date.now().toString()
+            id: updatedData.otherExpenses[editingSummaryItem.index]?.id || Date.now().toString(),
+            costCenterIndex: editingCostCenterIndex
           };
         } else {
           // Add new entry
           updatedData.otherExpenses.push({
             amount: newValue,
             description: editingSummaryDescription,
-            id: Date.now().toString()
+            id: Date.now().toString(),
+            costCenterIndex: editingCostCenterIndex
           });
         }
         // Update legacy 'other' field for backward compatibility
@@ -5623,15 +5822,30 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   <Typography variant="body1" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
                 <Box sx={{ flex: 1 }}>
+                  <FormControl size="small" fullWidth sx={{ mb: 1 }}>
+                    <InputLabel id="cover-sheet-cost-centers-label">Cost Center Selector</InputLabel>
+                    <Select
+                      labelId="cover-sheet-cost-centers-label"
+                      multiple
+                      value={employeeData.costCenters || []}
+                      onChange={handleCoverSheetCostCentersChange}
+                      label="Cost Center Selector"
+                      renderValue={(selected) => (selected as string[]).join(', ')}
+                    >
+                      {(allCostCenterOptions.length > 0 ? allCostCenterOptions : (employeeData.costCenters || [])).map((center) => (
+                        <MenuItem key={center} value={center}>
+                          <Checkbox checked={(employeeData.costCenters || []).includes(center)} size="small" />
+                          <Typography variant="body2">{center}</Typography>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                   <Typography variant="body1" component="div"><strong>Cost Centers:</strong></Typography>
                   <Box sx={{ mt: 1 }}>
                     {employeeData.costCenters.map((center, index) => (
                       <Chip key={index} label={`${index + 1}.) ${center}`} variant="outlined" sx={{ mr: 1, mb: 1 }} />
                     ))}
-                    {/* Show placeholders for unused cost centers */}
-                    {Array.from({ length: 5 - employeeData.costCenters.length }, (_, i) => (
-                      <Chip key={i + employeeData.costCenters.length} label={`${i + employeeData.costCenters.length + 1}.) {n/a}`} variant="outlined" sx={{ mr: 1, mb: 1 }} />
-                    ))}
+                    {/* Hide {n/a} placeholders for unused cost center slots */}
                   </Box>
                 </Box>
               </Box>
@@ -5961,11 +6175,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     {employeeData.costCenters.map((center, index) => (
                       <Chip key={index} label={`Cost Center #${index + 1}: ${center}`} variant="outlined" sx={{ mr: 1, mb: 1 }} />
                     ))}
-                    {employeeData.costCenters.length < 5 && (
-                      <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-                        Cost Centers #{employeeData.costCenters.length + 1}-#5: {'n/a'}
-                      </Typography>
-                    )}
+                    {/* Hide {n/a} placeholder text for unused cost center slots */}
                   </Box>
                 </Box>
               </Box>
@@ -6278,12 +6488,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       </IconButton>
                     </TableCell>
                     <TableCell align="right">
-                      ${(employeeData.officeSupplies || 0).toFixed(2)}
+                      ${getCostCenterAmount('officeSupplies', 0).toFixed(2)}
                     </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                          <TableCell key={index + 1} align="center">
+                            ${getCostCenterAmount('officeSupplies', index + 1).toFixed(2)}
+                          </TableCell>
                         ))}
                       </>
                     )}
@@ -6302,12 +6514,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       </IconButton>
                     </TableCell>
                     <TableCell align="right">
-                      ${(employeeData.eesReceipt || 0).toFixed(2)}
+                      ${getCostCenterAmount('eesReceipt', 0).toFixed(2)}
                     </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                          <TableCell key={index + 1} align="center">
+                            ${getCostCenterAmount('eesReceipt', index + 1).toFixed(2)}
+                          </TableCell>
                         ))}
                       </>
                     )}
@@ -6371,12 +6585,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             </IconButton>
                           </TableCell>
                           <TableCell align="right">
-                            ${entry.amount.toFixed(2)}
+                            ${((entry.costCenterIndex ?? 0) === 0 ? entry.amount : 0).toFixed(2)}
                           </TableCell>
                           {employeeData.costCenters.length > 1 && (
                             <>
                               {employeeData.costCenters.slice(1).map((center, idx) => (
-                                <TableCell key={idx + 1} align="center">$0.00</TableCell>
+                                <TableCell key={idx + 1} align="center">
+                                  ${((entry.costCenterIndex ?? 0) === (idx + 1) ? entry.amount : 0).toFixed(2)}
+                                </TableCell>
                               ))}
                             </>
                           )}
@@ -6440,16 +6656,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       <TableRow key={index}>
                         <TableCell>Cost Center #{index + 1}: {center}</TableCell>
                         <TableCell align="right">
-                          <strong>${index === 0 ? totalExpenses.toFixed(2) : '0.00'}</strong>
+                          <strong>${getSummarySubtotalForCostCenter(index).toFixed(2)}</strong>
                         </TableCell>
                       </TableRow>
                     ))}
-                    {employeeData.costCenters.length < 5 && (
-                      <TableRow>
-                        <TableCell>Cost Centers #{employeeData.costCenters.length + 1}-#5</TableCell>
-                        <TableCell align="center">$0.00</TableCell>
-                      </TableRow>
-                    )}
+                    {/* Hide unused cost center placeholder row */}
                     <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
                       <TableCell>Overall Subtotal:</TableCell>
                       <TableCell align="right"><strong>${totalExpenses.toFixed(2)}</strong></TableCell>
@@ -7356,6 +7567,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Odometer End</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '8%' }}><strong>Miles Traveled</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Mileage ($)</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Air / Rail / Bus</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Vehicle Rental / Fuel</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Parking / Tolls</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Ground Transportation</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Lodging</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: '9%' }}><strong>Per Diem ($)</strong></TableCell>
                   </TableRow>
                 </TableHead>
@@ -7363,6 +7579,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   {(() => {
                     const costCenterRowsCC1 = buildCostCenterRowsForIndex({
                       currentMonthMileageList,
+                      receipts,
                       dailyDescriptions,
                       rawTimeEntries,
                       costCenters: employeeData.costCenters,
@@ -7378,6 +7595,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     const subHours = costCenterRowsCC1.reduce((s, r) => s + r.hoursWorked, 0);
                     const subMiles = costCenterRowsCC1.reduce((s, r) => s + r.milesTraveled, 0);
                     const subMileage = costCenterRowsCC1.reduce((s, r) => s + r.mileageAmount, 0);
+                    const subAirRailBus = costCenterRowsCC1.reduce((s, r) => s + r.airRailBus, 0);
+                    const subVehicleRentalFuel = costCenterRowsCC1.reduce((s, r) => s + r.vehicleRentalFuel, 0);
+                    const subParkingTolls = costCenterRowsCC1.reduce((s, r) => s + r.parkingTolls, 0);
+                    const subGroundTransportation = costCenterRowsCC1.reduce((s, r) => s + r.groundTransportation, 0);
+                    const subLodging = costCenterRowsCC1.reduce((s, r) => s + r.lodging, 0);
                     const subPerDiem = costCenterRowsCC1.reduce((s, r) => s + r.perDiem, 0);
                     return (
                       <>
@@ -7421,6 +7643,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>{row.odometerEnd}</Box></TableCell>
                               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.milesTraveled}</TableCell>
                               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.mileageAmount.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.airRailBus.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.vehicleRentalFuel.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.parkingTolls.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.groundTransportation.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.lodging.toFixed(2)}</TableCell>
                               <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>${row.perDiem.toFixed(2)}</Box></TableCell>
                             </TableRow>
                           );
@@ -7434,6 +7661,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                           <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subMiles}</strong></TableCell>
                           <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subMileage.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subAirRailBus.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subVehicleRentalFuel.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subParkingTolls.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subGroundTransportation.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subLodging.toFixed(2)}</strong></TableCell>
                           <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
                         </TableRow>
                       </>
@@ -7520,7 +7752,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 1, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 1, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
@@ -7549,7 +7781,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 2, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 2, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
@@ -7578,7 +7810,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 3, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 3, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>
@@ -7607,7 +7839,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
                 </Typography>
               </Box>
-              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 4, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
+              <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 4, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
             </CardContent>
           </Card>
         </TabPanel>

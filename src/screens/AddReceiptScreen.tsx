@@ -52,6 +52,7 @@ interface SplitAllocation {
   category: string;
   amount: string;
   descriptionOverride?: string;
+  costCenter?: string;
 }
 
 const RECEIPT_CATEGORIES = [
@@ -830,6 +831,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           id: `split-${Date.now()}`,
           category: formData.category || 'Other',
           amount: formData.amount || '',
+          costCenter: selectedCostCenter,
         },
       ]);
       setTaxAmount('');
@@ -840,7 +842,12 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const addSplitAllocation = () => {
     setSplitAllocations((prev) => [
       ...prev,
-      { id: `split-${Date.now()}-${prev.length}`, category: 'Other', amount: '' },
+      {
+        id: `split-${Date.now()}-${prev.length}`,
+        category: 'Other',
+        amount: '',
+        costCenter: selectedCostCenter,
+      },
     ]);
   };
 
@@ -874,6 +881,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         category: working[primaryIndex].category || formData.category || 'Other',
         amount: (total - tax).toFixed(2),
         descriptionOverride: undefined,
+        costCenter: working[primaryIndex].costCenter || selectedCostCenter,
       };
 
       const otherIndex = working.findIndex((row) => row.category === 'Other' && row.id !== working[primaryIndex].id);
@@ -882,6 +890,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           ...working[otherIndex],
           amount: tax.toFixed(2),
           descriptionOverride: 'taxes',
+          costCenter: working[otherIndex].costCenter || selectedCostCenter,
         };
       } else {
         working.push({
@@ -889,6 +898,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           category: 'Other',
           amount: tax.toFixed(2),
           descriptionOverride: 'taxes',
+          costCenter: selectedCostCenter,
         });
       }
       return working;
@@ -1142,7 +1152,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
             description: partDescription,
             imageUri: imageUri || '',
             fileType: fileType || 'image',
-            costCenter: selectedCostCenter,
+            costCenter: allocation.costCenter || selectedCostCenter,
             splitGroupId,
             splitAllocationIndex: i + 1,
             splitAllocationCount: validAllocations.length,
@@ -1675,6 +1685,38 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                       placeholderTextColor="#999"
                     />
                   </View>
+                  {!!(currentEmployee?.selectedCostCenters && currentEmployee.selectedCostCenters.length > 0) && (
+                    <View style={styles.splitAmountCol}>
+                      <Text style={[styles.splitLabel, dynamicStyles.label]}>Cost Center</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={styles.splitCategoryButtons}>
+                          {currentEmployee.selectedCostCenters.map((costCenter) => (
+                            <TouchableOpacity
+                              key={`${allocation.id}-${costCenter}`}
+                              style={[
+                                styles.categoryButton,
+                                dynamicStyles.categoryButton,
+                                (allocation.costCenter || selectedCostCenter) === costCenter && styles.categoryButtonSelected,
+                                (allocation.costCenter || selectedCostCenter) === costCenter && dynamicStyles.categoryButtonSelected,
+                              ]}
+                              onPress={() => updateSplitAllocation(allocation.id, { costCenter })}
+                            >
+                              <Text
+                                style={[
+                                  styles.categoryButtonText,
+                                  dynamicStyles.categoryButtonText,
+                                  (allocation.costCenter || selectedCostCenter) === costCenter && styles.categoryButtonTextSelected,
+                                  (allocation.costCenter || selectedCostCenter) === costCenter && dynamicStyles.categoryButtonTextSelected,
+                                ]}
+                              >
+                                {costCenter}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  )}
                   <TouchableOpacity onPress={() => removeSplitAllocation(allocation.id)} style={styles.splitRemoveButton}>
                     <MaterialIcons name="delete" size={20} color="#f44336" />
                   </TouchableOpacity>
