@@ -569,6 +569,12 @@ interface ReceiptData {
   costCenter?: string;
 }
 
+const SPLIT_GROUP_SUFFIX_REGEX = /\s*\(split-[^)]+\)\s*/gi;
+const sanitizeSplitDescription = (value: string | undefined | null): string => {
+  if (!value) return '';
+  return value.replace(SPLIT_GROUP_SUFFIX_REGEX, ' ').replace(/\s{2,}/g, ' ').trim();
+};
+
 
 // TabPanel component for rendering different expense report sheets
 interface TabPanelProps {
@@ -8469,7 +8475,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.vendor}</TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
-                          {receipt.description}
+                          {sanitizeSplitDescription(receipt.description)}
                           {needsRevision && (receipt as any).revisionReason && (
                             <Typography variant="caption" color="error" display="block">
                               Reason: {(receipt as any).revisionReason}

@@ -48,10 +48,10 @@ import {
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { getEmployeeDisplayName } from '../utils/employeeUtils';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
-import DetailedReportView from './DetailedReportView';
 import { NotificationBell } from './NotificationBell';
 import { CostCenterManagement } from './CostCenterManagement';
 import { CostCenter, CostCenterApiService } from '../services/costCenterApiService';
+import StaffPortal from '../StaffPortal';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
@@ -1598,32 +1598,49 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         confirmButtonLabel="Delete report"
       />
 
-      {/* Detailed Report View - Replaces simple View dialog */}
-      {selectedReportId && (
-        <DetailedReportView
-          reportId={selectedReportId}
-          open={detailedReportViewOpen}
-          onClose={() => {
-            setDetailedReportViewOpen(false);
-            setSelectedReportId(null);
-          }}
-          supervisorMode={true}
-          onApproveReport={() => {
-            if (selectedReportId) {
-              handleApproveReport(selectedReportId);
+      {/* Finance editable report view */}
+      <Dialog
+        open={detailedReportViewOpen}
+        onClose={() => {
+          setDetailedReportViewOpen(false);
+          setSelectedReportId(null);
+        }}
+        maxWidth="xl"
+        fullWidth
+        fullScreen={false}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="h5" component="div">
+            {selectedReport ? `${getDisplayName(selectedReport)}'s Expense Report` : 'Expense Report'}
+          </Typography>
+          <Button
+            onClick={() => {
               setDetailedReportViewOpen(false);
               setSelectedReportId(null);
-            }
-          }}
-          onRequestRevision={() => {
-            const report = reports.find(r => r.id === selectedReportId);
-            if (report) {
-              setSelectedReport(report);
-              setRevisionDialogOpen(true);
-            }
-          }}
-        />
-      )}
+            }}
+          >
+            Close
+          </Button>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {selectedReport && (
+            <Box sx={{ p: 2 }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  <strong>Finance View:</strong> You can fully edit this report on behalf of staff, including daily report, cost centers, receipts, and signatures.
+                </Typography>
+              </Alert>
+              <StaffPortal
+                employeeId={selectedReport.employeeId}
+                reportMonth={selectedReport.month}
+                reportYear={selectedReport.year}
+                supervisorMode={false}
+                isAdminView={false}
+              />
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Request Revision Dialog */}
       <Dialog

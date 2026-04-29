@@ -40,6 +40,11 @@ import {
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+const SPLIT_GROUP_SUFFIX_REGEX = /\s*\(split-[^)]+\)\s*/gi;
+const sanitizeSplitDescription = (value: string | undefined | null): string => {
+  if (!value) return '';
+  return value.replace(SPLIT_GROUP_SUFFIX_REGEX, ' ').replace(/\s{2,}/g, ' ').trim();
+};
 
 interface MileageEntry {
   id: string;
@@ -1127,10 +1132,7 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
                           </TableCell>
                           <TableCell align="right">${receipt.amount.toFixed(2)}</TableCell>
                           <TableCell><Chip label={receipt.costCenter || 'Unassigned'} size="small" /></TableCell>
-                          <TableCell>
-                            {receipt.description || '-'}
-                            {isSplit && splitCount > 1 ? ` • Group: ${receipt.splitGroupId}` : ''}
-                          </TableCell>
+                          <TableCell>{sanitizeSplitDescription(receipt.description) || '-'}</TableCell>
                         </TableRow>
                       );
                     })}

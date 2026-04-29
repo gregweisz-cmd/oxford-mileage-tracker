@@ -557,6 +557,10 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   useEffect(() => {
     if (Platform.OS !== 'android' || !showEditModal) return;
     const onBack = () => {
+      if (showDayOffDropdown) {
+        setShowDayOffDropdown(false);
+        return true;
+      }
       if (showDescriptionPickerModal) {
         setShowDescriptionPickerModal(false);
         return true;
@@ -566,7 +570,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
-  }, [showEditModal, showDescriptionPickerModal, closeEditModalWithoutSave]);
+  }, [showEditModal, showDayOffDropdown, showDescriptionPickerModal, closeEditModalWithoutSave]);
 
   const handleDescriptionTemplateSelect = (template: string) => {
     if (template === 'Custom...') {
@@ -932,29 +936,50 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
                   <View style={styles.dropdownContainer}>
                     <TouchableOpacity
                       style={styles.dropdownButton}
-                      onPress={() => setShowDayOffDropdown(!showDayOffDropdown)}
+                      onPress={() => setShowDayOffDropdown(true)}
                     >
                       <Text style={styles.dropdownButtonText}>{dayOffType}</Text>
                       <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
                     </TouchableOpacity>
-                    
-                    {showDayOffDropdown && (
-                      <View style={styles.dropdown}>
-                        {DAY_OFF_TYPES.map((type) => (
-                          <TouchableOpacity
-                            key={type}
-                            style={styles.dropdownItem}
-                            onPress={() => {
-                              setDayOffType(type);
-                              markHoursDirty();
-                              setShowDayOffDropdown(false);
-                            }}
-                          >
-                            <Text style={styles.dropdownItemText}>{type}</Text>
+
+                    <Modal
+                      visible={showDayOffDropdown}
+                      transparent
+                      animationType="slide"
+                      onRequestClose={() => setShowDayOffDropdown(false)}
+                    >
+                      <View style={styles.descriptionPickerOverlay}>
+                        <TouchableOpacity
+                          style={StyleSheet.absoluteFill}
+                          activeOpacity={1}
+                          onPress={() => setShowDayOffDropdown(false)}
+                        />
+                        <View style={styles.descriptionPickerContent}>
+                          <Text style={styles.descriptionPickerTitle}>Day Off Type</Text>
+                          <ScrollView style={styles.descriptionPickerList} keyboardShouldPersistTaps="handled">
+                            {DAY_OFF_TYPES.map((type) => (
+                              <TouchableOpacity
+                                key={type}
+                                style={[styles.descriptionPickerItem, dayOffType === type && styles.descriptionPickerItemSelected]}
+                                onPress={() => {
+                                  setDayOffType(type);
+                                  markHoursDirty();
+                                  setShowDayOffDropdown(false);
+                                }}
+                              >
+                                <Text style={styles.descriptionPickerItemText}>{type}</Text>
+                                {dayOffType === type && (
+                                  <MaterialIcons name="check" size={20} color="#4CAF50" />
+                                )}
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                          <TouchableOpacity style={styles.descriptionPickerClose} onPress={() => setShowDayOffDropdown(false)}>
+                            <Text style={styles.descriptionPickerCloseText}>Cancel</Text>
                           </TouchableOpacity>
-                        ))}
+                        </View>
                       </View>
-                    )}
+                    </Modal>
                   </View>
                 )}
               </View>

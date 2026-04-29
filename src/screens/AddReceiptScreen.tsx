@@ -1140,7 +1140,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           const allocationDescriptionBase = allocation.descriptionOverride || finalDescription;
           const partDescription = [
             allocationDescriptionBase,
-            `Split receipt ${i + 1}/${validAllocations.length} (${splitGroupId})`,
+            `Split receipt ${i + 1}/${validAllocations.length}`,
           ].filter(Boolean).join(' • ');
 
           await DatabaseService.createReceipt({

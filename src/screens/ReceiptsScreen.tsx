@@ -42,6 +42,12 @@ const RECEIPT_CATEGORIES = [
   'Other'
 ];
 
+const SPLIT_GROUP_SUFFIX_REGEX = /\s*\(split-[^)]+\)\s*/gi;
+const sanitizeSplitDescription = (value: string | undefined | null): string => {
+  if (!value) return '';
+  return value.replace(SPLIT_GROUP_SUFFIX_REGEX, ' ').replace(/\s{2,}/g, ' ').trim();
+};
+
 interface ReceiptsScreenProps {
   navigation: any;
   route?: {
@@ -121,7 +127,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
       const query = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(receipt => {
         const vendor = receipt.vendor?.toLowerCase() || '';
-        const description = receipt.description?.toLowerCase() || '';
+        const description = sanitizeSplitDescription(receipt.description).toLowerCase();
         const category = receipt.category?.toLowerCase() || '';
         const costCenter = receipt.costCenter?.toLowerCase() || '';
         const amount = receipt.amount.toString();
@@ -1054,7 +1060,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                     <Text style={styles.receiptAmount}>${receipt.amount.toFixed(2)}</Text>
                   </View>
                   
-                  <Text style={styles.receiptDescription}>{receipt.description}</Text>
+                  <Text style={styles.receiptDescription}>{sanitizeSplitDescription(receipt.description)}</Text>
                   
                   <View style={styles.receiptDetails}>
                     <View style={styles.categoryBadge}>
@@ -1297,7 +1303,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                 {selectedReceipt.description && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Description:</Text>
-                    <Text style={styles.detailValue}>{selectedReceipt.description}</Text>
+                    <Text style={styles.detailValue}>{sanitizeSplitDescription(selectedReceipt.description)}</Text>
                   </View>
                 )}
                 
