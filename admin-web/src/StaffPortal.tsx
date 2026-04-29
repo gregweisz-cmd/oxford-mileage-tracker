@@ -2146,8 +2146,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }
       } else {
         setRevisionItems({ mileage: 0, receipts: 0, time: 0 });
-        setRawMileageEntries([]);
-        setRawTimeEntries([]);
       }
     };
 
