@@ -1727,48 +1727,49 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           </ScrollToOnFocusView>
         </View>
 
-        {/* Category */}
-        <View style={styles.inputGroup}>
-          <Text style={[styles.label, dynamicStyles.label]}>Category</Text>
-          <View style={styles.perDiemQuickToggle}>
-            <Text style={[styles.perDiemQuickToggleLabel, dynamicStyles.perDiemQuickToggleLabel]}>Per Diem Receipt</Text>
-            <TouchableOpacity
-              style={styles.perDiemQuickToggleButton}
-              onPress={() => handlePerDiemReceiptToggle(formData.category !== 'Per Diem')}
-            >
-              <MaterialIcons
-                name={formData.category === 'Per Diem' ? 'check-box' : 'check-box-outline-blank'}
-                size={24}
-                color={formData.category === 'Per Diem' ? colors.primary : colors.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.categoryContainer}>
-            {RECEIPT_CATEGORIES.map((category) => (
+        {!isSplitMode && (
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, dynamicStyles.label]}>Category</Text>
+            <View style={styles.perDiemQuickToggle}>
+              <Text style={[styles.perDiemQuickToggleLabel, dynamicStyles.perDiemQuickToggleLabel]}>Per Diem Receipt</Text>
               <TouchableOpacity
-                key={category}
-                style={[
-                  styles.categoryButton,
-                  dynamicStyles.categoryButton,
-                  formData.category === category && styles.categoryButtonSelected,
-                  formData.category === category && dynamicStyles.categoryButtonSelected,
-                ]}
-                onPress={async () => await handleInputChange('category', category)}
+                style={styles.perDiemQuickToggleButton}
+                onPress={() => handlePerDiemReceiptToggle(formData.category !== 'Per Diem')}
               >
-                <Text
-                  style={[
-                    styles.categoryButtonText,
-                    dynamicStyles.categoryButtonText,
-                    formData.category === category && styles.categoryButtonTextSelected,
-                    formData.category === category && dynamicStyles.categoryButtonTextSelected,
-                  ]}
-                >
-                  {category}
-                </Text>
+                <MaterialIcons
+                  name={formData.category === 'Per Diem' ? 'check-box' : 'check-box-outline-blank'}
+                  size={24}
+                  color={formData.category === 'Per Diem' ? colors.primary : colors.textSecondary}
+                />
               </TouchableOpacity>
-            ))}
+            </View>
+            <View style={styles.categoryContainer}>
+              {RECEIPT_CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.categoryButton,
+                    dynamicStyles.categoryButton,
+                    formData.category === category && styles.categoryButtonSelected,
+                    formData.category === category && dynamicStyles.categoryButtonSelected,
+                  ]}
+                  onPress={async () => await handleInputChange('category', category)}
+                >
+                  <Text
+                    style={[
+                      styles.categoryButtonText,
+                      dynamicStyles.categoryButtonText,
+                      formData.category === category && styles.categoryButtonTextSelected,
+                      formData.category === category && dynamicStyles.categoryButtonTextSelected,
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         {formData.category === 'EES' && (
           <View style={styles.inputGroup}>
@@ -1808,46 +1809,6 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                   ]}>
                     {costCenter}
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Category AI Suggestions */}
-        {showCategorySuggestions && categorySuggestions.length > 0 && (
-          <View style={styles.inputGroup}>
-            <View style={styles.aiSuggestionsHeader}>
-              <MaterialIcons name="lightbulb" size={20} color="#FF9800" />
-              <Text style={[styles.aiSuggestionsTitle, dynamicStyles.aiSuggestionsTitle]}>AI Category Suggestions</Text>
-              {loadingCategorySuggestions && (
-                <MaterialIcons name="refresh" size={16} color={colors.textSecondary} />
-              )}
-            </View>
-            <View style={styles.categorySuggestionsContainer}>
-              {categorySuggestions.map((suggestion, index) => (
-                <TouchableOpacity
-                  key={suggestion.category}
-                  style={[
-                    styles.categorySuggestionChip,
-                    dynamicStyles.categorySuggestionChip,
-                    index === 0 && styles.categorySuggestionChipTop
-                  ]}
-                  onPress={() => handleCategorySuggestionSelect(suggestion)}
-                >
-                  <View style={styles.categorySuggestionContent}>
-                    <Text style={[styles.categorySuggestionText, dynamicStyles.categorySuggestionText]}>{suggestion.category}</Text>
-                    <Text style={[styles.categorySuggestionReason, dynamicStyles.categorySuggestionReason]}>{suggestion.reasoning}</Text>
-                  </View>
-                  <View style={[
-                    styles.confidenceBadge,
-                    dynamicStyles.confidenceBadge,
-                    index === 0 && styles.confidenceBadgeTop
-                  ]}>
-                    <Text style={[styles.confidenceText, dynamicStyles.confidenceText]}>
-                      {Math.round(suggestion.confidence)}%
-                    </Text>
-                  </View>
                 </TouchableOpacity>
               ))}
             </View>
