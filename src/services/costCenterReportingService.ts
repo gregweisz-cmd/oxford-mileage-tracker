@@ -44,6 +44,16 @@ export interface CostCenterMonthlyReport {
 }
 
 export class CostCenterReportingService {
+  private static normalizeCostCenter(value: string | null | undefined): string {
+    if (!value) return '';
+    return String(value).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  private static resolveCostCenterKey(value: string | null | undefined, fallback = 'Unassigned'): string {
+    const raw = (value || '').trim();
+    if (!raw) return fallback;
+    return this.normalizeCostCenter(raw) || fallback;
+  }
   /**
    * Generate comprehensive cost center report for an employee for a specific month
    */
@@ -72,66 +82,59 @@ export class CostCenterReportingService {
     
     // Group data by cost center
     const costCenterData = new Map<string, {
+      costCenter: string;
       mileageEntries: MileageEntry[];
       receipts: Receipt[];
       timeTrackingEntries: TimeTracking[];
       descriptionEntries: DailyDescription[];
     }>();
+
+    const createGroup = (costCenter: string) => ({
+      costCenter,
+      mileageEntries: [],
+      receipts: [],
+      timeTrackingEntries: [],
+      descriptionEntries: []
+    });
     
     // Process mileage entries
     mileageEntries.forEach((entry: MileageEntry) => {
       const costCenter = entry.costCenter || employee?.defaultCostCenter || 'Unassigned';
-      if (!costCenterData.has(costCenter)) {
-        costCenterData.set(costCenter, {
-          mileageEntries: [],
-          receipts: [],
-          timeTrackingEntries: [],
-          descriptionEntries: []
-        });
+      const key = this.resolveCostCenterKey(costCenter);
+      if (!costCenterData.has(key)) {
+        costCenterData.set(key, createGroup(costCenter));
       }
-      costCenterData.get(costCenter)!.mileageEntries.push(entry);
+      costCenterData.get(key)!.mileageEntries.push(entry);
     });
     
     // Process receipts
     receipts.forEach((receipt: Receipt) => {
       const costCenter = receipt.costCenter || employee?.defaultCostCenter || 'Unassigned';
-      if (!costCenterData.has(costCenter)) {
-        costCenterData.set(costCenter, {
-          mileageEntries: [],
-          receipts: [],
-          timeTrackingEntries: [],
-          descriptionEntries: []
-        });
+      const key = this.resolveCostCenterKey(costCenter);
+      if (!costCenterData.has(key)) {
+        costCenterData.set(key, createGroup(costCenter));
       }
-      costCenterData.get(costCenter)!.receipts.push(receipt);
+      costCenterData.get(key)!.receipts.push(receipt);
     });
     
     // Process time tracking entries
     timeTrackingEntries.forEach((entry: TimeTracking) => {
       const costCenter = entry.costCenter || employee?.defaultCostCenter || 'Unassigned';
-      if (!costCenterData.has(costCenter)) {
-        costCenterData.set(costCenter, {
-          mileageEntries: [],
-          receipts: [],
-          timeTrackingEntries: [],
-          descriptionEntries: []
-        });
+      const key = this.resolveCostCenterKey(costCenter);
+      if (!costCenterData.has(key)) {
+        costCenterData.set(key, createGroup(costCenter));
       }
-      costCenterData.get(costCenter)!.timeTrackingEntries.push(entry);
+      costCenterData.get(key)!.timeTrackingEntries.push(entry);
     });
     
     // Process daily descriptions
     dailyDescriptions.forEach((description: DailyDescription) => {
       const costCenter = description.costCenter || employee?.defaultCostCenter || 'Unassigned';
-      if (!costCenterData.has(costCenter)) {
-        costCenterData.set(costCenter, {
-          mileageEntries: [],
-          receipts: [],
-          timeTrackingEntries: [],
-          descriptionEntries: []
-        });
+      const key = this.resolveCostCenterKey(costCenter);
+      if (!costCenterData.has(key)) {
+        costCenterData.set(key, createGroup(costCenter));
       }
-      costCenterData.get(costCenter)!.descriptionEntries.push(description);
+      costCenterData.get(key)!.descriptionEntries.push(description);
     });
     
     // Generate cost center reports
@@ -143,7 +146,7 @@ export class CostCenterReportingService {
     let totalExpenses = 0;
     let totalEntries = 0;
     
-    for (const [costCenter, data] of costCenterData) {
+    for (const [, data] of costCenterData) {
       // Calculate totals for this cost center
       const costCenterHours = data.timeTrackingEntries.reduce((sum, entry) => sum + entry.hours, 0);
       const costCenterMiles = data.mileageEntries.reduce((sum, entry) => sum + entry.miles, 0);
@@ -169,7 +172,7 @@ export class CostCenterReportingService {
       const costCenterExpenses = costCenterMiles * 0.655 + costCenterReceipts + costCenterPerDiem;
       
       const report: CostCenterReport = {
-        costCenter,
+        costCenter: data.costCenter,
         month,
         year,
         totalHours: costCenterHours,
@@ -283,7 +286,10 @@ export class CostCenterReportingService {
     year: number
   ): Promise<CostCenterReport | null> {
     const monthlyReport = await this.generateMonthlyCostCenterReport(employeeId, month, year);
-    return monthlyReport.costCenterReports.find(report => report.costCenter === costCenter) || null;
+    const normalizedTarget = this.normalizeCostCenter(costCenter);
+    return monthlyReport.costCenterReports.find(
+      (report) => this.normalizeCostCenter(report.costCenter) === normalizedTarget
+    ) || null;
   }
   
   /**

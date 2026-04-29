@@ -20,6 +20,30 @@ class CostCenterApiService {
   private lastFetch: number = 0;
   private cacheTimeout = 5 * 60 * 1000; // 5 minutes
 
+  private normalizeCostCenterValue(value: string | null | undefined): string {
+    if (!value) return '';
+    return String(value).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  private findByCanonicalMatch(costCenters: CostCenter[], value: string): CostCenter | undefined {
+    const normalizedInput = this.normalizeCostCenterValue(value);
+    if (!normalizedInput) return undefined;
+
+    const exactCanonicalMatch = costCenters.find((cc) => {
+      const normalizedName = this.normalizeCostCenterValue(cc.name);
+      const normalizedCode = this.normalizeCostCenterValue(cc.code);
+      return normalizedName === normalizedInput || normalizedCode === normalizedInput;
+    });
+    if (exactCanonicalMatch) return exactCanonicalMatch;
+
+    return costCenters.find((cc) => {
+      const normalizedName = this.normalizeCostCenterValue(cc.name);
+      const normalizedCode = this.normalizeCostCenterValue(cc.code);
+      return normalizedName.includes(normalizedInput) || normalizedInput.includes(normalizedName) ||
+        normalizedCode.includes(normalizedInput) || normalizedInput.includes(normalizedCode);
+    });
+  }
+
   /**
    * Fetch cost centers from the API
    */
@@ -71,7 +95,7 @@ class CostCenterApiService {
    */
   async findCostCenterByName(name: string): Promise<CostCenter | undefined> {
     const costCenters = await this.getCostCenters();
-    return costCenters.find(cc => cc.name === name);
+    return this.findByCanonicalMatch(costCenters, name);
   }
 
   /**
@@ -79,7 +103,7 @@ class CostCenterApiService {
    */
   async findCostCenterByCode(code: string): Promise<CostCenter | undefined> {
     const costCenters = await this.getCostCenters();
-    return costCenters.find(cc => cc.code === code);
+    return this.findByCanonicalMatch(costCenters, code);
   }
 
   /**

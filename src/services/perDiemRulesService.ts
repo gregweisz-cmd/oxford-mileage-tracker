@@ -23,6 +23,10 @@ export class PerDiemRulesService {
 
   /** Timeout in ms for backend fetch — fail fast so app doesn't hang on Loading */
   private static readonly FETCH_TIMEOUT_MS = 12000;
+  private static normalizeCostCenter(value: string | null | undefined): string {
+    if (!value) return '';
+    return String(value).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
 
   /**
    * Fetch Per Diem rules from backend (or from local fallback on timeout/error).
@@ -85,9 +89,13 @@ export class PerDiemRulesService {
    */
   static async getPerDiemRule(costCenter: string): Promise<PerDiemRule | null> {
     try {
+      const normalizedTarget = this.normalizeCostCenter(costCenter);
+      const findMatchingRule = (rules: PerDiemRule[]): PerDiemRule | undefined =>
+        rules.find((r) => this.normalizeCostCenter(r.costCenter) === normalizedTarget);
+
       // Check cache first
       if (this.isCacheValid()) {
-        const rule = this.rulesCache.find(r => r.costCenter === costCenter);
+        const rule = findMatchingRule(this.rulesCache);
         if (rule) {
           return rule;
         }
@@ -95,7 +103,7 @@ export class PerDiemRulesService {
 
       // Fetch from backend if cache is invalid
       await this.fetchPerDiemRules();
-      const rule = this.rulesCache.find(r => r.costCenter === costCenter);
+      const rule = findMatchingRule(this.rulesCache);
       
       return rule || null;
     } catch (error) {

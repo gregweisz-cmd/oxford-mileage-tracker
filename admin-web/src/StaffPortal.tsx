@@ -380,7 +380,7 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
     fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)',
   } as const;
   return (
-    <TableContainer component={Paper} sx={{ overflow: 'auto' }}>
+    <TableContainer component={Paper} sx={{ overflow: 'auto', maxHeight: '65vh' }}>
       <Table stickyHeader size="small" sx={{ minWidth: 900, '& td, & th': { border: '1px solid #ccc' } }}>
         <TableHead>
           <TableRow>
@@ -394,7 +394,7 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
             <TableCell align="center" sx={stickyHeaderCellSx}>Air / Rail / Bus</TableCell>
             <TableCell align="center" sx={stickyHeaderCellSx}>Vehicle Rental / Fuel</TableCell>
             <TableCell align="center" sx={stickyHeaderCellSx}>Parking / Tolls</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Ground Transportation</TableCell>
+            <TableCell align="center" sx={stickyHeaderCellSx}>Ground Transport</TableCell>
             <TableCell align="center" sx={stickyHeaderCellSx}>Lodging Hotel / AirBnB</TableCell>
             <TableCell align="center" sx={stickyHeaderCellSx}>Per Diem ($)</TableCell>
           </TableRow>
@@ -7547,7 +7547,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Box>
 
             {/* Daily travel table */}
-            <TableContainer component={Paper} sx={{ mt: 2 }}>
+            <TableContainer component={Paper} sx={{ mt: 2, maxHeight: '65vh', overflow: 'auto' }}>
               <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: '100%' }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
@@ -7582,7 +7582,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Air / Rail / Bus</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Vehicle Rental / Fuel</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Parking / Tolls</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Ground Transportation</strong></TableCell>
+                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Ground Transport</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Lodging</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Per Diem ($)</strong></TableCell>
                   </TableRow>

@@ -37,12 +37,21 @@ class EesRulesService {
     return [...this.rules];
   }
 
+  private static normalizeCostCenter(value: string | null | undefined): string {
+    if (!value) return '';
+    return String(value).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
   static getRule(costCenter: string): EesRule | undefined {
-    return this.rules.find(rule => rule.costCenter === costCenter);
+    const normalizedTarget = this.normalizeCostCenter(costCenter);
+    return this.rules.find((rule) => this.normalizeCostCenter(rule.costCenter) === normalizedTarget);
   }
 
   static updateRule(costCenter: string, maxAmount: number, description: string): void {
-    const existingRuleIndex = this.rules.findIndex(rule => rule.costCenter === costCenter);
+    const normalizedTarget = this.normalizeCostCenter(costCenter);
+    const existingRuleIndex = this.rules.findIndex(
+      (rule) => this.normalizeCostCenter(rule.costCenter) === normalizedTarget
+    );
     
     if (existingRuleIndex >= 0) {
       this.rules[existingRuleIndex] = { costCenter, maxAmount, description };
@@ -52,7 +61,10 @@ class EesRulesService {
   }
 
   static deleteRule(costCenter: string): void {
-    this.rules = this.rules.filter(rule => rule.costCenter !== costCenter);
+    const normalizedTarget = this.normalizeCostCenter(costCenter);
+    this.rules = this.rules.filter(
+      (rule) => this.normalizeCostCenter(rule.costCenter) !== normalizedTarget
+    );
   }
 
   static async validateEes(
