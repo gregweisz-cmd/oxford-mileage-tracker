@@ -576,9 +576,11 @@ async function previewSyncFromExternal() {
           name: mapped.name,
           position: mapped.position,
           costCenters: mapped.costCenters,
+          phoneNumber: mapped.phoneNumber || '',
           previous: {
             name: existing.name,
             position: existing.position,
+            phoneNumber: existing.phoneNumber || '',
             costCenters: prevCC,
             selectedCostCenters: prevSelected,
           },

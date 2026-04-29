@@ -219,7 +219,14 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [syncPreviewOpen, setSyncPreviewOpen] = useState(false);
   const [syncPreviewPlan, setSyncPreviewPlan] = useState<{
     creates: Array<{ email: string; name: string; position: string; costCenters: string[] }>;
-    updates: Array<{ email: string; name: string; position: string; costCenters: string[]; previous: { name: string; position: string; costCenters: string[] } }>;
+    updates: Array<{
+      email: string;
+      name: string;
+      position: string;
+      phoneNumber?: string;
+      costCenters: string[];
+      previous: { name: string; position: string; phoneNumber?: string; costCenters: string[] };
+    }>;
     archives: Array<{ id: string; name: string; email: string }>;
   } | null>(null);
   const [syncPreviewApproved, setSyncPreviewApproved] = useState<{
@@ -531,7 +538,18 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/preview`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const plan = data as { creates: Array<{ email: string; name: string; position: string; costCenters: string[] }>; updates: Array<{ email: string; name: string; position: string; costCenters: string[]; previous: { name: string; position: string; costCenters: string[] } }>; archives: Array<{ id: string; name: string; email: string }> };
+        const plan = data as {
+          creates: Array<{ email: string; name: string; position: string; costCenters: string[] }>;
+          updates: Array<{
+            email: string;
+            name: string;
+            position: string;
+            phoneNumber?: string;
+            costCenters: string[];
+            previous: { name: string; position: string; phoneNumber?: string; costCenters: string[] };
+          }>;
+          archives: Array<{ id: string; name: string; email: string }>;
+        };
         setSyncPreviewPlan(plan);
         setSyncPreviewApproved({
           creates: new Set((plan.creates || []).map((c: { email: string }) => c.email)),
@@ -620,6 +638,34 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     } finally {
       setSyncApplyLoading(false);
     }
+  };
+
+  const getUpdateChangesText = (u: {
+    name: string;
+    position: string;
+    phoneNumber?: string;
+    costCenters: string[];
+    previous?: { name?: string; position?: string; phoneNumber?: string; costCenters?: string[] };
+  }): string => {
+    if (!u.previous) return `${u.position} · ${(u.costCenters || []).join(', ')}`;
+    const changes: string[] = [];
+    if ((u.previous.name || '') !== (u.name || '')) {
+      changes.push(`Name: "${u.previous.name || '-'}" -> "${u.name || '-'}"`);
+    }
+    if ((u.previous.position || '') !== (u.position || '')) {
+      changes.push(`Position: "${u.previous.position || '-'}" -> "${u.position || '-'}"`);
+    }
+    if ((u.previous.phoneNumber || '') !== (u.phoneNumber || '')) {
+      changes.push(`Phone: "${u.previous.phoneNumber || '-'}" -> "${u.phoneNumber || '-'}"`);
+    }
+    const previousCostCenters = [...(u.previous.costCenters || [])].sort();
+    const nextCostCenters = [...(u.costCenters || [])].sort();
+    if (JSON.stringify(previousCostCenters) !== JSON.stringify(nextCostCenters)) {
+      changes.push(
+        `Cost Centers: "${(u.previous.costCenters || []).join(', ') || '-'}" -> "${(u.costCenters || []).join(', ') || '-'}"`
+      );
+    }
+    return changes.length > 0 ? changes.join(' | ') : 'No visible field changes.';
   };
 
   /** Merge duplicate database rows that share the same email (keeps admin / account with login when possible). */
@@ -2535,7 +2581,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         <Box sx={{ flex: 1 }}>
                           <ListItemText
                             primary={`${u.name} (${u.email})`}
-                            secondary={u.previous ? `Name/position/cost centers will update from HR` : `${u.position} · ${(u.costCenters || []).join(', ')}`}
+                            secondary={getUpdateChangesText(u)}
                             primaryTypographyProps={{ variant: 'body2' }}
                             secondaryTypographyProps={{ variant: 'caption' }}
                           />
