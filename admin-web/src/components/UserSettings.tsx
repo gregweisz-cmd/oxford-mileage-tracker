@@ -434,6 +434,10 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       showMessage('error', 'Employee ID is missing.');
       return;
     }
+    if (!profile.email || !profile.email.includes('@')) {
+      showMessage('error', 'Please set a valid email address on this profile before sending a test email.');
+      return;
+    }
     setTestEmailLoading(true);
     try {
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -914,7 +918,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                 variant="outlined"
                 size="small"
                 onClick={handleSendTestEmail}
-                disabled={testEmailLoading || !profile.email}
+                disabled={testEmailLoading}
                 sx={{ width: 'fit-content' }}
               >
                 {testEmailLoading ? 'Sending Test Email...' : 'Send Test Email'}
