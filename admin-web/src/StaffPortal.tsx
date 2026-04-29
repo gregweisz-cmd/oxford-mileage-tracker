@@ -7542,7 +7542,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                * Per Diem: $35 max per day, $350 max per month.
               </Typography>
             </Box>
 
@@ -7761,7 +7761,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                  * Per Diem: $35 max per day, $350 max per month.
                 </Typography>
               </Box>
               <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 1, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
@@ -7790,7 +7790,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                  * Per Diem: $35 max per day, $350 max per month.
                 </Typography>
               </Box>
               <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 2, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
@@ -7819,7 +7819,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                  * Per Diem: $35 max per day, $350 max per month.
                 </Typography>
               </Box>
               <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 3, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
@@ -7848,7 +7848,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  * Per Diem: $35 max per day, $350 max per month. No receipts required when rules are met.
+                  * Per Diem: $35 max per day, $350 max per month.
                 </Typography>
               </Box>
               <CostCenterTravelTable rows={buildCostCenterRowsForIndex({ currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenters: employeeData.costCenters, costCenterIndex: 4, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee: { baseAddress: employeeData.baseAddress, baseAddress2: employeeData.baseAddress2 } })} />
