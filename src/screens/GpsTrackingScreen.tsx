@@ -131,6 +131,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [isEditingOdometer, setIsEditingOdometer] = useState(false);
   const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
+  const [showCustomPurposeInput, setShowCustomPurposeInput] = useState(false);
   const [isEndingTracking, setIsEndingTracking] = useState(false);
   const [isStartingTracking, setIsStartingTracking] = useState(false);
   // Ref so useFocusEffect does not depend on isTracking — when tracking stops, isTracking flips
@@ -1092,6 +1093,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
+    // Safety guard: if any path tries to auto-submit a non-manual end location,
+    // force the user back through the editable end-location modal first.
+    if (locationDetails.source !== 'manual') {
+      openEndLocationModalWithDetails(locationDetails);
+      return;
+    }
+
     console.log('📍 End location confirmed:', locationDetails);
     setEndLocationDetails(locationDetails);
     setShowEndLocationModal(false);
@@ -1450,6 +1458,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                             style={[styles.purposeModalItem, trackingForm.purpose === r.label && styles.purposeModalItemSelected]}
                             onPress={() => {
                               setTrackingForm(prev => ({ ...prev, purpose: r.label }));
+                              setShowCustomPurposeInput(false);
                               setShowPurposePickerModal(false);
                             }}
                           >
@@ -1460,6 +1469,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                           </TouchableOpacity>
                         ))
                       )}
+                      <TouchableOpacity
+                        style={styles.purposeModalItem}
+                        onPress={() => {
+                          setShowPurposePickerModal(false);
+                          setShowCustomPurposeInput(true);
+                          setTimeout(() => purposeInputRef.current?.focus(), 0);
+                        }}
+                      >
+                        <Text style={styles.purposeModalItemText}>Other (Type custom purpose)</Text>
+                      </TouchableOpacity>
                     </ScrollView>
                     <TouchableOpacity style={styles.purposeModalClose} onPress={() => setShowPurposePickerModal(false)}>
                       <Text style={styles.purposeModalCloseText}>Cancel</Text>
@@ -1467,6 +1486,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   </View>
                 </View>
               </Modal>
+              )}
+              {showCustomPurposeInput && (
+                <ScrollToOnFocusView>
+                  <TextInput
+                    ref={purposeInputRef}
+                    style={[styles.input, { marginTop: 8 }]}
+                    value={trackingForm.purpose}
+                    onChangeText={(value) => handleInputChange('purpose', value)}
+                    placeholder="Type custom purpose..."
+                    placeholderTextColor="#999"
+                    returnKeyType="done"
+                  />
+                </ScrollToOnFocusView>
               )}
             </View>
 

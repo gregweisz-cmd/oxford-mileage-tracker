@@ -104,6 +104,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   // Travel reasons dropdown (purpose)
   const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
+  const [showCustomPurposeInput, setShowCustomPurposeInput] = useState(false);
   
   // TextInput refs for keyboard navigation
   const odometerInputRef = useRef<TextInput>(null);
@@ -1236,6 +1237,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                           style={[styles.purposeModalItem, formData.purpose === r.label && styles.purposeModalItemSelected]}
                           onPress={() => {
                             setFormData(prev => ({ ...prev, purpose: r.label }));
+                            setShowCustomPurposeInput(false);
                             setShowPurposePickerModal(false);
                           }}
                         >
@@ -1245,6 +1247,16 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                           )}
                         </TouchableOpacity>
                       ))}
+                      <TouchableOpacity
+                        style={styles.purposeModalItem}
+                        onPress={() => {
+                          setShowPurposePickerModal(false);
+                          setShowCustomPurposeInput(true);
+                          setTimeout(() => purposeInputRef.current?.focus(), 0);
+                        }}
+                      >
+                        <Text style={styles.purposeModalItemText}>Other (Type custom purpose)</Text>
+                      </TouchableOpacity>
                     </ScrollView>
                     <TouchableOpacity style={styles.purposeModalClose} onPress={() => setShowPurposePickerModal(false)}>
                       <Text style={styles.purposeModalCloseText}>Cancel</Text>
@@ -1252,6 +1264,19 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                   </View>
                 </View>
               </Modal>
+              {showCustomPurposeInput && (
+                <ScrollToOnFocusView>
+                  <TextInput
+                    ref={purposeInputRef}
+                    style={[styles.input, { marginTop: 8 }]}
+                    value={formData.purpose}
+                    onChangeText={(value) => handleInputChange('purpose', value)}
+                    placeholder="Type custom purpose..."
+                    placeholderTextColor="#999"
+                    returnKeyType="done"
+                  />
+                </ScrollToOnFocusView>
+              )}
             </>
           ) : (
             <>

@@ -11,6 +11,7 @@ const fs = require('fs');
 const dbService = require('../services/dbService');
 const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
+const { normalizeCostCenter } = require('../utils/costCenterNormalizer');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // ===== DASHBOARD STATISTICS API ENDPOINTS =====
@@ -735,6 +736,12 @@ function reportMatchesCostCenterFilter(reportData, selectedCostCenters) {
     return true;
   }
 
+  const normalizedSelectedSet = new Set(
+    selectedCostCenters
+      .map((value) => normalizeCostCenter(value))
+      .filter(Boolean)
+  );
+
   const reportCostCenters = Array.isArray(reportData?.costCenters)
     ? reportData.costCenters.filter(Boolean)
     : [];
@@ -748,7 +755,7 @@ function reportMatchesCostCenterFilter(reportData, selectedCostCenters) {
     if (cc === 'Unassigned') {
       return selectedCostCenters.some((value) => value.toLowerCase() === 'unassigned' || value === '');
     }
-    return selectedCostCenters.includes(cc);
+    return normalizedSelectedSet.has(normalizeCostCenter(cc));
   });
 }
 
@@ -2197,7 +2204,7 @@ router.get('/api/dashboard-statistics', async (req, res) => {
           const filterCostCenters = filterCostCentersParam
             ? filterCostCentersParam.split(',').map(s => s.trim()).filter(Boolean)
             : [];
-          const costCenterFilterSet = new Set(filterCostCenters);
+          const costCenterFilterSet = new Set(filterCostCenters.map((cc) => normalizeCostCenter(cc)).filter(Boolean));
 
           const now = endDate ? new Date(endDate) : new Date();
           const monthsToInclude = 6;
@@ -2289,7 +2296,7 @@ router.get('/api/dashboard-statistics', async (req, res) => {
                   }
 
                   if (costCenterFilterSet.size > 0) {
-                    const hasIntersection = costCenters.some(cc => costCenterFilterSet.has(cc));
+                    const hasIntersection = costCenters.some(cc => costCenterFilterSet.has(normalizeCostCenter(cc)));
                     if (!hasIntersection) {
                       return;
                     }

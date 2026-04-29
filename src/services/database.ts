@@ -331,6 +331,9 @@ export class DatabaseService {
           category TEXT NOT NULL,
           imageUri TEXT NOT NULL,
           costCenter TEXT DEFAULT '',
+          splitGroupId TEXT DEFAULT '',
+          splitAllocationIndex INTEGER DEFAULT 0,
+          splitAllocationCount INTEGER DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );
@@ -1343,8 +1346,24 @@ export class DatabaseService {
     });
     
     await database.runAsync(
-      'INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, receipt.employeeId, this.receiptDateToSql(receipt.date as Date | string), receipt.amount, receipt.vendor, receipt.description || '', receipt.category, receipt.imageUri, receipt.fileType || 'image', receipt.costCenter || '', now, now]
+      'INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        id,
+        receipt.employeeId,
+        this.receiptDateToSql(receipt.date as Date | string),
+        receipt.amount,
+        receipt.vendor,
+        receipt.description || '',
+        receipt.category,
+        receipt.imageUri,
+        receipt.fileType || 'image',
+        receipt.costCenter || '',
+        receipt.splitGroupId || '',
+        receipt.splitAllocationIndex || 0,
+        receipt.splitAllocationCount || 0,
+        now,
+        now
+      ]
     );
 
     const newReceipt = {
@@ -2626,7 +2645,10 @@ export class DatabaseService {
    */
   private static async runReceiptsMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
     const receiptsMigrations = [
-      { column: 'costCenter', type: 'TEXT DEFAULT \'\'' }
+      { column: 'costCenter', type: 'TEXT DEFAULT \'\'' },
+      { column: 'splitGroupId', type: 'TEXT DEFAULT \'\'' },
+      { column: 'splitAllocationIndex', type: 'INTEGER DEFAULT 0' },
+      { column: 'splitAllocationCount', type: 'INTEGER DEFAULT 0' }
     ];
 
     for (const migration of receiptsMigrations) {

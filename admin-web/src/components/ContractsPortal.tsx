@@ -32,7 +32,6 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  Print as PrintIcon,
   GetApp as DownloadIcon,
   Refresh as RefreshIcon,
   Edit as EditIcon,
@@ -1229,14 +1228,6 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
                       </IconButton>
                       <IconButton
                         size="small"
-                        color="secondary"
-                        onClick={() => handlePrintPreview(report)}
-                        title="Print Preview"
-                      >
-                        <PrintIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
                         color="success"
                         onClick={() => handleExportToExcel(report)}
                         title="Export to Excel"
@@ -1353,13 +1344,6 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
                         onClick={() => handleViewReport(report)}
                       >
                         <ViewIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="secondary"
-                        onClick={() => handlePrintPreview(report)}
-                      >
-                        <PrintIcon />
                       </IconButton>
                       <IconButton
                         size="small"
@@ -1503,18 +1487,6 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPrintPreviewOpen(false)}>Close</Button>
-          <Button
-            variant="contained"
-            startIcon={<PrintIcon />}
-            onClick={() => {
-              // Open PDF in new window for printing
-              if (selectedReport) {
-                window.open(`${API_BASE_URL}/api/export/expense-report-pdf/${selectedReport.id}`, '_blank');
-              }
-            }}
-          >
-            Open in New Window to Print
-          </Button>
         </DialogActions>
       </Dialog>
 

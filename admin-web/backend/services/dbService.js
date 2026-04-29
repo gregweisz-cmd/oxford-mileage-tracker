@@ -238,6 +238,9 @@ function ensureTablesExist() {
         imageUri TEXT,
         fileType TEXT DEFAULT 'image',
         costCenter TEXT DEFAULT '',
+        splitGroupId TEXT DEFAULT '',
+        splitAllocationIndex INTEGER DEFAULT 0,
+        splitAllocationCount INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
@@ -256,6 +259,16 @@ function ensureTablesExist() {
                 debugLog('✅ Added fileType column to existing receipts table');
               }
             });
+          }
+
+          if (!columnNames.includes('splitGroupId')) {
+            db.run(`ALTER TABLE receipts ADD COLUMN splitGroupId TEXT DEFAULT ''`);
+          }
+          if (!columnNames.includes('splitAllocationIndex')) {
+            db.run(`ALTER TABLE receipts ADD COLUMN splitAllocationIndex INTEGER DEFAULT 0`);
+          }
+          if (!columnNames.includes('splitAllocationCount')) {
+            db.run(`ALTER TABLE receipts ADD COLUMN splitAllocationCount INTEGER DEFAULT 0`);
           }
         }
       });
@@ -401,6 +414,7 @@ function ensureTablesExist() {
         description TEXT,
         isActive INTEGER DEFAULT 1,
         enableGoogleMaps INTEGER DEFAULT 0,
+        perDiemReceiptImageRequired INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`, (err) => {
@@ -455,6 +469,15 @@ function ensureTablesExist() {
                 debugWarn('Note: Could not add enableGoogleMaps column:', alterErr.message);
               } else {
                 debugLog('✅ Added enableGoogleMaps column to existing cost_centers table');
+              }
+            });
+          }
+          if (!columnNames.includes('perDiemReceiptImageRequired')) {
+            db.run(`ALTER TABLE cost_centers ADD COLUMN perDiemReceiptImageRequired INTEGER DEFAULT 0`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add perDiemReceiptImageRequired column:', alterErr.message);
+              } else {
+                debugLog('✅ Added perDiemReceiptImageRequired column to existing cost_centers table');
               }
             });
           }
@@ -1134,6 +1157,11 @@ function createSampleDatabase() {
           description TEXT,
           category TEXT NOT NULL,
           imageUri TEXT,
+          fileType TEXT DEFAULT 'image',
+          costCenter TEXT DEFAULT '',
+          splitGroupId TEXT DEFAULT '',
+          splitAllocationIndex INTEGER DEFAULT 0,
+          splitAllocationCount INTEGER DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);
@@ -1170,6 +1198,8 @@ function createSampleDatabase() {
           name TEXT NOT NULL,
           description TEXT,
           isActive INTEGER DEFAULT 1,
+          enableGoogleMaps INTEGER DEFAULT 0,
+          perDiemReceiptImageRequired INTEGER DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`, (err) => {

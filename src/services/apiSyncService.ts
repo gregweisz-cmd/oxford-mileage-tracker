@@ -2335,7 +2335,7 @@ export class ApiSyncService {
             await database.runAsync(
               `UPDATE receipts SET
                 employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, 
-                category = ?, imageUri = ?, costCenter = ?, updatedAt = ?
+                category = ?, imageUri = ?, costCenter = ?, splitGroupId = ?, splitAllocationIndex = ?, splitAllocationCount = ?, updatedAt = ?
               WHERE id = ?`,
               [
                 receipt.employeeId,
@@ -2346,6 +2346,9 @@ export class ApiSyncService {
                 receipt.category || '',
                 receipt.imageUri || '',
                 receipt.costCenter || '',
+                receipt.splitGroupId || '',
+                receipt.splitAllocationIndex || 0,
+                receipt.splitAllocationCount || 0,
                 receiptUpdatedAt,
                 receipt.id
               ]
@@ -2355,8 +2358,8 @@ export class ApiSyncService {
             // Insert new receipt with the SAME ID from backend to avoid duplicates
             await database.runAsync(
               `INSERT INTO receipts (
-                id, employeeId, date, amount, vendor, description, category, imageUri, costCenter, createdAt, updatedAt
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                id, employeeId, date, amount, vendor, description, category, imageUri, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 receipt.id, // Preserve backend ID
                 receipt.employeeId,
@@ -2367,6 +2370,9 @@ export class ApiSyncService {
                 receipt.category || '',
                 receipt.imageUri || '',
                 receipt.costCenter || '',
+                receipt.splitGroupId || '',
+                receipt.splitAllocationIndex || 0,
+                receipt.splitAllocationCount || 0,
                 receipt.createdAt instanceof Date ? receipt.createdAt.toISOString() : (receipt.createdAt || new Date().toISOString()),
                 receiptUpdatedAt
               ]

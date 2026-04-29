@@ -9,6 +9,7 @@ export interface CostCenter {
   name: string;
   description?: string;
   isActive: boolean;
+  perDiemReceiptImageRequired?: boolean;
   createdAt: string;
   updatedAt: string;
 }

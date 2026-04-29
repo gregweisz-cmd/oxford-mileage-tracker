@@ -27,6 +27,7 @@ import { PerDiemAiService } from '../services/perDiemAiService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { API_BASE_URL } from '../config/api';
 import { setSyncMonthScope } from '../services/syncScopeService';
+import { costCenterApiService } from '../services/costCenterApiService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 // Helper function to resolve image URI (handles both local files and backend URLs)
@@ -118,6 +119,7 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [monthlyLimit, setMonthlyLimit] = useState(350);
+  const [perDiemReceiptImageRequired, setPerDiemReceiptImageRequired] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -227,6 +229,8 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
       const month = currentMonth.getMonth() + 1;
       const year = currentMonth.getFullYear();
+      const costCenterConfig = costCenter ? await costCenterApiService.findCostCenterByName(costCenter) : undefined;
+      setPerDiemReceiptImageRequired(!!costCenterConfig?.perDiemReceiptImageRequired);
 
       const rule = costCenter ? await PerDiemRulesService.getPerDiemRule(costCenter) : null;
 
@@ -465,6 +469,18 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
       
       // Save all entries (only eligible ones will create/update receipts)
       const entriesToSave = Array.from(perDiemEntries.values());
+
+      if (perDiemReceiptImageRequired) {
+        const missingImageEntry = entriesToSave.find((entry) => entry.isEligible && !entry.imageUri);
+        if (missingImageEntry) {
+          Alert.alert(
+            'Receipt image required',
+            `Per diem receipt image is required for this cost center. Please attach an image for ${formatDate(missingImageEntry.date)} before saving.`
+          );
+          setSaving(false);
+          return;
+        }
+      }
       
       for (const entry of entriesToSave) {
         // Only save if eligible (creates/updates receipt) or if not eligible but has receiptId (needs deletion)

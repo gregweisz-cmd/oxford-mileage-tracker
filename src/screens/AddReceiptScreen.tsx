@@ -10,6 +10,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  ScrollView,
   Dimensions,
   Keyboard,
   TouchableWithoutFeedback,
@@ -38,11 +39,18 @@ import { ReceiptOcrService, OcrError } from '../services/receiptOcrService';
 import { COST_CENTERS } from '../constants/costCenters';
 import { ReceiptPhotoQualityService, PhotoQualityResult } from '../services/receiptPhotoQualityService';
 import { useTheme } from '../contexts/ThemeContext';
+import { costCenterApiService } from '../services/costCenterApiService';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface AddReceiptScreenProps {
   navigation: any;
+}
+
+interface SplitAllocation {
+  id: string;
+  category: string;
+  amount: string;
 }
 
 const RECEIPT_CATEGORIES = [
@@ -102,6 +110,10 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const [autoPerDiemEnabled, setAutoPerDiemEnabled] = useState(true);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [currentPerDiemRule, setCurrentPerDiemRule] = useState<any>(null);
+  const [perDiemReceiptImageRequired, setPerDiemReceiptImageRequired] = useState(false);
+  const [isSplitMode, setIsSplitMode] = useState(false);
+  const [splitAllocations, setSplitAllocations] = useState<SplitAllocation[]>([]);
+  const [taxAmount, setTaxAmount] = useState('');
   
   // OCR state
   const [processingOcr, setProcessingOcr] = useState(false);
@@ -744,9 +756,18 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
   const validateForm = async (): Promise<boolean> => {
     const isPerDiem = formData.category === 'Per Diem';
-    
-    // Photo/PDF is optional for Per Diem receipts
-    if (!imageUri && !isPerDiem) {
+
+    const effectiveCostCenter = selectedCostCenter ||
+      currentEmployee?.defaultCostCenter ||
+      currentEmployee?.selectedCostCenters?.[0] ||
+      currentEmployee?.costCenters?.[0] ||
+      '';
+    const perDiemImageRequired = isPerDiem && !!effectiveCostCenter
+      ? await isPerDiemImageRequiredForCostCenter(effectiveCostCenter)
+      : false;
+
+    // Photo/PDF requirement depends on category + cost center policy
+    if (!imageUri && (!isPerDiem || perDiemImageRequired)) {
       Alert.alert('Validation Error', 'Please take or select a receipt photo, or upload a PDF');
       return false;
     }
@@ -763,6 +784,23 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     if (!formData.amount.trim() || isNaN(Number(formData.amount)) || Number(formData.amount) <= 0) {
       Alert.alert('Validation Error', 'Please enter a valid amount');
       return false;
+    }
+
+    if (isSplitMode) {
+      const validAllocations = splitAllocations.filter((a) => a.category && Number(a.amount) > 0);
+      if (validAllocations.length === 0) {
+        Alert.alert('Validation Error', 'Add at least one split allocation.');
+        return false;
+      }
+      const splitTotal = validAllocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+      const receiptTotal = Number(formData.amount);
+      if (Math.abs(splitTotal - receiptTotal) > 0.01) {
+        Alert.alert(
+          'Validation Error',
+          `Split total ($${splitTotal.toFixed(2)}) must equal receipt amount ($${receiptTotal.toFixed(2)}).`
+        );
+        return false;
+      }
     }
 
     // Per Diem validation
@@ -783,6 +821,99 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
     return true;
   };
+
+  const handleToggleSplitMode = () => {
+    if (!isSplitMode) {
+      setSplitAllocations([
+        {
+          id: `split-${Date.now()}`,
+          category: formData.category || 'Other',
+          amount: formData.amount || '',
+        },
+      ]);
+      setTaxAmount('');
+    }
+    setIsSplitMode((prev) => !prev);
+  };
+
+  const addSplitAllocation = () => {
+    setSplitAllocations((prev) => [
+      ...prev,
+      { id: `split-${Date.now()}-${prev.length}`, category: 'Other', amount: '' },
+    ]);
+  };
+
+  const updateSplitAllocation = (id: string, patch: Partial<SplitAllocation>) => {
+    setSplitAllocations((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  };
+
+  const removeSplitAllocation = (id: string) => {
+    setSplitAllocations((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const applyTaxToOtherSplit = () => {
+    const total = Number(formData.amount || 0);
+    const tax = Number(taxAmount || 0);
+    if (!Number.isFinite(total) || total <= 0) {
+      Alert.alert('Tax split', 'Enter total receipt amount first.');
+      return;
+    }
+    if (!Number.isFinite(tax) || tax <= 0 || tax >= total) {
+      Alert.alert('Tax split', 'Enter a valid tax amount less than total amount.');
+      return;
+    }
+
+    setSplitAllocations((prev) => {
+      const working = prev.length > 0 ? [...prev] : [{ id: `split-${Date.now()}`, category: formData.category || 'Other', amount: '' }];
+      const firstPrimaryIndex = working.findIndex((row) => row.category !== 'Other');
+      const primaryIndex = firstPrimaryIndex >= 0 ? firstPrimaryIndex : 0;
+
+      working[primaryIndex] = {
+        ...working[primaryIndex],
+        category: working[primaryIndex].category || formData.category || 'Other',
+        amount: (total - tax).toFixed(2),
+      };
+
+      const otherIndex = working.findIndex((row) => row.category === 'Other' && row.id !== working[primaryIndex].id);
+      if (otherIndex >= 0) {
+        working[otherIndex] = { ...working[otherIndex], amount: tax.toFixed(2) };
+      } else {
+        working.push({ id: `split-tax-${Date.now()}`, category: 'Other', amount: tax.toFixed(2) });
+      }
+      return working;
+    });
+  };
+
+  const isPerDiemImageRequiredForCostCenter = async (costCenterName: string): Promise<boolean> => {
+    try {
+      const match = await costCenterApiService.findCostCenterByName(costCenterName);
+      return !!match?.perDiemReceiptImageRequired;
+    } catch (error) {
+      console.error('Error checking per diem image requirement:', error);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    const syncPerDiemRequirement = async () => {
+      if (formData.category !== 'Per Diem') {
+        setPerDiemReceiptImageRequired(false);
+        return;
+      }
+      const effectiveCostCenter = selectedCostCenter ||
+        currentEmployee?.defaultCostCenter ||
+        currentEmployee?.selectedCostCenters?.[0] ||
+        currentEmployee?.costCenters?.[0] ||
+        '';
+      if (!effectiveCostCenter) {
+        setPerDiemReceiptImageRequired(false);
+        return;
+      }
+      const required = await isPerDiemImageRequiredForCostCenter(effectiveCostCenter);
+      setPerDiemReceiptImageRequired(required);
+    };
+    void syncPerDiemRequirement();
+  }, [formData.category, selectedCostCenter, currentEmployee]);
 
   const validatePerDiemRules = async (): Promise<boolean> => {
     if (!currentEmployee) return false;
@@ -975,6 +1106,42 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }
     
     try {
+      if (isSplitMode) {
+        const splitGroupId = `split-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        const validAllocations = splitAllocations.filter((a) => a.category && Number(a.amount) > 0);
+        const finalDescription =
+          formData.category === 'EES'
+            ? ensureEesNoteInDescription(formData.description)
+            : removeEesNoteFromDescription(formData.description).trim();
+
+        for (let i = 0; i < validAllocations.length; i++) {
+          const allocation = validAllocations[i];
+          const partDescription = [
+            finalDescription,
+            `Split receipt ${i + 1}/${validAllocations.length} (${splitGroupId})`,
+          ].filter(Boolean).join(' • ');
+
+          await DatabaseService.createReceipt({
+            employeeId: currentEmployee.id,
+            date: formData.date,
+            amount: Number(allocation.amount),
+            vendor: formData.vendor.trim() || 'Split Receipt',
+            category: allocation.category,
+            description: partDescription,
+            imageUri: imageUri || '',
+            fileType: fileType || 'image',
+            costCenter: selectedCostCenter,
+            splitGroupId,
+            splitAllocationIndex: i + 1,
+            splitAllocationCount: validAllocations.length,
+          });
+        }
+
+        Alert.alert('Success', 'Split receipt saved successfully');
+        navigation.navigate('Home');
+        return;
+      }
+
       // For Car Rental Fuel, combine with existing Car Rental if it exists
       if (formData.category === 'Rental Car Fuel') {
         const existingCarRental = await DatabaseService.getReceiptsByCategoryAndDate(
@@ -1151,7 +1318,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         <View style={styles.photoContainer}>
           <View style={styles.labelRow}>
             <Text style={[styles.label, dynamicStyles.label]}>
-              Receipt Photo {formData.category === 'Per Diem' ? '(Optional)' : '*'}
+              Receipt Photo {(formData.category === 'Per Diem' && !perDiemReceiptImageRequired) ? '(Optional)' : '*'}
             </Text>
           </View>
           <Text style={[styles.receiptPhotoHint, dynamicStyles.receiptPhotoHint]}>
@@ -1436,6 +1603,90 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
               }}
             />
           </ScrollToOnFocusView>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <View style={styles.perDiemQuickToggle}>
+            <Text style={[styles.perDiemQuickToggleLabel, dynamicStyles.perDiemQuickToggleLabel]}>
+              Split Receipt
+            </Text>
+            <TouchableOpacity style={styles.perDiemQuickToggleButton} onPress={handleToggleSplitMode}>
+              <MaterialIcons
+                name={isSplitMode ? 'check-box' : 'check-box-outline-blank'}
+                size={24}
+                color={isSplitMode ? colors.primary : colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+          {isSplitMode && (
+            <View style={styles.splitContainer}>
+              {splitAllocations.map((allocation) => (
+                <View key={allocation.id} style={styles.splitRow}>
+                  <View style={styles.splitCategoryCol}>
+                    <Text style={[styles.splitLabel, dynamicStyles.label]}>Category</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={styles.splitCategoryButtons}>
+                        {RECEIPT_CATEGORIES.map((category) => (
+                          <TouchableOpacity
+                            key={`${allocation.id}-${category}`}
+                            style={[
+                              styles.categoryButton,
+                              dynamicStyles.categoryButton,
+                              allocation.category === category && styles.categoryButtonSelected,
+                              allocation.category === category && dynamicStyles.categoryButtonSelected,
+                            ]}
+                            onPress={() => updateSplitAllocation(allocation.id, { category })}
+                          >
+                            <Text
+                              style={[
+                                styles.categoryButtonText,
+                                dynamicStyles.categoryButtonText,
+                                allocation.category === category && styles.categoryButtonTextSelected,
+                                allocation.category === category && dynamicStyles.categoryButtonTextSelected,
+                              ]}
+                            >
+                              {category}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                  <View style={styles.splitAmountCol}>
+                    <Text style={[styles.splitLabel, dynamicStyles.label]}>Amount</Text>
+                    <TextInput
+                      style={[styles.input, dynamicStyles.input]}
+                      value={allocation.amount}
+                      onChangeText={(value) => updateSplitAllocation(allocation.id, { amount: value })}
+                      placeholder="0.00"
+                      keyboardType="numeric"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  <TouchableOpacity onPress={() => removeSplitAllocation(allocation.id)} style={styles.splitRemoveButton}>
+                    <MaterialIcons name="delete" size={20} color="#f44336" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <View style={styles.splitActionsRow}>
+                <TouchableOpacity style={styles.smallActionButton} onPress={addSplitAllocation}>
+                  <Text style={styles.smallActionButtonText}>Add Split</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={[styles.input, dynamicStyles.input, styles.taxInput]}
+                  value={taxAmount}
+                  onChangeText={setTaxAmount}
+                  placeholder="Tax amount"
+                  keyboardType="numeric"
+                  placeholderTextColor="#999"
+                />
+                <TouchableOpacity style={styles.smallActionButton} onPress={applyTaxToOtherSplit}>
+                  <Text style={styles.smallActionButtonText}>Tax to Other</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Description/Notes */}
@@ -1821,6 +2072,65 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: 20,
+  },
+  splitContainer: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: '#FAFAFA',
+    gap: 10,
+  },
+  splitRow: {
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: '#fff',
+  },
+  splitCategoryCol: {
+    marginBottom: 8,
+  },
+  splitCategoryButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  splitAmountCol: {
+    marginTop: 4,
+  },
+  splitLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  splitRemoveButton: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    padding: 4,
+  },
+  splitActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  smallActionButton: {
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  smallActionButtonText: {
+    color: '#1976D2',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  taxInput: {
+    flex: 1,
+    minWidth: 90,
+    paddingVertical: 10,
+    fontSize: 14,
   },
   input: {
     backgroundColor: '#fff',

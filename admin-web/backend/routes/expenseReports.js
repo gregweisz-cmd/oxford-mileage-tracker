@@ -787,10 +787,10 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
         const now = new Date().toISOString();
         await new Promise((resolve, reject) => {
           db.run(
-            `INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, createdAt, updatedAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'image', ?, ?, ?)
+            `INSERT INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
-               employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, updatedAt = ?`,
+               employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, fileType = ?, costCenter = ?, splitGroupId = ?, splitAllocationIndex = ?, splitAllocationCount = ?, updatedAt = ?`,
             [
               receipt.id,
               employeeId,
@@ -800,7 +800,11 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
               receipt.description || '',
               receipt.category || '',
               receipt.imageUri || '',
+              receipt.fileType || 'image',
               receipt.costCenter || '',
+              receipt.splitGroupId || '',
+              Number(receipt.splitAllocationIndex) || 0,
+              Number(receipt.splitAllocationCount) || 0,
               now,
               now,
               employeeId,
@@ -809,6 +813,12 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
               receipt.vendor || '',
               receipt.description || '',
               receipt.category || '',
+              receipt.imageUri || '',
+              receipt.fileType || 'image',
+              receipt.costCenter || '',
+              receipt.splitGroupId || '',
+              Number(receipt.splitAllocationIndex) || 0,
+              Number(receipt.splitAllocationCount) || 0,
               now
             ],
             (err) => {

@@ -5,6 +5,7 @@ interface CostCenter {
   description?: string;
   isActive: boolean;
   enableGoogleMaps?: boolean;
+  perDiemReceiptImageRequired?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -15,6 +16,7 @@ interface CostCenterCreateData {
   description?: string;
   isActive?: boolean;
   enableGoogleMaps?: boolean;
+  perDiemReceiptImageRequired?: boolean;
 }
 
 export class CostCenterApiService {

@@ -147,6 +147,9 @@ export interface Receipt {
   imageUri: string;
   fileType?: 'image' | 'pdf'; // Type of file (image or PDF)
   costCenter?: string; // Cost center for this specific receipt
+  splitGroupId?: string; // Shared ID across child allocations of one receipt
+  splitAllocationIndex?: number; // 1-based allocation order inside split group
+  splitAllocationCount?: number; // Total number of allocations in split group
   createdAt: Date;
   updatedAt: Date;
 }

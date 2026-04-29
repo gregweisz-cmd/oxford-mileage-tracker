@@ -66,6 +66,9 @@ interface Receipt {
   description?: string;
   costCenter?: string;
   imageUri?: string;
+  splitGroupId?: string;
+  splitAllocationIndex?: number;
+  splitAllocationCount?: number;
 }
 
 interface TimeEntry {
@@ -544,6 +547,12 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
   }
 
   const { report, summary, mileageEntries, receipts, timeTracking } = reportData;
+  const firstSplitReceiptIdByGroup = new Map<string, string>();
+  receipts.forEach((receipt) => {
+    if (receipt.splitGroupId && !firstSplitReceiptIdByGroup.has(receipt.splitGroupId)) {
+      firstSplitReceiptIdByGroup.set(receipt.splitGroupId, receipt.id);
+    }
+  });
 
   return (
     <Dialog 
@@ -1043,6 +1052,10 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
                   <TableBody>
                     {receipts.map((receipt) => {
                       const needsRevision = (receipt as any).needsRevision;
+                      const isSplit = !!receipt.splitGroupId;
+                      const splitCount = Number(receipt.splitAllocationCount || 0);
+                      const splitIndex = Number(receipt.splitAllocationIndex || 0);
+                      const isFirstSplitRow = !isSplit || firstSplitReceiptIdByGroup.get(receipt.splitGroupId || '') === receipt.id;
                       return (
                         <TableRow 
                           key={receipt.id} 
@@ -1057,7 +1070,11 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
                           </TableCell>
                           <TableCell>{formatDate(receipt.date)}</TableCell>
                           <TableCell>
-                            {(() => {
+                            {!isFirstSplitRow ? (
+                              <Typography variant="caption" color="text.secondary">
+                                Shared image in split group
+                              </Typography>
+                            ) : (() => {
                               const raw = receipt.imageUri || '';
                               // Only render if it's a backend-served path, data URL, or valid URI (not local file)
                               if (!raw || raw.startsWith('file://')) {
@@ -1104,10 +1121,16 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
                             })()}
                           </TableCell>
                           <TableCell>{receipt.vendor}</TableCell>
-                          <TableCell>{receipt.category}</TableCell>
+                          <TableCell>
+                            {receipt.category}
+                            {isSplit && splitCount > 1 ? ` (Split ${splitIndex || '?'} of ${splitCount})` : ''}
+                          </TableCell>
                           <TableCell align="right">${receipt.amount.toFixed(2)}</TableCell>
                           <TableCell><Chip label={receipt.costCenter || 'Unassigned'} size="small" /></TableCell>
-                          <TableCell>{receipt.description || '-'}</TableCell>
+                          <TableCell>
+                            {receipt.description || '-'}
+                            {isSplit && splitCount > 1 ? ` • Group: ${receipt.splitGroupId}` : ''}
+                          </TableCell>
                         </TableRow>
                       );
                     })}

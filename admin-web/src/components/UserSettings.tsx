@@ -11,7 +11,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Chip,
   Divider,
   Alert,
   Dialog,
@@ -21,6 +20,7 @@ import {
   Avatar,
   IconButton,
   FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -55,6 +55,7 @@ interface UserProfile {
   password: string;
   oxfordHouseId?: string;
   costCenters: string[];
+  defaultCostCenter?: string;
   baseAddresses: {
     address1: { street: string; city: string; state: string; zip: string };
     address2: { street: string; city: string; state: string; zip: string };
@@ -110,6 +111,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info' | '', text: string }>({ type: '', text: '' });
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [assignedCostCenters, setAssignedCostCenters] = useState<string[]>([]);
+  const [defaultCostCenter, setDefaultCostCenter] = useState('');
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const loadUserProfile = useCallback(async () => {
@@ -147,6 +150,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             selectedCostCenters = costCenters;
           }
         }
+        if (!Array.isArray(selectedCostCenters) || selectedCostCenters.length === 0) {
+          selectedCostCenters = costCenters;
+        }
         
         // Parse preferences if they exist
         let preferences = {
@@ -172,6 +178,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           }
         }
         
+        setAssignedCostCenters(costCenters);
+        setDefaultCostCenter(employeeData.defaultCostCenter || selectedCostCenters[0] || '');
+
         setProfile(prev => ({
           ...prev,
           id: employeeData.id,
@@ -181,6 +190,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           position: employeeData.position || 'Field Staff',
           phoneNumber: employeeData.phoneNumber || '555-0123',
           costCenters: selectedCostCenters,
+          defaultCostCenter: employeeData.defaultCostCenter || selectedCostCenters[0] || '',
           baseAddresses: {
             address1: parseBaseAddress(employeeData.baseAddress || ''),
             address2: parseBaseAddress(employeeData.baseAddress2 || ''),
@@ -287,6 +297,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           ...profile.preferences,
           profilePicture: profile.profilePicture || '',
         }), // Save user-scoped preferences and profile picture
+        selectedCostCenters: profile.costCenters,
+        defaultCostCenter: defaultCostCenter || profile.costCenters[0] || '',
       };
       
       // Update via API
@@ -304,6 +316,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         const savedProfile = {
           ...profile,
           phoneNumber: formattedPhoneNumber,
+          costCenters: profile.costCenters,
+          defaultCostCenter: defaultCostCenter || profile.costCenters[0] || '',
         };
         setProfile(savedProfile);
         showMessage('success', 'Profile updated successfully!');
@@ -542,20 +556,38 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             </Typography>
             
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Your assigned cost centers for expense reporting (managed by administrators)
+              Select any/all cost centers assigned from HR sync. Admins manage the assigned list.
             </Typography>
 
             <Box sx={{ mb: 2 }}>
-              {profile.costCenters.length > 0 ? (
-                profile.costCenters.map((costCenter, index) => (
-                  <Chip
-                    key={index}
-                    label={costCenter}
-                    sx={{ mr: 1, mb: 1 }}
-                    color="primary"
-                    variant="outlined"
-                  />
-                ))
+              {assignedCostCenters.length > 0 ? (
+                assignedCostCenters.map((costCenter, index) => {
+                  const checked = profile.costCenters.includes(costCenter);
+                  return (
+                    <FormControlLabel
+                      key={`${costCenter}-${index}`}
+                      control={
+                        <Checkbox
+                          checked={checked}
+                          onChange={(e) => {
+                            const isChecked = e.target.checked;
+                            setProfile((prev) => {
+                              const nextSelected = isChecked
+                                ? Array.from(new Set([...prev.costCenters, costCenter]))
+                                : prev.costCenters.filter((cc) => cc !== costCenter);
+                              if (!nextSelected.includes(defaultCostCenter)) {
+                                setDefaultCostCenter(nextSelected[0] || '');
+                              }
+                              return { ...prev, costCenters: nextSelected };
+                            });
+                          }}
+                        />
+                      }
+                      label={costCenter}
+                      sx={{ display: 'block', mb: 0.5 }}
+                    />
+                  );
+                })
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                   No cost centers assigned. Please contact your administrator.
@@ -563,8 +595,25 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               )}
             </Box>
 
+            <FormControl fullWidth size="small" sx={{ mt: 1, mb: 1 }}>
+              <InputLabel id="default-cost-center-label">Default Cost Center</InputLabel>
+              <Select
+                labelId="default-cost-center-label"
+                value={defaultCostCenter}
+                label="Default Cost Center"
+                onChange={(e) => setDefaultCostCenter(String(e.target.value))}
+                disabled={profile.costCenters.length === 0}
+              >
+                {profile.costCenters.map((costCenter) => (
+                  <MenuItem key={costCenter} value={costCenter}>
+                    {costCenter}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <Typography variant="caption" color="text.secondary">
-              Changes to cost centers can only be made by administrators
+              Your selections and default are saved in User Settings.
             </Typography>
           </CardContent>
         </Card>

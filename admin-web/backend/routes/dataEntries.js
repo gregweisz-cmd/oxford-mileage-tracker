@@ -495,7 +495,20 @@ router.post('/api/receipts', (req, res) => {
       error: 'Description is required for Other Expenses so Finance knows what the money was spent on' 
     });
   }
-  const { id, employeeId, date, amount, vendor, description, category, imageUri } = req.body;
+  const {
+    id,
+    employeeId,
+    date,
+    amount,
+    vendor,
+    description,
+    category,
+    imageUri,
+    costCenter,
+    splitGroupId,
+    splitAllocationIndex,
+    splitAllocationCount
+  } = req.body;
   const receiptId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
   const db = dbService.getDb();
@@ -527,8 +540,25 @@ router.post('/api/receipts', (req, res) => {
     const action = isUpdate ? 'updated' : 'created';
   
     db.run(
-      'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
-      [receiptId, employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', fileType, receiptId, now, now],
+      'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
+      [
+        receiptId,
+        employeeId,
+        normalizedDate,
+        amount,
+        vendor || '',
+        description || '',
+        category || '',
+        imageUri || '',
+        fileType,
+        costCenter || '',
+        splitGroupId || '',
+        Number(splitAllocationIndex) || 0,
+        Number(splitAllocationCount) || 0,
+        receiptId,
+        now,
+        now
+      ],
       function(err) {
         if (err) {
           debugError('Database error:', err.message);
@@ -558,7 +588,7 @@ router.put('/api/receipts/:id', (req, res) => {
   }
 
   const { id } = req.params;
-  const { date, amount, vendor, description, category, imageUri, fileType } = req.body;
+  const { date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
   if (imageUri !== undefined) {
@@ -582,8 +612,23 @@ router.put('/api/receipts/:id', (req, res) => {
 
   const runUpdate = (employeeId) => {
     db.run(
-      'UPDATE receipts SET employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, fileType = ?, updatedAt = ? WHERE id = ?',
-      [employeeId, normalizedDate, amount, vendor || '', description || '', category || '', imageUri || '', finalFileType, now, id],
+      'UPDATE receipts SET employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, category = ?, imageUri = ?, fileType = ?, costCenter = ?, splitGroupId = ?, splitAllocationIndex = ?, splitAllocationCount = ?, updatedAt = ? WHERE id = ?',
+      [
+        employeeId,
+        normalizedDate,
+        amount,
+        vendor || '',
+        description || '',
+        category || '',
+        imageUri || '',
+        finalFileType,
+        costCenter || '',
+        splitGroupId || '',
+        Number(splitAllocationIndex) || 0,
+        Number(splitAllocationCount) || 0,
+        now,
+        id
+      ],
       function(err) {
         if (err) {
           debugError('Database error:', err.message);

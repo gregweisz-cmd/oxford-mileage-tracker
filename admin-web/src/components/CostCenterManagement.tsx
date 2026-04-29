@@ -59,7 +59,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
     name: '',
     description: '',
     isActive: true,
-    enableGoogleMaps: false
+    enableGoogleMaps: false,
+    perDiemReceiptImageRequired: false,
   });
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
@@ -99,7 +100,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
 
   const handleAddCostCenter = () => {
     setEditingCostCenter(null);
-    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false });
+    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false, perDiemReceiptImageRequired: false });
     setShowDialog(true);
     setError(null);
   };
@@ -111,7 +112,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       name: costCenter.name,
       description: costCenter.description || '',
       isActive: costCenter.isActive,
-      enableGoogleMaps: costCenter.enableGoogleMaps || false
+      enableGoogleMaps: costCenter.enableGoogleMaps || false,
+      perDiemReceiptImageRequired: costCenter.perDiemReceiptImageRequired || false,
     });
     setShowDialog(true);
     setError(null);
@@ -156,7 +158,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
 
   const handleCancel = () => {
     setShowDialog(false);
-    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false });
+    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false, perDiemReceiptImageRequired: false });
     setError(null);
   };
 
@@ -432,6 +434,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
                   <TableCell>Per Diem Rules</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Google Maps</TableCell>
+                  <TableCell>Per Diem Receipt Image</TableCell>
                   <TableCell>Created</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
@@ -487,6 +490,19 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
                       ) : (
                         <Typography variant="body2" color="text.secondary">
                           Disabled
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {costCenter.perDiemReceiptImageRequired ? (
+                        <Chip
+                          label="Required"
+                          color="warning"
+                          size="small"
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Optional
                         </Typography>
                       )}
                     </TableCell>
@@ -811,6 +827,20 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
             />
             <Typography variant="caption" color="text.secondary" sx={{ ml: 4, display: 'block', mt: -1 }}>
               When enabled, finance team can view route maps in PDF reports for this cost center
+            </Typography>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.perDiemReceiptImageRequired}
+                  onChange={(e) => setFormData({ ...formData, perDiemReceiptImageRequired: e.target.checked })}
+                />
+              }
+              label="Require Receipt Image for Per Diem"
+              sx={{ mt: 2 }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 4, display: 'block', mt: -1 }}>
+              When enabled, users in this cost center must attach a receipt image/PDF for per diem entries.
             </Typography>
           </Box>
         </DialogContent>

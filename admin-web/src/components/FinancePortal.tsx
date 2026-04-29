@@ -33,7 +33,6 @@ import {
   Backdrop,
 } from '@mui/material';
 import {
-  Print as PrintIcon,
   GetApp as DownloadIcon,
   Refresh as RefreshIcon,
   Edit as EditIcon,
@@ -1360,14 +1359,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                       </IconButton>
                       <IconButton
                         size="small"
-                        color="secondary"
-                        onClick={() => handlePrintPreview(report)}
-                        title="Print Preview"
-                      >
-                        <PrintIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
                         color="success"
                         disabled={pdfExportLoadingReportId === report.id}
                         onClick={() => {
@@ -1517,13 +1508,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                         onClick={() => handleViewReport(report)}
                       >
                         <ViewIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="secondary"
-                        onClick={() => handlePrintPreview(report)}
-                      >
-                        <PrintIcon />
                       </IconButton>
                       <IconButton
                         size="small"
@@ -1729,18 +1713,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPrintPreviewOpen(false)}>Close</Button>
-          <Button
-            variant="contained"
-            startIcon={<PrintIcon />}
-            onClick={() => {
-              // Open PDF in new window for printing
-              if (selectedReport) {
-                window.open(`${API_BASE_URL}/api/export/expense-report-pdf/${selectedReport.id}`, '_blank');
-              }
-            }}
-          >
-            Open in New Window to Print
-          </Button>
         </DialogActions>
       </Dialog>
 

@@ -10,6 +10,7 @@ const dbService = require('../services/dbService');
 const config = require('../config');
 const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
+const { costCentersMatch } = require('../utils/costCenterNormalizer');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const XLSX = require('xlsx');
 const { jsPDF } = require('jspdf');
@@ -1742,20 +1743,23 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             doc.setFont('helvetica', 'normal');
             
             const maxCharsPerLine = Math.floor((width - 6) / 3.5);
-            const words = text.split(' ');
             let lines = [];
-            let currentLine = '';
-            
-            for (const word of words) {
-              const testLine = currentLine ? `${currentLine} ${word}` : word;
-              if (testLine.length <= maxCharsPerLine) {
-                currentLine = testLine;
-              } else {
-                if (currentLine) lines.push(currentLine);
-                currentLine = word;
+            const paragraphs = String(text || '').split('\n');
+
+            paragraphs.forEach((paragraph) => {
+              const words = paragraph.split(' ');
+              let currentLine = '';
+              for (const word of words) {
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                if (testLine.length <= maxCharsPerLine) {
+                  currentLine = testLine;
+                } else {
+                  if (currentLine) lines.push(currentLine);
+                  currentLine = word;
+                }
               }
-            }
-            if (currentLine) lines.push(currentLine);
+              if (currentLine) lines.push(currentLine);
+            });
             
             lines.forEach((line, index) => {
               safeText(line, x + 3, y + 6 + (index * 6));
@@ -1764,16 +1768,68 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             return 6 + (lines.length * 6) + 6;
           };
           
+          // Group split allocations so Finance sees one parent receipt with child allocations.
+          const rawReceipts = Array.isArray(reportData.receipts) ? reportData.receipts : [];
+          const groupedReceiptsMap = new Map();
+          rawReceipts.forEach((receipt, index) => {
+            const splitGroupId = receipt && receipt.splitGroupId ? String(receipt.splitGroupId) : '';
+            const groupKey = splitGroupId || `single:${receipt?.id || index}`;
+            if (!groupedReceiptsMap.has(groupKey)) {
+              groupedReceiptsMap.set(groupKey, {
+                key: groupKey,
+                splitGroupId,
+                receipts: [],
+                firstIndex: index
+              });
+            }
+            groupedReceiptsMap.get(groupKey).receipts.push(receipt);
+          });
+          const groupedReceipts = Array.from(groupedReceiptsMap.values())
+            .sort((a, b) => a.firstIndex - b.firstIndex)
+            .map((group) => {
+              const sortedReceipts = [...group.receipts].sort((a, b) => {
+                const ai = Number(a?.splitAllocationIndex || 0);
+                const bi = Number(b?.splitAllocationIndex || 0);
+                return ai - bi;
+              });
+              const first = sortedReceipts[0] || {};
+              const totalAmount = sortedReceipts.reduce((sum, r) => sum + (parseFloat(r?.amount) || 0), 0);
+              const allocationSummary = sortedReceipts
+                .map((r, i) => {
+                  const amt = parseFloat(r?.amount);
+                  const amountLabel = Number.isFinite(amt) ? `$${amt.toFixed(2)}` : '$0.00';
+                  return `- ${r?.category || 'Uncategorized'}: ${amountLabel}`;
+                })
+                .join('\n');
+              return {
+                ...first,
+                amount: totalAmount,
+                category: group.splitGroupId ? `Split (${sortedReceipts.length})` : (first.category || ''),
+                description: group.splitGroupId
+                  ? `${first.description || ''}${first.description ? '\n' : ''}Allocations:\n${allocationSummary}`
+                  : (first.description || ''),
+                splitGroupId: group.splitGroupId,
+                splitRows: sortedReceipts
+              };
+            });
+
           // Data rows (use DB imageUri when snapshot has none so downloaded report includes receipt images)
-          debugLog(`📄 Starting receipts section: yPos=${yPos}, receipts count=${reportData.receipts?.length || 0}`);
-          reportData.receipts.forEach((receipt, idx) => {
-            const dbRec = receipt.id ? dbReceiptsById.get(receipt.id) : null;
-            const rawUri = receipt.imagePath || receipt.imageUrl || receipt.image || receipt.imageUri || (dbRec && dbRec.imageUri) || '';
+          debugLog(`📄 Starting receipts section: yPos=${yPos}, grouped receipts count=${groupedReceipts.length}`);
+          groupedReceipts.forEach((receipt, idx) => {
+            const rowCandidates = Array.isArray(receipt.splitRows) && receipt.splitRows.length > 0
+              ? receipt.splitRows
+              : [receipt];
+            const uriOwner = rowCandidates.find((r) => {
+              const dbRec = r?.id ? dbReceiptsById.get(r.id) : null;
+              return !!(r?.imagePath || r?.imageUrl || r?.image || r?.imageUri || (dbRec && dbRec.imageUri));
+            }) || receipt;
+            const dbRec = uriOwner?.id ? dbReceiptsById.get(uriOwner.id) : null;
+            const rawUri = uriOwner?.imagePath || uriOwner?.imageUrl || uriOwner?.image || uriOwner?.imageUri || (dbRec && dbRec.imageUri) || '';
             if (rawUri) {
               const uriType = typeof rawUri === 'string' && rawUri.startsWith('data:application/pdf') ? 'PDF data URL' : typeof rawUri === 'string' && rawUri.startsWith('data:image/') ? 'image data URL' : 'path';
-              debugLog(`📄 Receipt ${idx + 1} (id=${receipt.id}): imageUri type=${uriType}, length=${String(rawUri).length}`);
+              debugLog(`📄 Receipt ${idx + 1} (id=${receipt.id || 'group'}): imageUri type=${uriType}, length=${String(rawUri).length}`);
             } else {
-              debugLog(`📄 Receipt ${idx + 1} (id=${receipt.id}): no imageUri`);
+              debugLog(`📄 Receipt ${idx + 1} (id=${receipt.id || 'group'}): no imageUri`);
             }
             // Check if we need a new page for the receipt row
             if (yPos > pageHeight - 150) {
@@ -2240,7 +2296,6 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
           )
-          AND costCenter = ?
           ORDER BY date, createdAt
         `;
         
@@ -2252,7 +2307,6 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
           )
-          AND costCenter = ?
           ORDER BY date
         `;
         
@@ -2264,14 +2318,13 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
           )
-          AND costCenter = ?
           ORDER BY date
         `;
         
-        // Params: employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt (MM), year2digit (YY), costCenter
+        // Params: employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt (MM), year2digit (YY)
         const monthInt = parseInt(monthStr);
         const year2digit = yearStr.slice(-2);
-        const mileageParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit, costCenter];
+        const mileageParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit];
         debugLog(`📊 Mileage query params:`, mileageParams);
         debugLog(`📊 Querying for employeeId: ${reportData.employeeId}, date range: ${startDateYYYYMMDD} to ${endDateYYYYMMDD}, costCenter: ${costCenter}`);
         db.all(mileageQuery, mileageParams, (err, mileageEntries) => {
@@ -2297,10 +2350,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             }
           }
           
-          const timeTrackingParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit, costCenter];
+          const timeTrackingParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit];
           debugLog(`📊 Time tracking query params:`, timeTrackingParams);
           
-          const dailyDescriptionsParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit, costCenter];
+          const dailyDescriptionsParams = [reportData.employeeId, startDateYYYYMMDD, endDateYYYYMMDD, monthInt, year2digit];
           db.all(dailyDescriptionsQuery, dailyDescriptionsParams, (descErr, dailyDescriptions) => {
             if (descErr) {
               debugError('❌ Error fetching daily descriptions:', descErr);
@@ -2365,7 +2418,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             
             // Build maps for daily data aggregation
             const dailyDataMap = {};
-            const entriesForCostCenter = (mileageEntries || []).filter(e => e.costCenter === costCenter);
+            const entriesForCostCenter = (mileageEntries || []).filter(e => costCentersMatch(e.costCenter, costCenter));
 
             // Group mileage entries by day, then build Staff-Portal-style driving summary per day
             const dayToEntries = {};
@@ -2432,7 +2485,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             timeEntries
               .filter(entry => {
                 // Only process entries that match this cost center
-                return entry.costCenter === costCenter;
+                return costCentersMatch(entry.costCenter, costCenter);
               })
               .forEach(entry => {
                 // Handle YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, and MM/DD/YY formats
@@ -2481,7 +2534,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
               dailyDescriptions
                 .filter(desc => {
                   // Only process entries that match this cost center
-                  return desc.costCenter === costCenter;
+                  return costCentersMatch(desc.costCenter, costCenter);
                 })
                 .forEach(desc => {
                   // Handle YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, and MM/DD/YY formats
