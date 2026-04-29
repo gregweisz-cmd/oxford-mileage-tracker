@@ -91,8 +91,12 @@ export const FALLBACK_COST_CENTERS = [
   'WI.MIL',
 ] as const;
 
+const SELECTABLE_FALLBACK_COST_CENTERS = FALLBACK_COST_CENTERS.filter(
+  (costCenter) => !costCenter.includes('/')
+);
+
 // Legacy export for backward compatibility
-export const COST_CENTERS = FALLBACK_COST_CENTERS;
+export const COST_CENTERS = SELECTABLE_FALLBACK_COST_CENTERS;
 
 export type CostCenter = typeof FALLBACK_COST_CENTERS[number];
 
@@ -102,10 +106,11 @@ export type CostCenter = typeof FALLBACK_COST_CENTERS[number];
  */
 export const getCostCenters = async (): Promise<string[]> => {
   try {
-    return await costCenterApiService.getCostCenterNames();
+    const names = await costCenterApiService.getCostCenterNames();
+    return names.filter((name) => !String(name || '').includes('/'));
   } catch (error) {
     console.warn('Failed to fetch cost centers from API, using fallback:', error);
-    return [...FALLBACK_COST_CENTERS];
+    return [...SELECTABLE_FALLBACK_COST_CENTERS];
   }
 };
 

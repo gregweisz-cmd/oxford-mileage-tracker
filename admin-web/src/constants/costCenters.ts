@@ -1,7 +1,7 @@
 // Cost Centers for Oxford House Expense Tracker
 // Updated from Google Sheet data - Listed in alphabetical order
 
-export const COST_CENTERS = [
+const ALL_COST_CENTERS = [
   'AL / HI / LA',
   'AL-SOR',
   'AL-SUBG',
@@ -86,6 +86,8 @@ export const COST_CENTERS = [
   'WA.KING',
   'WA.SNO',
   'WI.MIL',
-] as const;
+ ] as const;
 
-export type CostCenter = typeof COST_CENTERS[number];
+export const COST_CENTERS = ALL_COST_CENTERS.filter((costCenter) => !costCenter.includes('/'));
+
+export type CostCenter = typeof ALL_COST_CENTERS[number];

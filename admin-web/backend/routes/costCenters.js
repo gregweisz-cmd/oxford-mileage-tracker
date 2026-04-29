@@ -19,7 +19,8 @@ router.get('/api/cost-centers', (req, res) => {
       res.status(500).json({ error: err.message });
       return;
     }
-    res.json(rows);
+    const filtered = (rows || []).filter((row) => !String(row?.name || '').includes('/'));
+    res.json(filtered);
   });
 });
 

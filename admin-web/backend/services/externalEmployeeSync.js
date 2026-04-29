@@ -119,6 +119,20 @@ function parseCostCenters(ext) {
   return [];
 }
 
+function shouldOmitCostCenter(name) {
+  return String(name || '').includes('/');
+}
+
+function sanitizeCostCenters(costCenters) {
+  const unique = new Set();
+  for (const raw of costCenters || []) {
+    const name = String(raw || '').trim();
+    if (!name || shouldOmitCostCenter(name)) continue;
+    unique.add(name);
+  }
+  return Array.from(unique);
+}
+
 function normalizeCostCenterForMatch(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -147,7 +161,7 @@ async function ensureCostCentersFromMappedEmployees(mappedList) {
 
   const discovered = new Set();
   for (const mapped of mappedList || []) {
-    for (const costCenter of mapped.costCenters || []) {
+    for (const costCenter of sanitizeCostCenters(mapped.costCenters || [])) {
       const name = String(costCenter || '').trim();
       if (name) discovered.add(name);
     }
@@ -209,8 +223,7 @@ function mapExternalToOur(ext) {
   if (!name) return null;
   name = formatNameForDisplay(name);
 
-  let costCenters = parseCostCenters(ext);
-  if (costCenters.length === 0) costCenters = ['Program Services'];
+  const costCenters = sanitizeCostCenters(parseCostCenters(ext));
 
   const position = (ext.position || ext.Position || ext.title || ext.jobTitle || 'Staff').toString().trim() || 'Staff';
   const phoneNumber = (ext.phoneNumber || ext.phone || ext.Phone || ext.telephone || '').toString().trim() || '';
@@ -339,6 +352,22 @@ async function upsertOne(mapped, existing) {
 
   if (existing) {
     const id = existing.id;
+    const existingCostCenters = existing.costCenters
+      ? (typeof existing.costCenters === 'string' ? JSON.parse(existing.costCenters || '[]') : existing.costCenters)
+      : [];
+    const syncedCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
+      ? sanitizeCostCenters(mapped.costCenters)
+      : sanitizeCostCenters(existingCostCenters);
+    const existingSelectedCostCenters = existing.selectedCostCenters
+      ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters)
+      : [];
+    const nextSelectedCostCenters = sanitizeCostCenters(existingSelectedCostCenters).filter((cc) => syncedCostCenters.includes(cc));
+    const finalSelectedCostCenters = nextSelectedCostCenters.length > 0
+      ? nextSelectedCostCenters
+      : syncedCostCenters;
+    const finalDefaultCostCenter = finalSelectedCostCenters.includes(existing.defaultCostCenter || '')
+      ? (existing.defaultCostCenter || '')
+      : (finalSelectedCostCenters[0] || '');
     // Sync updates: name, position, phoneNumber, costCenters, additions/archivals only. baseAddress is preserved.
     // Always assign Employee ID from API when the API provides one; otherwise keep existing
     const oxfordHouseId =
@@ -356,9 +385,9 @@ async function upsertOne(mapped, existing) {
           existing.preferredName || '',
           mergePositionPreservingDesignations(mapped.position, existing.position),
           mapped.phoneNumber || '',
-          JSON.stringify(mapped.costCenters),
-          JSON.stringify(existing.selectedCostCenters ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters) : mapped.costCenters),
-          existing.defaultCostCenter || (mapped.costCenters[0] || ''),
+          JSON.stringify(syncedCostCenters),
+          JSON.stringify(finalSelectedCostCenters),
+          finalDefaultCostCenter,
           oxfordHouseId,
           now,
           id,
@@ -394,6 +423,9 @@ async function upsertOne(mapped, existing) {
     mapped.oxfordHouseId !== undefined && String(mapped.oxfordHouseId || '').trim() !== ''
       ? String(mapped.oxfordHouseId).trim()
       : '';
+  const createCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
+    ? sanitizeCostCenters(mapped.costCenters)
+    : ['Program Services'];
   await new Promise((resolve, reject) => {
     db.run(
       `INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, role, permissions, phoneNumber, baseAddress, baseAddress2, costCenters, selectedCostCenters, defaultCostCenter, supervisorId, createdAt, updatedAt)
@@ -411,9 +443,9 @@ async function upsertOne(mapped, existing) {
         mapped.phoneNumber || '',
         '', // baseAddress: not pulled from HR - employees set it themselves
         '',
-        JSON.stringify(mapped.costCenters),
-        JSON.stringify(mapped.costCenters),
-        mapped.costCenters[0] || '',
+        JSON.stringify(createCostCenters),
+        JSON.stringify(createCostCenters),
+        createCostCenters[0] || '',
         null,
         now,
         now,
@@ -563,25 +595,35 @@ async function previewSyncFromExternal() {
       ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters)
       : [];
     if (!existing) {
-      creates.push({ email: mapped.email, name: mapped.name, position: mapped.position, costCenters: mapped.costCenters });
+      creates.push({
+        email: mapped.email,
+        name: mapped.name,
+        position: mapped.position,
+        costCenters: sanitizeCostCenters(mapped.costCenters),
+      });
     } else {
+      const nextCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
+        ? sanitizeCostCenters(mapped.costCenters)
+        : sanitizeCostCenters(prevCC);
+      const hadGroupedPrevCostCenter = (prevCC || []).some((cc) => shouldOmitCostCenter(cc));
       const same =
         (existing.name || '') === (mapped.name || '') &&
         (existing.position || '') === (mapped.position || '') &&
-        JSON.stringify(prevCC.sort()) === JSON.stringify((mapped.costCenters || []).sort()) &&
-        (existing.phoneNumber || '') === (mapped.phoneNumber || '');
+        JSON.stringify(sanitizeCostCenters(prevCC).sort()) === JSON.stringify(nextCostCenters.sort()) &&
+        (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
+        !hadGroupedPrevCostCenter;
       if (!same && !ignored.update.has((mapped.email || '').toLowerCase().trim())) {
         updates.push({
           email: mapped.email,
           name: mapped.name,
           position: mapped.position,
-          costCenters: mapped.costCenters,
+          costCenters: nextCostCenters,
           phoneNumber: mapped.phoneNumber || '',
           previous: {
             name: existing.name,
             position: existing.position,
             phoneNumber: existing.phoneNumber || '',
-            costCenters: prevCC,
+            costCenters: sanitizeCostCenters(prevCC),
             selectedCostCenters: prevSelected,
           },
         });
