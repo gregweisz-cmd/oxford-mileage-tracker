@@ -819,6 +819,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Raw line item data for revision checking
   const [rawMileageEntries, setRawMileageEntries] = useState<any[]>([]);
   const [rawTimeEntries, setRawTimeEntries] = useState<any[]>([]);
+  // Becomes true after primary report data load completes at least once.
+  // Guards secondary effects from mutating core loaded state too early.
+  const hasLoadedCoreDataRef = useRef(false);
   
   // Mileage entry editing state
   const [editingMileageEntry, setEditingMileageEntry] = useState<any | null>(null);
@@ -2084,6 +2087,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           await refreshTimesheetData();
         }
       } finally {
+        hasLoadedCoreDataRef.current = true;
         setLoading(false);
         stopLoading(); // Clear overlay (e.g. "Refreshing data..." / "Loading report..." after month change)
       }
@@ -2115,37 +2119,44 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Check for revision requests
   useEffect(() => {
     const checkRevisionItems = async () => {
-      if (reportStatus === 'needs_revision' && effectiveEmployeeId) {
-        try {
-          // Fetch receipts, mileage entries, and time entries to check for revision flags
-          const { apiFetch } = await import('./services/rateLimitedApi');
-          const [receiptsRes, mileageRes, timeRes] = await Promise.all([
-            apiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
-            apiFetch(`/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`)
-          ]);
+      if (!effectiveEmployeeId) return;
+      if (!hasLoadedCoreDataRef.current) return;
 
-          const receipts = await receiptsRes.json();
-          const mileageEntries = await mileageRes.json();
-          const timeEntries = await timeRes.json();
-
-          // Store raw data for revision checking
-          setRawMileageEntries(mileageEntries);
-          setRawTimeEntries(timeEntries);
-
-          // Count items needing revision
-          const revisionCounts = {
-            mileage: (mileageEntries as any[]).filter((e: any) => e.needsRevision).length,
-            receipts: (receipts as any[]).filter((e: any) => e.needsRevision).length,
-            time: (timeEntries as any[]).filter((e: any) => e.needsRevision).length
-          };
-
-          setRevisionItems(revisionCounts);
-        } catch (error) {
-          debugError('Error checking revision items:', error);
-        }
-      } else {
+      // IMPORTANT: In non-revision states, never mutate rawMileageEntries/rawTimeEntries here.
+      // Those arrays are the canonical data source for Mileage Entries and Cost Center tabs.
+      // This effect should only update revision counters unless report is actually in needs_revision.
+      if (reportStatus !== 'needs_revision') {
         setRevisionItems({ mileage: 0, receipts: 0, time: 0 });
+        return;
+      }
+
+      try {
+        // Fetch receipts, mileage entries, and time entries to check for revision flags
+        const { apiFetch } = await import('./services/rateLimitedApi');
+        const [receiptsRes, mileageRes, timeRes] = await Promise.all([
+          apiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+          apiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
+          apiFetch(`/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`)
+        ]);
+
+        const receipts = await receiptsRes.json();
+        const mileageEntries = await mileageRes.json();
+        const timeEntries = await timeRes.json();
+
+        // In revision mode, refresh raw arrays so row-level revision highlights line up with latest data.
+        setRawMileageEntries(mileageEntries);
+        setRawTimeEntries(timeEntries);
+
+        // Count items needing revision
+        const revisionCounts = {
+          mileage: (mileageEntries as any[]).filter((e: any) => e.needsRevision).length,
+          receipts: (receipts as any[]).filter((e: any) => e.needsRevision).length,
+          time: (timeEntries as any[]).filter((e: any) => e.needsRevision).length
+        };
+
+        setRevisionItems(revisionCounts);
+      } catch (error) {
+        debugError('Error checking revision items:', error);
       }
     };
 
