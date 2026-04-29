@@ -87,6 +87,9 @@ interface ExpenseReport {
   currentApproverId?: string | null;
 }
 
+const normalizeCostCenter = (value: string): string =>
+  String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, financeUserName }) => {
   const [reports, setReports] = useState<ExpenseReport[]>([]);
   const [filteredReports, setFilteredReports] = useState<ExpenseReport[]>([]);
@@ -165,20 +168,21 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     debugLog('🗺️ hasMapsEnabled: Available cost centers with maps:', costCenters.filter(cc => !!cc.enableGoogleMaps).map(cc => cc.name));
     
     const result = reportCostCenters.some((ccName: string) => {
+      const normalizedTarget = normalizeCostCenter(ccName);
       // Case-insensitive matching by name
-      let costCenter = costCenters.find(cc => cc.name.toLowerCase() === ccName.toLowerCase());
+      let costCenter = costCenters.find(cc => normalizeCostCenter(cc.name) === normalizedTarget);
       
       // Also try matching by code if name doesn't match
       if (!costCenter) {
-        costCenter = costCenters.find(cc => cc.code && cc.code.toLowerCase() === ccName.toLowerCase());
+        costCenter = costCenters.find(cc => normalizeCostCenter(cc.code || '') === normalizedTarget);
       }
       
       // Also check if the cost center name contains the report cost center (for aliases like "PS-UNFUNDED" -> "Program Services")
       if (!costCenter) {
         costCenter = costCenters.find(cc => {
-          const ccNameLower = ccName.toLowerCase();
-          const dbNameLower = cc.name.toLowerCase();
-          const dbCodeLower = (cc.code || '').toLowerCase();
+          const ccNameLower = normalizedTarget;
+          const dbNameLower = normalizeCostCenter(cc.name);
+          const dbCodeLower = normalizeCostCenter(cc.code || '');
           // Check if report name is contained in DB name/code or vice versa
           return dbNameLower.includes(ccNameLower) || ccNameLower.includes(dbNameLower) ||
                  dbCodeLower.includes(ccNameLower) || ccNameLower.includes(dbCodeLower);
@@ -457,9 +461,10 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
     // Filter by cost center
     if (filterCostCenter !== 'all') {
+      const normalizedFilterCostCenter = normalizeCostCenter(filterCostCenter);
       filtered = filtered.filter(r => {
         const costCenters = r.costCenters || [];
-        return costCenters.includes(filterCostCenter);
+        return costCenters.some((center: string) => normalizeCostCenter(center) === normalizedFilterCostCenter);
       });
     }
 

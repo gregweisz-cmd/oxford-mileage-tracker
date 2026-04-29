@@ -20,6 +20,10 @@ export class PerDiemRulesService {
   private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private static fetchPromise: Promise<PerDiemRule[]> | null = null; // Prevent parallel fetches
 
+  private static normalizeCostCenter(value: string): string {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
   /**
    * Fetch Per Diem rules from backend
    */
@@ -74,9 +78,12 @@ export class PerDiemRulesService {
    */
   static async getPerDiemRule(costCenter: string): Promise<PerDiemRule | null> {
     try {
+      const normalizedCostCenter = this.normalizeCostCenter(costCenter);
       // Check cache first
       if (this.isCacheValid()) {
-        const rule = this.rulesCache.find(r => r.costCenter === costCenter);
+        const rule = this.rulesCache.find(
+          r => this.normalizeCostCenter(r.costCenter) === normalizedCostCenter
+        );
         if (rule) {
           debugVerbose(`📋 PerDiemRules: Found cached rule for ${costCenter}:`, rule);
           return rule;
@@ -85,7 +92,9 @@ export class PerDiemRulesService {
 
       // Fetch from backend if cache is invalid
       await this.fetchPerDiemRules();
-      const rule = this.rulesCache.find(r => r.costCenter === costCenter);
+      const rule = this.rulesCache.find(
+        r => this.normalizeCostCenter(r.costCenter) === normalizedCostCenter
+      );
       
       if (rule) {
         debugVerbose(`📋 PerDiemRules: Found rule for ${costCenter}:`, rule);

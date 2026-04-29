@@ -119,6 +119,80 @@ function parseCostCenters(ext) {
   return [];
 }
 
+function normalizeCostCenterForMatch(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function generateCostCenterCode(name) {
+  const normalized = String(name || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return normalized || 'PROGRAMSERVICES';
+}
+
+async function ensureCostCentersFromMappedEmployees(mappedList) {
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+
+  const existingRows = await new Promise((resolve, reject) => {
+    db.all('SELECT id, code, name, description, isActive FROM cost_centers', [], (err, rows) =>
+      (err ? reject(err) : resolve(rows || []))
+    );
+  });
+
+  const byNormalizedName = new Map();
+  const byNormalizedCode = new Map();
+  for (const row of existingRows) {
+    byNormalizedName.set(normalizeCostCenterForMatch(row.name), row);
+    byNormalizedCode.set(normalizeCostCenterForMatch(row.code), row);
+  }
+
+  const discovered = new Set();
+  for (const mapped of mappedList || []) {
+    for (const costCenter of mapped.costCenters || []) {
+      const name = String(costCenter || '').trim();
+      if (name) discovered.add(name);
+    }
+  }
+
+  let created = 0;
+  let updated = 0;
+
+  for (const hrName of discovered) {
+    const normalizedName = normalizeCostCenterForMatch(hrName);
+    const generatedCode = generateCostCenterCode(hrName);
+    const normalizedCode = normalizeCostCenterForMatch(generatedCode);
+    const existing = byNormalizedName.get(normalizedName) || byNormalizedCode.get(normalizedCode);
+
+    if (!existing) {
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO cost_centers (id, code, name, description, isActive, enableGoogleMaps, perDiemReceiptImageRequired, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, generatedCode, hrName, '', 1, 0, 0, now, now],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+      created++;
+      byNormalizedName.set(normalizedName, { id, code: generatedCode, name: hrName, isActive: 1 });
+      byNormalizedCode.set(normalizedCode, { id, code: generatedCode, name: hrName, isActive: 1 });
+      continue;
+    }
+
+    if ((existing.name || '') !== hrName || Number(existing.isActive || 0) === 0) {
+      await new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE cost_centers SET name = ?, isActive = 1, updatedAt = ? WHERE id = ?',
+          [hrName, now, existing.id],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+      updated++;
+    }
+  }
+
+  return { created, updated, totalDiscovered: discovered.size };
+}
+
 /**
  * Map one external record to our employee shape.
  * Tolerates: name, email, userName (Appwarmer), cost_center, cost_centers, position, phone, address, base_address, etc.
@@ -652,6 +726,7 @@ async function applySyncFromExternal(body) {
   const toUpdate = Array.isArray(body.toUpdate) ? body.toUpdate.map((e) => String(e).trim().toLowerCase()) : [];
   const toArchive = Array.isArray(body.toArchive) ? body.toArchive.map((id) => String(id).trim()) : [];
   const mappedList = await fetchAndMapExternal();
+  const costCenterSync = await ensureCostCentersFromMappedEmployees(mappedList);
   const ignored = await getIgnoredHrSyncChanges();
   const { ignoredUpdatesSaved, ignoredArchivesSaved } = await saveIgnoredHrSyncChanges(body || {});
   const stats = { synced: 0, created: 0, updated: 0, archived: 0, duplicatesRemoved: 0, errors: [] };
@@ -693,6 +768,9 @@ async function applySyncFromExternal(body) {
   }
   stats.ignoredUpdatesSaved = ignoredUpdatesSaved;
   stats.ignoredArchivesSaved = ignoredArchivesSaved;
+  stats.costCentersDiscovered = costCenterSync.totalDiscovered;
+  stats.costCentersCreated = costCenterSync.created;
+  stats.costCentersUpdated = costCenterSync.updated;
 
   // Remove duplicate local rows: (1) for everyone in the HR feed, (2) then any remaining duplicates in DB
   const allEmailsFromHr = new Set(mappedList.map((m) => m.email.toLowerCase().trim()));
@@ -724,7 +802,17 @@ async function applySyncFromExternal(body) {
  */
 async function syncFromExternal() {
   const mappedList = await fetchAndMapExternal();
-  const stats = { synced: 0, created: 0, updated: 0, archived: 0, errors: [] };
+  const costCenterSync = await ensureCostCentersFromMappedEmployees(mappedList);
+  const stats = {
+    synced: 0,
+    created: 0,
+    updated: 0,
+    archived: 0,
+    errors: [],
+    costCentersDiscovered: costCenterSync.totalDiscovered,
+    costCentersCreated: costCenterSync.created,
+    costCentersUpdated: costCenterSync.updated,
+  };
   const syncedEmails = new Set();
 
   for (const mapped of mappedList) {

@@ -218,8 +218,9 @@ export function buildCostCenterRows(params: {
     const dayDescription = dailyDescriptions.find((d: any) => normalizeDate(d.date) === normDate);
     const mileageForDayAndCC = currentMonthMileageList.filter((e: any) => {
       const p = parseCalendarYmdParts(e.date);
+      const entryCostCenter = e.costCenter || costCenters[0] || '';
       return !!p && p.day === day && p.month === currentMonth && p.year === currentYear &&
-        ((e.costCenter || costCenters[0]) === costCenter);
+        normalizeCostCenterForMatch(entryCostCenter) === normalizeCostCenterForMatch(costCenter);
     });
     const withMiles = mileageForDayAndCC.filter((e: any) => (e.miles || 0) > 0);
     const receiptsForDayAndCC = (receipts || []).filter((receipt: any) => {
@@ -243,7 +244,9 @@ export function buildCostCenterRows(params: {
     });
     const timeForDayAndCC = currentMonthTime.filter((t: any) => {
       const p = parseCalendarYmdParts(t.date);
-      return !!p && p.day === day && ((t.costCenter || costCenters[0]) === costCenter);
+      const entryCostCenter = t.costCenter || costCenters[0] || '';
+      return !!p && p.day === day &&
+        normalizeCostCenterForMatch(entryCostCenter) === normalizeCostCenterForMatch(costCenter);
     });
     const hoursWorked = timeForDayAndCC.reduce((s: number, t: any) => s + (Number(t.hours) || 0), 0);
     const milesTraveled = withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0), 0);

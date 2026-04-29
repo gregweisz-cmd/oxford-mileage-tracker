@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Stepper,
@@ -17,6 +17,7 @@ import {
   InputLabel,
   Tabs,
   Tab,
+  Checkbox,
 } from '@mui/material';
 import {
   Home as HomeIcon,
@@ -66,15 +67,45 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
   const [signature, setSignature] = useState<string | null>(employee?.signature || null);
   const [signatureTab, setSignatureTab] = useState(0); // 0 = draw, 1 = upload
   const [addressPredictions, setAddressPredictions] = useState<WebAddressPrediction[]>([]);
+  const [allCostCenterOptions, setAllCostCenterOptions] = useState<string[]>([]);
   
   // Signature canvas ref
   const signatureRef = useRef<SignatureCanvas>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Cost centers from employee's assigned ones
-  const availableCostCenters = employee?.selectedCostCenters && Array.isArray(employee.selectedCostCenters)
+  // Cost centers from employee's selected/assigned list, with fallback parsing.
+  const employeeSelectedCostCenters = employee?.selectedCostCenters && Array.isArray(employee.selectedCostCenters)
     ? employee.selectedCostCenters
     : (employee?.selectedCostCenters ? JSON.parse(employee.selectedCostCenters) : []);
+  const employeeAssignedCostCenters = employee?.costCenters && Array.isArray(employee.costCenters)
+    ? employee.costCenters
+    : (employee?.costCenters ? JSON.parse(employee.costCenters) : []);
+  const [selectedCostCenters, setSelectedCostCenters] = useState<string[]>(
+    employeeSelectedCostCenters.length > 0
+      ? employeeSelectedCostCenters
+      : (employeeAssignedCostCenters.length > 0 ? employeeAssignedCostCenters : [])
+  );
+  const availableCostCenters = allCostCenterOptions.length > 0
+    ? allCostCenterOptions
+    : Array.from(new Set([...(employeeAssignedCostCenters || []), ...(employeeSelectedCostCenters || [])]));
+
+  useEffect(() => {
+    const loadCostCenters = async () => {
+      try {
+        const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+        const response = await fetch(`${API_BASE_URL}/api/cost-centers`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const options = (Array.isArray(data) ? data : [])
+          .map((cc: any) => String(cc?.name || '').trim())
+          .filter(Boolean);
+        setAllCostCenterOptions(options);
+      } catch {
+        // Keep fallback options if API load fails.
+      }
+    };
+    void loadCostCenters();
+  }, []);
 
   const steps = [
     {
@@ -152,8 +183,16 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
         }
         break;
       case 1: // Default Cost Center
-        if (availableCostCenters.length > 0 && !defaultCostCenter.trim()) {
+        if (selectedCostCenters.length === 0) {
+          setError('Please select at least one cost center.');
+          return false;
+        }
+        if (!defaultCostCenter.trim()) {
           setError('Please select a default cost center.');
+          return false;
+        }
+        if (!selectedCostCenters.includes(defaultCostCenter)) {
+          setError('Default cost center must be one of your selected cost centers.');
           return false;
         }
         break;
@@ -273,6 +312,8 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
 
       await EmployeeApiService.updateEmployee(employee.id, {
         baseAddress: formatBaseAddress(baseAddressStreet, baseAddressCity, baseAddressState, baseAddressZip),
+        costCenters: selectedCostCenters,
+        selectedCostCenters,
         defaultCostCenter: defaultCostCenter.trim() || undefined,
         typicalWorkStartHour: parseInt(typicalWorkStartHour, 10),
         typicalWorkEndHour: parseInt(typicalWorkEndHour, 10),
@@ -364,20 +405,50 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
                 No cost centers have been assigned to you yet. Please contact your administrator.
               </Alert>
             ) : (
-              <FormControl fullWidth required>
-                <InputLabel>Default Cost Center</InputLabel>
-                <Select
-                  value={defaultCostCenter}
-                  onChange={(e) => setDefaultCostCenter(e.target.value)}
-                  label="Default Cost Center"
-                >
-                  {availableCostCenters.map((cc: string) => (
-                    <MenuItem key={cc} value={cc}>
-                      {cc}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <FormControl fullWidth required>
+                  <InputLabel id="setup-cost-centers-label">Cost Centers</InputLabel>
+                  <Select
+                    labelId="setup-cost-centers-label"
+                    multiple
+                    value={selectedCostCenters}
+                    label="Cost Centers"
+                    renderValue={(selected) => (selected as string[]).join(', ')}
+                    onChange={(e) => {
+                      const rawValue = e.target.value;
+                      const nextSelected = (Array.isArray(rawValue) ? rawValue : String(rawValue).split(','))
+                        .map((v) => String(v || '').trim())
+                        .filter(Boolean);
+                      setSelectedCostCenters(nextSelected);
+                      if (!nextSelected.includes(defaultCostCenter)) {
+                        setDefaultCostCenter(nextSelected[0] || '');
+                      }
+                    }}
+                  >
+                    {availableCostCenters.map((cc: string) => (
+                      <MenuItem key={cc} value={cc}>
+                        <Checkbox checked={selectedCostCenters.includes(cc)} />
+                        {cc}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth required>
+                  <InputLabel>Default Cost Center</InputLabel>
+                  <Select
+                    value={defaultCostCenter}
+                    onChange={(e) => setDefaultCostCenter(String(e.target.value))}
+                    label="Default Cost Center"
+                    disabled={selectedCostCenters.length === 0}
+                  >
+                    {selectedCostCenters.map((cc: string) => (
+                      <MenuItem key={cc} value={cc}>
+                        {cc}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
             )}
           </Box>
         );

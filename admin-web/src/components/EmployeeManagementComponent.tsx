@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -54,6 +54,7 @@ import {
 import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
+import { CostCenterApiService } from '../services/costCenterApiService';
 import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { toCanonicalAddress } from '../utils/locationSelection';
@@ -207,6 +208,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [quickEditCostCenterSearch, setQuickEditCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [showEmployeeCostCenterDropdown, setShowEmployeeCostCenterDropdown] = useState(false);
+  const [costCenterOptions, setCostCenterOptions] = useState<string[]>([...COST_CENTERS]);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedEmployees, setArchivedEmployees] = useState<Employee[]>([]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -279,11 +281,28 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
 
   // Filtered available cost centers for quick-edit dialog (excludes selected, filters by search)
   const quickEditAvailableCostCenters = useMemo(() => {
-    const available = COST_CENTERS.filter(cc => !quickEditCostCenters.includes(cc));
+    const available = costCenterOptions.filter(cc => !quickEditCostCenters.includes(cc));
     const q = quickEditCostCenterSearch.trim().toLowerCase();
     const filtered = q ? available.filter(cc => cc.toLowerCase().includes(q)) : available;
     return filtered.sort((a, b) => a.localeCompare(b));
-  }, [quickEditCostCenters, quickEditCostCenterSearch]);
+  }, [quickEditCostCenters, quickEditCostCenterSearch, costCenterOptions]);
+
+  useEffect(() => {
+    const loadCostCenterOptions = async () => {
+      try {
+        const rows = await CostCenterApiService.getAllCostCenters();
+        const options = rows
+          .map((cc) => String(cc.name || '').trim())
+          .filter(Boolean);
+        if (options.length > 0) {
+          setCostCenterOptions(options);
+        }
+      } catch {
+        // Keep constant fallback if API call fails.
+      }
+    };
+    void loadCostCenterOptions();
+  }, []);
 
   // Load archived employees when viewing archived section
   React.useEffect(() => {
@@ -1959,9 +1978,9 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             backgroundColor: 'background.paper',
                             zIndex: 1
                           }}>
-                            Available ({COST_CENTERS.length - selectedCostCenters.length})
+                            Available ({costCenterOptions.length - selectedCostCenters.length})
                           </Typography>
-                          {COST_CENTERS
+                          {costCenterOptions
                             .filter(costCenter => !selectedCostCenters.includes(costCenter))
                             .sort((a, b) => a.localeCompare(b))
                             .map((costCenter: string) => (
@@ -2124,7 +2143,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   defaultCostCenter: e.target.value
                 } as any)}
               >
-                {COST_CENTERS.map((costCenter) => (
+                {costCenterOptions.map((costCenter) => (
                   <MenuItem key={costCenter} value={costCenter}>
                     {costCenter}
                   </MenuItem>

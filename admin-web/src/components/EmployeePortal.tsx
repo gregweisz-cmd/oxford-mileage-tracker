@@ -52,6 +52,7 @@ import {
   FileUpload,
   Refresh
 } from '@mui/icons-material';
+import { COST_CENTERS } from '../constants/costCenters';
 import { DataSyncService } from '../services/dataSyncService';
 import { Employee, MileageEntry, Receipt as ReceiptType, TimeTracking } from '../types';
 import { SimpleReportService } from '../services/simpleReportService';
@@ -101,16 +102,6 @@ function a11yProps(index: number) {
     'aria-controls': `simple-tabpanel-${index}`,
   };
 }
-
-const COST_CENTERS = [
-  'CC001 - Program Service',
-  'CC002 - Administration',
-  'CC003 - Fundraising',
-  'CC004 - Management & General',
-  'AL-SOR',
-  'G&A',
-  'Fundraising'
-];
 
 export default function EmployeePortal({ employee, onBack }: EmployeePortalProps) {
   const [activeTab, setActiveTab] = useState(0);

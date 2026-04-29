@@ -16,6 +16,8 @@ import { apiGet, rateLimitedApi } from '../services/rateLimitedApi';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 const DEFAULT_DAILY_AMOUNT = 35;
 const DEFAULT_MONTHLY_LIMIT = 350;
+const normalizeCostCenter = (value: string): string =>
+  String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export interface PerDiemEntry {
   date: Date;
@@ -80,7 +82,10 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       ]);
 
       setDailyMaxAmount(perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT);
-      const monthlyRule = (monthlyRules || []).find((r: any) => r.costCenter === costCenter);
+      const normalizedCostCenter = normalizeCostCenter(costCenter);
+      const monthlyRule = (monthlyRules || []).find(
+        (r: any) => normalizeCostCenter(r.costCenter) === normalizedCostCenter
+      );
       setMonthlyLimit(monthlyRule?.maxAmount ?? DEFAULT_MONTHLY_LIMIT);
 
       const perDiemReceipts = (receipts || []).filter((r: any) => r.category === 'Per Diem');

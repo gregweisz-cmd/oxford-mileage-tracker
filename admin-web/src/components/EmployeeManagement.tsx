@@ -56,6 +56,7 @@ import {
   ArrowDownward as ArrowDownwardIcon,
   UnfoldMore as UnfoldMoreIcon,
 } from '@mui/icons-material';
+import { COST_CENTERS } from '../constants/costCenters';
 
 // API configuration - use environment variable or default to localhost for development
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -91,21 +92,6 @@ interface EmployeeFormData {
   baseAddress2: string;
   costCenters: string[];
 }
-
-const COST_CENTERS = [
-  'Central',
-  'North',
-  'South', 
-  'East',
-  'West',
-  'Administrative',
-  'Support Services',
-  'Development',
-  'Community Outreach',
-  'AL-SOR',
-  'G&A',
-  'Fundraising'
-];
 
 const POSITIONS = [
   'Executive Director',

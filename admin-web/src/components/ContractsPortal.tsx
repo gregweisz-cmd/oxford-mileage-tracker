@@ -87,6 +87,9 @@ interface ExpenseReport {
   currentApproverId?: string | null;
 }
 
+const normalizeCostCenter = (value: string): string =>
+  String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserId, contractsUserName }) => {
   const [reports, setReports] = useState<ExpenseReport[]>([]);
   const [filteredReports, setFilteredReports] = useState<ExpenseReport[]>([]);
@@ -395,9 +398,10 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
 
     // Filter by cost center
     if (filterCostCenter !== 'all') {
+      const normalizedFilterCostCenter = normalizeCostCenter(filterCostCenter);
       filtered = filtered.filter(r => {
         const costCenters = r.costCenters || [];
-        return costCenters.includes(filterCostCenter);
+        return costCenters.some((center: string) => normalizeCostCenter(center) === normalizedFilterCostCenter);
       });
     }
 

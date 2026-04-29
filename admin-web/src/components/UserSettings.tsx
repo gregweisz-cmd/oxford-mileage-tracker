@@ -112,6 +112,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [testEmailLoading, setTestEmailLoading] = useState(false);
   const [assignedCostCenters, setAssignedCostCenters] = useState<string[]>([]);
+  const [costCenterOptions, setCostCenterOptions] = useState<string[]>([]);
   const [defaultCostCenter, setDefaultCostCenter] = useState('');
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
@@ -121,9 +122,21 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       
       // Load employee data from API
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
-      if (response.ok) {
-        const employeeData = await response.json();
+      const [employeeResponse, costCenterResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/employees/${employeeId}`),
+        fetch(`${API_BASE_URL}/api/cost-centers`),
+      ]);
+      if (employeeResponse.ok) {
+        const employeeData = await employeeResponse.json();
+        if (costCenterResponse.ok) {
+          const costCenterData = await costCenterResponse.json();
+          const options = (Array.isArray(costCenterData) ? costCenterData : [])
+            .map((cc: any) => String(cc?.name || '').trim())
+            .filter(Boolean);
+          setCostCenterOptions(options);
+        } else {
+          setCostCenterOptions([]);
+        }
         
         // Parse cost centers if they're stored as JSON string
         let costCenters = ['NC.F-SAPTBG']; // Default fallback
@@ -556,44 +569,36 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             </Typography>
             
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Select any/all cost centers assigned from HR sync. Admins manage the assigned list.
+              Use the same dropdown everywhere to add or remove cost centers as needed.
             </Typography>
 
-            <Box sx={{ mb: 2 }}>
-              {assignedCostCenters.length > 0 ? (
-                assignedCostCenters.map((costCenter, index) => {
-                  const checked = profile.costCenters.includes(costCenter);
-                  return (
-                    <FormControlLabel
-                      key={`${costCenter}-${index}`}
-                      control={
-                        <Checkbox
-                          checked={checked}
-                          onChange={(e) => {
-                            const isChecked = e.target.checked;
-                            setProfile((prev) => {
-                              const nextSelected = isChecked
-                                ? Array.from(new Set([...prev.costCenters, costCenter]))
-                                : prev.costCenters.filter((cc) => cc !== costCenter);
-                              if (!nextSelected.includes(defaultCostCenter)) {
-                                setDefaultCostCenter(nextSelected[0] || '');
-                              }
-                              return { ...prev, costCenters: nextSelected };
-                            });
-                          }}
-                        />
-                      }
-                      label={costCenter}
-                      sx={{ display: 'block', mb: 0.5 }}
-                    />
-                  );
-                })
-              ) : (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                  No cost centers assigned. Please contact your administrator.
-                </Typography>
-              )}
-            </Box>
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel id="selected-cost-centers-label">Cost Centers</InputLabel>
+              <Select
+                labelId="selected-cost-centers-label"
+                multiple
+                value={profile.costCenters}
+                label="Cost Centers"
+                renderValue={(selected) => (selected as string[]).join(', ')}
+                onChange={(e) => {
+                  const rawValue = e.target.value;
+                  const nextSelected = (Array.isArray(rawValue) ? rawValue : String(rawValue).split(','))
+                    .map((value) => String(value || '').trim())
+                    .filter(Boolean);
+                  setProfile((prev) => ({ ...prev, costCenters: nextSelected }));
+                  if (!nextSelected.includes(defaultCostCenter)) {
+                    setDefaultCostCenter(nextSelected[0] || '');
+                  }
+                }}
+              >
+                {(costCenterOptions.length > 0 ? costCenterOptions : assignedCostCenters).map((costCenter) => (
+                  <MenuItem key={costCenter} value={costCenter}>
+                    <Checkbox checked={profile.costCenters.includes(costCenter)} />
+                    <Typography variant="body2">{costCenter}</Typography>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <FormControl fullWidth size="small" sx={{ mt: 1, mb: 1 }}>
               <InputLabel id="default-cost-center-label">Default Cost Center</InputLabel>
