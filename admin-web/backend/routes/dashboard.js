@@ -1434,7 +1434,12 @@ async function sendScheduleEmail(schedule, queryResult, attachments) {
   `;
 
   const mailOptions = {
-    from: process.env.REPORTS_FROM_EMAIL || process.env.SMTP_FROM || 'reports@oxford-house.org',
+    from:
+      process.env.REPORTS_FROM_EMAIL ||
+      process.env.EMAIL_FROM ||
+      process.env.NOREPLY_EMAIL ||
+      process.env.SMTP_FROM ||
+      'noreply@oxfordhouse.org',
     to: schedule.recipients.join(', '),
     subject: `Scheduled Report: ${schedule.name}`,
     text: textBody,

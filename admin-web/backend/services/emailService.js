@@ -20,7 +20,12 @@ const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || '
 const EMAIL_USER = process.env.EMAIL_USER || process.env.SMTP_USER || '';
 const EMAIL_PASS = process.env.EMAIL_PASS || process.env.SMTP_PASSWORD || process.env.SMTP_APP_PASSWORD || '';
 
-const EMAIL_FROM = process.env.EMAIL_FROM || 'no-reply@oxfordhouse.org';
+const EMAIL_FROM =
+  process.env.EMAIL_FROM ||
+  process.env.NOREPLY_EMAIL ||
+  process.env.SMTP_FROM ||
+  process.env.FROM_EMAIL ||
+  'noreply@oxfordhouse.org';
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tracker';
 // Email notifications are enabled by default when credentials are configured.
 // Set EMAIL_ENABLED=false to hard-disable all outbound email.

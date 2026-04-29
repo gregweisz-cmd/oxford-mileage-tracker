@@ -105,7 +105,12 @@ const EMAIL_CONFIG = {
     }
   },
   from: {
-    email: process.env.FROM_EMAIL || process.env.SMTP_FROM || 'reports@oxford-house.org',
+    email:
+      process.env.FROM_EMAIL ||
+      process.env.EMAIL_FROM ||
+      process.env.NOREPLY_EMAIL ||
+      process.env.SMTP_FROM ||
+      'noreply@oxfordhouse.org',
     name: process.env.FROM_NAME || 'Oxford House Expense System'
   }
 };
