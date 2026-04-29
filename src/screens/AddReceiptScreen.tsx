@@ -51,6 +51,7 @@ interface SplitAllocation {
   id: string;
   category: string;
   amount: string;
+  descriptionOverride?: string;
 }
 
 const RECEIPT_CATEGORIES = [
@@ -872,13 +873,23 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         ...working[primaryIndex],
         category: working[primaryIndex].category || formData.category || 'Other',
         amount: (total - tax).toFixed(2),
+        descriptionOverride: undefined,
       };
 
       const otherIndex = working.findIndex((row) => row.category === 'Other' && row.id !== working[primaryIndex].id);
       if (otherIndex >= 0) {
-        working[otherIndex] = { ...working[otherIndex], amount: tax.toFixed(2) };
+        working[otherIndex] = {
+          ...working[otherIndex],
+          amount: tax.toFixed(2),
+          descriptionOverride: 'taxes',
+        };
       } else {
-        working.push({ id: `split-tax-${Date.now()}`, category: 'Other', amount: tax.toFixed(2) });
+        working.push({
+          id: `split-tax-${Date.now()}`,
+          category: 'Other',
+          amount: tax.toFixed(2),
+          descriptionOverride: 'taxes',
+        });
       }
       return working;
     });
@@ -1116,8 +1127,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
         for (let i = 0; i < validAllocations.length; i++) {
           const allocation = validAllocations[i];
+          const allocationDescriptionBase = allocation.descriptionOverride || finalDescription;
           const partDescription = [
-            finalDescription,
+            allocationDescriptionBase,
             `Split receipt ${i + 1}/${validAllocations.length} (${splitGroupId})`,
           ].filter(Boolean).join(' • ');
 
