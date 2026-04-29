@@ -649,7 +649,8 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
             const explicitHours = Number(entry[hoursProperty]) || 0;
             const hours = fallbackWorkingHours > 0 && i === 0 ? fallbackWorkingHours : explicitHours;
             
-            // Only save if hours > 0 (empty = already deleted in step 1)
+            // Save positive hours; for 0 hours explicitly delete matching working-hours records
+            // so cleared cells in the UI persist after reload.
             if (hours > 0) {
               const id = `time-${employeeId}-${dateStr}-costcenter-${i}`;
               const now = new Date().toISOString();
@@ -683,6 +684,32 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
                   }
                 );
               });
+            } else {
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `DELETE FROM time_tracking
+                   WHERE employeeId = ?
+                     AND date = ?
+                     AND COALESCE(costCenter, '') = ?
+                     AND (
+                       COALESCE(category, '') = ''
+                       OR category = 'Working Hours'
+                       OR category = 'Regular Hours'
+                     )`,
+                  [employeeId, dateStr, costCenterName || ''],
+                  function(deleteErr) {
+                    if (deleteErr) {
+                      debugError(`❌ Error deleting cleared time tracking for ${costCenterName} on ${dateStr}:`, deleteErr);
+                      reject(deleteErr);
+                    } else {
+                      if (this.changes > 0) {
+                        debugLog(`🗑️ Deleted ${this.changes} cleared working-hour entr${this.changes === 1 ? 'y' : 'ies'} for ${costCenterName} on ${dateStr}`);
+                      }
+                      resolve();
+                    }
+                  }
+                );
+              });
             }
           }
           
@@ -691,7 +718,8 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
             for (const category of Object.keys(entry.categoryHours)) {
               const hours = entry.categoryHours[category] || 0;
               
-              // Only save if hours > 0 (empty = already deleted in step 1)
+              // Save positive hours; for 0 hours explicitly delete matching category records
+              // so clearing category cells persists after reload.
               if (hours > 0) {
                 const id = `time-${employeeId}-${dateStr}-category-${category}`;
                 const now = new Date().toISOString();
@@ -715,6 +743,28 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
                         reject(insertErr);
                       } else {
                         debugLog(`✅ Saved ${hours} hours for ${category} on ${dateStr} (exactly as shown in UI)`);
+                        resolve();
+                      }
+                    }
+                  );
+                });
+              } else {
+                await new Promise((resolve, reject) => {
+                  db.run(
+                    `DELETE FROM time_tracking
+                     WHERE employeeId = ?
+                       AND date = ?
+                       AND category = ?
+                       AND COALESCE(costCenter, '') = ''`,
+                    [employeeId, dateStr, category],
+                    function(deleteErr) {
+                      if (deleteErr) {
+                        debugError(`❌ Error deleting cleared category hours for ${category} on ${dateStr}:`, deleteErr);
+                        reject(deleteErr);
+                      } else {
+                        if (this.changes > 0) {
+                          debugLog(`🗑️ Deleted ${this.changes} cleared ${category} entr${this.changes === 1 ? 'y' : 'ies'} on ${dateStr}`);
+                        }
                         resolve();
                       }
                     }

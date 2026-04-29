@@ -786,6 +786,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingTimesheetValue, setEditingTimesheetValue] = useState('');
   const [editingCategoryCell, setEditingCategoryCell] = useState<{category: string, day: number} | null>(null);
   const [editingCategoryValue, setEditingCategoryValue] = useState('');
+  const pendingTimesheetFocusRef = useRef<{ costCenter: number; day: number; type: string; value: string } | null>(null);
+  const pendingCategoryFocusRef = useRef<{ category: string; day: number; value: string } | null>(null);
   const [reportsDialogOpen, setReportsDialogOpen] = useState(false);
   const [allReports, setAllReports] = useState<any[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -2459,8 +2461,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Handle timesheet cell editing
   const handleTimesheetCellEdit = (costCenter: number, day: number, type: string, currentValue: any) => {
+    const nextValue = (currentValue ?? 0).toString();
+    if (editingTimesheetCell && (
+      editingTimesheetCell.costCenter !== costCenter ||
+      editingTimesheetCell.day !== day ||
+      editingTimesheetCell.type !== type
+    )) {
+      pendingTimesheetFocusRef.current = { costCenter, day, type, value: nextValue };
+      return;
+    }
     setEditingTimesheetCell({ costCenter, day, type });
-    setEditingTimesheetValue(currentValue.toString());
+    setEditingTimesheetValue(nextValue);
   };
 
   // Handle mileage entry save
@@ -2883,6 +2894,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Clear editing state
     setEditingTimesheetCell(null);
     setEditingTimesheetValue('');
+    const pendingTimesheetFocus = pendingTimesheetFocusRef.current;
+    pendingTimesheetFocusRef.current = null;
+    if (pendingTimesheetFocus) {
+      setEditingTimesheetCell({
+        costCenter: pendingTimesheetFocus.costCenter,
+        day: pendingTimesheetFocus.day,
+        type: pendingTimesheetFocus.type
+      });
+      setEditingTimesheetValue(pendingTimesheetFocus.value);
+    }
     
     // Save to expense report table for persistence
     try {
@@ -2909,15 +2930,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Cancel timesheet cell edit
   const handleTimesheetCellCancel = () => {
+    pendingTimesheetFocusRef.current = null;
     setEditingTimesheetCell(null);
     setEditingTimesheetValue('');
   };
 
   // Handle category cell editing
   const handleCategoryCellEdit = (category: string, day: number, currentValue: any) => {
+    const nextValue = (currentValue ?? 0).toString();
+    if (editingCategoryCell && (
+      editingCategoryCell.category !== category ||
+      editingCategoryCell.day !== day
+    )) {
+      pendingCategoryFocusRef.current = { category, day, value: nextValue };
+      return;
+    }
     debugLog(`🔍 Debug category cell edit: ${category} for day ${day}, current value: ${currentValue}`);
     setEditingCategoryCell({ category, day });
-    setEditingCategoryValue(currentValue.toString());
+    setEditingCategoryValue(nextValue);
   };
 
   // Save category cell edit - NEW APPROACH: Daily Hours Distribution with Validation
@@ -2931,6 +2961,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Clear editing state immediately
     setEditingCategoryCell(null);
     setEditingCategoryValue('');
+    const pendingCategoryFocus = pendingCategoryFocusRef.current;
+    pendingCategoryFocusRef.current = null;
+    if (pendingCategoryFocus) {
+      setEditingCategoryCell({ category: pendingCategoryFocus.category, day: pendingCategoryFocus.day });
+      setEditingCategoryValue(pendingCategoryFocus.value);
+    }
     
     // Optimistically update the UI immediately - show the value right away
     setEmployeeData(prev => {
