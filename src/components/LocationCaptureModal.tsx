@@ -49,6 +49,7 @@ export default function LocationCaptureModal({
   const [loading, setLoading] = useState(false);
   const [saveToFavorites, setSaveToFavorites] = useState(false);
   const [category, setCategory] = useState('Other');
+  const [hasUserEditedAddress, setHasUserEditedAddress] = useState(false);
 
   const applyParsedAddress = (addressText: string) => {
     const parsed = parseAddressParts(addressText);
@@ -61,6 +62,7 @@ export default function LocationCaptureModal({
   useEffect(() => {
     if (visible) {
       const hasInitialAddress = !!initialLocation?.address;
+      setHasUserEditedAddress(false);
 
       if (initialLocation?.name) {
         setLocationName(initialLocation.name);
@@ -86,7 +88,7 @@ export default function LocationCaptureModal({
         } as any);
       }
 
-      // Keep a fresh GPS fix, but avoid overwriting a prefilled suggestion.
+      // Keep a fresh GPS fix, but never overwrite a prefilled/editing address.
       getCurrentLocation(hasInitialAddress);
     }
   }, [visible, initialLocation]);
@@ -113,7 +115,7 @@ export default function LocationCaptureModal({
           location.coords.latitude,
           location.coords.longitude
         );
-        if (preciseAddress && !preserveAddress) {
+        if (preciseAddress && !preserveAddress && !hasUserEditedAddress) {
           applyParsedAddress(preciseAddress);
         } else {
           const addressResponse = await Location.reverseGeocodeAsync({
@@ -124,7 +126,7 @@ export default function LocationCaptureModal({
           if (addressResponse.length > 0) {
             const address = addressResponse[0];
             const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
-            if (!preserveAddress) {
+            if (!preserveAddress && !hasUserEditedAddress) {
               applyParsedAddress(formattedAddress);
             }
           }
@@ -259,7 +261,10 @@ export default function LocationCaptureModal({
                 <TextInput
                   style={[styles.input, styles.textArea]}
                   value={locationAddress}
-                  onChangeText={setLocationAddress}
+                  onChangeText={(value) => {
+                    setHasUserEditedAddress(true);
+                    setLocationAddress(value);
+                  }}
                   placeholder="Enter or confirm the address..."
                   placeholderTextColor="#999"
                   multiline={true}
@@ -268,7 +273,10 @@ export default function LocationCaptureModal({
               ) : (
                 <GooglePlacesAddressInput
                   value={locationAddress}
-                  onChangeText={setLocationAddress}
+                  onChangeText={(value) => {
+                    setHasUserEditedAddress(true);
+                    setLocationAddress(value);
+                  }}
                   placeholder="Enter or confirm the address..."
                   multiline={true}
                   numberOfLines={3}
