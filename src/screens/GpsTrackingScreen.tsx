@@ -12,6 +12,7 @@ import {
   Platform,
   FlatList,
   KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -185,7 +186,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       // Check if we should show end modal (from route params)
       if (route?.params?.showEndModal) {
         if (isTrackingRef.current) {
-          openManualEndLocationModal();
+          openEndLocationOptions();
         } else {
           // If tracking state is still hydrating after navigation, queue the end-flow flag.
           setShouldShowEndLocationModal(true);
@@ -214,7 +215,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // Watch for stop tracking request from global button
   useEffect(() => {
     if (shouldShowEndLocationModal && isTracking) {
-      openManualEndLocationModal();
+      // End flow should mirror start flow: show location choices first.
+      openEndLocationOptions();
       setShouldShowEndLocationModal(false); // Reset the flag
     }
   }, [shouldShowEndLocationModal, isTracking, setShouldShowEndLocationModal, currentEmployee, startLocationDetails]);
@@ -455,6 +457,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     if (field === 'purpose' && value.length > 2 && startLocationDetails && endLocationDetails) {
       getPurposeSuggestions();
     }
+  };
+
+  const handleOdometerSubmit = () => {
+    // "Next" should move to the next textbox when one is visible;
+    // otherwise dismiss keyboard so picker/buttons are immediately usable.
+    if (showCustomPurposeInput && purposeInputRef.current) {
+      purposeInputRef.current.focus();
+      return;
+    }
+    Keyboard.dismiss();
   };
 
   const handleEditOdometer = () => {
@@ -960,20 +972,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     });
   };
 
-  const openManualEndLocationModal = () => {
-    setShowEndLocationOptionsModal(false);
-    setIsDetectingEndSuggestions(true);
-    void detectEndLocationSuggestions()
-      .then((suggestions) => {
-        const suggested = suggestions?.newLocation;
-        setManualEndInitialLocation(suggested?.details || null);
-        setShowEndLocationModal(true);
-      })
-      .finally(() => {
-        setIsDetectingEndSuggestions(false);
-      });
-  };
-
   const openEndLocationModalWithDetails = (details: Partial<LocationDetails> | null) => {
     setShowEndLocationOptionsModal(false);
     setManualEndInitialLocation(details || null);
@@ -1029,7 +1027,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleStopTracking = async () => {
-    openManualEndLocationModal();
+    // Match "start GPS" UX: prompt end-location options first instead of jumping to manual capture.
+    openEndLocationOptions();
   };
 
   const handleEndLocationOption = (
@@ -1387,9 +1386,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     placeholderTextColor="#999"
                     returnKeyType="next"
                     blurOnSubmit={false}
-                    onSubmitEditing={() => {
-                      purposeInputRef.current?.focus();
-                    }}
+                    onSubmitEditing={handleOdometerSubmit}
                   />
                 </ScrollToOnFocusView>
                 {lastTravelDayEndingOdometerNote ? (
