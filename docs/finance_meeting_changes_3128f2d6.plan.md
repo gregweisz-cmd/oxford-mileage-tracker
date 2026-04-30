@@ -4,29 +4,65 @@ overview: Implement finance-requested policy and UX updates across cost center s
 todos:
   - id: normalize-cost-centers
     content: Implement shared cost center canonicalization and apply in HR ingest + report/export filters
-    status: pending
+    status: completed
   - id: user-cost-center-multiselect
     content: Enable user checkbox selection for assigned cost centers and enforce default-in-selection validation
-    status: pending
+    status: completed
   - id: per-diem-toggle-by-cost-center
     content: Add per-cost-center per diem receipt-image toggle (default off) in backend + admin UI + mobile/server validation
-    status: pending
+    status: completed
   - id: custom-travel-purpose-option
     content: Add explicit custom-purpose option in mileage/GPS purpose dropdown flows
-    status: pending
+    status: completed
   - id: receipt-split-and-tax-option
     content: Implement split receipt child-allocation model with shared image and optional tax-to-Other helper
-    status: pending
+    status: in_progress
   - id: reporting-export-compat
     content: Update reporting/export queries and aggregations for canonical cost centers and split receipts
-    status: pending
+    status: completed
   - id: qa-and-migration
     content: Add migrations/backfills and integration tests, then run finance-focused end-to-end validation
-    status: pending
+    status: in_progress
 isProject: false
 ---
 
 # Finance Meeting Implementation Plan
+
+## Current Handoff Status
+This section is the working handoff state for cross-machine / cross-agent continuity.
+
+### Completed in this cycle
+- Canonical cost center matching across finance/contracts filters, per-diem lookups, and staff report data grouping.
+- User/admin cost center selector standardization (multi-select add/remove + default validity checks) across key web flows.
+- HR sync improvements:
+  - imports/syncs cost centers from HR feed,
+  - excludes grouped slash values (`/`) from assignment,
+  - excludes slash values from selector/API surfaces.
+- Finance report editing resilience fixes (initial load data gaps, certification state persistence, full finance edit view flow).
+- Mobile end-trip stability fixes:
+  - restored reliable manual end-location entry,
+  - hardened stop-trip flow to avoid blocking/freeze behavior.
+- HR sync preview now shows explicit field-level before/after diffs (name/position/phone/cost centers).
+
+### In progress / remaining
+- Receipt split enhancement is partially done:
+  - split IDs removed from display and new split labels cleaned,
+  - full child-allocation + optional tax-to-Other helper still pending.
+- QA and migration hardening:
+  - add/update integration coverage for finance-critical flows,
+  - run and document end-to-end finance regression pass after latest changes.
+
+### Useful recent commit anchors
+- `1bda243` - cost center selector and canonical matching unification
+- `266920b` - HR sync preview detailed diffs
+- `5835db2` - GPS end-trip freeze/manual end location fixes
+- `6650d3b` - omit slash (`/`) cost centers from sync/selectors
+- `32d77e4` - sender fallback updated for `noreply@oxfordhouse.org`
+- `ea77c00` - test email button UX/validation feedback
+
+### Latest OTA references (production)
+- `741fee58-cedb-4486-b6ab-3f70303d2b84` - end-trip freeze/manual end location update
+- `fe88c58f-6d3c-4bf7-b994-5b771dcc0cc0` - slash cost center omission update
 
 ## Scope
 Deliver five coordinated updates across mobile + admin + backend:
