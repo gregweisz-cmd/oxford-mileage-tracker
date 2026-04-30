@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -224,8 +225,12 @@ export default function LocationCaptureModal({
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>{title}</Text>
           
-          <View
+          <ScrollView
             style={styles.modalScrollView}
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={Platform.OS === 'android'}
           >
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Location Name *</Text>
@@ -367,7 +372,7 @@ export default function LocationCaptureModal({
               </View>
             )}
           </View>
-          </View>
+          </ScrollView>
           
           <View style={styles.modalButtons}>
             <TouchableOpacity
