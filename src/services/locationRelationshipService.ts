@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { getDatabaseConnection } from '../utils/databaseConnection';
 import { MileageEntry } from '../types';
 

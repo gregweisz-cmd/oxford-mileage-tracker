@@ -268,7 +268,7 @@ export class RealtimeSyncService {
         const { SyncIntegrationService } = await import('./syncIntegrationService');
         const { ApiSyncService } = await import('./apiSyncService');
         await SyncIntegrationService.processSyncQueue();
-        await ApiSyncService.syncFromBackend(this.currentEmployeeId, undefined, {
+        await ApiSyncService.syncFromBackend(this.currentEmployeeId || undefined, undefined, {
           skipSyncQueue: true,
           realtimePullThrottle: true
         });

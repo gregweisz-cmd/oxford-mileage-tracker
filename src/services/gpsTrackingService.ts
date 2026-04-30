@@ -119,8 +119,6 @@ export class GpsTrackingService {
       try {
         location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
-          timeout: 15000,
-          maximumAge: 30000,
         });
       } catch (locationError) {
         console.error('❌ GPS: Error getting location:', locationError);
@@ -129,8 +127,6 @@ export class GpsTrackingService {
           await new Promise(resolve => setTimeout(resolve, 3000));
           location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Lowest,
-            timeout: 20000,
-            maximumAge: 60000,
           });
         } else {
           throw locationError;

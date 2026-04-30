@@ -178,7 +178,16 @@ export class OxfordHouseImportService {
       }
 
       // Read file content
-      const response = await fetch(fileResult.assets[0].uri);
+      const asset = fileResult.assets?.[0];
+      if (!asset?.uri) {
+        return {
+          success: false,
+          imported: 0,
+          errors: ['Selected file is missing a valid URI'],
+          duplicates: 0,
+        };
+      }
+      const response = await fetch(asset.uri);
       const csvContent = await response.text();
 
       // Import the data

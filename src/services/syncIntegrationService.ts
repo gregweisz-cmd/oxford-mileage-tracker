@@ -339,13 +339,11 @@ export class SyncIntegrationService {
     const entities = operations.map(op => op.data);
     
     const syncData: any = {};
-    // Normalize entityType (queue may have 'mileageentry' from legacy mapping)
-    const normalizedType = entityType === 'mileageentry' ? 'mileageEntry' : entityType;
-    const key = normalizedType === 'mileageEntry' ? 'mileageEntries' :
-                normalizedType === 'timeTracking' ? 'timeTracking' :
-                normalizedType === 'dailyOdometerReading' ? 'dailyOdometerReadings' :
-                normalizedType === 'savedAddress' ? 'savedAddresses' :
-                `${normalizedType}s`;
+    const key = entityType === 'mileageEntry' ? 'mileageEntries' :
+                entityType === 'timeTracking' ? 'timeTracking' :
+                entityType === 'dailyOdometerReading' ? 'dailyOdometerReadings' :
+                entityType === 'savedAddress' ? 'savedAddresses' :
+                `${entityType}s`;
     syncData[key] = entities;
     
     debugLog(`🔄 SyncIntegration: Processing ${operations.length} ${entityType} operations:`, {

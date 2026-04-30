@@ -195,7 +195,7 @@ export class DemoDataService {
       const currentYear = currentDate.getFullYear();
 
       // Create sample mileage entries for Alex Szary
-      const alexEntries: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt'>[] = [
+      const alexEntries: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt' | 'costCenter'>[] = [
         {
           employeeId: alex.id,
           oxfordHouseId: alex.oxfordHouseId,
@@ -251,7 +251,7 @@ export class DemoDataService {
       ];
 
       // Create sample mileage entries for Greg Weisz
-      const gregEntries: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt'>[] = [
+      const gregEntries: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt' | 'costCenter'>[] = [
         {
           employeeId: greg.id,
           oxfordHouseId: greg.oxfordHouseId,
@@ -307,7 +307,7 @@ export class DemoDataService {
       ];
 
       // Create sample mileage entries for Jackson Longan
-      const jacksonEntries: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt'>[] = [
+      const jacksonEntries: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt' | 'costCenter'>[] = [
         {
           employeeId: jackson.id,
           oxfordHouseId: jackson.oxfordHouseId,
@@ -351,7 +351,18 @@ export class DemoDataService {
 
       // Create all mileage entries
       for (const entry of [...alexEntries, ...gregEntries, ...jacksonEntries]) {
-        await DatabaseService.createMileageEntry(entry);
+        const entryEmployee =
+          entry.employeeId === alex.id ? alex :
+          entry.employeeId === greg.id ? greg :
+          jackson;
+        await DatabaseService.createMileageEntry({
+          ...entry,
+          costCenter:
+            entryEmployee.defaultCostCenter ||
+            entryEmployee.selectedCostCenters?.[0] ||
+            entryEmployee.costCenters?.[0] ||
+            'Program Services',
+        });
       }
 
       // Create sample receipts for Alex

@@ -300,72 +300,7 @@ export class GoogleAuthService {
       }
       */
       
-      // OLD CODE CONTINUES...
-      if (false) { // Never executed, keeping for reference
-      } else if (false) {
-        // Cancel could mean user cancelled OR Google rejected the request
-        // Check if there's an error URL that might indicate why it was cancelled
-        const resultAny = result as any;
-        const url = resultAny.url || resultAny.errorUrl;
-        
-        console.log('⚠️ OAuth cancelled');
-        console.log('⚠️ Result URL (if any):', url);
-        
-        // If there's a URL, check if it contains error info
-        if (url && typeof url === 'string') {
-          try {
-            const urlObj = new URL(url);
-            const errorParam = urlObj.searchParams.get('error');
-            const errorDescription = urlObj.searchParams.get('error_description');
-            
-            if (errorParam) {
-              console.error('❌ Google OAuth Error in redirect URL:', {
-                error: errorParam,
-                description: errorDescription,
-                fullUrl: url
-              });
-              
-              // Provide helpful error message
-              if (errorParam === 'redirect_uri_mismatch') {
-                const backendUrl = this.baseUrl;
-                throw new Error(`Redirect URI mismatch. Please add ${backendUrl}/api/auth/google/mobile/callback to Google Cloud Console Authorized redirect URIs.`);
-              } else if (errorParam === 'access_denied') {
-                throw new Error('Access denied. You may need to be added as a test user in Google Cloud Console.');
-              } else {
-                throw new Error(`OAuth error: ${errorParam}${errorDescription ? ` - ${errorDescription}` : ''}`);
-              }
-            }
-          } catch (urlError) {
-            // URL parsing failed, might not be a URL
-            console.log('⚠️ Could not parse URL from cancel result');
-          }
-        }
-        
-        // If no error detected, assume user cancelled
-        console.log('ℹ️ User cancelled OAuth (no error detected)');
-        return null;
-      } else {
-        // Other result types (dismiss, error, etc.)
-        const resultAny = result as any;
-        console.error('❌ OAuth result type:', result.type);
-        console.error('❌ Full result object:', JSON.stringify(resultAny, null, 2));
-        
-        // Check if there's an error in params
-        const errorFromParams = resultAny.params?.error || resultAny.error || 'Unknown error';
-        const errorDescription = resultAny.params?.error_description || resultAny.error_description || '';
-        
-        console.error('❌ OAuth error details:', {
-          type: result.type,
-          error: errorFromParams,
-          errorDescription: errorDescription,
-          allParams: resultAny.params
-        });
-        
-        const errorMsg = errorDescription 
-          ? `${errorFromParams}: ${errorDescription}`
-          : `OAuth flow failed: ${result.type} - ${errorFromParams}`;
-        throw new Error(errorMsg);
-      }
+      // Legacy AuthSession parsing flow removed; backend-proxy deep-link flow above is authoritative.
     } catch (error: any) {
       // Log and throw actual errors (network issues, configuration problems, etc.)
       // Cancellations are handled above and won't reach here

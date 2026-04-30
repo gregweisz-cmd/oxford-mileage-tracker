@@ -90,7 +90,7 @@ export class ExcelExportService {
       'Phone Number': emp.phoneNumber,
       'Oxford House ID': emp.oxfordHouseId,
       'Base Address': emp.baseAddress,
-      'Cost Center': emp.costCenter,
+      'Cost Center': emp.defaultCostCenter || emp.selectedCostCenters?.[0] || emp.costCenters?.[0] || '',
       'Created Date': emp.createdAt.toISOString().split('T')[0],
       'Last Updated': emp.updatedAt.toISOString().split('T')[0],
     }));

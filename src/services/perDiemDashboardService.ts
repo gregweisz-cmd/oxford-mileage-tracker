@@ -41,7 +41,7 @@ export class PerDiemDashboardService {
       const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
       
       // Use rule's monthly limit or fallback to default
-      const monthlyLimit = rule?.monthlyLimit || this.DEFAULT_MONTHLY_LIMIT;
+      const monthlyLimit = rule?.maxAmount || this.DEFAULT_MONTHLY_LIMIT;
       
       // Get all receipts for the month
       const receipts = await DatabaseService.getReceipts(employee.id, month, year);

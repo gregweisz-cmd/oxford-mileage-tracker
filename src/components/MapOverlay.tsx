@@ -30,7 +30,7 @@ export default function MapOverlay() {
   }, [showMapOverlay]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (showMapOverlay && isTracking) {
       interval = setInterval(() => {
         // Update tracking path periodically

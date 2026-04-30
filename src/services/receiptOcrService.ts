@@ -99,7 +99,7 @@ export class ReceiptOcrService {
       body: JSON.stringify({ image: base64WithPrefix }),
     });
 
-    let data: { success?: boolean; message?: string; vendor?: string; amount?: number | null; date?: string | null; suggestedCategory?: string; text?: string } = {};
+    let data: { success?: boolean; message?: string; error?: string; vendor?: string; amount?: number | null; date?: string | null; suggestedCategory?: string; text?: string } = {};
     try {
       data = await response.json();
     } catch {

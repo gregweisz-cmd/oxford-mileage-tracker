@@ -65,7 +65,7 @@ function calculateDistance(
   return R * c;
 }
 
-TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
+TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
     debugLog('GPS background task error:', error.message);
     return;

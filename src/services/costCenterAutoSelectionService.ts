@@ -34,9 +34,10 @@ export class CostCenterAutoSelectionService {
       const trimmedLocation = endLocation.trim().toLowerCase();
 
       // Load employee if not provided
-      let currentEmployee = employee;
+      let currentEmployee: Employee | undefined = employee;
       if (!currentEmployee) {
-        currentEmployee = await DatabaseService.getCurrentEmployee();
+        const loadedEmployee = await DatabaseService.getCurrentEmployee();
+        currentEmployee = loadedEmployee ?? undefined;
         if (!currentEmployee) {
           debugLog('No employee found for cost center suggestion');
           return null;

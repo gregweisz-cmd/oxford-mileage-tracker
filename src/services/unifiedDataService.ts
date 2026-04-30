@@ -106,8 +106,8 @@ export class UnifiedDataService {
     // Other categories (dedupe by category, keep most recent)
     const categoryMap = new Map<string, any>();
     dayTimeTracking.forEach(entry => {
-      const category = entry.category || '';
-      const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
+      const category = String(entry.category || '');
+      const isWorking = category === 'Working Hours' || category === 'Regular Hours';
       if (isWorking) return;
       const existing = categoryMap.get(category);
       if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {

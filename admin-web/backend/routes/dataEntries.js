@@ -509,6 +509,21 @@ router.post('/api/receipts', (req, res) => {
     splitAllocationIndex,
     splitAllocationCount
   } = req.body;
+  const normalizedSplitGroupId = String(splitGroupId || '').trim();
+  const normalizedSplitAllocationIndex = Number(splitAllocationIndex) || 0;
+  const normalizedSplitAllocationCount = Number(splitAllocationCount) || 0;
+  if (normalizedSplitGroupId) {
+    if (normalizedSplitAllocationIndex <= 0 || normalizedSplitAllocationCount <= 0) {
+      return res.status(400).json({
+        error: 'Split receipts must include positive splitAllocationIndex and splitAllocationCount.'
+      });
+    }
+    if (normalizedSplitAllocationIndex > normalizedSplitAllocationCount) {
+      return res.status(400).json({
+        error: 'splitAllocationIndex cannot be greater than splitAllocationCount.'
+      });
+    }
+  }
   const receiptId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
   const now = new Date().toISOString();
   const db = dbService.getDb();
@@ -552,9 +567,9 @@ router.post('/api/receipts', (req, res) => {
         imageUri || '',
         fileType,
         costCenter || '',
-        splitGroupId || '',
-        Number(splitAllocationIndex) || 0,
-        Number(splitAllocationCount) || 0,
+        normalizedSplitGroupId,
+        normalizedSplitAllocationIndex,
+        normalizedSplitAllocationCount,
         receiptId,
         now,
         now
@@ -589,6 +604,21 @@ router.put('/api/receipts/:id', (req, res) => {
 
   const { id } = req.params;
   const { date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount } = req.body;
+  const normalizedSplitGroupId = String(splitGroupId || '').trim();
+  const normalizedSplitAllocationIndex = Number(splitAllocationIndex) || 0;
+  const normalizedSplitAllocationCount = Number(splitAllocationCount) || 0;
+  if (normalizedSplitGroupId) {
+    if (normalizedSplitAllocationIndex <= 0 || normalizedSplitAllocationCount <= 0) {
+      return res.status(400).json({
+        error: 'Split receipts must include positive splitAllocationIndex and splitAllocationCount.'
+      });
+    }
+    if (normalizedSplitAllocationIndex > normalizedSplitAllocationCount) {
+      return res.status(400).json({
+        error: 'splitAllocationIndex cannot be greater than splitAllocationCount.'
+      });
+    }
+  }
   const now = new Date().toISOString();
   const db = dbService.getDb();
   if (imageUri !== undefined) {
@@ -623,9 +653,9 @@ router.put('/api/receipts/:id', (req, res) => {
         imageUri || '',
         finalFileType,
         costCenter || '',
-        splitGroupId || '',
-        Number(splitAllocationIndex) || 0,
-        Number(splitAllocationCount) || 0,
+        normalizedSplitGroupId,
+        normalizedSplitAllocationIndex,
+        normalizedSplitAllocationCount,
         now,
         id
       ],

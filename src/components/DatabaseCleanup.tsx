@@ -21,12 +21,13 @@ export const DatabaseCleanup = () => {
       console.log(`✅ Deleted ${result.changes} duplicate entries`);
       
       // Count remaining entries
-      const count = await db.getFirstAsync('SELECT COUNT(*) as count FROM mileage_entries');
-      console.log(`📊 Remaining entries: ${count.count}`);
+      const countRow = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM mileage_entries');
+      const remainingCount = countRow?.count ?? 0;
+      console.log(`📊 Remaining entries: ${remainingCount}`);
       
       Alert.alert(
         'Cleanup Complete',
-        `Removed ${result.changes} duplicate entries. ${count.count} entries remaining.`,
+        `Removed ${result.changes} duplicate entries. ${remainingCount} entries remaining.`,
         [{ text: 'OK', onPress: () => console.log('Cleanup acknowledged') }]
       );
     } catch (error) {

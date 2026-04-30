@@ -124,22 +124,22 @@ export default function ReceiptCropScreen() {
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (_, g) => {
         const layout = containerLayoutRef.current ?? { x: 0, y: 0, width: SCREEN_WIDTH, height: SCREEN_HEIGHT };
-        const localX = g.pageX - layout.x;
-        const localY = g.pageY - layout.y;
+        const localX = g.moveX - layout.x;
+        const localY = g.moveY - layout.y;
         const handle = hitTest(localX, localY);
         (panResponder as any).currentHandle = handle;
         (panResponder as any).startCrop = lastCropRef.current ? { ...lastCropRef.current } : null;
-        (panResponder as any).startX = g.pageX;
-        (panResponder as any).startY = g.pageY;
+        (panResponder as any).startX = g.moveX;
+        (panResponder as any).startY = g.moveY;
       },
       onPanResponderMove: (_, g) => {
         const start = (panResponder as any).startCrop as { x: number; y: number; width: number; height: number } | null;
         if (!start) return;
         const handle = (panResponder as any).currentHandle as string;
-        const dx = g.pageX - (panResponder as any).startX;
-        const dy = g.pageY - (panResponder as any).startY;
-        (panResponder as any).startX = g.pageX;
-        (panResponder as any).startY = g.pageY;
+        const dx = g.moveX - (panResponder as any).startX;
+        const dy = g.moveY - (panResponder as any).startY;
+        (panResponder as any).startX = g.moveX;
+        (panResponder as any).startY = g.moveY;
 
         let next = { ...start };
         if (handle === 'center') {

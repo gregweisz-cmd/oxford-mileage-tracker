@@ -97,7 +97,7 @@ export class PreferencesService {
         const preferences = JSON.parse(stored);
         // Merge with defaults to ensure new preferences exist
         this.cachedPreferences = { ...DEFAULT_PREFERENCES, ...preferences };
-        return this.cachedPreferences;
+        return this.cachedPreferences as UserPreferences;
       }
 
       // No stored preferences, return defaults

@@ -23,6 +23,8 @@ type KeyboardAwareScrollViewProps = ScrollViewProps & {
   children: React.ReactNode;
   /** Extra offset from top when scrolling to focused input (default 120/180) */
   focusScrollOffset?: number;
+  /** Offset passed to KeyboardAvoidingView */
+  keyboardVerticalOffset?: number;
 };
 
 const ScrollToOnFocusContext = React.createContext<{
@@ -36,14 +38,14 @@ const ScrollToOnFocusContext = React.createContext<{
  * Use with ScrollToOnFocusView: wrap each TextInput (or its row) in ScrollToOnFocusView so that
  * when the user focuses it, the scroll view scrolls to show it above the keyboard.
  */
-export function KeyboardAwareScrollView({
+export const KeyboardAwareScrollView = React.forwardRef<ScrollView, KeyboardAwareScrollViewProps>(function KeyboardAwareScrollView({
   children,
   focusScrollOffset = KEYBOARD_TOP_OFFSET,
   style,
   contentContainerStyle,
   keyboardVerticalOffset = Platform.OS === 'ios' ? 88 : 0,
   ...scrollViewProps
-}: KeyboardAwareScrollViewProps) {
+}: KeyboardAwareScrollViewProps, forwardedRef) {
   const scrollRef = useRef<ScrollView>(null);
   const currentScrollYRef = useRef(0);
   const lastFocusHandledAtRef = useRef(0);
@@ -148,7 +150,14 @@ export function KeyboardAwareScrollView({
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
         <ScrollView
-          ref={scrollRef}
+          ref={(instance) => {
+            scrollRef.current = instance;
+            if (typeof forwardedRef === 'function') {
+              forwardedRef(instance);
+            } else if (forwardedRef) {
+              (forwardedRef as React.MutableRefObject<ScrollView | null>).current = instance;
+            }
+          }}
           style={[{ flex: 1 }, style]}
           contentContainerStyle={contentContainerStyle}
           onScroll={(e) => {
@@ -168,7 +177,7 @@ export function KeyboardAwareScrollView({
       </KeyboardAvoidingView>
     </ScrollToOnFocusContext.Provider>
   );
-}
+});
 
 const FOCUS_SCROLL_DELAY_MS = 100;
 

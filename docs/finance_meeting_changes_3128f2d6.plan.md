@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: receipt-split-and-tax-option
     content: Implement split receipt child-allocation model with shared image and optional tax-to-Other helper
-    status: in_progress
+    status: completed
   - id: reporting-export-compat
     content: Update reporting/export queries and aggregations for canonical cost centers and split receipts
     status: completed
@@ -45,12 +45,31 @@ This section is the working handoff state for cross-machine / cross-agent contin
 - HR sync preview now shows explicit field-level before/after diffs (name/position/phone/cost centers).
 
 ### In progress / remaining
-- Receipt split enhancement is partially done:
-  - split IDs removed from display and new split labels cleaned,
-  - full child-allocation + optional tax-to-Other helper still pending.
 - QA and migration hardening:
   - add/update integration coverage for finance-critical flows,
   - run and document end-to-end finance regression pass after latest changes.
+
+### Newly completed in this cycle
+- Receipt split enhancements now include:
+  - category + cost center selection per split row,
+  - optional per-row split notes/description override,
+  - tax-to-Other helper that auto-creates or updates a tax allocation row,
+  - backend split metadata validation (`splitAllocationIndex`/`splitAllocationCount`) for create/update API calls.
+
+### QA / migration hardening pass (current state)
+- **Schema / migration status**
+  - No new DB columns were added in this cycle.
+  - Existing split receipt columns (`splitGroupId`, `splitAllocationIndex`, `splitAllocationCount`) are already present in mobile and backend migrations.
+  - Therefore, no additional migration/backfill script is required for the new split-by-cost-center behavior.
+- **Verification performed**
+  - `node -c admin-web/backend/routes/dataEntries.js` ✅
+  - `npm run build` in `admin-web/` ✅ (compiled successfully)
+  - `npx tsc --noEmit` (repo-wide) ⚠️ fails due to large set of pre-existing TypeScript issues across unrelated areas; not introduced by this split change.
+- **Finance-focused functional checks to run in app before ship**
+  - Create split receipt with 2+ categories and different cost centers per row.
+  - Use tax-to-Other helper and confirm totals still match receipt total.
+  - Save split receipt and verify each child row persists with expected category/cost center/amount and shared image.
+  - Confirm finance report/export still groups split receipts correctly and cost center filtering includes split children.
 
 ### Useful recent commit anchors
 - `1bda243` - cost center selector and canonical matching unification

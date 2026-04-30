@@ -335,7 +335,7 @@ export default function App() {
               options={{
                 // iOS transition snapshotting has caused intermittent freezes after ending GPS trips.
                 // Disable animation for this screen to avoid native snapshot race conditions.
-                animationEnabled: Platform.OS !== 'ios',
+                animation: Platform.OS === 'ios' ? 'none' : 'default',
               }}
             />
             <Stack.Screen

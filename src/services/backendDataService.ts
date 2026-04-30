@@ -58,9 +58,9 @@ export class BackendDataService {
       
       // Parse dates from backend responses (convert YYYY-MM-DD strings to Date objects)
       if (Array.isArray(data)) {
-        return data.map(item => this.parseDates(item));
+        return data.map(item => this.parseDates(item)) as T;
       } else if (data && typeof data === 'object') {
-        return this.parseDates(data);
+        return this.parseDates(data) as T;
       }
       
       return data;
@@ -439,7 +439,7 @@ export class BackendDataService {
 
       const categoryMap = new Map<string, TimeTracking>();
       dayData.timeTracking.forEach(entry => {
-        const category = entry.category || '';
+        const category = String(entry.category || '');
         const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
         if (isWorking) return;
         const existing = categoryMap.get(category);
@@ -686,7 +686,7 @@ export class BackendDataService {
         costCenter,
         stayedOvernight,
         dayOff: dayOff || false, // Explicitly set dayOff to false if not provided
-        dayOffType: dayOff ? dayOffType : null // Clear dayOffType if not a day off
+        dayOffType: dayOff ? dayOffType : undefined // Clear dayOffType if not a day off
       });
     } else if (!isEmpty || dayOff || keepRowForOutOfTown) {
       await this.createDailyDescription({
@@ -696,7 +696,7 @@ export class BackendDataService {
         costCenter,
         stayedOvernight,
         dayOff: dayOff || false,
-        dayOffType: dayOff ? dayOffType : null
+        dayOffType: dayOff ? dayOffType : undefined
       });
     }
   }

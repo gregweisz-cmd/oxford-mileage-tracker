@@ -26,7 +26,7 @@ export class RealtimeSyncService {
     heartbeatInterval: 30000
   };
   private reconnectAttempts = 0;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private listeners: Map<string, Array<(update: RealtimeUpdate) => void>> = new Map();
   private isConnected = false;
 

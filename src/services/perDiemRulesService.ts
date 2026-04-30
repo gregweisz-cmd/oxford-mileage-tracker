@@ -376,4 +376,48 @@ export class PerDiemRulesService {
     this.rulesCache = [];
     this.lastFetchTime = null;
   }
+
+  /**
+   * Backward-compatible helpers used by AdminScreen.
+   */
+  static async getAllRules(): Promise<PerDiemRule[]> {
+    return this.fetchPerDiemRules();
+  }
+
+  static async updateRule(costCenter: string, rule: Partial<PerDiemRule>): Promise<void> {
+    const rules = await this.fetchPerDiemRules();
+    const normalizedTarget = this.normalizeCostCenter(costCenter);
+    const now = new Date().toISOString();
+    const existing = rules.find((r) => this.normalizeCostCenter(r.costCenter) === normalizedTarget);
+
+    const nextRule: PerDiemRule = {
+      id: existing?.id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+      costCenter: (rule.costCenter || existing?.costCenter || costCenter || '').trim(),
+      maxAmount: Number(rule.maxAmount ?? existing?.maxAmount ?? 35),
+      minHours: Number(rule.minHours ?? existing?.minHours ?? 0),
+      minMiles: Number(rule.minMiles ?? existing?.minMiles ?? 0),
+      minDistanceFromBase: Number(rule.minDistanceFromBase ?? existing?.minDistanceFromBase ?? 0),
+      description: String(rule.description ?? existing?.description ?? '').trim(),
+      useActualAmount: Boolean(rule.useActualAmount ?? existing?.useActualAmount ?? false),
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+
+    const nextRules = existing
+      ? rules.map((r) => (this.normalizeCostCenter(r.costCenter) === normalizedTarget ? nextRule : r))
+      : [...rules, nextRule];
+
+    this.rulesCache = nextRules;
+    this.lastFetchTime = new Date();
+    await this.storeRulesLocally(nextRules);
+  }
+
+  static async deleteRule(costCenter: string): Promise<void> {
+    const normalizedTarget = this.normalizeCostCenter(costCenter);
+    const rules = await this.fetchPerDiemRules();
+    const nextRules = rules.filter((r) => this.normalizeCostCenter(r.costCenter) !== normalizedTarget);
+    this.rulesCache = nextRules;
+    this.lastFetchTime = new Date();
+    await this.storeRulesLocally(nextRules);
+  }
 }

@@ -349,7 +349,8 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     return emailRegex.test(email);
   };
 
-  const WrapperComponent = Platform.OS === 'web' ? View : TouchableWithoutFeedback;
+  const WrapperComponent: React.ComponentType<any> =
+    Platform.OS === 'web' ? View : TouchableWithoutFeedback;
   const wrapperProps = Platform.OS === 'web' 
     ? {} 
     : { onPress: Keyboard.dismiss, accessible: false as const };

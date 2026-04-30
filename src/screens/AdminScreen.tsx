@@ -223,8 +223,8 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
   };
 
   // Per Diem Rules functions
-  const loadPerDiemRules = () => {
-    const rules = PerDiemRulesService.getAllRules();
+  const loadPerDiemRules = async () => {
+    const rules = await PerDiemRulesService.getAllRules();
     setPerDiemRules(rules);
   };
 
@@ -273,8 +273,8 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
       description: ruleForm.description.trim()
     };
 
-    PerDiemRulesService.updateRule(ruleForm.costCenter.trim(), rule);
-    loadPerDiemRules();
+    void PerDiemRulesService.updateRule(ruleForm.costCenter.trim(), rule);
+    void loadPerDiemRules();
     setShowPerDiemModal(false);
     Alert.alert('Success', 'Per diem rule saved successfully');
   };
@@ -289,8 +289,8 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            PerDiemRulesService.deleteRule(costCenter);
-            loadPerDiemRules();
+            void PerDiemRulesService.deleteRule(costCenter);
+            void loadPerDiemRules();
             Alert.alert('Success', 'Per diem rule deleted successfully');
           }
         }

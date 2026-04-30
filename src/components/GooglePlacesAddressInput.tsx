@@ -34,7 +34,7 @@ export default function GooglePlacesAddressInput({
 }: GooglePlacesAddressInputProps) {
   const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
   const [showPredictions, setShowPredictions] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<TextInput | null>(null);
   const suppressNextLookupRef = useRef(false);
   const [isInputFocused, setIsInputFocused] = useState(false);

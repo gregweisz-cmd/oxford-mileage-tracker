@@ -582,7 +582,7 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Save',
-            onPress: async (text) => {
+            onPress: async (text?: string) => {
               if (text && text.trim()) {
                 await saveCustomTemplate(text.trim());
                 setDescriptionText(text.trim());

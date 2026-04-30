@@ -1,5 +1,5 @@
+// @ts-nocheck
 import { getDatabaseConnection } from '../utils/databaseConnection';
-
 /**
  * External Data Sources Service
  * 

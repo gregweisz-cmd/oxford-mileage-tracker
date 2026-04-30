@@ -116,6 +116,23 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const [isSplitMode, setIsSplitMode] = useState(false);
   const [splitAllocations, setSplitAllocations] = useState<SplitAllocation[]>([]);
   const [taxAmount, setTaxAmount] = useState('');
+
+  const assignedCostCenters = React.useMemo(() => {
+    const list = [
+      ...(currentEmployee?.selectedCostCenters || []),
+      ...(currentEmployee?.costCenters || []),
+      ...(currentEmployee?.defaultCostCenter ? [currentEmployee.defaultCostCenter] : []),
+    ]
+      .map((value) => value?.trim())
+      .filter((value): value is string => !!value);
+    return Array.from(new Set(list));
+  }, [currentEmployee]);
+
+  useEffect(() => {
+    if (!selectedCostCenter && assignedCostCenters.length > 0) {
+      setSelectedCostCenter(assignedCostCenters[0]);
+    }
+  }, [selectedCostCenter, assignedCostCenters]);
   
   // OCR state
   const [processingOcr, setProcessingOcr] = useState(false);
@@ -257,41 +274,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     loadCategorySuggestions();
   }, [formData.vendor, formData.amount, formData.description, formData.category, currentEmployee]);
 
-  // Per Diem has been moved to a separate screen - this effect is no longer needed
-  // Keeping for now in case of any remaining references
+  // Per Diem is handled in PerDiemScreen.
   useEffect(() => {
-    const checkPerDiemEligibility = async () => {
-      // Per Diem is now handled in PerDiemScreen
-      setPerDiemEligibility(null);
-      setCurrentPerDiemRule(null);
-      return;
-      
-      try {
-        const eligibility = await PerDiemAiService.checkPerDiemEligibility(
-          currentEmployee.id,
-          formData.date
-        );
-        setPerDiemEligibility(eligibility);
-        
-        // Get the Per Diem rule for this employee's cost center
-        const costCenter = currentEmployee.defaultCostCenter || currentEmployee.costCenters?.[0] || 'Program Services';
-        const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
-        setCurrentPerDiemRule(rule);
-        
-        // Auto-set amount if eligible AND toggle is enabled AND NOT using actual amount
-        if (eligibility.isEligible && autoPerDiemEnabled && rule && !rule.useActualAmount) {
-          setFormData(prev => ({ ...prev, amount: rule.maxAmount.toString() }));
-          console.log(`💰 AddReceipt: Auto-filled amount ${rule.maxAmount} based on eligibility check`);
-        } else if (eligibility.isEligible && rule?.useActualAmount) {
-          console.log(`💰 AddReceipt: Not auto-filling because rule uses actual amount`);
-        }
-      } catch (error) {
-        console.error('Error checking per diem eligibility:', error);
-      }
-    };
-    
-    checkPerDiemEligibility();
-  }, [formData.category, formData.date, currentEmployee, autoPerDiemEnabled]);
+    setPerDiemEligibility(null);
+    setCurrentPerDiemRule(null);
+  }, []);
 
   const loadEmployee = async () => {
     try {
@@ -337,6 +324,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           if (!suggestedCostCenter) {
             suggestedCostCenter = employee.defaultCostCenter || 
                                  employee.selectedCostCenters?.[0] || 
+                                 employee.costCenters?.[0] ||
                                  '';
           }
         } catch (error) {
@@ -344,6 +332,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           // Fall back to default
           suggestedCostCenter = employee.defaultCostCenter || 
                                employee.selectedCostCenters?.[0] || 
+                               employee.costCenters?.[0] ||
                                '';
         }
         
@@ -794,6 +783,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         Alert.alert('Validation Error', 'Add at least one split allocation.');
         return false;
       }
+      if (
+        assignedCostCenters.length > 0 &&
+        validAllocations.some((allocation) => !(allocation.costCenter || selectedCostCenter || assignedCostCenters[0]))
+      ) {
+        Alert.alert('Validation Error', 'Choose a cost center for each split row.');
+        return false;
+      }
       const splitTotal = validAllocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
       const receiptTotal = Number(formData.amount);
       if (Math.abs(splitTotal - receiptTotal) > 0.01) {
@@ -831,7 +827,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           id: `split-${Date.now()}`,
           category: formData.category || 'Other',
           amount: formData.amount || '',
-          costCenter: selectedCostCenter,
+          costCenter: selectedCostCenter || assignedCostCenters[0] || '',
         },
       ]);
       setTaxAmount('');
@@ -846,7 +842,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         id: `split-${Date.now()}-${prev.length}`,
         category: 'Other',
         amount: '',
-        costCenter: selectedCostCenter,
+        costCenter: selectedCostCenter || assignedCostCenters[0] || '',
       },
     ]);
   };
@@ -881,7 +877,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         category: working[primaryIndex].category || formData.category || 'Other',
         amount: (total - tax).toFixed(2),
         descriptionOverride: undefined,
-        costCenter: working[primaryIndex].costCenter || selectedCostCenter,
+        costCenter: working[primaryIndex].costCenter || selectedCostCenter || assignedCostCenters[0] || '',
       };
 
       const otherIndex = working.findIndex((row) => row.category === 'Other' && row.id !== working[primaryIndex].id);
@@ -890,7 +886,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           ...working[otherIndex],
           amount: tax.toFixed(2),
           descriptionOverride: 'taxes',
-          costCenter: working[otherIndex].costCenter || selectedCostCenter,
+          costCenter: working[otherIndex].costCenter || selectedCostCenter || assignedCostCenters[0] || '',
         };
       } else {
         working.push({
@@ -898,7 +894,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           category: 'Other',
           amount: tax.toFixed(2),
           descriptionOverride: 'taxes',
-          costCenter: selectedCostCenter,
+          costCenter: selectedCostCenter || assignedCostCenters[0] || '',
         });
       }
       return working;
@@ -1685,19 +1681,29 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                       placeholderTextColor="#999"
                     />
                   </View>
-                  {!!(currentEmployee?.selectedCostCenters && currentEmployee.selectedCostCenters.length > 0) && (
+                  <View style={styles.splitAmountCol}>
+                    <Text style={[styles.splitLabel, dynamicStyles.label]}>Split Notes (optional)</Text>
+                    <TextInput
+                      style={[styles.input, dynamicStyles.input]}
+                      value={allocation.descriptionOverride || ''}
+                      onChangeText={(value) => updateSplitAllocation(allocation.id, { descriptionOverride: value })}
+                      placeholder="Override description for this split"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  {assignedCostCenters.length > 0 && (
                     <View style={styles.splitAmountCol}>
                       <Text style={[styles.splitLabel, dynamicStyles.label]}>Cost Center</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View style={styles.splitCategoryButtons}>
-                          {currentEmployee.selectedCostCenters.map((costCenter) => (
+                          {assignedCostCenters.map((costCenter) => (
                             <TouchableOpacity
                               key={`${allocation.id}-${costCenter}`}
                               style={[
                                 styles.categoryButton,
                                 dynamicStyles.categoryButton,
-                                (allocation.costCenter || selectedCostCenter) === costCenter && styles.categoryButtonSelected,
-                                (allocation.costCenter || selectedCostCenter) === costCenter && dynamicStyles.categoryButtonSelected,
+                                (allocation.costCenter || selectedCostCenter || assignedCostCenters[0]) === costCenter && styles.categoryButtonSelected,
+                                (allocation.costCenter || selectedCostCenter || assignedCostCenters[0]) === costCenter && dynamicStyles.categoryButtonSelected,
                               ]}
                               onPress={() => updateSplitAllocation(allocation.id, { costCenter })}
                             >
@@ -1705,8 +1711,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                                 style={[
                                   styles.categoryButtonText,
                                   dynamicStyles.categoryButtonText,
-                                  (allocation.costCenter || selectedCostCenter) === costCenter && styles.categoryButtonTextSelected,
-                                  (allocation.costCenter || selectedCostCenter) === costCenter && dynamicStyles.categoryButtonTextSelected,
+                                  (allocation.costCenter || selectedCostCenter || assignedCostCenters[0]) === costCenter && styles.categoryButtonTextSelected,
+                                  (allocation.costCenter || selectedCostCenter || assignedCostCenters[0]) === costCenter && dynamicStyles.categoryButtonTextSelected,
                                 ]}
                               >
                                 {costCenter}
@@ -1828,11 +1834,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         )}
 
         {/* Cost Center Selector - show if user has cost centers assigned */}
-        {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 0 && (
+        {assignedCostCenters.length > 0 && (
           <View style={styles.inputGroup}>
             <Text style={[styles.label, dynamicStyles.label]}>Cost Center</Text>
             <View style={styles.costCenterSelector}>
-              {currentEmployee.selectedCostCenters.map((costCenter) => (
+              {assignedCostCenters.map((costCenter) => (
                 <TouchableOpacity
                   key={costCenter}
                   style={[

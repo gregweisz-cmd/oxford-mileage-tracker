@@ -137,12 +137,13 @@ export class ImportService {
       };
       
     } catch (error) {
+      const err = error as any;
       return {
         success: false,
-        message: `Failed to import employees: ${error}`,
+        message: `Failed to import employees: ${err}`,
         importedCount: 0,
         errorCount: 0,
-        errors: [error.toString()]
+        errors: [String(err)]
       };
     }
   }
@@ -253,12 +254,13 @@ export class ImportService {
       };
       
     } catch (error) {
+      const err = error as any;
       return {
         success: false,
-        message: `Failed to import mileage entries: ${error}`,
+        message: `Failed to import mileage entries: ${err}`,
         importedCount: 0,
         errorCount: 0,
-        errors: [error.toString()]
+        errors: [String(err)]
       };
     }
   }

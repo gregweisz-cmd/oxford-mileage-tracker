@@ -522,10 +522,8 @@ export class AnomalyDetectionService {
         const sameDate = entryDate.toDateString() === newEntryDate.toDateString();
         
         // Must have exact same route (check both location fields)
-        const sameStartLocation = (entry.startLocation === newEntry.startLocation) ||
-                                  (entry.startLocationName === newEntry.startLocationName);
-        const sameEndLocation = (entry.endLocation === newEntry.endLocation) ||
-                               (entry.endLocationName === newEntry.endLocationName);
+        const sameStartLocation = entry.startLocation === newEntry.startLocation;
+        const sameEndLocation = entry.endLocation === newEntry.endLocation;
         const sameRoute = sameStartLocation && sameEndLocation;
         
         // Must have very similar miles (within 1 mile, not 5)

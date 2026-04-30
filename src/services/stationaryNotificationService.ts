@@ -15,6 +15,8 @@ export class StationaryNotificationService {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
       }),
@@ -68,7 +70,6 @@ export class StationaryNotificationService {
       body: 'We detected you stopped moving at driving speed. End this trip now?',
       sound: 'default',
       priority: Notifications.AndroidNotificationPriority.HIGH,
-      channelId: GPS_STATIONARY_NOTIFICATION_CHANNEL_ID,
       categoryIdentifier: GPS_STATIONARY_NOTIFICATION_CATEGORY_ID,
       data: {
         type: 'gps_stationary',

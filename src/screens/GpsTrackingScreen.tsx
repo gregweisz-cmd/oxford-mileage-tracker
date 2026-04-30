@@ -689,7 +689,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
       const currentPosition = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
-        timeout: 12000,
       });
 
       const currentLat = currentPosition.coords.latitude;
@@ -827,7 +826,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
       const currentPosition = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
-        timeout: 12000,
       });
 
       const currentLat = currentPosition.coords.latitude;
@@ -2241,6 +2239,11 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: 16,
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 6,
   },
   label: {
     fontSize: 16,

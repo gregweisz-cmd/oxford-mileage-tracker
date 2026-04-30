@@ -72,8 +72,14 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
 
   const loadRealtimeStatus = () => {
     try {
-      const status = RealtimeSyncService.getSyncStatus();
-      setRealtimeStatus(status);
+      const realtime = RealtimeSyncService.getInstance();
+      setRealtimeStatus({
+        isConnected: realtime.isConnected(),
+        lastSyncTime: new Date(),
+        totalEmployees: 0,
+        totalEntries: 0,
+        totalReceipts: 0,
+      });
     } catch (error) {
       console.error('Error loading real-time status:', error);
     }

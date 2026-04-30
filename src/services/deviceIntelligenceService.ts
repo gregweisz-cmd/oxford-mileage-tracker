@@ -185,7 +185,7 @@ export class DeviceIntelligenceService {
   // Device Settings Methods
   static async getDeviceSettings(userId: string): Promise<DeviceSettings | null> {
     const db = await getDatabaseConnection();
-    const result = await db.getFirstAsync(
+    const result = await db.getFirstAsync<any>(
       'SELECT * FROM device_settings WHERE user_id = ?',
       [userId]
     );
@@ -296,7 +296,7 @@ export class DeviceIntelligenceService {
   // UI Preferences Methods
   static async getUIPreferences(userId: string): Promise<UserInterfacePreferences | null> {
     const db = await getDatabaseConnection();
-    const result = await db.getFirstAsync(
+    const result = await db.getFirstAsync<any>(
       'SELECT * FROM ui_preferences WHERE user_id = ?',
       [userId]
     );
@@ -384,7 +384,7 @@ export class DeviceIntelligenceService {
   // Offline Sync Pattern Methods
   static async getOfflineSyncPattern(userId: string): Promise<OfflineSyncPattern | null> {
     const db = await getDatabaseConnection();
-    const result = await db.getFirstAsync(
+    const result = await db.getFirstAsync<any>(
       'SELECT * FROM offline_sync_patterns WHERE user_id = ?',
       [userId]
     );
@@ -468,7 +468,7 @@ export class DeviceIntelligenceService {
   // Input Method Preference Methods
   static async getInputMethodPreferences(userId: string): Promise<InputMethodPreference | null> {
     const db = await getDatabaseConnection();
-    const result = await db.getFirstAsync(
+    const result = await db.getFirstAsync<any>(
       'SELECT * FROM input_method_preferences WHERE user_id = ?',
       [userId]
     );
