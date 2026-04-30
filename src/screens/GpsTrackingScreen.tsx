@@ -832,18 +832,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
       const currentLat = currentPosition.coords.latitude;
       const currentLon = currentPosition.coords.longitude;
-      let currentAddress =
-        (await GooglePlacesService.getAddressFromCoordinates(currentLat, currentLon)) || '';
-      if (!currentAddress) {
-        const geocode = await Location.reverseGeocodeAsync({
-          latitude: currentLat,
-          longitude: currentLon,
-        });
-        if (geocode.length > 0) {
-          const first = geocode[0];
-          currentAddress =
-            `${first.street || ''} ${first.city || ''}, ${first.region || ''} ${first.postalCode || ''}`.trim();
-        }
+      let currentAddress = '';
+      const geocode = await Location.reverseGeocodeAsync({
+        latitude: currentLat,
+        longitude: currentLon,
+      });
+      if (geocode.length > 0) {
+        const first = geocode[0];
+        currentAddress =
+          `${first.street || ''} ${first.city || ''}, ${first.region || ''} ${first.postalCode || ''}`.trim();
       }
 
       if (

@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -15,8 +14,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { LocationDetails, Employee } from '../types';
 import { DatabaseService } from '../services/database';
-import GooglePlacesAddressInput from './GooglePlacesAddressInput';
-import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 import { makeLocationDetails } from '../utils/locationSelection';
 import { formatAddressParts, parseAddressParts } from '../utils/addressFormatter';
 
@@ -227,72 +224,36 @@ export default function LocationCaptureModal({
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>{title}</Text>
           
-          <KeyboardAwareScrollView
+          <View
             style={styles.modalScrollView}
-            contentContainerStyle={styles.modalScrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
           >
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Location Name *</Text>
-            <ScrollToOnFocusView>
-              <TextInput
-                style={styles.input}
-                value={locationName}
-                onChangeText={setLocationName}
-                placeholder="e.g., Office, Client Site, Home"
-                placeholderTextColor="#999"
-              />
-            </ScrollToOnFocusView>
+            <TextInput
+              style={styles.input}
+              value={locationName}
+              onChangeText={setLocationName}
+              placeholder="e.g., Office, Client Site, Home"
+              placeholderTextColor="#999"
+              editable
+            />
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Address *</Text>
-            <ScrollToOnFocusView>
-              {locationType === 'end' ? (
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={locationAddress}
-                  onChangeText={(value) => {
-                    setHasUserEditedAddress(true);
-                    setLocationAddress(value);
-                  }}
-                  placeholder="Enter or confirm the address..."
-                  placeholderTextColor="#999"
-                  multiline={true}
-                  numberOfLines={3}
-                />
-              ) : (
-                <GooglePlacesAddressInput
-                  value={locationAddress}
-                  onChangeText={(value) => {
-                    setHasUserEditedAddress(true);
-                    setLocationAddress(value);
-                  }}
-                  placeholder="Enter or confirm the address..."
-                  multiline={true}
-                  numberOfLines={3}
-                  onPlaceSelected={(details) => {
-                    setHasUserEditedAddress(true);
-                    applyParsedAddress(details.formattedAddress);
-                    if (details.latitude && details.longitude) {
-                      setCurrentLocation({
-                        coords: {
-                          latitude: details.latitude,
-                          longitude: details.longitude,
-                          altitude: null,
-                          accuracy: null,
-                          altitudeAccuracy: null,
-                          heading: null,
-                          speed: null,
-                        },
-                        timestamp: Date.now(),
-                      } as any);
-                    }
-                  }}
-                />
-              )}
-            </ScrollToOnFocusView>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={locationAddress}
+              onChangeText={(value) => {
+                setHasUserEditedAddress(true);
+                setLocationAddress(value);
+              }}
+              placeholder="Enter or confirm the address..."
+              placeholderTextColor="#999"
+              multiline={true}
+              numberOfLines={3}
+              editable
+            />
             <Text style={styles.helpText}>
               Confirm the street number before saving this location.
             </Text>
@@ -301,42 +262,39 @@ export default function LocationCaptureModal({
           <View style={styles.cityStateRow}>
             <View style={[styles.inputGroup, styles.cityInput]}>
               <Text style={styles.label}>City</Text>
-              <ScrollToOnFocusView>
-                <TextInput
-                  style={styles.input}
-                  value={locationCity}
-                  onChangeText={setLocationCity}
-                  placeholder="City"
-                  placeholderTextColor="#999"
-                />
-              </ScrollToOnFocusView>
+              <TextInput
+                style={styles.input}
+                value={locationCity}
+                onChangeText={setLocationCity}
+                placeholder="City"
+                placeholderTextColor="#999"
+                editable
+              />
             </View>
             <View style={[styles.inputGroup, styles.stateInput]}>
               <Text style={styles.label}>State</Text>
-              <ScrollToOnFocusView>
-                <TextInput
-                  style={styles.input}
-                  value={locationState}
-                  onChangeText={(value) => setLocationState(value.toUpperCase().slice(0, 2))}
-                  placeholder="ST"
-                  placeholderTextColor="#999"
-                  autoCapitalize="characters"
-                  maxLength={2}
-                />
-              </ScrollToOnFocusView>
+              <TextInput
+                style={styles.input}
+                value={locationState}
+                onChangeText={(value) => setLocationState(value.toUpperCase().slice(0, 2))}
+                placeholder="ST"
+                placeholderTextColor="#999"
+                autoCapitalize="characters"
+                maxLength={2}
+                editable
+              />
             </View>
             <View style={[styles.inputGroup, styles.zipInput]}>
               <Text style={styles.label}>Zip</Text>
-              <ScrollToOnFocusView>
-                <TextInput
-                  style={styles.input}
-                  value={locationZip}
-                  onChangeText={(value) => setLocationZip(value.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="Zip"
-                  placeholderTextColor="#999"
-                  keyboardType="numeric"
-                />
-              </ScrollToOnFocusView>
+              <TextInput
+                style={styles.input}
+                value={locationZip}
+                onChangeText={(value) => setLocationZip(value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="Zip"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+                editable
+              />
             </View>
           </View>
 
@@ -409,7 +367,7 @@ export default function LocationCaptureModal({
               </View>
             )}
           </View>
-          </KeyboardAwareScrollView>
+          </View>
           
           <View style={styles.modalButtons}>
             <TouchableOpacity
