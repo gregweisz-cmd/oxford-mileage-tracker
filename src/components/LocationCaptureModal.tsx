@@ -16,7 +16,6 @@ import * as Location from 'expo-location';
 import { LocationDetails, Employee } from '../types';
 import { DatabaseService } from '../services/database';
 import GooglePlacesAddressInput from './GooglePlacesAddressInput';
-import { GooglePlacesService } from '../services/googlePlacesService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 import { makeLocationDetails } from '../utils/locationSelection';
 import { formatAddressParts, parseAddressParts } from '../utils/addressFormatter';
@@ -109,26 +108,19 @@ export default function LocationCaptureModal({
       
       setCurrentLocation(location);
       
-      // Try fuller Google geocoding first, then fall back to Expo reverse geocode.
+      // For end-location capture we intentionally avoid Places-driven suggestions.
+      // Keep the address fully manual/editable in that flow.
       try {
-        const preciseAddress = await GooglePlacesService.getAddressFromCoordinates(
-          location.coords.latitude,
-          location.coords.longitude
-        );
-        if (preciseAddress && !preserveAddress && !hasUserEditedAddress) {
-          applyParsedAddress(preciseAddress);
-        } else {
-          const addressResponse = await Location.reverseGeocodeAsync({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          });
-          
-          if (addressResponse.length > 0) {
-            const address = addressResponse[0];
-            const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
-            if (!preserveAddress && !hasUserEditedAddress) {
-              applyParsedAddress(formattedAddress);
-            }
+        const addressResponse = await Location.reverseGeocodeAsync({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+
+        if (addressResponse.length > 0) {
+          const address = addressResponse[0];
+          const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
+          if (!preserveAddress && !hasUserEditedAddress) {
+            applyParsedAddress(formattedAddress);
           }
         }
       } catch (error) {
@@ -257,34 +249,49 @@ export default function LocationCaptureModal({
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Address *</Text>
             <ScrollToOnFocusView>
-              <GooglePlacesAddressInput
-                value={locationAddress}
-                onChangeText={(value) => {
-                  setHasUserEditedAddress(true);
-                  setLocationAddress(value);
-                }}
-                placeholder="Enter or confirm the address..."
-                multiline={true}
-                numberOfLines={3}
-                onPlaceSelected={(details) => {
-                  setHasUserEditedAddress(true);
-                  applyParsedAddress(details.formattedAddress);
-                  if (details.latitude && details.longitude) {
-                    setCurrentLocation({
-                      coords: {
-                        latitude: details.latitude,
-                        longitude: details.longitude,
-                        altitude: null,
-                        accuracy: null,
-                        altitudeAccuracy: null,
-                        heading: null,
-                        speed: null,
-                      },
-                      timestamp: Date.now(),
-                    } as any);
-                  }
-                }}
-              />
+              {locationType === 'end' ? (
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={locationAddress}
+                  onChangeText={(value) => {
+                    setHasUserEditedAddress(true);
+                    setLocationAddress(value);
+                  }}
+                  placeholder="Enter or confirm the address..."
+                  placeholderTextColor="#999"
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              ) : (
+                <GooglePlacesAddressInput
+                  value={locationAddress}
+                  onChangeText={(value) => {
+                    setHasUserEditedAddress(true);
+                    setLocationAddress(value);
+                  }}
+                  placeholder="Enter or confirm the address..."
+                  multiline={true}
+                  numberOfLines={3}
+                  onPlaceSelected={(details) => {
+                    setHasUserEditedAddress(true);
+                    applyParsedAddress(details.formattedAddress);
+                    if (details.latitude && details.longitude) {
+                      setCurrentLocation({
+                        coords: {
+                          latitude: details.latitude,
+                          longitude: details.longitude,
+                          altitude: null,
+                          accuracy: null,
+                          altitudeAccuracy: null,
+                          heading: null,
+                          speed: null,
+                        },
+                        timestamp: Date.now(),
+                      } as any);
+                    }
+                  }}
+                />
+              )}
             </ScrollToOnFocusView>
             <Text style={styles.helpText}>
               Confirm the street number before saving this location.
