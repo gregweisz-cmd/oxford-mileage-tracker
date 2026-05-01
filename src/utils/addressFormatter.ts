@@ -5,6 +5,27 @@ export interface AddressParts {
   zipCode?: string;
 }
 
+/** expo-location / Apple-style reverse geocode fields */
+export type GeocodeAddressFields = {
+  streetNumber?: string | null;
+  street?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
+};
+
+/** Normalize geocode into separated parts and a canonical one-line address for matching and storage */
+export const buildPartsFromGeocode = (
+  g: GeocodeAddressFields
+): AddressParts & { oneLine: string } => {
+  const street = [g.streetNumber, g.street].filter(Boolean).join(' ').trim();
+  const city = (g.city || '').trim();
+  const state = (g.region || '').trim();
+  const zipCode = (g.postalCode || '').trim();
+  const oneLine = formatAddressParts({ street, city, state, zipCode });
+  return { street, city, state, zipCode, oneLine };
+};
+
 /** Location details from Oxford House / saved address may have address, city, state, zipCode. Returns full one-line address for storage/API. */
 export const getFullLocationAddress = (details: { address?: string; city?: string; state?: string; zipCode?: string } | null | undefined): string => {
   if (!details) return '';

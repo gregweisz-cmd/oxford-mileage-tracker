@@ -37,6 +37,7 @@ import {
   getAvailableOxfordHouseStates,
   getDefaultOxfordHouseSelection,
 } from '../utils/oxfordHousePicker';
+import { buildPartsFromGeocode } from '../utils/addressFormatter';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface GpsTrackingScreenProps {
@@ -695,14 +696,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       const currentLon = currentPosition.coords.longitude;
       // End-location suggestions should not depend on Places API; keep this flow local/editable.
       let currentAddress = '';
+      let geocodeParts: ReturnType<typeof buildPartsFromGeocode> | null = null;
       const geocode = await Location.reverseGeocodeAsync({
         latitude: currentLat,
         longitude: currentLon,
       });
       if (geocode.length > 0) {
-        const first = geocode[0];
-        currentAddress =
-          `${first.street || ''} ${first.city || ''}, ${first.region || ''} ${first.postalCode || ''}`.trim();
+        geocodeParts = buildPartsFromGeocode(geocode[0]);
+        currentAddress = geocodeParts.oneLine;
       }
 
       if (
@@ -772,13 +773,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         };
       }
 
-      if (currentAddress) {
+      if (currentAddress && geocodeParts) {
         suggestions.newLocation = {
           details: {
-            name: currentAddress.split(',')[0]?.trim() || 'Current Location',
-            address: currentAddress,
+            name: geocodeParts.street || geocodeParts.city || 'Current Location',
+            address: geocodeParts.street || '',
             latitude: currentLat,
             longitude: currentLon,
+            city: geocodeParts.city,
+            state: geocodeParts.state,
+            zipCode: geocodeParts.zipCode,
           },
           reason: 'Suggested from your current GPS location. Verify and edit if needed.',
           confidenceLabel: 'Address match',
@@ -831,14 +835,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       const currentLat = currentPosition.coords.latitude;
       const currentLon = currentPosition.coords.longitude;
       let currentAddress = '';
+      let geocodeParts: ReturnType<typeof buildPartsFromGeocode> | null = null;
       const geocode = await Location.reverseGeocodeAsync({
         latitude: currentLat,
         longitude: currentLon,
       });
       if (geocode.length > 0) {
-        const first = geocode[0];
-        currentAddress =
-          `${first.street || ''} ${first.city || ''}, ${first.region || ''} ${first.postalCode || ''}`.trim();
+        geocodeParts = buildPartsFromGeocode(geocode[0]);
+        currentAddress = geocodeParts.oneLine;
       }
 
       if (
@@ -936,13 +940,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         };
       }
 
-      if (currentAddress) {
+      if (currentAddress && geocodeParts) {
         suggestions.newLocation = {
           details: {
-            name: currentAddress.split(',')[0]?.trim() || 'Current Location',
-            address: currentAddress,
+            name: geocodeParts.street || geocodeParts.city || 'Current Location',
+            address: geocodeParts.street || '',
             latitude: currentLat,
             longitude: currentLon,
+            city: geocodeParts.city,
+            state: geocodeParts.state,
+            zipCode: geocodeParts.zipCode,
           },
           reason: 'Suggested from your current GPS location. Verify and edit if needed.',
           confidenceLabel: 'Address match',

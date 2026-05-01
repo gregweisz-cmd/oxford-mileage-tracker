@@ -36,6 +36,10 @@ export interface OxfordHouse {
 export interface LocationDetails {
   name: string;
   address: string;
+  /** When set (e.g. device reverse geocode), capture modal can pre-fill without parsing a single line */
+  city?: string;
+  state?: string;
+  zipCode?: string;
   source?:
     | 'baseAddress'
     | 'baseAddress2'

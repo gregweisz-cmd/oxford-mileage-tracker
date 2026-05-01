@@ -16,7 +16,7 @@ import * as Location from 'expo-location';
 import { LocationDetails, Employee } from '../types';
 import { DatabaseService } from '../services/database';
 import { makeLocationDetails } from '../utils/locationSelection';
-import { formatAddressParts, parseAddressParts } from '../utils/addressFormatter';
+import { formatAddressParts, parseAddressParts, buildPartsFromGeocode } from '../utils/addressFormatter';
 
 interface LocationCaptureModalProps {
   visible: boolean;
@@ -58,23 +58,32 @@ export default function LocationCaptureModal({
 
   useEffect(() => {
     if (visible) {
-      const hasInitialAddress = !!initialLocation?.address;
+      const il = initialLocation;
+      const hasStructured =
+        !!(il?.city?.trim() || il?.state?.trim() || il?.zipCode?.trim());
+      const hasInitialAddress = !!(il?.address?.trim() || hasStructured);
+
       setHasUserEditedAddress(false);
 
-      if (initialLocation?.name) {
-        setLocationName(initialLocation.name);
+      if (il?.name) {
+        setLocationName(il.name);
       }
-      if (initialLocation?.address) {
-        applyParsedAddress(initialLocation.address);
+      if (hasStructured && il) {
+        setLocationAddress((il.address || '').trim());
+        setLocationCity(il.city?.trim() || '');
+        setLocationState((il.state || '').toUpperCase().slice(0, 2));
+        setLocationZip((il.zipCode || '').replace(/\D/g, '').slice(0, 10));
+      } else if (il?.address) {
+        applyParsedAddress(il.address);
       }
       if (
-        typeof initialLocation?.latitude === 'number' &&
-        typeof initialLocation?.longitude === 'number'
+        typeof il?.latitude === 'number' &&
+        typeof il?.longitude === 'number'
       ) {
         setCurrentLocation({
           coords: {
-            latitude: initialLocation.latitude,
-            longitude: initialLocation.longitude,
+            latitude: il.latitude,
+            longitude: il.longitude,
             altitude: null,
             accuracy: null,
             altitudeAccuracy: null,
@@ -115,10 +124,12 @@ export default function LocationCaptureModal({
         });
 
         if (addressResponse.length > 0) {
-          const address = addressResponse[0];
-          const formattedAddress = `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
+          const geo = buildPartsFromGeocode(addressResponse[0]);
           if (!preserveAddress && !hasUserEditedAddress) {
-            applyParsedAddress(formattedAddress);
+            setLocationAddress(geo.street || '');
+            setLocationCity(geo.city || '');
+            setLocationState((geo.state || '').toUpperCase().slice(0, 2));
+            setLocationZip((geo.zipCode || '').replace(/\D/g, '').slice(0, 10));
           }
         }
       } catch (error) {
@@ -309,7 +320,7 @@ export default function LocationCaptureModal({
               style={styles.quickActionButton}
               onPress={() => {
                 setLocationName('BA');
-                setLocationAddress(currentEmployee.baseAddress || '');
+                applyParsedAddress(currentEmployee.baseAddress || '');
               }}
             >
               <MaterialIcons name="home" size={24} color="#2196F3" />
