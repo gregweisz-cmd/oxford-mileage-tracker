@@ -260,7 +260,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
   const showMessage = (type: 'success' | 'error' | 'info', text: string) => {
     setMessage({ type, text });
-    setTimeout(() => setMessage({ type: '' as any, text: '' }), 5000);
+    setTimeout(() => setMessage({ type: '' as any, text: '' }), 20000);
   };
 
   /**
