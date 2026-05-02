@@ -3,6 +3,7 @@ export interface MileageEntry {
   id: string;
   employeeId: string;
   date: Date;
+  vehicleId?: string;
   startLocation: string;
   endLocation: string;
   miles: number;
@@ -22,6 +23,17 @@ export interface MileageEntry {
   endLocationLng?: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface Vehicle {
+  id: string;
+  employeeId: string;
+  name: string;
+  plateNumber?: string;
+  isDefault: number;
+  isActive: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Receipt {

@@ -206,6 +206,7 @@ function ensureTablesExist() {
         employeeId TEXT NOT NULL,
         oxfordHouseId TEXT NOT NULL,
         date TEXT NOT NULL,
+        vehicleId TEXT,
         odometerReading REAL NOT NULL,
         startLocation TEXT NOT NULL,
         endLocation TEXT NOT NULL,
@@ -308,8 +309,20 @@ function ensureTablesExist() {
         id TEXT PRIMARY KEY,
         employeeId TEXT NOT NULL,
         date TEXT NOT NULL,
+        vehicleId TEXT,
         odometerReading REAL NOT NULL,
         notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS vehicles (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        plateNumber TEXT DEFAULT '',
+        isDefault INTEGER NOT NULL DEFAULT 0,
+        isActive INTEGER NOT NULL DEFAULT 1,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
@@ -874,6 +887,11 @@ function ensureTablesExist() {
               if (err) debugLog('Note: sortOrder column may already exist');
             });
           }
+          if (!columnNames.includes('vehicleId')) {
+            db.run(`ALTER TABLE mileage_entries ADD COLUMN vehicleId TEXT`, (err) => {
+              if (err) debugLog('Note: vehicleId column may already exist');
+            });
+          }
         }
       });
 
@@ -945,6 +963,18 @@ function ensureTablesExist() {
         }
       });
 
+      db.all(`PRAGMA table_info(daily_odometer_readings)`, (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(col => col.name);
+          if (!columnNames.includes('vehicleId')) {
+            db.run(`ALTER TABLE daily_odometer_readings ADD COLUMN vehicleId TEXT`, (alterErr) => {
+              if (alterErr) debugLog('Note: vehicleId column may already exist on daily_odometer_readings');
+              else debugLog('✅ Added vehicleId column to daily_odometer_readings table');
+            });
+          }
+        }
+      });
+
       // Insert sample employees if they don't exist
       const now = new Date().toISOString();
       
@@ -978,6 +1008,7 @@ function ensureTablesExist() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employeeId ON mileage_entries(employeeId)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_date ON mileage_entries(date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_date ON mileage_entries(employeeId, date)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_vehicle_date ON mileage_entries(employeeId, vehicleId, date)`);
       
       // Receipts indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_receipts_employeeId ON receipts(employeeId)`);
@@ -1009,6 +1040,8 @@ function ensureTablesExist() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_descriptions_employee ON daily_descriptions(employeeId)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_descriptions_employee_date ON daily_descriptions(employeeId, date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_date ON daily_odometer_readings(employeeId, date)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_vehicle_date ON daily_odometer_readings(employeeId, vehicleId, date)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_vehicles_employee_active ON vehicles(employeeId, isActive)`);
 
       // Notifications indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recipientId ON notifications(recipientId)`);
@@ -1135,6 +1168,7 @@ function createSampleDatabase() {
           employeeId TEXT NOT NULL,
           oxfordHouseId TEXT NOT NULL,
           date TEXT NOT NULL,
+          vehicleId TEXT,
           odometerReading REAL NOT NULL,
           startLocation TEXT NOT NULL,
           endLocation TEXT NOT NULL,
@@ -1143,6 +1177,28 @@ function createSampleDatabase() {
           notes TEXT,
           hoursWorked REAL DEFAULT 0,
           isGpsTracked INTEGER NOT NULL DEFAULT 0,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        )`);
+
+        db.run(`CREATE TABLE IF NOT EXISTS daily_odometer_readings (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          vehicleId TEXT,
+          odometerReading REAL NOT NULL,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        )`);
+
+        db.run(`CREATE TABLE IF NOT EXISTS vehicles (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          name TEXT NOT NULL,
+          plateNumber TEXT DEFAULT '',
+          isDefault INTEGER NOT NULL DEFAULT 0,
+          isActive INTEGER NOT NULL DEFAULT 1,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);

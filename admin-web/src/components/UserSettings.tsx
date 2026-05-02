@@ -34,11 +34,14 @@ import {
   Settings as SettingsIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  DirectionsCar as DirectionsCarIcon,
+  Star as StarIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
 import { parseBaseAddress, formatBaseAddress } from '../utils/addressParse';
 import { toCanonicalAddress } from '../utils/locationSelection';
 import GooglePlacesTextField from './GooglePlacesTextField';
+import { Vehicle, VehicleApiService } from '../services/vehicleApiService';
 
 interface UserSettingsProps {
   employeeId: string;
@@ -115,10 +118,25 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [costCenterOptions, setCostCenterOptions] = useState<string[]>([]);
   const [defaultCostCenter, setDefaultCostCenter] = useState('');
   const signatureInputRef = useRef<HTMLInputElement>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleName, setVehicleName] = useState('');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleLoading, setVehicleLoading] = useState(false);
+
+  const loadVehicles = useCallback(async () => {
+    try {
+      const rows = await VehicleApiService.getVehicles(employeeId);
+      setVehicles(rows || []);
+    } catch (error) {
+      debugError('Error loading vehicles:', error);
+      setVehicles([]);
+    }
+  }, [employeeId]);
 
   const loadUserProfile = useCallback(async () => {
     try {
       setLoading(true);
+      await loadVehicles();
       
       // Load employee data from API
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -231,7 +249,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
     } finally {
       setLoading(false);
     }
-  }, [employeeId]);
+  }, [employeeId, loadVehicles]);
 
   useEffect(() => {
     loadUserProfile();
@@ -471,6 +489,55 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
     }
   };
 
+  const handleAddVehicle = async () => {
+    const trimmedName = vehicleName.trim();
+    if (!trimmedName) {
+      showMessage('error', 'Vehicle name is required.');
+      return;
+    }
+    setVehicleLoading(true);
+    try {
+      await VehicleApiService.createVehicle(employeeId, trimmedName, vehiclePlate.trim());
+      setVehicleName('');
+      setVehiclePlate('');
+      await loadVehicles();
+      showMessage('success', 'Vehicle added.');
+    } catch (error) {
+      debugError('Error adding vehicle:', error);
+      showMessage('error', 'Failed to add vehicle.');
+    } finally {
+      setVehicleLoading(false);
+    }
+  };
+
+  const handleSetDefaultVehicle = async (id: string) => {
+    setVehicleLoading(true);
+    try {
+      await VehicleApiService.setDefaultVehicle(employeeId, id);
+      await loadVehicles();
+      showMessage('success', 'Default vehicle updated.');
+    } catch (error) {
+      debugError('Error setting default vehicle:', error);
+      showMessage('error', 'Failed to set default vehicle.');
+    } finally {
+      setVehicleLoading(false);
+    }
+  };
+
+  const handleDeleteVehicle = async (id: string) => {
+    setVehicleLoading(true);
+    try {
+      await VehicleApiService.deleteVehicle(employeeId, id);
+      await loadVehicles();
+      showMessage('success', 'Vehicle removed.');
+    } catch (error) {
+      debugError('Error removing vehicle:', error);
+      showMessage('error', error instanceof Error ? error.message : 'Failed to remove vehicle.');
+    } finally {
+      setVehicleLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <Box sx={{ flex: 1, p: 3, maxWidth: 1200, mx: 'auto', width: '100%', pb: 10 }}>
@@ -624,6 +691,90 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             <Typography variant="caption" color="text.secondary">
               Your selections and default are saved in User Settings.
             </Typography>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+              <DirectionsCarIcon sx={{ mr: 1 }} />
+              Vehicles
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Manage your vehicles and choose a default for mileage tracking.
+            </Typography>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
+              {vehicles.map((vehicle) => (
+                <Box
+                  key={vehicle.id}
+                  sx={{
+                    border: 1,
+                    borderColor: vehicle.isDefault ? 'primary.main' : 'divider',
+                    borderRadius: 1,
+                    p: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {vehicle.name} {vehicle.isDefault ? <StarIcon fontSize="small" sx={{ ml: 0.5, verticalAlign: 'middle', color: 'warning.main' }} /> : null}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Plate: {vehicle.plateNumber || 'Not set'}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    {!vehicle.isDefault && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => void handleSetDefaultVehicle(vehicle.id)}
+                        disabled={vehicleLoading}
+                      >
+                        Set Default
+                      </Button>
+                    )}
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      onClick={() => void handleDeleteVehicle(vehicle.id)}
+                      disabled={vehicleLoading}
+                    >
+                      Remove
+                    </Button>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <TextField
+                size="small"
+                label="Vehicle name"
+                value={vehicleName}
+                onChange={(e) => setVehicleName(e.target.value)}
+                sx={{ minWidth: 200 }}
+              />
+              <TextField
+                size="small"
+                label="Plate (optional)"
+                value={vehiclePlate}
+                onChange={(e) => setVehiclePlate(e.target.value)}
+                sx={{ minWidth: 160 }}
+              />
+              <Button
+                variant="contained"
+                onClick={() => void handleAddVehicle()}
+                disabled={vehicleLoading}
+              >
+                Add Vehicle
+              </Button>
+            </Box>
           </CardContent>
         </Card>
 

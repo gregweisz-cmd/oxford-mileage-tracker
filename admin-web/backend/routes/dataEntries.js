@@ -140,7 +140,8 @@ router.post('/api/mileage-entries', (req, res) => {
     notes,
     hoursWorked,
     isGpsTracked,
-    costCenter
+    costCenter,
+    vehicleId
   } = req.body;
   // Use provided ID or generate a new one
   // IMPORTANT: Always use the provided ID if available to prevent duplicates
@@ -194,12 +195,13 @@ router.post('/api/mileage-entries', (req, res) => {
 
     const runInsert = (sortOrderVal) => {
       db.run(
-        'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
+        'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, vehicleId, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
         [
           entryId,
           employeeId,
           oxfordHouseId || '',
           normalizedDate,
+          vehicleId || null,
           finalOdometerReading,
           finalStartLocation,
           finalEndLocation,
@@ -285,7 +287,8 @@ router.put('/api/mileage-entries/:id', (req, res) => {
     notes,
     hoursWorked,
     isGpsTracked,
-    costCenter
+    costCenter,
+    vehicleId
   } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
@@ -325,11 +328,12 @@ router.put('/api/mileage-entries/:id', (req, res) => {
     const finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
 
   db.run(
-    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
+    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, vehicleId = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
     [
       employeeId,
       oxfordHouseId || '',
       normalizedDate || date,
+      vehicleId || null,
       finalOdometerReading,
       finalStartLocation,
       finalEndLocation,
@@ -1544,7 +1548,7 @@ router.delete('/api/daily-descriptions/:id', (req, res) => {
  * Get daily odometer readings (by employee + month/year or single date)
  */
 router.get('/api/daily-odometer-readings', (req, res) => {
-  const { employeeId, month, year, date } = req.query;
+  const { employeeId, month, year, date, vehicleId } = req.query;
   const db = dbService.getDb();
   let query = `SELECT * FROM daily_odometer_readings WHERE 1=1`;
   const params = [];
@@ -1552,6 +1556,10 @@ router.get('/api/daily-odometer-readings', (req, res) => {
   if (employeeId) {
     query += ' AND employeeId = ?';
     params.push(employeeId);
+  }
+  if (vehicleId) {
+    query += ' AND vehicleId = ?';
+    params.push(vehicleId);
   }
   if (date) {
     const normalized = dateHelpers.normalizeDateString(date);
@@ -1579,7 +1587,7 @@ router.get('/api/daily-odometer-readings', (req, res) => {
  * Create or update daily odometer reading (upsert by employeeId + date)
  */
 router.post('/api/daily-odometer-readings', (req, res) => {
-  const { id, employeeId, date, odometerReading, notes } = req.body;
+  const { id, employeeId, date, vehicleId, odometerReading, notes } = req.body;
   const db = dbService.getDb();
 
   const normalizedDate = dateHelpers.normalizeDateString(date);
@@ -1596,14 +1604,17 @@ router.post('/api/daily-odometer-readings', (req, res) => {
 
   const now = new Date().toISOString();
 
-  db.get('SELECT id FROM daily_odometer_readings WHERE employeeId = ? AND date = ?', [employeeId, normalizedDate], (err, existing) => {
+  db.get(
+    'SELECT id FROM daily_odometer_readings WHERE employeeId = ? AND date = ? AND COALESCE(vehicleId, \'\') = COALESCE(?, \'\')',
+    [employeeId, normalizedDate, vehicleId || null],
+    (err, existing) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     if (existing) {
       db.run(
-        'UPDATE daily_odometer_readings SET odometerReading = ?, notes = ?, updatedAt = ? WHERE id = ?',
-        [reading, notes || '', now, existing.id],
+        'UPDATE daily_odometer_readings SET vehicleId = ?, odometerReading = ?, notes = ?, updatedAt = ? WHERE id = ?',
+        [vehicleId || null, reading, notes || '', now, existing.id],
         function(upErr) {
           if (upErr) return res.status(500).json({ error: upErr.message });
           debugLog(`✅ Daily odometer reading updated: ${existing.id}`);
@@ -1611,10 +1622,11 @@ router.post('/api/daily-odometer-readings', (req, res) => {
         }
       );
     } else {
-      const readingId = id || `odor-${employeeId}-${normalizedDate}`;
+      const vehicleSuffix = vehicleId ? String(vehicleId) : 'default';
+      const readingId = id || `odor-${employeeId}-${normalizedDate}-${vehicleSuffix}`;
       db.run(
-        'INSERT INTO daily_odometer_readings (id, employeeId, date, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [readingId, employeeId, normalizedDate, reading, notes || '', now, now],
+        'INSERT INTO daily_odometer_readings (id, employeeId, date, vehicleId, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [readingId, employeeId, normalizedDate, vehicleId || null, reading, notes || '', now, now],
         function(insErr) {
           if (insErr) return res.status(500).json({ error: insErr.message });
           debugLog(`✅ Daily odometer reading created: ${readingId}`);
@@ -1622,7 +1634,8 @@ router.post('/api/daily-odometer-readings', (req, res) => {
         }
       );
     }
-  });
+    }
+  );
 });
 
 /**
@@ -1630,7 +1643,7 @@ router.post('/api/daily-odometer-readings', (req, res) => {
  */
 router.put('/api/daily-odometer-readings/:id', (req, res) => {
   const { id } = req.params;
-  const { odometerReading, notes } = req.body;
+  const { odometerReading, notes, vehicleId } = req.body;
   const db = dbService.getDb();
 
   const reading = parseFloat(odometerReading);
@@ -1648,6 +1661,10 @@ router.put('/api/daily-odometer-readings/:id', (req, res) => {
   if (notes !== undefined) {
     updates.push('notes = ?');
     params.push(notes);
+  }
+  if (vehicleId !== undefined) {
+    updates.push('vehicleId = ?');
+    params.push(vehicleId || null);
   }
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No fields to update.' });
