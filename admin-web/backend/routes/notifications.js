@@ -306,11 +306,26 @@ router.post('/api/notifications/test-email', async (req, res) => {
       `,
     });
 
+    const deliveryHints = [];
+    if (result.provider === 'ses') {
+      deliveryHints.push('SES accepted does not guarantee inbox delivery. Check spam/quarantine and recipient filtering.');
+      deliveryHints.push('If your SES account is in sandbox, recipient addresses must be verified in SES.');
+      deliveryHints.push('Ensure EMAIL_FROM is a verified identity in AWS SES for this region.');
+    }
+
     if (!result.success) {
+      const message = String(result.error || '');
+      if (message.includes('MessageRejected')) {
+        deliveryHints.push('AWS SES rejected the message. Verify sender/recipient identities and sandbox/production status.');
+      }
+      if (message.includes('InvalidClientTokenId') || message.includes('SignatureDoesNotMatch')) {
+        deliveryHints.push('AWS credentials are invalid for SES. Re-check AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.');
+      }
       return res.status(500).json({
         error: result.error || 'Failed to send test email',
         hint: 'Check Render logs for AWS SES/SMTP provider rejection details.',
         emailConfigStatus,
+        deliveryHints,
       });
     }
 
@@ -322,6 +337,7 @@ router.post('/api/notifications/test-email', async (req, res) => {
       accepted: Array.isArray(result.accepted) ? result.accepted : undefined,
       rejected: Array.isArray(result.rejected) ? result.rejected : undefined,
       emailConfigStatus,
+      deliveryHints,
       message: notificationsDisabled
         ? `Test email sent to ${employee.email}. Note: regular email notifications are currently disabled for this user.`
         : `Test email sent to ${employee.email}`,

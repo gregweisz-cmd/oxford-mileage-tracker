@@ -472,11 +472,27 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to send test email');
+        const details = [
+          data.error || 'Failed to send test email',
+          data.hint || '',
+          Array.isArray(data.deliveryHints) ? data.deliveryHints.join(' ') : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        throw new Error(details);
       }
       const provider = data.provider ? ` via ${String(data.provider).toUpperCase()}` : '';
       const messageId = data.messageId ? ` (messageId: ${data.messageId})` : '';
-      showMessage('success', `${data.message || 'Test email sent.'}${provider}${messageId}`);
+      const deliveryWarnings = Array.isArray(data.deliveryHints) && data.deliveryHints.length > 0
+        ? ` ${data.deliveryHints.join(' ')}`
+        : '';
+      const rejectedRecipients = Array.isArray(data.rejected) && data.rejected.length > 0
+        ? ` Rejected: ${data.rejected.join(', ')}`
+        : '';
+      showMessage(
+        'success',
+        `${data.message || 'Test email sent.'}${provider}${messageId}${rejectedRecipients}${deliveryWarnings}`
+      );
     } catch (error) {
       debugError('Error sending test email:', error);
       showMessage('error', error instanceof Error ? error.message : 'Failed to send test email.');
