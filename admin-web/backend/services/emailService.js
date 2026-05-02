@@ -370,6 +370,18 @@ async function verifyEmailConfig() {
   return false;
 }
 
+function getEmailConfigStatus() {
+  return {
+    emailEnabled: EMAIL_ENABLED,
+    hasAwsAccessKey: !!AWS_ACCESS_KEY_ID,
+    hasAwsSecret: !!AWS_SECRET_ACCESS_KEY,
+    awsRegion: AWS_REGION,
+    hasSmtpUser: !!EMAIL_USER,
+    hasSmtpPass: !!EMAIL_PASS,
+    emailFrom: EMAIL_FROM,
+  };
+}
+
 /**
  * Send email notification when report is submitted for approval
  */
@@ -619,5 +631,6 @@ module.exports = {
   sendReportRejectedNotification,
   sendRevisionRequestedNotification,
   verifyEmailConfig,
+  getEmailConfigStatus,
   initTransporter,
 };

@@ -287,11 +287,9 @@ router.post('/api/notifications/test-email', async (req, res) => {
     const notificationsDisabled = prefs.notificationsEnabled === false || prefs.emailNotifications === false;
 
     const isEmailConfigured = await emailService.verifyEmailConfig();
+    const emailConfigStatus = emailService.getEmailConfigStatus();
     if (!isEmailConfigured) {
-      return res.status(500).json({
-        error: 'Email service is not configured on the server.',
-        hint: 'Set AWS SES or SMTP environment variables on Render (and ensure EMAIL_FROM is valid).',
-      });
+      debugWarn('⚠️ Test email requested while email config check failed; attempting send anyway.', emailConfigStatus);
     }
 
     const result = await emailService.sendEmail({
@@ -312,6 +310,7 @@ router.post('/api/notifications/test-email', async (req, res) => {
       return res.status(500).json({
         error: result.error || 'Failed to send test email',
         hint: 'Check Render logs for AWS SES/SMTP provider rejection details.',
+        emailConfigStatus,
       });
     }
 
@@ -322,6 +321,7 @@ router.post('/api/notifications/test-email', async (req, res) => {
       messageId: result.messageId || null,
       accepted: Array.isArray(result.accepted) ? result.accepted : undefined,
       rejected: Array.isArray(result.rejected) ? result.rejected : undefined,
+      emailConfigStatus,
       message: notificationsDisabled
         ? `Test email sent to ${employee.email}. Note: regular email notifications are currently disabled for this user.`
         : `Test email sent to ${employee.email}`,
