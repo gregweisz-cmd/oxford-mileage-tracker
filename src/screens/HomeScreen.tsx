@@ -376,7 +376,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         icon: 'attach-money',
         label: 'Per Diem',
         color: colors.primary,
-        onPress: () => navigation.navigate('PerDiem'),
+        onPress: () =>
+          navigation.navigate({
+            name: 'PerDiem',
+            params: { selectedMonth, selectedYear },
+            merge: true,
+          }),
       },
       'saved-addresses': {
         id: 'saved-addresses',
@@ -801,14 +806,19 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const handleViewReceipts = () => {
-    navigation.navigate('Receipts', {
-      selectedMonth,
-      selectedYear,
+    navigation.navigate({
+      name: 'Receipts',
+      params: { selectedMonth, selectedYear },
+      merge: true,
     });
   };
 
   const handleViewHoursWorked = () => {
-    navigation.navigate('DailyHours');
+    navigation.navigate({
+      name: 'DailyHours',
+      params: { selectedMonth, selectedYear },
+      merge: true,
+    });
   };
 
   const handleViewAdmin = () => {
@@ -1443,10 +1453,11 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
             style={dynamicStyles.monthlyMileageButton}
             onPress={() => {
               void hapticLight();
-              navigation.navigate('MileageEntries', { 
-              selectedMonth, 
-              selectedYear 
-            });
+              navigation.navigate({
+                name: 'MileageEntries',
+                params: { selectedMonth, selectedYear },
+                merge: true,
+              });
             }}
             activeOpacity={0.7}
           >

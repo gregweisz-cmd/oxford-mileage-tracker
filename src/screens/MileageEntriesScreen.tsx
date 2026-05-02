@@ -12,6 +12,7 @@ import { DatabaseService } from '../services/database';
 import { MileageEntry, Employee } from '../types';
 import { formatLocationRoute } from '../utils/locationFormatter';
 import UnifiedHeader from '../components/UnifiedHeader';
+import { getSyncMonthScope } from '../services/syncScopeService';
 
 interface MileageEntriesScreenProps {
   navigation: any;
@@ -23,16 +24,30 @@ interface MileageEntriesScreenProps {
   };
 }
 
-export default function MileageEntriesScreen({ navigation, route }: MileageEntriesScreenProps) {
-  const now = new Date();
-  const initialMonth = route?.params?.selectedMonth ?? now.getMonth() + 1;
-  const initialYear = route?.params?.selectedYear ?? now.getFullYear();
+function monthYearFromDashboard(
+  route: MileageEntriesScreenProps['route']
+): { month: number; year: number } {
+  const m = route?.params?.selectedMonth;
+  const y = route?.params?.selectedYear;
+  const s = getSyncMonthScope();
+  return {
+    month: typeof m === 'number' ? m : s.month,
+    year: typeof y === 'number' ? y : s.year,
+  };
+}
 
+export default function MileageEntriesScreen({ navigation, route }: MileageEntriesScreenProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [entries, setEntries] = useState<MileageEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
-  const [selectedYear, setSelectedYear] = useState(initialYear);
+  const [selectedMonth, setSelectedMonth] = useState(() => monthYearFromDashboard(route).month);
+  const [selectedYear, setSelectedYear] = useState(() => monthYearFromDashboard(route).year);
+
+  useEffect(() => {
+    const next = monthYearFromDashboard(route);
+    setSelectedMonth(next.month);
+    setSelectedYear(next.year);
+  }, [route?.params?.selectedMonth, route?.params?.selectedYear]);
 
   useEffect(() => {
     loadData();

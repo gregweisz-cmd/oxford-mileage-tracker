@@ -27,12 +27,13 @@ import { COST_CENTERS } from '../constants/costCenters';
 import UnifiedHeader from '../components/UnifiedHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
-import { setSyncMonthScope } from '../services/syncScopeService';
+import { getSyncMonthScope, setSyncMonthScope } from '../services/syncScopeService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
 interface DailyHoursScreenProps {
   navigation: any;
+  route?: { params?: { selectedMonth?: number; selectedYear?: number } };
 }
 
 const CATEGORY_HOURS_LABELS = [
@@ -76,12 +77,21 @@ const RECENT_DESCRIPTIONS_KEY = '@recent_descriptions';
  * - Scroll position preservation after editing
  * - Auto-sync on save
  */
-export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) {
+function initialHoursMonth(route: DailyHoursScreenProps['route']): Date {
+  const m = route?.params?.selectedMonth;
+  const y = route?.params?.selectedYear;
+  const s = getSyncMonthScope();
+  const mo = typeof m === 'number' ? m : s.month;
+  const yr = typeof y === 'number' ? y : s.year;
+  return new Date(yr, mo - 1, 1);
+}
+
+export default function DailyHoursScreen({ navigation, route }: DailyHoursScreenProps) {
   const insets = useSafeAreaInsets();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(() => initialHoursMonth(route));
   const [daysWithData, setDaysWithData] = useState<UnifiedDayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -113,6 +123,15 @@ export default function DailyHoursScreen({ navigation }: DailyHoursScreenProps) 
   const selectedDayIndexRef = useRef<number>(-1);
   const dayLayoutsRef = useRef<Record<string, number>>({});
   const scrollToTodayPendingRef = useRef(false);
+
+  useEffect(() => {
+    const next = initialHoursMonth(route);
+    setCurrentMonth((prev) =>
+      prev.getFullYear() === next.getFullYear() && prev.getMonth() === next.getMonth()
+        ? prev
+        : next,
+    );
+  }, [route?.params?.selectedMonth, route?.params?.selectedYear]);
 
   useEffect(() => {
     setSyncMonthScope(currentMonth.getMonth() + 1, currentMonth.getFullYear());

@@ -26,7 +26,7 @@ import { PerDiemRulesService } from '../services/perDiemRulesService';
 import { PerDiemAiService } from '../services/perDiemAiService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { API_BASE_URL } from '../config/api';
-import { setSyncMonthScope } from '../services/syncScopeService';
+import { getSyncMonthScope, setSyncMonthScope } from '../services/syncScopeService';
 import { costCenterApiService } from '../services/costCenterApiService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 
@@ -68,6 +68,16 @@ function resolveImageUri(imageUri: string | undefined | null): string {
 
 interface PerDiemScreenProps {
   navigation: any;
+  route?: { params?: { selectedMonth?: number; selectedYear?: number } };
+}
+
+function initialPerDiemMonth(route: PerDiemScreenProps['route']): Date {
+  const m = route?.params?.selectedMonth;
+  const y = route?.params?.selectedYear;
+  const s = getSyncMonthScope();
+  const mo = typeof m === 'number' ? m : s.month;
+  const yr = typeof y === 'number' ? y : s.year;
+  return new Date(yr, mo - 1, 1);
 }
 
 interface PerDiemEntry {
@@ -109,9 +119,9 @@ function toDateKey(value: Date | string | undefined | null): string {
  * - Monthly summary with progress bar
  * - Navigation to add receipt screen
  */
-export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
+export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps) {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(() => initialPerDiemMonth(route));
   const [perDiemEntries, setPerDiemEntries] = useState<Map<string, PerDiemEntry>>(new Map());
   const [loading, setLoading] = useState(true);
   const [currentPerDiemRule, setCurrentPerDiemRule] = useState<any>(null);
@@ -147,6 +157,15 @@ export default function PerDiemScreen({ navigation }: PerDiemScreenProps) {
     return true;
   }, []);
 
+
+  useEffect(() => {
+    const next = initialPerDiemMonth(route);
+    setCurrentMonth((prev) =>
+      prev.getFullYear() === next.getFullYear() && prev.getMonth() === next.getMonth()
+        ? prev
+        : next,
+    );
+  }, [route?.params?.selectedMonth, route?.params?.selectedYear]);
 
   useEffect(() => {
     setSyncMonthScope(currentMonth.getMonth() + 1, currentMonth.getFullYear());

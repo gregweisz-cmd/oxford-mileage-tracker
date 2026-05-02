@@ -24,7 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { ApiSyncService } from '../services/apiSyncService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
-import { setSyncMonthScope } from '../services/syncScopeService';
+import { getSyncMonthScope } from '../services/syncScopeService';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -85,10 +85,16 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   const [showDateEndPicker, setShowDateEndPicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Get month/year from route params, default to current month/year
-  const now = new Date();
-  const selectedMonth = route?.params?.selectedMonth ?? (now.getMonth() + 1);
-  const selectedYear = route?.params?.selectedYear ?? now.getFullYear();
+  // Match Home dashboard month: route params win if passed; otherwise backend/sync scope set by Home
+  const scopeMonth = getSyncMonthScope();
+  const selectedMonth =
+    typeof route?.params?.selectedMonth === 'number'
+      ? route.params.selectedMonth
+      : scopeMonth.month;
+  const selectedYear =
+    typeof route?.params?.selectedYear === 'number'
+      ? route.params.selectedYear
+      : scopeMonth.year;
   const routeFilterCategory = route?.params?.filterCategory;
   
   // Initialize filter category from route if provided
@@ -98,9 +104,8 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     }
   }, [routeFilterCategory]);
 
-  useEffect(() => {
-    setSyncMonthScope(selectedMonth, selectedYear);
-  }, [selectedMonth, selectedYear]);
+  // Do NOT call setSyncMonthScope here — that would overwrite the Home picker with "today"
+  // whenever route params were missing (fixes wrong month after viewing older periods).
 
   useEffect(() => {
     loadData();
