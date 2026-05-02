@@ -11,6 +11,8 @@ export class GpsTrackingService {
   private static currentSession: GpsTrackingSession | null = null;
   private static lastLocation: Location.LocationObject | null = null;
   private static totalDistance = 0;
+  /** True while user paused mileage for errand/pit stop; session stays active */
+  private static tripPaused = false;
   private static stationaryStartTime: Date | null = null;
   private static stationaryThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
   private static movementThreshold = 5; // 5 meters - very sensitive to movement
@@ -157,6 +159,7 @@ export class GpsTrackingService {
       this.currentSession = session;
       this.lastLocation = location;
       this.totalDistance = 0;
+      this.tripPaused = false;
       this.stationaryStartTime = null;
 
       // Persist state for background task and app-restore
@@ -182,6 +185,7 @@ export class GpsTrackingService {
         stationaryAlertPending: false,
         stationaryAlertLastPromptAt: null,
         stationaryAlertScheduledId: null,
+        isPaused: false,
       };
       await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(persistedState));
 
@@ -261,6 +265,7 @@ export class GpsTrackingService {
       this.currentSession = null;
       this.lastLocation = null;
       this.totalDistance = 0;
+      this.tripPaused = false;
       this.stationaryStartTime = null;
 
       return completedSession;
@@ -302,6 +307,7 @@ export class GpsTrackingService {
         timestamp: Date.now(),
       };
       this.totalDistance = state.totalDistance;
+      this.tripPaused = state.isPaused === true;
       this.stationaryStartTime = state.stationaryStartTime ? new Date(state.stationaryStartTime) : null;
 
       // Resume location updates if not already running
@@ -342,6 +348,7 @@ export class GpsTrackingService {
 
       this.totalDistance = state.totalDistance;
       this.currentSession.totalMiles = state.session.totalMiles;
+      this.tripPaused = state.isPaused === true;
       this.stationaryStartTime = state.stationaryStartTime ? new Date(state.stationaryStartTime) : null;
       this.lastLocation = {
         coords: {
@@ -389,6 +396,103 @@ export class GpsTrackingService {
 
   static isTracking(): boolean {
     return this.currentSession?.isActive || false;
+  }
+
+  static isTripPaused(): boolean {
+    return this.tripPaused;
+  }
+
+  /** Pause accumulating miles; GPS keeps fixing position so resume does not add a bogus jump */
+  static async pauseTripMileage(): Promise<void> {
+    const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+    if (!raw || !this.currentSession) return;
+    try {
+      const state: PersistedGpsState = JSON.parse(raw);
+      if (state.session.id !== this.currentSession.id) return;
+
+      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      state.stationaryAlertScheduledId = null;
+      state.stationaryAlertPending = false;
+      state.stationaryStartTime = null;
+      state.nonDrivingCandidateStartTime = null;
+      state.isPaused = true;
+
+      try {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        state.lastLocation = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        };
+        state.lastLocationTimestamp = loc.timestamp;
+        this.lastLocation = {
+          coords: {
+            ...state.lastLocation,
+            altitude: null,
+            accuracy: null,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+          },
+          timestamp: loc.timestamp,
+        };
+      } catch {
+        // Keep previous anchor from storage if fix fails
+      }
+
+      await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(state));
+      this.tripPaused = true;
+      this.stationaryStartTime = null;
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+
+  /** Resume accumulating miles after pause; snaps anchor to current position */
+  static async resumeTripMileage(): Promise<void> {
+    const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+    if (!raw || !this.currentSession) return;
+    try {
+      const state: PersistedGpsState = JSON.parse(raw);
+      if (state.session.id !== this.currentSession.id) return;
+
+      state.isPaused = false;
+      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      state.stationaryAlertScheduledId = null;
+      state.stationaryStartTime = null;
+      state.nonDrivingCandidateStartTime = null;
+
+      try {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        state.lastLocation = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        };
+        state.lastLocationTimestamp = loc.timestamp;
+        this.lastLocation = {
+          coords: {
+            ...state.lastLocation,
+            altitude: null,
+            accuracy: null,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+          },
+          timestamp: loc.timestamp,
+        };
+      } catch {
+        /* keep lastLocation from persisted state */
+      }
+
+      await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(state));
+      this.tripPaused = false;
+      this.stationaryStartTime = null;
+    } catch {
+      /* ignore */
+    }
   }
 
   static getCurrentDistance(): number {

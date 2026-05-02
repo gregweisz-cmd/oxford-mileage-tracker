@@ -19,7 +19,14 @@ interface LocationPoint {
 }
 
 export default function MapOverlay() {
-  const { showMapOverlay, setShowMapOverlay, isTracking, currentDistance, requestStopTracking } = useGpsTracking();
+  const {
+    showMapOverlay,
+    setShowMapOverlay,
+    isTracking,
+    tripPaused,
+    currentDistance,
+    requestStopTracking,
+  } = useGpsTracking();
   const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(null);
   const [trackingPath, setTrackingPath] = useState<LocationPoint[]>([]);
 
@@ -149,9 +156,13 @@ export default function MapOverlay() {
           {isTracking && (
             <View style={styles.trackingStatus}>
               <View style={styles.trackingInfo}>
-                <MaterialIcons name="gps-fixed" size={20} color="#4CAF50" />
+                <MaterialIcons
+                  name={tripPaused ? 'pause-circle-filled' : 'gps-fixed'}
+                  size={20}
+                  color={tripPaused ? '#FF9800' : '#4CAF50'}
+                />
                 <Text style={styles.trackingText}>
-                  Tracking: {formatDistance(currentDistance)}
+                  {tripPaused ? `Paused · ${formatDistance(currentDistance)}` : `Tracking: ${formatDistance(currentDistance)}`}
                 </Text>
               </View>
               

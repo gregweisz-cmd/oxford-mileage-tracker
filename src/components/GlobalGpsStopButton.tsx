@@ -18,7 +18,8 @@ interface GlobalGpsStopButtonProps {
 
 export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopButtonProps) {
   const insets = useSafeAreaInsets();
-  const { isTracking, currentDistance, requestStopTracking } = useGpsTracking();
+  const { isTracking, tripPaused, pauseTrip, resumeTrip, currentDistance, requestStopTracking } =
+    useGpsTracking();
   const navigation = useNavigation<any>();
 
   // Don't show if not tracking
@@ -40,13 +41,15 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
     // To end tracking, users must use "End & save trip" and confirm destination. Staff who truly
     // need to abandon a session can force-close the app or contact support (rare).
     Alert.alert(
-      'End this trip?',
-      `Distance so far: ${formatDistance(currentDistance)}\n\nTap "End & save trip" to enter your destination and save this drive. Tap "Keep tracking" if you tapped Stop by accident.`,
+      tripPaused ? 'Trip options (mileage paused)' : 'Trip options',
+      `Distance recorded: ${formatDistance(currentDistance)}${
+        tripPaused ? '\n\nMileage is paused.' : ''
+      }\n\nUse Pause for errands/stops without adding miles.`,
       [
-        {
-          text: 'Keep tracking',
-          style: 'cancel',
-        },
+        { text: 'Keep tracking', style: 'cancel' },
+        ...(tripPaused
+          ? [{ text: 'Resume mileage', onPress: () => void resumeTrip() }]
+          : [{ text: 'Pause mileage', onPress: () => void pauseTrip() }]),
         {
           text: 'End & save trip',
           style: 'default',
@@ -71,7 +74,9 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
           <MaterialIcons name="stop" size={24} color="#fff" />
           <View style={styles.textContainer}>
             <Text style={styles.stopText}>Stop Tracking</Text>
-            <Text style={styles.distanceText}>{formatDistance(currentDistance)}</Text>
+            <Text style={styles.distanceText}>
+              {tripPaused ? `${formatDistance(currentDistance)} · paused` : formatDistance(currentDistance)}
+            </Text>
           </View>
         </View>
       </TouchableOpacity>

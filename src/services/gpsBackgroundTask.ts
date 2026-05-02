@@ -34,6 +34,8 @@ export interface PersistedGpsState {
   stationaryAlertLastPromptAt?: number | null;
   stationaryAlertScheduledId?: string | null;
   nonDrivingCandidateStartTime?: number | null;
+  /** When true, location updates still run but mileage is not accumulated (errand / pit stop) */
+  isPaused?: boolean;
 }
 
 const VEHICLE_SPEED_THRESHOLD_MPH = 8;
@@ -112,6 +114,17 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     }
     if (typeof state.lastLocationTimestamp === 'undefined') {
       state.lastLocationTimestamp = now;
+    }
+    if (state.isPaused === true) {
+      state.lastLocation = { latitude: newLat, longitude: newLon };
+      state.lastLocationTimestamp = latestTimestamp;
+      state.stationaryStartTime = null;
+      state.nonDrivingCandidateStartTime = null;
+      state.stationaryAlertPending = false;
+      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      state.stationaryAlertScheduledId = null;
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      return;
     }
     await StationaryNotificationService.initialize();
 

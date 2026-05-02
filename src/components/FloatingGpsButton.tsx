@@ -10,12 +10,15 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 
 export default function FloatingGpsButton() {
-  const { 
-    isTracking, 
-    currentDistance, 
-    showMapOverlay, 
-    setShowMapOverlay, 
-    requestStopTracking 
+  const {
+    isTracking,
+    tripPaused,
+    pauseTrip,
+    resumeTrip,
+    currentDistance,
+    showMapOverlay,
+    setShowMapOverlay,
+    requestStopTracking,
   } = useGpsTracking();
 
   if (!isTracking) return null;
@@ -30,19 +33,19 @@ export default function FloatingGpsButton() {
 
   const handleStopTracking = () => {
     Alert.alert(
-      'Stop GPS Tracking',
-      `Are you sure you want to stop tracking?\n\nDistance tracked: ${formatDistance(currentDistance)}\n\nYou'll be asked to confirm your destination.`,
+      tripPaused ? 'Trip options (paused)' : 'Trip options',
+      `Distance tracked: ${formatDistance(currentDistance)}${
+        tripPaused ? '\n\nMileage is paused.' : ''
+      }`,
       [
+        { text: 'Close', style: 'cancel' },
+        ...(tripPaused
+          ? [{ text: 'Resume mileage', onPress: () => void resumeTrip() }]
+          : [{ text: 'Pause mileage', onPress: () => void pauseTrip() }]),
         {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Continue',
+          text: 'End trip',
           style: 'default',
-          onPress: () => {
-            requestStopTracking();
-          },
+          onPress: () => requestStopTracking(),
         },
       ]
     );
@@ -57,7 +60,9 @@ export default function FloatingGpsButton() {
       {/* Main tracking button */}
       <TouchableOpacity style={styles.mainButton} onPress={handleStopTracking}>
         <MaterialIcons name="gps-fixed" size={24} color="#fff" />
-        <Text style={styles.distanceText}>{formatDistance(currentDistance)}</Text>
+        <Text style={styles.distanceText}>
+          {tripPaused ? `${formatDistance(currentDistance)} · paused` : formatDistance(currentDistance)}
+        </Text>
         <MaterialIcons name="stop" size={20} color="#fff" />
       </TouchableOpacity>
 

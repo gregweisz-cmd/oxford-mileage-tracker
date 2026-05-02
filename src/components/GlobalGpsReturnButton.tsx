@@ -10,7 +10,7 @@ interface GlobalGpsReturnButtonProps {
 }
 
 export default function GlobalGpsReturnButton({ currentRouteName }: GlobalGpsReturnButtonProps) {
-  const { isTracking, currentDistance } = useGpsTracking();
+  const { isTracking, tripPaused, currentDistance } = useGpsTracking();
   const navigation = useNavigation<any>();
 
   // Only show if:
@@ -44,7 +44,9 @@ export default function GlobalGpsReturnButton({ currentRouteName }: GlobalGpsRet
         <MaterialIcons name="gps-fixed" size={20} color="#fff" />
         <View style={styles.textContainer}>
           <Text style={styles.buttonTitle}>GPS Tracking</Text>
-          <Text style={styles.buttonSubtitle}>{formatDistance(currentDistance)}</Text>
+          <Text style={styles.buttonSubtitle}>
+            {tripPaused ? `${formatDistance(currentDistance)} · paused` : formatDistance(currentDistance)}
+          </Text>
         </View>
         <MaterialIcons name="chevron-right" size={20} color="#fff" />
       </View>

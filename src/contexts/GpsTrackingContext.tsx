@@ -11,6 +11,10 @@ import {
 
 interface GpsTrackingContextType {
   isTracking: boolean;
+  /** Mileage paused (errand/pit stop) while GPS session stays active */
+  tripPaused: boolean;
+  pauseTrip: () => Promise<void>;
+  resumeTrip: () => Promise<void>;
   currentSession: GpsTrackingSession | null;
   currentDistance: number;
   setCurrentDistance: (distance: number) => void;
@@ -36,6 +40,7 @@ interface GpsTrackingProviderProps {
 
 export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const [isTracking, setIsTracking] = useState(false);
+  const [tripPaused, setTripPaused] = useState(false);
   const [currentSession, setCurrentSession] = useState<GpsTrackingSession | null>(null);
   const [currentDistance, setCurrentDistance] = useState(0);
   const [showMapOverlay, setShowMapOverlay] = useState(false);
@@ -65,6 +70,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     const sub = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
       if (nextState === 'active' && GpsTrackingService.isTracking()) {
         await GpsTrackingService.syncFromStorage();
+        setTripPaused(GpsTrackingService.isTripPaused());
         refreshTrackingStatus();
         const hasPendingAlert = await GpsTrackingService.hasPendingStationaryAlert();
         if (hasPendingAlert) {
@@ -82,7 +88,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     let mounted = true;
 
     const openStationaryPrompt = async () => {
-      if (!GpsTrackingService.isTracking()) return;
+      if (!GpsTrackingService.isTracking() || GpsTrackingService.isTripPaused()) return;
       setShowStationaryPrompt(true);
       await GpsTrackingService.consumeStationaryAlertPrompt();
     };
@@ -124,6 +130,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     const interval = setInterval(async () => {
       if (isTracking) {
         await GpsTrackingService.syncFromStorage();
+        setTripPaused(GpsTrackingService.isTripPaused());
         const newDistance = GpsTrackingService.getCurrentDistance();
         setCurrentDistance(prevDistance => {
           if (Math.abs(newDistance - prevDistance) > 0.01) return newDistance;
@@ -140,7 +147,8 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     
     setIsTracking(tracking);
     setCurrentSession(session);
-    
+    setTripPaused(tracking ? GpsTrackingService.isTripPaused() : false);
+
     if (tracking) {
       setCurrentDistance(GpsTrackingService.getCurrentDistance());
     } else {
@@ -148,11 +156,24 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     }
   };
 
+  const pauseTrip = async () => {
+    await GpsTrackingService.pauseTripMileage();
+    await GpsTrackingService.syncFromStorage();
+    refreshTrackingStatus();
+  };
+
+  const resumeTrip = async () => {
+    await GpsTrackingService.resumeTripMileage();
+    await GpsTrackingService.syncFromStorage();
+    refreshTrackingStatus();
+  };
+
   const startTracking = async (employeeId: string, purpose: string, odometerReading: number, notes?: string) => {
     try {
       const session = await GpsTrackingService.startTracking(employeeId, purpose, odometerReading, notes);
       setCurrentSession(session);
       setIsTracking(true);
+      setTripPaused(false);
       setCurrentDistance(0);
     } catch (error) {
       console.error('Error starting tracking:', error);
@@ -165,6 +186,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
       const completedSession = await GpsTrackingService.stopTracking(presetEndLocation);
       setCurrentSession(null);
       setIsTracking(false);
+      setTripPaused(false);
       setCurrentDistance(0);
       setShowMapOverlay(false);
       setShowStationaryPrompt(false);
@@ -192,6 +214,9 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
 
   const value: GpsTrackingContextType = {
     isTracking,
+    tripPaused,
+    pauseTrip,
+    resumeTrip,
     currentSession,
     currentDistance,
     setCurrentDistance,
@@ -212,7 +237,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     <GpsTrackingContext.Provider value={value}>
       {children}
       <Modal
-        visible={showStationaryPrompt && isTracking}
+        visible={showStationaryPrompt && isTracking && !tripPaused}
         transparent
         animationType="fade"
         onRequestClose={() => setShowStationaryPrompt(false)}

@@ -67,7 +67,18 @@ type StartLocationSuggestion = {
 
 export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
   const { colors } = useTheme();
-  const { isTracking, currentSession, startTracking, stopTracking, shouldShowEndLocationModal, setShouldShowEndLocationModal } = useGpsTracking();
+  const {
+    isTracking,
+    tripPaused,
+    pauseTrip,
+    resumeTrip,
+    currentSession,
+    currentDistance,
+    startTracking,
+    stopTracking,
+    shouldShowEndLocationModal,
+    setShouldShowEndLocationModal,
+  } = useGpsTracking();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [showGpsDuration, setShowGpsDuration] = useState(false);
   const [trackingForm, setTrackingForm] = useState({
@@ -1343,14 +1354,30 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       >
         {/* Tracking Status */}
         <View style={styles.statusContainer}>
-          <View style={[styles.statusCard, isTracking && styles.statusCardActive]}>
-            <MaterialIcons 
-              name={isTracking ? "gps-fixed" : "gps-off"} 
-              size={32} 
-              color={isTracking ? "#4CAF50" : "#666"} 
+          <View
+            style={[
+              styles.statusCard,
+              isTracking && styles.statusCardActive,
+              isTracking && tripPaused && styles.statusCardPaused,
+            ]}
+          >
+            <MaterialIcons
+              name={tripPaused ? 'pause-circle-filled' : isTracking ? 'gps-fixed' : 'gps-off'}
+              size={32}
+              color={tripPaused ? '#FF9800' : isTracking ? '#4CAF50' : '#666'}
             />
-            <Text style={[styles.statusText, isTracking && styles.statusTextActive]}>
-              {isTracking ? 'GPS Tracking Active' : 'GPS Tracking Inactive'}
+            <Text
+              style={[
+                styles.statusText,
+                isTracking && !tripPaused && styles.statusTextActive,
+                isTracking && tripPaused && styles.statusTextPaused,
+              ]}
+            >
+              {tripPaused
+                ? 'Mileage paused (trip still open)'
+                : isTracking
+                  ? 'GPS Tracking Active'
+                  : 'GPS Tracking Inactive'}
             </Text>
           </View>
         </View>
@@ -1616,11 +1643,47 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             </TouchableOpacity>
           ) : (
             <View style={styles.trackingActiveContainer}>
-              <View style={styles.trackingActiveCard}>
-                <MaterialIcons name="gps-fixed" size={32} color="#4CAF50" />
-                <Text style={styles.trackingActiveText}>GPS Tracking Active</Text>
+              <View style={[styles.trackingActiveCard, tripPaused && styles.trackingActiveCardPaused]}>
+                <MaterialIcons
+                  name={tripPaused ? 'pause-circle-filled' : 'gps-fixed'}
+                  size={32}
+                  color={tripPaused ? '#FF9800' : '#4CAF50'}
+                />
+                <Text style={[styles.trackingActiveText, tripPaused && styles.trackingActiveTextPaused]}>
+                  {tripPaused ? 'Mileage is paused' : 'GPS Tracking Active'}
+                </Text>
+                <Text style={styles.trackingActiveDistance}>
+                  Trip distance: {formatDistance(currentDistance)}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.pauseMileageButton, tripPaused && styles.pauseMileageButtonResume]}
+                  onPress={() =>
+                    Alert.alert(
+                      tripPaused ? 'Resume mileage?' : 'Pause mileage?',
+                      tripPaused
+                        ? 'Mileage will count again toward this trip.'
+                        : 'Use this for personal errands, gas, bank stops, etc. Miles will not accumulate until you resume.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: tripPaused ? 'Resume' : 'Pause',
+                          onPress: () => {
+                            void (tripPaused ? resumeTrip() : pauseTrip());
+                          },
+                        },
+                      ]
+                    )
+                  }
+                >
+                  <MaterialIcons name={tripPaused ? 'play-arrow' : 'pause'} size={22} color="#fff" />
+                  <Text style={styles.pauseMileageButtonText}>
+                    {tripPaused ? 'Resume mileage' : 'Pause mileage'}
+                  </Text>
+                </TouchableOpacity>
                 <Text style={styles.trackingActiveSubtext}>
-                  Use the "Stop Tracking" button in the top-right corner to end tracking
+                  {tripPaused
+                    ? 'When you\'re driving again on this trip, tap Resume mileage. Stop Tracking ends the trip and saves.'
+                    : 'Use Stop Tracking (top-right) or the GPS chip to end your trip and save'}
                 </Text>
               </View>
             </View>
@@ -1636,6 +1699,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               • Tap "Start GPS Tracking" to auto-detect your current address{'\n'}
               • Confirm the address and choose a location name{'\n'}
               • The app will automatically track your route and distance{'\n'}
+              • Use "Pause mileage" for errands or stops so those miles are not billed to this trip{'\n'}
               • Tap "Stop Tracking" and confirm your current end location{'\n'}
               • Your trip will be automatically saved with detailed location info{'\n'}
               • Vehicle is automatically set to "Personal Vehicle"{'\n'}
@@ -2197,6 +2261,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#4CAF50',
   },
+  statusCardPaused: {
+    borderColor: '#FF9800',
+    backgroundColor: '#fff8e1',
+  },
   statusText: {
     fontSize: 16,
     fontWeight: '600',
@@ -2205,6 +2273,9 @@ const styles = StyleSheet.create({
   },
   statusTextActive: {
     color: '#4CAF50',
+  },
+  statusTextPaused: {
+    color: '#E65100',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -2427,14 +2498,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#4CAF50',
-    maxWidth: 300,
+    maxWidth: 340,
+    width: '100%',
+  },
+  trackingActiveCardPaused: {
+    backgroundColor: '#fff8e1',
+    borderColor: '#FF9800',
   },
   trackingActiveText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#4CAF50',
     marginTop: 8,
-    marginBottom: 8,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  trackingActiveTextPaused: {
+    color: '#E65100',
+  },
+  trackingActiveDistance: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 14,
+  },
+  pauseMileageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF9800',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 12,
+    alignSelf: 'stretch',
+    maxWidth: 280,
+  },
+  pauseMileageButtonResume: {
+    backgroundColor: '#4CAF50',
+  },
+  pauseMileageButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 6,
   },
   trackingActiveSubtext: {
     fontSize: 14,
