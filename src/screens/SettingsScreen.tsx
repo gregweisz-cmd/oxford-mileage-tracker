@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DeviceIntelligenceService, DeviceSettings, UserInterfacePreferences, OfflineSyncPattern, InputMethodPreference } from '../services/deviceIntelligenceService';
 import { PerformanceOptimizationService, LoadingStrategy } from '../services/performanceOptimizationService';
 import { DeviceControlService, DeviceControlSettings } from '../services/deviceControlService';
-import { Employee } from '../types';
+import { Employee, Vehicle } from '../types';
 import { DatabaseService } from '../services/database';
 import { useTheme } from '../contexts/ThemeContext';
 import { hapticImpactUnconditional, hapticLight, hapticSelection } from '../utils/haptics';
@@ -53,7 +53,11 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showPreferredNameModal, setShowPreferredNameModal] = useState(false);
+  const [showVehiclesModal, setShowVehiclesModal] = useState(false);
   const [preferredNameInput, setPreferredNameInput] = useState('');
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleNameInput, setVehicleNameInput] = useState('');
+  const [vehiclePlateInput, setVehiclePlateInput] = useState('');
 
   const appVersion = Constants.expoConfig?.version || 'Unknown';
   const nativeBuild =
@@ -116,6 +120,8 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
       setDeviceSettings(device);
       setDeviceControlSettings(deviceControl);
       setInputPreferences(input);
+      const loadedVehicles = await DatabaseService.getVehicles(currentEmployee.id);
+      setVehicles(loadedVehicles);
 
     } catch (error) {
       console.error('❌ SettingsScreen: Error loading settings:', error);
@@ -123,6 +129,12 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     } finally {
       setLoading(false);
     }
+  };
+
+  const reloadVehicles = async () => {
+    if (!currentEmployee?.id) return;
+    const loaded = await DatabaseService.getVehicles(currentEmployee.id);
+    setVehicles(loaded);
   };
 
   const updateDeviceSettings = async (updates: Partial<DeviceSettings>) => {
@@ -354,6 +366,67 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     }
   };
 
+  const handleAddVehicle = async () => {
+    if (!currentEmployee?.id) return;
+    const name = vehicleNameInput.trim();
+    if (!name) {
+      Alert.alert('Missing vehicle name', 'Enter a vehicle name (for example, Vehicle B or Prius).');
+      return;
+    }
+    try {
+      await DatabaseService.createVehicle({
+        employeeId: currentEmployee.id,
+        name,
+        plateNumber: vehiclePlateInput.trim() || undefined,
+        isDefault: vehicles.length === 0,
+      });
+      setVehicleNameInput('');
+      setVehiclePlateInput('');
+      await reloadVehicles();
+    } catch (error) {
+      console.error('❌ Error adding vehicle:', error);
+      Alert.alert('Error', 'Failed to add vehicle');
+    }
+  };
+
+  const handleSetDefaultVehicle = async (vehicleId: string) => {
+    if (!currentEmployee?.id) return;
+    try {
+      await DatabaseService.setDefaultVehicle(currentEmployee.id, vehicleId);
+      await reloadVehicles();
+    } catch (error) {
+      console.error('❌ Error setting default vehicle:', error);
+      Alert.alert('Error', 'Failed to set default vehicle');
+    }
+  };
+
+  const handleRemoveVehicle = async (vehicle: Vehicle) => {
+    if (vehicles.length <= 1) {
+      Alert.alert('Cannot remove', 'At least one active vehicle is required.');
+      return;
+    }
+    Alert.alert('Remove vehicle?', `Remove "${vehicle.name}" from active vehicles?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await DatabaseService.updateVehicle(vehicle.id, { isActive: false });
+            const nextVehicles = vehicles.filter((v) => v.id !== vehicle.id);
+            if (vehicle.isDefault && currentEmployee?.id && nextVehicles[0]) {
+              await DatabaseService.setDefaultVehicle(currentEmployee.id, nextVehicles[0].id);
+            }
+            await reloadVehicles();
+          } catch (error) {
+            console.error('❌ Error removing vehicle:', error);
+            Alert.alert('Error', 'Failed to remove vehicle');
+          }
+        },
+      },
+    ]);
+  };
+
   const renderEssentialSettings = () => (
     <View style={styles.sectionContent}>
       {renderSettingRow(
@@ -361,6 +434,13 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
         'For app and web portal only. Legal name used on reports.',
         currentEmployee?.preferredName || currentEmployee?.name?.split(' ')[0] || 'Not set',
         handleEditPreferredName
+      )}
+
+      {renderSettingRow(
+        'Vehicles',
+        'Add vehicles, set your default, and manage labels',
+        vehicles.find((v) => v.isDefault)?.name || `${vehicles.length} vehicle(s)`,
+        () => setShowVehiclesModal(true)
       )}
       
       {renderSettingRow(
@@ -519,6 +599,89 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     </Modal>
   );
 
+  const renderVehiclesModal = () => (
+    <Modal
+      visible={showVehiclesModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowVehiclesModal(false)}
+    >
+      <KeyboardAvoidingView
+        style={styles.preferredNameKeyboardRoot}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+          <View style={[styles.modalContent, styles.preferredNameModalSheet]}>
+            <Text style={styles.modalTitle}>Manage Vehicles</Text>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={styles.preferredNameScroll}
+              contentContainerStyle={styles.preferredNameScrollContent}
+            >
+              <Text style={styles.modalSubtitle}>
+                Select a default vehicle used for odometer suggestions. You can still choose another vehicle when creating GPS/manual trips.
+              </Text>
+
+              {vehicles.map((vehicle) => (
+                <View key={vehicle.id} style={styles.vehicleRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingTitle}>{vehicle.name}</Text>
+                    <Text style={styles.settingSubtitle}>
+                      {vehicle.plateNumber || 'No plate'}{vehicle.isDefault ? ' • Default' : ''}
+                    </Text>
+                  </View>
+                  {!vehicle.isDefault ? (
+                    <TouchableOpacity
+                      style={styles.vehicleAction}
+                      onPress={() => handleSetDefaultVehicle(vehicle.id)}
+                    >
+                      <Text style={styles.vehicleActionText}>Set default</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    style={styles.vehicleActionDanger}
+                    onPress={() => handleRemoveVehicle(vehicle)}
+                  >
+                    <MaterialIcons name="delete-outline" size={18} color="#b71c1c" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <Text style={[styles.settingTitle, { marginTop: 10 }]}>Add Vehicle</Text>
+              <TextInput
+                style={styles.input}
+                value={vehicleNameInput}
+                onChangeText={setVehicleNameInput}
+                placeholder="Vehicle name (required)"
+                placeholderTextColor="#999"
+              />
+              <TextInput
+                style={styles.input}
+                value={vehiclePlateInput}
+                onChangeText={setVehiclePlateInput}
+                placeholder="Plate number (optional)"
+                placeholderTextColor="#999"
+                autoCapitalize="characters"
+              />
+              <TouchableOpacity style={styles.button} onPress={handleAddVehicle}>
+                <Text style={styles.buttonText}>Add Vehicle</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalCancel, { flex: 1 }]}
+                onPress={() => setShowVehiclesModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -558,6 +721,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
 
       {renderThemeModal()}
       {renderPreferredNameModal()}
+      {renderVehiclesModal()}
     </View>
   );
 }
@@ -852,5 +1016,31 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
+  },
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  vehicleAction: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    borderRadius: 6,
+  },
+  vehicleActionText: {
+    color: '#2196F3',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  vehicleActionDanger: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#ffebee',
   },
 });

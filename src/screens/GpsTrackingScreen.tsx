@@ -20,7 +20,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { DatabaseService } from '../services/database';
-import { GpsTrackingSession, Employee, LocationDetails, OxfordHouse, SavedAddress } from '../types';
+import { GpsTrackingSession, Employee, LocationDetails, OxfordHouse, SavedAddress, Vehicle } from '../types';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import { formatLocation } from '../utils/locationFormatter';
 import LocationCaptureModal from '../components/LocationCaptureModal';
@@ -139,6 +139,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [costCenterSuggestions, setCostCenterSuggestions] = useState<CostCenterSuggestion[]>([]);
   const [showCostCenterSuggestions, setShowCostCenterSuggestions] = useState(false);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
   const [lastTravelDayEndingOdometerNote, setLastTravelDayEndingOdometerNote] = useState('');
   const [isEditingOdometer, setIsEditingOdometer] = useState(false);
@@ -168,6 +170,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setShowPurposeSuggestions(false);
     };
   }, []);
+
+  useEffect(() => {
+    if (currentEmployee && selectedVehicleId) {
+      void checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId);
+    }
+  }, [currentEmployee, selectedVehicleId]);
 
   // Load user preferences
   const loadPreferences = async () => {
@@ -219,9 +227,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       // Refresh GPS tracking status in case it's a new day
       if (currentEmployee) {
-        checkGpsTrackingStatus(currentEmployee.id);
+        checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
       }
-    }, [currentEmployee, route?.params?.showEndModal, navigation, setShouldShowEndLocationModal])
+    }, [currentEmployee, selectedVehicleId, route?.params?.showEndModal, navigation, setShouldShowEndLocationModal])
   );
 
   // Watch for stop tracking request from global button
@@ -302,13 +310,18 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           
-          const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, today);
+          const existingReading = await DatabaseService.getDailyOdometerReading(
+            currentEmployee.id,
+            today,
+            selectedVehicleId || undefined
+          );
           
           // If no daily odometer reading exists, create one from the current odometer reading
           if (!existingReading && trackingForm.odometerReading) {
             console.log('📝 Creating daily odometer reading from GPS tracking:', trackingForm.odometerReading);
             await DatabaseService.createDailyOdometerReading({
               employeeId: currentEmployee.id,
+              vehicleId: selectedVehicleId || undefined,
               date: today,
               odometerReading: Number(trackingForm.odometerReading),
               notes: 'Auto-captured from first GPS tracking session'
@@ -367,15 +380,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setCurrentEmployee(employee);
       
       if (employee) {
+        const loadedVehicles = await DatabaseService.getVehicles(employee.id);
+        setVehicles(loadedVehicles);
+        const defaultVehicle = loadedVehicles.find((v) => v.isDefault) || loadedVehicles[0];
+        setSelectedVehicleId(defaultVehicle?.id || '');
+
         // Initialize cost center
         const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || '';
         setSelectedCostCenter(costCenter);
         
         // Check if GPS tracking has been started today
-        await checkGpsTrackingStatus(employee.id);
+        await checkGpsTrackingStatus(employee.id, defaultVehicle?.id);
 
         const today = new Date();
-        const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(employee.id, today);
+        const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(
+          employee.id,
+          today,
+          defaultVehicle?.id
+        );
         if (lastTravelDay) {
           const dateText = lastTravelDay.date.toLocaleDateString();
           setLastTravelDayEndingOdometerNote(
@@ -426,7 +448,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
   };
 
-  const checkGpsTrackingStatus = async (employeeId: string) => {
+  const checkGpsTrackingStatus = async (employeeId: string, vehicleId?: string) => {
     try {
       // Use device's local timezone instead of UTC
       const now = new Date();
@@ -435,7 +457,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       console.log('🚗 GPS: Checking GPS status for date:', today.toISOString().split('T')[0]);
       
       // Check if there's a daily odometer reading for today
-      const existingReading = await DatabaseService.getDailyOdometerReading(employeeId, today);
+      const existingReading = await DatabaseService.getDailyOdometerReading(
+        employeeId,
+        today,
+        vehicleId
+      );
       
       if (existingReading) {
         console.log('🚗 GPS: Daily odometer reading exists, GPS tracking has been started today');
@@ -501,7 +527,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       await DatabaseService.updateDailyOdometerReadingByEmployeeAndDate(currentEmployee.id, dateStr, {
         odometerReading: parseFloat(trackingForm.odometerReading),
         notes: 'Updated by user'
-      });
+      }, selectedVehicleId || undefined);
       
       console.log('✅ GPS: Odometer reading updated successfully');
 
@@ -510,7 +536,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       // Refresh the GPS tracking status to get the updated odometer reading
       if (currentEmployee) {
-        await checkGpsTrackingStatus(currentEmployee.id);
+        await checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
       }
     } catch (error) {
       console.error('Error updating odometer reading:', error);
@@ -522,7 +548,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setIsEditingOdometer(false);
     // Reload the current odometer reading
     if (currentEmployee) {
-      checkGpsTrackingStatus(currentEmployee.id);
+      checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
     }
   };
 
@@ -998,13 +1024,18 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       console.log('🚗 GPS: Starting GPS tracking for date:', today.toISOString().split('T')[0]);
       
-      const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee!.id, today);
+      const existingReading = await DatabaseService.getDailyOdometerReading(
+        currentEmployee!.id,
+        today,
+        selectedVehicleId || undefined
+      );
       
       // If no daily odometer reading exists, create one from the current odometer reading
       if (!existingReading && trackingForm.odometerReading) {
         console.log('📝 Creating daily odometer reading from GPS tracking:', trackingForm.odometerReading);
         await DatabaseService.createDailyOdometerReading({
           employeeId: currentEmployee!.id,
+          vehicleId: selectedVehicleId || undefined,
           date: today,
           odometerReading: Number(trackingForm.odometerReading),
           notes: 'Auto-captured from first GPS tracking session'
@@ -1162,6 +1193,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             DatabaseService.createMileageEntry({
               employeeId: currentEmployee.id,
               oxfordHouseId: currentEmployee.oxfordHouseId,
+              vehicleId: selectedVehicleId || undefined,
               date: completedSession.startTime,
               odometerReading: completedSession.odometerReading,
               startLocation: startLocationDetails?.name || startLocationDetails?.address || completedSession.startLocation || 'Unknown',
@@ -1332,6 +1364,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const formatDistance = (miles: number): string => {
     return `${Math.round(miles)} mi`;
   };
+  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) || null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1397,6 +1430,41 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         {!isTracking && (
           <View style={styles.formContainer}>
             <Text style={styles.sectionTitle}>Trip Details</Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Vehicle</Text>
+              <View style={styles.vehicleSelector}>
+                {vehicles.map((vehicle) => (
+                  <TouchableOpacity
+                    key={vehicle.id}
+                    style={[
+                      styles.vehicleOption,
+                      selectedVehicleId === vehicle.id && styles.vehicleOptionSelected,
+                    ]}
+                    onPress={() => setSelectedVehicleId(vehicle.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.vehicleOptionText,
+                        selectedVehicleId === vehicle.id && styles.vehicleOptionTextSelected,
+                      ]}
+                    >
+                      {vehicle.name}
+                    </Text>
+                    {vehicle.isDefault ? (
+                      <Text
+                        style={[
+                          styles.vehicleOptionBadge,
+                          selectedVehicleId === vehicle.id && styles.vehicleOptionBadgeSelected,
+                        ]}
+                      >
+                        default
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
             
             {/* Only show odometer input on first GPS session of the day */}
             {!hasStartedGpsToday && (
@@ -2929,6 +2997,41 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: '#2196F3',
+  },
+  vehicleSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vehicleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  vehicleOptionSelected: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  vehicleOptionText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  vehicleOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  vehicleOptionBadge: {
+    marginLeft: 6,
+    fontSize: 10,
+    color: '#666',
+  },
+  vehicleOptionBadgeSelected: {
+    color: '#e3f2fd',
   },
   // Cost Center Selector Styles
   costCenterSelector: {

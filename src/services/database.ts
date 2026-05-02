@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
-import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription, CostCenterSummary } from '../types';
+import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription, CostCenterSummary, Vehicle } from '../types';
 import { MileageAnalysisService } from './mileageAnalysisService';
 import { ApiSyncService } from './apiSyncService';
 import { getFullLocationAddress } from '../utils/addressFormatter';
@@ -347,9 +347,25 @@ export class DatabaseService {
         CREATE TABLE IF NOT EXISTS daily_odometer_readings (
           id TEXT PRIMARY KEY,
           employeeId TEXT NOT NULL,
+          vehicleId TEXT,
           date TEXT NOT NULL,
           odometerReading REAL NOT NULL,
           notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+      `);
+      await this.runDailyOdometerMigrations(database);
+
+      // Create vehicles table
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS vehicles (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          name TEXT NOT NULL,
+          plateNumber TEXT,
+          isDefault INTEGER DEFAULT 0,
+          isActive INTEGER DEFAULT 1,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );
@@ -568,6 +584,8 @@ export class DatabaseService {
       
       // Indexes for daily_odometer_readings table
       await database.execAsync('CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_date ON daily_odometer_readings(employeeId, date)');
+      await database.execAsync('CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_vehicle_date ON daily_odometer_readings(employeeId, vehicleId, date)');
+      await database.execAsync('CREATE INDEX IF NOT EXISTS idx_vehicles_employee ON vehicles(employeeId)');
       
       debugLog('✅ Database indexes created successfully');
 
@@ -704,6 +722,7 @@ export class DatabaseService {
       'biweekly_reports',
       'receipts',
       'daily_odometer_readings',
+      'vehicles',
       'saved_addresses',
       'time_tracking',
       'daily_descriptions',
@@ -1027,17 +1046,18 @@ export class DatabaseService {
     // Insert with location details
     await database.runAsync(
       `INSERT INTO mileage_entries (
-        id, employeeId, oxfordHouseId, costCenter, date, odometerReading, 
+        id, employeeId, oxfordHouseId, costCenter, vehicleId, date, odometerReading, 
         startLocation, endLocation, startLocationName, startLocationAddress, 
         startLocationLat, startLocationLng, endLocationName, endLocationAddress, 
         endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, 
         isGpsTracked, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id, 
         entry.employeeId, 
         entry.oxfordHouseId, 
         entry.costCenter || '',
+        entry.vehicleId || '',
         dateOnly, // Store as YYYY-MM-DD only (no time component)
         entry.odometerReading,
         entry.startLocation, 
@@ -1829,14 +1849,16 @@ export class DatabaseService {
     
     debugLog('💾 Database: Creating daily odometer reading');
     debugLog('💾 Database: Employee ID:', reading.employeeId);
+    debugLog('💾 Database: Vehicle ID:', reading.vehicleId || '(none)');
     debugLog('💾 Database: Date (local):', dateStr);
     debugLog('💾 Database: Odometer Reading:', reading.odometerReading);
     
     await database.runAsync(
-      'INSERT INTO daily_odometer_readings (id, employeeId, date, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO daily_odometer_readings (id, employeeId, vehicleId, date, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [
         id, 
         reading.employeeId, 
+        reading.vehicleId || '',
         dateStr, 
         reading.odometerReading,
         reading.notes || '', 
@@ -1862,7 +1884,7 @@ export class DatabaseService {
     return newReading;
   }
 
-  static async getDailyOdometerReading(employeeId: string, date: Date): Promise<DailyOdometerReading | null> {
+  static async getDailyOdometerReading(employeeId: string, date: Date, vehicleId?: string): Promise<DailyOdometerReading | null> {
     const database = await getDatabase();
     // Use local timezone instead of UTC to avoid timezone issues
     const year = date.getFullYear();
@@ -1874,10 +1896,25 @@ export class DatabaseService {
     debugLog('🔍 Database: Employee ID:', employeeId);
     debugLog('🔍 Database: Date string (local):', dateStr);
     
-    const result = await database.getFirstAsync(
-      'SELECT * FROM daily_odometer_readings WHERE employeeId = ? AND date = ?',
-      [employeeId, dateStr]
-    ) as any;
+    let result: any = null;
+    if (vehicleId) {
+      result = await database.getFirstAsync(
+        'SELECT * FROM daily_odometer_readings WHERE employeeId = ? AND date = ? AND vehicleId = ?',
+        [employeeId, dateStr, vehicleId]
+      ) as any;
+      if (!result) {
+        // Legacy fallback rows created before vehicle support.
+        result = await database.getFirstAsync(
+          'SELECT * FROM daily_odometer_readings WHERE employeeId = ? AND date = ? AND (vehicleId IS NULL OR vehicleId = \'\')',
+          [employeeId, dateStr]
+        ) as any;
+      }
+    } else {
+      result = await database.getFirstAsync(
+        'SELECT * FROM daily_odometer_readings WHERE employeeId = ? AND date = ?',
+        [employeeId, dateStr]
+      ) as any;
+    }
 
     debugLog('🔍 Database: Query result:', result);
 
@@ -1890,6 +1927,7 @@ export class DatabaseService {
     return {
       id: result.id,
       employeeId: result.employeeId,
+      vehicleId: result.vehicleId || undefined,
       date: new Date(result.date),
       odometerReading: result.odometerReading,
       notes: result.notes,
@@ -1915,6 +1953,7 @@ export class DatabaseService {
     return result.map((row: any) => ({
       id: row.id,
       employeeId: row.employeeId,
+      vehicleId: row.vehicleId || undefined,
       date: new Date(row.date),
       odometerReading: row.odometerReading,
       notes: row.notes,
@@ -1925,7 +1964,8 @@ export class DatabaseService {
 
   static async getLastTravelDayEndingOdometer(
     employeeId: string,
-    beforeDate?: Date
+    beforeDate?: Date,
+    vehicleId?: string
   ): Promise<{ date: Date; startingOdometer: number; totalMiles: number; endingOdometer: number } | null> {
     const entries = await this.getMileageEntries(employeeId);
     if (!entries.length) return null;
@@ -1936,7 +1976,8 @@ export class DatabaseService {
     const filteredEntries = entries.filter((entry) => {
       const d = new Date(entry.date);
       d.setHours(0, 0, 0, 0);
-      return d.getTime() < cutoff.getTime();
+      const vehicleMatches = !vehicleId || entry.vehicleId === vehicleId;
+      return d.getTime() < cutoff.getTime() && vehicleMatches;
     });
     if (!filteredEntries.length) return null;
 
@@ -1959,7 +2000,7 @@ export class DatabaseService {
     const latestDayEntries = entriesByDay.get(latestDayKey) || [];
     const totalMiles = latestDayEntries.reduce((sum, entry) => sum + (Number(entry.miles) || 0), 0);
 
-    const dailyReading = await this.getDailyOdometerReading(employeeId, latestDay);
+    const dailyReading = await this.getDailyOdometerReading(employeeId, latestDay, vehicleId);
     const fallbackStart = latestDayEntries.reduce((min, entry) => {
       const reading = Number(entry.odometerReading) || 0;
       return min === null ? reading : Math.min(min, reading);
@@ -2001,7 +2042,7 @@ export class DatabaseService {
     );
   }
 
-  static async updateDailyOdometerReadingByEmployeeAndDate(employeeId: string, dateStr: string, updates: Partial<DailyOdometerReading>): Promise<void> {
+  static async updateDailyOdometerReadingByEmployeeAndDate(employeeId: string, dateStr: string, updates: Partial<DailyOdometerReading>, vehicleId?: string): Promise<void> {
     const database = await getDatabase();
     const now = new Date().toISOString();
     
@@ -2021,11 +2062,18 @@ export class DatabaseService {
     values.push(now);
     values.push(employeeId);
     values.push(dateStr);
-    
-    await database.runAsync(
-      `UPDATE daily_odometer_readings SET ${fields.join(', ')} WHERE employeeId = ? AND date = ?`,
-      values
-    );
+    if (vehicleId) {
+      values.push(vehicleId);
+      await database.runAsync(
+        `UPDATE daily_odometer_readings SET ${fields.join(', ')} WHERE employeeId = ? AND date = ? AND vehicleId = ?`,
+        values
+      );
+    } else {
+      await database.runAsync(
+        `UPDATE daily_odometer_readings SET ${fields.join(', ')} WHERE employeeId = ? AND date = ?`,
+        values
+      );
+    }
     
     debugLog('🔧 Database: Updated daily odometer reading for employee:', employeeId, 'date:', dateStr, 'updates:', updates);
   }
@@ -2033,6 +2081,101 @@ export class DatabaseService {
   static async deleteDailyOdometerReading(id: string): Promise<void> {
     const database = await getDatabase();
     await database.runAsync('DELETE FROM daily_odometer_readings WHERE id = ?', [id]);
+  }
+
+  // Vehicle methods
+  static async createVehicle(data: {
+    employeeId: string;
+    name: string;
+    plateNumber?: string;
+    isDefault?: boolean;
+  }): Promise<Vehicle> {
+    const database = await getDatabase();
+    const id = this.generateId();
+    const now = new Date().toISOString();
+    const setDefault = data.isDefault === true;
+    if (setDefault) {
+      await database.runAsync('UPDATE vehicles SET isDefault = 0 WHERE employeeId = ?', [data.employeeId]);
+    }
+    await database.runAsync(
+      `INSERT INTO vehicles (id, employeeId, name, plateNumber, isDefault, isActive, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+      [id, data.employeeId, data.name.trim(), data.plateNumber?.trim() || '', setDefault ? 1 : 0, now, now]
+    );
+    return {
+      id,
+      employeeId: data.employeeId,
+      name: data.name.trim(),
+      plateNumber: data.plateNumber?.trim() || undefined,
+      isDefault: setDefault,
+      isActive: true,
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    };
+  }
+
+  static async getVehicles(employeeId: string): Promise<Vehicle[]> {
+    const database = await getDatabase();
+    const rows = await database.getAllAsync(
+      'SELECT * FROM vehicles WHERE employeeId = ? AND isActive = 1 ORDER BY isDefault DESC, createdAt ASC',
+      [employeeId]
+    );
+    const vehicles = rows.map((row: any) => ({
+      id: row.id,
+      employeeId: row.employeeId,
+      name: row.name,
+      plateNumber: row.plateNumber || undefined,
+      isDefault: row.isDefault === 1 || row.isDefault === true,
+      isActive: row.isActive === 1 || row.isActive === true,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    }));
+    if (vehicles.length === 0) {
+      const created = await this.createVehicle({
+        employeeId,
+        name: 'Vehicle A',
+        isDefault: true,
+      });
+      return [created];
+    }
+    if (!vehicles.some((v) => v.isDefault)) {
+      await this.setDefaultVehicle(employeeId, vehicles[0].id);
+      vehicles[0].isDefault = true;
+    }
+    return vehicles;
+  }
+
+  static async setDefaultVehicle(employeeId: string, vehicleId: string): Promise<void> {
+    const database = await getDatabase();
+    const now = new Date().toISOString();
+    await database.runAsync('UPDATE vehicles SET isDefault = 0, updatedAt = ? WHERE employeeId = ?', [now, employeeId]);
+    await database.runAsync('UPDATE vehicles SET isDefault = 1, updatedAt = ? WHERE id = ? AND employeeId = ?', [now, vehicleId, employeeId]);
+  }
+
+  static async updateVehicle(
+    id: string,
+    updates: Partial<Pick<Vehicle, 'name' | 'plateNumber' | 'isActive'>>
+  ): Promise<void> {
+    const database = await getDatabase();
+    const fields: string[] = [];
+    const values: any[] = [];
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name.trim());
+    }
+    if (updates.plateNumber !== undefined) {
+      fields.push('plateNumber = ?');
+      values.push((updates.plateNumber || '').trim());
+    }
+    if (updates.isActive !== undefined) {
+      fields.push('isActive = ?');
+      values.push(updates.isActive ? 1 : 0);
+    }
+    if (fields.length === 0) return;
+    fields.push('updatedAt = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+    await database.runAsync(`UPDATE vehicles SET ${fields.join(', ')} WHERE id = ?`, values);
   }
 
   // Oxford House operations
@@ -2575,6 +2718,7 @@ export class DatabaseService {
   private static async runMileageEntriesMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
     const mileageMigrations = [
       { column: 'costCenter', type: 'TEXT DEFAULT \'\'' },
+      { column: 'vehicleId', type: 'TEXT' },
       { column: 'startLocationName', type: 'TEXT' },
       { column: 'startLocationAddress', type: 'TEXT' },
       { column: 'startLocationLat', type: 'REAL' },
@@ -2594,6 +2738,26 @@ export class DatabaseService {
       } catch (error) {
         // Column already exists, ignore error
         debugLog(`ℹ️ Column ${migration.column} already exists in mileage_entries table`);
+      }
+    }
+  }
+
+  /**
+   * Run daily odometer table migrations
+   */
+  private static async runDailyOdometerMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
+    const odometerMigrations = [
+      { column: 'vehicleId', type: 'TEXT' },
+    ];
+
+    for (const migration of odometerMigrations) {
+      try {
+        await database.execAsync(`
+          ALTER TABLE daily_odometer_readings ADD COLUMN ${migration.column} ${migration.type};
+        `);
+        debugLog(`✅ Added column ${migration.column} to daily_odometer_readings table`);
+      } catch (error) {
+        debugLog(`ℹ️ Column ${migration.column} already exists in daily_odometer_readings table`);
       }
     }
   }

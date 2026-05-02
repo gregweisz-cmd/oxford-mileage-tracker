@@ -19,7 +19,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { DistanceService } from '../services/distanceService';
-import { MileageEntry, Employee, LocationDetails } from '../types';
+import { MileageEntry, Employee, LocationDetails, Vehicle } from '../types';
 import LocationCaptureModal from '../components/LocationCaptureModal';
 import { formatLocationForInput } from '../utils/locationFormatter';
 import UnifiedHeader from '../components/UnifiedHeader';
@@ -77,6 +77,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const [showTripChainingModal, setShowTripChainingModal] = useState(false);
   const [loadingChainingSuggestions, setLoadingChainingSuggestions] = useState(false);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [costCenterSuggestion, setCostCenterSuggestion] = useState<CostCenterSuggestion | null>(null);
   const [isCostCenterAutoSelected, setIsCostCenterAutoSelected] = useState(false);
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
@@ -169,7 +171,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     if (currentEmployee && formData.date && !isEditing) {
       checkExistingEntriesForDate(formData.date);
     }
-  }, [formData.date, currentEmployee, isEditing]);
+  }, [formData.date, currentEmployee, isEditing, selectedVehicleId]);
 
   useEffect(() => {
     const loadLastTravelDayEndingOdometer = async () => {
@@ -179,7 +181,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       }
       const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(
         currentEmployee.id,
-        formData.date
+        formData.date,
+        selectedVehicleId || undefined
       );
       if (!lastTravelDay) {
         setLastTravelDayEndingOdometerNote('');
@@ -192,7 +195,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     };
 
     void loadLastTravelDayEndingOdometer();
-  }, [currentEmployee, formData.date, isEditing]);
+  }, [currentEmployee, formData.date, isEditing, selectedVehicleId]);
 
   // Load purpose suggestions when both locations are entered
   useEffect(() => {
@@ -307,6 +310,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       const currentEmployee = await DatabaseService.getCurrentEmployee();
       if (currentEmployee) {
         setCurrentEmployee(currentEmployee);
+        const loadedVehicles = await DatabaseService.getVehicles(currentEmployee.id);
+        setVehicles(loadedVehicles);
+        const defaultVehicle =
+          loadedVehicles.find((v) => v.isDefault) || loadedVehicles[0];
+        setSelectedVehicleId(defaultVehicle?.id || '');
         
         // Initialize cost center
         const costCenter = currentEmployee.defaultCostCenter || currentEmployee.selectedCostCenters?.[0] || '';
@@ -364,7 +372,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       setHasExistingEntriesToday(entriesForDate.length > 0);
       
       // Check if there's a daily odometer reading for this date
-      const dailyOdometerReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, date);
+      const dailyOdometerReading = await DatabaseService.getDailyOdometerReading(
+        currentEmployee.id,
+        date,
+        selectedVehicleId || undefined
+      );
       if (dailyOdometerReading) {
         // If daily odometer reading exists, use it and disable input
         setFormData(prev => ({
@@ -398,7 +410,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const dateStr = today.toISOString().split('T')[0];
       
-      const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, today);
+      const existingReading = await DatabaseService.getDailyOdometerReading(
+        currentEmployee.id,
+        today,
+        selectedVehicleId || undefined
+      );
       
       if (existingReading) {
         setHasStartedGpsToday(true);
@@ -430,6 +446,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       const entry = entries.find(e => e.id === entryId);
       
       if (entry) {
+        if (entry.vehicleId) {
+          setSelectedVehicleId(entry.vehicleId);
+        }
         setFormData({
           date: entry.date,
           odometerReading: entry.odometerReading.toString(),
@@ -450,6 +469,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) || null;
 
   const focusNextAfterOdometer = () => {
     // Progress to the next actionable field in the flow, even when
@@ -778,13 +799,18 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       const entryDate = new Date(formData.date);
       entryDate.setHours(0, 0, 0, 0);
       
-      const existingReading = await DatabaseService.getDailyOdometerReading(currentEmployee.id, entryDate);
+      const existingReading = await DatabaseService.getDailyOdometerReading(
+        currentEmployee.id,
+        entryDate,
+        selectedVehicleId || undefined
+      );
       
       // If no daily odometer reading exists, create one from the current odometer reading
       if (!existingReading && formData.odometerReading) {
         console.log('📝 Creating daily odometer reading from manual entry:', formData.odometerReading);
         await DatabaseService.createDailyOdometerReading({
           employeeId: currentEmployee.id,
+          vehicleId: selectedVehicleId || undefined,
           date: entryDate,
           odometerReading: Number(formData.odometerReading),
           notes: 'Auto-captured from first manual mileage entry'
@@ -794,6 +820,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       const entryData = {
         employeeId: currentEmployee.id,
         oxfordHouseId: currentEmployee.oxfordHouseId,
+        vehicleId: selectedVehicleId || undefined,
         date: formData.date,
         odometerReading: Number(formData.odometerReading),
         startLocation: formData.startLocation.trim(),
@@ -1118,6 +1145,41 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         )}
 
         {/* Odometer Reading - only show input on first session of day */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Vehicle</Text>
+          <View style={styles.vehicleSelector}>
+            {vehicles.map((vehicle) => (
+              <TouchableOpacity
+                key={vehicle.id}
+                style={[
+                  styles.vehicleOption,
+                  selectedVehicleId === vehicle.id && styles.vehicleOptionSelected,
+                ]}
+                onPress={() => setSelectedVehicleId(vehicle.id)}
+              >
+                <Text
+                  style={[
+                    styles.vehicleOptionText,
+                    selectedVehicleId === vehicle.id && styles.vehicleOptionTextSelected,
+                  ]}
+                >
+                  {vehicle.name}
+                </Text>
+                {vehicle.isDefault ? (
+                  <Text
+                    style={[
+                      styles.vehicleOptionBadge,
+                      selectedVehicleId === vehicle.id && styles.vehicleOptionBadgeSelected,
+                    ]}
+                  >
+                    default
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {!hasStartedGpsToday && !hasExistingEntriesToday ? (
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Starting Odometer Reading *</Text>
@@ -1136,7 +1198,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
               />
             </ScrollToOnFocusView>
             <Text style={styles.helpText}>
-              Enter the odometer reading at the start of this trip
+              Enter the odometer reading at the start of this trip{selectedVehicle ? ` (${selectedVehicle.name})` : ''}
             </Text>
             {lastTravelDayEndingOdometerNote ? (
               <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
@@ -2251,6 +2313,41 @@ const styles = StyleSheet.create({
   },
   
   // Cost Center Selector Styles
+  vehicleSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vehicleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  vehicleOptionSelected: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  vehicleOptionText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  vehicleOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  vehicleOptionBadge: {
+    marginLeft: 6,
+    fontSize: 10,
+    color: '#666',
+  },
+  vehicleOptionBadgeSelected: {
+    color: '#e3f2fd',
+  },
   costCenterSelector: {
     flexDirection: 'row',
     flexWrap: 'wrap',

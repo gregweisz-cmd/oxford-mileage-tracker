@@ -71,9 +71,21 @@ export interface SavedAddress {
 export interface DailyOdometerReading {
   id: string;
   employeeId: string;
+  vehicleId?: string;
   date: Date; // Date for this reading (YYYY-MM-DD)
   odometerReading: number; // Starting odometer reading for the day
   notes?: string; // Optional notes
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Vehicle {
+  id: string;
+  employeeId: string;
+  name: string;
+  plateNumber?: string;
+  isDefault: boolean;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -83,6 +95,7 @@ export interface MileageEntry {
   employeeId: string;
   oxfordHouseId: string;
   costCenter: string; // Cost center for this specific entry
+  vehicleId?: string;
   date: Date;
   odometerReading: number; // Starting odometer reading for this trip
   startLocation: string;
@@ -127,6 +140,7 @@ export interface IntegrationMapping {
 export interface GpsTrackingSession {
   id: string;
   employeeId: string;
+  vehicleId?: string;
   startTime: Date;
   endTime?: Date;
   odometerReading: number; // Starting odometer reading for this session
