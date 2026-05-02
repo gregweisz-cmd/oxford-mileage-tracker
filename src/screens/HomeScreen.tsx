@@ -109,6 +109,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [showMonthYearModal, setShowMonthYearModal] = useState(false);
+  const selectedMonthRef = useRef(selectedMonth);
+  const selectedYearRef = useRef(selectedYear);
+  selectedMonthRef.current = selectedMonth;
+  selectedYearRef.current = selectedYear;
 
   useEffect(() => {
     setSyncMonthScope(selectedMonth, selectedYear);
@@ -379,7 +383,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         onPress: () =>
           navigation.navigate({
             name: 'PerDiem',
-            params: { selectedMonth, selectedYear },
+            params: getSelectedMonthParams(),
             merge: true,
           }),
       },
@@ -805,10 +809,15 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     navigation.navigate('AddReceipt');
   };
 
+  const getSelectedMonthParams = () => ({
+    selectedMonth: selectedMonthRef.current,
+    selectedYear: selectedYearRef.current,
+  });
+
   const handleViewReceipts = () => {
     navigation.navigate({
       name: 'Receipts',
-      params: { selectedMonth, selectedYear },
+      params: getSelectedMonthParams(),
       merge: true,
     });
   };
@@ -816,7 +825,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const handleViewHoursWorked = () => {
     navigation.navigate({
       name: 'DailyHours',
-      params: { selectedMonth, selectedYear },
+      params: getSelectedMonthParams(),
       merge: true,
     });
   };
