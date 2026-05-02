@@ -36,9 +36,12 @@ export interface PersistedGpsState {
   nonDrivingCandidateStartTime?: number | null;
   /** When true, location updates still run but mileage is not accumulated (errand / pit stop) */
   isPaused?: boolean;
+  /** True when movement is detected while mileage is paused */
+  pausedDrivingAlertPending?: boolean;
 }
 
 const VEHICLE_SPEED_THRESHOLD_MPH = 8;
+const PAUSED_DRIVING_ALERT_SPEED_THRESHOLD_MPH = 15;
 const NON_DRIVING_GRACE_MS = 90 * 1000; // avoid false positives during slow parking-lot maneuvering
 const STATIONARY_THRESHOLD_MS = 5 * 60 * 1000;
 const STATIONARY_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
@@ -115,7 +118,17 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     if (typeof state.lastLocationTimestamp === 'undefined') {
       state.lastLocationTimestamp = now;
     }
+    if (typeof state.pausedDrivingAlertPending !== 'boolean') {
+      state.pausedDrivingAlertPending = false;
+    }
     if (state.isPaused === true) {
+      // Paused-trip reminder should only fire on clear driving speed, not walking.
+      const isClearlyDriving =
+        speedMph >= PAUSED_DRIVING_ALERT_SPEED_THRESHOLD_MPH ||
+        inferredSpeedMph >= PAUSED_DRIVING_ALERT_SPEED_THRESHOLD_MPH;
+      if (isClearlyDriving) {
+        state.pausedDrivingAlertPending = true;
+      }
       state.lastLocation = { latitude: newLat, longitude: newLon };
       state.lastLocationTimestamp = latestTimestamp;
       state.stationaryStartTime = null;

@@ -186,6 +186,7 @@ export class GpsTrackingService {
         stationaryAlertLastPromptAt: null,
         stationaryAlertScheduledId: null,
         isPaused: false,
+        pausedDrivingAlertPending: false,
       };
       await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(persistedState));
 
@@ -390,6 +391,29 @@ export class GpsTrackingService {
     }
   }
 
+  static async hasPendingPausedDrivingAlert(): Promise<boolean> {
+    try {
+      const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (!raw) return false;
+      const state: PersistedGpsState = JSON.parse(raw);
+      return state.pausedDrivingAlertPending === true;
+    } catch {
+      return false;
+    }
+  }
+
+  static async consumePausedDrivingAlertPrompt(): Promise<void> {
+    try {
+      const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (!raw) return;
+      const state: PersistedGpsState = JSON.parse(raw);
+      state.pausedDrivingAlertPending = false;
+      await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // Ignore storage errors for non-critical UX prompts
+    }
+  }
+
   static getCurrentSession(): GpsTrackingSession | null {
     return this.currentSession;
   }
@@ -416,6 +440,7 @@ export class GpsTrackingService {
       state.stationaryStartTime = null;
       state.nonDrivingCandidateStartTime = null;
       state.isPaused = true;
+      state.pausedDrivingAlertPending = false;
 
       try {
         const loc = await Location.getCurrentPositionAsync({
@@ -458,6 +483,7 @@ export class GpsTrackingService {
       if (state.session.id !== this.currentSession.id) return;
 
       state.isPaused = false;
+      state.pausedDrivingAlertPending = false;
       await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
       state.stationaryAlertScheduledId = null;
       state.stationaryStartTime = null;

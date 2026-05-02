@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { GpsTrackingSession, LocationDetails } from '../types';
@@ -48,6 +48,43 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const [restoredTrackingOnLaunch, setRestoredTrackingOnLaunch] = useState(false);
   const [showStationaryPrompt, setShowStationaryPrompt] = useState(false);
   const restoredRef = useRef(false);
+  const pausedDrivingAlertVisibleRef = useRef(false);
+
+  const checkPausedDrivingAlert = async () => {
+    if (!GpsTrackingService.isTracking() || !GpsTrackingService.isTripPaused()) return;
+    if (pausedDrivingAlertVisibleRef.current) return;
+
+    const hasPendingAlert = await GpsTrackingService.hasPendingPausedDrivingAlert();
+    if (!hasPendingAlert) return;
+
+    pausedDrivingAlertVisibleRef.current = true;
+    await GpsTrackingService.consumePausedDrivingAlertPrompt();
+    Alert.alert(
+      'Trip is paused',
+      'We detected movement while mileage is paused. Tap "Resume mileage" to continue tracking this trip.',
+      [
+        {
+          text: 'Resume mileage',
+          onPress: () => {
+            pausedDrivingAlertVisibleRef.current = false;
+            void resumeTrip();
+          },
+        },
+        {
+          text: 'OK',
+          onPress: () => {
+            pausedDrivingAlertVisibleRef.current = false;
+          },
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          pausedDrivingAlertVisibleRef.current = false;
+        },
+      }
+    );
+  };
 
   // Restore session from storage on mount (handles app kill/restart during tracking)
   useEffect(() => {
@@ -77,6 +114,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
           setShowStationaryPrompt(true);
           await GpsTrackingService.consumeStationaryAlertPrompt();
         }
+        await checkPausedDrivingAlert();
       }
     });
     return () => sub.remove();
@@ -136,6 +174,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
           if (Math.abs(newDistance - prevDistance) > 0.01) return newDistance;
           return prevDistance;
         });
+        await checkPausedDrivingAlert();
       }
     }, 15000);
     return () => clearInterval(interval);
