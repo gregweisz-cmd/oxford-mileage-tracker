@@ -122,6 +122,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [vehicleName, setVehicleName] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [vehicleLoading, setVehicleLoading] = useState(false);
+  const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
+  const [editVehicleName, setEditVehicleName] = useState('');
+  const [editVehiclePlate, setEditVehiclePlate] = useState('');
 
   const loadVehicles = useCallback(async () => {
     try {
@@ -538,6 +541,40 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
     }
   };
 
+  const openEditVehicle = (vehicle: Vehicle) => {
+    setEditVehicleId(vehicle.id);
+    setEditVehicleName(vehicle.name || '');
+    setEditVehiclePlate(vehicle.plateNumber || '');
+  };
+
+  const handleSaveVehicleEdit = async () => {
+    if (!editVehicleId) return;
+    const trimmedName = editVehicleName.trim();
+    if (!trimmedName) {
+      showMessage('error', 'Vehicle name is required.');
+      return;
+    }
+
+    setVehicleLoading(true);
+    try {
+      await VehicleApiService.updateVehicle(editVehicleId, {
+        employeeId,
+        name: trimmedName,
+        plateNumber: editVehiclePlate.trim(),
+      });
+      setEditVehicleId(null);
+      setEditVehicleName('');
+      setEditVehiclePlate('');
+      await loadVehicles();
+      showMessage('success', 'Vehicle updated.');
+    } catch (error) {
+      debugError('Error updating vehicle:', error);
+      showMessage('error', 'Failed to update vehicle.');
+    } finally {
+      setVehicleLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <Box sx={{ flex: 1, p: 3, maxWidth: 1200, mx: 'auto', width: '100%', pb: 10 }}>
@@ -738,6 +775,14 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                         Set Default
                       </Button>
                     )}
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => openEditVehicle(vehicle)}
+                      disabled={vehicleLoading}
+                    >
+                      Edit
+                    </Button>
                     <Button
                       size="small"
                       color="error"
@@ -1217,6 +1262,42 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             disabled={passwordLoading || !passwordData.new || passwordData.new !== passwordData.confirm}
           >
             {passwordLoading ? 'Updating...' : 'Change Password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!editVehicleId} onClose={() => setEditVehicleId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Edit Vehicle</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Vehicle name"
+              value={editVehicleName}
+              onChange={(e) => setEditVehicleName(e.target.value)}
+              fullWidth
+              size="small"
+            />
+            <TextField
+              label="Plate (optional)"
+              value={editVehiclePlate}
+              onChange={(e) => setEditVehiclePlate(e.target.value)}
+              fullWidth
+              size="small"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setEditVehicleId(null);
+              setEditVehicleName('');
+              setEditVehiclePlate('');
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={() => void handleSaveVehicleEdit()} disabled={vehicleLoading}>
+            Save
           </Button>
         </DialogActions>
       </Dialog>

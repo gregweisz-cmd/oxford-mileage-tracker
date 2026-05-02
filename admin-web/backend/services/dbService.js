@@ -890,7 +890,11 @@ function ensureTablesExist() {
           if (!columnNames.includes('vehicleId')) {
             db.run(`ALTER TABLE mileage_entries ADD COLUMN vehicleId TEXT`, (err) => {
               if (err) debugLog('Note: vehicleId column may already exist');
+              else debugLog('✅ Added vehicleId column to mileage_entries table');
+              db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_vehicle_date ON mileage_entries(employeeId, vehicleId, date)`);
             });
+          } else {
+            db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_vehicle_date ON mileage_entries(employeeId, vehicleId, date)`);
           }
         }
       });
@@ -970,7 +974,10 @@ function ensureTablesExist() {
             db.run(`ALTER TABLE daily_odometer_readings ADD COLUMN vehicleId TEXT`, (alterErr) => {
               if (alterErr) debugLog('Note: vehicleId column may already exist on daily_odometer_readings');
               else debugLog('✅ Added vehicleId column to daily_odometer_readings table');
+              db.run(`CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_vehicle_date ON daily_odometer_readings(employeeId, vehicleId, date)`);
             });
+          } else {
+            db.run(`CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_vehicle_date ON daily_odometer_readings(employeeId, vehicleId, date)`);
           }
         }
       });
@@ -1008,7 +1015,6 @@ function ensureTablesExist() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employeeId ON mileage_entries(employeeId)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_date ON mileage_entries(date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_date ON mileage_entries(employeeId, date)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_vehicle_date ON mileage_entries(employeeId, vehicleId, date)`);
       
       // Receipts indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_receipts_employeeId ON receipts(employeeId)`);
@@ -1040,7 +1046,6 @@ function ensureTablesExist() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_descriptions_employee ON daily_descriptions(employeeId)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_descriptions_employee_date ON daily_descriptions(employeeId, date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_date ON daily_odometer_readings(employeeId, date)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_daily_odometer_employee_vehicle_date ON daily_odometer_readings(employeeId, vehicleId, date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_vehicles_employee_active ON vehicles(employeeId, isActive)`);
 
       // Notifications indexes
