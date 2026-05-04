@@ -31,6 +31,18 @@ function isAllowedOrigin(origin) {
   return false;
 }
 
+/** Must match OPTIONS preflight (`handlePreflight`) so custom auth headers are not blocked in the browser */
+const ALLOWED_CORS_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'x-user-role',
+  'x-user-id',
+  'x-employee-id',
+  'Cache-Control',
+  'Pragma',
+  'X-Requested-With',
+];
+
 /**
  * CORS origin validation function
  */
@@ -44,7 +56,7 @@ const corsOptions = {
     }
     callback(new Error('Not allowed by CORS'));
   },
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role', 'x-user-id', 'Cache-Control', 'Pragma', 'X-Requested-With'],
+  allowedHeaders: ALLOWED_CORS_HEADERS,
   exposedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
@@ -68,7 +80,7 @@ function handlePreflight(req, res) {
     res.header('Access-Control-Allow-Origin', '*');
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, X-Requested-With');
+  res.header('Access-Control-Allow-Headers', ALLOWED_CORS_HEADERS.join(', '));
   res.header('Access-Control-Allow-Credentials', 'true');
   res.sendStatus(200);
 }
