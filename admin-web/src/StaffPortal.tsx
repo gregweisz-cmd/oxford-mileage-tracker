@@ -7680,13 +7680,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
             {/* Daily travel table */}
             <TableContainer component={Paper} sx={{ mt: 2, maxHeight: '65vh', overflow: 'auto' }}>
-              <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: '100%' }}>
+              <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: '100%', minWidth: supervisorMode ? 1700 : 1500 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
                     {supervisorMode && (
                       <TableCell
                         padding="checkbox"
-                        sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, whiteSpace: 'normal', lineHeight: 1.2, verticalAlign: 'top' }}
+                        sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, whiteSpace: 'normal', lineHeight: 1.2, verticalAlign: 'top' }}
                       >
                         <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
                           Select for
