@@ -7686,7 +7686,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     {supervisorMode && (
                       <TableCell
                         padding="checkbox"
-                        sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, whiteSpace: 'normal', lineHeight: 1.2, verticalAlign: 'top' }}
+                        sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'normal', lineHeight: 1.2, verticalAlign: 'top' }}
                       >
                         <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
                           Select for
@@ -7771,7 +7771,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               }}
                             >
                               {supervisorMode && (
-                                <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
+                                <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128 }}>
                                   <Checkbox checked={isSelected} onChange={(e) => { const newSet = new Set(selectedMileageItems); if (e.target.checked) newSet.add(itemId); else newSet.delete(itemId); setSelectedMileageItems(newSet); }} size="small" />
                                 </TableCell>
                               )}
@@ -7802,7 +7802,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           );
                         })}
                         <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
-                          {supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1 }} />}
+                          {supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128 }} />}
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                           <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subHours.toFixed(1)}</strong></TableCell>
