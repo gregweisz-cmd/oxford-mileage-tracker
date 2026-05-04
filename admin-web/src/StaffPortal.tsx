@@ -1098,9 +1098,34 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         debugLog(`🔍 Filtered daily entries to current month: ${currentMonthEntries.length} of ${(data.dailyEntries || []).length}`);
       }
 
+      // Guard against duplicate day rows (can appear in submitted reports from older saves).
+      // Keep one canonical row per day so supervisor/finance views do not render doubled/tripled entries.
+      const uniqueEntriesByDay = new Map<number, any>();
+      currentMonthEntries.forEach((entry: any) => {
+        const day = Number(entry?.day);
+        if (!Number.isFinite(day) || day < 1 || day > daysInMonth) return;
+        const existing = uniqueEntriesByDay.get(day);
+        if (!existing) {
+          uniqueEntriesByDay.set(day, entry);
+          return;
+        }
+        const existingSignal =
+          (Number(existing?.milesTraveled) || 0) +
+          (Number(existing?.hoursWorked) || 0) +
+          (String(existing?.description || '').trim().length > 0 ? 1 : 0);
+        const incomingSignal =
+          (Number(entry?.milesTraveled) || 0) +
+          (Number(entry?.hoursWorked) || 0) +
+          (String(entry?.description || '').trim().length > 0 ? 1 : 0);
+        if (incomingSignal >= existingSignal) {
+          uniqueEntriesByDay.set(day, entry);
+        }
+      });
+      const dedupedCurrentMonthEntries = Array.from(uniqueEntriesByDay.values()).sort((a: any, b: any) => a.day - b.day);
+
       // Ensure we have entries for all days - create missing ones if needed
       const allDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-      const existingDays = new Set(currentMonthEntries.map((e: any) => e.day));
+      const existingDays = new Set(dedupedCurrentMonthEntries.map((e: any) => e.day));
       const missingDays = allDays.filter(day => !existingDays.has(day));
       
       if (missingDays.length > 0) {
@@ -1126,7 +1151,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       });
       
       // Combine existing entries (current month only) with missing day entries
-      const allDailyEntries = [...currentMonthEntries, ...entriesForMissingDays].sort((a: any, b: any) => a.day - b.day);
+      const allDailyEntries = [...dedupedCurrentMonthEntries, ...entriesForMissingDays].sort((a: any, b: any) => a.day - b.day);
       
       // Reduced logging for performance
       // debugLog(`🔍 Total daily entries to process: ${allDailyEntries.length} (${data.dailyEntries.length} existing + ${entriesForMissingDays.length} new)`);
