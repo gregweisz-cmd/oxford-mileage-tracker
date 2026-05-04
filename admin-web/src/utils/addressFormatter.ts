@@ -299,7 +299,14 @@ export function formatLocationNameAndAddress(
   const displayName = (name || '').trim();
   if (!addr) return displayName || '';
 
-  const normalizeToken = (value: string): string => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const canonicalizeForCompare = (value: string): string =>
+    abbreviateAddressForDisplay(String(value || ''))
+      .replace(/\busa\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  const normalizeToken = (value: string): string => canonicalizeForCompare(value);
   const collapseDuplicateLocationText = (value: string): string => {
     let current = String(value || '').trim();
     let previous = '';
@@ -319,7 +326,11 @@ export function formatLocationNameAndAddress(
         const left = duplicateAddressParen[1].trim();
         const firstAddress = duplicateAddressParen[2].trim();
         const secondAddress = duplicateAddressParen[3].trim();
-        if (normalizeToken(firstAddress) === normalizeToken(secondAddress)) {
+        const leftWithFirst = `${left} (${firstAddress})`;
+        if (
+          normalizeToken(firstAddress) === normalizeToken(secondAddress) ||
+          normalizeToken(leftWithFirst) === normalizeToken(secondAddress)
+        ) {
           current = `${left} (${firstAddress})`;
           continue;
         }
@@ -366,8 +377,18 @@ export function formatLocationNameAndAddress(
   }
 
   // If "address" is the same as the name, don't show "Name (Name)" — show only the name
-  if (displayName && addr.toLowerCase() === displayName.toLowerCase()) {
+  if (displayName && normalizeToken(addr) === normalizeToken(displayName)) {
     return collapseDuplicateLocationText(displayName);
+  }
+
+  // If name is effectively an address label (same location with minor differences like "Road"/"Rd" or trailing "USA"),
+  // prefer a single address string instead of "Address (Address)".
+  if (displayName) {
+    const nameKey = normalizeToken(displayName);
+    const addrKey = normalizeToken(addr);
+    if (nameKey && addrKey && (nameKey.includes(addrKey) || addrKey.includes(nameKey))) {
+      return collapseDuplicateLocationText(abbreviateAddressForDisplay(addr));
+    }
   }
 
   const displayAddress = abbreviateAddressForDisplay(addr);
