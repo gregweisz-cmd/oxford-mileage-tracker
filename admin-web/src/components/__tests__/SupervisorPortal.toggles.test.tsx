@@ -1,6 +1,8 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import SupervisorPortal from '../SupervisorPortal';
+import { ErrorPromptProvider } from '../../contexts/ErrorPromptContext';
+import { ToastProvider } from '../../contexts/ToastContext';
 
 const mockDashboardStatistics = jest.fn();
 const mockSupervisorDashboard = jest.fn();
@@ -89,7 +91,11 @@ describe('SupervisorPortal dashboard', () => {
           }),
         }) as Promise<Response>;
       }
-      if (url.includes('/team') || url.includes('/expense-reports?teamSupervisorId=')) {
+      if (
+        url.includes('/team') ||
+        url.includes('/expense-reports?teamSupervisorId=') ||
+        url.includes('monthly-reports') && url.includes('teamSupervisorId=')
+      ) {
         return Promise.resolve({
           ok: true,
           json: async () => [],
@@ -108,7 +114,13 @@ describe('SupervisorPortal dashboard', () => {
   });
 
   it('always shows supervisor dashboard', async () => {
-    render(<SupervisorPortal supervisorId="super-1" supervisorName="Sam Supervisor" />);
+    render(
+      <ToastProvider>
+        <ErrorPromptProvider>
+          <SupervisorPortal supervisorId="super-1" supervisorName="Sam Supervisor" />
+        </ErrorPromptProvider>
+      </ToastProvider>
+    );
 
     await waitFor(() => expect(mockSupervisorDashboard).toHaveBeenCalled());
     await waitFor(() => expect(mockSupervisorDashboardMounts).toBe(1));

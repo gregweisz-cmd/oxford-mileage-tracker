@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import PortalRouter from './PortalRouter';
+import { ErrorPromptProvider } from './contexts/ErrorPromptContext';
 
 // Mock jsPDF to avoid TextEncoder issues in test environment
 jest.mock('jspdf', () => ({
@@ -19,7 +20,11 @@ jest.mock('jspdf', () => ({
 }));
 
 test('renders Oxford House Expense System', () => {
-  render(<PortalRouter />);
+  render(
+    <ErrorPromptProvider>
+      <PortalRouter />
+    </ErrorPromptProvider>
+  );
   const titleElement = screen.getByText(/Oxford House Expense System/i);
   expect(titleElement).toBeInTheDocument();
 });

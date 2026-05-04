@@ -77,13 +77,6 @@ interface UserProfile {
   role?: string;
 }
 
-interface NotificationEmailRecipient {
-  id: number;
-  email: string;
-  label?: string;
-  isActive: boolean;
-}
-
 const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdate }) => {
   const [profile, setProfile] = useState<UserProfile>({
     id: employeeId,
@@ -133,11 +126,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
   const [editVehicleName, setEditVehicleName] = useState('');
   const [editVehiclePlate, setEditVehiclePlate] = useState('');
-  const [notificationRecipients, setNotificationRecipients] = useState<NotificationEmailRecipient[]>([]);
-  const [notificationEmailInput, setNotificationEmailInput] = useState('');
-  const [notificationLabelInput, setNotificationLabelInput] = useState('');
-  const [notificationRecipientsLoading, setNotificationRecipientsLoading] = useState(false);
-
   const loadVehicles = useCallback(async () => {
     try {
       const rows = await VehicleApiService.getVehicles(employeeId);
@@ -267,116 +255,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
     }
   }, [employeeId, loadVehicles]);
 
-  const loadNotificationRecipients = useCallback(async () => {
-    setNotificationRecipientsLoading(true);
-    try {
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-      const response = await fetch(`${API_BASE_URL}/api/notifications/email-recipients?employeeId=${encodeURIComponent(employeeId)}`, {
-        headers: { 'x-employee-id': employeeId },
-      });
-      if (!response.ok) {
-        if (response.status === 403) {
-          setNotificationRecipients([]);
-          return;
-        }
-        throw new Error('Failed to load notification recipients');
-      }
-      const data = await response.json();
-      setNotificationRecipients(Array.isArray(data) ? data : []);
-    } catch (error) {
-      debugError('Error loading notification recipients:', error);
-      showMessage('error', 'Failed to load notification email recipients.');
-    } finally {
-      setNotificationRecipientsLoading(false);
-    }
-  }, [employeeId]);
-
-  const handleAddNotificationRecipient = async () => {
-    const email = notificationEmailInput.trim().toLowerCase();
-    const label = notificationLabelInput.trim();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showMessage('error', 'Please enter a valid notification email address.');
-      return;
-    }
-    setNotificationRecipientsLoading(true);
-    try {
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-      const response = await fetch(`${API_BASE_URL}/api/notifications/email-recipients`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-employee-id': employeeId,
-        },
-        body: JSON.stringify({ employeeId, email, label, isActive: true }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Failed to add notification recipient');
-      setNotificationEmailInput('');
-      setNotificationLabelInput('');
-      await loadNotificationRecipients();
-      showMessage('success', 'Notification email recipient added.');
-    } catch (error) {
-      debugError('Error adding notification recipient:', error);
-      showMessage('error', error instanceof Error ? error.message : 'Failed to add notification recipient.');
-    } finally {
-      setNotificationRecipientsLoading(false);
-    }
-  };
-
-  const handleDeleteNotificationRecipient = async (id: number) => {
-    setNotificationRecipientsLoading(true);
-    try {
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-      const response = await fetch(`${API_BASE_URL}/api/notifications/email-recipients/${id}?employeeId=${encodeURIComponent(employeeId)}`, {
-        method: 'DELETE',
-        headers: { 'x-employee-id': employeeId },
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Failed to delete notification recipient');
-      await loadNotificationRecipients();
-      showMessage('success', 'Notification email recipient removed.');
-    } catch (error) {
-      debugError('Error deleting notification recipient:', error);
-      showMessage('error', error instanceof Error ? error.message : 'Failed to delete notification recipient.');
-    } finally {
-      setNotificationRecipientsLoading(false);
-    }
-  };
-
-  const handleToggleNotificationRecipient = async (row: NotificationEmailRecipient, isActive: boolean) => {
-    setNotificationRecipientsLoading(true);
-    try {
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-      const response = await fetch(`${API_BASE_URL}/api/notifications/email-recipients/${row.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-employee-id': employeeId,
-        },
-        body: JSON.stringify({ employeeId, email: row.email, label: row.label || '', isActive }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Failed to update notification recipient');
-      await loadNotificationRecipients();
-    } catch (error) {
-      debugError('Error updating notification recipient:', error);
-      showMessage('error', error instanceof Error ? error.message : 'Failed to update notification recipient.');
-    } finally {
-      setNotificationRecipientsLoading(false);
-    }
-  };
-
   useEffect(() => {
     loadUserProfile();
   }, [loadUserProfile]);
-
-  useEffect(() => {
-    if (String(profile.role || '').toLowerCase() === 'admin') {
-      void loadNotificationRecipients();
-    } else {
-      setNotificationRecipients([]);
-    }
-  }, [profile.role, loadNotificationRecipients]);
 
   const showMessage = (type: 'success' | 'error' | 'info', text: string) => {
     setMessage({ type, text });
@@ -1258,96 +1139,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             </Box>
           </CardContent>
         </Card>
-
-        {String(profile.role || '').toLowerCase() === 'admin' && (
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Notification Emails (Admin)
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Add recipients that should receive BCC copies of workflow notification emails.
-              </Typography>
-
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-                <TextField
-                  size="small"
-                  label="Email"
-                  value={notificationEmailInput}
-                  onChange={(e) => setNotificationEmailInput(e.target.value)}
-                  sx={{ minWidth: 280 }}
-                />
-                <TextField
-                  size="small"
-                  label="Label (optional)"
-                  value={notificationLabelInput}
-                  onChange={(e) => setNotificationLabelInput(e.target.value)}
-                  sx={{ minWidth: 220 }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={() => void handleAddNotificationRecipient()}
-                  disabled={notificationRecipientsLoading}
-                >
-                  Add Email
-                </Button>
-              </Box>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {notificationRecipients.map((row) => (
-                  <Box
-                    key={row.id}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 1,
-                      border: 1,
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      p: 1,
-                    }}
-                  >
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {row.email}
-                      </Typography>
-                      {!!row.label && (
-                        <Typography variant="caption" color="text.secondary">
-                          {row.label}
-                        </Typography>
-                      )}
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={row.isActive}
-                            onChange={(e) => void handleToggleNotificationRecipient(row, e.target.checked)}
-                            size="small"
-                          />
-                        }
-                        label={row.isActive ? 'Active' : 'Inactive'}
-                      />
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => void handleDeleteNotificationRecipient(row.id)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                ))}
-                {notificationRecipients.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    No notification recipients configured.
-                  </Typography>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Application Preferences */}
         <Card>

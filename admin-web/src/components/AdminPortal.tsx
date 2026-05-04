@@ -13,6 +13,7 @@ import { CostCenterManagement } from './CostCenterManagement';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import { SupervisorManagement } from './SupervisorManagement';
 import { SystemSettings } from './SystemSettings';
+import { NotificationControlTab } from './NotificationControlTab';
 import { TravelReasonsManagement } from './TravelReasonsManagement';
 import { DailyDescriptionOptionsManagement } from './DailyDescriptionOptionsManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
@@ -164,6 +165,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
             <Tab label="Reports & Analytics" />
             <Tab label="Travel Reasons" />
             <Tab label="Daily Description" />
+            <Tab label="Notifications" />
             <Tab label="System Settings" />
           </Tabs>
         </Box>
@@ -205,6 +207,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         </TabPanel>
 
         <TabPanel value={activeTab} index={6}>
+          <NotificationControlTab adminId={adminId} />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={7}>
           <SystemSettings />
         </TabPanel>
       </Container>
