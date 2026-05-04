@@ -7685,8 +7685,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
                     {supervisorMode && (
                       <TableCell
-                        padding="checkbox"
-                        sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'normal', lineHeight: 1.2, verticalAlign: 'top' }}
+                        sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'normal', lineHeight: 1.2, verticalAlign: 'top', textAlign: 'center' }}
                       >
                         <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
                           Select for
@@ -7771,8 +7770,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               }}
                             >
                               {supervisorMode && (
-                                <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128 }}>
-                                  <Checkbox checked={isSelected} onChange={(e) => { const newSet = new Set(selectedMileageItems); if (e.target.checked) newSet.add(itemId); else newSet.delete(itemId); setSelectedMileageItems(newSet); }} size="small" />
+                                <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, textAlign: 'center' }}>
+                                  <Checkbox checked={isSelected} onChange={(e) => { const newSet = new Set(selectedMileageItems); if (e.target.checked) newSet.add(itemId); else newSet.delete(itemId); setSelectedMileageItems(newSet); }} size="small" sx={{ p: 0.5 }} />
                                 </TableCell>
                               )}
                               <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
