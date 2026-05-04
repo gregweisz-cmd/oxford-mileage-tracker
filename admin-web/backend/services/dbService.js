@@ -690,6 +690,33 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
+      // Per-event toggles and optional title/body templates (admin portal)
+      db.run(`CREATE TABLE IF NOT EXISTS notification_event_settings (
+        eventKey TEXT PRIMARY KEY,
+        inAppEnabled INTEGER NOT NULL DEFAULT 1,
+        emailEnabled INTEGER NOT NULL DEFAULT 1,
+        titleTemplate TEXT,
+        messageTemplate TEXT,
+        updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+      )`);
+
+      const notificationEventKeys = [
+        'report_submitted',
+        'supervisor_approval_needed',
+        'finance_approval_needed',
+        'finance_revision_supervisor',
+        'supervisor_revision_employee',
+        'employee_report_approved',
+        'sunday_reminder',
+        'fifty_plus_hours_alert',
+      ];
+      notificationEventKeys.forEach((eventKey) => {
+        db.run(
+          `INSERT OR IGNORE INTO notification_event_settings (eventKey, inAppEnabled, emailEnabled, titleTemplate, messageTemplate, updatedAt) VALUES (?, 1, 1, NULL, NULL, datetime('now'))`,
+          [eventKey]
+        );
+      });
+
       // Legacy tables - kept for backward compatibility, will be migrated gradually
       db.run(`CREATE TABLE IF NOT EXISTS supervisor_notifications (
         id TEXT PRIMARY KEY,

@@ -5,6 +5,7 @@
 
 const dbService = require('./dbService');
 const emailService = require('./emailService');
+const notificationEventSettings = require('./notificationEventSettings');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 function parsePreferences(preferences) {
@@ -43,6 +44,7 @@ function shouldSendEmailForRecipient(recipient) {
  * @param {string} [options.actorName] - Name of the person who triggered the notification (optional)
  * @param {string} [options.actorRole] - Role of the actor (optional)
  * @param {boolean} [options.sendEmail=true] - Whether to send email notification (default: true)
+ * @param {boolean} [options.persistInApp=true] - Whether to insert a row in `notifications` (in-app bell)
  * @param {boolean} [options.isDismissible=true] - Whether notification can be dismissed (default: true)
  * @param {Object} [options.metadata] - Additional metadata (optional)
  * @returns {Promise<string|null>} Notification ID if created successfully, null otherwise
@@ -60,6 +62,7 @@ async function createNotification({
   actorName = null,
   actorRole = null,
   sendEmail: shouldSendEmail = true,
+  persistInApp = true,
   isDismissible = true,
   metadata = null,
 }) {
@@ -68,8 +71,14 @@ async function createNotification({
     return null;
   }
 
+  if (!persistInApp && !shouldSendEmail) {
+    debugLog('📵 Skipping notification (in-app and email disabled for this event)');
+    return null;
+  }
+
   const db = dbService.getDb();
-  const notificationId = `notif-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
+  const metadataStored =
+    metadata == null ? null : typeof metadata === 'string' ? metadata : JSON.stringify(metadata);
   const now = new Date().toISOString();
 
   try {
@@ -88,42 +97,45 @@ async function createNotification({
       actor = await dbService.getEmployeeById(actorId);
     }
 
-    // Create notification in database
-    await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO notifications (
+    let notificationId = null;
+    if (persistInApp) {
+      notificationId = `notif-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO notifications (
           id, recipientId, recipientRole, type, title, message,
           reportId, employeeId, employeeName, actorId, actorName, actorRole,
           isRead, isDismissible, createdAt, metadata
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
-        [
-          notificationId,
-          recipientId,
-          recipientRole,
-          type,
-          title,
-          message,
-          reportId,
-          employeeId,
-          employeeName || (relatedEmployee ? (relatedEmployee.preferredName || relatedEmployee.name) : null),
-          actorId,
-          actorName || (actor ? (actor.preferredName || actor.name) : null),
-          actorRole,
-          isDismissible ? 1 : 0,
-          now,
-          metadata ? JSON.stringify(metadata) : null,
-        ],
-        function(err) {
-          if (err) {
-            debugError('❌ Error creating notification:', err);
-            reject(err);
-          } else {
-            debugLog(`✅ Created notification ${notificationId} for ${recipientId}`);
-            resolve();
+          [
+            notificationId,
+            recipientId,
+            recipientRole,
+            type,
+            title,
+            message,
+            reportId,
+            employeeId,
+            employeeName || (relatedEmployee ? (relatedEmployee.preferredName || relatedEmployee.name) : null),
+            actorId,
+            actorName || (actor ? (actor.preferredName || actor.name) : null),
+            actorRole,
+            isDismissible ? 1 : 0,
+            now,
+            metadataStored,
+          ],
+          function(err) {
+            if (err) {
+              debugError('❌ Error creating notification:', err);
+              reject(err);
+            } else {
+              debugLog(`✅ Created notification ${notificationId} for ${recipientId}`);
+              resolve();
+            }
           }
-        }
-      );
-    });
+        );
+      });
+    }
 
     // Send email notification if requested and recipient has email
     if (shouldSendEmail && shouldSendEmailForRecipient(recipient)) {
@@ -198,20 +210,32 @@ async function notifyReportSubmitted(reportId, employeeId, employeeName, firstAp
     });
 
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+    const en = employeeName || employee?.preferredName || employee?.name || 'An employee';
+    const defaults = {
+      title: `Expense Report Submitted${monthName ? ` - ${monthName}` : ''}`,
+      message: `${en} has submitted an expense report${monthName ? ` for ${monthName}` : ''} for your review.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'report_submitted',
+      defaults,
+      { employeeName: en, monthName, actorName: en }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
 
     return await createNotification({
       recipientId: recipient.id,
       recipientRole: recipient.role || 'supervisor',
-      type: 'report_submitted',
-      title: `Expense Report Submitted${monthName ? ` - ${monthName}` : ''}`,
-      message: `${employeeName || employee?.preferredName || employee?.name || 'An employee'} has submitted an expense report${monthName ? ` for ${monthName}` : ''} for your review.`,
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
       reportId,
       employeeId,
       employeeName: employeeName || employee?.preferredName || employee?.name || 'Employee',
       actorId: employeeId,
       actorName: employeeName || employee?.preferredName || employee?.name || 'Employee',
       actorRole: 'employee',
-      sendEmail: true,
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
     });
   } catch (error) {
     debugError('❌ Error notifying report submission:', error);
@@ -238,20 +262,32 @@ async function notifySupervisorApprovalNeeded(reportId, seniorStaffId, seniorSta
       });
     });
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+    const employeeDisplay = employee?.preferredName || employee?.name || 'An employee';
+    const defaults = {
+      title: `Expense Report Ready for Your Review${monthName ? ` - ${monthName}` : ''}`,
+      message: `${employeeDisplay}'s expense report${monthName ? ` for ${monthName}` : ''} has been approved by senior staff and is ready for your review.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'supervisor_approval_needed',
+      defaults,
+      { employeeName: employeeDisplay, monthName, actorName: seniorStaffName || '' }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
 
     return await createNotification({
       recipientId: supervisor.id,
       recipientRole: supervisor.role || 'supervisor',
-      type: 'approval_needed',
-      title: `Expense Report Ready for Your Review${monthName ? ` - ${monthName}` : ''}`,
-      message: `${employee?.preferredName || employee?.name || 'An employee'}'s expense report${monthName ? ` for ${monthName}` : ''} has been approved by senior staff and is ready for your review.`,
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
       reportId,
       employeeId,
       employeeName: employee?.preferredName || employee?.name || 'Employee',
       actorId: seniorStaffId,
       actorName: seniorStaffName,
       actorRole: 'senior_staff',
-      sendEmail: true,
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
     });
   } catch (error) {
     debugError('❌ Error notifying supervisor approval needed:', error);
@@ -286,20 +322,32 @@ async function notifyFinanceRevisionRequest(reportId, financeId, financeName, em
     });
 
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+    const employeeDisplay = employee.preferredName || employee.name;
+    const defaults = {
+      title: `Revision Requested${monthName ? ` - ${monthName}` : ''}`,
+      message: `${financeName || 'Finance'} has requested revisions to the expense report${monthName ? ` for ${monthName}` : ''} for ${employeeDisplay}.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'finance_revision_supervisor',
+      defaults,
+      { employeeName: employeeDisplay, monthName, actorName: financeName || 'Finance' }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
 
     return await createNotification({
       recipientId: supervisor.id,
       recipientRole: supervisor.role || 'supervisor',
-      type: 'revision_requested',
-      title: `Revision Requested${monthName ? ` - ${monthName}` : ''}`,
-      message: `Finance has requested revisions to the expense report${monthName ? ` for ${monthName}` : ''} for ${employee.preferredName || employee.name}.`,
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
       reportId,
       employeeId,
       employeeName: employee.preferredName || employee.name,
       actorId: financeId,
       actorName: financeName,
       actorRole: 'finance',
-      sendEmail: true,
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
     });
   } catch (error) {
     debugError('❌ Error notifying finance revision request:', error);
@@ -327,26 +375,39 @@ async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours
     const weekStartDate = new Date(weekStart);
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setDate(weekEndDate.getDate() + 6);
+    const weekRange = `${weekStartDate.toLocaleDateString()} – ${weekEndDate.toLocaleDateString()}`;
+    const th = totalHours.toFixed(1);
+    const defaults = {
+      title: `⚠️ Employee Working 50+ Hours - ${employeeName}`,
+      message: `${employeeName} has logged ${th} hours for the week of ${weekStartDate.toLocaleDateString()}. Please check in with them to ensure they are not overworking.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'fifty_plus_hours_alert',
+      defaults,
+      { employeeName, totalHours: th, weekRange }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
 
     return await createNotification({
       recipientId: supervisorId,
       recipientRole: supervisor.role || 'supervisor',
-      type: '50_plus_hours_alert',
-      title: `⚠️ Employee Working 50+ Hours - ${employeeName}`,
-      message: `${employeeName} has logged ${totalHours.toFixed(1)} hours for the week of ${weekStartDate.toLocaleDateString()}. Please check in with them to ensure they are not overworking.`,
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
       employeeId,
       employeeName,
       actorId: employeeId,
       actorName: employeeName,
       actorRole: 'employee',
-      sendEmail: true,
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
       isDismissible: false, // Persistent - cannot be auto-dismissed
-      metadata: JSON.stringify({
+      metadata: {
         weekStart: weekStartDate.toISOString(),
         weekEnd: weekEndDate.toISOString(),
         totalHours: totalHours,
         alertType: '50_plus_hours'
-      }),
+      },
     });
   } catch (error) {
     debugError('❌ Error notifying 50+ hours alert:', error);
@@ -376,20 +437,33 @@ async function notifySupervisorRevisionRequest(reportId, supervisorId, superviso
     });
 
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+    const actorDisplay = supervisorName || supervisor?.preferredName || supervisor?.name || 'Your supervisor';
+    const employeeDisplay = employee.preferredName || employee.name;
+    const defaults = {
+      title: `Revision Requested${monthName ? ` - ${monthName}` : ''}`,
+      message: `${actorDisplay} has requested revisions to your expense report${monthName ? ` for ${monthName}` : ''}.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'supervisor_revision_employee',
+      defaults,
+      { employeeName: employeeDisplay, monthName, actorName: actorDisplay }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
 
     return await createNotification({
       recipientId: employeeId,
       recipientRole: employee.role || 'employee',
-      type: 'revision_requested',
-      title: `Revision Requested${monthName ? ` - ${monthName}` : ''}`,
-      message: `${supervisorName || supervisor?.preferredName || supervisor?.name || 'Your supervisor'} has requested revisions to your expense report${monthName ? ` for ${monthName}` : ''}.`,
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
       reportId,
       employeeId,
       employeeName: employee.preferredName || employee.name,
       actorId: supervisorId,
       actorName: supervisorName || supervisor?.preferredName || supervisor?.name,
       actorRole: 'supervisor',
-      sendEmail: true,
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
     });
   } catch (error) {
     debugError('❌ Error notifying supervisor revision request:', error);
@@ -421,6 +495,17 @@ async function notifyFinanceApprovalNeeded(reportId, supervisorId, supervisorNam
     });
 
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+    const employeeDisplay = employee?.preferredName || employee?.name || 'An employee';
+    const defaults = {
+      title: `Expense Report Ready for Review${monthName ? ` - ${monthName}` : ''}`,
+      message: `${employeeDisplay}'s expense report${monthName ? ` for ${monthName}` : ''} has been approved by their supervisor and is ready for finance review.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'finance_approval_needed',
+      defaults,
+      { employeeName: employeeDisplay, monthName, actorName: supervisorName || '' }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return [];
 
     // Notify all finance approvers
     const notificationIds = [];
@@ -428,16 +513,17 @@ async function notifyFinanceApprovalNeeded(reportId, supervisorId, supervisorNam
       const notificationId = await createNotification({
         recipientId: financeApprover.id,
         recipientRole: financeApprover.role || 'finance',
-        type: 'approval_needed',
-        title: `Expense Report Ready for Review${monthName ? ` - ${monthName}` : ''}`,
-        message: `${employee?.preferredName || employee?.name || 'An employee'}'s expense report${monthName ? ` for ${monthName}` : ''} has been approved by their supervisor and is ready for finance review.`,
+        type: r.notificationType,
+        title: r.title,
+        message: r.message,
         reportId,
         employeeId,
         employeeName: employee?.preferredName || employee?.name,
         actorId: supervisorId,
         actorName: supervisorName,
         actorRole: 'supervisor',
-        sendEmail: true,
+        sendEmail: r.emailEnabled,
+        persistInApp: r.inAppEnabled,
       });
       if (notificationId) {
         notificationIds.push(notificationId);
@@ -471,19 +557,28 @@ async function notifyEmployeeReportApproved(reportId, approverId, approverName, 
     const message = isWeeklyCheckup
       ? 'Your weekly check-up has been approved by your supervisor. You\'re all set.'
       : `Your expense report${monthName ? ` for ${monthName}` : ''} has been fully approved.`;
+    const reportKind = isWeeklyCheckup ? 'weekly check-up' : 'expense report';
+
+    const r = await notificationEventSettings.resolveDelivery(
+      'employee_report_approved',
+      { title, message },
+      { monthName, actorName: approverName || '', reportKind }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
 
     return await createNotification({
       recipientId: employeeId,
       recipientRole: 'employee',
-      type: 'report_approved',
-      title,
-      message,
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
       reportId,
       employeeId,
       actorId: approverId,
       actorName: approverName,
       actorRole: 'supervisor',
-      sendEmail: true,
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
     });
   } catch (error) {
     debugError('❌ Error notifying employee report approved:', error);
@@ -571,19 +666,27 @@ async function notifySundayReminder(employeeId) {
       return null;
     }
 
+    const defaults = {
+      title: 'Reminder: Submit Your Expense Report',
+      message: 'This is a friendly reminder to submit your expense report for the week. Please log in to complete your expenses.',
+    };
+    const r = await notificationEventSettings.resolveDelivery('sunday_reminder', defaults, {});
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
+
     return await createNotification({
       recipientId: employeeId,
       recipientRole: employee.role || 'employee',
-      type: 'sunday_reminder',
-      title: 'Reminder: Submit Your Expense Report',
-      message: 'This is a friendly reminder to submit your expense report for the week. Please log in to complete your expenses.',
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
       reportId: null,
       employeeId: null,
       employeeName: null,
       actorId: null,
       actorName: 'System',
       actorRole: 'system',
-      sendEmail: true,
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
       isDismissible: true,
       metadata: { reminderType: 'sunday_weekly' },
     });

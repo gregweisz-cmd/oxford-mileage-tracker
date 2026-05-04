@@ -10,11 +10,18 @@ import {
   Alert,
   IconButton,
   CircularProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Stack,
+  Chip,
+  Divider,
 } from '@mui/material';
 import {
   NotificationsActive as NotificationsIcon,
   Delete as DeleteIcon,
   Refresh as RefreshIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { debugError } from '../config/debug';
 
@@ -22,6 +29,19 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-ba
 
 export interface NotificationControlTabProps {
   adminId: string;
+}
+
+interface NotificationEventRow {
+  eventKey: string;
+  displayName: string;
+  description: string;
+  notificationType: string;
+  placeholders: string[];
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+  titleTemplate: string | null;
+  messageTemplate: string | null;
+  updatedAt: string | null;
 }
 
 interface NotificationEmailRecipient {
@@ -32,38 +52,71 @@ interface NotificationEmailRecipient {
 }
 
 export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ adminId }) => {
+  const [events, setEvents] = useState<NotificationEventRow[]>([]);
   const [recipients, setRecipients] = useState<NotificationEmailRecipient[]>([]);
   const [emailInput, setEmailInput] = useState('');
   const [labelInput, setLabelInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  /** Local template edits before Save (per eventKey) */
+  const [drafts, setDrafts] = useState<Record<string, { titleTemplate: string; messageTemplate: string }>>({});
 
   const showMessage = useCallback((type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
   }, []);
 
-  const loadRecipients = useCallback(async () => {
+  const adminHeaders = useCallback(
+    () => ({
+      'Content-Type': 'application/json',
+      'x-employee-id': adminId,
+    }),
+    [adminId]
+  );
+
+  const loadAll = useCallback(async () => {
     setLoading(true);
     setMessage(null);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/notifications/email-recipients?employeeId=${encodeURIComponent(adminId)}`,
-        { headers: { 'x-employee-id': adminId } }
-      );
-      if (!response.ok) {
-        if (response.status === 403) {
-          setRecipients([]);
-          showMessage('error', 'Admin access is required to manage notification recipients.');
-          return;
+      const q = `employeeId=${encodeURIComponent(adminId)}`;
+      const [evRes, rcRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/admin/notification-events?${q}`, { headers: { 'x-employee-id': adminId } }),
+        fetch(`${API_BASE_URL}/api/notifications/email-recipients?${q}`, { headers: { 'x-employee-id': adminId } }),
+      ]);
+
+      if (!evRes.ok) {
+        if (evRes.status === 403) {
+          showMessage('error', 'Admin access is required.');
+          setEvents([]);
+        } else {
+          throw new Error('Failed to load notification events');
         }
-        throw new Error('Failed to load notification recipients');
+      } else {
+        const evData = await evRes.json();
+        setEvents(Array.isArray(evData) ? evData : []);
+        const nextDrafts: Record<string, { titleTemplate: string; messageTemplate: string }> = {};
+        (Array.isArray(evData) ? evData : []).forEach((row: NotificationEventRow) => {
+          nextDrafts[row.eventKey] = {
+            titleTemplate: row.titleTemplate ?? '',
+            messageTemplate: row.messageTemplate ?? '',
+          };
+        });
+        setDrafts(nextDrafts);
       }
-      const data = await response.json();
-      setRecipients(Array.isArray(data) ? data : []);
+
+      if (!rcRes.ok) {
+        if (rcRes.status !== 403) {
+          debugError('BCC recipients load failed', rcRes.status);
+        }
+        setRecipients([]);
+      } else {
+        const rcData = await rcRes.json();
+        setRecipients(Array.isArray(rcData) ? rcData : []);
+      }
     } catch (error) {
-      debugError('Error loading notification recipients:', error);
-      showMessage('error', 'Failed to load notification email recipients.');
+      debugError('Error loading notifications admin data:', error);
+      showMessage('error', 'Failed to load notification settings.');
+      setEvents([]);
       setRecipients([]);
     } finally {
       setLoading(false);
@@ -71,10 +124,51 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
   }, [adminId, showMessage]);
 
   useEffect(() => {
-    void loadRecipients();
-  }, [loadRecipients]);
+    void loadAll();
+  }, [loadAll]);
 
-  const handleAdd = async () => {
+  const patchEvent = async (eventKey: string, body: Record<string, unknown>) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/notification-events/${encodeURIComponent(eventKey)}?employeeId=${encodeURIComponent(adminId)}`,
+        { method: 'PUT', headers: adminHeaders(), body: JSON.stringify({ employeeId: adminId, ...body }) }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to update');
+      setEvents((prev) => prev.map((e) => (e.eventKey === eventKey ? { ...e, ...data } : e)));
+      setDrafts((d) => ({
+        ...d,
+        [eventKey]: {
+          titleTemplate: data.titleTemplate ?? '',
+          messageTemplate: data.messageTemplate ?? '',
+        },
+      }));
+    } catch (error) {
+      debugError('patchEvent', error);
+      showMessage('error', error instanceof Error ? error.message : 'Update failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveTemplates = async (eventKey: string) => {
+    const d = drafts[eventKey];
+    if (!d) return;
+    await patchEvent(eventKey, {
+      titleTemplate: d.titleTemplate.trim() === '' ? null : d.titleTemplate,
+      messageTemplate: d.messageTemplate.trim() === '' ? null : d.messageTemplate,
+    });
+    showMessage('success', 'Templates saved.');
+  };
+
+  const resetTemplates = async (eventKey: string) => {
+    await patchEvent(eventKey, { titleTemplate: null, messageTemplate: null });
+    showMessage('success', 'Templates reset to system defaults.');
+  };
+
+  const handleAddRecipient = async () => {
     const email = emailInput.trim().toLowerCase();
     const label = labelInput.trim();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -86,64 +180,53 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/email-recipients`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-employee-id': adminId,
-        },
+        headers: adminHeaders(),
         body: JSON.stringify({ employeeId: adminId, email, label, isActive: true }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Failed to add notification recipient');
+      if (!response.ok) throw new Error(data.error || 'Failed to add recipient');
       setEmailInput('');
       setLabelInput('');
-      await loadRecipients();
-      showMessage('success', 'Notification email recipient added.');
+      await loadAll();
+      showMessage('success', 'BCC recipient added.');
     } catch (error) {
-      debugError('Error adding notification recipient:', error);
-      showMessage('error', error instanceof Error ? error.message : 'Failed to add notification recipient.');
+      showMessage('error', error instanceof Error ? error.message : 'Failed to add.');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDeleteRecipient = async (id: number) => {
     setBusy(true);
-    setMessage(null);
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/notifications/email-recipients/${id}?employeeId=${encodeURIComponent(adminId)}`,
         { method: 'DELETE', headers: { 'x-employee-id': adminId } }
       );
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Failed to delete notification recipient');
-      await loadRecipients();
-      showMessage('success', 'Notification email recipient removed.');
+      if (!response.ok) throw new Error(data.error || 'Failed to delete');
+      await loadAll();
+      showMessage('success', 'BCC recipient removed.');
     } catch (error) {
-      debugError('Error deleting notification recipient:', error);
-      showMessage('error', error instanceof Error ? error.message : 'Failed to delete notification recipient.');
+      showMessage('error', error instanceof Error ? error.message : 'Failed to delete.');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleToggle = async (row: NotificationEmailRecipient, isActive: boolean) => {
+  const handleToggleRecipient = async (row: NotificationEmailRecipient, isActive: boolean) => {
     setBusy(true);
-    setMessage(null);
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/email-recipients/${row.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-employee-id': adminId,
-        },
+        headers: adminHeaders(),
         body: JSON.stringify({ employeeId: adminId, email: row.email, label: row.label || '', isActive }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Failed to update notification recipient');
-      await loadRecipients();
+      if (!response.ok) throw new Error(data.error || 'Failed to update');
+      await loadAll();
     } catch (error) {
-      debugError('Error updating notification recipient:', error);
-      showMessage('error', error instanceof Error ? error.message : 'Failed to update notification recipient.');
+      showMessage('error', error instanceof Error ? error.message : 'Failed to update.');
     } finally {
       setBusy(false);
     }
@@ -158,15 +241,16 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
   }
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 960, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <NotificationsIcon color="primary" />
           <Box>
-            <Typography variant="h5">Notification Control</Typography>
+            <Typography variant="h5">Notifications</Typography>
             <Typography variant="body2" color="text.secondary">
-              Active addresses are added as BCC on workflow notification emails (the primary recipient is not
-              duplicated). Inactive rows are kept but not used.
+              Turn workflow alerts on or off for the portal bell and for email, and optionally override wording with
+              templates.               Brand-new notification types still require a code change; this screen controls the events the system
+              already sends.
             </Typography>
           </Box>
         </Box>
@@ -174,7 +258,7 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
           variant="outlined"
           size="small"
           startIcon={<RefreshIcon />}
-          onClick={() => void loadRecipients()}
+          onClick={() => void loadAll()}
           disabled={busy}
         >
           Refresh
@@ -187,10 +271,121 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
         </Alert>
       )}
 
+      <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+        Workflow notification events
+      </Typography>
+      <Stack spacing={1} sx={{ mb: 3 }}>
+        {events.map((ev) => (
+          <Accordion key={ev.eventKey} disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider', '&:before': { display: 'none' } }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  {ev.displayName}
+                </Typography>
+                <Stack direction="row" spacing={0.5} onClick={(e) => e.stopPropagation()}>
+                  <Chip size="small" label={ev.inAppEnabled ? 'In-app on' : 'In-app off'} color={ev.inAppEnabled ? 'primary' : 'default'} variant="outlined" />
+                  <Chip size="small" label={ev.emailEnabled ? 'Email on' : 'Email off'} color={ev.emailEnabled ? 'primary' : 'default'} variant="outlined" />
+                </Stack>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {ev.description}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                Stored type: <code>{ev.notificationType}</code>
+              </Typography>
+              {ev.placeholders.length > 0 && (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                  Template placeholders:{' '}
+                  {ev.placeholders.map((p) => (
+                    <Chip key={p} label={`{${p}}`} size="small" sx={{ mr: 0.5, mt: 0.5 }} />
+                  ))}
+                </Typography>
+              )}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={ev.inAppEnabled}
+                      onChange={(e) => void patchEvent(ev.eventKey, { inAppEnabled: e.target.checked })}
+                      disabled={busy}
+                    />
+                  }
+                  label="Show in portal (bell / list)"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={ev.emailEnabled}
+                      onChange={(e) => void patchEvent(ev.eventKey, { emailEnabled: e.target.checked })}
+                      disabled={busy}
+                    />
+                  }
+                  label="Send email"
+                />
+              </Stack>
+              <TextField
+                fullWidth
+                size="small"
+                label="Title template (optional — empty uses default)"
+                multiline
+                minRows={2}
+                value={drafts[ev.eventKey]?.titleTemplate ?? ''}
+                onChange={(e) =>
+                  setDrafts((d) => ({
+                    ...d,
+                    [ev.eventKey]: { ...d[ev.eventKey], titleTemplate: e.target.value, messageTemplate: d[ev.eventKey]?.messageTemplate ?? '' },
+                  }))
+                }
+                sx={{ mb: 2 }}
+                disabled={busy}
+              />
+              <TextField
+                fullWidth
+                size="small"
+                label="Message template (optional — empty uses default)"
+                multiline
+                minRows={4}
+                value={drafts[ev.eventKey]?.messageTemplate ?? ''}
+                onChange={(e) =>
+                  setDrafts((d) => ({
+                    ...d,
+                    [ev.eventKey]: { titleTemplate: d[ev.eventKey]?.titleTemplate ?? '', messageTemplate: e.target.value },
+                  }))
+                }
+                sx={{ mb: 2 }}
+                disabled={busy}
+              />
+              <Stack direction="row" spacing={1}>
+                <Button variant="contained" size="small" onClick={() => void saveTemplates(ev.eventKey)} disabled={busy}>
+                  Save templates
+                </Button>
+                <Button variant="outlined" size="small" onClick={() => void resetTemplates(ev.eventKey)} disabled={busy}>
+                  Reset to defaults
+                </Button>
+              </Stack>
+              {ev.updatedAt && (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  Last updated: {new Date(ev.updatedAt).toLocaleString()}
+                </Typography>
+              )}
+            </AccordionDetails>
+          </Accordion>
+        ))}
+      </Stack>
+
+      <Divider sx={{ my: 3 }} />
+
+      <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+        Optional: global BCC on workflow emails
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        These addresses are copied on notification emails only (not a substitute for turning events on above). The
+        primary recipient is not duplicated.
+      </Typography>
+
       <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider' }}>
-        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-          Global BCC recipients
-        </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
           <TextField
             size="small"
@@ -208,8 +403,8 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
             sx={{ minWidth: 220 }}
             disabled={busy}
           />
-          <Button variant="contained" onClick={() => void handleAdd()} disabled={busy}>
-            Add email
+          <Button variant="contained" onClick={() => void handleAddRecipient()} disabled={busy}>
+            Add BCC email
           </Button>
         </Box>
 
@@ -243,7 +438,7 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
                   control={
                     <Switch
                       checked={row.isActive}
-                      onChange={(e) => void handleToggle(row, e.target.checked)}
+                      onChange={(e) => void handleToggleRecipient(row, e.target.checked)}
                       size="small"
                       disabled={busy}
                     />
@@ -253,7 +448,7 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
                 <IconButton
                   size="small"
                   color="error"
-                  onClick={() => void handleDelete(row.id)}
+                  onClick={() => void handleDeleteRecipient(row.id)}
                   disabled={busy}
                   aria-label={`Remove ${row.email}`}
                 >
@@ -264,7 +459,7 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
           ))}
           {recipients.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              No notification recipients configured.
+              No BCC addresses configured.
             </Typography>
           )}
         </Box>

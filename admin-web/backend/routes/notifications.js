@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const notificationService = require('../services/notificationService');
+const notificationEventSettings = require('../services/notificationEventSettings');
 const emailService = require('../services/emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { notificationPollingLimiter } = require('../middleware/rateLimiter');
@@ -468,6 +469,42 @@ router.delete('/api/notifications/email-recipients/:id', async (req, res) => {
     if (this.changes === 0) return res.status(404).json({ error: 'Notification email recipient not found' });
     return res.json({ message: 'Notification email recipient deleted', id: Number(id) });
   });
+});
+
+/**
+ * Admin: list workflow notification events (toggles + templates)
+ * GET /api/admin/notification-events
+ */
+router.get('/api/admin/notification-events', async (req, res) => {
+  const admin = await ensureAdminAccess(req, res);
+  if (!admin) return;
+  try {
+    const events = await notificationEventSettings.listAllForAdmin();
+    return res.json(events);
+  } catch (error) {
+    debugError('❌ Error listing notification events:', error);
+    return res.status(500).json({ error: 'Failed to load notification events' });
+  }
+});
+
+/**
+ * Admin: update one workflow notification event
+ * PUT /api/admin/notification-events/:eventKey
+ */
+router.put('/api/admin/notification-events/:eventKey', async (req, res) => {
+  const admin = await ensureAdminAccess(req, res);
+  if (!admin) return;
+  const { eventKey } = req.params;
+  try {
+    await notificationEventSettings.updateEventSetting(eventKey, req.body || {});
+    const events = await notificationEventSettings.listAllForAdmin();
+    const row = events.find((e) => e.eventKey === eventKey);
+    return res.json(row || { eventKey });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    debugError('❌ Error updating notification event:', error);
+    return res.status(status).json({ error: error.message || 'Failed to update notification event' });
+  }
 });
 
 // ===== LEGACY ENDPOINTS (for backward compatibility) =====
