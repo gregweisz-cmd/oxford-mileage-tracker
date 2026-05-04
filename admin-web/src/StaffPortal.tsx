@@ -175,6 +175,39 @@ function normalizeCostCenterForMatch(value: string): string {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function buildTimeTrackingDedupKey(entry: any): string {
+  const p = parseCalendarYmdParts(entry?.date);
+  const dateKey = p
+    ? `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`
+    : String(entry?.date || '').split('T')[0];
+  const normalizedCostCenter = normalizeCostCenterForMatch(entry?.costCenter || '');
+  const normalizedCategory = String(entry?.category || '').trim().toLowerCase();
+  const bucket = normalizedCostCenter || normalizedCategory || 'working hours';
+  return `${dateKey}::${bucket}`;
+}
+
+function dedupeTimeTrackingEntries(entries: any[]): any[] {
+  const entryMap = new Map<string, any>();
+  (entries || []).forEach((entry: any) => {
+    const key = buildTimeTrackingDedupKey(entry);
+    const existing = entryMap.get(key);
+    if (!existing) {
+      entryMap.set(key, entry);
+      return;
+    }
+    const existingUpdated = existing?.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+    const incomingUpdated = entry?.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
+    const existingCreated = existing?.createdAt ? new Date(existing.createdAt).getTime() : 0;
+    const incomingCreated = entry?.createdAt ? new Date(entry.createdAt).getTime() : 0;
+    const existingRank = Math.max(existingUpdated, existingCreated);
+    const incomingRank = Math.max(incomingUpdated, incomingCreated);
+    if (incomingRank >= existingRank) {
+      entryMap.set(key, entry);
+    }
+  });
+  return Array.from(entryMap.values());
+}
+
 function mapReceiptToTravelCategory(categoryValue: string): keyof Pick<CostCenterRow, 'airRailBus' | 'vehicleRentalFuel' | 'parkingTolls' | 'groundTransportation' | 'lodging'> | null {
   const category = String(categoryValue || '').toLowerCase();
   if (category.includes('air') || category.includes('rail') || category.includes('bus') || category.includes('flight')) return 'airRailBus';
@@ -205,7 +238,7 @@ export function buildCostCenterRows(params: {
   const { currentMonthMileageList, receipts, dailyDescriptions, rawTimeEntries, costCenter, costCenters, daysInMonth, currentMonth, currentYear, normalizeDate, perDiemByDate, formatLocationNameAndAddress, employee, startingOdometer } = params;
   const baseAddress = employee?.baseAddress;
   const baseAddress2 = employee?.baseAddress2;
-  const currentMonthTime = rawTimeEntries.filter((t: any) => {
+  const currentMonthTime = dedupeTimeTrackingEntries(rawTimeEntries).filter((t: any) => {
     const ym = parseCalendarYearMonthFromStoredDate(t.date);
     return ym && ym.month === currentMonth && ym.year === currentYear;
   });
@@ -1443,7 +1476,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Set raw mileage entries for the mileage entries tab
           setRawMileageEntries(mileageEntries);
-          setRawTimeEntries(timeTracking);
+          setRawTimeEntries(dedupeTimeTrackingEntries(timeTracking));
           // Normalize all dates in dailyDescriptions; when dayOff is true, keep description in sync with dayOffType for display
           const dailyDescriptions = dailyDescriptionsRaw.map((desc: any) => {
             const normalized = { ...desc, date: normalizeDate(desc.date) };
@@ -2173,7 +2206,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
         // In revision mode, refresh raw arrays so row-level revision highlights line up with latest data.
         setRawMileageEntries(mileageEntries);
-        setRawTimeEntries(timeEntries);
+        setRawTimeEntries(dedupeTimeTrackingEntries(timeEntries));
 
         // Count items needing revision
         const revisionCounts = {
