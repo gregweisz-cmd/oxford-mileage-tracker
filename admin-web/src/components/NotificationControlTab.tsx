@@ -249,17 +249,29 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
             <Typography variant="h5">Notifications</Typography>
             <Typography variant="body2" color="text.secondary">
               Turn workflow alerts on or off for the portal bell and for email, and optionally override wording with
-              templates.               Brand-new notification types still require a code change; this screen controls the events the system
-              already sends.
+              templates. Brand-new notification types still require a code change; this screen controls the events the
+              system already sends.
             </Typography>
           </Box>
         </Box>
         <Button
-          variant="outlined"
-          size="small"
+          variant="contained"
+          color="primary"
+          size="medium"
           startIcon={<RefreshIcon />}
           onClick={() => void loadAll()}
           disabled={busy}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 600,
+            px: 2.5,
+            py: 1,
+            borderRadius: 1,
+            boxShadow: 2,
+            flexShrink: 0,
+            alignSelf: 'flex-start',
+            mt: { xs: 0, sm: 0.5 },
+          }}
         >
           Refresh
         </Button>
