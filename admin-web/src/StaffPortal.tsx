@@ -7146,9 +7146,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
                     {supervisorMode && (
-                      <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1, width: '3%' }}>
-                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block' }}>
-                          Select for Revision
+                      <TableCell
+                        padding="checkbox"
+                        sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
+                      >
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
+                          Select for
+                          <br />
+                          Revision
                         </Typography>
                         <Checkbox
                           indeterminate={selectedTimeTrackingItems.size > 0 && selectedTimeTrackingItems.size < employeeData.dailyEntries.length}
@@ -7679,9 +7684,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableHead>
                   <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
                     {supervisorMode && (
-                      <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1, width: '3%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}>
-                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block' }}>
-                          Select for Revision
+                      <TableCell
+                        padding="checkbox"
+                        sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, whiteSpace: 'normal', lineHeight: 1.2, verticalAlign: 'top' }}
+                      >
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
+                          Select for
+                          <br />
+                          Revision
                         </Typography>
                         <Checkbox
                           indeterminate={(() => { const cc0Ids = Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`); const n = cc0Ids.filter(id => selectedMileageItems.has(id)).length; return n > 0 && n < daysInMonth; })()}
@@ -8485,9 +8495,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
                     {supervisorMode && (
-                      <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
-                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block' }}>
-                          Select for Revision
+                      <TableCell
+                        padding="checkbox"
+                        sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
+                      >
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
+                          Select for
+                          <br />
+                          Revision
                         </Typography>
                         <Checkbox
                           indeterminate={selectedReceiptItems.size > 0 && selectedReceiptItems.size < receipts.length}
