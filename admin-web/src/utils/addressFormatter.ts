@@ -300,6 +300,49 @@ export function formatLocationNameAndAddress(
   if (!addr) return displayName || '';
 
   const normalizeToken = (value: string): string => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const collapseDuplicateLocationText = (value: string): string => {
+    let current = String(value || '').trim();
+    let previous = '';
+    while (current && current !== previous) {
+      previous = current;
+
+      // "Name (Name)" -> "Name"
+      const sameParen = current.match(/^(.+?)\s*\((.+)\)$/);
+      if (sameParen && normalizeToken(sameParen[1]) === normalizeToken(sameParen[2])) {
+        current = sameParen[1].trim();
+        continue;
+      }
+
+      // "Name (Address) (Address)" -> "Name (Address)"
+      const duplicateAddressParen = current.match(/^(.+?)\s*\((.+)\)\s*\((.+)\)$/);
+      if (duplicateAddressParen) {
+        const left = duplicateAddressParen[1].trim();
+        const firstAddress = duplicateAddressParen[2].trim();
+        const secondAddress = duplicateAddressParen[3].trim();
+        if (normalizeToken(firstAddress) === normalizeToken(secondAddress)) {
+          current = `${left} (${firstAddress})`;
+          continue;
+        }
+      }
+
+      // "Name (Address) (Name (Address))" -> "Name (Address)"
+      const nestedDuplicate = current.match(/^(.+?)\s*\((.+)\)\s*\((.+?)\s*\((.+)\)\)\s*$/);
+      if (nestedDuplicate) {
+        const leftName = nestedDuplicate[1].trim();
+        const leftAddress = nestedDuplicate[2].trim();
+        const rightName = nestedDuplicate[3].trim();
+        const rightAddress = nestedDuplicate[4].trim();
+        if (
+          normalizeToken(leftName) === normalizeToken(rightName) &&
+          normalizeToken(leftAddress) === normalizeToken(rightAddress)
+        ) {
+          current = `${leftName} (${leftAddress})`;
+          continue;
+        }
+      }
+    }
+    return current;
+  };
 
   // If incoming address is already in "Name (Address)" format, don't wrap it again.
   // This prevents outputs like "BA (BA (...))" or duplicate parenthetical copies.
@@ -308,9 +351,9 @@ export function formatLocationNameAndAddress(
     const existingName = preformattedMatch[1].trim();
     const existingAddress = abbreviateAddressForDisplay(preformattedMatch[2].trim());
     if (displayName && normalizeToken(displayName) !== normalizeToken(existingName)) {
-      return `${displayName} (${existingAddress})`;
+      return collapseDuplicateLocationText(`${displayName} (${existingAddress})`);
     }
-    return `${existingName} (${existingAddress})`;
+    return collapseDuplicateLocationText(`${existingName} (${existingAddress})`);
   }
 
   const baLabel = getBaseAddressLabel(addr, baseAddress, baseAddress2);
@@ -319,18 +362,18 @@ export function formatLocationNameAndAddress(
     const baseAddr = (baLabel === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
     const addrOnly = baseAddr ? (extractAddressPortion(baseAddr) || baseAddr) : '';
     const prefix = baLabel === 'BA2' ? 'BA2' : 'BA';
-    return addrOnly ? `${prefix} (${abbreviateAddressForDisplay(addrOnly)})` : prefix;
+    return collapseDuplicateLocationText(addrOnly ? `${prefix} (${abbreviateAddressForDisplay(addrOnly)})` : prefix);
   }
 
   // If "address" is the same as the name, don't show "Name (Name)" — show only the name
   if (displayName && addr.toLowerCase() === displayName.toLowerCase()) {
-    return displayName;
+    return collapseDuplicateLocationText(displayName);
   }
 
   const displayAddress = abbreviateAddressForDisplay(addr);
   if (displayName) {
-    return `${displayName} (${displayAddress})`;
+    return collapseDuplicateLocationText(`${displayName} (${displayAddress})`);
   }
-  return displayAddress;
+  return collapseDuplicateLocationText(displayAddress);
 }
 
