@@ -299,6 +299,20 @@ export function formatLocationNameAndAddress(
   const displayName = (name || '').trim();
   if (!addr) return displayName || '';
 
+  const normalizeToken = (value: string): string => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // If incoming address is already in "Name (Address)" format, don't wrap it again.
+  // This prevents outputs like "BA (BA (...))" or duplicate parenthetical copies.
+  const preformattedMatch = addr.match(/^([^(]+?)\s*\((.+)\)$/);
+  if (preformattedMatch) {
+    const existingName = preformattedMatch[1].trim();
+    const existingAddress = abbreviateAddressForDisplay(preformattedMatch[2].trim());
+    if (displayName && normalizeToken(displayName) !== normalizeToken(existingName)) {
+      return `${displayName} (${existingAddress})`;
+    }
+    return `${existingName} (${existingAddress})`;
+  }
+
   const baLabel = getBaseAddressLabel(addr, baseAddress, baseAddress2);
   const nameIsBase = /^(ba|base address|base|home base)\s*$/i.test(displayName);
   if (baLabel || nameIsBase) {
