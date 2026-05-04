@@ -24,6 +24,21 @@ function parsePreferences(preferences) {
   return {};
 }
 
+async function ensureAdminAccess(req, res) {
+  const requesterId =
+    String(req.headers['x-employee-id'] || req.body?.employeeId || req.query?.employeeId || '').trim();
+  if (!requesterId) {
+    res.status(400).json({ error: 'employeeId is required for admin actions' });
+    return null;
+  }
+  const requester = await dbService.getEmployeeById(requesterId);
+  if (!requester || String(requester.role || '').toLowerCase() !== 'admin') {
+    res.status(403).json({ error: 'Admin access required' });
+    return null;
+  }
+  return requester;
+}
+
 /**
  * Get all notifications for a user (unified endpoint)
  * GET /api/notifications/:recipientId
@@ -346,6 +361,113 @@ router.post('/api/notifications/test-email', async (req, res) => {
     debugError('❌ Error sending test email:', error);
     return res.status(500).json({ error: 'Failed to send test email' });
   }
+});
+
+/**
+ * Admin: list global notification email recipients
+ * GET /api/notifications/email-recipients
+ */
+router.get('/api/notifications/email-recipients', async (req, res) => {
+  const admin = await ensureAdminAccess(req, res);
+  if (!admin) return;
+  const db = dbService.getDb();
+  db.all(
+    'SELECT id, email, label, isActive, createdBy, createdAt, updatedAt FROM notification_email_recipients ORDER BY email COLLATE NOCASE',
+    [],
+    (err, rows) => {
+      if (err) {
+        debugError('❌ Error listing notification email recipients:', err);
+        return res.status(500).json({ error: 'Failed to load notification email recipients' });
+      }
+      return res.json((rows || []).map((row) => ({ ...row, isActive: row.isActive === 1 })));
+    }
+  );
+});
+
+/**
+ * Admin: create global notification email recipient
+ * POST /api/notifications/email-recipients
+ */
+router.post('/api/notifications/email-recipients', async (req, res) => {
+  const admin = await ensureAdminAccess(req, res);
+  if (!admin) return;
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const label = String(req.body?.label || '').trim();
+  const isActive = req.body?.isActive === false ? 0 : 1;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Valid email is required' });
+  }
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO notification_email_recipients (email, label, isActive, createdBy, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [email, label, isActive, admin.id, now, now],
+    function(err) {
+      if (err) {
+        if (String(err.message || '').toLowerCase().includes('unique')) {
+          return res.status(409).json({ error: 'Email is already in notification recipients' });
+        }
+        debugError('❌ Error creating notification email recipient:', err);
+        return res.status(500).json({ error: 'Failed to add notification email recipient' });
+      }
+      return res.json({ id: this.lastID, email, label, isActive: isActive === 1, createdBy: admin.id, createdAt: now, updatedAt: now });
+    }
+  );
+});
+
+/**
+ * Admin: update global notification email recipient
+ * PUT /api/notifications/email-recipients/:id
+ */
+router.put('/api/notifications/email-recipients/:id', async (req, res) => {
+  const admin = await ensureAdminAccess(req, res);
+  if (!admin) return;
+  const { id } = req.params;
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const label = String(req.body?.label || '').trim();
+  const isActive = req.body?.isActive === false ? 0 : 1;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Valid email is required' });
+  }
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+  db.run(
+    `UPDATE notification_email_recipients
+     SET email = ?, label = ?, isActive = ?, updatedAt = ?
+     WHERE id = ?`,
+    [email, label, isActive, now, id],
+    function(err) {
+      if (err) {
+        if (String(err.message || '').toLowerCase().includes('unique')) {
+          return res.status(409).json({ error: 'Email is already in notification recipients' });
+        }
+        debugError('❌ Error updating notification email recipient:', err);
+        return res.status(500).json({ error: 'Failed to update notification email recipient' });
+      }
+      if (this.changes === 0) return res.status(404).json({ error: 'Notification email recipient not found' });
+      return res.json({ id: Number(id), email, label, isActive: isActive === 1, updatedAt: now });
+    }
+  );
+});
+
+/**
+ * Admin: delete global notification email recipient
+ * DELETE /api/notifications/email-recipients/:id
+ */
+router.delete('/api/notifications/email-recipients/:id', async (req, res) => {
+  const admin = await ensureAdminAccess(req, res);
+  if (!admin) return;
+  const { id } = req.params;
+  const db = dbService.getDb();
+  db.run('DELETE FROM notification_email_recipients WHERE id = ?', [id], function(err) {
+    if (err) {
+      debugError('❌ Error deleting notification email recipient:', err);
+      return res.status(500).json({ error: 'Failed to delete notification email recipient' });
+    }
+    if (this.changes === 0) return res.status(404).json({ error: 'Notification email recipient not found' });
+    return res.json({ message: 'Notification email recipient deleted', id: Number(id) });
+  });
 });
 
 // ===== LEGACY ENDPOINTS (for backward compatibility) =====

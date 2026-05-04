@@ -679,6 +679,17 @@ function ensureTablesExist() {
         FOREIGN KEY (reportId) REFERENCES expense_reports(id) ON DELETE CASCADE
       )`);
 
+      // Admin-managed global notification email recipients (BCC list for workflow notifications)
+      db.run(`CREATE TABLE IF NOT EXISTS notification_email_recipients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        label TEXT DEFAULT '',
+        isActive INTEGER DEFAULT 1,
+        createdBy TEXT DEFAULT '',
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+
       // Legacy tables - kept for backward compatibility, will be migrated gradually
       db.run(`CREATE TABLE IF NOT EXISTS supervisor_notifications (
         id TEXT PRIMARY KEY,
@@ -1054,6 +1065,7 @@ function ensureTablesExist() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_isRead ON notifications(isRead)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_createdAt ON notifications(createdAt)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notification_email_recipients_active ON notification_email_recipients(isActive)`);
       
       // Legacy notification indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_supervisor_notifications_supervisorId ON supervisor_notifications(supervisorId)`);

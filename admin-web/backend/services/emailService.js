@@ -6,6 +6,7 @@
 
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const nodemailer = require('nodemailer');
+const dbService = require('./dbService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 // Email configuration from environment variables
@@ -30,10 +31,51 @@ const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tra
 // Email notifications are enabled by default when credentials are configured.
 // Set EMAIL_ENABLED=false to hard-disable all outbound email.
 const EMAIL_ENABLED = (process.env.EMAIL_ENABLED || 'true').toLowerCase() === 'true';
+const ADMIN_PORTAL_URL_RAW =
+  process.env.ADMIN_PORTAL_URL ||
+  process.env.WEB_PORTAL_URL ||
+  process.env.FRONTEND_URL ||
+  process.env.REACT_APP_WEB_URL ||
+  process.env.REACT_APP_API_URL?.replace('/api', '') ||
+  'https://oxford-mileage-backend.onrender.com';
 
 // Create AWS SES client (will be initialized lazily)
 let sesClient = null;
 let transporter = null; // SMTP transporter (fallback)
+
+function getAdminPortalBaseUrl() {
+  const raw = String(ADMIN_PORTAL_URL_RAW || '').trim();
+  if (!raw) return 'https://oxford-mileage-backend.onrender.com';
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/$/, '');
+  return `https://${raw.replace(/\/$/, '')}`;
+}
+
+async function getGlobalNotificationRecipientEmails(primaryRecipient = '') {
+  try {
+    const db = dbService.getDb();
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        'SELECT email FROM notification_email_recipients WHERE isActive = 1 ORDER BY email COLLATE NOCASE',
+        [],
+        (err, records) => (err ? reject(err) : resolve(records || []))
+      );
+    });
+    const primary = String(primaryRecipient || '').trim().toLowerCase();
+    const seen = new Set();
+    return rows
+      .map((row) => String(row.email || '').trim().toLowerCase())
+      .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      .filter((email) => email !== primary)
+      .filter((email) => {
+        if (seen.has(email)) return false;
+        seen.add(email);
+        return true;
+      });
+  } catch (error) {
+    debugWarn('⚠️ Could not load global notification email recipients:', error?.message || error);
+    return [];
+  }
+}
 
 /**
  * Initialize AWS SES client
@@ -142,7 +184,7 @@ function initTransporter() {
  * @param {string} [options.html] - HTML email body (optional)
  * @returns {Promise<Object>} Result object with success and messageId/error
  */
-async function sendEmailViaSES({ to, subject, text, html }) {
+async function sendEmailViaSES({ to, subject, text, html, bcc = [] }) {
   const client = initSESClient();
   if (!client) {
     return { success: false, error: 'AWS SES client not configured' };
@@ -153,6 +195,7 @@ async function sendEmailViaSES({ to, subject, text, html }) {
       Source: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>`,
       Destination: {
         ToAddresses: [to],
+        ...(Array.isArray(bcc) && bcc.length > 0 ? { BccAddresses: bcc } : {}),
       },
       Message: {
         Subject: {
@@ -211,7 +254,7 @@ async function sendEmailViaSES({ to, subject, text, html }) {
  * @param {string} [options.html] - HTML email body (optional)
  * @returns {Promise<Object>} Result object with success and messageId/error
  */
-async function sendEmailViaSMTP({ to, subject, text, html }) {
+async function sendEmailViaSMTP({ to, subject, text, html, bcc = [] }) {
     const emailTransporter = await initTransporter();
     
     if (!emailTransporter) {
@@ -226,6 +269,7 @@ async function sendEmailViaSMTP({ to, subject, text, html }) {
     const mailOptions = {
       from: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>`,
       to,
+      ...(Array.isArray(bcc) && bcc.length > 0 ? { bcc } : {}),
       subject,
       text,
       html: html || text.replace(/\n/g, '<br>'),
@@ -256,7 +300,7 @@ async function sendEmailViaSMTP({ to, subject, text, html }) {
  * @param {string} [options.html] - HTML email body (optional)
  * @returns {Promise<Object>} Result object with success and messageId/error
  */
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, bcc = [] }) {
   if (!EMAIL_ENABLED) {
     return { success: false, error: 'Email is disabled' };
   }
@@ -269,7 +313,7 @@ async function sendEmail({ to, subject, text, html }) {
   const sesClient = initSESClient();
   if (sesClient) {
     debugLog('📧 Attempting to send email via AWS SES SDK...');
-    const result = await sendEmailViaSES({ to, subject, text, html });
+    const result = await sendEmailViaSES({ to, subject, text, html, bcc });
     if (result.success) {
       return result;
     }
@@ -278,7 +322,7 @@ async function sendEmail({ to, subject, text, html }) {
 
   // Fallback to SMTP
   debugLog('📧 Attempting to send email via SMTP...');
-  return await sendEmailViaSMTP({ to, subject, text, html });
+  return await sendEmailViaSMTP({ to, subject, text, html, bcc });
 }
 
 /**
@@ -300,6 +344,7 @@ async function sendNotificationEmail({ recipient, type, title, message, report, 
 
   const reportInfo = report ? ` for ${new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : '';
   const actorInfo = actor ? ` from ${actor.preferredName || actor.name || 'Team'}` : '';
+  const adminPortalBaseUrl = getAdminPortalBaseUrl();
 
   const emailSubject = title || `Oxford House Expense Tracker${reportInfo}${actorInfo}`;
   
@@ -318,7 +363,7 @@ async function sendNotificationEmail({ recipient, type, title, message, report, 
       </div>
       ${report ? `<p><strong>Report Period:</strong> ${new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>` : ''}
       <p style="margin-top: 20px;">
-        <a href="${process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'}/admin" 
+        <a href="${adminPortalBaseUrl}/admin" 
            style="background-color: #1976d2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
           Log In to Portal
         </a>
@@ -334,6 +379,7 @@ async function sendNotificationEmail({ recipient, type, title, message, report, 
     subject: emailSubject,
     text: emailBody,
     html: htmlBody,
+    bcc: await getGlobalNotificationRecipientEmails(recipient.email),
   });
 
   return result.success;
@@ -379,6 +425,7 @@ function getEmailConfigStatus() {
     hasSmtpUser: !!EMAIL_USER,
     hasSmtpPass: !!EMAIL_PASS,
     emailFrom: EMAIL_FROM,
+    adminPortalUrl: getAdminPortalBaseUrl(),
   };
 }
 
@@ -394,6 +441,7 @@ async function sendReportSubmittedNotification({
   reportPeriod,
 }) {
   const subject = `New Expense Report Pending Approval - ${employeeName}`;
+  const adminPortalBaseUrl = getAdminPortalBaseUrl();
   
   const text = `Hello ${supervisorName},\n\n${employeeName} has submitted an expense report for your approval.\n\nReport Period: ${reportPeriod}\nReport ID: ${reportId}\n\nPlease review and approve or request revisions as needed.`;
   
@@ -422,7 +470,7 @@ async function sendReportSubmittedNotification({
           <p><strong>Report ID:</strong> ${reportId}</p>
           <p>Please review and approve or request revisions as needed.</p>
           <p style="text-align: center;">
-            <a href="${process.env.ADMIN_PORTAL_URL || process.env.REACT_APP_API_URL?.replace('/api', '') || 'https://oxford-mileage-backend.onrender.com'}/reports/pending" class="button">Review Report</a>
+            <a href="${adminPortalBaseUrl}/reports/pending" class="button">Review Report</a>
           </p>
         </div>
         <div class="footer">
@@ -438,6 +486,7 @@ async function sendReportSubmittedNotification({
     subject: subject,
     text: text,
     html: html,
+    bcc: await getGlobalNotificationRecipientEmails(supervisorEmail),
   });
 }
 
@@ -496,6 +545,7 @@ async function sendReportApprovedNotification({
     subject: subject,
     text: text,
     html: html,
+    bcc: await getGlobalNotificationRecipientEmails(employeeEmail),
   });
 }
 
@@ -558,6 +608,7 @@ async function sendReportRejectedNotification({
     subject: subject,
     text: text,
     html: html,
+    bcc: await getGlobalNotificationRecipientEmails(employeeEmail),
   });
 }
 
@@ -620,6 +671,7 @@ async function sendRevisionRequestedNotification({
     subject: subject,
     text: text,
     html: html,
+    bcc: await getGlobalNotificationRecipientEmails(employeeEmail),
   });
 }
 
