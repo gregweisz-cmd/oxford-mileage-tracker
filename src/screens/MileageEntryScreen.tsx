@@ -361,12 +361,15 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     try {
       const dateStr = date.toISOString().split('T')[0];
       const entries = await DatabaseService.getMileageEntries(currentEmployee.id);
+      const activeVehicleId = selectedVehicleId || undefined;
       
-      // Filter entries for the selected date
+      // Filter entries for the selected date and currently selected vehicle
       const entriesForDate = entries.filter(entry => {
         const entryDate = new Date(entry.date);
         const entryDateStr = entryDate.toISOString().split('T')[0];
-        return entryDateStr === dateStr;
+        const vehicleMatches =
+          !activeVehicleId ? !entry.vehicleId : entry.vehicleId === activeVehicleId;
+        return entryDateStr === dateStr && vehicleMatches;
       });
       
       setHasExistingEntriesToday(entriesForDate.length > 0);
@@ -393,6 +396,14 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         }));
         setHasStartedGpsToday(false); // Allow editing if no daily reading
       } else {
+        // First entry of the day for this specific vehicle: suggest that vehicle's baseline odometer
+        const selectedVehicle = vehicles.find((v) => v.id === activeVehicleId);
+        if (selectedVehicle && !isEditing) {
+          setFormData(prev => ({
+            ...prev,
+            odometerReading: String(Math.round(selectedVehicle.startingOdometer || 0)),
+          }));
+        }
         setHasStartedGpsToday(false);
       }
     } catch (error) {

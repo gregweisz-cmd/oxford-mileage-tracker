@@ -18,9 +18,9 @@ function ensureDefaultVehicle(db, employeeId, callback) {
 
       const id = `veh-${makeVehicleId()}`;
       db.run(
-        `INSERT INTO vehicles (id, employeeId, name, plateNumber, isDefault, isActive, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, 1, 1, ?, ?)`,
-        [id, employeeId, 'Vehicle A', '', now, now],
+        `INSERT INTO vehicles (id, employeeId, name, plateNumber, startingOdometer, isDefault, isActive, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)`,
+        [id, employeeId, 'Vehicle A', '', 0, now, now],
         (insertErr) => callback(insertErr || null)
       );
     }
@@ -54,9 +54,13 @@ router.get('/api/vehicles', (req, res) => {
 });
 
 router.post('/api/vehicles', (req, res) => {
-  const { employeeId, name, plateNumber, isDefault } = req.body || {};
+  const { employeeId, name, plateNumber, startingOdometer, isDefault } = req.body || {};
   if (!employeeId || !String(name || '').trim()) {
     return res.status(400).json({ error: 'employeeId and name are required' });
+  }
+  const parsedStart = Number(startingOdometer);
+  if (!Number.isFinite(parsedStart) || parsedStart < 0) {
+    return res.status(400).json({ error: 'startingOdometer must be a valid non-negative number' });
   }
   const db = dbService.getDb();
   const now = new Date().toISOString();
@@ -74,9 +78,9 @@ router.post('/api/vehicles', (req, res) => {
       );
     }
     db.run(
-      `INSERT INTO vehicles (id, employeeId, name, plateNumber, isDefault, isActive, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
-      [id, employeeId, normalizedName, normalizedPlate, shouldDefault, now, now],
+      `INSERT INTO vehicles (id, employeeId, name, plateNumber, startingOdometer, isDefault, isActive, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [id, employeeId, normalizedName, normalizedPlate, parsedStart, shouldDefault, now, now],
       (err) => {
         if (err) {
           db.run('ROLLBACK');
@@ -91,9 +95,15 @@ router.post('/api/vehicles', (req, res) => {
 
 router.put('/api/vehicles/:id', (req, res) => {
   const { id } = req.params;
-  const { employeeId, name, plateNumber, isDefault } = req.body || {};
+  const { employeeId, name, plateNumber, startingOdometer, isDefault } = req.body || {};
   if (!employeeId) return res.status(400).json({ error: 'employeeId is required' });
   if (name != null && !String(name).trim()) return res.status(400).json({ error: 'name cannot be empty' });
+  if (startingOdometer != null) {
+    const parsedStart = Number(startingOdometer);
+    if (!Number.isFinite(parsedStart) || parsedStart < 0) {
+      return res.status(400).json({ error: 'startingOdometer must be a valid non-negative number' });
+    }
+  }
 
   const db = dbService.getDb();
   const now = new Date().toISOString();
@@ -117,6 +127,10 @@ router.put('/api/vehicles/:id', (req, res) => {
     if (plateNumber != null) {
       updates.push('plateNumber = ?');
       params.push(String(plateNumber).trim());
+    }
+    if (startingOdometer != null) {
+      updates.push('startingOdometer = ?');
+      params.push(Number(startingOdometer));
     }
     if (isDefault != null) {
       updates.push('isDefault = ?');

@@ -121,11 +121,11 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const signatureInputRef = useRef<HTMLInputElement>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehicleName, setVehicleName] = useState('');
-  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleStartingOdometer, setVehicleStartingOdometer] = useState('');
   const [vehicleLoading, setVehicleLoading] = useState(false);
   const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
   const [editVehicleName, setEditVehicleName] = useState('');
-  const [editVehiclePlate, setEditVehiclePlate] = useState('');
+  const [editVehicleStartingOdometer, setEditVehicleStartingOdometer] = useState('');
   const loadVehicles = useCallback(async () => {
     try {
       const rows = await VehicleApiService.getVehicles(employeeId);
@@ -511,15 +511,20 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
 
   const handleAddVehicle = async () => {
     const trimmedName = vehicleName.trim();
+    const parsedStart = Number(vehicleStartingOdometer);
     if (!trimmedName) {
       showMessage('error', 'Vehicle name is required.');
       return;
     }
+    if (!Number.isFinite(parsedStart) || parsedStart < 0) {
+      showMessage('error', 'Starting odometer is required and must be a non-negative number.');
+      return;
+    }
     setVehicleLoading(true);
     try {
-      await VehicleApiService.createVehicle(employeeId, trimmedName, vehiclePlate.trim());
+      await VehicleApiService.createVehicle(employeeId, trimmedName, parsedStart);
       setVehicleName('');
-      setVehiclePlate('');
+      setVehicleStartingOdometer('');
       await loadVehicles();
       showMessage('success', 'Vehicle added.');
     } catch (error) {
@@ -561,14 +566,19 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
   const openEditVehicle = (vehicle: Vehicle) => {
     setEditVehicleId(vehicle.id);
     setEditVehicleName(vehicle.name || '');
-    setEditVehiclePlate(vehicle.plateNumber || '');
+    setEditVehicleStartingOdometer(String(vehicle.startingOdometer || 0));
   };
 
   const handleSaveVehicleEdit = async () => {
     if (!editVehicleId) return;
     const trimmedName = editVehicleName.trim();
+    const parsedStart = Number(editVehicleStartingOdometer);
     if (!trimmedName) {
       showMessage('error', 'Vehicle name is required.');
+      return;
+    }
+    if (!Number.isFinite(parsedStart) || parsedStart < 0) {
+      showMessage('error', 'Starting odometer must be a non-negative number.');
       return;
     }
 
@@ -577,11 +587,11 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       await VehicleApiService.updateVehicle(editVehicleId, {
         employeeId,
         name: trimmedName,
-        plateNumber: editVehiclePlate.trim(),
+        startingOdometer: parsedStart,
       });
       setEditVehicleId(null);
       setEditVehicleName('');
-      setEditVehiclePlate('');
+      setEditVehicleStartingOdometer('');
       await loadVehicles();
       showMessage('success', 'Vehicle updated.');
     } catch (error) {
@@ -755,7 +765,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               Vehicles
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Manage your vehicles and choose a default for mileage tracking.
+              Name your vehicles, set required starting odometers, and choose a default for mileage tracking.
             </Typography>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
@@ -778,7 +788,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                       {vehicle.name} {vehicle.isDefault ? <StarIcon fontSize="small" sx={{ ml: 0.5, verticalAlign: 'middle', color: 'warning.main' }} /> : null}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Plate: {vehicle.plateNumber || 'Not set'}
+                      Starting odometer: {Math.round(vehicle.startingOdometer || 0)}
                     </Typography>
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1 }}>
@@ -824,10 +834,12 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               />
               <TextField
                 size="small"
-                label="Plate (optional)"
-                value={vehiclePlate}
-                onChange={(e) => setVehiclePlate(e.target.value)}
+                label="Starting odometer"
+                value={vehicleStartingOdometer}
+                onChange={(e) => setVehicleStartingOdometer(e.target.value)}
                 sx={{ minWidth: 160 }}
+                type="number"
+                inputProps={{ min: 0, step: 1 }}
               />
               <Button
                 variant="contained"
@@ -1295,11 +1307,13 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               size="small"
             />
             <TextField
-              label="Plate (optional)"
-              value={editVehiclePlate}
-              onChange={(e) => setEditVehiclePlate(e.target.value)}
+              label="Starting odometer"
+              value={editVehicleStartingOdometer}
+              onChange={(e) => setEditVehicleStartingOdometer(e.target.value)}
               fullWidth
               size="small"
+              type="number"
+              inputProps={{ min: 0, step: 1 }}
             />
           </Box>
         </DialogContent>
@@ -1308,7 +1322,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             onClick={() => {
               setEditVehicleId(null);
               setEditVehicleName('');
-              setEditVehiclePlate('');
+              setEditVehicleStartingOdometer('');
             }}
           >
             Cancel

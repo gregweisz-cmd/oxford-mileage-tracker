@@ -5,6 +5,7 @@ export interface Vehicle {
   employeeId: string;
   name: string;
   plateNumber?: string;
+  startingOdometer: number;
   isDefault: number;
   isActive: number;
   createdAt: string;
@@ -16,14 +17,14 @@ export const VehicleApiService = {
     return apiGet<Vehicle[]>(`/api/vehicles?employeeId=${encodeURIComponent(employeeId)}`);
   },
 
-  async createVehicle(employeeId: string, name: string, plateNumber: string): Promise<void> {
-    await apiPost('/api/vehicles', { employeeId, name, plateNumber });
+  async createVehicle(employeeId: string, name: string, startingOdometer: number): Promise<void> {
+    await apiPost('/api/vehicles', { employeeId, name, startingOdometer });
     rateLimitedApi.clearCacheFor('/api/vehicles');
   },
 
   async updateVehicle(
     id: string,
-    payload: { employeeId: string; name?: string; plateNumber?: string; isDefault?: boolean }
+    payload: { employeeId: string; name?: string; startingOdometer?: number; isDefault?: boolean }
   ): Promise<void> {
     await apiPut(`/api/vehicles/${id}`, payload);
     rateLimitedApi.clearCacheFor('/api/vehicles');

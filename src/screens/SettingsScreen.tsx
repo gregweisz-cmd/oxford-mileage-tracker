@@ -57,7 +57,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const [preferredNameInput, setPreferredNameInput] = useState('');
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehicleNameInput, setVehicleNameInput] = useState('');
-  const [vehiclePlateInput, setVehiclePlateInput] = useState('');
+  const [vehicleStartingOdometerInput, setVehicleStartingOdometerInput] = useState('');
 
   const appVersion = Constants.expoConfig?.version || 'Unknown';
   const nativeBuild =
@@ -369,19 +369,24 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
   const handleAddVehicle = async () => {
     if (!currentEmployee?.id) return;
     const name = vehicleNameInput.trim();
+    const parsedStart = Number(vehicleStartingOdometerInput);
     if (!name) {
       Alert.alert('Missing vehicle name', 'Enter a vehicle name (for example, Vehicle B or Prius).');
+      return;
+    }
+    if (!Number.isFinite(parsedStart) || parsedStart < 0) {
+      Alert.alert('Missing starting odometer', 'Enter a non-negative starting odometer for this vehicle.');
       return;
     }
     try {
       await DatabaseService.createVehicle({
         employeeId: currentEmployee.id,
         name,
-        plateNumber: vehiclePlateInput.trim() || undefined,
+        startingOdometer: parsedStart,
         isDefault: vehicles.length === 0,
       });
       setVehicleNameInput('');
-      setVehiclePlateInput('');
+      setVehicleStartingOdometerInput('');
       await reloadVehicles();
     } catch (error) {
       console.error('❌ Error adding vehicle:', error);
@@ -628,7 +633,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
                   <View style={{ flex: 1 }}>
                     <Text style={styles.settingTitle}>{vehicle.name}</Text>
                     <Text style={styles.settingSubtitle}>
-                      {vehicle.plateNumber || 'No plate'}{vehicle.isDefault ? ' • Default' : ''}
+                      Start: {Math.round(vehicle.startingOdometer || 0)}{vehicle.isDefault ? ' • Default' : ''}
                     </Text>
                   </View>
                   {!vehicle.isDefault ? (
@@ -658,11 +663,11 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
               />
               <TextInput
                 style={styles.input}
-                value={vehiclePlateInput}
-                onChangeText={setVehiclePlateInput}
-                placeholder="Plate number (optional)"
+                value={vehicleStartingOdometerInput}
+                onChangeText={setVehicleStartingOdometerInput}
+                placeholder="Starting odometer (required)"
                 placeholderTextColor="#999"
-                autoCapitalize="characters"
+                keyboardType="numeric"
               />
               <TouchableOpacity style={styles.button} onPress={handleAddVehicle}>
                 <Text style={styles.buttonText}>Add Vehicle</Text>

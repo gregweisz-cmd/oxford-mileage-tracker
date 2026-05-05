@@ -84,6 +84,7 @@ export interface Vehicle {
   employeeId: string;
   name: string;
   plateNumber?: string;
+  startingOdometer: number;
   isDefault: boolean;
   isActive: boolean;
   createdAt: Date;

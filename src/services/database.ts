@@ -118,6 +118,7 @@ export class DatabaseService {
         // Lightweight migrations for existing installs (full schema block is skipped once initialized)
         const database = await getDatabase();
         await this.runReceiptsMigrations(database);
+        await this.runVehicleMigrations(database);
 
         const allEmployees = await this.getEmployees();
         debugLog('🔧 Database: Found employees:', allEmployees.length);
@@ -364,12 +365,14 @@ export class DatabaseService {
           employeeId TEXT NOT NULL,
           name TEXT NOT NULL,
           plateNumber TEXT,
+          startingOdometer REAL DEFAULT 0,
           isDefault INTEGER DEFAULT 0,
           isActive INTEGER DEFAULT 1,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );
       `);
+      await this.runVehicleMigrations(database);
 
       // Create saved_addresses table
       await database.execAsync(`
@@ -2088,6 +2091,7 @@ export class DatabaseService {
     employeeId: string;
     name: string;
     plateNumber?: string;
+    startingOdometer: number;
     isDefault?: boolean;
   }): Promise<Vehicle> {
     const database = await getDatabase();
@@ -2098,15 +2102,16 @@ export class DatabaseService {
       await database.runAsync('UPDATE vehicles SET isDefault = 0 WHERE employeeId = ?', [data.employeeId]);
     }
     await database.runAsync(
-      `INSERT INTO vehicles (id, employeeId, name, plateNumber, isDefault, isActive, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
-      [id, data.employeeId, data.name.trim(), data.plateNumber?.trim() || '', setDefault ? 1 : 0, now, now]
+      `INSERT INTO vehicles (id, employeeId, name, plateNumber, startingOdometer, isDefault, isActive, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [id, data.employeeId, data.name.trim(), data.plateNumber?.trim() || '', data.startingOdometer || 0, setDefault ? 1 : 0, now, now]
     );
     return {
       id,
       employeeId: data.employeeId,
       name: data.name.trim(),
       plateNumber: data.plateNumber?.trim() || undefined,
+      startingOdometer: Number(data.startingOdometer) || 0,
       isDefault: setDefault,
       isActive: true,
       createdAt: new Date(now),
@@ -2125,6 +2130,7 @@ export class DatabaseService {
       employeeId: row.employeeId,
       name: row.name,
       plateNumber: row.plateNumber || undefined,
+      startingOdometer: Number(row.startingOdometer || 0),
       isDefault: row.isDefault === 1 || row.isDefault === true,
       isActive: row.isActive === 1 || row.isActive === true,
       createdAt: new Date(row.createdAt),
@@ -2134,6 +2140,7 @@ export class DatabaseService {
       const created = await this.createVehicle({
         employeeId,
         name: 'Vehicle A',
+        startingOdometer: 0,
         isDefault: true,
       });
       return [created];
@@ -2154,7 +2161,7 @@ export class DatabaseService {
 
   static async updateVehicle(
     id: string,
-    updates: Partial<Pick<Vehicle, 'name' | 'plateNumber' | 'isActive'>>
+    updates: Partial<Pick<Vehicle, 'name' | 'plateNumber' | 'startingOdometer' | 'isActive'>>
   ): Promise<void> {
     const database = await getDatabase();
     const fields: string[] = [];
@@ -2166,6 +2173,10 @@ export class DatabaseService {
     if (updates.plateNumber !== undefined) {
       fields.push('plateNumber = ?');
       values.push((updates.plateNumber || '').trim());
+    }
+    if (updates.startingOdometer !== undefined) {
+      fields.push('startingOdometer = ?');
+      values.push(Number(updates.startingOdometer) || 0);
     }
     if (updates.isActive !== undefined) {
       fields.push('isActive = ?');
@@ -2758,6 +2769,26 @@ export class DatabaseService {
         debugLog(`✅ Added column ${migration.column} to daily_odometer_readings table`);
       } catch (error) {
         debugLog(`ℹ️ Column ${migration.column} already exists in daily_odometer_readings table`);
+      }
+    }
+  }
+
+  /**
+   * Run vehicles table migrations
+   */
+  private static async runVehicleMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
+    const vehicleMigrations = [
+      { column: 'startingOdometer', type: 'REAL DEFAULT 0' },
+    ];
+
+    for (const migration of vehicleMigrations) {
+      try {
+        await database.execAsync(`
+          ALTER TABLE vehicles ADD COLUMN ${migration.column} ${migration.type};
+        `);
+        debugLog(`✅ Added column ${migration.column} to vehicles table`);
+      } catch (error) {
+        debugLog(`ℹ️ Column ${migration.column} already exists in vehicles table`);
       }
     }
   }
