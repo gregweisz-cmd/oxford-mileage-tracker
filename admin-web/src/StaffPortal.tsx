@@ -852,6 +852,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     'draft' | 'submitted' | 'approved' | 'rejected' | 'needs_revision' | 'pending_supervisor' | 'pending_senior_staff' | 'pending_finance' | 'under_review'
   >('draft');
   const [revisionItems, setRevisionItems] = useState<{mileage: number, receipts: number, time: number}>({mileage: 0, receipts: 0, time: 0});
+  const [revisionNotes, setRevisionNotes] = useState<any[]>([]);
   // Raw line item data for revision checking
   const [rawMileageEntries, setRawMileageEntries] = useState<any[]>([]);
   const [rawTimeEntries, setRawTimeEntries] = useState<any[]>([]);
@@ -875,6 +876,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [currentApproverName, setCurrentApproverName] = useState<string | null>(null);
   const [approvalCommentDialogOpen, setApprovalCommentDialogOpen] = useState(false);
   const [approvalCommentText, setApprovalCommentText] = useState('');
+
+  const formatRevisionTarget = React.useCallback((note: any): string => {
+    const category = String(note?.category || note?.itemType || '').toLowerCase();
+    const itemId = note?.itemId;
+    if (category === 'mileage') {
+      const idx = Number.parseInt(String(itemId ?? ''), 10);
+      if (!Number.isNaN(idx)) return `Mileage (day ${idx + 1})`;
+      return 'Mileage entry';
+    }
+    if (category === 'time') {
+      const idx = Number.parseInt(String(itemId ?? ''), 10);
+      if (!Number.isNaN(idx)) return `Time tracking (day ${idx + 1})`;
+      return 'Time tracking entry';
+    }
+    if (category === 'receipt') {
+      return itemId ? `Receipt (${String(itemId).slice(0, 8)}...)` : 'Receipt';
+    }
+    return 'Report item';
+  }, []);
 
   // Keyboard shortcuts state
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
@@ -2232,6 +2252,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const response = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}/revision-notes?resolved=false`);
           if (response.ok) {
             const notes = await response.json();
+            setRevisionNotes(Array.isArray(notes) ? notes : []);
             const itemsNeedingRev = new Set<string>();
             const daysNeedingRev = new Set<number>();
             
@@ -2266,10 +2287,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
         } catch (error) {
           debugError('Error fetching revision notes:', error);
+          setRevisionNotes([]);
         }
       } else {
         setItemsNeedingRevision(new Set());
         setDaysNeedingRevision(new Set());
+        setRevisionNotes([]);
       }
     };
 
@@ -5927,6 +5950,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           <Typography variant="body2" sx={{ mt: 1 }}>
             Please review and update the flagged items, then resubmit your report.
           </Typography>
+          {revisionNotes.length > 0 && (
+            <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.light' }}>
+              <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Supervisor requested the following changes:
+              </Typography>
+              <Box component="ul" sx={{ mt: 0, mb: 0, pl: 2 }}>
+                {revisionNotes.slice(0, 12).map((note: any) => (
+                  <li key={note.id}>
+                    <Typography variant="body2">
+                      <strong>{formatRevisionTarget(note)}:</strong> {note.notes || 'Please review this item.'}
+                      {note.requestedByName ? ` (${note.requestedByName})` : ''}
+                    </Typography>
+                  </li>
+                ))}
+              </Box>
+            </Box>
+          )}
         </Alert>
       )}
 
