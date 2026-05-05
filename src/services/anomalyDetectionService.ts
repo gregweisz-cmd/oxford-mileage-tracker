@@ -1,5 +1,6 @@
 import { DatabaseService } from './database';
 import { MileageEntry, Receipt, TimeTracking } from '../types';
+import { FALLBACK_WEEKLY_HOURS_ALERT_THRESHOLD } from '../constants/weeklyHoursAlert';
 
 export interface AnomalyAlert {
   id: string;
@@ -777,15 +778,14 @@ export class AnomalyDetectionService {
       // Calculate total hours for the week
       const totalWeeklyHours = weekEntries.reduce((sum, entry) => sum + entry.hours, 0);
       
-      // Check if this week exceeds 50 hours (updated threshold)
-      if (totalWeeklyHours >= 50) {
+      if (totalWeeklyHours >= FALLBACK_WEEKLY_HOURS_ALERT_THRESHOLD) {
         const weekNumber = this.getWeekNumber(newTimeTracking.date);
         const weekStart = this.getWeekStartDate(newTimeTracking.date);
         
         return {
           isAnomaly: true,
           confidence: 0.9,
-          reason: `⚠️ Weekly Hours Alert: Week ${weekNumber} (${weekStart.toLocaleDateString()}): ${totalWeeklyHours.toFixed(1)} hours logged - exceeds 50 hour threshold. Employee may be overworking.`,
+          reason: `⚠️ Weekly Hours Alert: Week ${weekNumber} (${weekStart.toLocaleDateString()}): ${totalWeeklyHours.toFixed(1)} hours this week. Supervisors get an email when totals meet the weekly threshold (default ${FALLBACK_WEEKLY_HOURS_ALERT_THRESHOLD}h; admins can change it).`,
           severity: 'high',
           suggestedAction: 'Please check in with this employee to ensure they are not overworking'
         };

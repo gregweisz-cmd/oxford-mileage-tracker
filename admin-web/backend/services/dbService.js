@@ -701,6 +701,15 @@ function ensureTablesExist() {
         FOREIGN KEY (reportId) REFERENCES expense_reports(id) ON DELETE CASCADE
       )`);
 
+      // One supervisor email + in-app row per employee per calendar week (Sunday-keyed) for high-hours alerts
+      db.run(`CREATE TABLE IF NOT EXISTS fifty_plus_hours_weekly_alert_sent (
+        supervisorId TEXT NOT NULL,
+        employeeId TEXT NOT NULL,
+        weekStartKey TEXT NOT NULL,
+        sentAt TEXT NOT NULL,
+        PRIMARY KEY (supervisorId, employeeId, weekStartKey)
+      )`);
+
       // Admin-managed global notification email recipients (BCC list for workflow notifications)
       db.run(`CREATE TABLE IF NOT EXISTS notification_email_recipients (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -737,6 +746,19 @@ function ensureTablesExist() {
           `INSERT OR IGNORE INTO notification_event_settings (eventKey, inAppEnabled, emailEnabled, titleTemplate, messageTemplate, updatedAt) VALUES (?, 1, 1, NULL, NULL, datetime('now'))`,
           [eventKey]
         );
+      });
+
+      db.all(`PRAGMA table_info(notification_event_settings)`, [], (pragmaErr, neColumns) => {
+        if (!pragmaErr && neColumns) {
+          const neNames = neColumns.map((c) => c.name);
+          if (!neNames.includes('hoursThreshold')) {
+            db.run(`ALTER TABLE notification_event_settings ADD COLUMN hoursThreshold INTEGER`, (alterErr) => {
+              if (!alterErr) {
+                debugLog('✅ Added hoursThreshold to notification_event_settings');
+              }
+            });
+          }
+        }
       });
 
       // Legacy tables - kept for backward compatibility, will be migrated gradually

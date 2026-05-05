@@ -456,11 +456,11 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
         </Alert>
       )}
 
-      {/* 50+ Hours Alerts */}
+      {/* Weekly hours threshold alerts (supervisor notifications) */}
       {hoursAlerts.length > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           <Typography variant="h6" gutterBottom>
-            ⚠️ Employees Working 50+ Hours
+            ⚠️ Hours threshold alerts
           </Typography>
           {hoursAlerts.map((alert, index) => (
             <Box key={alert.id} sx={{ mt: index > 0 ? 2 : 0, p: 1, bgcolor: 'rgba(255, 152, 0, 0.1)', borderRadius: 1 }}>

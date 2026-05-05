@@ -6,6 +6,20 @@
 const dbService = require('./dbService');
 const { debugWarn } = require('../debug');
 
+/** Used when `hoursThreshold` is unset in the DB for the weekly hours supervisor alert */
+const DEFAULT_WEEKLY_HOURS_ALERT_THRESHOLD = 60;
+const WEEKLY_HOURS_ALERT_MIN = 1;
+const WEEKLY_HOURS_ALERT_MAX = 168;
+
+function resolveWeeklyHoursThresholdFromRow(row) {
+  if (!row || row.hoursThreshold == null || row.hoursThreshold === '') {
+    return DEFAULT_WEEKLY_HOURS_ALERT_THRESHOLD;
+  }
+  const num = Number(row.hoursThreshold);
+  if (!Number.isFinite(num)) return DEFAULT_WEEKLY_HOURS_ALERT_THRESHOLD;
+  return Math.min(WEEKLY_HOURS_ALERT_MAX, Math.max(WEEKLY_HOURS_ALERT_MIN, Math.round(num)));
+}
+
 /** Stable keys — add new workflow notifications here and wire in notificationService */
 const NOTIFICATION_EVENT_DEFINITIONS = {
   report_submitted: {
@@ -52,10 +66,11 @@ const NOTIFICATION_EVENT_DEFINITIONS = {
     placeholders: [],
   },
   fifty_plus_hours_alert: {
-    displayName: '50+ hours in a week (supervisor)',
-    description: 'Alerts the supervisor when an employee logs 50 or more hours in a calendar week.',
+    displayName: 'Weekly hours threshold (supervisor)',
+    description:
+      'Alerts the supervisor when an employee reaches the configured weekly total (calendar week Sunday–Saturday). At most one email per employee per week. Admins set the hour threshold below.',
     notificationType: '50_plus_hours_alert',
-    placeholders: ['employeeName', 'totalHours', 'weekRange'],
+    placeholders: ['employeeName', 'totalHours', 'weekRange', 'hoursThreshold'],
   },
 };
 
@@ -81,6 +96,12 @@ async function getEventRow(eventKey) {
       else resolve(row || null);
     });
   });
+}
+
+/** Effective weekly hours threshold for supervisor alerts (reads admin setting). */
+async function getWeeklyHoursAlertThreshold() {
+  const row = await getEventRow('fifty_plus_hours_alert');
+  return resolveWeeklyHoursThresholdFromRow(row);
 }
 
 /**
@@ -137,6 +158,11 @@ async function listAllForAdmin() {
 
   return listDefinitions().map((def) => {
     const row = byKey[def.eventKey];
+    const weeklyHoursThreshold =
+      def.eventKey === 'fifty_plus_hours_alert' ? resolveWeeklyHoursThresholdFromRow(row) : null;
+    const weeklyHoursThresholdIsDefault =
+      def.eventKey === 'fifty_plus_hours_alert' && (!row || row.hoursThreshold == null || row.hoursThreshold === '');
+
     return {
       eventKey: def.eventKey,
       displayName: def.displayName,
@@ -148,6 +174,10 @@ async function listAllForAdmin() {
       titleTemplate: row?.titleTemplate ?? null,
       messageTemplate: row?.messageTemplate ?? null,
       updatedAt: row?.updatedAt ?? null,
+      weeklyHoursThreshold,
+      weeklyHoursThresholdIsDefault,
+      defaultWeeklyHoursThreshold:
+        def.eventKey === 'fifty_plus_hours_alert' ? DEFAULT_WEEKLY_HOURS_ALERT_THRESHOLD : null,
     };
   });
 }
@@ -182,15 +212,36 @@ async function updateEventSetting(eventKey, body) {
       body.messageTemplate === null || body.messageTemplate === '' ? null : String(body.messageTemplate);
   }
 
+  let hoursThreshold = existing.hoursThreshold ?? null;
+  if (eventKey === 'fifty_plus_hours_alert' && body.hoursThreshold !== undefined) {
+    if (body.hoursThreshold === null || body.hoursThreshold === '') {
+      hoursThreshold = null;
+    } else {
+      const n = Number(body.hoursThreshold);
+      if (!Number.isFinite(n)) {
+        const err = new Error('hoursThreshold must be a number');
+        err.statusCode = 400;
+        throw err;
+      }
+      const rounded = Math.round(n);
+      if (rounded < WEEKLY_HOURS_ALERT_MIN || rounded > WEEKLY_HOURS_ALERT_MAX) {
+        const err = new Error(`hoursThreshold must be between ${WEEKLY_HOURS_ALERT_MIN} and ${WEEKLY_HOURS_ALERT_MAX}`);
+        err.statusCode = 400;
+        throw err;
+      }
+      hoursThreshold = rounded;
+    }
+  }
+
   const now = new Date().toISOString();
   const db = dbService.getDb();
 
   await new Promise((resolve, reject) => {
     db.run(
       `UPDATE notification_event_settings
-       SET inAppEnabled = ?, emailEnabled = ?, titleTemplate = ?, messageTemplate = ?, updatedAt = ?
+       SET inAppEnabled = ?, emailEnabled = ?, titleTemplate = ?, messageTemplate = ?, hoursThreshold = ?, updatedAt = ?
        WHERE eventKey = ?`,
-      [inAppEnabled, emailEnabled, titleTemplate, messageTemplate, now, eventKey],
+      [inAppEnabled, emailEnabled, titleTemplate, messageTemplate, hoursThreshold, now, eventKey],
       function (err) {
         if (err) return reject(err);
         if (this.changes === 0) return reject(Object.assign(new Error('Event not updated'), { statusCode: 500 }));
@@ -204,9 +255,11 @@ async function updateEventSetting(eventKey, body) {
 
 module.exports = {
   NOTIFICATION_EVENT_DEFINITIONS,
+  DEFAULT_WEEKLY_HOURS_ALERT_THRESHOLD,
   listDefinitions,
   resolveDelivery,
   listAllForAdmin,
   updateEventSetting,
   applyTemplate,
+  getWeeklyHoursAlertThreshold,
 };

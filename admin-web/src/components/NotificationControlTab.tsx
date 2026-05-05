@@ -42,6 +42,10 @@ interface NotificationEventRow {
   titleTemplate: string | null;
   messageTemplate: string | null;
   updatedAt: string | null;
+  /** Effective threshold (hours); only for `fifty_plus_hours_alert` */
+  weeklyHoursThreshold?: number | null;
+  weeklyHoursThresholdIsDefault?: boolean;
+  defaultWeeklyHoursThreshold?: number | null;
 }
 
 interface NotificationEmailRecipient {
@@ -60,7 +64,9 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   /** Local template edits before Save (per eventKey) */
-  const [drafts, setDrafts] = useState<Record<string, { titleTemplate: string; messageTemplate: string }>>({});
+  const [drafts, setDrafts] = useState<
+    Record<string, { titleTemplate: string; messageTemplate: string; weeklyHoursThresholdStr?: string }>
+  >({});
 
   const showMessage = useCallback((type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
@@ -99,6 +105,13 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
           nextDrafts[row.eventKey] = {
             titleTemplate: row.titleTemplate ?? '',
             messageTemplate: row.messageTemplate ?? '',
+            ...(row.eventKey === 'fifty_plus_hours_alert'
+              ? {
+                  weeklyHoursThresholdStr: String(
+                    row.weeklyHoursThreshold ?? row.defaultWeeklyHoursThreshold ?? 60
+                  ),
+                }
+              : {}),
           };
         });
         setDrafts(nextDrafts);
@@ -143,6 +156,9 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
         [eventKey]: {
           titleTemplate: data.titleTemplate ?? '',
           messageTemplate: data.messageTemplate ?? '',
+          ...(typeof data.weeklyHoursThreshold === 'number'
+            ? { weeklyHoursThresholdStr: String(data.weeklyHoursThreshold) }
+            : { weeklyHoursThresholdStr: d[eventKey]?.weeklyHoursThresholdStr }),
         },
       }));
     } catch (error) {
@@ -161,6 +177,28 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
       messageTemplate: d.messageTemplate.trim() === '' ? null : d.messageTemplate,
     });
     showMessage('success', 'Templates saved.');
+  };
+
+  const saveWeeklyHoursThreshold = async (eventKey: string) => {
+    if (eventKey !== 'fifty_plus_hours_alert') return;
+    const raw = (drafts[eventKey]?.weeklyHoursThresholdStr ?? '').trim();
+    const n = Number(raw);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) {
+      showMessage('error', 'Enter a whole number of hours for the threshold.');
+      return;
+    }
+    if (n < 1 || n > 168) {
+      showMessage('error', 'Threshold must be between 1 and 168 hours.');
+      return;
+    }
+    await patchEvent(eventKey, { hoursThreshold: n });
+    showMessage('success', 'Weekly hours threshold saved.');
+  };
+
+  const resetWeeklyHoursThreshold = async (eventKey: string) => {
+    if (eventKey !== 'fifty_plus_hours_alert') return;
+    await patchEvent(eventKey, { hoursThreshold: null });
+    showMessage('success', 'Threshold reset to the default (60 hours).');
   };
 
   const resetTemplates = async (eventKey: string) => {
@@ -337,6 +375,53 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
                   label="Send email"
                 />
               </Stack>
+              {ev.eventKey === 'fifty_plus_hours_alert' && (
+                <Stack spacing={1} sx={{ mb: 2 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                    <TextField
+                      size="small"
+                      label="Weekly hours threshold"
+                      type="number"
+                      inputProps={{ min: 1, max: 168, step: 1 }}
+                      value={drafts[ev.eventKey]?.weeklyHoursThresholdStr ?? ''}
+                      onChange={(e) =>
+                        setDrafts((d) => ({
+                          ...d,
+                          [ev.eventKey]: {
+                            ...(d[ev.eventKey] ?? { titleTemplate: '', messageTemplate: '' }),
+                            weeklyHoursThresholdStr: e.target.value,
+                          },
+                        }))
+                      }
+                      sx={{ width: { xs: '100%', sm: 220 } }}
+                      disabled={busy}
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => void saveWeeklyHoursThreshold(ev.eventKey)}
+                      disabled={busy}
+                      sx={{ textTransform: 'none', alignSelf: { xs: 'stretch', sm: 'center' } }}
+                    >
+                      Save threshold
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => void resetWeeklyHoursThreshold(ev.eventKey)}
+                      disabled={busy}
+                      sx={{ textTransform: 'none', alignSelf: { xs: 'stretch', sm: 'center' } }}
+                    >
+                      Use default ({ev.defaultWeeklyHoursThreshold ?? 60}h)
+                    </Button>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    When an employee’s Sunday–Saturday total reaches this many hours, their supervisor is notified (once per
+                    week). Default is {ev.defaultWeeklyHoursThreshold ?? 60} hours if unset.
+                    {ev.weeklyHoursThresholdIsDefault ? ' Currently using that default.' : ''}
+                  </Typography>
+                </Stack>
+              )}
               <TextField
                 fullWidth
                 size="small"
@@ -347,7 +432,10 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
                 onChange={(e) =>
                   setDrafts((d) => ({
                     ...d,
-                    [ev.eventKey]: { ...d[ev.eventKey], titleTemplate: e.target.value, messageTemplate: d[ev.eventKey]?.messageTemplate ?? '' },
+                    [ev.eventKey]: {
+                      ...(d[ev.eventKey] ?? { titleTemplate: '', messageTemplate: '' }),
+                      titleTemplate: e.target.value,
+                    },
                   }))
                 }
                 sx={{ mb: 2 }}
@@ -363,7 +451,10 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
                 onChange={(e) =>
                   setDrafts((d) => ({
                     ...d,
-                    [ev.eventKey]: { titleTemplate: d[ev.eventKey]?.titleTemplate ?? '', messageTemplate: e.target.value },
+                    [ev.eventKey]: {
+                      ...(d[ev.eventKey] ?? { titleTemplate: '', messageTemplate: '' }),
+                      messageTemplate: e.target.value,
+                    },
                   }))
                 }
                 sx={{ mb: 2 }}

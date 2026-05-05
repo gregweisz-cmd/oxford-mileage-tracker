@@ -1279,11 +1279,11 @@ router.post('/api/time-tracking', async (req, res) => {
         return;
       }
       
-      // Check for 50+ hours alert after saving
+      // Weekly hours threshold alert after saving (threshold set by admin; deduped server-side)
       try {
         await checkAndNotify50PlusHours(employeeId, normalizedDate);
       } catch (alertError) {
-        debugError('❌ Error checking 50+ hours alert:', alertError);
+        debugError('❌ Error checking weekly hours alert:', alertError);
         // Don't fail the request if alert check fails
       }
       
@@ -1318,11 +1318,11 @@ router.put('/api/time-tracking/:id', async (req, res) => {
         return;
       }
       
-      // Check for 50+ hours alert after updating
+      // Weekly hours threshold alert after updating (threshold set by admin; deduped server-side)
       try {
         await checkAndNotify50PlusHours(employeeId, normalizedDate);
       } catch (alertError) {
-        debugError('❌ Error checking 50+ hours alert:', alertError);
+        debugError('❌ Error checking weekly hours alert:', alertError);
         // Don't fail the request if alert check fails
       }
       

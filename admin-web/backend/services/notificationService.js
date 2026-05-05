@@ -8,6 +8,37 @@ const emailService = require('./emailService');
 const notificationEventSettings = require('./notificationEventSettings');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
+async function hasFiftyPlusHoursWeeklyAlertBeenSent(supervisorId, employeeId, weekStartKey) {
+  if (!supervisorId || !employeeId || !weekStartKey) return false;
+  const db = dbService.getDb();
+  const row = await new Promise((resolve, reject) => {
+    db.get(
+      `SELECT 1 AS ok FROM fifty_plus_hours_weekly_alert_sent WHERE supervisorId = ? AND employeeId = ? AND weekStartKey = ?`,
+      [supervisorId, employeeId, weekStartKey],
+      (err, r) => {
+        if (err) reject(err);
+        else resolve(r);
+      }
+    );
+  });
+  return !!row;
+}
+
+async function recordFiftyPlusHoursWeeklyAlertSent(supervisorId, employeeId, weekStartKey) {
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+  await new Promise((resolve, reject) => {
+    db.run(
+      `INSERT OR IGNORE INTO fifty_plus_hours_weekly_alert_sent (supervisorId, employeeId, weekStartKey, sentAt) VALUES (?, ?, ?, ?)`,
+      [supervisorId, employeeId, weekStartKey, now],
+      (err) => {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
 function parsePreferences(preferences) {
   if (!preferences) return {};
   if (typeof preferences === 'object') return preferences;
@@ -356,19 +387,19 @@ async function notifyFinanceRevisionRequest(reportId, financeId, financeName, em
 }
 
 /**
- * Create persistent notification for 50+ hours alert to supervisor
+ * Create persistent notification when weekly hours meet the admin-configured threshold
  * This notification stays until the supervisor marks it as reviewed
  */
-async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours, supervisorId) {
+async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours, supervisorId, hoursThreshold) {
   try {
     if (!supervisorId) {
-      debugLog('⚠️ Employee has no supervisor, skipping 50+ hours notification');
+      debugLog('⚠️ Employee has no supervisor, skipping weekly hours notification');
       return null;
     }
 
     const supervisor = await dbService.getEmployeeById(supervisorId);
     if (!supervisor) {
-      debugWarn('⚠️ Supervisor not found for 50+ hours notification');
+      debugWarn('⚠️ Supervisor not found for weekly hours notification');
       return null;
     }
 
@@ -377,14 +408,19 @@ async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours
     weekEndDate.setDate(weekEndDate.getDate() + 6);
     const weekRange = `${weekStartDate.toLocaleDateString()} – ${weekEndDate.toLocaleDateString()}`;
     const th = totalHours.toFixed(1);
+    const calendarWeekStart =
+      typeof weekStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+        ? weekStart
+        : weekStartDate.toISOString().split('T')[0];
+    const ht = Math.round(Number(hoursThreshold)) || notificationEventSettings.DEFAULT_WEEKLY_HOURS_ALERT_THRESHOLD;
     const defaults = {
-      title: `⚠️ Employee Working 50+ Hours - ${employeeName}`,
-      message: `${employeeName} has logged ${th} hours for the week of ${weekStartDate.toLocaleDateString()}. Please check in with them to ensure they are not overworking.`,
+      title: 'Hours threshold alert',
+      message: `${employeeName} has logged ${th} hours for the week of ${weekStartDate.toLocaleDateString()}, meeting or exceeding the weekly threshold of ${ht} hours. Please check in with them to ensure they are not overworking.`,
     };
     const r = await notificationEventSettings.resolveDelivery(
       'fifty_plus_hours_alert',
       defaults,
-      { employeeName, totalHours: th, weekRange }
+      { employeeName, totalHours: th, weekRange, hoursThreshold: String(ht) }
     );
     if (!r.inAppEnabled && !r.emailEnabled) return null;
 
@@ -405,12 +441,14 @@ async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours
       metadata: {
         weekStart: weekStartDate.toISOString(),
         weekEnd: weekEndDate.toISOString(),
+        calendarWeekStart,
+        hoursThreshold: ht,
         totalHours: totalHours,
         alertType: '50_plus_hours'
       },
     });
   } catch (error) {
-    debugError('❌ Error notifying 50+ hours alert:', error);
+    debugError('❌ Error notifying weekly hours alert:', error);
     return null;
   }
 }
@@ -587,7 +625,7 @@ async function notifyEmployeeReportApproved(reportId, approverId, approverName, 
 }
 
 /**
- * Check if employee has 50+ hours in a week and notify supervisor
+ * Check if employee has reached the weekly hours threshold and notify supervisor (at most once per week per employee)
  * @param {string} employeeId - Employee ID
  * @param {string} date - Date string (YYYY-MM-DD) to check the week for
  * @returns {Promise<void>}
@@ -598,7 +636,11 @@ async function checkAndNotify50PlusHours(employeeId, date) {
     const employee = await dbService.getEmployeeById(employeeId);
     
     if (!employee) {
-      debugWarn('⚠️ Employee not found for 50+ hours check');
+      debugWarn('⚠️ Employee not found for weekly hours check');
+      return;
+    }
+
+    if (!employee.supervisorId) {
       return;
     }
 
@@ -631,19 +673,39 @@ async function checkAndNotify50PlusHours(employeeId, date) {
     // Calculate total hours for the week
     const totalHours = timeEntries.reduce((sum, entry) => sum + (entry.hours || 0), 0);
 
-    // Check if 50+ hours and notify supervisor
-    if (totalHours >= 50) {
-      debugLog(`⚠️ Employee ${employee.preferredName || employee.name} has ${totalHours.toFixed(1)} hours for week of ${weekStartStr}`);
-      await notify50PlusHours(
-        employeeId,
-        employee.preferredName || employee.name,
-        weekStartStr,
-        totalHours,
-        employee.supervisorId
+    const weeklyThreshold = await notificationEventSettings.getWeeklyHoursAlertThreshold();
+    if (totalHours < weeklyThreshold) {
+      return;
+    }
+
+    const alreadySent = await hasFiftyPlusHoursWeeklyAlertBeenSent(
+      employee.supervisorId,
+      employeeId,
+      weekStartStr
+    );
+    if (alreadySent) {
+      debugLog(
+        `📎 Weekly hours alert already sent for ${employee.preferredName || employee.name} (week ${weekStartStr}); skipping duplicate`
       );
+      return;
+    }
+
+    debugLog(
+      `⚠️ Employee ${employee.preferredName || employee.name} has ${totalHours.toFixed(1)} hours for week of ${weekStartStr}`
+    );
+    const notificationId = await notify50PlusHours(
+      employeeId,
+      employee.preferredName || employee.name,
+      weekStartStr,
+      totalHours,
+      employee.supervisorId,
+      weeklyThreshold
+    );
+    if (notificationId) {
+      await recordFiftyPlusHoursWeeklyAlertSent(employee.supervisorId, employeeId, weekStartStr);
     }
   } catch (error) {
-    debugError('❌ Error checking 50+ hours:', error);
+    debugError('❌ Error checking weekly hours alert:', error);
   }
 }
 
