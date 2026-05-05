@@ -468,7 +468,7 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
 
     // If report not in current list, fetch it
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${reportId}`);
       if (response.ok) {
         const fetchedReport = await response.json();
         // Convert to ExpenseReport format

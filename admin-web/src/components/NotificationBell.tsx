@@ -7,7 +7,13 @@ import { apiGet } from '../services/rateLimitedApi';
 interface NotificationBellProps {
   employeeId: string;
   role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
-  onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
+  onReportClick?: (
+    reportId: string,
+    employeeId?: string,
+    month?: number,
+    year?: number,
+    staffPortalTabIndex?: number
+  ) => void;
 }
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, role, onReportClick }) => {

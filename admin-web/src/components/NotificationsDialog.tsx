@@ -102,7 +102,13 @@ interface NotificationsDialogProps {
   employeeId: string;
   role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
   onUpdate?: (options?: { markAllAsRead?: boolean; unreadCount?: number }) => void;
-  onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
+  onReportClick?: (
+    reportId: string,
+    employeeId?: string,
+    month?: number,
+    year?: number,
+    staffPortalTabIndex?: number
+  ) => void;
 }
 
 export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
@@ -265,37 +271,34 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
 
     // If notification has a reportId and onReportClick callback is provided, navigate to report
     if (notification.reportId && onReportClick) {
+      const meta = notification.metadata || {};
+      const tab =
+        typeof meta.staffPortalTabIndex === 'number' ? meta.staffPortalTabIndex : undefined;
       try {
-        // Fetch report details to get month/year/employeeId
-        const response = await fetch(`${API_BASE_URL}/api/expense-reports/${notification.reportId}`);
+        const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${notification.reportId}`);
         if (response.ok) {
           const report = await response.json();
           onReportClick(
             notification.reportId,
             report.employeeId || notification.employeeId,
-            report.month,
-            report.year
+            report.month ?? meta.month,
+            report.year ?? meta.year,
+            tab
           );
-          onClose(); // Close the dialog after navigation
+          onClose();
         } else {
-          // If report not found, still try with what we have from notification
           onReportClick(
             notification.reportId,
             notification.employeeId,
-            notification.metadata?.month,
-            notification.metadata?.year
+            meta.month,
+            meta.year,
+            tab
           );
           onClose();
         }
       } catch (error) {
         debugError('Error fetching report details:', error);
-        // Still try to navigate with available data
-        onReportClick(
-          notification.reportId,
-          notification.employeeId,
-          notification.metadata?.month,
-          notification.metadata?.year
-        );
+        onReportClick(notification.reportId, notification.employeeId, meta.month, meta.year, tab);
         onClose();
       }
     }
@@ -415,6 +418,21 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
                           <Box component="span" sx={{ fontSize: '0.75rem', opacity: 0.7, display: 'block' }}>
                             {formatTimeAgo(notification.createdAt)}
                           </Box>
+                          {notification.type === 'revision_requested' &&
+                            notification.reportId &&
+                            onReportClick && (
+                              <Button
+                                size="small"
+                                variant="contained"
+                                sx={{ mt: 1, textTransform: 'none' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleNotificationClick(notification);
+                                }}
+                              >
+                                Open report
+                              </Button>
+                            )}
                         </Box>
                       }
                       secondaryTypographyProps={{ component: 'div' }}

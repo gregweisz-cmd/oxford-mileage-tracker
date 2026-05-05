@@ -50,7 +50,13 @@ interface Notification {
 interface DashboardNotificationsProps {
   employeeId: string;
   role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
-  onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
+  onReportClick?: (
+    reportId: string,
+    employeeId?: string,
+    month?: number,
+    year?: number,
+    staffPortalTabIndex?: number
+  ) => void;
   maxDisplay?: number; // Maximum number of notifications to show in collapsed view
 }
 
@@ -239,11 +245,14 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     // If it's a report-related notification, navigate to the report
     if (notification.reportId && onReportClick) {
       const metadata = notification.metadata || {};
+      const tab =
+        typeof metadata.staffPortalTabIndex === 'number' ? metadata.staffPortalTabIndex : undefined;
       onReportClick(
         notification.reportId,
         notification.employeeId,
         metadata.month,
-        metadata.year
+        metadata.year,
+        tab
       );
     }
   };
@@ -388,6 +397,21 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
                         <Typography variant="caption" color="text.secondary" component="span" display="block" sx={{ mt: 0.5 }}>
                           {formatTimeAgo(notification.createdAt)}
                         </Typography>
+                        {notification.type === 'revision_requested' &&
+                          notification.reportId &&
+                          onReportClick && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              sx={{ mt: 1, textTransform: 'none' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNotificationClick(notification);
+                              }}
+                            >
+                              Open report
+                            </Button>
+                          )}
                       </>
                     }
                   />

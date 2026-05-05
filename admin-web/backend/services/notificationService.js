@@ -454,6 +454,61 @@ async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours
 }
 
 /**
+ * Staff portal tab index for Mileage / Timesheet / Receipt Management (left-to-right order).
+ * Tie-break: highest unresolved revision note count, then leftmost tab.
+ */
+async function computeStaffPortalTabIndexForRevisionReport(reportId, employeeId) {
+  const db = dbService.getDb();
+  const notes = await new Promise((resolve, reject) => {
+    db.all(
+      `SELECT category FROM report_revision_notes WHERE reportId = ? AND resolved = 0`,
+      [reportId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+
+  let mileage = 0;
+  let time = 0;
+  let receipt = 0;
+  for (const row of notes) {
+    const c = row.category;
+    if (c === 'mileage') mileage += 1;
+    else if (c === 'time') time += 1;
+    else if (c === 'receipt') receipt += 1;
+  }
+
+  const employee = await dbService.getEmployeeById(employeeId);
+  let ccLen = 0;
+  if (employee?.costCenters) {
+    try {
+      const cc =
+        typeof employee.costCenters === 'string' ? JSON.parse(employee.costCenters || '[]') : employee.costCenters;
+      ccLen = Array.isArray(cc) ? cc.length : 0;
+    } catch {
+      ccLen = 0;
+    }
+  }
+
+  const candidates = [
+    { idx: 2, count: mileage },
+    { idx: ccLen + 4, count: time },
+    { idx: ccLen + 5, count: receipt },
+  ];
+  const nonzero = candidates.filter((t) => t.count > 0);
+  if (nonzero.length === 0) {
+    return 0;
+  }
+  nonzero.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.idx - b.idx;
+  });
+  return nonzero[0].idx;
+}
+
+/**
  * Create notification when Supervisor requests revision from Employee
  */
 async function notifySupervisorRevisionRequest(reportId, supervisorId, supervisorName, employeeId) {
@@ -473,6 +528,14 @@ async function notifySupervisorRevisionRequest(reportId, supervisorId, superviso
         else resolve(row);
       });
     });
+
+    let staffPortalTabIndex = 0;
+    try {
+      staffPortalTabIndex = await computeStaffPortalTabIndexForRevisionReport(reportId, employeeId);
+    } catch (tabErr) {
+      debugWarn('⚠️ Could not compute revision tab index:', tabErr);
+      staffPortalTabIndex = 0;
+    }
 
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
     const actorDisplay = supervisorName || supervisor?.preferredName || supervisor?.name || 'Your supervisor';
@@ -502,6 +565,14 @@ async function notifySupervisorRevisionRequest(reportId, supervisorId, superviso
       actorRole: 'supervisor',
       sendEmail: r.emailEnabled,
       persistInApp: r.inAppEnabled,
+      metadata:
+        report && report.month != null && report.year != null
+          ? {
+              month: report.month,
+              year: report.year,
+              staffPortalTabIndex,
+            }
+          : { staffPortalTabIndex },
     });
   } catch (error) {
     debugError('❌ Error notifying supervisor revision request:', error);

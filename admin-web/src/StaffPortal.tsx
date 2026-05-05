@@ -675,6 +675,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [currentMonth, setCurrentMonth] = useState(reportMonth);
   const [currentYear, setCurrentYear] = useState(reportYear);
   const [activeTab, setActiveTab] = useState(0);
+  /** After navigating from a revision notification, select this tab once report data has loaded */
+  const pendingStaffPortalTabRef = useRef<number | null>(null);
   const [employeeData, setEmployeeData] = useState<EmployeeExpenseData | null>(null);
   const [employeeRole, setEmployeeRole] = useState<'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts'>('employee');
   const [loading, setLoading] = useState(true);
@@ -919,6 +921,64 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const { showSuccess, showError } = useToast();
   const { showErrorPrompt } = useErrorPrompt();
   const { isLoading: uiLoading, startLoading, stopLoading } = useLoadingState();
+
+  const navigateToReportFromNotification = useCallback(
+    async (
+      reportId: string,
+      _employeeId?: string,
+      month?: number,
+      year?: number,
+      staffPortalTabIndex?: number
+    ) => {
+      if (typeof staffPortalTabIndex === 'number' && staffPortalTabIndex >= 0) {
+        pendingStaffPortalTabRef.current = staffPortalTabIndex;
+      } else {
+        pendingStaffPortalTabRef.current = null;
+      }
+
+      const applyMonthYear = (m: number, y: number) => {
+        setCurrentMonth(m);
+        setCurrentYear(y);
+        showSuccess(
+          `Opening ${new Date(y, m - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`
+        );
+      };
+
+      if (month && year) {
+        applyMonthYear(month, year);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${reportId}`);
+        if (response.ok) {
+          const report = await response.json();
+          if (report.month && report.year) {
+            applyMonthYear(report.month, report.year);
+          } else {
+            showError('Could not determine which month this report belongs to.');
+          }
+        } else {
+          showError('Could not open that report.');
+        }
+      } catch (error) {
+        debugError('Error fetching report for navigation:', error);
+        showError('Could not navigate to report.');
+      }
+    },
+    [showSuccess, showError]
+  );
+
+  useEffect(() => {
+    if (loading || !employeeData) return;
+    const pending = pendingStaffPortalTabRef.current;
+    if (pending === null || pending === undefined) return;
+    const ccLen = employeeData.costCenters?.length ?? 0;
+    const maxIdx = 7 + ccLen;
+    const safe = Math.max(0, Math.min(pending, maxIdx));
+    setActiveTab(safe);
+    pendingStaffPortalTabRef.current = null;
+  }, [loading, employeeData, currentMonth, currentYear]);
 
   // Calculate days in the current month
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
@@ -5773,30 +5833,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           setCurrentYear(year);
           startLoading('Loading report...');
         }}
-        onReportClick={async (reportId: string, employeeId?: string, month?: number, year?: number) => {
-          // Navigate to the report's month/year if provided
-          if (month && year) {
-            setCurrentMonth(month);
-            setCurrentYear(year);
-            showSuccess(`Navigated to ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
-          } else {
-            // Fetch report details to get month/year
-            try {
-              const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
-              if (response.ok) {
-                const report = await response.json();
-                if (report.month && report.year) {
-                  setCurrentMonth(report.month);
-                  setCurrentYear(report.year);
-                  showSuccess(`Navigated to ${new Date(report.year, report.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
-                }
-              }
-            } catch (error) {
-              debugError('Error fetching report for navigation:', error);
-              showError('Could not navigate to report');
-            }
-          }
-        }}
+        onReportClick={navigateToReportFromNotification}
         showRealTimeStatus={true}
         tabs={
           <EnhancedTabNavigation
@@ -5818,30 +5855,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <DashboardNotifications
           employeeId={employeeId}
           role={employeeRole}
-          onReportClick={async (reportId: string, employeeId?: string, month?: number, year?: number) => {
-            // Navigate to the report's month/year if provided
-            if (month && year) {
-              setCurrentMonth(month);
-              setCurrentYear(year);
-              showSuccess(`Navigated to ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
-            } else {
-              // Fetch report details to get month/year
-              try {
-                const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
-                if (response.ok) {
-                  const report = await response.json();
-                  if (report.month && report.year) {
-                    setCurrentMonth(report.month);
-                    setCurrentYear(report.year);
-                    showSuccess(`Navigated to ${new Date(report.year, report.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })} report`);
-                  }
-                }
-              } catch (error) {
-                debugError('Error fetching report for navigation:', error);
-                showError('Could not navigate to report');
-              }
-            }
-          }}
+          onReportClick={navigateToReportFromNotification}
         />
       )}
 

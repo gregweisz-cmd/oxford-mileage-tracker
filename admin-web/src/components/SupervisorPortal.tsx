@@ -842,7 +842,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     if (!employeeId) {
       // Try to fetch the report to get employeeId
       try {
-        const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}`);
+        const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${reportId}`);
         if (response.ok) {
           const report = await response.json();
           const targetEmployeeId = report.employeeId;

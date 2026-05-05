@@ -1092,6 +1092,35 @@ router.put('/api/expense-reports/:employeeId/:month/:year/summary', async (req, 
 });
 
 /**
+ * Get one expense report by primary key (notifications / deep links).
+ * Must not use `/api/expense-reports/:id` alone — that path is reserved for listing by employeeId.
+ */
+router.get('/api/expense-reports/id/:id', (req, res) => {
+  const { id } = req.params;
+  const db = dbService.getDb();
+
+  db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Expense report not found' });
+      return;
+    }
+    try {
+      row.reportData = JSON.parse(row.reportData || '{}');
+      row.approvalWorkflow = helpers.parseJsonSafe(row.approvalWorkflow, []);
+    } catch (parseErr) {
+      debugError('Error parsing expense report for id lookup:', id, parseErr);
+      row.reportData = {};
+      row.approvalWorkflow = [];
+    }
+    res.json(row);
+  });
+});
+
+/**
  * Get all expense reports for an employee
  */
 router.get('/api/expense-reports/:employeeId', (req, res) => {

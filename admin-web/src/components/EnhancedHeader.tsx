@@ -56,7 +56,13 @@ interface EnhancedHeaderProps {
   onMonthYearChange?: (month: number, year: number) => void;
   notifications?: number;
   showRealTimeStatus?: boolean;
-  onReportClick?: (reportId: string, employeeId?: string, month?: number, year?: number) => void;
+  onReportClick?: (
+    reportId: string,
+    employeeId?: string,
+    month?: number,
+    year?: number,
+    staffPortalTabIndex?: number
+  ) => void;
   tabs?: React.ReactNode; // Tabs navigation component
 }
 
