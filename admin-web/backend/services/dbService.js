@@ -239,6 +239,8 @@ function ensureTablesExist() {
         imageUri TEXT,
         fileType TEXT DEFAULT 'image',
         costCenter TEXT DEFAULT '',
+        needsRevision INTEGER DEFAULT 0,
+        revisionReason TEXT DEFAULT '',
         splitGroupId TEXT DEFAULT '',
         splitAllocationIndex INTEGER DEFAULT 0,
         splitAllocationCount INTEGER DEFAULT 0,
@@ -270,6 +272,12 @@ function ensureTablesExist() {
           }
           if (!columnNames.includes('splitAllocationCount')) {
             db.run(`ALTER TABLE receipts ADD COLUMN splitAllocationCount INTEGER DEFAULT 0`);
+          }
+          if (!columnNames.includes('needsRevision')) {
+            db.run(`ALTER TABLE receipts ADD COLUMN needsRevision INTEGER DEFAULT 0`);
+          }
+          if (!columnNames.includes('revisionReason')) {
+            db.run(`ALTER TABLE receipts ADD COLUMN revisionReason TEXT DEFAULT ''`);
           }
         }
       });
@@ -321,11 +329,25 @@ function ensureTablesExist() {
         employeeId TEXT NOT NULL,
         name TEXT NOT NULL,
         plateNumber TEXT DEFAULT '',
+        startingOdometer REAL DEFAULT 0,
         isDefault INTEGER NOT NULL DEFAULT 0,
         isActive INTEGER NOT NULL DEFAULT 1,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
+
+      db.all(`PRAGMA table_info(vehicles)`, [], (pragmaErr, columns) => {
+        if (!pragmaErr && columns) {
+          const columnNames = columns.map((col) => col.name);
+          if (!columnNames.includes('startingOdometer')) {
+            db.run(`ALTER TABLE vehicles ADD COLUMN startingOdometer REAL DEFAULT 0`, (alterErr) => {
+              if (!alterErr) {
+                debugLog('✅ Added startingOdometer column to vehicles table');
+              }
+            });
+          }
+        }
+      });
 
       db.run(`CREATE TABLE IF NOT EXISTS saved_addresses (
         id TEXT PRIMARY KEY,
@@ -1241,11 +1263,21 @@ function createSampleDatabase() {
           employeeId TEXT NOT NULL,
           name TEXT NOT NULL,
           plateNumber TEXT DEFAULT '',
+          startingOdometer REAL DEFAULT 0,
           isDefault INTEGER NOT NULL DEFAULT 0,
           isActive INTEGER NOT NULL DEFAULT 1,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);
+
+        db.all(`PRAGMA table_info(vehicles)`, [], (pragmaErr, columns) => {
+          if (!pragmaErr && columns) {
+            const columnNames = columns.map((col) => col.name);
+            if (!columnNames.includes('startingOdometer')) {
+              db.run(`ALTER TABLE vehicles ADD COLUMN startingOdometer REAL DEFAULT 0`);
+            }
+          }
+        });
 
         // Receipts table
         db.run(`CREATE TABLE IF NOT EXISTS receipts (
@@ -1259,12 +1291,26 @@ function createSampleDatabase() {
           imageUri TEXT,
           fileType TEXT DEFAULT 'image',
           costCenter TEXT DEFAULT '',
+          needsRevision INTEGER DEFAULT 0,
+          revisionReason TEXT DEFAULT '',
           splitGroupId TEXT DEFAULT '',
           splitAllocationIndex INTEGER DEFAULT 0,
           splitAllocationCount INTEGER DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);
+
+        db.all(`PRAGMA table_info(receipts)`, [], (pragmaErr, columns) => {
+          if (!pragmaErr && columns) {
+            const columnNames = columns.map((col) => col.name);
+            if (!columnNames.includes('needsRevision')) {
+              db.run(`ALTER TABLE receipts ADD COLUMN needsRevision INTEGER DEFAULT 0`);
+            }
+            if (!columnNames.includes('revisionReason')) {
+              db.run(`ALTER TABLE receipts ADD COLUMN revisionReason TEXT DEFAULT ''`);
+            }
+          }
+        });
 
         // Time tracking table (must include costCenter for sync-to-source INSERTs)
         db.run(`CREATE TABLE IF NOT EXISTS time_tracking (
