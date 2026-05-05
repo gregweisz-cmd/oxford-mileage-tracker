@@ -182,35 +182,6 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
           />
         </View>
 
-        {/* Display Section */}
-        <View style={dynamicStyles.sectionHeader}>
-          <Text style={dynamicStyles.sectionTitle}>🎨 Display</Text>
-        </View>
-
-        <TouchableOpacity 
-          style={dynamicStyles.preferenceItem}
-          onPress={() => {
-            Alert.alert(
-              'Recent Entries Count',
-              'How many recent entries to show on Home screen?',
-              [
-                { text: '3', onPress: () => updatePreference('showRecentEntriesCount', 3) },
-                { text: '5', onPress: () => updatePreference('showRecentEntriesCount', 5) },
-                { text: '10', onPress: () => updatePreference('showRecentEntriesCount', 10) },
-                { text: 'Cancel', style: 'cancel' },
-              ]
-            );
-          }}
-        >
-          <View style={dynamicStyles.preferenceLeft}>
-            <Text style={dynamicStyles.preferenceTitle}>Recent Entries Count</Text>
-            <Text style={dynamicStyles.preferenceDescription}>
-              Currently showing: {preferences.showRecentEntriesCount} entries
-            </Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
-        </TouchableOpacity>
-
         {/* Notifications Section */}
         <View style={dynamicStyles.sectionHeader}>
           <Text style={dynamicStyles.sectionTitle}>🔔 Notifications & Alerts</Text>

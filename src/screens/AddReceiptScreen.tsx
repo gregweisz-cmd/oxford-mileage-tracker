@@ -767,10 +767,26 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       Alert.alert('Validation Error', 'Vendor is required');
       return false;
     }
-    // Description is required for "Other" category
+    // Description is required for "Other" category, except when split-mode rows
+    // already provide their own per-row description override (e.g., Split to tax).
     if (formData.category === 'Other' && !formData.description.trim()) {
-      Alert.alert('Validation Error', 'Description is required for Other Expenses so Finance knows what the money was spent on');
-      return false;
+      if (!isSplitMode) {
+        Alert.alert('Validation Error', 'Description is required for Other Expenses so Finance knows what the money was spent on');
+        return false;
+      }
+      const validAllocations = splitAllocations.filter((a) => a.category && Number(a.amount) > 0);
+      const hasOtherWithoutOverride = validAllocations.some(
+        (allocation) =>
+          allocation.category === 'Other' &&
+          !String(allocation.descriptionOverride || '').trim()
+      );
+      if (hasOtherWithoutOverride) {
+        Alert.alert(
+          'Validation Error',
+          'Add a description to Other split rows, or set a receipt description.'
+        );
+        return false;
+      }
     }
     if (!formData.amount.trim() || isNaN(Number(formData.amount)) || Number(formData.amount) <= 0) {
       Alert.alert('Validation Error', 'Please enter a valid amount');

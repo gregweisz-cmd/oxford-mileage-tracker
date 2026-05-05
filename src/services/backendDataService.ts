@@ -426,7 +426,29 @@ export class BackendDataService {
         pflPfmlHours: 0
       };
 
-      dayData.timeTracking.forEach(entry => {
+      // Guard against duplicate backend rows for the same day/category/cost-center
+      // by keeping only the latest updated record per key.
+      const dedupedTimeEntries = (() => {
+        const byKey = new Map<string, TimeTracking>();
+        dayData.timeTracking.forEach((entry) => {
+          const categoryKey = String(entry.category || '').trim().toLowerCase();
+          const costCenterKey = String(entry.costCenter || '').trim().toLowerCase();
+          const key = `${categoryKey}|${costCenterKey}`;
+          const existing = byKey.get(key);
+          if (!existing) {
+            byKey.set(key, entry);
+            return;
+          }
+          const existingUpdated = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+          const incomingUpdated = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
+          if (incomingUpdated >= existingUpdated) {
+            byKey.set(key, entry);
+          }
+        });
+        return Array.from(byKey.values());
+      })();
+
+      dedupedTimeEntries.forEach(entry => {
         const category = (entry.category || '').trim();
         const cc = (entry.costCenter || '').trim();
         const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
@@ -438,7 +460,7 @@ export class BackendDataService {
       hoursBreakdown.workingHours = Object.values(costCenterHours).reduce((s, h) => s + h, 0);
 
       const categoryMap = new Map<string, TimeTracking>();
-      dayData.timeTracking.forEach(entry => {
+      dedupedTimeEntries.forEach(entry => {
         const category = String(entry.category || '');
         const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
         if (isWorking) return;
