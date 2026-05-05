@@ -174,6 +174,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   useEffect(() => {
     if (currentEmployee && selectedVehicleId) {
       void checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId);
+      void refreshLastTravelDayEndingOdometerNote(currentEmployee.id, selectedVehicleId);
     }
   }, [currentEmployee, selectedVehicleId]);
 
@@ -392,20 +393,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         // Check if GPS tracking has been started today
         await checkGpsTrackingStatus(employee.id, defaultVehicle?.id);
 
-        const today = new Date();
-        const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(
-          employee.id,
-          today,
-          defaultVehicle?.id
-        );
-        if (lastTravelDay) {
-          const dateText = lastTravelDay.date.toLocaleDateString();
-          setLastTravelDayEndingOdometerNote(
-            `Ending odometer of last travel day (${dateText}): ${Math.round(lastTravelDay.endingOdometer)}`
-          );
-        } else {
-          setLastTravelDayEndingOdometerNote('');
-        }
+        await refreshLastTravelDayEndingOdometerNote(employee.id, defaultVehicle?.id);
       }
       
       // Set base address as default start location if available
@@ -448,6 +436,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
   };
 
+  const refreshLastTravelDayEndingOdometerNote = async (employeeId: string, vehicleId?: string) => {
+    const today = new Date();
+    const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(
+      employeeId,
+      today,
+      vehicleId
+    );
+    if (lastTravelDay) {
+      const dateText = lastTravelDay.date.toLocaleDateString();
+      setLastTravelDayEndingOdometerNote(
+        `Ending odometer of last travel day (${dateText}): ${Math.round(lastTravelDay.endingOdometer)}`
+      );
+      return Math.round(lastTravelDay.endingOdometer);
+    }
+    setLastTravelDayEndingOdometerNote('');
+    return null;
+  };
+
   const checkGpsTrackingStatus = async (employeeId: string, vehicleId?: string) => {
     try {
       // Use device's local timezone instead of UTC
@@ -476,6 +482,21 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       } else {
         console.log('🚗 GPS: No daily odometer reading found, GPS tracking not started today');
         setHasStartedGpsToday(false);
+        const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
+        const roundedVehicleStart = Math.round(selectedVehicle?.startingOdometer || 0);
+        if (roundedVehicleStart > 0) {
+          setTrackingForm((prev) => ({
+            ...prev,
+            odometerReading: String(roundedVehicleStart),
+          }));
+          await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
+        } else {
+          const fallbackEndingOdometer = await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
+          setTrackingForm((prev) => ({
+            ...prev,
+            odometerReading: fallbackEndingOdometer != null ? String(fallbackEndingOdometer) : '',
+          }));
+        }
       }
     } catch (error) {
       console.error('Error checking GPS tracking status:', error);

@@ -396,13 +396,29 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         }));
         setHasStartedGpsToday(false); // Allow editing if no daily reading
       } else {
-        // First entry of the day for this specific vehicle: suggest that vehicle's baseline odometer
+        // First entry of the day for this specific vehicle:
+        // prefer vehicle baseline, else fall back to last travel-day ending odometer.
         const selectedVehicle = vehicles.find((v) => v.id === activeVehicleId);
         if (selectedVehicle && !isEditing) {
-          setFormData(prev => ({
-            ...prev,
-            odometerReading: String(Math.round(selectedVehicle.startingOdometer || 0)),
-          }));
+          const roundedVehicleStart = Math.round(selectedVehicle.startingOdometer || 0);
+          if (roundedVehicleStart > 0) {
+            setFormData(prev => ({
+              ...prev,
+              odometerReading: String(roundedVehicleStart),
+            }));
+          } else {
+            const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(
+              currentEmployee.id,
+              date,
+              activeVehicleId
+            );
+            setFormData(prev => ({
+              ...prev,
+              odometerReading: lastTravelDay
+                ? String(Math.round(lastTravelDay.endingOdometer))
+                : '',
+            }));
+          }
         }
         setHasStartedGpsToday(false);
       }
