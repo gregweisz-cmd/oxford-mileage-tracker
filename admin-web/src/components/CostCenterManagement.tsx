@@ -113,7 +113,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
       ]);
       const financeTeam = (employees || []).filter((employee: any) => {
         const role = String(employee?.role || '').toLowerCase();
-        return role === 'finance' || role === 'admin';
+        return role === 'finance';
       });
       setFinanceUsers(financeTeam);
       const assignmentMap: Record<string, string[]> = {};
