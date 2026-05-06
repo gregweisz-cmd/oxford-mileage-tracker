@@ -7899,8 +7899,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   tableLayout: 'fixed',
                   borderCollapse: 'collapse',
                   width: '100%',
-                  minWidth: supervisorMode ? 1700 : 1500,
-                  ...(supervisorMode && {
+                  minWidth: 1500,
+                  ...(false && supervisorMode && {
                     '& th:first-of-type, & td:first-of-type': {
                       width: '128px !important',
                       minWidth: '128px !important',
@@ -7911,7 +7911,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               >
                 <TableHead>
                   <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
-                    {supervisorMode && (
+                    {false && supervisorMode && (
                       <TableCell
                         sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'normal', lineHeight: 1.2, verticalAlign: 'top', textAlign: 'center' }}
                       >
