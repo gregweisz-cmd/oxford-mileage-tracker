@@ -113,6 +113,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [filterState, setFilterState] = useState<string>('all');
   const [filterCostCenter, setFilterCostCenter] = useState<string>('all');
+  const [isCostCenterAssignmentRestricted, setIsCostCenterAssignmentRestricted] = useState(false);
+  const [assignedCostCenterKeys, setAssignedCostCenterKeys] = useState<string[]>([]);
   
   // Keyboard shortcuts state
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
@@ -287,6 +289,18 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const loadReports = async () => {
     setLoading(true);
     try {
+      let hasAnyAssignments = false;
+      let userAssignedCenters: string[] = [];
+      try {
+        const assignmentData = await CostCenterApiService.getFinanceAssignmentsForEmployee(financeUserId);
+        hasAnyAssignments = !!assignmentData?.hasAnyAssignments;
+        userAssignedCenters = Array.isArray(assignmentData?.costCenters) ? assignmentData.costCenters : [];
+      } catch (assignmentError) {
+        debugError('Error loading finance cost center assignments:', assignmentError);
+      }
+      setIsCostCenterAssignmentRestricted(hasAnyAssignments);
+      setAssignedCostCenterKeys(userAssignedCenters.map(normalizeCostCenter).filter(Boolean));
+
       const response = await fetch(`${API_BASE_URL}/api/expense-reports`);
       if (!response.ok) throw new Error('Failed to load reports');
       
@@ -336,7 +350,15 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         (r: any) => (r.reportData?.submissionType || '') !== 'weekly_checkup'
       );
 
-      setReports(monthlyOnly);
+      const assignmentKeys = new Set(userAssignedCenters.map(normalizeCostCenter).filter(Boolean));
+      const assignmentFiltered = !hasAnyAssignments
+        ? monthlyOnly
+        : monthlyOnly.filter((report: ExpenseReport) => {
+            const reportCenters = (report.costCenters || []).map(normalizeCostCenter).filter(Boolean);
+            return reportCenters.some((ccKey) => assignmentKeys.has(ccKey));
+          });
+
+      setReports(assignmentFiltered);
     } catch (error) {
       debugError('Error loading reports:', error);
     } finally {
@@ -1089,6 +1111,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
+      {isCostCenterAssignmentRestricted && assignedCostCenterKeys.length === 0 && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No cost centers are currently assigned to your finance profile. Ask an admin to assign at least one cost center in
+          Cost Center Management.
+        </Alert>
+      )}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>
           <Typography variant="h4" gutterBottom>

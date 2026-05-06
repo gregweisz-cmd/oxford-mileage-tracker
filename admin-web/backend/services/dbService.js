@@ -460,6 +460,23 @@ function ensureTablesExist() {
         }
       });
 
+      db.run(`CREATE TABLE IF NOT EXISTS finance_cost_center_assignments (
+        id TEXT PRIMARY KEY,
+        financeEmployeeId TEXT NOT NULL,
+        costCenterName TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(financeEmployeeId, costCenterName)
+      )`, (err) => {
+        if (err) {
+          debugError('❌ Error creating finance_cost_center_assignments table:', err);
+        } else {
+          debugLog('✅ Finance cost center assignments table created/verified');
+        }
+      });
+      db.run(`CREATE INDEX IF NOT EXISTS idx_finance_cc_assignments_employee ON finance_cost_center_assignments(financeEmployeeId)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_finance_cc_assignments_cost_center ON finance_cost_center_assignments(costCenterName)`);
+
       // Travel reasons (dropdown options for trip purpose on GPS & manual entry)
       db.run(`CREATE TABLE IF NOT EXISTS travel_reasons (
         id TEXT PRIMARY KEY,

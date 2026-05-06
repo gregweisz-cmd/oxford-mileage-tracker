@@ -26,7 +26,9 @@ import {
   FormControlLabel,
   Tabs,
   Tab,
-  LinearProgress
+  LinearProgress,
+  Select,
+  MenuItem
 } from '@mui/material';
 import {
   Add,
@@ -40,6 +42,7 @@ import {
   Clear
 } from '@mui/icons-material';
 import { CostCenterApiService, CostCenter } from '../services/costCenterApiService';
+import { EmployeeApiService } from '../services/employeeApiService';
 
 import { PerDiemRulesService } from '../services/perDiemRulesService';
 import { debugError } from '../config/debug';
@@ -74,6 +77,9 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
   const [showPerDiemDialog, setShowPerDiemDialog] = useState(false);
   const [editingPerDiemCostCenter, setEditingPerDiemCostCenter] = useState<CostCenter | null>(null);
   const [perDiemRules, setPerDiemRules] = useState<any>(null);
+  const [financeUsers, setFinanceUsers] = useState<any[]>([]);
+  const [financeAssignments, setFinanceAssignments] = useState<Record<string, string[]>>({});
+  const [savingFinanceAssignmentsFor, setSavingFinanceAssignmentsFor] = useState<string | null>(null);
 
   const loadCostCenters = useCallback(async () => {
     try {
@@ -97,6 +103,32 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
   useEffect(() => {
     loadCostCenters();
   }, [loadCostCenters]);
+
+  const loadFinanceAssignments = useCallback(async () => {
+    try {
+      const [employees, assignments] = await Promise.all([
+        EmployeeApiService.getAllEmployees(),
+        CostCenterApiService.getFinanceAssignments(),
+      ]);
+      const financeTeam = (employees || []).filter((employee: any) => {
+        const role = String(employee?.role || '').toLowerCase();
+        return role === 'finance' || role === 'admin';
+      });
+      setFinanceUsers(financeTeam);
+      const assignmentMap: Record<string, string[]> = {};
+      (assignments || []).forEach((row) => {
+        assignmentMap[row.financeEmployeeId] = row.costCenters || [];
+      });
+      setFinanceAssignments(assignmentMap);
+    } catch (assignmentError) {
+      debugError('Error loading finance assignments:', assignmentError);
+      setError('Failed to load finance assignments');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFinanceAssignments();
+  }, [loadFinanceAssignments]);
 
   const handleAddCostCenter = () => {
     setEditingCostCenter(null);
@@ -210,6 +242,31 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
     setShowPerDiemDialog(false);
     setEditingPerDiemCostCenter(null);
     setPerDiemRules(null);
+  };
+
+  const handleFinanceAssignmentChange = (financeEmployeeId: string, selectedNames: string[]) => {
+    setFinanceAssignments((prev) => ({
+      ...prev,
+      [financeEmployeeId]: selectedNames,
+    }));
+  };
+
+  const handleSaveFinanceAssignments = async (financeEmployeeId: string) => {
+    setSavingFinanceAssignmentsFor(financeEmployeeId);
+    setError(null);
+    try {
+      const selectedNames = financeAssignments[financeEmployeeId] || [];
+      const result = await CostCenterApiService.updateFinanceAssignments(financeEmployeeId, selectedNames);
+      setFinanceAssignments((prev) => ({
+        ...prev,
+        [financeEmployeeId]: result.costCenters || [],
+      }));
+    } catch (assignmentError) {
+      debugError('Error saving finance assignments:', assignmentError);
+      setError('Failed to save finance assignments');
+    } finally {
+      setSavingFinanceAssignmentsFor(null);
+    }
   };
 
   // Multi-select handlers
@@ -382,6 +439,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
           <Tab label="Cost Centers" />
           <Tab label="Bulk Import" />
           <Tab label="Bulk Delete" />
+          <Tab label="Finance Assignments" />
         </Tabs>
       </Box>
 
@@ -757,6 +815,85 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
           {selectedCostCenters.length === 0 && (
             <Alert severity="info">
               No cost centers selected. Go to the Cost Centers tab and select items using the checkboxes.
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+      )}
+
+      {/* Tab 3: Finance Assignments */}
+      {activeTab === 3 && (
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Finance Cost Center Assignments
+          </Typography>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Assign cost centers to finance team members so each reviewer sees the centers they own.
+          </Alert>
+
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Finance Team Member</TableCell>
+                  <TableCell>Assigned Cost Centers</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {financeUsers.map((financeUser: any) => (
+                  <TableRow key={financeUser.id}>
+                    <TableCell>
+                      <Typography variant="body1" fontWeight="medium">
+                        {financeUser.preferredName || financeUser.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {financeUser.role}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 360 }}>
+                      <Select
+                        fullWidth
+                        multiple
+                        size="small"
+                        value={financeAssignments[financeUser.id] || []}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          handleFinanceAssignmentChange(
+                            financeUser.id,
+                            Array.isArray(value) ? value : []
+                          );
+                        }}
+                        renderValue={(selected) => (selected as string[]).join(', ')}
+                      >
+                        {costCenters.map((costCenter) => (
+                          <MenuItem key={costCenter.id} value={costCenter.name}>
+                            {costCenter.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<Save />}
+                        onClick={() => void handleSaveFinanceAssignments(financeUser.id)}
+                        disabled={savingFinanceAssignmentsFor === financeUser.id}
+                      >
+                        Save
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {financeUsers.length === 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              No finance users found. Add users with finance role first.
             </Alert>
           )}
         </CardContent>

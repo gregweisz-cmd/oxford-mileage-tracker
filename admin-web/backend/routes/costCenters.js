@@ -8,6 +8,9 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
 
+const normalizeCostCenter = (value) =>
+  String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 /**
  * Get all cost centers
  */
@@ -407,6 +410,144 @@ router.delete('/api/per-diem-monthly-rules/:costCenter', (req, res) => {
       return;
     }
     res.json({ message: 'Per diem monthly rule deleted successfully' });
+  });
+});
+
+/**
+ * List all finance-to-cost-center assignments.
+ */
+router.get('/api/finance-cost-center-assignments', (req, res) => {
+  const db = dbService.getDb();
+  db.all(
+    `
+    SELECT f.financeEmployeeId, e.name, e.preferredName, e.role, f.costCenterName
+    FROM finance_cost_center_assignments f
+    LEFT JOIN employees e ON e.id = f.financeEmployeeId
+    ORDER BY COALESCE(NULLIF(e.preferredName, ''), e.name), f.costCenterName
+    `,
+    [],
+    (err, rows) => {
+      if (err) {
+        debugError('❌ Error fetching finance assignments:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      const grouped = {};
+      (rows || []).forEach((row) => {
+        if (!grouped[row.financeEmployeeId]) {
+          grouped[row.financeEmployeeId] = {
+            financeEmployeeId: row.financeEmployeeId,
+            financeEmployeeName: row.preferredName || row.name || 'Finance user',
+            costCenters: [],
+          };
+        }
+        grouped[row.financeEmployeeId].costCenters.push(row.costCenterName);
+      });
+      return res.json(Object.values(grouped));
+    }
+  );
+});
+
+/**
+ * Get assignments for one finance user.
+ */
+router.get('/api/finance-cost-center-assignments/:financeEmployeeId', (req, res) => {
+  const { financeEmployeeId } = req.params;
+  const db = dbService.getDb();
+  db.all(
+    'SELECT costCenterName FROM finance_cost_center_assignments WHERE financeEmployeeId = ? ORDER BY costCenterName',
+    [financeEmployeeId],
+    (err, rows) => {
+      if (err) {
+        debugError('❌ Error fetching finance assignments for user:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      db.get('SELECT COUNT(1) AS count FROM finance_cost_center_assignments', [], (countErr, countRow) => {
+        if (countErr) {
+          debugError('❌ Error counting finance assignments:', countErr);
+          return res.status(500).json({ error: countErr.message });
+        }
+        return res.json({
+          financeEmployeeId,
+          costCenters: (rows || []).map((r) => r.costCenterName),
+          hasAnyAssignments: Number(countRow?.count || 0) > 0,
+        });
+      });
+    }
+  );
+});
+
+/**
+ * Replace assignments for one finance user.
+ */
+router.put('/api/finance-cost-center-assignments/:financeEmployeeId', (req, res) => {
+  const { financeEmployeeId } = req.params;
+  const inputCostCenters = Array.isArray(req.body?.costCenters) ? req.body.costCenters : [];
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+  const idBase = Date.now().toString(36);
+
+  db.all('SELECT name FROM cost_centers', [], (ccErr, costCenterRows) => {
+    if (ccErr) {
+      debugError('❌ Error loading cost centers for assignment validation:', ccErr);
+      return res.status(500).json({ error: ccErr.message });
+    }
+    const canonicalMap = new Map();
+    (costCenterRows || []).forEach((row) => {
+      canonicalMap.set(normalizeCostCenter(row.name), row.name);
+    });
+
+    const dedupedCanonical = [];
+    const seen = new Set();
+    inputCostCenters.forEach((raw) => {
+      const canonical = canonicalMap.get(normalizeCostCenter(raw));
+      if (canonical && !seen.has(canonical)) {
+        seen.add(canonical);
+        dedupedCanonical.push(canonical);
+      }
+    });
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      db.run(
+        'DELETE FROM finance_cost_center_assignments WHERE financeEmployeeId = ?',
+        [financeEmployeeId],
+        (deleteErr) => {
+          if (deleteErr) {
+            db.run('ROLLBACK');
+            debugError('❌ Error clearing existing finance assignments:', deleteErr);
+            return res.status(500).json({ error: deleteErr.message });
+          }
+
+          if (dedupedCanonical.length === 0) {
+            db.run('COMMIT');
+            return res.json({ financeEmployeeId, costCenters: [] });
+          }
+
+          let pending = dedupedCanonical.length;
+          let failed = false;
+          dedupedCanonical.forEach((costCenterName, idx) => {
+            db.run(
+              'INSERT INTO finance_cost_center_assignments (id, financeEmployeeId, costCenterName, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
+              [`fcca-${idBase}-${idx}`, financeEmployeeId, costCenterName, now, now],
+              (insertErr) => {
+                if (failed) return;
+                if (insertErr) {
+                  failed = true;
+                  db.run('ROLLBACK');
+                  debugError('❌ Error saving finance assignment:', insertErr);
+                  return res.status(500).json({ error: insertErr.message });
+                }
+                pending -= 1;
+                if (pending === 0) {
+                  db.run('COMMIT');
+                  return res.json({ financeEmployeeId, costCenters: dedupedCanonical });
+                }
+              }
+            );
+          });
+        }
+      );
+    });
   });
 });
 
