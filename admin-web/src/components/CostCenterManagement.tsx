@@ -28,7 +28,8 @@ import {
   Tab,
   LinearProgress,
   Select,
-  MenuItem
+  MenuItem,
+  ListItemText
 } from '@mui/material';
 import {
   Add,
@@ -865,11 +866,33 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
                             Array.isArray(value) ? value : []
                           );
                         }}
-                        renderValue={(selected) => (selected as string[]).join(', ')}
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {(selected as string[]).map((value) => (
+                              <Chip
+                                key={value}
+                                label={value}
+                                size="small"
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onDelete={() => {
+                                  const current = financeAssignments[financeUser.id] || [];
+                                  handleFinanceAssignmentChange(
+                                    financeUser.id,
+                                    current.filter((name) => name !== value)
+                                  );
+                                }}
+                              />
+                            ))}
+                          </Box>
+                        )}
                       >
                         {costCenters.map((costCenter) => (
                           <MenuItem key={costCenter.id} value={costCenter.name}>
-                            {costCenter.name}
+                            <Checkbox
+                              size="small"
+                              checked={(financeAssignments[financeUser.id] || []).includes(costCenter.name)}
+                            />
+                            <ListItemText primary={costCenter.name} />
                           </MenuItem>
                         ))}
                       </Select>
