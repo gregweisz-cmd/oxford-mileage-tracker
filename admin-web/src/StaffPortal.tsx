@@ -7911,33 +7911,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               >
                 <TableHead>
                   <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
-                    {false && supervisorMode && (
-                      <TableCell
-                        sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'normal', lineHeight: 1.2, verticalAlign: 'top', textAlign: 'center' }}
-                      >
-                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
-                          Select for
-                          <br />
-                          Revision
-                        </Typography>
-                        <Checkbox
-                          indeterminate={(() => { const cc0Ids = Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`); const n = cc0Ids.filter(id => selectedMileageItems.has(id)).length; return n > 0 && n < daysInMonth; })()}
-                          checked={(() => { const cc0Ids = Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`); return daysInMonth > 0 && cc0Ids.every(id => selectedMileageItems.has(id)); })()}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              const allIds = new Set(Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`));
-                              setSelectedMileageItems(prev => new Set(Array.from(prev).concat(Array.from(allIds))));
-                            } else {
-                              const cc0Ids = new Set(Array.from({ length: daysInMonth }, (_, i) => `mileage-cc0-day-${i + 1}`));
-                              setSelectedMileageItems(prev => new Set(Array.from(prev).filter(id => !cc0Ids.has(id))));
-                            }
-                          }}
-                          size="small"
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell sx={{ border: '1px solid #ccc', p: 0.75, width: supervisorMode ? '9%' : '10%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>DATE</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 0.75, width: supervisorMode ? '36%' : '40%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Description of Activity</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 0.75, width: '10%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>DATE</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 0.75, width: '40%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Description of Activity</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '8%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Hours Worked</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '8%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Odometer Start</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '8%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Odometer End</strong></TableCell>
