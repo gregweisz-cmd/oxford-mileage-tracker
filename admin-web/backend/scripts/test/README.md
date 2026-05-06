@@ -58,6 +58,19 @@ node scripts/test/test-database.js
 - Foreign key relationships
 - Data integrity
 
+### 4. Finance Meeting Regression (`test-finance-meeting.js`)
+
+Targeted validation coverage for finance-requested behavior that can regress silently.
+
+```bash
+node scripts/test/test-finance-meeting.js
+```
+
+**Tests:**
+- Per-cost-center Per Diem receipt-image requirement is enforced server-side
+- Split receipt metadata validation rejects invalid allocation index/count
+- Valid Per Diem and split receipts still save successfully
+
 ## Running All Tests
 
 Run all tests in sequence:
@@ -68,6 +81,7 @@ cd backend
 node scripts/test/test-api.js
 node scripts/test/test-websocket.js
 node scripts/test/test-database.js
+node scripts/test/test-finance-meeting.js
 
 # Or create a test script in package.json:
 npm run test:api

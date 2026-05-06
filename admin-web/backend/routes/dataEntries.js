@@ -21,6 +21,44 @@ const { checkAndNotify50PlusHours } = require('../services/notificationService')
 const websocketService = require('../services/websocketService');
 const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
 
+const normalizeCostCenterKey = (value) =>
+  String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const isPerDiemCategory = (category) =>
+  String(category || '').trim().toLowerCase() === 'per diem';
+
+const hasReceiptImage = (imageUri) =>
+  typeof imageUri === 'string' && imageUri.trim().length > 0;
+
+const validatePerDiemReceiptRequirement = (db, { category, costCenter, imageUri }, callback) => {
+  if (!isPerDiemCategory(category)) {
+    return callback(null);
+  }
+
+  if (!costCenter || hasReceiptImage(imageUri)) {
+    return callback(null);
+  }
+
+  db.all('SELECT name, perDiemReceiptImageRequired FROM cost_centers', [], (err, rows) => {
+    if (err) {
+      return callback(err);
+    }
+
+    const targetKey = normalizeCostCenterKey(costCenter);
+    const matched = (rows || []).find((row) => normalizeCostCenterKey(row.name) === targetKey);
+    const requiresImage = !!matched?.perDiemReceiptImageRequired;
+
+    if (requiresImage && !hasReceiptImage(imageUri)) {
+      return callback({
+        statusCode: 400,
+        message: `A receipt image is required for Per Diem entries in ${matched.name}.`
+      });
+    }
+
+    return callback(null);
+  });
+};
+
 // Set up uploads directory and multer (use UPLOAD_DIR on Render persistent disk)
 const uploadsDir = config.upload.directory;
 const upload = multer({ dest: uploadsDir });
@@ -547,51 +585,61 @@ router.post('/api/receipts', (req, res) => {
   }
 
   const fileType = req.body.fileType || (imageUri && imageUri.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
-  
-  // Check if receipt with this ID already exists
-  db.get('SELECT id FROM receipts WHERE id = ?', [receiptId], (checkErr, existingRow) => {
-    if (checkErr) {
-      debugError('❌ Error checking for existing receipt:', checkErr);
-      return res.status(500).json({ error: checkErr.message });
+
+  validatePerDiemReceiptRequirement(db, { category, costCenter, imageUri }, (validationErr) => {
+    if (validationErr) {
+      if (validationErr.statusCode) {
+        return res.status(validationErr.statusCode).json({ error: validationErr.message });
+      }
+      debugError('❌ Error validating Per Diem receipt image requirement:', validationErr);
+      return res.status(500).json({ error: validationErr.message || 'Failed to validate Per Diem receipt requirement.' });
     }
 
-    const isUpdate = !!existingRow;
-    const action = isUpdate ? 'updated' : 'created';
-  
-    db.run(
-      'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
-      [
-        receiptId,
-        employeeId,
-        normalizedDate,
-        amount,
-        vendor || '',
-        description || '',
-        category || '',
-        imageUri || '',
-        fileType,
-        costCenter || '',
-        normalizedSplitGroupId,
-        normalizedSplitAllocationIndex,
-        normalizedSplitAllocationCount,
-        receiptId,
-        now,
-        now
-      ],
-      function(err) {
-        if (err) {
-          debugError('Database error:', err.message);
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        debugLog(`✅ Receipt ${action} successfully:`, receiptId);
-        
-        // Broadcast WebSocket update
-        websocketService.broadcastDataChange('receipt', isUpdate ? 'update' : 'create', { id: receiptId, employeeId, date: normalizedDate, amount, category }, employeeId);
-        
-        res.json({ id: receiptId, message: `Receipt ${action} successfully`, isUpdate });
+    // Check if receipt with this ID already exists
+    db.get('SELECT id FROM receipts WHERE id = ?', [receiptId], (checkErr, existingRow) => {
+      if (checkErr) {
+        debugError('❌ Error checking for existing receipt:', checkErr);
+        return res.status(500).json({ error: checkErr.message });
       }
-    );
+
+      const isUpdate = !!existingRow;
+      const action = isUpdate ? 'updated' : 'created';
+
+      db.run(
+        'INSERT OR REPLACE INTO receipts (id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM receipts WHERE id = ?), ?), ?)',
+        [
+          receiptId,
+          employeeId,
+          normalizedDate,
+          amount,
+          vendor || '',
+          description || '',
+          category || '',
+          imageUri || '',
+          fileType,
+          costCenter || '',
+          normalizedSplitGroupId,
+          normalizedSplitAllocationIndex,
+          normalizedSplitAllocationCount,
+          receiptId,
+          now,
+          now
+        ],
+        function(err) {
+          if (err) {
+            debugError('Database error:', err.message);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          debugLog(`✅ Receipt ${action} successfully:`, receiptId);
+
+          // Broadcast WebSocket update
+          websocketService.broadcastDataChange('receipt', isUpdate ? 'update' : 'create', { id: receiptId, employeeId, date: normalizedDate, amount, category }, employeeId);
+
+          res.json({ id: receiptId, message: `Receipt ${action} successfully`, isUpdate });
+        }
+      );
+    });
   });
 });
 
@@ -676,7 +724,16 @@ router.put('/api/receipts/:id', (req, res) => {
   };
 
   if (hasValidEmployeeId) {
-    runUpdate(bodyEmployeeId);
+    validatePerDiemReceiptRequirement(db, { category, costCenter, imageUri }, (validationErr) => {
+      if (validationErr) {
+        if (validationErr.statusCode) {
+          return res.status(validationErr.statusCode).json({ error: validationErr.message });
+        }
+        debugError('❌ Error validating Per Diem receipt image requirement:', validationErr);
+        return res.status(500).json({ error: validationErr.message || 'Failed to validate Per Diem receipt requirement.' });
+      }
+      runUpdate(bodyEmployeeId);
+    });
   } else {
     db.get('SELECT employeeId FROM receipts WHERE id = ?', [id], (err, row) => {
       if (err) {
@@ -686,7 +743,16 @@ router.put('/api/receipts/:id', (req, res) => {
       if (!row) {
         return res.status(404).json({ error: 'Receipt not found.' });
       }
-      runUpdate(row.employeeId);
+      validatePerDiemReceiptRequirement(db, { category, costCenter, imageUri }, (validationErr) => {
+        if (validationErr) {
+          if (validationErr.statusCode) {
+            return res.status(validationErr.statusCode).json({ error: validationErr.message });
+          }
+          debugError('❌ Error validating Per Diem receipt image requirement:', validationErr);
+          return res.status(500).json({ error: validationErr.message || 'Failed to validate Per Diem receipt requirement.' });
+        }
+        runUpdate(row.employeeId);
+      });
     });
   }
 });

@@ -22,7 +22,7 @@ todos:
     status: completed
   - id: qa-and-migration
     content: Add migrations/backfills and integration tests, then run finance-focused end-to-end validation
-    status: in_progress
+    status: completed
 isProject: false
 ---
 
@@ -45,9 +45,7 @@ This section is the working handoff state for cross-machine / cross-agent contin
 - HR sync preview now shows explicit field-level before/after diffs (name/position/phone/cost centers).
 
 ### In progress / remaining
-- QA and migration hardening:
-  - add/update integration coverage for finance-critical flows,
-  - run and document end-to-end finance regression pass after latest changes.
+- None for implementation scope. Remaining work is final manual finance signoff run before release.
 
 ### Newly completed in this cycle
 - Receipt split enhancements now include:
@@ -63,6 +61,7 @@ This section is the working handoff state for cross-machine / cross-agent contin
   - Therefore, no additional migration/backfill script is required for the new split-by-cost-center behavior.
 - **Verification performed**
   - `node -c admin-web/backend/routes/dataEntries.js` ✅
+  - `node scripts/test/test-finance-meeting.js` ✅ (backend regression checks for Per Diem image requirement and split validation)
   - `npm run build` in `admin-web/` ✅ (compiled successfully)
   - `npx tsc --noEmit` (repo-wide) ⚠️ fails due to large set of pre-existing TypeScript issues across unrelated areas; not introduced by this split change.
 - **Finance-focused functional checks to run in app before ship**
