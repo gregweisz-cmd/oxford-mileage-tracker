@@ -7054,7 +7054,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
-                    {false && supervisorMode && (
+                    {supervisorMode && (
                       <TableCell
                         padding="checkbox"
                         sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
@@ -7349,7 +7349,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
-                    {false && supervisorMode && (
+                    {supervisorMode && (
                       <TableCell
                         padding="checkbox"
                         sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
@@ -7900,13 +7900,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   borderCollapse: 'collapse',
                   width: '100%',
                   minWidth: 1500,
-                  ...(false && supervisorMode && {
-                    '& th:first-of-type, & td:first-of-type': {
-                      width: '128px !important',
-                      minWidth: '128px !important',
-                      maxWidth: '128px !important',
-                    },
-                  }),
                 }}
               >
                 <TableHead>
@@ -7955,15 +7948,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     return (
                       <>
                         {costCenterRowsCC1.map((row) => {
-                          const itemId = `mileage-cc0-day-${row.day}`;
                           const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
                             const tDate = new Date(t.date);
                             return tDate.getUTCDate() === row.day && tDate.getUTCMonth() + 1 === currentMonth && tDate.getFullYear() === currentYear && (t.needsRevision);
                           });
-                          const needsRevisionFromNotes = itemsNeedingRevision.has(itemId);
-                          const needsRevision = needsRevisionFromRaw || needsRevisionFromNotes;
+                          const needsRevision = needsRevisionFromRaw;
                           const dayNeedsRevision = daysNeedingRevision.has(row.day);
-                          const isSelected = selectedMileageItems.has(itemId);
                           return (
                             <TableRow
                               key={row.day}
@@ -7972,11 +7962,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 ...(row.dayOff && !needsRevision && !dayNeedsRevision && { bgcolor: '#e0e0e0', opacity: 0.6, '& td': { bgcolor: '#e0e0e0', opacity: 0.6 } })
                               }}
                             >
-                              {false && supervisorMode && (
-                                <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, textAlign: 'center' }}>
-                                  <Checkbox checked={isSelected} onChange={(e) => { const newSet = new Set(selectedMileageItems); if (e.target.checked) newSet.add(itemId); else newSet.delete(itemId); setSelectedMileageItems(newSet); }} size="small" sx={{ p: 0.5 }} />
-                                </TableCell>
-                              )}
                               <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                                   <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
@@ -8004,7 +7989,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           );
                         })}
                         <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
-                          {false && supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128 }} />}
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                           <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subHours.toFixed(1)}</strong></TableCell>
