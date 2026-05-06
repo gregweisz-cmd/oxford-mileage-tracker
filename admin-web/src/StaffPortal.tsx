@@ -974,6 +974,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (!employeeData) return;
     const ccLen = employeeData.costCenters?.length ?? 0;
     const maxIdx = 7 + ccLen;
+    const normalizeCostCenterKey = (value: any) =>
+      String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const hasUnresolvedCategory = (category: 'mileage' | 'receipt' | 'time') =>
       revisionNotes.some((note: any) => {
         if (!(note?.resolved === 0 || note?.resolved === false)) {
@@ -1004,9 +1006,47 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('receipt-')) ||
       hasUnresolvedCategory('receipt');
 
+    const firstCostCenterRevisionIdx = (() => {
+      if (!Array.isArray(employeeData.costCenters) || employeeData.costCenters.length === 0) {
+        return -1;
+      }
+
+      // Day-level time revision notes are surfaced on cost center tabs, so route to first cost center tab.
+      if (daysNeedingRevision.size > 0 || hasUnresolvedCategory('time')) {
+        return 0;
+      }
+
+      for (let i = 0; i < employeeData.costCenters.length; i += 1) {
+        const ccKey = normalizeCostCenterKey(employeeData.costCenters[i]);
+        const hasRevisionForCostCenter =
+          rawMileageEntries.some(
+            (entry: any) =>
+              entry?.needsRevision &&
+              normalizeCostCenterKey(entry?.costCenter || employeeData.costCenters[0] || '') === ccKey
+          ) ||
+          rawTimeEntries.some(
+            (entry: any) =>
+              entry?.needsRevision &&
+              normalizeCostCenterKey(entry?.costCenter || employeeData.costCenters[0] || '') === ccKey
+          ) ||
+          receipts.some(
+            (entry: any) =>
+              (entry as any)?.needsRevision &&
+              normalizeCostCenterKey((entry as any)?.costCenter || employeeData.costCenters[0] || '') === ccKey
+          );
+        if (hasRevisionForCostCenter) {
+          return i;
+        }
+      }
+
+      return -1;
+    })();
+
     let idx = 0;
     if (hasMileageRevisions) {
       idx = 2;
+    } else if (firstCostCenterRevisionIdx >= 0) {
+      idx = 4 + firstCostCenterRevisionIdx;
     } else if (hasTimeRevisions) {
       idx = ccLen + 4;
     } else if (hasReceiptRevisions) {
