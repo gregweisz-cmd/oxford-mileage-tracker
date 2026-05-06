@@ -587,21 +587,31 @@ async function notifyFinanceApprovalNeeded(reportId, supervisorId, supervisorNam
   try {
     const db = dbService.getDb();
     const employee = await dbService.getEmployeeById(employeeId);
-    
-    // Get all finance approvers
-    const financeApprovers = await dbService.getFinanceApprovers();
-    
-    if (financeApprovers.length === 0) {
-      debugWarn('⚠️ No finance approvers found for notification');
-      return null;
-    }
 
     const report = await new Promise((resolve) => {
-      db.get('SELECT id, month, year FROM expense_reports WHERE id = ?', [reportId], (err, row) => {
+      db.get('SELECT id, month, year, reportData FROM expense_reports WHERE id = ?', [reportId], (err, row) => {
         if (err) resolve(null);
         else resolve(row);
       });
     });
+
+    let parsedReportData = {};
+    try {
+      parsedReportData = report?.reportData ? JSON.parse(report.reportData) : {};
+    } catch (_) {
+      parsedReportData = {};
+    }
+    const reportCostCenters = Array.isArray(parsedReportData?.costCenters) ? parsedReportData.costCenters : [];
+
+    // Route finance approval notifications to assigned finance owner(s) for the report's cost centers.
+    const financeApprovers = await dbService.getFinanceApproversForCostCenters(reportCostCenters);
+    if (financeApprovers.length === 0) {
+      debugWarn('⚠️ No finance approvers matched report cost centers for notification', {
+        reportId,
+        reportCostCenters,
+      });
+      return null;
+    }
 
     const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
     const employeeDisplay = employee?.preferredName || employee?.name || 'An employee';

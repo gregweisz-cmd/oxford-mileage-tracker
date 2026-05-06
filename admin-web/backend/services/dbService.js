@@ -1596,6 +1596,48 @@ function getFinanceApprovers() {
   });
 }
 
+function normalizeCostCenter(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Resolve finance approvers by report cost centers.
+ * If no assignments exist globally, falls back to all finance approvers.
+ * If assignments exist but no matching assignment for provided cost centers, returns [].
+ */
+async function getFinanceApproversForCostCenters(costCenters = []) {
+  const financeApprovers = await getFinanceApprovers();
+  if (!financeApprovers.length) return [];
+
+  const assignments = await new Promise((resolve, reject) => {
+    db.all(
+      'SELECT financeEmployeeId, costCenterName FROM finance_cost_center_assignments',
+      [],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+
+  if (!assignments.length) {
+    return financeApprovers;
+  }
+
+  const targetKeys = new Set((Array.isArray(costCenters) ? costCenters : []).map(normalizeCostCenter).filter(Boolean));
+  if (!targetKeys.size) {
+    return [];
+  }
+
+  const allowedFinanceIds = new Set(
+    assignments
+      .filter((row) => targetKeys.has(normalizeCostCenter(row.costCenterName)))
+      .map((row) => row.financeEmployeeId)
+  );
+
+  return financeApprovers.filter((employee) => allowedFinanceIds.has(employee.id));
+}
+
 /**
  * Get all employees supervised by a supervisor (directly and indirectly through hierarchy)
  * Recursively finds all employees in the supervision chain
@@ -1662,6 +1704,7 @@ module.exports = {
   getEmployeeById,
   getEmployeesBySupervisor,
   getFinanceApprovers,
+  getFinanceApproversForCostCenters,
   getAllSupervisedEmployees,
   DB_PATH,
 };

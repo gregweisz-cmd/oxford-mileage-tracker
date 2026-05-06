@@ -17,7 +17,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 /**
  * Initialize approval workflow for a report
  */
-async function initializeApprovalWorkflow(report) {
+async function initializeApprovalWorkflow(report, reportDataOverride = null) {
   const workflow = [];
   let currentApprovalStage = '';
   let currentApprovalStep = 0;
@@ -83,7 +83,17 @@ async function initializeApprovalWorkflow(report) {
     }
   }
 
-  const financeApprovers = await dbService.getFinanceApprovers();
+  let reportData = reportDataOverride;
+  if (!reportData && report && report.reportData) {
+    if (typeof report.reportData === 'string') {
+      reportData = helpers.parseJsonSafe(report.reportData, {});
+    } else if (typeof report.reportData === 'object') {
+      reportData = report.reportData;
+    }
+  }
+  const reportCostCenters = Array.isArray(reportData?.costCenters) ? reportData.costCenters : [];
+
+  const financeApprovers = await dbService.getFinanceApproversForCostCenters(reportCostCenters);
   let financeApproverId = null;
   let financeApproverName = 'Finance Team';
 
@@ -185,7 +195,7 @@ router.post('/api/expense-reports', async (req, res) => {
       if (status === 'submitted') {
         const report = { id: existingReport.id, employeeId, month, year };
         debugLog(`📝 Submitting report ${existingReport.id} for employee ${employeeId} via POST`);
-        const workflowInit = await initializeApprovalWorkflow(report);
+        const workflowInit = await initializeApprovalWorkflow(report, reportData);
         debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}`);
         
         const stage = workflowInit.currentApprovalStage;
@@ -243,7 +253,7 @@ router.post('/api/expense-reports', async (req, res) => {
       if (status === 'submitted') {
         const report = { id, employeeId, month, year };
         debugLog(`📝 Creating and submitting report ${id} for employee ${employeeId} via POST`);
-        const workflowInit = await initializeApprovalWorkflow(report);
+        const workflowInit = await initializeApprovalWorkflow(report, reportData);
         debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}`);
         
         const stageInsert = workflowInit.currentApprovalStage;
