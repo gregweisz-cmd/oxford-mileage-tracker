@@ -7349,7 +7349,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
-                    {supervisorMode && (
+                    {false && supervisorMode && (
                       <TableCell
                         padding="checkbox"
                         sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
