@@ -36,6 +36,10 @@ export interface PerDiemTabProps {
   onDataChange?: () => void;
   /** When user clicks "Go to today", parent should set its month/year to current month/year */
   onGoToToday?: () => void;
+  supervisorMode?: boolean;
+  selectedRevisionItems?: Set<string>;
+  onSelectedRevisionItemsChange?: (items: Set<string>) => void;
+  revisionHighlightItems?: Set<string>;
 }
 
 function getDaysInMonth(year: number, month: number): number {
@@ -50,6 +54,10 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
   year,
   onDataChange,
   onGoToToday,
+  supervisorMode = false,
+  selectedRevisionItems,
+  onSelectedRevisionItemsChange,
+  revisionHighlightItems,
 }) => {
   const [entries, setEntries] = useState<Map<string, PerDiemEntry>>(new Map());
   const [dailyMaxAmount, setDailyMaxAmount] = useState(DEFAULT_DAILY_AMOUNT);
@@ -345,14 +353,16 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           <Typography variant="subtitle1" sx={{ minWidth: 160 }}>
             {new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </Typography>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={handleSelectAllEligibleDays}
-            disabled={saving || loading}
-          >
-            Select all eligible days
-          </Button>
+          {!supervisorMode && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleSelectAllEligibleDays}
+              disabled={saving || loading}
+            >
+              Select all eligible days
+            </Button>
+          )}
           {onGoToToday && (
             <Button size="small" startIcon={<TodayIcon />} onClick={onGoToToday}>
               Go to today
@@ -404,18 +414,37 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           const entry = entries.get(dateKey);
           const dayEligibility = eligibilityByDay.get(dateKey);
           const isEligibleByRule = dayEligibility?.isEligible ?? false;
+          const revisionItemId = `perdiem-${dateKey}`;
+          const needsRevision = !!revisionHighlightItems?.has(revisionItemId);
           if (!entry) return null;
           return (
-            <Paper key={dateKey} variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Paper key={dateKey} variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 2, ...(needsRevision ? { bgcolor: '#ffcccc' } : {}) }}>
               <Checkbox
-                checked={entry.isEligible}
-                onChange={() => handleToggleEligible(dateKey)}
+                checked={supervisorMode ? !!selectedRevisionItems?.has(revisionItemId) : entry.isEligible}
+                onChange={() => {
+                  if (!supervisorMode) {
+                    handleToggleEligible(dateKey);
+                    return;
+                  }
+                  const next = new Set(selectedRevisionItems || []);
+                  if (next.has(revisionItemId)) {
+                    next.delete(revisionItemId);
+                  } else {
+                    next.add(revisionItemId);
+                  }
+                  onSelectedRevisionItemsChange?.(next);
+                }}
                 color="primary"
               />
               <Box sx={{ minWidth: 140 }}>
                 <Typography>
                   {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                 </Typography>
+                {needsRevision && (
+                  <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 700 }}>
+                    Revision requested
+                  </Typography>
+                )}
                 <Typography
                   variant="caption"
                   sx={{
@@ -427,7 +456,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
                   {isEligibleByRule ? 'Eligible' : 'Not eligible'}
                 </Typography>
               </Box>
-              {entry.isEligible && (
+              {entry.isEligible && !supervisorMode && (
                 <TextField
                   type="number"
                   size="small"
@@ -444,7 +473,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       </Box>
 
       {/* Fixed Save bar at bottom of viewport so it stays visible when user scrolls */}
-      {hasUnsavedChanges && (
+      {!supervisorMode && hasUnsavedChanges && (
         <Box
           sx={{
             position: 'fixed',

@@ -208,7 +208,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
   const [detailedReportViewOpen, setDetailedReportViewOpen] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-  const [selectedItemsForRevision, setSelectedItemsForRevision] = useState<{ mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> } | null>(null);
+  const [selectedItemsForRevision, setSelectedItemsForRevision] = useState<{
+    mileage: Set<string>;
+    dailyDescriptions: Set<string>;
+    timeTracking: Set<string>;
+    receipts: Set<string>;
+    perDiemDays: Set<string>;
+  } | null>(null);
   
   // Keyboard shortcuts state
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
@@ -428,8 +434,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
       if (selectedItemsForRevision) {
         body.selectedItems = {
           mileage: Array.from(selectedItemsForRevision.mileage),
+          dailyDescriptions: Array.from(selectedItemsForRevision.dailyDescriptions),
           receipts: Array.from(selectedItemsForRevision.receipts),
           timeTracking: Array.from(selectedItemsForRevision.timeTracking),
+          perDiemDays: Array.from(selectedItemsForRevision.perDiemDays),
         };
       }
       
@@ -463,7 +471,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   };
 
   // Memoized callback for selected items change to prevent infinite loops
-  const handleSelectedItemsChange = useCallback((selectedItems: { mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> }) => {
+  const handleSelectedItemsChange = useCallback((selectedItems: {
+    mileage: Set<string>;
+    dailyDescriptions: Set<string>;
+    timeTracking: Set<string>;
+    receipts: Set<string>;
+    perDiemDays: Set<string>;
+  }) => {
     setSelectedItemsForRevision(selectedItems);
   }, []);
 

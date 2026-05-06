@@ -2419,26 +2419,62 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         // Process selected items for item-specific revisions
         const selectedItems = req.body.selectedItems || {};
         const selectedMileage = selectedItems.mileage || [];
+        const selectedDailyDescriptions = selectedItems.dailyDescriptions || [];
         const selectedReceipts = selectedItems.receipts || [];
         const selectedTimeTracking = selectedItems.timeTracking || [];
+        const selectedPerDiemDays = selectedItems.perDiemDays || [];
 
         // Create revision notes for selected items
-        if (selectedMileage.length > 0 || selectedReceipts.length > 0 || selectedTimeTracking.length > 0) {
+        if (
+          selectedMileage.length > 0 ||
+          selectedDailyDescriptions.length > 0 ||
+          selectedReceipts.length > 0 ||
+          selectedTimeTracking.length > 0 ||
+          selectedPerDiemDays.length > 0
+        ) {
           const employee = await dbService.getEmployeeById(report.employeeId);
           const requestorId = approverId || supervisorId || '';
           const requestorName = approverName || supervisorName || 'Supervisor';
 
-          // Process mileage entries (format: mileage-{index})
+          // Process mileage entries (new: mileage-entry-{id}, legacy: mileage-{index})
           for (const itemId of selectedMileage) {
-            const index = parseInt(itemId.replace('mileage-', ''), 10);
-            if (!isNaN(index)) {
+            const mileageEntryId = itemId.startsWith('mileage-entry-')
+              ? itemId.replace('mileage-entry-', '')
+              : '';
+            const legacyIndex = itemId.startsWith('mileage-')
+              ? itemId.replace('mileage-', '')
+              : '';
+            const noteItemId = mileageEntryId || legacyIndex;
+            if (noteItemId) {
               const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
               await new Promise((resolve, reject) => {
                 db.run(
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'mileage', index.toString(), 'mileage', commentsStr, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'mileage', noteItemId, 'mileage_entry', commentsStr, nowIso, nowIso],
+                  (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  }
+                );
+              });
+            }
+          }
+
+          // Process daily descriptions (format: description-{YYYY-MM-DD})
+          for (const itemId of selectedDailyDescriptions) {
+            const dateKey = itemId.startsWith('description-')
+              ? itemId.replace('description-', '')
+              : '';
+            if (dateKey) {
+              const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `INSERT INTO report_revision_notes 
+                   (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'daily_description', dateKey, 'daily_description', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2480,49 +2516,19 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
             }
           }
 
-          // Process time tracking entries (format: time-{index} or mileage-{index} since they share the same daily entry)
-          // Note: Time tracking entries are in the same daily entry row as mileage, so they share the same index
-          const processedTimeIndices = new Set();
+          // Process timesheet entries (e.g. time-{costCenterIndex}-{day}, time-day-{day}, legacy time-{index})
+          const processedTimeItems = new Set();
           for (const itemId of selectedTimeTracking) {
-            let timeIndex = null;
-            if (itemId.startsWith('time-')) {
-              timeIndex = itemId.replace('time-', '');
-            } else if (itemId.startsWith('mileage-')) {
-              // Time tracking may share the same index as mileage in the daily entries table
-              timeIndex = itemId.replace('mileage-', '');
-            }
-            
-            if (timeIndex && !processedTimeIndices.has(timeIndex)) {
-              processedTimeIndices.add(timeIndex);
+            const timesheetItemId = String(itemId || '').trim();
+            if (timesheetItemId && !processedTimeItems.has(timesheetItemId)) {
+              processedTimeItems.add(timesheetItemId);
               const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
               await new Promise((resolve, reject) => {
                 db.run(
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', timeIndex, 'time', commentsStr, nowIso, nowIso],
-                  (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                  }
-                );
-              });
-            }
-          }
-          
-          // Also create time tracking revision notes for mileage entries that were selected
-          // (since daily entries contain both mileage and time tracking in the same row)
-          for (const itemId of selectedMileage) {
-            const index = itemId.replace('mileage-', '');
-            if (index && !processedTimeIndices.has(index)) {
-              // Create a revision note for time tracking on the same day
-              const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-              await new Promise((resolve, reject) => {
-                db.run(
-                  `INSERT INTO report_revision_notes 
-                   (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'time', index, 'time', commentsStr, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'timesheet', timesheetItemId, 'timesheet', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2532,7 +2538,31 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
             }
           }
 
-          debugLog(`✅ Created revision notes for ${selectedMileage.length} mileage entries, ${selectedReceipts.length} receipts, ${selectedTimeTracking.length} time entries`);
+          // Process per diem days (format: perdiem-{YYYY-MM-DD})
+          for (const itemId of selectedPerDiemDays) {
+            const dateKey = itemId.startsWith('perdiem-')
+              ? itemId.replace('perdiem-', '')
+              : '';
+            if (dateKey) {
+              const noteId = `rev-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `INSERT INTO report_revision_notes 
+                   (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'per_diem', dateKey, 'per_diem_day', commentsStr, nowIso, nowIso],
+                  (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  }
+                );
+              });
+            }
+          }
+
+          debugLog(
+            `✅ Created revision notes for ${selectedMileage.length} mileage entries, ${selectedDailyDescriptions.length} daily descriptions, ${selectedTimeTracking.length} timesheet entries, ${selectedReceipts.length} receipts, ${selectedPerDiemDays.length} per diem days`
+          );
         }
 
         // Set status and send back to employee

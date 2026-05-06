@@ -512,7 +512,13 @@ interface StaffPortalProps {
   supervisorName?: string; // Supervisor name for approval workflow
   seniorStaffId?: string; // Senior staff ID when viewing as senior staff
   seniorStaffName?: string; // Senior staff name when viewing as senior staff
-  onSelectedItemsChange?: (selectedItems: { mileage: Set<string>, receipts: Set<string>, timeTracking: Set<string> }) => void; // Callback for selected items when in supervisor mode
+  onSelectedItemsChange?: (selectedItems: {
+    mileage: Set<string>;
+    dailyDescriptions: Set<string>;
+    timeTracking: Set<string>;
+    receipts: Set<string>;
+    perDiemDays: Set<string>;
+  }) => void; // Callback for selected items when in supervisor mode
   onApproveReport?: () => void; // Callback for approving report in supervisor mode
   onRequestRevision?: () => void; // Callback for requesting revision in supervisor mode
 }
@@ -705,8 +711,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   
   // Selected items for supervisor revision requests (only when supervisorMode is true)
   const [selectedMileageItems, setSelectedMileageItems] = useState<Set<string>>(new Set());
-  const [selectedReceiptItems, setSelectedReceiptItems] = useState<Set<string>>(new Set());
+  const [selectedDailyDescriptionItems, setSelectedDailyDescriptionItems] = useState<Set<string>>(new Set());
   const [selectedTimeTrackingItems, setSelectedTimeTrackingItems] = useState<Set<string>>(new Set());
+  const [selectedReceiptItems, setSelectedReceiptItems] = useState<Set<string>>(new Set());
+  const [selectedPerDiemItems, setSelectedPerDiemItems] = useState<Set<string>>(new Set());
   
   // Items that need revision (highlighted in light red for staff)
   const [itemsNeedingRevision, setItemsNeedingRevision] = useState<Set<string>>(new Set());
@@ -722,8 +730,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Create a string representation of selected items for comparison
       const currentItemsString = JSON.stringify({
         mileage: Array.from(selectedMileageItems).sort(),
+        dailyDescriptions: Array.from(selectedDailyDescriptionItems).sort(),
+        timeTracking: Array.from(selectedTimeTrackingItems).sort(),
         receipts: Array.from(selectedReceiptItems).sort(),
-        timeTracking: Array.from(selectedTimeTrackingItems).sort()
+        perDiemDays: Array.from(selectedPerDiemItems).sort(),
       });
       
       // Only call callback if values actually changed
@@ -731,12 +741,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         prevSelectedItemsRef.current = currentItemsString;
         onSelectedItemsChange({
           mileage: selectedMileageItems,
+          dailyDescriptions: selectedDailyDescriptionItems,
+          perDiemDays: selectedPerDiemItems,
           receipts: selectedReceiptItems,
           timeTracking: selectedTimeTrackingItems
         });
       }
     }
-  }, [selectedMileageItems, selectedReceiptItems, selectedTimeTrackingItems, supervisorMode, onSelectedItemsChange]);
+  }, [
+    selectedMileageItems,
+    selectedDailyDescriptionItems,
+    selectedPerDiemItems,
+    selectedReceiptItems,
+    selectedTimeTrackingItems,
+    supervisorMode,
+    onSelectedItemsChange
+  ]);
 
   // Load daily description options for dropdown (shared with mobile Hours & Description)
   useEffect(() => {
@@ -974,18 +994,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (!employeeData) return;
     const ccLen = employeeData.costCenters?.length ?? 0;
     const maxIdx = 7 + ccLen;
-    const normalizeCostCenterKey = (value: any) =>
-      String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const hasUnresolvedCategory = (category: 'mileage' | 'receipt' | 'time') =>
+    const hasUnresolvedCategory = (
+      category: 'mileage' | 'daily_description' | 'time' | 'receipt' | 'per_diem'
+    ) =>
       revisionNotes.some((note: any) => {
         if (!(note?.resolved === 0 || note?.resolved === false)) {
           return false;
         }
         const noteCategory = String(note?.category || note?.itemType || '').toLowerCase();
-        if (category === 'receipt') {
-          return noteCategory === 'receipt' || noteCategory === 'receipts';
-        }
-        return noteCategory === category;
+        return noteCategory === category || (category === 'receipt' && noteCategory === 'receipts');
       });
 
     const hasMileageRevisions =
@@ -994,9 +1011,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('mileage-')) ||
       hasUnresolvedCategory('mileage');
 
+    const hasDailyDescriptionRevisions =
+      Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('description-')) ||
+      hasUnresolvedCategory('daily_description');
+
     const hasTimeRevisions =
       revisionItems.time > 0 ||
       rawTimeEntries.some((entry: any) => entry?.needsRevision) ||
+      Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('time-')) ||
       daysNeedingRevision.size > 0 ||
       hasUnresolvedCategory('time');
 
@@ -1006,51 +1028,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('receipt-')) ||
       hasUnresolvedCategory('receipt');
 
-    const firstCostCenterRevisionIdx = (() => {
-      if (!Array.isArray(employeeData.costCenters) || employeeData.costCenters.length === 0) {
-        return -1;
-      }
-
-      // Day-level time revision notes are surfaced on cost center tabs, so route to first cost center tab.
-      if (daysNeedingRevision.size > 0 || hasUnresolvedCategory('time')) {
-        return 0;
-      }
-
-      for (let i = 0; i < employeeData.costCenters.length; i += 1) {
-        const ccKey = normalizeCostCenterKey(employeeData.costCenters[i]);
-        const hasRevisionForCostCenter =
-          rawMileageEntries.some(
-            (entry: any) =>
-              entry?.needsRevision &&
-              normalizeCostCenterKey(entry?.costCenter || employeeData.costCenters[0] || '') === ccKey
-          ) ||
-          rawTimeEntries.some(
-            (entry: any) =>
-              entry?.needsRevision &&
-              normalizeCostCenterKey(entry?.costCenter || employeeData.costCenters[0] || '') === ccKey
-          ) ||
-          receipts.some(
-            (entry: any) =>
-              (entry as any)?.needsRevision &&
-              normalizeCostCenterKey((entry as any)?.costCenter || employeeData.costCenters[0] || '') === ccKey
-          );
-        if (hasRevisionForCostCenter) {
-          return i;
-        }
-      }
-
-      return -1;
-    })();
+    const hasPerDiemRevisions =
+      Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('perdiem-')) ||
+      hasUnresolvedCategory('per_diem');
 
     let idx = 0;
     if (hasMileageRevisions) {
       idx = 2;
-    } else if (firstCostCenterRevisionIdx >= 0) {
-      idx = 4 + firstCostCenterRevisionIdx;
+    } else if (hasDailyDescriptionRevisions) {
+      idx = 3;
     } else if (hasTimeRevisions) {
       idx = ccLen + 4;
     } else if (hasReceiptRevisions) {
       idx = ccLen + 5;
+    } else if (hasPerDiemRevisions) {
+      idx = ccLen + 6;
     } else {
       idx = computeStaffPortalRevisionTabIndex(revisionItems, ccLen);
     }
@@ -2417,24 +2409,34 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             
             notes.forEach((note: any) => {
               if (note.resolved === 0 || note.resolved === false) {
-                const category = note.category || note.itemType;
-                const itemId = note.itemId;
-                
-                if (category === 'mileage' && itemId !== null && itemId !== undefined) {
-                  const index = parseInt(itemId, 10);
-                  if (!isNaN(index)) {
-                    itemsNeedingRev.add(`mileage-${index}`);
-                    // Daily entry index corresponds to day number (index 0 = day 1, index 1 = day 2, etc.)
-                    const day = index + 1;
+                const category = String(note.category || note.itemType || '').toLowerCase();
+                const itemIdRaw = note.itemId;
+                const itemId = itemIdRaw == null ? '' : String(itemIdRaw);
+
+                if (category === 'mileage' && itemId) {
+                  if (/^\d+$/.test(itemId)) {
+                    const day = parseInt(itemId, 10) + 1;
+                    itemsNeedingRev.add(`mileage-${itemId}`);
                     daysNeedingRev.add(day);
+                  } else {
+                    itemsNeedingRev.add(`mileage-entry-${itemId}`);
                   }
+                } else if (category === 'daily_description' && itemId) {
+                  itemsNeedingRev.add(`description-${itemId}`);
                 } else if (category === 'receipt' && itemId) {
                   itemsNeedingRev.add(`receipt-${itemId}`);
-                } else if (category === 'time' && itemId !== null && itemId !== undefined) {
-                  const index = parseInt(itemId, 10);
-                  if (!isNaN(index)) {
-                    // Daily entry index corresponds to day number
-                    const day = index + 1;
+                } else if (category === 'per_diem' && itemId) {
+                  itemsNeedingRev.add(`perdiem-${itemId}`);
+                } else if ((category === 'time' || category === 'timesheet') && itemId) {
+                  itemsNeedingRev.add(itemId.startsWith('time-') ? itemId : `time-${itemId}`);
+                  const timeParts = itemId.split('-');
+                  if (itemId.startsWith('time-') && timeParts.length >= 3) {
+                    const day = parseInt(timeParts[2], 10);
+                    if (!isNaN(day)) {
+                      daysNeedingRev.add(day);
+                    }
+                  } else if (/^\d+$/.test(itemId)) {
+                    const day = parseInt(itemId, 10) + 1;
                     daysNeedingRev.add(day);
                   }
                 }
@@ -7052,6 +7054,31 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100' }}>
+                    {false && supervisorMode && (
+                      <TableCell
+                        padding="checkbox"
+                        sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
+                      >
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
+                          Select for
+                          <br />
+                          Revision
+                        </Typography>
+                        <Checkbox
+                          indeterminate={selectedMileageItems.size > 0 && selectedMileageItems.size < currentMonthMileageList.length}
+                          checked={currentMonthMileageList.length > 0 && selectedMileageItems.size === currentMonthMileageList.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const allIds = new Set(currentMonthMileageList.map((m: any) => `mileage-entry-${m.id}`));
+                              setSelectedMileageItems(allIds);
+                            } else {
+                              setSelectedMileageItems(new Set());
+                            }
+                          }}
+                          size="small"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 56 }}><strong>Order</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Date</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Start Location</strong></TableCell>
@@ -7100,6 +7127,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         }
                       };
                       const mileageAmount = (entry.miles || 0) * 0.445; // Standard mileage rate ($0.445 per mile)
+                      const mileageItemId = `mileage-entry-${entry.id}`;
+                      const needsRevisionFromNotes = itemsNeedingRevision.has(mileageItemId);
+                      const needsRevision = !!entry.needsRevision || needsRevisionFromNotes;
+                      const isMileageSelected = selectedMileageItems.has(mileageItemId);
                       const baseAddress = employeeData?.baseAddress;
                       const baseAddress2 = employeeData?.baseAddress2;
                       const startName = (entry.startLocationName || '').trim();
@@ -7124,7 +7155,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           {isStartOfDay && (
                             <TableRow>
                               <TableCell
-                                colSpan={8}
+                                colSpan={supervisorMode ? 9 : 8}
                                 sx={{
                                   border: '1px solid #90caf9',
                                   borderTop: '2px solid #1976d2',
@@ -7140,12 +7171,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           )}
                         <TableRow
                           sx={{
-                            bgcolor: entry.needsRevision ? 'warning.light' : 'transparent',
+                            bgcolor: needsRevision ? 'warning.light' : 'transparent',
                             ...(isEndOfDay
                               ? { '& td': { borderBottom: '2px solid #90caf9 !important' } }
                               : {}),
                           }}
                         >
+                          {supervisorMode && (
+                            <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
+                              <Checkbox
+                                checked={isMileageSelected}
+                                onChange={(e) => {
+                                  const newSet = new Set(selectedMileageItems);
+                                  if (e.target.checked) {
+                                    newSet.add(mileageItemId);
+                                  } else {
+                                    newSet.delete(mileageItemId);
+                                  }
+                                  setSelectedMileageItems(newSet);
+                                }}
+                                size="small"
+                              />
+                            </TableCell>
+                          )}
                           <TableCell sx={{ border: '1px solid #ccc', p: 0.5, verticalAlign: 'middle' }}>
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
                               <IconButton
@@ -7180,7 +7228,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           </TableCell>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                             {formatMileageDate(entry.date)}
-                            {entry.needsRevision && (
+                            {needsRevision && (
                               <Chip label="⚠️ Revision Requested" size="small" sx={{ ml: 1, bgcolor: 'warning.main', color: 'white' }} />
                             )}
                           </TableCell>
@@ -7224,7 +7272,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     })}
                   {currentMonthMileageList.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
+                      <TableCell colSpan={supervisorMode ? 9 : 8} align="center" sx={{ border: '1px solid #ccc', p: 3 }}>
                         <Typography variant="body2" color="textSecondary">
                           No mileage entries found. Use the mobile app to add mileage.
                         </Typography>
@@ -7312,14 +7360,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           Revision
                         </Typography>
                         <Checkbox
-                          indeterminate={selectedTimeTrackingItems.size > 0 && selectedTimeTrackingItems.size < employeeData.dailyEntries.length}
-                          checked={employeeData.dailyEntries.length > 0 && selectedTimeTrackingItems.size === employeeData.dailyEntries.length}
+                          indeterminate={selectedDailyDescriptionItems.size > 0 && selectedDailyDescriptionItems.size < employeeData.dailyEntries.length}
+                          checked={employeeData.dailyEntries.length > 0 && selectedDailyDescriptionItems.size === employeeData.dailyEntries.length}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              const allIds = new Set(employeeData.dailyEntries.map((_, idx) => `time-${idx}`));
-                              setSelectedTimeTrackingItems(allIds);
+                              const allIds = new Set(
+                                employeeData.dailyEntries.map((item: any) => `description-${normalizeDate(item.date)}`)
+                              );
+                              setSelectedDailyDescriptionItems(allIds);
                             } else {
-                              setSelectedTimeTrackingItems(new Set());
+                              setSelectedDailyDescriptionItems(new Set());
                             }
                           }}
                           size="small"
@@ -7343,23 +7393,24 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     });
                     const hasMileageForDay = rawMileageEntries.some((e: any) => normalizeDate(e.date) === entryDateStr);
                     
-                    const timeItemId = `time-${index}`;
-                    const isTimeSelected = selectedTimeTrackingItems.has(timeItemId);
+                    const descriptionItemId = `description-${entryDateStr}`;
+                    const isDescriptionSelected = selectedDailyDescriptionItems.has(descriptionItemId);
+                    const needsDescriptionRevision = itemsNeedingRevision.has(descriptionItemId);
                     
                     return (
                       <TableRow key={index}>
                         {supervisorMode && (
                           <TableCell padding="checkbox" sx={{ border: '1px solid #ccc', p: 1 }}>
                             <Checkbox
-                              checked={isTimeSelected}
+                              checked={isDescriptionSelected}
                               onChange={(e) => {
-                                const newSet = new Set(selectedTimeTrackingItems);
+                                const newSet = new Set(selectedDailyDescriptionItems);
                                 if (e.target.checked) {
-                                  newSet.add(timeItemId);
+                                  newSet.add(descriptionItemId);
                                 } else {
-                                  newSet.delete(timeItemId);
+                                  newSet.delete(descriptionItemId);
                                 }
-                                setSelectedTimeTrackingItems(newSet);
+                                setSelectedDailyDescriptionItems(newSet);
                               }}
                               size="small"
                             />
@@ -7367,7 +7418,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         )}
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
                           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                            <span>{entry.date}</span>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <span>{entry.date}</span>
+                              {needsDescriptionRevision && (
+                                <Chip label="⚠️ Revision Requested" size="small" sx={{ bgcolor: 'warning.main', color: 'white' }} />
+                              )}
+                            </Box>
                             <Typography variant="caption" color="text.secondary">
                               {formatWeekdayForDateCell(entry.date)}
                             </Typography>
@@ -7941,7 +7997,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 ...(row.dayOff && !needsRevision && !dayNeedsRevision && { bgcolor: '#e0e0e0', opacity: 0.6, '& td': { bgcolor: '#e0e0e0', opacity: 0.6 } })
                               }}
                             >
-                              {supervisorMode && (
+                              {false && supervisorMode && (
                                 <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128, textAlign: 'center' }}>
                                   <Checkbox checked={isSelected} onChange={(e) => { const newSet = new Set(selectedMileageItems); if (e.target.checked) newSet.add(itemId); else newSet.delete(itemId); setSelectedMileageItems(newSet); }} size="small" sx={{ p: 0.5 }} />
                                 </TableCell>
@@ -7973,7 +8029,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           );
                         })}
                         <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
-                          {supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128 }} />}
+                          {false && supervisorMode && <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 128, minWidth: 128, maxWidth: 128 }} />}
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
                           <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
                           <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subHours.toFixed(1)}</strong></TableCell>
@@ -9840,6 +9896,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               setCurrentMonth(now.getMonth() + 1);
               setCurrentYear(now.getFullYear());
             }}
+            supervisorMode={supervisorMode}
+            selectedRevisionItems={selectedPerDiemItems}
+            onSelectedRevisionItemsChange={setSelectedPerDiemItems}
+            revisionHighlightItems={itemsNeedingRevision}
           />
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
