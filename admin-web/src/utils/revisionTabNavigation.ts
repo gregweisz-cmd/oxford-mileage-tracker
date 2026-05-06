@@ -1,7 +1,6 @@
 /**
  * Staff portal tab index for Mileage / Timesheet / Receipt Management (left-to-right).
- * Matches server logic in notificationService.computeStaffPortalTabIndexForRevisionReport:
- * highest unresolved count wins; ties go to the leftmost tab.
+ * Open the left-most tab that currently has revisions needed.
  */
 export function computeStaffPortalRevisionTabIndex(
   counts: { mileage: number; receipts: number; time: number },
@@ -13,8 +12,6 @@ export function computeStaffPortalRevisionTabIndex(
     { idx: ccLen + 4, count: counts.time },
     { idx: ccLen + 5, count: counts.receipts },
   ];
-  const nonzero = candidates.filter((t) => t.count > 0);
-  if (nonzero.length === 0) return 0;
-  nonzero.sort((a, b) => (b.count !== a.count ? b.count - a.count : a.idx - b.idx));
-  return nonzero[0].idx;
+  const leftMostWithRevisions = candidates.find((tab) => tab.count > 0);
+  return leftMostWithRevisions ? leftMostWithRevisions.idx : 0;
 }
