@@ -86,6 +86,7 @@ import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistor
 // Address formatting utility
 import { formatLocationNameAndAddress } from './utils/addressFormatter';
 import { parseCalendarYearMonthFromStoredDate, parseCalendarYmdParts, formatStoredDateForDisplay } from './utils/calendarDate';
+import { computeStaffPortalRevisionTabIndex } from './utils/revisionTabNavigation';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
@@ -968,6 +969,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     },
     [showSuccess, showError]
   );
+
+  const handleOpenRevisionsFromApprovalCard = useCallback(() => {
+    if (!employeeData) return;
+    const ccLen = employeeData.costCenters?.length ?? 0;
+    const maxIdx = 7 + ccLen;
+    const idx = computeStaffPortalRevisionTabIndex(revisionItems, ccLen);
+    const safe = Math.max(0, Math.min(idx, maxIdx));
+    setActiveTab(safe);
+  }, [employeeData, revisionItems]);
 
   useEffect(() => {
     if (loading || !employeeData) return;
@@ -5875,6 +5885,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         currentApproverName={currentApproverName || undefined}
         loading={approvalHistoryLoading}
         onAddComment={() => setApprovalCommentDialogOpen(true)}
+        onOpenRevisions={
+          !supervisorMode && reportStatus === 'needs_revision' ? handleOpenRevisionsFromApprovalCard : undefined
+        }
         onResubmit={reportStatus === 'needs_revision' ? handleSubmitReport : undefined}
         onWithdraw={
           (reportStatus === 'submitted' ||

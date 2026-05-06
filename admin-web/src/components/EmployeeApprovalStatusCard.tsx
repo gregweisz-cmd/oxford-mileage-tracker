@@ -15,6 +15,7 @@ import {
   Avatar,
 } from '@mui/material';
 import CommentIcon from '@mui/icons-material/ModeCommentOutlined';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReplayIcon from '@mui/icons-material/Replay';
 import DoneIcon from '@mui/icons-material/TaskAltOutlined';
 import ScheduleIcon from '@mui/icons-material/Schedule';
@@ -55,6 +56,8 @@ interface EmployeeApprovalStatusCardProps {
   currentApproverName?: string | null;
   loading?: boolean;
   onAddComment?: () => void;
+  /** Jump to the tab with the most revision flags (employee portal) */
+  onOpenRevisions?: () => void;
   onResubmit?: () => void;
   onWithdraw?: () => void;
   disableResubmit?: boolean;
@@ -127,6 +130,7 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
   currentApproverName,
   loading = false,
   onAddComment,
+  onOpenRevisions,
   onResubmit,
   onWithdraw,
   disableResubmit,
@@ -165,6 +169,19 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
             {onAddComment && (
               <Button variant="outlined" size="small" startIcon={<CommentIcon />} onClick={onAddComment} disabled={loading}>
                 Add Comment
+              </Button>
+            )}
+            {onOpenRevisions && (
+              <Button
+                variant="outlined"
+                size="small"
+                color="warning"
+                startIcon={<OpenInNewIcon />}
+                onClick={onOpenRevisions}
+                disabled={loading}
+                sx={{ textTransform: 'none' }}
+              >
+                Open revisions
               </Button>
             )}
             {onWithdraw && (
