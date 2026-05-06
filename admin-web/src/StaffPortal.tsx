@@ -974,10 +974,59 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (!employeeData) return;
     const ccLen = employeeData.costCenters?.length ?? 0;
     const maxIdx = 7 + ccLen;
-    const idx = computeStaffPortalRevisionTabIndex(revisionItems, ccLen);
+    const hasUnresolvedCategory = (category: 'mileage' | 'receipt' | 'time') =>
+      revisionNotes.some((note: any) => {
+        if (!(note?.resolved === 0 || note?.resolved === false)) {
+          return false;
+        }
+        const noteCategory = String(note?.category || note?.itemType || '').toLowerCase();
+        if (category === 'receipt') {
+          return noteCategory === 'receipt' || noteCategory === 'receipts';
+        }
+        return noteCategory === category;
+      });
+
+    const hasMileageRevisions =
+      revisionItems.mileage > 0 ||
+      rawMileageEntries.some((entry: any) => entry?.needsRevision) ||
+      Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('mileage-')) ||
+      hasUnresolvedCategory('mileage');
+
+    const hasTimeRevisions =
+      revisionItems.time > 0 ||
+      rawTimeEntries.some((entry: any) => entry?.needsRevision) ||
+      daysNeedingRevision.size > 0 ||
+      hasUnresolvedCategory('time');
+
+    const hasReceiptRevisions =
+      revisionItems.receipts > 0 ||
+      receipts.some((entry: any) => (entry as any)?.needsRevision) ||
+      Array.from(itemsNeedingRevision).some((itemId) => itemId.startsWith('receipt-')) ||
+      hasUnresolvedCategory('receipt');
+
+    let idx = 0;
+    if (hasMileageRevisions) {
+      idx = 2;
+    } else if (hasTimeRevisions) {
+      idx = ccLen + 4;
+    } else if (hasReceiptRevisions) {
+      idx = ccLen + 5;
+    } else {
+      idx = computeStaffPortalRevisionTabIndex(revisionItems, ccLen);
+    }
+
     const safe = Math.max(0, Math.min(idx, maxIdx));
     setActiveTab(safe);
-  }, [employeeData, revisionItems]);
+  }, [
+    employeeData,
+    revisionItems,
+    revisionNotes,
+    rawMileageEntries,
+    rawTimeEntries,
+    itemsNeedingRevision,
+    daysNeedingRevision,
+    receipts,
+  ]);
 
   useEffect(() => {
     if (loading || !employeeData) return;
