@@ -2326,13 +2326,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     };
     
     // Clear cache when refreshTrigger changes to ensure fresh data
-    // This is critical because the API service caches responses for 60 seconds
+    // This is critical because the API service caches responses for 60 seconds.
+    // /api/expense-reports holds the certification acknowledgment + signature
+    // payload, so it must be invalidated here too or the refetch will overwrite
+    // freshly-saved checkbox state with stale cached values.
     if (refreshTrigger > 0) {
       import('./services/rateLimitedApi').then(({ rateLimitedApi }) => {
         rateLimitedApi.clearCacheFor('/api/daily-descriptions');
         rateLimitedApi.clearCacheFor('/api/time-tracking');
         rateLimitedApi.clearCacheFor('/api/mileage-entries');
         rateLimitedApi.clearCacheFor('/api/receipts');
+        rateLimitedApi.clearCacheFor('/api/expense-reports');
       });
     }
     
@@ -4916,12 +4920,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       setSupervisorCertificationAcknowledged(superCertAck);
       
       // Clear API cache to ensure we get fresh data after save
-      // This is critical because the API service caches responses for 60 seconds
+      // This is critical because the API service caches responses for 60 seconds.
+      // /api/expense-reports must be cleared so the certification checkbox states
+      // (and signatures) read back correctly on the post-save refetch instead of
+      // returning the pre-save cached payload.
       const { rateLimitedApi } = await import('./services/rateLimitedApi');
       rateLimitedApi.clearCacheFor('/api/daily-descriptions');
       rateLimitedApi.clearCacheFor('/api/time-tracking');
       rateLimitedApi.clearCacheFor('/api/mileage-entries');
       rateLimitedApi.clearCacheFor('/api/receipts');
+      rateLimitedApi.clearCacheFor('/api/expense-reports');
       
       // Wait longer to ensure backend processes all deletions before reloading
       // This is especially important for daily descriptions that were deleted
