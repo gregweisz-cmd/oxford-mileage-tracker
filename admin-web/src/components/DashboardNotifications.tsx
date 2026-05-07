@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { NotificationsDialog } from './NotificationsDialog';
 import { debugError } from '../config/debug';
+import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -146,22 +147,9 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
   const [expanded, setExpanded] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  useEffect(() => {
-    if (employeeId) {
-      fetchNotifications();
-      
-      // Poll for new notifications every 60 seconds
-      const interval = setInterval(() => {
-        fetchNotifications();
-      }, 60000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [employeeId]);
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!employeeId) return;
-    
+
     setLoading(true);
     try {
       // Fetch unread count
@@ -186,7 +174,18 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [employeeId, maxDisplay]);
+
+  useEffect(() => {
+    if (employeeId) {
+      fetchNotifications();
+    }
+  }, [employeeId, fetchNotifications]);
+
+  // Poll for new notifications every 60s while the tab is visible. Pauses when
+  // the tab is hidden so background staff/supervisor tabs don't keep hitting
+  // the API all day.
+  useVisibilityPolling(fetchNotifications, 60000, { enabled: !!employeeId });
 
   const markAsRead = async (notificationId: string) => {
     try {

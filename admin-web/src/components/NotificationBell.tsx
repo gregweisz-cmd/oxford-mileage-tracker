@@ -3,6 +3,7 @@ import { IconButton, Badge, Tooltip } from '@mui/material';
 import { Notifications as NotificationsIcon } from '@mui/icons-material';
 import { NotificationsDialog } from './NotificationsDialog';
 import { apiGet } from '../services/rateLimitedApi';
+import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 
 interface NotificationBellProps {
   employeeId: string;
@@ -35,15 +36,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
   useEffect(() => {
     if (employeeId) {
       fetchUnreadCount();
-      
-      // Poll for unread count every 60 seconds (reduced frequency to avoid rate limiting)
-      const interval = setInterval(() => {
-        fetchUnreadCount();
-      }, 60000);
-      
-      return () => clearInterval(interval);
     }
   }, [employeeId, fetchUnreadCount]);
+
+  // Poll for unread count every 60s while the tab is visible. Pauses when the
+  // tab is hidden so background tabs don't keep hammering the API.
+  useVisibilityPolling(fetchUnreadCount, 60000, { enabled: !!employeeId });
 
   const handleOpen = () => {
     setOpen(true);

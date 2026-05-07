@@ -29,6 +29,12 @@ export class RealtimeSyncService {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private listeners: Map<string, Array<(update: RealtimeUpdate) => void>> = new Map();
   private isConnected = false;
+  // Once we've exhausted reconnect attempts, treat the WebSocket endpoint as
+  // unavailable for the rest of this page session. Without this, every
+  // visibilitychange / online event would re-trigger the full reconnect cycle
+  // (5 attempts × 5s) — which is wasteful when the backend simply doesn't
+  // expose a /ws endpoint (e.g. some Render tiers).
+  private permanentlyDisabled = false;
 
   private constructor() {
     this.setupEventListeners();
@@ -105,6 +111,11 @@ export class RealtimeSyncService {
           window.clearTimeout(connectionTimeout);
           if (this.config.enabled && this.reconnectAttempts < this.config.maxReconnectAttempts) {
             this.scheduleReconnect();
+          } else if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
+            // We've burned through all retries — assume the server doesn't
+            // support WebSockets and stop trying for the rest of this session.
+            this.permanentlyDisabled = true;
+            debugWarn('⚠️ RealtimeSync: Max reconnect attempts reached; disabling WebSocket sync for this session.');
           }
         };
 
@@ -317,7 +328,7 @@ export class RealtimeSyncService {
         debugVerbose('🔄 RealtimeSync: Page hidden, pausing sync');
       } else {
         debugVerbose('🔄 RealtimeSync: Page visible, resuming sync');
-        if (!this.isConnected && this.config.enabled) {
+        if (!this.isConnected && this.config.enabled && !this.permanentlyDisabled) {
           this.connect().catch(error => {
             debugError('❌ RealtimeSync: Failed to reconnect:', error);
           });
@@ -328,7 +339,7 @@ export class RealtimeSyncService {
     // Handle online/offline events
     window.addEventListener('online', () => {
       debugVerbose('🔄 RealtimeSync: Network online, attempting to reconnect');
-      if (!this.isConnected && this.config.enabled) {
+      if (!this.isConnected && this.config.enabled && !this.permanentlyDisabled) {
         this.connect().catch(error => {
           debugError('❌ RealtimeSync: Failed to reconnect:', error);
         });
@@ -372,12 +383,18 @@ export class RealtimeSyncService {
    */
   setEnabled(enabled: boolean): void {
     this.config.enabled = enabled;
-    
-    if (enabled && !this.isConnected) {
-      this.connect().catch(error => {
-        debugError('❌ RealtimeSync: Failed to connect:', error);
-      });
-    } else if (!enabled && this.isConnected) {
+
+    if (enabled) {
+      // Manual re-enable resets the permanent-disable flag and the retry
+      // counter, giving the user a clean attempt to reconnect.
+      this.permanentlyDisabled = false;
+      this.reconnectAttempts = 0;
+      if (!this.isConnected) {
+        this.connect().catch(error => {
+          debugError('❌ RealtimeSync: Failed to connect:', error);
+        });
+      }
+    } else if (this.isConnected) {
       this.disconnect();
     }
   }

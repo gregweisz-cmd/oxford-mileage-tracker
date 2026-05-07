@@ -82,6 +82,7 @@ import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
+import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 
 // Debug logging
@@ -324,13 +325,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     }
   }, [supervisorId]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadTeamReports();
-    }, 30000); // Auto-refresh every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [loadTeamReports]);
+  // Auto-refresh team reports every 60s while the tab is visible. Pauses when
+  // the tab is hidden so background tabs don't keep hitting the API. Bumped
+  // from 30s -> 60s to reduce queue pressure on the rate-limited backend.
+  useVisibilityPolling(loadTeamReports, 60000);
 
   const calculateDashboardStats = useCallback(() => {
     const pendingStatuses: ReportStatus[] = ['pending_supervisor', 'pending_senior_staff', 'pending_finance', 'submitted', 'under_review'];
