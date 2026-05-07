@@ -65,6 +65,7 @@ const dailyDescriptionOptionsRoutes = require('./routes/dailyDescriptionOptions'
 const contractBudgetsRoutes = require('./routes/contractBudgets');
 const vehiclesRoutes = require('./routes/vehicles');
 const { startSundayReminderJob, stopSundayReminderJob } = require('./services/sundayReminderJob');
+const { startBackupJob, stopBackupJob } = require('./services/backupJob');
 
 const app = express();
 const server = http.createServer(app);
@@ -395,6 +396,8 @@ dbService.initDatabase().then(() => {
       startReportScheduleRunner();
       debugLog('🔔 Starting Sunday reminder job...');
       startSundayReminderJob();
+      debugLog('🗄️ Starting database backup job...');
+      startBackupJob();
     })();
   });
 }).catch(err => {
@@ -410,6 +413,7 @@ function shutdownServer() {
   debugLog('👋 Shutting down server...');
   stopReportScheduleRunner();
   stopSundayReminderJob();
+  stopBackupJob();
   server.close(() => {
     process.exit(0);
   });

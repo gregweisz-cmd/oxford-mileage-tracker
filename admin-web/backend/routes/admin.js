@@ -10,6 +10,7 @@ const dbService = require('../services/dbService');
 const { debugLog, debugError, debugWarn } = require('../debug');
 const { asyncHandler, createError } = require('../middleware/errorHandler');
 const { adminLimiter } = require('../middleware/rateLimiter');
+const backupJob = require('../services/backupJob');
 
 /**
  * Middleware to verify admin token
@@ -202,6 +203,47 @@ router.get('/api/admin/verify-passwords', adminLimiter, verifyAdminToken, asyncH
     message: `Found ${employees.length} employees (excluding Greg Weisz)`,
     count: employees.length,
     expectedPasswords
+  });
+}));
+
+/**
+ * GET /api/admin/backups
+ * List on-disk database backups with size and timestamp.
+ *
+ * Requires: X-Admin-Token header with valid admin token
+ */
+router.get('/api/admin/backups', adminLimiter, verifyAdminToken, asyncHandler(async (req, res) => {
+  const backups = backupJob.listBackups();
+  res.json({
+    success: true,
+    directory: backupJob.getBackupDir(),
+    count: backups.length,
+    backups,
+  });
+}));
+
+/**
+ * POST /api/admin/backups/run
+ * Manually trigger a database backup right now.
+ *
+ * Useful for verifying the backup job works after a deploy, or for
+ * snapshotting before a risky migration. Returns the resulting file
+ * path and size on success.
+ *
+ * Requires: X-Admin-Token header with valid admin token
+ */
+router.post('/api/admin/backups/run', adminLimiter, verifyAdminToken, asyncHandler(async (req, res) => {
+  debugLog('🗄️ Admin manually triggered a backup run');
+  const result = await backupJob.runBackup();
+  if (!result.success) {
+    return res.status(500).json({
+      success: false,
+      error: result.error || 'Backup failed',
+    });
+  }
+  res.json({
+    success: true,
+    backup: result,
   });
 }));
 
