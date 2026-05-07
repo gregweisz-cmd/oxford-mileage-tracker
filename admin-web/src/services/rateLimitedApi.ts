@@ -124,12 +124,29 @@ class RateLimitedApiService {
    */
   private async executeRequest(item: RequestQueueItem): Promise<Response> {
     const fullUrl = item.url.startsWith('http') ? item.url : `${API_BASE_URL}${item.url}`;
-    
+
+    // Pull the current employee id from localStorage and attach it as
+    // x-employee-id on every request. The backend rate limiter keys on this
+    // header so 300+ staff sharing a single office egress IP each get their
+    // own bucket instead of all colliding in one IP-based bucket.
+    let employeeIdHeader: Record<string, string> = {};
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const id = localStorage.getItem('currentEmployeeId');
+        if (id && id.trim().length > 0) {
+          employeeIdHeader = { 'x-employee-id': id.trim() };
+        }
+      }
+    } catch {
+      // localStorage can throw in some sandboxed contexts; ignore and skip the header.
+    }
+
     const response = await fetch(fullUrl, {
       ...item.options,
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...employeeIdHeader,
         ...item.options.headers,
       },
     });

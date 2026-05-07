@@ -63,11 +63,49 @@ function initDatabase() {
         createSampleDatabase().then(resolve).catch(reject);
       } else {
         debugLog('✅ Connected to the SQLite database');
+        applyConcurrencyPragmas();
         // Always ensure tables exist, even if database already exists
         ensureTablesExist().then(resolve).catch(reject);
       }
     });
   });
+}
+
+/**
+ * Apply SQLite concurrency / durability PRAGMAs.
+ *
+ * These run once at connection start and significantly improve behavior under
+ * concurrent load (300+ users):
+ *
+ * - journal_mode = WAL: readers no longer block writers and writers no longer
+ *   block readers. Critical for any multi-user workload on SQLite. WAL has no
+ *   effect on the in-memory fallback (it is silently a no-op there).
+ * - busy_timeout = 5000: instead of immediately erroring out with SQLITE_BUSY
+ *   when another connection holds the write lock, wait up to 5 seconds for it
+ *   to clear. Eliminates the vast majority of spurious "database is locked"
+ *   failures during concurrent saves.
+ * - synchronous = NORMAL: safe + fast on WAL (full fsync only at checkpoint
+ *   boundaries instead of after every transaction). Standard recommendation
+ *   for WAL-mode SQLite.
+ */
+function applyConcurrencyPragmas() {
+  try {
+    db.run('PRAGMA journal_mode = WAL', (err) => {
+      if (err) {
+        debugWarn('⚠️ Could not enable WAL journal mode:', err.message);
+      } else {
+        debugLog('✅ SQLite journal_mode = WAL');
+      }
+    });
+    db.run('PRAGMA busy_timeout = 5000', (err) => {
+      if (err) debugWarn('⚠️ Could not set busy_timeout:', err.message);
+    });
+    db.run('PRAGMA synchronous = NORMAL', (err) => {
+      if (err) debugWarn('⚠️ Could not set synchronous = NORMAL:', err.message);
+    });
+  } catch (err) {
+    debugWarn('⚠️ Failed to apply SQLite concurrency PRAGMAs:', err.message);
+  }
 }
 
 /**
@@ -1248,6 +1286,8 @@ function createSampleDatabase() {
         reject(err);
         return;
       }
+
+      applyConcurrencyPragmas();
 
       // Create sample tables
       db.serialize(() => {

@@ -7,6 +7,30 @@ const rateLimit = require('express-rate-limit');
 const { debugLog, debugWarn } = require('../debug');
 
 /**
+ * Key generator for general API rate limiting.
+ *
+ * Prefer the authenticated user identifier so that a full office of staff
+ * sharing one egress IP (recovery houses, VPNs, shared WiFi) doesn't trip a
+ * single IP-based bucket. We accept either `x-employee-id` (the canonical
+ * header used by most clients in this app) or `x-user-id` (legacy/alternate
+ * name some clients still send). Falls back to the request IP for
+ * anonymous/preflight requests.
+ *
+ * IP-based limiting is still used for the auth/login limiter intentionally,
+ * since pre-login traffic has no user id and we explicitly want to cap brute
+ * force attempts per source IP.
+ */
+function userOrIpKey(req) {
+  const headers = req.headers || {};
+  const candidate = headers['x-employee-id'] || headers['x-user-id'];
+  if (typeof candidate === 'string' && candidate.trim().length > 0) {
+    return `user:${candidate.trim()}`;
+  }
+  // Fall back to express-rate-limit's default IP resolution.
+  return req.ip;
+}
+
+/**
  * General API rate limiter
  * Limits: 200 requests per 15 minutes per IP in production (increased from 100)
  * In development: Essentially disabled (1000 is very high)
@@ -16,15 +40,19 @@ const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'production' ? 1000 : 1000, // Increased to 1000 for production (allows ~66 requests per minute) to handle sync operations
   message: {
-    error: 'Too many requests from this IP, please try again later.',
+    error: 'Too many requests, please try again later.',
     retryAfter: '15 minutes'
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Key on authenticated user id when available so 300+ staff sharing an
+  // office egress IP don't all share a single rate-limit bucket.
+  keyGenerator: userOrIpKey,
   handler: (req, res) => {
-    debugWarn(`⚠️  Rate limit exceeded for IP: ${req.ip}, Path: ${req.path}`);
+    const key = userOrIpKey(req);
+    debugWarn(`⚠️  Rate limit exceeded for ${key}, Path: ${req.path}`);
     res.status(429).json({
-      error: 'Too many requests from this IP, please try again later.',
+      error: 'Too many requests, please try again later.',
       retryAfter: '15 minutes'
     });
   },
@@ -116,19 +144,23 @@ const adminLimiter = rateLimit({
 
 /**
  * File upload rate limiter
- * Limits: 10 uploads per hour per IP
+ * Limits: 30 uploads per hour per user (was 10/hr per IP — too tight when many
+ * staff share a single office egress IP). Falls back to IP for unauthenticated
+ * uploads.
  */
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // Limit each IP to 10 file uploads per hour
+  max: 30,
   message: {
-    error: 'Too many file uploads from this IP, please try again later.',
+    error: 'Too many file uploads, please try again later.',
     retryAfter: '1 hour'
   },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: userOrIpKey,
   handler: (req, res) => {
-    debugWarn(`⚠️  Upload rate limit exceeded for IP: ${req.ip}`);
+    const key = userOrIpKey(req);
+    debugWarn(`⚠️  Upload rate limit exceeded for ${key}`);
     res.status(429).json({
       error: 'Too many file uploads. Please try again in 1 hour.',
       retryAfter: '1 hour'
@@ -145,13 +177,17 @@ const notificationPollingLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'production' ? 120 : 1000, // Much higher in development
   message: {
-    error: 'Too many notification requests from this IP, please try again later.',
+    error: 'Too many notification requests, please try again later.',
     retryAfter: '15 minutes'
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Per-user keying so staff sharing an office IP don't all share the same
+  // 120/15min bucket and trigger false-positive 429s on each other.
+  keyGenerator: userOrIpKey,
   handler: (req, res) => {
-    debugWarn(`⚠️  Notification polling rate limit exceeded for IP: ${req.ip}`);
+    const key = userOrIpKey(req);
+    debugWarn(`⚠️  Notification polling rate limit exceeded for ${key}`);
     res.status(429).json({
       error: 'Too many notification requests. Please try again in 15 minutes.',
       retryAfter: '15 minutes'
