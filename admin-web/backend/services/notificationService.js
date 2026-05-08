@@ -850,5 +850,6 @@ module.exports = {
   notifySundayReminder,
   notify50PlusHours,
   checkAndNotify50PlusHours,
+  computeStaffPortalTabIndexForRevisionReport,
 };
 

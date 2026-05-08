@@ -130,3 +130,26 @@ Render is already polling `/health` (set in `admin-web/backend/render.yaml`). Th
 - [ ] `/data/backups/` shows at least one `expense_tracker-*.db.gz` file after the first run.
 - [ ] UptimeRobot monitor is green and you have a confirmed alert email.
 - [ ] (Optional) S3 upload wired in if you want a second off-site copy.
+
+---
+
+## 3. One-off maintenance scripts
+
+These live in `admin-web/backend/scripts/maintenance/` and are safe to run from the Render Shell tab. Always trigger a manual backup (`POST /api/admin/backups/run`) immediately before running anything that writes.
+
+### `backfill-revision-tab-index.js`
+
+Adds `staffPortalTabIndex` to the metadata of older `revision_requested` notifications so the staff portal's "Open revisions" deep-link jumps to the right tab for legacy alerts (new alerts have included it since `2ed171c`).
+
+```bash
+# Render Shell
+cd admin-web/backend
+
+# 1. See what would change without writing anything
+node scripts/maintenance/backfill-revision-tab-index.js --dry-run --verbose
+
+# 2. Apply
+node scripts/maintenance/backfill-revision-tab-index.js
+```
+
+It is idempotent: rows whose metadata already has a numeric `staffPortalTabIndex` are skipped, and existing metadata fields (`month`, `year`, etc.) are preserved. Reports with no remaining unresolved revision notes get `staffPortalTabIndex: 0` (default tab), which matches the live notification flow.

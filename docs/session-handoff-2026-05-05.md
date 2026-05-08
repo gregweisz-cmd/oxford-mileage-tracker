@@ -33,5 +33,5 @@ Portable summary for continuing on another machine. **All code changes were merg
 - **Staff web (Vercel, etc.):** deploy after backend so `/api/expense-reports/id/:id` exists before clients call it.
 
 ## Optional follow-ups
-- Older revision notifications may lack `staffPortalTabIndex` metadata (new sends include it).
+- ~~Older revision notifications may lack `staffPortalTabIndex` metadata (new sends include it).~~ Backfilled by `admin-web/backend/scripts/maintenance/backfill-revision-tab-index.js` (see `admin-web/backend/docs/BACKUPS_AND_UPTIME.md`).
 - Mobile anomaly hint uses a **fallback** threshold constant; real alerts follow admin server settings.
