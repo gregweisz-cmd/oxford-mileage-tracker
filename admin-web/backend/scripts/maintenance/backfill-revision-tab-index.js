@@ -7,11 +7,15 @@
  * created before that change have no tab index, so the staff portal can't auto-jump to
  * the right tab when the user clicks "Open revisions" on an old alert.
  *
- * This script walks every `notifications` row with type=`revision_requested` and
- * recipientRole=`employee`, and for any row whose metadata is missing
- * `staffPortalTabIndex` it computes the value using the same helper the live
- * notification flow uses (`computeStaffPortalTabIndexForRevisionReport`), then writes
- * the merged metadata back.
+ * This script walks every `notifications` row with type=`revision_requested` whose
+ * recipient is the same employee whose report is in revision (`recipientId =
+ * employeeId`). That intent-based filter is role-agnostic, so it also catches users
+ * whose own employee `role` happens to be `admin`/`supervisor`/etc. — they still see
+ * the alert in the staff portal because they own the report. For any matching row
+ * whose metadata is missing `staffPortalTabIndex`, it computes the value using the
+ * same helper the live notification flow uses
+ * (`computeStaffPortalTabIndexForRevisionReport`) and writes the merged metadata
+ * back.
  *
  * Usage:
  *   node scripts/maintenance/backfill-revision-tab-index.js [--dry-run] [--verbose]
@@ -68,9 +72,9 @@ async function main() {
     `SELECT id, reportId, employeeId, metadata, createdAt
        FROM notifications
       WHERE type = 'revision_requested'
-        AND recipientRole = 'employee'
         AND reportId IS NOT NULL
         AND employeeId IS NOT NULL
+        AND recipientId = employeeId
       ORDER BY createdAt ASC`
   );
 
