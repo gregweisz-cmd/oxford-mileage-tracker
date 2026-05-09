@@ -507,6 +507,25 @@ router.put('/api/admin/notification-events/:eventKey', async (req, res) => {
   }
 });
 
+/**
+ * Public: weekly hours alert threshold (read-only).
+ * Mobile clients use this to render anomaly hints with the same number supervisors
+ * see in their actual alerts. No auth needed; it is a single non-sensitive integer.
+ * GET /api/settings/weekly-hours-threshold
+ */
+router.get('/api/settings/weekly-hours-threshold', async (_req, res) => {
+  try {
+    const threshold = await notificationEventSettings.getWeeklyHoursAlertThreshold();
+    return res.json({
+      hoursThreshold: threshold,
+      defaultHoursThreshold: notificationEventSettings.DEFAULT_WEEKLY_HOURS_ALERT_THRESHOLD,
+    });
+  } catch (error) {
+    debugError('❌ Error reading weekly hours threshold:', error);
+    return res.status(500).json({ error: 'Failed to load weekly hours threshold' });
+  }
+});
+
 // ===== LEGACY ENDPOINTS (for backward compatibility) =====
 
 /**

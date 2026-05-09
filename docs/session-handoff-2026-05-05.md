@@ -34,4 +34,4 @@ Portable summary for continuing on another machine. **All code changes were merg
 
 ## Optional follow-ups
 - ~~Older revision notifications may lack `staffPortalTabIndex` metadata (new sends include it).~~ Backfilled by `admin-web/backend/scripts/maintenance/backfill-revision-tab-index.js` (see `admin-web/backend/docs/BACKUPS_AND_UPTIME.md`).
-- Mobile anomaly hint uses a **fallback** threshold constant; real alerts follow admin server settings.
+- ~~Mobile anomaly hint uses a **fallback** threshold constant; real alerts follow admin server settings.~~ Mobile now reads the live admin setting via `GET /api/settings/weekly-hours-threshold` (`src/services/weeklyHoursThresholdService.ts`); the constant is just a fallback when offline.
