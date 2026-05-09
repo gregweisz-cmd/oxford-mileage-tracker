@@ -11,6 +11,7 @@ const emailService = require('../services/emailService');
 const distanceService = require('../services/distanceService');
 const googleMapsService = require('../services/googleMapsService');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
 
 // ===== DISTANCE (Google Maps - Calculate miles) =====
 
@@ -136,11 +137,12 @@ router.post('/api/saved-addresses', (req, res) => {
 
   const id = `saved-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
+  const normalizedAddress = formatBaseAddressForStorage(address || '');
   const payload = [
     id,
     String(employeeId),
     String(name).trim(),
-    String(address).trim(),
+    normalizedAddress,
     Number.isFinite(Number(latitude)) ? Number(latitude) : null,
     Number.isFinite(Number(longitude)) ? Number(longitude) : null,
     String(category || '').trim(),
@@ -163,7 +165,7 @@ router.post('/api/saved-addresses', (req, res) => {
         id,
         employeeId: String(employeeId),
         name: String(name).trim(),
-        address: String(address).trim(),
+        address: normalizedAddress,
         latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : null,
         longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : null,
         category: String(category || '').trim(),
@@ -184,6 +186,7 @@ router.put('/api/saved-addresses/:id', (req, res) => {
     res.status(400).json({ error: 'name and address are required' });
     return;
   }
+  const normalizedAddress = formatBaseAddressForStorage(address || '');
 
   db.run(
     `UPDATE saved_addresses
@@ -191,7 +194,7 @@ router.put('/api/saved-addresses/:id', (req, res) => {
      WHERE id = ?`,
     [
       String(name).trim(),
-      String(address).trim(),
+      normalizedAddress,
       Number.isFinite(Number(latitude)) ? Number(latitude) : null,
       Number.isFinite(Number(longitude)) ? Number(longitude) : null,
       String(category || '').trim(),
@@ -223,7 +226,7 @@ router.put('/api/saved-addresses/:id', (req, res) => {
           id,
           String(employeeId).trim(),
           String(name).trim(),
-          String(address).trim(),
+          normalizedAddress,
           Number.isFinite(Number(latitude)) ? Number(latitude) : null,
           Number.isFinite(Number(longitude)) ? Number(longitude) : null,
           String(category || '').trim(),

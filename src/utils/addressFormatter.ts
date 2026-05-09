@@ -5,6 +5,9 @@ export interface AddressParts {
   zipCode?: string;
 }
 
+const hasCompleteAddressParts = (parts: AddressParts): boolean =>
+  Boolean(parts.street?.trim() && parts.city?.trim() && parts.state?.trim() && parts.zipCode?.trim());
+
 /** expo-location / Apple-style reverse geocode fields */
 export type GeocodeAddressFields = {
   streetNumber?: string | null;
@@ -39,10 +42,15 @@ export const getFullLocationAddress = (details: { address?: string; city?: strin
 };
 
 export const formatAddressParts = ({ street, city, state, zipCode }: AddressParts): string => {
-  const line1 = street?.trim() || '';
-  const line2Parts = [city?.trim(), state?.trim()].filter(Boolean);
+  const parsedStreet = parseAddressParts(street || '');
+  const shouldUseParsedStreet = hasCompleteAddressParts(parsedStreet);
+  const line1 = (shouldUseParsedStreet ? parsedStreet.street : street)?.trim() || '';
+  const normalizedCity = (shouldUseParsedStreet ? parsedStreet.city : city)?.trim() || '';
+  const normalizedState = (shouldUseParsedStreet ? parsedStreet.state : state)?.trim().toUpperCase().slice(0, 2) || '';
+  const normalizedZip = (shouldUseParsedStreet ? parsedStreet.zipCode : zipCode)?.trim().replace(/\D/g, '').slice(0, 10) || '';
+  const line2Parts = [normalizedCity, normalizedState].filter(Boolean);
   const line2 = line2Parts.length > 0 ? line2Parts.join(', ') : '';
-  const zip = zipCode?.trim() || '';
+  const zip = normalizedZip;
 
   if (!line1 && !line2 && !zip) {
     return '';
@@ -64,9 +72,22 @@ export const parseAddressParts = (fullAddress: string): AddressParts => {
     return { street: trimmed };
   }
 
-  const street = parts[0] || '';
-  const cityPart = parts.length > 2 ? parts[1] : '';
-  const stateZipPart = parts.length > 2 ? parts[2] : parts[1] || '';
+  if (parts.length >= 4) {
+    const zipMatch = parts[parts.length - 1].match(/^(\d{5}(?:-\d{4})?)\s*$/);
+    const stateMatch = parts[parts.length - 2].match(/^([A-Za-z]{2})\s*$/);
+    if (zipMatch && stateMatch) {
+      return {
+        street: parts.slice(0, -3).join(', '),
+        city: parts[parts.length - 3] || '',
+        state: stateMatch[1].toUpperCase(),
+        zipCode: zipMatch[1],
+      };
+    }
+  }
+
+  const street = parts.length > 2 ? parts.slice(0, -2).join(', ') : parts[0] || '';
+  const cityPart = parts.length > 2 ? parts[parts.length - 2] : '';
+  const stateZipPart = parts.length > 2 ? parts[parts.length - 1] : parts[1] || '';
 
   let city = cityPart;
   let state = '';
@@ -93,7 +114,17 @@ export const parseAddressParts = (fullAddress: string): AddressParts => {
   return {
     street: street || trimmed,
     city: city || '',
-    state: state || '',
+    state: (state || '').toUpperCase(),
     zipCode: zipCode || '',
   };
+};
+
+export const updateAddressPart = (parts: AddressParts, part: keyof AddressParts, value: string): AddressParts => {
+  if (part === 'street') {
+    const parsedStreet = parseAddressParts(value);
+    if (hasCompleteAddressParts(parsedStreet)) {
+      return parsedStreet;
+    }
+  }
+  return { ...parts, [part]: value };
 };

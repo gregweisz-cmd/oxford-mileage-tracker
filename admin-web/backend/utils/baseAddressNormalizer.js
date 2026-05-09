@@ -52,6 +52,52 @@ function normalizeAddressLine(address) {
   return [street, parts.slice(1).join(', ')].filter(Boolean).join(', ');
 }
 
+function parseBaseAddress(address) {
+  const raw = (address || '').trim();
+  const empty = { street: '', city: '', state: '', zip: '' };
+  if (!raw) return empty;
+
+  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 4) {
+    const zipMatch = parts[parts.length - 1].match(/^(\d{5}(?:-\d{4})?)\s*$/);
+    const stateMatch = parts[parts.length - 2].match(/^([A-Za-z]{2})\s*$/);
+    if (zipMatch && stateMatch) {
+      return {
+        street: parts.slice(0, -3).join(', '),
+        city: parts[parts.length - 3],
+        state: stateMatch[1].toUpperCase(),
+        zip: zipMatch[1]
+      };
+    }
+  }
+
+  if (parts.length >= 3) {
+    const stateZipMatch = parts[parts.length - 1].match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/);
+    if (stateZipMatch) {
+      return {
+        street: parts.slice(0, -2).join(', '),
+        city: parts[parts.length - 2],
+        state: stateZipMatch[1].toUpperCase(),
+        zip: stateZipMatch[2]
+      };
+    }
+  }
+
+  return { ...empty, street: raw };
+}
+
+function formatBaseAddressForStorage(address) {
+  const parsed = parseBaseAddress(address);
+  const street = (parsed.street || '').trim();
+  const city = (parsed.city || '').trim();
+  const state = (parsed.state || '').trim().toUpperCase().slice(0, 2);
+  const zip = (parsed.zip || '').trim().replace(/\D/g, '').slice(0, 10);
+
+  if (!street) return '';
+  if (city && state && zip) return `${street}, ${city}, ${state} ${zip}`;
+  return address || '';
+}
+
 function abbreviateForDisplay(addr) {
   if (!addr || typeof addr !== 'string') return addr;
   let s = addr
@@ -95,4 +141,4 @@ function normalizeLocationForStorage(name, address, baseAddress, baseAddress2) {
   };
 }
 
-module.exports = { getBaseAddressLabel, abbreviateForDisplay, normalizeAddressLine, normalizeLocationForStorage };
+module.exports = { getBaseAddressLabel, abbreviateForDisplay, normalizeAddressLine, normalizeLocationForStorage, formatBaseAddressForStorage };

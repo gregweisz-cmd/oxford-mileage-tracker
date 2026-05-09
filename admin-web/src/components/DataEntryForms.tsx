@@ -46,7 +46,7 @@ import { Employee } from '../types';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import AddressSelector from './AddressSelector';
 import { debugLog, debugError } from '../config/debug';
-import { formatAddressFromParts, parseAddressToParts, emptyAddressParts } from '../utils/addressFormatter';
+import { formatAddressFromParts, parseAddressToParts, emptyAddressParts, updateAddressPart } from '../utils/addressFormatter';
 import type { AddressParts } from '../utils/addressFormatter';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { makeCanonicalLocationSelection } from '../utils/locationSelection';
@@ -354,7 +354,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
 
   const updateStartAddressPart = (field: keyof AddressParts, value: string) => {
     setStartAddressParts(prev => {
-      const next = { ...prev, [field]: value };
+      const next = updateAddressPart(prev, field, value);
       setFormData(f => ({ ...f, startLocation: formatAddressFromParts(next) }));
       return next;
     });
@@ -363,7 +363,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
 
   const updateEndAddressPart = (field: keyof AddressParts, value: string) => {
     setEndAddressParts(prev => {
-      const next = { ...prev, [field]: value };
+      const next = updateAddressPart(prev, field, value);
       setFormData(f => ({ ...f, endLocation: formatAddressFromParts(next) }));
       return next;
     });

@@ -63,7 +63,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-ba
 import { debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { toCanonicalAddress } from '../utils/locationSelection';
-import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
+import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart as updateParsedBaseAddressPart } from '../utils/addressParse';
 
 interface Employee {
   id: string;
@@ -387,7 +387,7 @@ const EmployeeManagement: React.FC = () => {
     value: string
   ) => {
     const parsed = parseBaseAddress(formData[field] || '');
-    const next = { ...parsed, [part]: value };
+    const next = updateParsedBaseAddressPart(parsed, part, value);
     setFormData({
       ...formData,
       [field]: formatBaseAddress(next.street, next.city, next.state, next.zip),

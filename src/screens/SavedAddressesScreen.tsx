@@ -21,7 +21,7 @@ import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { ApiSyncService } from '../services/apiSyncService';
 import { API_BASE_URL } from '../config/api';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
-import { formatAddressParts, parseAddressParts } from '../utils/addressFormatter';
+import { formatAddressParts, parseAddressParts, updateAddressPart } from '../utils/addressFormatter';
 import { makeLocationDetails } from '../utils/locationSelection';
 
 interface SavedAddressesScreenProps {
@@ -102,6 +102,23 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const handleInputChange = (field: string, value: string) => {
+    if (field === 'street') {
+      setFormData(prev => {
+        const next = updateAddressPart(
+          { street: prev.street, city: prev.city, state: prev.state, zipCode: prev.zip },
+          'street',
+          value
+        );
+        return {
+          ...prev,
+          street: next.street || '',
+          city: next.city || '',
+          state: next.state || '',
+          zip: next.zipCode || '',
+        };
+      });
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 

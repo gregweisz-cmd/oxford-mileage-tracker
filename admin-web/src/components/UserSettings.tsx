@@ -38,7 +38,7 @@ import {
   Star as StarIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
-import { parseBaseAddress, formatBaseAddress } from '../utils/addressParse';
+import { parseBaseAddress, formatBaseAddress, updateBaseAddressPart } from '../utils/addressParse';
 import { toCanonicalAddress } from '../utils/locationSelection';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { Vehicle, VehicleApiService } from '../services/vehicleApiService';
@@ -873,7 +873,10 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                     value={profile.baseAddresses.address1.street}
                     onChange={(value) => setProfile(prev => ({
                       ...prev,
-                      baseAddresses: { ...prev.baseAddresses, address1: { ...prev.baseAddresses.address1, street: value } }
+                      baseAddresses: {
+                        ...prev.baseAddresses,
+                        address1: updateBaseAddressPart(prev.baseAddresses.address1, 'street', value),
+                      }
                     }))}
                     onPlaceSelected={(address) => {
                       const parsed = parseBaseAddress(toCanonicalAddress(address));
@@ -939,7 +942,10 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
                     value={profile.baseAddresses.address2.street}
                     onChange={(value) => setProfile(prev => ({
                       ...prev,
-                      baseAddresses: { ...prev.baseAddresses, address2: { ...prev.baseAddresses.address2, street: value } }
+                      baseAddresses: {
+                        ...prev.baseAddresses,
+                        address2: updateBaseAddressPart(prev.baseAddresses.address2, 'street', value),
+                      }
                     }))}
                     onPlaceSelected={(address) => {
                       const parsed = parseBaseAddress(toCanonicalAddress(address));

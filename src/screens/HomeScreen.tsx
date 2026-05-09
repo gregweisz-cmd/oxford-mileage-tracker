@@ -41,6 +41,7 @@ import { hapticLight } from '../utils/haptics';
 import { setSyncMonthScope } from '../services/syncScopeService';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { formatAddressParts, parseAddressParts, updateAddressPart } from '../utils/addressFormatter';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 const FIRST_LOGIN_PORTAL_TIP_KEY_PREFIX = 'first_login_portal_tip_shown:';
@@ -1013,29 +1014,30 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const parseBaseAddressForMobile = (full: string): { street: string; city: string; state: string; zip: string } => {
-    const raw = (full || '').trim();
-    if (!raw) return { street: '', city: '', state: '', zip: '' };
-    const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
-    if (parts.length >= 3) {
-      const last = parts[parts.length - 1];
-      const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
-      if (match) {
-        return {
-          street: parts.slice(0, -2).join(', '),
-          city: parts[parts.length - 2],
-          state: match[1],
-          zip: match[2],
-        };
-      }
-    }
-    if (parts.length >= 2) {
-      const last = parts[parts.length - 1];
-      const match = last.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)\s*$/);
-      if (match) {
-        return { street: parts[0], city: '', state: match[1], zip: match[2] };
-      }
-    }
-    return { street: raw, city: '', state: '', zip: '' };
+    const parsed = parseAddressParts(full);
+    return {
+      street: parsed.street || '',
+      city: parsed.city || '',
+      state: parsed.state || '',
+      zip: parsed.zipCode || '',
+    };
+  };
+
+  const handleBaseAddressStreetChange = (value: string) => {
+    const next = updateAddressPart(
+      {
+        street: baseAddressStreet,
+        city: baseAddressCity,
+        state: baseAddressState,
+        zipCode: baseAddressZip,
+      },
+      'street',
+      value
+    );
+    setBaseAddressStreet(next.street || '');
+    setBaseAddressCity(next.city || '');
+    setBaseAddressState(next.state || '');
+    setBaseAddressZip(next.zipCode || '');
   };
 
   const handleEditBaseAddress = () => {
@@ -1256,11 +1258,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     const city = (baseAddressCity || '').trim();
     const state = (baseAddressState || '').trim().toUpperCase().slice(0, 2);
     const zip = (baseAddressZip || '').trim().replace(/\D/g, '').slice(0, 10);
-    const combined = city && state && zip
-      ? `${street}, ${city}, ${state} ${zip}`
-      : state && zip
-        ? `${street}, ${state} ${zip}`
-        : street;
+    const combined = formatAddressParts({ street, city, state, zipCode: zip });
 
     try {
       await DatabaseService.updateEmployee(currentEmployee.id, {
@@ -1595,7 +1593,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
             <ScrollToOnFocusView>
               <GooglePlacesAddressInput
                 value={baseAddressStreet}
-                onChangeText={setBaseAddressStreet}
+                onChangeText={handleBaseAddressStreetChange}
                 placeholder="Street Address"
                 style={dynamicStyles.textInput}
                 onPlaceSelected={(details) => {

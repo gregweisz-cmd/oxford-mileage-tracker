@@ -26,15 +26,26 @@ export const emptyAddressParts: AddressParts = {
   zip: '',
 };
 
+function hasCompleteAddressParts(parts: AddressParts): boolean {
+  return Boolean(parts.street.trim() && parts.city.trim() && parts.state.trim() && parts.zip.trim());
+}
+
 /**
  * Format address parts into a single string for storage/API (e.g. "123 Main St, Raleigh, NC 27601")
  */
 export function formatAddressFromParts(parts: AddressParts): string {
-  const { street, city, state, zip } = parts;
-  if (!street.trim() && !city.trim() && !state.trim() && !zip.trim()) return '';
-  const cityStateZip = [city.trim(), state.trim(), zip.trim()].filter(Boolean).join(', ');
-  if (!cityStateZip) return street.trim();
-  return street.trim() ? `${street.trim()}, ${cityStateZip}` : cityStateZip;
+  const parsedStreet = parseAddressToParts(parts.street || '');
+  const shouldUseParsedStreet = hasCompleteAddressParts(parsedStreet);
+  const street = (shouldUseParsedStreet ? parsedStreet.street : parts.street || '').trim();
+  const city = (shouldUseParsedStreet ? parsedStreet.city : parts.city || '').trim();
+  const state = (shouldUseParsedStreet ? parsedStreet.state : parts.state || '').trim().toUpperCase().slice(0, 2);
+  const zip = (shouldUseParsedStreet ? parsedStreet.zip : parts.zip || '').trim().replace(/\D/g, '').slice(0, 10);
+
+  if (!street && !city && !state && !zip) return '';
+
+  const cityState = [city, state].filter(Boolean).join(', ');
+  if (street && (cityState || zip)) return `${street}${cityState ? `, ${cityState}` : ''}${zip ? ` ${zip}` : ''}`.trim();
+  return [street, cityState, zip].filter(Boolean).join(' ').trim();
 }
 
 /**
@@ -56,6 +67,21 @@ export function parseAddressToParts(fullAddress: string): AddressParts {
   if (parts.length === 0) return { street: trimmed, city: '', state: '', zip: '' };
   if (parts.length === 1) return { street: parts[0], city: '', state: '', zip: '' };
 
+  if (parts.length >= 4) {
+    const last = parts[parts.length - 1];
+    const statePart = parts[parts.length - 2];
+    const zipMatch = last.match(/^(\d{5}(-\d{4})?)\s*$/);
+    const stateMatch = statePart.match(/^([A-Za-z]{2})\s*$/);
+    if (zipMatch && stateMatch) {
+      return {
+        street: parts.slice(0, -3).join(', '),
+        city: parts[parts.length - 3],
+        state: stateMatch[1].toUpperCase(),
+        zip: zipMatch[1],
+      };
+    }
+  }
+
   // Last part: try "ST 12345" or "12345" or "12345-6789"
   const last = parts[parts.length - 1];
   const zipMatch = last.match(/([A-Za-z]{2})?\s*(\d{5}(-\d{4})?)/);
@@ -72,6 +98,16 @@ export function parseAddressToParts(fullAddress: string): AddressParts {
   const street = parts.length >= 3 ? parts.slice(0, -2).join(', ') : parts[0] || '';
 
   return { street, city, state, zip };
+}
+
+export function updateAddressPart(parts: AddressParts, part: keyof AddressParts, value: string): AddressParts {
+  if (part === 'street') {
+    const parsedStreet = parseAddressToParts(value);
+    if (hasCompleteAddressParts(parsedStreet)) {
+      return parsedStreet;
+    }
+  }
+  return { ...parts, [part]: value };
 }
 
 /**

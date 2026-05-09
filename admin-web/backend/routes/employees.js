@@ -12,6 +12,7 @@ const { asyncHandler, createError } = require('../middleware/errorHandler');
 const { validateRequired, validateEmail } = require('../middleware/validation');
 const { passwordResetLimiter } = require('../middleware/rateLimiter');
 const externalEmployeeSync = require('../services/externalEmployeeSync');
+const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
 
 /**
  * Get all employees with optional filters
@@ -384,6 +385,8 @@ router.put('/api/employees/bulk-update', (req, res) => {
       updateFields.push(`${key} = ?`);
       if (key === 'permissions' && Array.isArray(updates[key])) {
         values.push(JSON.stringify(updates[key]));
+      } else if (key === 'baseAddress' || key === 'baseAddress2') {
+        values.push(formatBaseAddressForStorage(updates[key] || ''));
       } else {
         values.push(updates[key]);
       }
@@ -569,8 +572,8 @@ router.post('/api/employees/bulk-create', async (req, res) => {
         userRole, // Include role field
         permissionsValue,
         employee.phoneNumber || '',
-        employee.baseAddress || '',
-        employee.baseAddress2 || '',
+        formatBaseAddressForStorage(employee.baseAddress || ''),
+        formatBaseAddressForStorage(employee.baseAddress2 || ''),
         typeof employee.costCenters === 'string' ? employee.costCenters : JSON.stringify(employee.costCenters || []),
         typeof employee.selectedCostCenters === 'string' ? employee.selectedCostCenters : JSON.stringify(employee.selectedCostCenters || employee.costCenters || []),
         employee.defaultCostCenter || (Array.isArray(employee.costCenters) ? employee.costCenters[0] : '') || '',
@@ -674,8 +677,8 @@ router.post('/api/employees',
         userRole, // Include role field
         permissionsValue,
         phoneNumber || '', 
-        baseAddress || '', 
-        baseAddress2 || '', 
+        formatBaseAddressForStorage(baseAddress || ''),
+        formatBaseAddressForStorage(baseAddress2 || ''),
         typeof costCenters === 'string' ? costCenters : JSON.stringify(costCenters || []),
         typeof selectedCostCenters === 'string' ? selectedCostCenters : JSON.stringify(selectedCostCenters || costCenters || []),
         defaultCostCenter || '',
@@ -771,8 +774,8 @@ router.put('/api/employees/:id', async (req, res) => {
       ? (typeof updateData.permissions === 'string' ? updateData.permissions : JSON.stringify(updateData.permissions || []))
       : (currentEmployee.permissions || '[]');
     const phoneNumber = updateData.phoneNumber !== undefined ? (updateData.phoneNumber || '') : (currentEmployee.phoneNumber || '');
-    const baseAddress = updateData.baseAddress !== undefined ? (updateData.baseAddress || '') : (currentEmployee.baseAddress || '');
-    const baseAddress2 = updateData.baseAddress2 !== undefined ? (updateData.baseAddress2 || '') : (currentEmployee.baseAddress2 || '');
+    const baseAddress = updateData.baseAddress !== undefined ? formatBaseAddressForStorage(updateData.baseAddress || '') : (currentEmployee.baseAddress || '');
+    const baseAddress2 = updateData.baseAddress2 !== undefined ? formatBaseAddressForStorage(updateData.baseAddress2 || '') : (currentEmployee.baseAddress2 || '');
     const costCenters = updateData.costCenters !== undefined 
       ? (typeof updateData.costCenters === 'string' ? updateData.costCenters : JSON.stringify(updateData.costCenters || []))
       : (currentEmployee.costCenters || '[]');

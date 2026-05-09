@@ -32,7 +32,7 @@ import {
 import SignatureCanvas from 'react-signature-canvas';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { WebGooglePlacesService, WebAddressPrediction } from '../services/googlePlacesService';
-import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
+import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart } from '../utils/addressParse';
 import { toCanonicalAddress } from '../utils/locationSelection';
 
 interface SetupWizardProps {
@@ -141,10 +141,23 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
   ];
 
   const handleAddressSearch = async (value: string) => {
-    setBaseAddressStreet(value);
+    const nextAddress = updateBaseAddressPart(
+      {
+        street: baseAddressStreet,
+        city: baseAddressCity,
+        state: baseAddressState,
+        zip: baseAddressZip,
+      },
+      'street',
+      value
+    );
+    setBaseAddressStreet(nextAddress.street);
+    setBaseAddressCity(nextAddress.city);
+    setBaseAddressState(nextAddress.state);
+    setBaseAddressZip(nextAddress.zip);
     if (!WebGooglePlacesService.isConfigured()) return;
     const predictions = await WebGooglePlacesService.getPredictions(
-      `${value} ${baseAddressCity} ${baseAddressState} ${baseAddressZip}`.trim()
+      `${nextAddress.street} ${nextAddress.city} ${nextAddress.state} ${nextAddress.zip}`.trim()
     );
     setAddressPredictions(predictions.slice(0, 6));
   };

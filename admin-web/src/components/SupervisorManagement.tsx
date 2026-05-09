@@ -37,7 +37,7 @@ import { formatNameForDisplay } from '../utils/employeeUtils';
 import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { toCanonicalAddress } from '../utils/locationSelection';
-import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
+import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart as updateParsedBaseAddressPart } from '../utils/addressParse';
 
 interface SupervisorManagementProps {
   employees: Employee[];
@@ -320,7 +320,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     value: string
   ) => {
     const parsed = parseBaseAddress((editFormData.baseAddress as string) || '');
-    const next = { ...parsed, [part]: value };
+    const next = updateParsedBaseAddressPart(parsed, part, value);
     setEditFormData({
       ...editFormData,
       baseAddress: formatBaseAddress(next.street, next.city, next.state, next.zip),

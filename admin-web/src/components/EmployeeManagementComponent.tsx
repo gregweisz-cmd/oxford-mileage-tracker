@@ -58,7 +58,7 @@ import { CostCenterApiService } from '../services/costCenterApiService';
 import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { toCanonicalAddress } from '../utils/locationSelection';
-import { formatBaseAddress, parseBaseAddress } from '../utils/addressParse';
+import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart as updateParsedBaseAddressPart } from '../utils/addressParse';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -805,7 +805,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   ) => {
     if (!editingEmployee) return;
     const parsed = parseBaseAddress(editingEmployee.baseAddress || '');
-    const next = { ...parsed, [part]: value };
+    const next = updateParsedBaseAddressPart(parsed, part, value);
     setEditingEmployee({
       ...editingEmployee,
       baseAddress: formatBaseAddress(next.street, next.city, next.state, next.zip),
@@ -817,7 +817,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     value: string
   ) => {
     const parsed = parseBaseAddress((bulkEditData.baseAddress as string) || '');
-    const next = { ...parsed, [part]: value };
+    const next = updateParsedBaseAddressPart(parsed, part, value);
     setBulkEditData({
       ...bulkEditData,
       baseAddress: formatBaseAddress(next.street, next.city, next.state, next.zip),
