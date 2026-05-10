@@ -31,13 +31,14 @@ const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tra
 // Email notifications are enabled by default when credentials are configured.
 // Set EMAIL_ENABLED=false to hard-disable all outbound email.
 const EMAIL_ENABLED = (process.env.EMAIL_ENABLED || 'true').toLowerCase() === 'true';
+const CANONICAL_ADMIN_PORTAL_URL = 'https://oxford-mileage-tracker.vercel.app';
 const ADMIN_PORTAL_URL_RAW =
   process.env.ADMIN_PORTAL_URL ||
   process.env.WEB_PORTAL_URL ||
   process.env.FRONTEND_URL ||
   process.env.REACT_APP_WEB_URL ||
   process.env.REACT_APP_API_URL?.replace('/api', '') ||
-  'https://oxford-mileage-backend.onrender.com';
+  CANONICAL_ADMIN_PORTAL_URL;
 
 // Create AWS SES client (will be initialized lazily)
 let sesClient = null;
@@ -45,9 +46,21 @@ let transporter = null; // SMTP transporter (fallback)
 
 function getAdminPortalBaseUrl() {
   const raw = String(ADMIN_PORTAL_URL_RAW || '').trim();
-  if (!raw) return 'https://oxford-mileage-backend.onrender.com';
-  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/$/, '');
-  return `https://${raw.replace(/\/$/, '')}`;
+  if (!raw) return CANONICAL_ADMIN_PORTAL_URL;
+
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(withProtocol);
+    if (url.hostname === 'vercel.com' || url.hostname === 'oxford-mileage-backend.onrender.com') {
+      return CANONICAL_ADMIN_PORTAL_URL;
+    }
+    if (url.hostname.endsWith('.vercel.app') && url.hostname !== 'oxford-mileage-tracker.vercel.app') {
+      return CANONICAL_ADMIN_PORTAL_URL;
+    }
+    return url.origin.replace(/\/$/, '');
+  } catch {
+    return CANONICAL_ADMIN_PORTAL_URL;
+  }
 }
 
 async function getGlobalNotificationRecipientEmails(primaryRecipient = '') {
