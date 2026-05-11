@@ -159,7 +159,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         </Box>
 
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+          <Tabs
+            value={activeTab}
+            onChange={(e, newValue) => setActiveTab(newValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+          >
             <Tab label="Employee Management" />
             <Tab label="Supervisor Management" />
             <Tab label="Cost Center Management" />
@@ -167,7 +173,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
             <Tab label="Travel Reasons" />
             <Tab label="Daily Description" />
             <Tab label="Notifications" />
-            <Tab label="Audit log" />
+            <Tab label="Audit Log" />
             <Tab label="System Settings" />
           </Tabs>
         </Box>

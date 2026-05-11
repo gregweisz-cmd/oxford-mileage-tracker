@@ -126,7 +126,7 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ adminId }) => {
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Audit log
+        Audit Log
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Read-only history of sensitive admin and report actions (who did what, and when). Set optional filters, then
