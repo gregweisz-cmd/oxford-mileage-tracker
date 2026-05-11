@@ -107,11 +107,11 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ adminId }) => {
     } finally {
       setLoading(false);
     }
-  }, [adminHeaders, limit, appliedTargetType, appliedTargetId, refreshNonce]);
+  }, [adminHeaders, limit, appliedTargetType, appliedTargetId]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshNonce]);
 
   const handleLimitChange = (e: SelectChangeEvent<number>) => {
     setLimit(Number(e.target.value));

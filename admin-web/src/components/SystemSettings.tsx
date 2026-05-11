@@ -33,6 +33,12 @@ import {
   Storage as DatabaseIcon
 } from '@mui/icons-material';
 import { debugError } from '../config/debug';
+import { AuditLogViewer } from './AuditLogViewer';
+
+export interface SystemSettingsProps {
+  /** When set, offers an in-page audit log (same API as the Admin tab) if the tab is missing due to cache/deploy. */
+  adminId?: string;
+}
 
 interface SystemSettingsData {
   // Email/SMTP Configuration
@@ -111,7 +117,8 @@ const TIMEZONES = [
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
-export const SystemSettings: React.FC = () => {
+export const SystemSettings: React.FC<SystemSettingsProps> = ({ adminId }) => {
+  const [auditExpanded, setAuditExpanded] = useState(false);
   const [settings, setSettings] = useState<SystemSettingsData>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -215,6 +222,28 @@ export const SystemSettings: React.FC = () => {
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>
           {success}
         </Alert>
+      )}
+
+      {adminId && (
+        <>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body2" component="div" sx={{ mb: 1 }}>
+              <strong>Audit Log</strong> — You should also see an <strong>Audit Log</strong> tab next to Notifications.
+              If that tab is missing, the live site is often still building from the <strong>repo root</strong> without
+              using the <code>admin-web</code> app, or a CDN is serving an old <code>index.html</code>. Try a private
+              window; in Vercel set <strong>Root Directory</strong> to <code>admin-web</code> (or use the root{' '}
+              <code>vercel.json</code> from this repository).
+            </Typography>
+            <Button variant="outlined" size="small" onClick={() => setAuditExpanded((e) => !e)}>
+              {auditExpanded ? 'Hide' : 'Show'} audit log table
+            </Button>
+          </Alert>
+          {auditExpanded ? (
+            <Box sx={{ mb: 3 }}>
+              <AuditLogViewer adminId={adminId} />
+            </Box>
+          ) : null}
+        </>
       )}
 
       <Stack spacing={3}>
