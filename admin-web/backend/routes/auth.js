@@ -10,23 +10,7 @@ const dbService = require('../services/dbService');
 const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { authLimiter } = require('../middleware/rateLimiter');
-
-// Permanent super admin: this account always has full admin access (e.g. after restores).
-const SUPER_ADMIN_EMAIL = 'greg.weisz@oxfordhouse.org';
-const ALLOWED_ROLES = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-
-function parseSessionToken(token = '') {
-  const match = /^session_(.+)_(\d+)$/.exec(token);
-  if (!match) return null;
-  return { employeeId: match[1], issuedAt: Number(match[2]) };
-}
-
-function getEffectiveRole(employee, allowedRoles = ALLOWED_ROLES) {
-  const email = (employee && employee.email || '').trim().toLowerCase();
-  if (email === SUPER_ADMIN_EMAIL) return 'admin';
-  const userRole = (employee && employee.role) || 'employee';
-  return allowedRoles.includes(userRole) ? userRole : 'employee';
-}
+const { signAuthToken, verifyAuthToken, getEffectiveRole, ALLOWED_ROLES } = require('../middleware/auth');
 
 // Google OAuth support
 let OAuth2Client = null;
@@ -209,11 +193,9 @@ router.post('/api/auth/login', authLimiter, async (req, res) => {
       const { password: _, ...employeeData } = employee;
       
       // Get role (super admin email always gets admin; else from DB)
-      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-      const validRole = getEffectiveRole(employee, allowedRoles);
+      const validRole = getEffectiveRole(employee, ALLOWED_ROLES);
       
-      // Create session token (simple for now - use JWT in production)
-      const sessionToken = `session_${employee.id}_${Date.now()}`;
+      const sessionToken = signAuthToken({ ...employee, role: validRole });
       
       res.json({
         success: true,
@@ -244,7 +226,7 @@ router.get('/api/auth/verify', (req, res) => {
     return res.status(401).json({ error: 'No token provided' });
   }
   
-  const parsedToken = parseSessionToken(token);
+  const parsedToken = verifyAuthToken(token);
   const employeeId = parsedToken?.employeeId;
   
   if (!employeeId) {
@@ -326,8 +308,7 @@ router.get('/api/auth/verify', (req, res) => {
       const { password: _, ...employeeData } = employee;
       
       // Get role (super admin email always gets admin; else from DB)
-      const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-      const validRole = getEffectiveRole(employee, allowedRoles);
+      const validRole = getEffectiveRole(employee, ALLOWED_ROLES);
       
       res.json({
         valid: true,
@@ -454,13 +435,17 @@ router.post('/api/employee-login', async (req, res) => {
       
       // Don't send password back to client
       const { password: _, ...employeeData } = employee;
+      const validRole = getEffectiveRole(employee, ALLOWED_ROLES);
+      const sessionToken = signAuthToken({ ...employee, role: validRole });
       
       // Return employee data in format expected by mobile app
       res.json({
         ...employeeData,
+        role: validRole,
         lastLoginAt: now,
         costCenters,
-        selectedCostCenters
+        selectedCostCenters,
+        token: sessionToken
       });
     }
   );
@@ -722,13 +707,12 @@ router.get('/api/auth/google/callback', async (req, res) => {
           }
 
           // Create session token
-          const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
+          const sessionToken = signAuthToken(userToReturn);
 
           // Don't send password back
           const { password: _, ...employeeData } = userToReturn;
 
-          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-          const validRole = getEffectiveRole(userToReturn, allowedRoles);
+          const validRole = getEffectiveRole(userToReturn, ALLOWED_ROLES);
 
           debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
 
@@ -736,7 +720,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
           // Frontend will extract token and complete login
           const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
           const returnUrl = state || '/';
-          const redirectUrl = `${frontendUrl}/auth/callback?token=${sessionToken}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+          const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
 
           res.redirect(redirectUrl);
         }
@@ -1362,9 +1346,8 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
             debugError('Error parsing cost centers:', parseErr);
           }
 
-          const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
-          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-          const validRole = getEffectiveRole(userToReturn, allowedRoles);
+          const sessionToken = signAuthToken(userToReturn);
+          const validRole = getEffectiveRole(userToReturn, ALLOWED_ROLES);
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}, serving redirect page...`);
 
@@ -1781,10 +1764,9 @@ router.post('/api/auth/google/mobile', async (req, res) => {
             debugError('Error parsing cost centers for mobile:', parseErr);
           }
 
-          const sessionToken = `session_${userToReturn.id}_${Date.now()}`;
+          const sessionToken = signAuthToken(userToReturn);
           const { password: _, ...employeeData } = userToReturn;
-          const allowedRoles = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
-          const validRole = getEffectiveRole(userToReturn, allowedRoles);
+          const validRole = getEffectiveRole(userToReturn, ALLOWED_ROLES);
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}`);
 

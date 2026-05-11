@@ -91,7 +91,7 @@ Login with email and password.
     "costCenters": ["PS - Unfunded"],
     "...": "other fields"
   },
-  "token": "session_greg-weisz-001_1728516789123"
+  "token": "<signed JWT access token>"
 }
 ```
 
@@ -107,7 +107,7 @@ Verify current session token.
 
 **Headers:**
 ```
-Authorization: Bearer session_greg-weisz-001_1728516789123
+Authorization: Bearer <signed JWT access token>
 ```
 
 **Response (Success):**
@@ -134,7 +134,7 @@ Logout and invalidate session.
 
 **Headers:**
 ```
-Authorization: Bearer session_greg-weisz-001_1728516789123
+Authorization: Bearer <signed JWT access token>
 ```
 
 **Response:**

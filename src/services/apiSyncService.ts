@@ -1,5 +1,6 @@
 import { Platform, Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as SecureStore from 'expo-secure-store';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
 import { getFullLocationAddress } from '../utils/addressFormatter';
@@ -26,6 +27,7 @@ type OrphanCleanupScope = 'all' | { month: number; year: number };
 
 /** Cooldown between successful realtime-triggered full pulls (ms). */
 const REALTIME_PULL_COOLDOWN_MS = 12000;
+const AUTH_TOKEN_KEY = 'auth_token_v1';
 
 export interface ApiSyncConfig {
   baseUrl: string;
@@ -63,13 +65,24 @@ export class ApiSyncService {
   private static lastSyncTime: Date | null = null;
   private static pendingChanges: number = 0;
 
+  private static async getAuthHeaders(): Promise<Record<string, string>> {
+    try {
+      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+      return {};
+    }
+  }
+
   /**
    * Fetch a backend employee by email (case-insensitive).
    */
   private static async fetchEmployeeByEmail(email: string): Promise<Employee | null> {
     try {
       if (!email) return null;
-      const response = await fetch(`${this.config.baseUrl}/employees?search=${encodeURIComponent(email)}`);
+      const response = await fetch(`${this.config.baseUrl}/employees?search=${encodeURIComponent(email)}`, {
+        headers: await this.getAuthHeaders(),
+      });
       if (!response.ok) return null;
       const employees = await response.json();
       const match = (employees || []).find((emp: any) =>
@@ -1634,7 +1647,9 @@ export class ApiSyncService {
     try {
       const url = `${this.config.baseUrl}/employees`;
       
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: await this.getAuthHeaders(),
+      });
       
       // Handle rate limiting specifically
       if (response.status === 429) {
@@ -1698,7 +1713,8 @@ export class ApiSyncService {
    */
   private static async fetchEmployee(id: string): Promise<Employee | null> {
     const response = await fetch(
-      `${this.config.baseUrl}/employees/${encodeURIComponent(id)}`
+      `${this.config.baseUrl}/employees/${encodeURIComponent(id)}`,
+      { headers: await this.getAuthHeaders() }
     );
     if (response.status === 404) {
       return null;

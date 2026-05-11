@@ -1,6 +1,7 @@
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform, Linking } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL } from '../config/api';
 
 // Complete the auth session (required for web)
@@ -18,6 +19,8 @@ export interface GoogleUserInfo {
 }
 
 export class GoogleAuthService {
+  private static readonly AUTH_TOKEN_KEY = 'auth_token_v1';
+
   // Use the same API configuration as the rest of the app (Render when USE_PRODUCTION_FOR_TESTING)
   private static getBaseUrl(): string {
     const baseUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '');
@@ -325,6 +328,7 @@ export class GoogleAuthService {
     const userInfoAny = userInfo as any;
     if (userInfoAny.token) {
       console.log('✅ Using token from deep link, fetching employee data...');
+      await SecureStore.setItemAsync(this.AUTH_TOKEN_KEY, userInfoAny.token);
       // Token is already received, just need to fetch employee data
       const response = await fetch(`${this.baseUrl}/api/auth/verify`, {
         headers: {
@@ -389,6 +393,9 @@ export class GoogleAuthService {
       }
 
       const result = await response.json();
+      if (result.token) {
+        await SecureStore.setItemAsync(this.AUTH_TOKEN_KEY, result.token);
+      }
       
       // Return employee data (backend already handled token exchange)
       return result.employee;

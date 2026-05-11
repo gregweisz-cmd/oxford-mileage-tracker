@@ -45,6 +45,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const passwordInputRef = useRef<TextInput>(null);
   const CREDENTIALS_KEY = 'biometric_login_credentials_v1';
+  const AUTH_TOKEN_KEY = 'auth_token_v1';
 
   useEffect(() => {
     loadEmployees();
@@ -132,6 +133,9 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
       if (response.ok) {
         const employeeData = data;
+        if (data.token) {
+          await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
+        }
         const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
 
         if (existingEmployee) {

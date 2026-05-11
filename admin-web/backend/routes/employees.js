@@ -11,6 +11,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { asyncHandler, createError } = require('../middleware/errorHandler');
 const { validateRequired, validateEmail } = require('../middleware/validation');
 const { passwordResetLimiter } = require('../middleware/rateLimiter');
+const { requireAuth } = require('../middleware/auth');
 const externalEmployeeSync = require('../services/externalEmployeeSync');
 const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
 
@@ -18,37 +19,6 @@ function withoutSensitiveEmployeeFields(employee) {
   if (!employee || typeof employee !== 'object') return employee;
   const { password, ...safeEmployee } = employee;
   return safeEmployee;
-}
-
-function requireAuthenticatedSession(req, res, next) {
-  const authHeader = req.headers.authorization || '';
-  const match = /^Bearer session_(.+)_(\d+)$/.exec(authHeader);
-  const employeeId = match?.[1];
-
-  if (!employeeId) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const db = dbService.getDb();
-  db.get(
-    'SELECT id, role, email, archived FROM employees WHERE id = ?',
-    [employeeId],
-    (err, employee) => {
-      if (err) {
-        debugError('❌ Error verifying employee API session:', err);
-        return res.status(500).json({ error: 'Failed to verify session' });
-      }
-      if (!employee) {
-        return res.status(401).json({ error: 'Invalid session' });
-      }
-      if (employee.archived === 1) {
-        return res.status(403).json({ error: 'This account is archived. Please contact your administrator.' });
-      }
-
-      req.authenticatedEmployee = employee;
-      next();
-    }
-  );
 }
 
 /**
@@ -67,7 +37,7 @@ function requireAuthenticatedSession(req, res, next) {
  * GET /api/employees?supervisorId=supervisor-123&includeArchived=false
  * GET /api/employees?search=john&position=manager
  */
-router.get('/api/employees', requireAuthenticatedSession, (req, res) => {
+router.get('/api/employees', requireAuth, (req, res) => {
   const { supervisorId, position, includeArchived, search, archived } = req.query;
   const db = dbService.getDb();
   
@@ -184,7 +154,7 @@ router.get('/api/employees', requireAuthenticatedSession, (req, res) => {
 /**
  * Get archived employees
  */
-router.get('/api/employees/archived', requireAuthenticatedSession, (req, res) => {
+router.get('/api/employees/archived', requireAuth, (req, res) => {
   const db = dbService.getDb();
   db.all('SELECT * FROM employees WHERE archived = 1 ORDER BY name', (err, rows) => {
     if (err) {
@@ -342,7 +312,7 @@ router.post('/api/employees/dedupe-by-email', asyncHandler(async (req, res) => {
 /**
  * Get employee by ID
  */
-router.get('/api/employees/:id', requireAuthenticatedSession, (req, res) => {
+router.get('/api/employees/:id', requireAuth, (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   db.get('SELECT * FROM employees WHERE id = ?', [id], (err, row) => {

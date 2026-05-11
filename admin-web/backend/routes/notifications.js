@@ -11,6 +11,7 @@ const notificationEventSettings = require('../services/notificationEventSettings
 const emailService = require('../services/emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { notificationPollingLimiter } = require('../middleware/rateLimiter');
+const { requireAuth, getEffectiveRole } = require('../middleware/auth');
 
 function parsePreferences(preferences) {
   if (!preferences) return {};
@@ -25,37 +26,8 @@ function parsePreferences(preferences) {
   return {};
 }
 
-function parseSessionEmployeeId(req) {
-  const authHeader = req.headers.authorization || '';
-  const match = /^Bearer session_(.+)_(\d+)$/.exec(authHeader);
-  return match?.[1] || null;
-}
-
-async function getAuthenticatedEmployee(req) {
-  const employeeId = parseSessionEmployeeId(req);
-  if (!employeeId) return null;
-
-  const employee = await dbService.getEmployeeById(employeeId);
-  if (!employee || employee.archived === 1) return null;
-  return employee;
-}
-
-async function requireAuthenticatedEmployee(req, res, next) {
-  try {
-    const employee = await getAuthenticatedEmployee(req);
-    if (!employee) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    req.authenticatedEmployee = employee;
-    return next();
-  } catch (error) {
-    debugError('❌ Error verifying notification session:', error);
-    return res.status(500).json({ error: 'Failed to verify session' });
-  }
-}
-
 function hasAdminAccess(employee) {
-  return String(employee?.role || '').toLowerCase() === 'admin';
+  return getEffectiveRole(employee) === 'admin';
 }
 
 function canAccessRecipient(req, recipientId) {
@@ -67,7 +39,7 @@ function canAccessRecipient(req, recipientId) {
 
 function requireRecipientAccess(paramName) {
   return async (req, res, next) => {
-    await requireAuthenticatedEmployee(req, res, () => {
+    await requireAuth(req, res, () => {
       if (!canAccessRecipient(req, req.params[paramName])) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -77,7 +49,7 @@ function requireRecipientAccess(paramName) {
 }
 
 function requireNotificationAccess(req, res, next) {
-  requireAuthenticatedEmployee(req, res, () => {
+  requireAuth(req, res, () => {
     const db = dbService.getDb();
     db.get('SELECT recipientId FROM notifications WHERE id = ?', [req.params.id], (err, row) => {
       if (err) {
@@ -96,7 +68,7 @@ function requireNotificationAccess(req, res, next) {
 }
 
 async function ensureAdminAccess(req, res) {
-  const requester = req.authenticatedEmployee || await getAuthenticatedEmployee(req);
+  const requester = req.authenticatedEmployee;
   if (!requester) {
     res.status(401).json({ error: 'Authentication required' });
     return null;
@@ -293,7 +265,7 @@ router.delete('/api/notifications/:id', requireNotificationAccess, (req, res) =>
  * Update user's Sunday reminder preference
  * PUT /api/notifications/preferences/sunday-reminder
  */
-router.put('/api/notifications/preferences/sunday-reminder', requireAuthenticatedEmployee, (req, res) => {
+router.put('/api/notifications/preferences/sunday-reminder', requireAuth, (req, res) => {
   const db = dbService.getDb();
   const { employeeId, enabled } = req.body;
   
@@ -330,7 +302,7 @@ router.put('/api/notifications/preferences/sunday-reminder', requireAuthenticate
  * Create a test notification (for testing purposes)
  * POST /api/notifications/test
  */
-router.post('/api/notifications/test', requireAuthenticatedEmployee, async (req, res) => {
+router.post('/api/notifications/test', requireAuth, async (req, res) => {
   const { recipientId, recipientRole, type, title, message } = req.body;
   
   if (!recipientId || !recipientRole || !type || !title || !message) {
@@ -367,7 +339,7 @@ router.post('/api/notifications/test', requireAuthenticatedEmployee, async (req,
  * Send a test email to the current user.
  * POST /api/notifications/test-email
  */
-router.post('/api/notifications/test-email', requireAuthenticatedEmployee, async (req, res) => {
+router.post('/api/notifications/test-email', requireAuth, async (req, res) => {
   const { employeeId } = req.body;
   if (!employeeId) {
     return res.status(400).json({ error: 'employeeId is required' });
@@ -455,7 +427,7 @@ router.post('/api/notifications/test-email', requireAuthenticatedEmployee, async
  * Admin: list global notification email recipients
  * GET /api/notifications/email-recipients
  */
-router.get('/api/notifications/email-recipients', async (req, res) => {
+router.get('/api/notifications/email-recipients', requireAuth, async (req, res) => {
   const admin = await ensureAdminAccess(req, res);
   if (!admin) return;
   const db = dbService.getDb();
@@ -476,7 +448,7 @@ router.get('/api/notifications/email-recipients', async (req, res) => {
  * Admin: create global notification email recipient
  * POST /api/notifications/email-recipients
  */
-router.post('/api/notifications/email-recipients', async (req, res) => {
+router.post('/api/notifications/email-recipients', requireAuth, async (req, res) => {
   const admin = await ensureAdminAccess(req, res);
   if (!admin) return;
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -508,7 +480,7 @@ router.post('/api/notifications/email-recipients', async (req, res) => {
  * Admin: update global notification email recipient
  * PUT /api/notifications/email-recipients/:id
  */
-router.put('/api/notifications/email-recipients/:id', async (req, res) => {
+router.put('/api/notifications/email-recipients/:id', requireAuth, async (req, res) => {
   const admin = await ensureAdminAccess(req, res);
   if (!admin) return;
   const { id } = req.params;
@@ -543,7 +515,7 @@ router.put('/api/notifications/email-recipients/:id', async (req, res) => {
  * Admin: delete global notification email recipient
  * DELETE /api/notifications/email-recipients/:id
  */
-router.delete('/api/notifications/email-recipients/:id', async (req, res) => {
+router.delete('/api/notifications/email-recipients/:id', requireAuth, async (req, res) => {
   const admin = await ensureAdminAccess(req, res);
   if (!admin) return;
   const { id } = req.params;
@@ -562,7 +534,7 @@ router.delete('/api/notifications/email-recipients/:id', async (req, res) => {
  * Admin: list workflow notification events (toggles + templates)
  * GET /api/admin/notification-events
  */
-router.get('/api/admin/notification-events', async (req, res) => {
+router.get('/api/admin/notification-events', requireAuth, async (req, res) => {
   const admin = await ensureAdminAccess(req, res);
   if (!admin) return;
   try {
@@ -578,7 +550,7 @@ router.get('/api/admin/notification-events', async (req, res) => {
  * Admin: update one workflow notification event
  * PUT /api/admin/notification-events/:eventKey
  */
-router.put('/api/admin/notification-events/:eventKey', async (req, res) => {
+router.put('/api/admin/notification-events/:eventKey', requireAuth, async (req, res) => {
   const admin = await ensureAdminAccess(req, res);
   if (!admin) return;
   const { eventKey } = req.params;
