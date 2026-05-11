@@ -78,6 +78,22 @@ export class ApiSyncService {
     });
   }
 
+  /** For thrown sync errors when `response.ok` is false (prefers JSON `error` field). */
+  private static formatHttpFailure(response: Response, bodyText: string): string {
+    const status = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+    const raw = (bodyText || '').trim();
+    if (!raw) return status;
+    try {
+      const j = JSON.parse(raw) as { error?: string };
+      if (typeof j?.error === 'string' && j.error.trim()) {
+        return `${status} — ${j.error.trim().slice(0, 300)}`;
+      }
+    } catch {
+      /* use raw */
+    }
+    return `${status} — ${raw.slice(0, 300)}`;
+  }
+
   /**
    * Fetch a backend employee by email (case-insensitive).
    */
@@ -803,7 +819,7 @@ export class ApiSyncService {
           if (!response.ok) {
             const errorText = await response.text();
             console.error(`❌ ApiSync: Failed to sync mileage entry ${entry.id}:`, response.status, errorText);
-            throw new Error(`Failed to sync mileage entry: ${response.statusText}`);
+            throw new Error(`Failed to sync mileage entry: ${this.formatHttpFailure(response, errorText)}`);
           }
           
           debugLog(`✅ ApiSync: Successfully synced mileage entry ${entry.id} with addresses`);
@@ -1778,11 +1794,11 @@ export class ApiSyncService {
       const url = this.buildFilteredListUrl('/mileage-entries', employeeId ?? null, monthYear ?? null);
       
       const response = await this.authenticatedFetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch mileage entries: ${response.statusText}`);
-      }
-      
       const responseText = await response.text();
+      if (!response.ok) {
+        throw new Error(`Failed to fetch mileage entries: ${this.formatHttpFailure(response, responseText)}`);
+      }
+
       const data = JSON.parse(responseText);
       
       return data.map((entry: any) => ({
@@ -1831,11 +1847,12 @@ export class ApiSyncService {
     const url = this.buildFilteredListUrl('/receipts', employeeId ?? null, monthYear ?? null);
       
     const response = await this.authenticatedFetch(url);
+    const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`Failed to fetch receipts: ${response.statusText}`);
+      throw new Error(`Failed to fetch receipts: ${this.formatHttpFailure(response, responseText)}`);
     }
-    
-    const data = await response.json();
+
+    const data = JSON.parse(responseText);
     return data.map((receipt: any) => ({
       id: receipt.id,
       employeeId: receipt.employeeId,
@@ -1865,11 +1882,12 @@ export class ApiSyncService {
     const url = this.buildFilteredListUrl('/time-tracking', employeeId ?? null, monthYear ?? null);
       
     const response = await this.authenticatedFetch(url);
+    const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`Failed to fetch time tracking: ${response.statusText}`);
+      throw new Error(`Failed to fetch time tracking: ${this.formatHttpFailure(response, responseText)}`);
     }
-    
-    const data = await response.json();
+
+    const data = JSON.parse(responseText);
     return data.map((entry: any) => ({
       id: entry.id,
       employeeId: entry.employeeId,
@@ -1891,10 +1909,11 @@ export class ApiSyncService {
     const response = await this.authenticatedFetch(
       `${this.config.baseUrl}/saved-addresses?employeeId=${encodeURIComponent(employeeId)}`
     );
+    const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`Failed to fetch saved addresses: ${response.statusText}`);
+      throw new Error(`Failed to fetch saved addresses: ${this.formatHttpFailure(response, responseText)}`);
     }
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     return (data || []).map((entry: any) => ({
       id: entry.id,
       employeeId: entry.employeeId,
@@ -1918,31 +1937,12 @@ export class ApiSyncService {
     const url = this.buildFilteredListUrl('/daily-descriptions', employeeId ?? null, monthYear ?? null);
       
     const response = await this.authenticatedFetch(url);
+    const responseText = await response.text();
     if (!response.ok) {
-      // Try to get more detailed error message
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorText = await response.text();
-        if (errorText) {
-          try {
-            const errorJson = JSON.parse(errorText);
-            if (errorJson.error) {
-              errorMessage = errorJson.error;
-            }
-          } catch {
-            // If not JSON, use the text as-is
-            if (errorText.length < 200) {
-              errorMessage = errorText;
-            }
-          }
-        }
-      } catch {
-        // Use default error message if we can't read the response
-      }
-      throw new Error(`Failed to fetch daily descriptions: ${errorMessage}`);
+      throw new Error(`Failed to fetch daily descriptions: ${this.formatHttpFailure(response, responseText)}`);
     }
-    
-    const data = await response.json();
+
+    const data = JSON.parse(responseText);
     return data.map((desc: any) => ({
       id: desc.id,
       employeeId: desc.employeeId,
@@ -1970,10 +1970,11 @@ export class ApiSyncService {
       monthYear ?? null
     );
     const response = await this.authenticatedFetch(url);
+    const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`Failed to fetch daily odometer readings: ${response.statusText}`);
+      throw new Error(`Failed to fetch daily odometer readings: ${this.formatHttpFailure(response, responseText)}`);
     }
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     return (data || []).map((r: any) => ({
       id: r.id,
       employeeId: r.employeeId,
@@ -2026,11 +2027,12 @@ export class ApiSyncService {
    */
   private static async fetchPerDiemRules(): Promise<any[]> {
     const response = await fetch(`${this.config.baseUrl}/per-diem-rules`);
+    const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`Failed to fetch per diem rules: ${response.statusText}`);
+      throw new Error(`Failed to fetch per diem rules: ${this.formatHttpFailure(response, responseText)}`);
     }
-    
-    const data = await response.json();
+
+    const data = JSON.parse(responseText);
     debugLog(`📋 ApiSync: Fetched ${data.length} Per Diem rules from backend`);
     return data.map((rule: any) => ({
       id: rule.id,
