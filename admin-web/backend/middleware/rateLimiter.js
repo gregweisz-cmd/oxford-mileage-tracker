@@ -4,6 +4,7 @@
  */
 
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = rateLimit;
 const { debugLog, debugWarn } = require('../debug');
 
 /**
@@ -26,8 +27,8 @@ function userOrIpKey(req) {
   if (typeof candidate === 'string' && candidate.trim().length > 0) {
     return `user:${candidate.trim()}`;
   }
-  // Fall back to express-rate-limit's default IP resolution.
-  return req.ip;
+  // Use express-rate-limit's IPv6-safe IP key helper for anonymous traffic.
+  return ipKeyGenerator(req.ip);
 }
 
 /**
