@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import {
   Box,
   Tabs,
@@ -23,6 +23,7 @@ import {
   LocalShipping as MileageIcon,
   Notes as DescriptionIcon
 } from '@mui/icons-material';
+import { useMuiTabsWheelScroll } from '../hooks/useMuiTabsWheelScroll';
 
 interface EnhancedTab {
   label: string;
@@ -70,42 +71,7 @@ export const EnhancedTabNavigation: React.FC<EnhancedTabNavigationProps> = ({
   currentYear,
   daysInMonth
 }) => {
-  const tabsContainerRef = useRef<HTMLDivElement>(null);
-
-  /**
-   * Enables horizontal scrolling via mouse wheel
-   * Converts vertical wheel movement to horizontal tab scrolling
-   */
-  useEffect(() => {
-    const tabsContainer = tabsContainerRef.current;
-    if (!tabsContainer) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      // Find the scrollable element within MUI Tabs component
-      const scrollableElement = tabsContainer.querySelector('.MuiTabs-scroller') || 
-                               tabsContainer.querySelector('.MuiTabs-scrollableX') || 
-                               tabsContainer.querySelector('[role="tablist"]') ||
-                               tabsContainer.querySelector('.MuiTabs-root') ||
-                               tabsContainer;
-      
-      if (scrollableElement) {
-        // Prevent default vertical scrolling
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Convert vertical wheel delta to horizontal scroll
-        const scrollAmount = e.deltaY;
-        scrollableElement.scrollLeft += scrollAmount;
-      }
-    };
-
-    // Add event listener with capture to intercept wheel events early
-    tabsContainer.addEventListener('wheel', handleWheel, { passive: false, capture: true });
-
-    return () => {
-      tabsContainer.removeEventListener('wheel', handleWheel, { capture: true });
-    };
-  }, []);
+  const tabsContainerRef = useMuiTabsWheelScroll();
 
   /**
    * Returns the appropriate status icon based on tab status

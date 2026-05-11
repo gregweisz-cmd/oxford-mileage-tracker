@@ -21,6 +21,7 @@ import { EmployeeApiService } from '../services/employeeApiService';
 import { debugError, debugVerbose } from '../config/debug';
 import { Employee } from '../types';
 import { NotificationBell } from './NotificationBell';
+import { useMuiTabsWheelScroll } from '../hooks/useMuiTabsWheelScroll';
 // import OxfordHouseLogo from './OxfordHouseLogo'; // Logo is in PortalSwitcher
 
 interface AdminPortalProps {
@@ -53,6 +54,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
   const [activeTab, setActiveTab] = useState(0);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [, setLoading] = useState(true);
+  const adminTabsWheelRef = useMuiTabsWheelScroll();
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -158,7 +160,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
           </Box>
         </Box>
 
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Box ref={adminTabsWheelRef} sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs
             value={activeTab}
             onChange={(e, newValue) => setActiveTab(newValue)}
