@@ -5,6 +5,7 @@
 
 import { Platform } from 'react-native';
 import { API_BASE_URL } from '../config/api';
+import { getAuthHeaders } from './authHeaders';
 
 export interface BiweeklyReport {
   id: string;
@@ -41,6 +42,16 @@ export interface BiweeklyPeriod {
 }
 
 export class BiweeklyReportService {
+  private static async authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    return fetch(input, {
+      ...init,
+      headers: {
+        ...(await getAuthHeaders()),
+        ...(init.headers || {}),
+      },
+    });
+  }
+
   /**
    * Get the first half period (1-15) of a month
    */
@@ -131,7 +142,7 @@ export class BiweeklyReportService {
     period: number
   ): Promise<BiweeklyReport | null> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/biweekly-reports/employee/${employeeId}/${year}/${month}/${period}`
       );
       
@@ -160,7 +171,7 @@ export class BiweeklyReportService {
         url += `&status=${status}`;
       }
       
-      const response = await fetch(url);
+      const response = await this.authenticatedFetch(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}`);
@@ -180,7 +191,7 @@ export class BiweeklyReportService {
     report: Partial<BiweeklyReport>
   ): Promise<{ success: boolean; reportId?: string; error?: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/biweekly-reports`, {
+      const response = await this.authenticatedFetch(`${API_BASE_URL}/biweekly-reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -212,7 +223,7 @@ export class BiweeklyReportService {
     try {
       console.log(`📤 BiweeklyReport: Submitting report ${reportId} for approval`);
       
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/biweekly-reports/${reportId}/submit`,
         {
           method: 'POST',
@@ -245,7 +256,7 @@ export class BiweeklyReportService {
     comments?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/biweekly-reports/${reportId}/approve`,
         {
           method: 'POST',
@@ -278,7 +289,7 @@ export class BiweeklyReportService {
     comments?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/biweekly-reports/${reportId}/reject`,
         {
           method: 'POST',
@@ -310,7 +321,7 @@ export class BiweeklyReportService {
     comments: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/biweekly-reports/${reportId}/request-revision`,
         {
           method: 'POST',
@@ -340,7 +351,7 @@ export class BiweeklyReportService {
     supervisorId: string
   ): Promise<BiweeklyReport[]> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/biweekly-reports/supervisor/${supervisorId}/pending`
       );
       
@@ -360,7 +371,7 @@ export class BiweeklyReportService {
    */
   static async deleteReport(reportId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/biweekly-reports/${reportId}`, {
+      const response = await this.authenticatedFetch(`${API_BASE_URL}/biweekly-reports/${reportId}`, {
         method: 'DELETE',
       });
       

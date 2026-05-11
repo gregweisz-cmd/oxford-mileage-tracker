@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const { debugError, debugLog } = require('../debug');
+const { requireAuth } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 function makeVehicleId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 10);

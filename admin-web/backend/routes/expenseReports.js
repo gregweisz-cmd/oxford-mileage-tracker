@@ -13,6 +13,10 @@ const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
 const constants = require('../utils/constants');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { requireAuth } = require('../middleware/auth');
+const { logAuditEvent } = require('../services/auditLogService');
+
+router.use(requireAuth);
 
 /**
  * Initialize approval workflow for a report
@@ -1705,6 +1709,20 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
       );
     });
 
+    logAuditEvent({
+      action: 'expense_report_status_updated',
+      actor: req.authenticatedEmployee,
+      targetType: 'expense_report',
+      targetId: id,
+      details: {
+        previousStatus: report.status,
+        status: updatedReport.status || status,
+        employeeId: report.employeeId,
+        month: report.month,
+        year: report.year,
+      },
+    });
+
     res.json({
       message: 'Expense report status updated successfully',
       status: updatedReport.status || status,
@@ -1859,6 +1877,22 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
             else resolve();
           }
         );
+      });
+
+      logAuditEvent({
+        action: `expense_report_${action}`,
+        actor: req.authenticatedEmployee,
+        targetType: 'expense_report',
+        targetId: id,
+        details: {
+          employeeId: report.employeeId,
+          previousStatus: report.status,
+          status: updates.status || report.status,
+          approverId,
+          delegateId,
+          month: report.month,
+          year: report.year,
+        },
       });
 
       res.json({

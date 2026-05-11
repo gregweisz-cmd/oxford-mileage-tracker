@@ -9,7 +9,11 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const websocketService = require('../services/websocketService');
 const emailService = require('../services/emailService');
+const notificationEventSettings = require('../services/notificationEventSettings');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { requireAuth } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 function parsePreferences(preferences) {
   if (!preferences) return {};
@@ -30,6 +34,15 @@ function isEmailAllowedForEmployee(employee) {
   if (prefs.notificationsEnabled === false) return false;
   if (prefs.emailNotifications === false) return false;
   return true;
+}
+
+async function isLegacyApprovalEmailEnabled(eventKey, context = {}) {
+  const delivery = await notificationEventSettings.resolveDelivery(
+    eventKey,
+    { title: '', message: '' },
+    context
+  );
+  return delivery.emailEnabled;
 }
 
 // ===== REPORT APPROVAL SYSTEM API ENDPOINTS =====
@@ -118,7 +131,11 @@ router.post('/api/reports/submit', (req, res) => {
                     async (periodErr, report) => {
                       const reportPeriod = report?.period || 'Unknown Period';
                       
-                      await emailService.sendReportSubmittedNotification({
+                      if (await isLegacyApprovalEmailEnabled('report_submitted', {
+                        employeeName: employee.name || 'Employee',
+                        monthName: reportPeriod,
+                        actorName: employee.name || 'Employee',
+                      })) await emailService.sendReportSubmittedNotification({
                         supervisorEmail: supervisor.email,
                         supervisorName: supervisor.name || 'Supervisor',
                         employeeName: employee.name || 'Employee',
@@ -276,7 +293,12 @@ router.post('/api/reports/approve', (req, res) => {
                         async (periodErr, report) => {
                           const reportPeriod = report?.period || 'Unknown Period';
                           
-                          await emailService.sendReportApprovedNotification({
+                          if (await isLegacyApprovalEmailEnabled('employee_report_approved', {
+                            employeeName: employee.name || 'Employee',
+                            monthName: reportPeriod,
+                            actorName: supervisorName,
+                            reportKind: 'report',
+                          })) await emailService.sendReportApprovedNotification({
                             employeeEmail: employee.email,
                             employeeName: employee.name || 'Employee',
                             supervisorName: supervisorName,
@@ -351,7 +373,11 @@ router.post('/api/reports/reject', (req, res) => {
                         async (periodErr, report) => {
                           const reportPeriod = report?.period || 'Unknown Period';
                           
-                          await emailService.sendReportRejectedNotification({
+                          if (await isLegacyApprovalEmailEnabled('report_rejected', {
+                            employeeName: employee.name || 'Employee',
+                            monthName: reportPeriod,
+                            actorName: supervisorName,
+                          })) await emailService.sendReportRejectedNotification({
                             employeeEmail: employee.email,
                             employeeName: employee.name || 'Employee',
                             supervisorName: supervisorName,
@@ -426,7 +452,11 @@ router.post('/api/reports/request-revision', (req, res) => {
                         async (periodErr, report) => {
                           const reportPeriod = report?.period || 'Unknown Period';
                           
-                          await emailService.sendRevisionRequestedNotification({
+                          if (await isLegacyApprovalEmailEnabled('supervisor_revision_employee', {
+                            employeeName: employee.name || 'Employee',
+                            monthName: reportPeriod,
+                            actorName: supervisorName,
+                          })) await emailService.sendRevisionRequestedNotification({
                             employeeEmail: employee.email,
                             employeeName: employee.name || 'Employee',
                             supervisorName: supervisorName,

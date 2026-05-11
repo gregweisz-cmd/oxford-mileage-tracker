@@ -20,6 +20,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { checkAndNotify50PlusHours } = require('../services/notificationService');
 const websocketService = require('../services/websocketService');
 const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
+const { requireAuth } = require('../middleware/auth');
 
 const normalizeCostCenterKey = (value) =>
   String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -62,6 +63,8 @@ const validatePerDiemReceiptRequirement = (db, { category, costCenter, imageUri 
 // Set up uploads directory and multer (use UPLOAD_DIR on Render persistent disk)
 const uploadsDir = config.upload.directory;
 const upload = multer({ dest: uploadsDir });
+
+router.use(requireAuth);
 
 // ===== MILEAGE ENTRIES ROUTES =====
 

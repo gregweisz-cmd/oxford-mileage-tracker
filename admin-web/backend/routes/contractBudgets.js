@@ -7,6 +7,9 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const helpers = require('../utils/helpers');
 const { debugError, debugLog } = require('../debug');
+const { requireAuth } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 function monthRange(year, month) {
   const y = parseInt(String(year), 10);

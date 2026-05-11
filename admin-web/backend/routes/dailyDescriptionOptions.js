@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
+const { requireAnyRole } = require('../middleware/auth');
 
 const DEFAULT_OPTIONS = [
   { label: 'Telework from Base Address', category: 'Work location', sortOrder: 0 },
@@ -63,7 +64,7 @@ router.get('/api/daily-description-options', (req, res) => {
 /**
  * POST /api/admin/daily-description-options
  */
-router.post('/api/admin/daily-description-options', (req, res) => {
+router.post('/api/admin/daily-description-options', requireAnyRole(['admin']), (req, res) => {
   const { label, category, sortOrder } = req.body;
   if (!label || typeof label !== 'string' || !label.trim()) {
     return res.status(400).json({ error: 'label is required' });
@@ -94,7 +95,7 @@ router.post('/api/admin/daily-description-options', (req, res) => {
 /**
  * PUT /api/admin/daily-description-options/:id
  */
-router.put('/api/admin/daily-description-options/:id', (req, res) => {
+router.put('/api/admin/daily-description-options/:id', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const { label, category, sortOrder } = req.body;
   const db = dbService.getDb();
@@ -140,7 +141,7 @@ router.put('/api/admin/daily-description-options/:id', (req, res) => {
 /**
  * DELETE /api/admin/daily-description-options/:id
  */
-router.delete('/api/admin/daily-description-options/:id', (req, res) => {
+router.delete('/api/admin/daily-description-options/:id', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   db.run('DELETE FROM daily_description_options WHERE id = ?', [id], function (err) {

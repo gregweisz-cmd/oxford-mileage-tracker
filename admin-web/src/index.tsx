@@ -5,6 +5,9 @@ import CssBaseline from '@mui/material/CssBaseline';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { installAuthenticatedFetch } from './services/installAuthenticatedFetch';
+
+installAuthenticatedFetch();
 
 const theme = createTheme({
   palette: {

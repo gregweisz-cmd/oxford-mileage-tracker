@@ -7,6 +7,9 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
+const { requireAnyRole } = require('../middleware/auth');
+
+router.use(requireAnyRole(['admin', 'finance']));
 
 /**
  * Get all data for Power BI in a single request

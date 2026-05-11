@@ -11,6 +11,7 @@ const { debugLog, debugError, debugWarn } = require('../debug');
 const { asyncHandler, createError } = require('../middleware/errorHandler');
 const { adminLimiter } = require('../middleware/rateLimiter');
 const backupJob = require('../services/backupJob');
+const { requireAnyRole } = require('../middleware/auth');
 
 /**
  * Middleware to verify admin token
@@ -220,6 +221,40 @@ router.get('/api/admin/backups', adminLimiter, verifyAdminToken, asyncHandler(as
     count: backups.length,
     backups,
   });
+}));
+
+router.get('/api/admin/audit-logs', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
+  const db = dbService.getDb();
+  const limit = Math.min(parseInt(req.query.limit || '100', 10) || 100, 500);
+  const targetType = req.query.targetType ? String(req.query.targetType) : null;
+  const targetId = req.query.targetId ? String(req.query.targetId) : null;
+  const conditions = [];
+  const params = [];
+
+  if (targetType) {
+    conditions.push('targetType = ?');
+    params.push(targetType);
+  }
+  if (targetId) {
+    conditions.push('targetId = ?');
+    params.push(targetId);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = await new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM audit_logs ${where} ORDER BY createdAt DESC LIMIT ?`,
+      [...params, limit],
+      (err, results) => (err ? reject(err) : resolve(results || []))
+    );
+  });
+
+  res.json(rows.map((row) => ({
+    ...row,
+    details: row.details ? (() => {
+      try { return JSON.parse(row.details); } catch { return row.details; }
+    })() : null,
+  })));
 }));
 
 /**

@@ -2,6 +2,7 @@
 // Handles fetching cost centers from the backend API
 
 import { API_BASE_URL } from '../config/api';
+import { getAuthHeaders } from './authHeaders';
 
 export interface CostCenter {
   id: string;
@@ -49,7 +50,9 @@ class CostCenterApiService {
    */
   async fetchCostCenters(): Promise<CostCenter[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/cost-centers`);
+      const response = await fetch(`${this.baseUrl}/cost-centers`, {
+        headers: await getAuthHeaders(),
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }

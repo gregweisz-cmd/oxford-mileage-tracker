@@ -12,6 +12,7 @@ const emailService = require('../services/emailService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { notificationPollingLimiter } = require('../middleware/rateLimiter');
 const { requireAuth, getEffectiveRole } = require('../middleware/auth');
+const { logAuditEvent } = require('../services/auditLogService');
 
 function parsePreferences(preferences) {
   if (!preferences) return {};
@@ -471,6 +472,13 @@ router.post('/api/notifications/email-recipients', requireAuth, async (req, res)
         debugError('❌ Error creating notification email recipient:', err);
         return res.status(500).json({ error: 'Failed to add notification email recipient' });
       }
+      logAuditEvent({
+        action: 'notification_email_recipient_created',
+        actor: admin,
+        targetType: 'notification_email_recipient',
+        targetId: String(this.lastID),
+        details: { email, label, isActive: isActive === 1 },
+      });
       return res.json({ id: this.lastID, email, label, isActive: isActive === 1, createdBy: admin.id, createdAt: now, updatedAt: now });
     }
   );
@@ -506,6 +514,13 @@ router.put('/api/notifications/email-recipients/:id', requireAuth, async (req, r
         return res.status(500).json({ error: 'Failed to update notification email recipient' });
       }
       if (this.changes === 0) return res.status(404).json({ error: 'Notification email recipient not found' });
+      logAuditEvent({
+        action: 'notification_email_recipient_updated',
+        actor: admin,
+        targetType: 'notification_email_recipient',
+        targetId: String(id),
+        details: { email, label, isActive: isActive === 1 },
+      });
       return res.json({ id: Number(id), email, label, isActive: isActive === 1, updatedAt: now });
     }
   );
@@ -526,6 +541,12 @@ router.delete('/api/notifications/email-recipients/:id', requireAuth, async (req
       return res.status(500).json({ error: 'Failed to delete notification email recipient' });
     }
     if (this.changes === 0) return res.status(404).json({ error: 'Notification email recipient not found' });
+    logAuditEvent({
+      action: 'notification_email_recipient_deleted',
+      actor: admin,
+      targetType: 'notification_email_recipient',
+      targetId: String(id),
+    });
     return res.json({ message: 'Notification email recipient deleted', id: Number(id) });
   });
 });
@@ -558,6 +579,13 @@ router.put('/api/admin/notification-events/:eventKey', requireAuth, async (req, 
     await notificationEventSettings.updateEventSetting(eventKey, req.body || {});
     const events = await notificationEventSettings.listAllForAdmin();
     const row = events.find((e) => e.eventKey === eventKey);
+    logAuditEvent({
+      action: 'notification_event_setting_updated',
+      actor: admin,
+      targetType: 'notification_event_setting',
+      targetId: eventKey,
+      details: req.body || {},
+    });
     return res.json(row || { eventKey });
   } catch (error) {
     const status = error.statusCode || 500;

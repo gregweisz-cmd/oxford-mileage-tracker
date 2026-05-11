@@ -9,6 +9,9 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const websocketService = require('../services/websocketService');
 const { debugLog, debugError } = require('../debug');
+const { requireAuth } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 // ===== WEEKLY REPORTS API ENDPOINTS =====
 

@@ -1,6 +1,7 @@
 import { DatabaseService } from './database';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { API_BASE_URL } from '../config/api';
+import { getAuthHeaders } from './authHeaders';
 
 export interface PerDiemRule {
   id: string;
@@ -54,6 +55,7 @@ export class PerDiemRulesService {
       const response = await fetch(`${API_BASE_URL}/per-diem-rules`, {
         method: 'GET',
         headers: {
+          ...(await getAuthHeaders()),
           'Content-Type': 'application/json',
         },
         signal: controller.signal,

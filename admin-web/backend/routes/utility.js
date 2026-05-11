@@ -12,6 +12,7 @@ const distanceService = require('../services/distanceService');
 const googleMapsService = require('../services/googleMapsService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
+const { requireAuth, requireAnyRole } = require('../middleware/auth');
 
 // ===== DISTANCE (Google Maps - Calculate miles) =====
 
@@ -103,7 +104,7 @@ router.get('/api/places/reverse-geocode', async (req, res) => {
 
 // ===== SAVED ADDRESSES =====
 
-router.get('/api/saved-addresses', (req, res) => {
+router.get('/api/saved-addresses', requireAuth, (req, res) => {
   const db = dbService.getDb();
   const { employeeId } = req.query;
   
@@ -126,7 +127,7 @@ router.get('/api/saved-addresses', (req, res) => {
   );
 });
 
-router.post('/api/saved-addresses', (req, res) => {
+router.post('/api/saved-addresses', requireAuth, (req, res) => {
   const db = dbService.getDb();
   const { employeeId, name, address, latitude, longitude, category } = req.body || {};
 
@@ -176,7 +177,7 @@ router.post('/api/saved-addresses', (req, res) => {
   );
 });
 
-router.put('/api/saved-addresses/:id', (req, res) => {
+router.put('/api/saved-addresses/:id', requireAuth, (req, res) => {
   const db = dbService.getDb();
   const { id } = req.params;
   const { employeeId, name, address, latitude, longitude, category } = req.body || {};
@@ -246,7 +247,7 @@ router.put('/api/saved-addresses/:id', (req, res) => {
   );
 });
 
-router.delete('/api/saved-addresses/:id', (req, res) => {
+router.delete('/api/saved-addresses/:id', requireAuth, (req, res) => {
   const db = dbService.getDb();
   const { id } = req.params;
 
@@ -355,7 +356,7 @@ router.get('/api/oxford-houses', async (req, res) => {
 });
 
 // Force refresh Oxford Houses cache
-router.post('/api/oxford-houses/refresh', async (req, res) => {
+router.post('/api/oxford-houses/refresh', requireAnyRole(['admin']), async (req, res) => {
   try {
     debugLog('🔄 Force refreshing Oxford Houses data...');
     const houses = await fetchOxfordHouses();
@@ -374,7 +375,7 @@ router.post('/api/oxford-houses/refresh', async (req, res) => {
 // ===== STATISTICS =====
 
 // Get database statistics
-router.get('/api/stats', (req, res) => {
+router.get('/api/stats', requireAnyRole(['admin']), (req, res) => {
   const db = dbService.getDb();
   const queries = {
     totalEmployees: 'SELECT COUNT(*) as count FROM employees',
@@ -578,7 +579,7 @@ router.get('/health', (req, res) => {
 // ===== EMAIL TEST ENDPOINT =====
 
 // Test email configuration
-router.post('/api/test-email', async (req, res) => {
+router.post('/api/test-email', requireAnyRole(['admin']), async (req, res) => {
   const { to } = req.body;
   
   if (!to) {

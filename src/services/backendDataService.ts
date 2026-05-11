@@ -14,6 +14,7 @@ import { API_BASE_URL } from '../config/api';
 import { Employee, MileageEntry, Receipt, TimeTracking, DailyDescription } from '../types';
 import { UnifiedDayData } from './unifiedDataService';
 import { ApiSyncService } from './apiSyncService';
+import { getAuthHeaders } from './authHeaders';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -41,6 +42,7 @@ export class BackendDataService {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers: {
+          ...(await getAuthHeaders()),
           'Content-Type': 'application/json',
           ...options?.headers,
         },

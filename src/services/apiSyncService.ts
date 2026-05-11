@@ -1,6 +1,5 @@
 import { Platform, Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as SecureStore from 'expo-secure-store';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
 import { getFullLocationAddress } from '../utils/addressFormatter';
@@ -9,6 +8,7 @@ import { debugLog, debugError, debugWarn } from '../config/debug';
 // Use central config so mobile uses the same base URL (local IP) as the app
 import { API_BASE_URL } from '../config/api';
 import { getSyncMonthScope, monthDateBounds } from './syncScopeService';
+import { getAuthHeaders } from './authHeaders';
 
 /** Pull only a calendar month from the API, or the full history (large; use sparingly). */
 export type SyncFromBackendScope =
@@ -27,7 +27,6 @@ type OrphanCleanupScope = 'all' | { month: number; year: number };
 
 /** Cooldown between successful realtime-triggered full pulls (ms). */
 const REALTIME_PULL_COOLDOWN_MS = 12000;
-const AUTH_TOKEN_KEY = 'auth_token_v1';
 
 export interface ApiSyncConfig {
   baseUrl: string;
@@ -66,12 +65,17 @@ export class ApiSyncService {
   private static pendingChanges: number = 0;
 
   private static async getAuthHeaders(): Promise<Record<string, string>> {
-    try {
-      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
-      return token ? { Authorization: `Bearer ${token}` } : {};
-    } catch {
-      return {};
-    }
+    return getAuthHeaders();
+  }
+
+  private static async authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    return fetch(input, {
+      ...init,
+      headers: {
+        ...(await this.getAuthHeaders()),
+        ...(init.headers || {}),
+      },
+    });
   }
 
   /**
@@ -80,7 +84,7 @@ export class ApiSyncService {
   private static async fetchEmployeeByEmail(email: string): Promise<Employee | null> {
     try {
       if (!email) return null;
-      const response = await fetch(`${this.config.baseUrl}/employees?search=${encodeURIComponent(email)}`, {
+      const response = await this.authenticatedFetch(`${this.config.baseUrl}/employees?search=${encodeURIComponent(email)}`, {
         headers: await this.getAuthHeaders(),
       });
       if (!response.ok) return null;
@@ -633,7 +637,7 @@ export class ApiSyncService {
 
           if (existingEmployee) {
             // Update existing employee
-            const response = await fetch(`${this.config.baseUrl}/employees/${employee.id}`, {
+            const response = await this.authenticatedFetch(`${this.config.baseUrl}/employees/${employee.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -656,7 +660,7 @@ export class ApiSyncService {
             }
           } else {
             // Create new employee (only when GET returned 404 — never after rate-limit / network failure)
-            const response = await fetch(`${this.config.baseUrl}/employees`, {
+            const response = await this.authenticatedFetch(`${this.config.baseUrl}/employees`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -790,7 +794,7 @@ export class ApiSyncService {
             endLocationAddress: mileageData.endLocationAddress
           });
           
-          const response = await fetch(`${this.config.baseUrl}/mileage-entries`, {
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/mileage-entries`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(mileageData)
@@ -986,7 +990,7 @@ export class ApiSyncService {
         // Upload to backend - wrap in try-catch to catch file access errors during fetch
         let response: Response;
         try {
-          response = await fetch(`${this.config.baseUrl}/receipts/upload-image`, {
+          response = await this.authenticatedFetch(`${this.config.baseUrl}/receipts/upload-image`, {
             method: 'POST',
             // Do not set Content-Type manually; let fetch add the multipart boundary
             body: formData,
@@ -1274,7 +1278,7 @@ export class ApiSyncService {
             imageUri: backendImageUri && !backendImageUri.startsWith('file://') ? backendImageUri : undefined
           };
           
-          const response = await fetch(`${this.config.baseUrl}/receipts`, {
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/receipts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(receiptData)
@@ -1370,7 +1374,7 @@ export class ApiSyncService {
             dayOffType: desc.dayOffType || null
           };
           
-          const response = await fetch(`${this.config.baseUrl}/daily-descriptions`, {
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/daily-descriptions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1436,7 +1440,7 @@ export class ApiSyncService {
             const dateStr = (r.date as unknown) as string;
             dateToSend = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
           }
-          const response = await fetch(`${this.config.baseUrl}/daily-odometer-readings`, {
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/daily-odometer-readings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1517,7 +1521,7 @@ export class ApiSyncService {
           const jsonPayload = JSON.stringify(timeTrackingData);
           debugLog(`📤 ApiSync: JSON payload for time tracking ${entry.id}:`, jsonPayload);
           
-          const response = await fetch(`${this.config.baseUrl}/time-tracking`, {
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/time-tracking`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: jsonPayload
@@ -1597,7 +1601,7 @@ export class ApiSyncService {
           const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
           const employeeIdToSend = backendEmployeeId || entry.employeeId;
 
-          const response = await fetch(`${this.config.baseUrl}/saved-addresses/${entry.id}`, {
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/saved-addresses/${entry.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1647,7 +1651,7 @@ export class ApiSyncService {
     try {
       const url = `${this.config.baseUrl}/employees`;
       
-      const response = await fetch(url, {
+      const response = await this.authenticatedFetch(url, {
         headers: await this.getAuthHeaders(),
       });
       
@@ -1712,7 +1716,7 @@ export class ApiSyncService {
    * Fetch single employee from backend
    */
   private static async fetchEmployee(id: string): Promise<Employee | null> {
-    const response = await fetch(
+    const response = await this.authenticatedFetch(
       `${this.config.baseUrl}/employees/${encodeURIComponent(id)}`,
       { headers: await this.getAuthHeaders() }
     );
@@ -1773,7 +1777,7 @@ export class ApiSyncService {
     try {
       const url = this.buildFilteredListUrl('/mileage-entries', employeeId ?? null, monthYear ?? null);
       
-      const response = await fetch(url);
+      const response = await this.authenticatedFetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch mileage entries: ${response.statusText}`);
       }
@@ -1826,7 +1830,7 @@ export class ApiSyncService {
   ): Promise<Receipt[]> {
     const url = this.buildFilteredListUrl('/receipts', employeeId ?? null, monthYear ?? null);
       
-    const response = await fetch(url);
+    const response = await this.authenticatedFetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch receipts: ${response.statusText}`);
     }
@@ -1860,7 +1864,7 @@ export class ApiSyncService {
   ): Promise<TimeTracking[]> {
     const url = this.buildFilteredListUrl('/time-tracking', employeeId ?? null, monthYear ?? null);
       
-    const response = await fetch(url);
+    const response = await this.authenticatedFetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch time tracking: ${response.statusText}`);
     }
@@ -1884,7 +1888,7 @@ export class ApiSyncService {
    */
   private static async fetchSavedAddresses(employeeId?: string | null): Promise<SavedAddress[]> {
     if (!employeeId) return [];
-    const response = await fetch(
+    const response = await this.authenticatedFetch(
       `${this.config.baseUrl}/saved-addresses?employeeId=${encodeURIComponent(employeeId)}`
     );
     if (!response.ok) {
@@ -1913,7 +1917,7 @@ export class ApiSyncService {
   ): Promise<DailyDescription[]> {
     const url = this.buildFilteredListUrl('/daily-descriptions', employeeId ?? null, monthYear ?? null);
       
-    const response = await fetch(url);
+    const response = await this.authenticatedFetch(url);
     if (!response.ok) {
       // Try to get more detailed error message
       let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -1965,7 +1969,7 @@ export class ApiSyncService {
       employeeId ?? null,
       monthYear ?? null
     );
-    const response = await fetch(url);
+    const response = await this.authenticatedFetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch daily odometer readings: ${response.statusText}`);
     }
@@ -3034,7 +3038,7 @@ export class ApiSyncService {
       
       if (isConnected) {
         try {
-          const response = await fetch(`${this.config.baseUrl}/stats`);
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/stats`);
           if (response.ok) {
             stats = await response.json();
           }

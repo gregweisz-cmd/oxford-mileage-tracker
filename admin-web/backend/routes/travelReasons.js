@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
+const { requireAnyRole } = require('../middleware/auth');
 
 const DEFAULT_TRAVEL_REASONS = [
   { label: 'House Stabilization', category: 'House/Resident Related', sortOrder: 0 },
@@ -72,7 +73,7 @@ router.get('/api/travel-reasons', (req, res) => {
  * POST /api/admin/travel-reasons
  * Create a new travel reason. Admin only (UI is in Admin Portal).
  */
-router.post('/api/admin/travel-reasons', (req, res) => {
+router.post('/api/admin/travel-reasons', requireAnyRole(['admin']), (req, res) => {
   const { label, category, sortOrder } = req.body;
   if (!label || typeof label !== 'string' || !label.trim()) {
     return res.status(400).json({ error: 'label is required' });
@@ -104,7 +105,7 @@ router.post('/api/admin/travel-reasons', (req, res) => {
  * PUT /api/admin/travel-reasons/:id
  * Update an existing travel reason.
  */
-router.put('/api/admin/travel-reasons/:id', (req, res) => {
+router.put('/api/admin/travel-reasons/:id', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const { label, category, sortOrder } = req.body;
   const db = dbService.getDb();
@@ -151,7 +152,7 @@ router.put('/api/admin/travel-reasons/:id', (req, res) => {
  * DELETE /api/admin/travel-reasons/:id
  * Remove a travel reason.
  */
-router.delete('/api/admin/travel-reasons/:id', (req, res) => {
+router.delete('/api/admin/travel-reasons/:id', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   db.run('DELETE FROM travel_reasons WHERE id = ?', [id], function (err) {

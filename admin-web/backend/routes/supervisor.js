@@ -10,6 +10,9 @@ const dbService = require('../services/dbService');
 const websocketService = require('../services/websocketService');
 const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { requireAuth } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 /**
  * Calculate total expenses from report data

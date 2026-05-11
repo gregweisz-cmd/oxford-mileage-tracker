@@ -5,6 +5,7 @@ import { MileageAnalysisService } from './mileageAnalysisService';
 import { ApiSyncService } from './apiSyncService';
 import { getFullLocationAddress } from '../utils/addressFormatter';
 import { debugLog, debugError, debugWarn } from '../config/debug';
+import { getAuthHeaders } from './authHeaders';
 // Removed SyncIntegrationService import to break circular dependency
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -1291,6 +1292,7 @@ export class DatabaseService {
       const { API_BASE_URL } = await import('../config/api');
       const response = await fetch(`${API_BASE_URL}/mileage-entries/${id}`, {
         method: 'DELETE',
+        headers: await getAuthHeaders(),
       });
       if (response.ok) {
         debugLog('✅ Database: Deleted mileage entry from backend');

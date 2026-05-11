@@ -5,6 +5,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../config/api';
+import { getAuthHeaders } from './authHeaders';
 
 export interface OcrResult {
   vendor: string;
@@ -94,6 +95,7 @@ export class ReceiptOcrService {
     const response = await fetch(`${ReceiptOcrService.getBaseUrl()}/api/receipts/ocr`, {
       method: 'POST',
       headers: {
+        ...(await getAuthHeaders()),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ image: base64WithPrefix }),

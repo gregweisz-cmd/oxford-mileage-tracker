@@ -7,6 +7,9 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
+const { requireAuth } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 const normalizeCostCenter = (value) =>
   String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');

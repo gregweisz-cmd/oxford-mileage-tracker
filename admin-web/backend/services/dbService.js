@@ -765,6 +765,33 @@ function ensureTablesExist() {
         PRIMARY KEY (supervisorId, employeeId, weekStartKey)
       )`);
 
+      // Idempotency log for scheduled / automated notification sends.
+      db.run(`CREATE TABLE IF NOT EXISTS notification_send_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eventKey TEXT NOT NULL,
+        recipientId TEXT NOT NULL,
+        dedupeKey TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'claimed',
+        notificationId TEXT,
+        errorMessage TEXT,
+        claimedAt TEXT NOT NULL,
+        sentAt TEXT,
+        updatedAt TEXT NOT NULL,
+        UNIQUE (eventKey, recipientId, dedupeKey)
+      )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        actorId TEXT,
+        actorName TEXT,
+        actorRole TEXT,
+        targetType TEXT NOT NULL,
+        targetId TEXT,
+        details TEXT,
+        createdAt TEXT NOT NULL
+      )`);
+
       // Admin-managed global notification email recipients (BCC list for workflow notifications)
       db.run(`CREATE TABLE IF NOT EXISTS notification_email_recipients (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -793,6 +820,7 @@ function ensureTablesExist() {
         'finance_revision_supervisor',
         'supervisor_revision_employee',
         'employee_report_approved',
+        'report_rejected',
         'sunday_reminder',
         'fifty_plus_hours_alert',
       ];
@@ -1192,6 +1220,9 @@ function ensureTablesExist() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_createdAt ON notifications(createdAt)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notification_email_recipients_active ON notification_email_recipients(isActive)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notification_send_log_event_key ON notification_send_log(eventKey, dedupeKey)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audit_logs_target ON audit_logs(targetType, targetId)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(createdAt)`);
       
       // Legacy notification indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_supervisor_notifications_supervisorId ON supervisor_notifications(supervisorId)`);

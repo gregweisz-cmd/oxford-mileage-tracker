@@ -11,9 +11,10 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { asyncHandler, createError } = require('../middleware/errorHandler');
 const { validateRequired, validateEmail } = require('../middleware/validation');
 const { passwordResetLimiter } = require('../middleware/rateLimiter');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireAnyRole, requireSelfOrRole } = require('../middleware/auth');
 const externalEmployeeSync = require('../services/externalEmployeeSync');
 const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
+const { logAuditEvent } = require('../services/auditLogService');
 
 function withoutSensitiveEmployeeFields(employee) {
   if (!employee || typeof employee !== 'object') return employee;
@@ -227,7 +228,7 @@ router.get('/api/employees/archived', requireAuth, (req, res) => {
  * POST /api/employees/sync-from-external
  * Requires env: EMPLOYEE_API_TOKEN or APPWARMER_EMPLOYEE_API_TOKEN
  */
-router.post('/api/employees/sync-from-external', asyncHandler(async (req, res) => {
+router.post('/api/employees/sync-from-external', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
   try {
     const stats = await externalEmployeeSync.syncFromExternal();
     res.json(stats);
@@ -252,7 +253,7 @@ router.post('/api/employees/sync-from-external', asyncHandler(async (req, res) =
  * Preview HR sync: return proposed creates, updates, archives (no DB write).
  * POST /api/employees/sync-from-external/preview
  */
-router.post('/api/employees/sync-from-external/preview', asyncHandler(async (req, res) => {
+router.post('/api/employees/sync-from-external/preview', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
   try {
     const plan = await externalEmployeeSync.previewSyncFromExternal();
     res.json(plan);
@@ -273,7 +274,7 @@ router.post('/api/employees/sync-from-external/preview', asyncHandler(async (req
  * POST /api/employees/sync-from-external/apply
  * Body: { toCreate: string[] (emails), toUpdate: string[] (emails), toArchive: string[] (ids) }
  */
-router.post('/api/employees/sync-from-external/apply', asyncHandler(async (req, res) => {
+router.post('/api/employees/sync-from-external/apply', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
   console.log('[HR Sync] Apply requested', { toCreate: (req.body?.toCreate?.length ?? 0), toUpdate: (req.body?.toUpdate?.length ?? 0), toArchive: (req.body?.toArchive?.length ?? 0) });
   try {
     const stats = await externalEmployeeSync.applySyncFromExternal(req.body || {});
@@ -294,7 +295,7 @@ router.post('/api/employees/sync-from-external/apply', asyncHandler(async (req, 
  * Merge duplicate employee rows that share the same email (keeps admin / logged-in account when possible).
  * POST /api/employees/dedupe-by-email
  */
-router.post('/api/employees/dedupe-by-email', asyncHandler(async (req, res) => {
+router.post('/api/employees/dedupe-by-email', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
   try {
     const result = await externalEmployeeSync.dedupeAllByEmail();
     debugLog('[dedupe-by-email]', result);
@@ -370,7 +371,7 @@ router.get('/api/employees/:id', requireAuth, (req, res) => {
 /**
  * Bulk update employees
  */
-router.put('/api/employees/bulk-update', (req, res) => {
+router.put('/api/employees/bulk-update', requireAnyRole(['admin']), (req, res) => {
   const { employeeIds, updates } = req.body;
   const db = dbService.getDb();
   
@@ -428,7 +429,7 @@ router.put('/api/employees/bulk-update', (req, res) => {
  * Bulk delete employees
  * Safeguards: cannot delete all employees; cannot delete so that no admins remain.
  */
-router.delete('/api/employees/bulk-delete', (req, res) => {
+router.delete('/api/employees/bulk-delete', requireAnyRole(['admin']), (req, res) => {
   const { employeeIds } = req.body;
   const db = dbService.getDb();
 
@@ -500,7 +501,7 @@ router.delete('/api/employees/bulk-delete', (req, res) => {
 /**
  * Bulk create employees
  */
-router.post('/api/employees/bulk-create', async (req, res) => {
+router.post('/api/employees/bulk-create', requireAnyRole(['admin']), async (req, res) => {
   const { employees } = req.body;
   const db = dbService.getDb();
   
@@ -631,6 +632,7 @@ router.post('/api/employees/bulk-create', async (req, res) => {
  * }
  */
 router.post('/api/employees', 
+  requireAnyRole(['admin']),
   validateRequired(['name', 'email', 'position']),
   validateEmail('email'),
   asyncHandler(async (req, res) => {
@@ -732,7 +734,7 @@ router.post('/api/employees',
  *   "position": "Senior Manager"
  * }
  */
-router.put('/api/employees/:id', async (req, res) => {
+router.put('/api/employees/:id', requireSelfOrRole('id', ['admin']), async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
   const now = new Date().toISOString();
@@ -858,6 +860,23 @@ router.put('/api/employees/:id', async (req, res) => {
         if (this.changes === 0) {
           debugWarn('⚠️ No rows updated - employee might not exist');
         }
+        const sensitiveFields = ['role', 'permissions', 'password', 'archived', 'supervisorId', 'seniorStaffId'];
+        const changedSensitiveFields = sensitiveFields.filter((field) => {
+          if (updateData[field] === undefined) return false;
+          if (field === 'password') return true;
+          const previous = currentEmployee[field] == null ? null : String(currentEmployee[field]);
+          const next = field === 'permissions' ? String(permissions || '[]') : String(updateData[field] ?? '');
+          return previous !== next;
+        });
+        if (changedSensitiveFields.length > 0) {
+          logAuditEvent({
+            action: 'employee_sensitive_update',
+            actor: req.authenticatedEmployee,
+            targetType: 'employee',
+            targetId: id,
+            details: { changedFields: changedSensitiveFields },
+          });
+        }
         res.json({ message: 'Employee updated successfully', changes: this.changes });
       }
     );
@@ -867,7 +886,7 @@ router.put('/api/employees/:id', async (req, res) => {
 /**
  * Archive employee (soft delete)
  */
-router.post('/api/employees/:id/archive', (req, res) => {
+router.post('/api/employees/:id/archive', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const now = new Date().toISOString();
   const db = dbService.getDb();
@@ -889,6 +908,12 @@ router.post('/api/employees/:id/archive', (req, res) => {
         return;
       }
       debugLog(`✅ Employee archived successfully: ${id} (${this.changes} row(s) updated)`);
+      logAuditEvent({
+        action: 'employee_archived',
+        actor: req.authenticatedEmployee,
+        targetType: 'employee',
+        targetId: id,
+      });
       
       // Verify the archive was successful
       db.get('SELECT name, archived FROM employees WHERE id = ?', [id], (verifyErr, row) => {
@@ -905,7 +930,7 @@ router.post('/api/employees/:id/archive', (req, res) => {
 /**
  * Restore archived employee
  */
-router.post('/api/employees/:id/restore', (req, res) => {
+router.post('/api/employees/:id/restore', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const now = new Date().toISOString();
   const db = dbService.getDb();
@@ -924,6 +949,12 @@ router.post('/api/employees/:id/restore', (req, res) => {
         return;
       }
       debugLog('✅ Employee restored successfully:', id);
+      logAuditEvent({
+        action: 'employee_restored',
+        actor: req.authenticatedEmployee,
+        targetType: 'employee',
+        targetId: id,
+      });
       res.json({ message: 'Employee restored successfully' });
     }
   );
@@ -932,7 +963,7 @@ router.post('/api/employees/:id/restore', (req, res) => {
 /**
  * Permanently delete archived employee (hard delete)
  */
-router.delete('/api/employees/:id', (req, res) => {
+router.delete('/api/employees/:id', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   
@@ -965,6 +996,12 @@ router.delete('/api/employees/:id', (req, res) => {
         return;
       }
       debugLog('✅ Employee permanently deleted:', id);
+      logAuditEvent({
+        action: 'employee_deleted',
+        actor: req.authenticatedEmployee,
+        targetType: 'employee',
+        targetId: id,
+      });
       res.json({ message: 'Employee permanently deleted successfully' });
     });
   });
@@ -1025,7 +1062,7 @@ router.get('/api/current-employees', (req, res) => {
 /**
  * Update employee password (protected with rate limiting)
  */
-router.put('/api/employees/:id/password', passwordResetLimiter, async (req, res) => {
+router.put('/api/employees/:id/password', passwordResetLimiter, requireSelfOrRole('id', ['admin']), async (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
   const db = dbService.getDb();
@@ -1057,6 +1094,12 @@ router.put('/api/employees/:id/password', passwordResetLimiter, async (req, res)
         res.status(404).json({ error: 'Employee not found' });
         return;
       }
+      logAuditEvent({
+        action: 'employee_password_updated',
+        actor: req.authenticatedEmployee,
+        targetType: 'employee',
+        targetId: id,
+      });
       res.json({ message: 'Password updated successfully' });
     }
   );
@@ -1066,12 +1109,12 @@ router.put('/api/employees/:id/password', passwordResetLimiter, async (req, res)
  * Clear login attempts / unlock account (admin only)
  * Resets failed_login_count and login_locked_until so the user can log in again from web or app.
  */
-router.post('/api/employees/:id/clear-login-attempts', (req, res) => {
+router.post('/api/employees/:id/clear-login-attempts', requireAnyRole(['admin']), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
-  const userRole = (req.headers['x-user-role'] || '').toLowerCase();
+  const userRole = (req.auth?.role || '').toLowerCase();
 
-  if (!['admin', 'finance'].includes(userRole)) {
+  if (userRole !== 'admin') {
     return res.status(403).json({ error: 'Only admins can clear login attempts.' });
   }
 
@@ -1088,6 +1131,12 @@ router.post('/api/employees/:id/clear-login-attempts', (req, res) => {
         return res.status(404).json({ error: 'Employee not found' });
       }
       debugLog(`✅ Cleared login attempts for employee ${id}`);
+      logAuditEvent({
+        action: 'employee_login_attempts_cleared',
+        actor: req.authenticatedEmployee,
+        targetType: 'employee',
+        targetId: id,
+      });
       res.json({ message: 'Login attempts cleared. User can log in again.' });
     }
   );

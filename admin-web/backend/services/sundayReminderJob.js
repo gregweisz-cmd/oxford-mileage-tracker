@@ -10,6 +10,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 let reminderInterval = null;
 let isRunning = false;
 let lastReminderDate = null; // Track the last Sunday we sent reminders for
+const SUNDAY_REMINDER_EVENT_KEY = 'sunday_reminder';
 
 /**
  * Check if today is Sunday
@@ -61,6 +62,55 @@ function getTodayDateString() {
   return `${year}-${month}-${day}`;
 }
 
+function claimReminderSend(employeeId, dedupeKey) {
+  return new Promise((resolve, reject) => {
+    const db = dbService.getDb();
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT OR IGNORE INTO notification_send_log
+        (eventKey, recipientId, dedupeKey, status, claimedAt, updatedAt)
+       VALUES (?, ?, ?, 'claimed', ?, ?)`,
+      [SUNDAY_REMINDER_EVENT_KEY, employeeId, dedupeKey, now, now],
+      function(err) {
+        if (err) return reject(err);
+        resolve(this.changes === 1);
+      }
+    );
+  });
+}
+
+function markReminderSent(employeeId, dedupeKey, notificationId) {
+  return new Promise((resolve, reject) => {
+    const db = dbService.getDb();
+    const now = new Date().toISOString();
+    db.run(
+      `UPDATE notification_send_log
+       SET status = 'sent', notificationId = ?, sentAt = ?, updatedAt = ?
+       WHERE eventKey = ? AND recipientId = ? AND dedupeKey = ?`,
+      [notificationId || null, now, now, SUNDAY_REMINDER_EVENT_KEY, employeeId, dedupeKey],
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+}
+
+function releaseReminderClaim(employeeId, dedupeKey, error) {
+  return new Promise((resolve, reject) => {
+    const db = dbService.getDb();
+    db.run(
+      `DELETE FROM notification_send_log
+       WHERE eventKey = ? AND recipientId = ? AND dedupeKey = ? AND status = 'claimed'`,
+      [SUNDAY_REMINDER_EVENT_KEY, employeeId, dedupeKey],
+      (err) => {
+        if (err) return reject(err);
+        if (error) {
+          debugWarn(`⚠️ Released Sunday reminder claim for retry: ${employeeId} (${String(error.message || error).slice(0, 160)})`);
+        }
+        resolve();
+      }
+    );
+  });
+}
+
 /**
  * Send Sunday reminders to all eligible employees
  * Only sends once per Sunday
@@ -90,15 +140,26 @@ async function sendSundayReminders() {
 
     for (const employee of employees) {
       try {
+        const claimed = await claimReminderSend(employee.id, todayDateString);
+        if (!claimed) {
+          debugLog(`📅 Sunday reminder already sent or claimed for ${employee.id} on ${todayDateString}, skipping`);
+          continue;
+        }
+
         const notificationId = await notificationService.notifySundayReminder(employee.id);
         if (notificationId) {
+          await markReminderSent(employee.id, todayDateString, notificationId);
           sent++;
           debugLog(`✅ Sent Sunday reminder to ${employee.preferredName || employee.name} (${employee.email})`);
         } else {
+          await releaseReminderClaim(employee.id, todayDateString, new Error('Notification service returned no notification id'));
           failed++;
           debugWarn(`⚠️ Failed to send Sunday reminder to ${employee.preferredName || employee.name}`);
         }
       } catch (error) {
+        await releaseReminderClaim(employee.id, todayDateString, error).catch(releaseErr => {
+          debugError(`❌ Failed to release Sunday reminder claim for ${employee.id}:`, releaseErr);
+        });
         failed++;
         debugError(`❌ Error sending Sunday reminder to ${employee.preferredName || employee.name}:`, error);
       }

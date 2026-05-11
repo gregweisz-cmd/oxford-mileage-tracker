@@ -5,6 +5,7 @@
 
 import { Platform } from 'react-native';
 import { API_BASE_URL } from '../config/api';
+import { getAuthHeaders } from './authHeaders';
 
 export interface MonthlyReport {
   id: string;
@@ -29,6 +30,16 @@ export interface MonthlyReport {
 }
 
 export class MonthlyReportService {
+  private static async authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    return fetch(input, {
+      ...init,
+      headers: {
+        ...(await getAuthHeaders()),
+        ...(init.headers || {}),
+      },
+    });
+  }
+
   /**
    * Get monthly report for specific employee/month/year
    */
@@ -38,7 +49,7 @@ export class MonthlyReportService {
     month: number
   ): Promise<MonthlyReport | null> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/monthly-reports?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`
       );
       
@@ -67,7 +78,7 @@ export class MonthlyReportService {
         url += `&status=${status}`;
       }
       
-      const response = await fetch(url);
+      const response = await this.authenticatedFetch(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}`);
@@ -87,7 +98,7 @@ export class MonthlyReportService {
     report: Partial<MonthlyReport>
   ): Promise<{ success: boolean; reportId?: string; error?: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/expense-reports`, {
+      const response = await this.authenticatedFetch(`${API_BASE_URL}/expense-reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,7 +140,7 @@ export class MonthlyReportService {
     try {
       console.log(`📤 MonthlyReport: Submitting report ${reportId} for approval`);
       
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/expense-reports/${reportId}/status`,
         {
           method: 'PUT',
@@ -162,7 +173,7 @@ export class MonthlyReportService {
     comments?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/expense-reports/${reportId}/approval`,
         {
           method: 'PUT',
@@ -195,7 +206,7 @@ export class MonthlyReportService {
     comments?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/expense-reports/${reportId}/approval`,
         {
           method: 'PUT',
@@ -231,7 +242,7 @@ export class MonthlyReportService {
     comments: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(
+      const response = await this.authenticatedFetch(
         `${API_BASE_URL}/expense-reports/${reportId}/status`,
         {
           method: 'PUT',

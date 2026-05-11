@@ -59,6 +59,12 @@ const NOTIFICATION_EVENT_DEFINITIONS = {
     notificationType: 'report_approved',
     placeholders: ['monthName', 'actorName', 'reportKind'],
   },
+  report_rejected: {
+    displayName: 'Report rejected (employee)',
+    description: 'Notifies the employee when a supervisor rejects a legacy report.',
+    notificationType: 'report_rejected',
+    placeholders: ['monthName', 'actorName', 'employeeName'],
+  },
   sunday_reminder: {
     displayName: 'Sunday submission reminder',
     description: 'Weekly reminder to employees who have Sunday reminders enabled (scheduled job).',
