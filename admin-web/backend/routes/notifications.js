@@ -25,15 +25,83 @@ function parsePreferences(preferences) {
   return {};
 }
 
+function parseSessionEmployeeId(req) {
+  const authHeader = req.headers.authorization || '';
+  const match = /^Bearer session_(.+)_(\d+)$/.exec(authHeader);
+  return match?.[1] || null;
+}
+
+async function getAuthenticatedEmployee(req) {
+  const employeeId = parseSessionEmployeeId(req);
+  if (!employeeId) return null;
+
+  const employee = await dbService.getEmployeeById(employeeId);
+  if (!employee || employee.archived === 1) return null;
+  return employee;
+}
+
+async function requireAuthenticatedEmployee(req, res, next) {
+  try {
+    const employee = await getAuthenticatedEmployee(req);
+    if (!employee) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    req.authenticatedEmployee = employee;
+    return next();
+  } catch (error) {
+    debugError('❌ Error verifying notification session:', error);
+    return res.status(500).json({ error: 'Failed to verify session' });
+  }
+}
+
+function hasAdminAccess(employee) {
+  return String(employee?.role || '').toLowerCase() === 'admin';
+}
+
+function canAccessRecipient(req, recipientId) {
+  const requester = req.authenticatedEmployee;
+  if (!requester) return false;
+  if (requester.id === recipientId) return true;
+  return hasAdminAccess(requester);
+}
+
+function requireRecipientAccess(paramName) {
+  return async (req, res, next) => {
+    await requireAuthenticatedEmployee(req, res, () => {
+      if (!canAccessRecipient(req, req.params[paramName])) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      return next();
+    });
+  };
+}
+
+function requireNotificationAccess(req, res, next) {
+  requireAuthenticatedEmployee(req, res, () => {
+    const db = dbService.getDb();
+    db.get('SELECT recipientId FROM notifications WHERE id = ?', [req.params.id], (err, row) => {
+      if (err) {
+        debugError('❌ Error checking notification ownership:', err);
+        return res.status(500).json({ error: 'Failed to verify notification access' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Notification not found' });
+      }
+      if (!canAccessRecipient(req, row.recipientId)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      return next();
+    });
+  });
+}
+
 async function ensureAdminAccess(req, res) {
-  const requesterId =
-    String(req.headers['x-employee-id'] || req.body?.employeeId || req.query?.employeeId || '').trim();
-  if (!requesterId) {
-    res.status(400).json({ error: 'employeeId is required for admin actions' });
+  const requester = req.authenticatedEmployee || await getAuthenticatedEmployee(req);
+  if (!requester) {
+    res.status(401).json({ error: 'Authentication required' });
     return null;
   }
-  const requester = await dbService.getEmployeeById(requesterId);
-  if (!requester || String(requester.role || '').toLowerCase() !== 'admin') {
+  if (!hasAdminAccess(requester)) {
     res.status(403).json({ error: 'Admin access required' });
     return null;
   }
@@ -44,43 +112,50 @@ async function ensureAdminAccess(req, res) {
  * Get all notifications for a user (unified endpoint)
  * GET /api/notifications/:recipientId
  */
-router.get('/api/notifications/:recipientId', (req, res) => {
+router.get('/api/notifications/:recipientId', (req, res, next) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
   const { unreadOnly, limit } = req.query;
-  
-  let query = 'SELECT * FROM notifications WHERE recipientId = ?';
-  const params = [recipientId];
-  
-  if (unreadOnly === 'true') {
-    query += ' AND isRead = 0';
+
+  if (['email-recipients', 'preferences', 'test', 'test-email'].includes(recipientId)) {
+    return next();
   }
+
+  return requireRecipientAccess('recipientId')(req, res, () => {
   
-  query += ' ORDER BY createdAt DESC';
-  
-  if (limit) {
-    const limitNum = parseInt(limit, 10);
-    if (!isNaN(limitNum) && limitNum > 0) {
-      query += ` LIMIT ${limitNum}`;
-    }
-  }
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      debugError('❌ Error fetching notifications:', err);
-      res.status(500).json({ error: err.message });
-      return;
+    let query = 'SELECT * FROM notifications WHERE recipientId = ?';
+    const params = [recipientId];
+    
+    if (unreadOnly === 'true') {
+      query += ' AND isRead = 0';
     }
     
-    // Parse metadata JSON if present
-    const notifications = rows.map(row => ({
-      ...row,
-      metadata: row.metadata ? JSON.parse(row.metadata) : null,
-      isRead: row.isRead === 1,
-      isDismissible: row.isDismissible === 1,
-    }));
+    query += ' ORDER BY createdAt DESC';
     
-    res.json(notifications);
+    if (limit) {
+      const limitNum = parseInt(limit, 10);
+      if (!isNaN(limitNum) && limitNum > 0) {
+        query += ` LIMIT ${limitNum}`;
+      }
+    }
+    
+    db.all(query, params, (err, rows) => {
+      if (err) {
+        debugError('❌ Error fetching notifications:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      // Parse metadata JSON if present
+      const notifications = rows.map(row => ({
+        ...row,
+        metadata: row.metadata ? JSON.parse(row.metadata) : null,
+        isRead: row.isRead === 1,
+        isDismissible: row.isDismissible === 1,
+      }));
+      
+      res.json(notifications);
+    });
   });
 });
 
@@ -89,7 +164,7 @@ router.get('/api/notifications/:recipientId', (req, res) => {
  * GET /api/notifications/:recipientId/count
  * Uses lenient rate limiter for frequent polling
  */
-router.get('/api/notifications/:recipientId/count', notificationPollingLimiter, (req, res) => {
+router.get('/api/notifications/:recipientId/count', notificationPollingLimiter, requireRecipientAccess('recipientId'), (req, res) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
   
@@ -112,7 +187,7 @@ router.get('/api/notifications/:recipientId/count', notificationPollingLimiter, 
  * Mark notification as read
  * PUT /api/notifications/:id/read
  */
-router.put('/api/notifications/:id/read', (req, res) => {
+router.put('/api/notifications/:id/read', requireNotificationAccess, (req, res) => {
   const db = dbService.getDb();
   const { id } = req.params;
   const now = new Date().toISOString();
@@ -141,7 +216,7 @@ router.put('/api/notifications/:id/read', (req, res) => {
  * Mark all notifications as read for a user
  * PUT /api/notifications/:recipientId/read-all
  */
-router.put('/api/notifications/:recipientId/read-all', (req, res) => {
+router.put('/api/notifications/:recipientId/read-all', requireRecipientAccess('recipientId'), (req, res) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
   const now = new Date().toISOString();
@@ -168,7 +243,7 @@ router.put('/api/notifications/:recipientId/read-all', (req, res) => {
  * Clear all read dismissible notifications for a user
  * DELETE /api/notifications/:recipientId/clear-all
  */
-router.delete('/api/notifications/:recipientId/clear-all', (req, res) => {
+router.delete('/api/notifications/:recipientId/clear-all', requireRecipientAccess('recipientId'), (req, res) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
 
@@ -194,7 +269,7 @@ router.delete('/api/notifications/:recipientId/clear-all', (req, res) => {
  * Delete/dismiss a notification
  * DELETE /api/notifications/:id
  */
-router.delete('/api/notifications/:id', (req, res) => {
+router.delete('/api/notifications/:id', requireNotificationAccess, (req, res) => {
   const db = dbService.getDb();
   const { id } = req.params;
   
@@ -218,13 +293,17 @@ router.delete('/api/notifications/:id', (req, res) => {
  * Update user's Sunday reminder preference
  * PUT /api/notifications/preferences/sunday-reminder
  */
-router.put('/api/notifications/preferences/sunday-reminder', (req, res) => {
+router.put('/api/notifications/preferences/sunday-reminder', requireAuthenticatedEmployee, (req, res) => {
   const db = dbService.getDb();
   const { employeeId, enabled } = req.body;
   
   if (!employeeId || typeof enabled !== 'boolean') {
     res.status(400).json({ error: 'employeeId and enabled (boolean) are required' });
     return;
+  }
+
+  if (!canAccessRecipient(req, employeeId)) {
+    return res.status(403).json({ error: 'Access denied' });
   }
   
   db.run(
@@ -251,12 +330,16 @@ router.put('/api/notifications/preferences/sunday-reminder', (req, res) => {
  * Create a test notification (for testing purposes)
  * POST /api/notifications/test
  */
-router.post('/api/notifications/test', async (req, res) => {
+router.post('/api/notifications/test', requireAuthenticatedEmployee, async (req, res) => {
   const { recipientId, recipientRole, type, title, message } = req.body;
   
   if (!recipientId || !recipientRole || !type || !title || !message) {
     res.status(400).json({ error: 'recipientId, recipientRole, type, title, and message are required' });
     return;
+  }
+
+  if (!hasAdminAccess(req.authenticatedEmployee)) {
+    return res.status(403).json({ error: 'Admin access required' });
   }
   
   try {
@@ -284,10 +367,14 @@ router.post('/api/notifications/test', async (req, res) => {
  * Send a test email to the current user.
  * POST /api/notifications/test-email
  */
-router.post('/api/notifications/test-email', async (req, res) => {
+router.post('/api/notifications/test-email', requireAuthenticatedEmployee, async (req, res) => {
   const { employeeId } = req.body;
   if (!employeeId) {
     return res.status(400).json({ error: 'employeeId is required' });
+  }
+
+  if (!canAccessRecipient(req, employeeId)) {
+    return res.status(403).json({ error: 'Access denied' });
   }
 
   try {

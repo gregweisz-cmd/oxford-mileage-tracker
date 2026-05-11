@@ -267,7 +267,9 @@ const EmployeeManagement: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/employees`);
+      const response = await fetch(`${API_BASE_URL}/api/employees`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      });
       if (!response.ok) throw new Error('Failed to fetch employees');
       
       const employeesData = await response.json();
@@ -293,7 +295,9 @@ const EmployeeManagement: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/employees/archived`);
+      const response = await fetch(`${API_BASE_URL}/api/employees/archived`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      });
       if (!response.ok) throw new Error('Failed to fetch archived employees');
       
       const employeesData = await response.json();

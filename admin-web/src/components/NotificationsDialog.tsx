@@ -139,7 +139,9 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}`);
+      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      });
       if (response.ok) {
         const data = await response.json();
         setNotifications(data || []);
@@ -159,7 +161,9 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     
     try {
       // Fetch employee data to get sundayReminderEnabled preference
-      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
+      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      });
       if (response.ok) {
         const employee = await response.json();
         setSundayReminderEnabled(employee.sundayReminderEnabled !== 0);
@@ -173,6 +177,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {
         method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
       });
       if (response.ok) {
         const now = new Date().toISOString();
@@ -193,6 +198,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/read-all`, {
         method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
       });
       if (response.ok) {
         const now = new Date().toISOString();
@@ -210,6 +216,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}`, {
         method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
       });
       if (response.ok) {
         const nextNotifications = notifications.filter(n => n.id !== notificationId);
@@ -245,6 +252,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
         },
         body: JSON.stringify({
           employeeId,

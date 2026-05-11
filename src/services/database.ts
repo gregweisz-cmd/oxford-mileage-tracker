@@ -2543,6 +2543,7 @@ export class DatabaseService {
       category: tracking.category,
       hours: tracking.hours,
       description: tracking.description || '',
+      costCenter: tracking.costCenter || '',
       createdAt: new Date(now),
       updatedAt: new Date(now)
     };

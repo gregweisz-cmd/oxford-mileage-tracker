@@ -42,19 +42,11 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
         // Store token
         localStorage.setItem('authToken', token);
 
-        // Get employee data from token (token format: session_${employeeId}_${timestamp})
-        // Extract employee ID from token
-        const tokenParts = token.split('_');
-        if (tokenParts.length < 2) {
-          throw new Error('Invalid token format');
-        }
-        const employeeId = tokenParts[1];
+        debugLog('🔍 Verifying OAuth session token');
 
-        debugLog('🔍 Fetching employee data for:', employeeId);
-
-        // Fetch employee data from backend
+        // Verify the token and use the canonical auth response shape.
         const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-        const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -67,7 +59,8 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
           throw new Error(`Failed to fetch employee data: ${response.status}`);
         }
 
-        const employee = await response.json();
+        const verifiedSession = await response.json();
+        const employee = verifiedSession.employee;
         
         if (!employee || !employee.id) {
           throw new Error('Employee data not found');

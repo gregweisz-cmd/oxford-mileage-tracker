@@ -144,7 +144,9 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
       // Load employee data from API
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
       const [employeeResponse, costCenterResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/employees/${employeeId}`),
+        fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+        }),
         fetch(`${API_BASE_URL}/api/cost-centers`),
       ]);
       if (employeeResponse.ok) {
@@ -467,6 +469,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
         },
         body: JSON.stringify({ employeeId }),
       });

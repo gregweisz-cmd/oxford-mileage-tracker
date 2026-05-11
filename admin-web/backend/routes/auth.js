@@ -15,6 +15,12 @@ const { authLimiter } = require('../middleware/rateLimiter');
 const SUPER_ADMIN_EMAIL = 'greg.weisz@oxfordhouse.org';
 const ALLOWED_ROLES = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
 
+function parseSessionToken(token = '') {
+  const match = /^session_(.+)_(\d+)$/.exec(token);
+  if (!match) return null;
+  return { employeeId: match[1], issuedAt: Number(match[2]) };
+}
+
 function getEffectiveRole(employee, allowedRoles = ALLOWED_ROLES) {
   const email = (employee && employee.email || '').trim().toLowerCase();
   if (email === SUPER_ADMIN_EMAIL) return 'admin';
@@ -238,8 +244,8 @@ router.get('/api/auth/verify', (req, res) => {
     return res.status(401).json({ error: 'No token provided' });
   }
   
-  // Extract employee ID from token (simple parsing for now)
-  const employeeId = token.split('_')[1];
+  const parsedToken = parseSessionToken(token);
+  const employeeId = parsedToken?.employeeId;
   
   if (!employeeId) {
     debugLog('❌ Invalid token format for verification');
@@ -254,6 +260,11 @@ router.get('/api/auth/verify', (req, res) => {
       if (err || !employee) {
         debugLog('❌ Employee not found for verification:', employeeId);
         return res.status(401).json({ error: 'Invalid session' });
+      }
+
+      if (employee.archived === 1) {
+        debugLog('❌ Archived employee attempted session verification:', employeeId);
+        return res.status(403).json({ error: 'This account is archived. Please contact your administrator.' });
       }
       
       debugLog(`✅ Session verified for ${employee.email} (employeeId: ${employeeId})`);
@@ -412,13 +423,15 @@ router.post('/api/employee-login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      // Reset failed attempt count on success (mobile)
+      // Update lastLoginAt and reset failed attempt count on success (mobile)
+      const now = new Date().toISOString();
       await new Promise((resolve) => {
         db.run(
-          'UPDATE employees SET failed_login_count = 0, login_locked_until = NULL, updatedAt = ? WHERE id = ?',
-          [new Date().toISOString(), employee.id],
+          'UPDATE employees SET lastLoginAt = ?, failed_login_count = 0, login_locked_until = NULL, updatedAt = ? WHERE id = ?',
+          [now, now, employee.id],
           function(updateErr) {
-            if (updateErr) debugError('Failed to reset login attempts (mobile):', updateErr);
+            if (updateErr) debugError('Failed to update lastLoginAt/reset login attempts (mobile):', updateErr);
+            else employee.lastLoginAt = now;
             resolve();
           }
         );
@@ -445,6 +458,7 @@ router.post('/api/employee-login', async (req, res) => {
       // Return employee data in format expected by mobile app
       res.json({
         ...employeeData,
+        lastLoginAt: now,
         costCenters,
         selectedCostCenters
       });

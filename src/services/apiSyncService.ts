@@ -557,7 +557,7 @@ export class ApiSyncService {
       // to avoid unnecessary API calls during general sync
       
       await this.syncEmployeesToLocal(employees, employeeId);
-      await this.syncMileageEntriesToLocal(mappedMileageEntries);
+      await this.syncMileageEntriesToLocal(mappedMileageEntries, employeeId ?? undefined, orphanCleanup);
       await this.syncReceiptsToLocal(mappedReceipts, employeeId ?? undefined, orphanCleanup);
       await this.syncTimeTrackingToLocal(mappedTimeTracking, employeeId ?? undefined, orphanCleanup);
       await this.syncSavedAddressesToLocal(mappedSavedAddresses, employeeId ?? undefined);
@@ -1429,6 +1429,7 @@ export class ApiSyncService {
             body: JSON.stringify({
               id: r.id,
               employeeId: employeeIdToSend,
+              vehicleId: r.vehicleId || '',
               date: dateToSend,
               odometerReading: r.odometerReading,
               notes: r.notes || ''
@@ -1768,10 +1769,23 @@ export class ApiSyncService {
         id: entry.id,
         employeeId: entry.employeeId,
         oxfordHouseId: entry.oxfordHouseId,
+        vehicleId: entry.vehicleId || undefined,
         date: this.parseDateSafe(entry.date),
         odometerReading: entry.odometerReading,
         startLocation: entry.startLocation,
         endLocation: entry.endLocation,
+        startLocationDetails: entry.startLocationName || entry.startLocationAddress ? {
+          name: entry.startLocationName || entry.startLocation || '',
+          address: entry.startLocationAddress || entry.startLocation || '',
+          latitude: entry.startLocationLat || undefined,
+          longitude: entry.startLocationLng || undefined,
+        } : undefined,
+        endLocationDetails: entry.endLocationName || entry.endLocationAddress ? {
+          name: entry.endLocationName || entry.endLocation || '',
+          address: entry.endLocationAddress || entry.endLocation || '',
+          latitude: entry.endLocationLat || undefined,
+          longitude: entry.endLocationLng || undefined,
+        } : undefined,
         purpose: entry.purpose,
         miles: entry.miles,
         notes: entry.notes,
@@ -1811,6 +1825,11 @@ export class ApiSyncService {
       description: receipt.description,
       category: receipt.category,
       imageUri: receipt.imageUri || '',
+      fileType: receipt.fileType || 'image',
+      costCenter: receipt.costCenter || '',
+      splitGroupId: receipt.splitGroupId || '',
+      splitAllocationIndex: Number(receipt.splitAllocationIndex || 0),
+      splitAllocationCount: Number(receipt.splitAllocationCount || 0),
       createdAt: new Date(receipt.createdAt),
       updatedAt: new Date(receipt.updatedAt)
     }));
@@ -1938,6 +1957,7 @@ export class ApiSyncService {
     return (data || []).map((r: any) => ({
       id: r.id,
       employeeId: r.employeeId,
+      vehicleId: r.vehicleId || undefined,
       date: this.parseDateSafe(r.date),
       odometerReading: Number(r.odometerReading) || 0,
       notes: r.notes || undefined,
@@ -1959,15 +1979,15 @@ export class ApiSyncService {
         try {
           const dateObj = r.date instanceof Date ? r.date : new Date(r.date);
           const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-          const existing = await DatabaseService.getDailyOdometerReading(r.employeeId, dateObj);
+          const existing = await DatabaseService.getDailyOdometerReading(r.employeeId, dateObj, r.vehicleId);
           if (existing) {
             await DatabaseService.updateDailyOdometerReadingByEmployeeAndDate(r.employeeId, dateStr, {
               odometerReading: r.odometerReading,
               notes: r.notes
-            });
+            }, r.vehicleId);
           } else {
             await DatabaseService.createDailyOdometerReading(
-              { id: r.id, employeeId: r.employeeId, date: dateObj, odometerReading: r.odometerReading, notes: r.notes },
+              { id: r.id, employeeId: r.employeeId, vehicleId: r.vehicleId, date: dateObj, odometerReading: r.odometerReading, notes: r.notes },
               true
             );
           }
@@ -2197,17 +2217,29 @@ export class ApiSyncService {
   /**
    * Sync mileage entries from backend to local database
    */
-  private static async syncMileageEntriesToLocal(mileageEntries: MileageEntry[]): Promise<void> {
+  private static async syncMileageEntriesToLocal(
+    mileageEntries: MileageEntry[],
+    localEmployeeId?: string,
+    orphanCleanup: OrphanCleanupScope = 'all'
+  ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${mileageEntries.length} mileage entries to local database...`);
       
       const { getDatabaseConnection } = await import('../utils/databaseConnection');
       const database = await getDatabaseConnection();
+      const { SyncIntegrationService } = await import('./syncIntegrationService');
+      const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('mileageEntry');
+      const pendingUpsertIds = SyncIntegrationService.getPendingUpsertIds('mileageEntry');
       
       for (const entry of mileageEntries) {
         try {
           if (!entry.id) {
             console.warn(`⚠️ ApiSync: Skipping mileage entry without ID`);
+            continue;
+          }
+
+          if (pendingDeletionIds.has(entry.id)) {
+            debugLog(`⚠️ ApiSync: Skipping mileage entry ${entry.id} - pending deletion in sync queue`);
             continue;
           }
           
@@ -2231,18 +2263,29 @@ export class ApiSyncService {
             // Update existing entry to ensure it matches backend
             await database.runAsync(
               `UPDATE mileage_entries SET
-                employeeId = ?, oxfordHouseId = ?, costCenter = ?, date = ?, odometerReading = ?,
-                startLocation = ?, endLocation = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?,
+                employeeId = ?, oxfordHouseId = ?, costCenter = ?, vehicleId = ?, date = ?, odometerReading = ?,
+                startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?,
+                startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?,
+                endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?,
                 isGpsTracked = ?, updatedAt = ?
               WHERE id = ?`,
               [
                 entry.employeeId,
                 entry.oxfordHouseId,
                 entry.costCenter || '',
+                entry.vehicleId || '',
                 dateOnly,
                 entry.odometerReading,
                 entry.startLocation,
                 entry.endLocation,
+                entry.startLocationDetails?.name || '',
+                entry.startLocationDetails?.address || '',
+                entry.startLocationDetails?.latitude || null,
+                entry.startLocationDetails?.longitude || null,
+                entry.endLocationDetails?.name || '',
+                entry.endLocationDetails?.address || '',
+                entry.endLocationDetails?.latitude || null,
+                entry.endLocationDetails?.longitude || null,
                 entry.purpose,
                 entry.miles,
                 entry.notes || '',
@@ -2257,19 +2300,30 @@ export class ApiSyncService {
             // Insert new entry with the SAME ID from backend to avoid duplicates
             await database.runAsync(
               `INSERT INTO mileage_entries (
-                id, employeeId, oxfordHouseId, costCenter, date, odometerReading,
-                startLocation, endLocation, purpose, miles, notes, hoursWorked,
+                id, employeeId, oxfordHouseId, costCenter, vehicleId, date, odometerReading,
+                startLocation, endLocation, startLocationName, startLocationAddress,
+                startLocationLat, startLocationLng, endLocationName, endLocationAddress,
+                endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked,
                 isGpsTracked, createdAt, updatedAt
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 entry.id, // Preserve backend ID
                 entry.employeeId,
                 entry.oxfordHouseId,
                 entry.costCenter || '',
+                entry.vehicleId || '',
                 dateOnly, // Store as YYYY-MM-DD only
                 entry.odometerReading,
                 entry.startLocation,
                 entry.endLocation,
+                entry.startLocationDetails?.name || '',
+                entry.startLocationDetails?.address || '',
+                entry.startLocationDetails?.latitude || null,
+                entry.startLocationDetails?.longitude || null,
+                entry.endLocationDetails?.name || '',
+                entry.endLocationDetails?.address || '',
+                entry.endLocationDetails?.latitude || null,
+                entry.endLocationDetails?.longitude || null,
                 entry.purpose,
                 entry.miles,
                 entry.notes || '',
@@ -2283,6 +2337,44 @@ export class ApiSyncService {
           }
         } catch (error) {
           console.error(`❌ ApiSync: Error syncing entry ${entry.id}:`, error);
+        }
+      }
+
+      if (localEmployeeId) {
+        const backendIds = mileageEntries.map(e => e.id).filter(Boolean);
+        if (backendIds.length === 0) {
+          debugLog(
+            `📥 ApiSync: Backend returned 0 mileage entries for employee ${localEmployeeId}; keeping local entries (no orphan cleanup)`
+          );
+        } else {
+          let localEntries: Array<{ id: string }>;
+          if (orphanCleanup === 'all') {
+            localEntries = (await database.getAllAsync(
+              'SELECT id FROM mileage_entries WHERE employeeId = ?',
+              [localEmployeeId]
+            )) as Array<{ id: string }>;
+          } else {
+            const { start, end } = monthDateBounds(orphanCleanup.month, orphanCleanup.year);
+            localEntries = (await database.getAllAsync(
+              'SELECT id FROM mileage_entries WHERE employeeId = ? AND date >= ? AND date <= ?',
+              [localEmployeeId, start, end]
+            )) as Array<{ id: string }>;
+          }
+
+          let deletedCount = 0;
+          for (const localEntry of localEntries) {
+            if (
+              !backendIds.includes(localEntry.id) &&
+              !pendingDeletionIds.has(localEntry.id) &&
+              !pendingUpsertIds.has(localEntry.id)
+            ) {
+              await database.runAsync('DELETE FROM mileage_entries WHERE id = ?', [localEntry.id]);
+              deletedCount += 1;
+            }
+          }
+          if (deletedCount > 0) {
+            debugLog(`🗑️ ApiSync: Removed ${deletedCount} local mileage entry/entries not on backend (employee ${localEmployeeId})`);
+          }
         }
       }
       
@@ -2335,7 +2427,7 @@ export class ApiSyncService {
             await database.runAsync(
               `UPDATE receipts SET
                 employeeId = ?, date = ?, amount = ?, vendor = ?, description = ?, 
-                category = ?, imageUri = ?, costCenter = ?, splitGroupId = ?, splitAllocationIndex = ?, splitAllocationCount = ?, updatedAt = ?
+                category = ?, imageUri = ?, fileType = ?, costCenter = ?, splitGroupId = ?, splitAllocationIndex = ?, splitAllocationCount = ?, updatedAt = ?
               WHERE id = ?`,
               [
                 receipt.employeeId,
@@ -2345,6 +2437,7 @@ export class ApiSyncService {
                 receipt.description || '',
                 receipt.category || '',
                 receipt.imageUri || '',
+                receipt.fileType || 'image',
                 receipt.costCenter || '',
                 receipt.splitGroupId || '',
                 receipt.splitAllocationIndex || 0,
@@ -2358,8 +2451,8 @@ export class ApiSyncService {
             // Insert new receipt with the SAME ID from backend to avoid duplicates
             await database.runAsync(
               `INSERT INTO receipts (
-                id, employeeId, date, amount, vendor, description, category, imageUri, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                id, employeeId, date, amount, vendor, description, category, imageUri, fileType, costCenter, splitGroupId, splitAllocationIndex, splitAllocationCount, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 receipt.id, // Preserve backend ID
                 receipt.employeeId,
@@ -2369,6 +2462,7 @@ export class ApiSyncService {
                 receipt.description || '',
                 receipt.category || '',
                 receipt.imageUri || '',
+                receipt.fileType || 'image',
                 receipt.costCenter || '',
                 receipt.splitGroupId || '',
                 receipt.splitAllocationIndex || 0,
@@ -2726,7 +2820,7 @@ export class ApiSyncService {
       );
       
       if (mappedMileageEntries.length > 0) {
-        await this.syncMileageEntriesToLocal(mappedMileageEntries);
+        await this.syncMileageEntriesToLocal(mappedMileageEntries, employeeId);
       }
       
       debugLog(`✅ ApiSync: Mileage entries sync completed for employee ${employeeId}: ${mappedMileageEntries.length} entries`);

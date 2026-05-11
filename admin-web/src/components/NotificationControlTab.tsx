@@ -76,6 +76,7 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
     () => ({
       'Content-Type': 'application/json',
       'x-employee-id': adminId,
+      Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
     }),
     [adminId]
   );
@@ -86,8 +87,8 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
     try {
       const q = `employeeId=${encodeURIComponent(adminId)}`;
       const [evRes, rcRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/admin/notification-events?${q}`, { headers: { 'x-employee-id': adminId } }),
-        fetch(`${API_BASE_URL}/api/notifications/email-recipients?${q}`, { headers: { 'x-employee-id': adminId } }),
+        fetch(`${API_BASE_URL}/api/admin/notification-events?${q}`, { headers: adminHeaders() }),
+        fetch(`${API_BASE_URL}/api/notifications/email-recipients?${q}`, { headers: adminHeaders() }),
       ]);
 
       if (!evRes.ok) {
@@ -134,7 +135,7 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
     } finally {
       setLoading(false);
     }
-  }, [adminId, showMessage]);
+  }, [adminId, adminHeaders, showMessage]);
 
   useEffect(() => {
     void loadAll();
@@ -239,7 +240,7 @@ export const NotificationControlTab: React.FC<NotificationControlTabProps> = ({ 
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/notifications/email-recipients/${id}?employeeId=${encodeURIComponent(adminId)}`,
-        { method: 'DELETE', headers: { 'x-employee-id': adminId } }
+        { method: 'DELETE', headers: adminHeaders() }
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Failed to delete');

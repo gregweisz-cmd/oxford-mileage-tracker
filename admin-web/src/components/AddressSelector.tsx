@@ -112,7 +112,11 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       // Load employee's base addresses (no-cache so we always get latest after User Settings save)
       const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
         cache: 'no-store',
-        headers: { Pragma: 'no-cache', 'Cache-Control': 'no-cache' },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
+          Pragma: 'no-cache',
+          'Cache-Control': 'no-cache',
+        },
       });
       let baseAddress = '';
       

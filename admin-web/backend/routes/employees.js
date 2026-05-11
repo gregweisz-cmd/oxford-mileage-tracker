@@ -14,6 +14,43 @@ const { passwordResetLimiter } = require('../middleware/rateLimiter');
 const externalEmployeeSync = require('../services/externalEmployeeSync');
 const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
 
+function withoutSensitiveEmployeeFields(employee) {
+  if (!employee || typeof employee !== 'object') return employee;
+  const { password, ...safeEmployee } = employee;
+  return safeEmployee;
+}
+
+function requireAuthenticatedSession(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const match = /^Bearer session_(.+)_(\d+)$/.exec(authHeader);
+  const employeeId = match?.[1];
+
+  if (!employeeId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const db = dbService.getDb();
+  db.get(
+    'SELECT id, role, email, archived FROM employees WHERE id = ?',
+    [employeeId],
+    (err, employee) => {
+      if (err) {
+        debugError('❌ Error verifying employee API session:', err);
+        return res.status(500).json({ error: 'Failed to verify session' });
+      }
+      if (!employee) {
+        return res.status(401).json({ error: 'Invalid session' });
+      }
+      if (employee.archived === 1) {
+        return res.status(403).json({ error: 'This account is archived. Please contact your administrator.' });
+      }
+
+      req.authenticatedEmployee = employee;
+      next();
+    }
+  );
+}
+
 /**
  * Get all employees with optional filters
  * GET /api/employees
@@ -30,7 +67,7 @@ const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer'
  * GET /api/employees?supervisorId=supervisor-123&includeArchived=false
  * GET /api/employees?search=john&position=manager
  */
-router.get('/api/employees', (req, res) => {
+router.get('/api/employees', requireAuthenticatedSession, (req, res) => {
   const { supervisorId, position, includeArchived, search, archived } = req.query;
   const db = dbService.getDb();
   
@@ -123,20 +160,20 @@ router.get('/api/employees', (req, res) => {
           }
         }
         
-        return {
+        return withoutSensitiveEmployeeFields({
           ...row,
           costCenters,
           selectedCostCenters,
           permissions
-        };
+        });
       } catch (parseErr) {
         debugError('❌ Error parsing employee data for', row.id, ':', parseErr);
-        return {
+        return withoutSensitiveEmployeeFields({
           ...row,
           costCenters: ['Program Services'],
           selectedCostCenters: ['Program Services'],
           permissions: []
-        };
+        });
       }
     });
     
@@ -147,7 +184,7 @@ router.get('/api/employees', (req, res) => {
 /**
  * Get archived employees
  */
-router.get('/api/employees/archived', (req, res) => {
+router.get('/api/employees/archived', requireAuthenticatedSession, (req, res) => {
   const db = dbService.getDb();
   db.all('SELECT * FROM employees WHERE archived = 1 ORDER BY name', (err, rows) => {
     if (err) {
@@ -195,19 +232,19 @@ router.get('/api/employees/archived', (req, res) => {
           }
         }
         
-        return {
+        return withoutSensitiveEmployeeFields({
           ...row,
           costCenters,
           selectedCostCenters,
           permissions
-        };
+        });
       } catch (parseErr) {
-        return {
+        return withoutSensitiveEmployeeFields({
           ...row,
           costCenters: ['Program Services'],
           selectedCostCenters: ['Program Services'],
           permissions: []
-        };
+        });
       }
     });
     
@@ -305,7 +342,7 @@ router.post('/api/employees/dedupe-by-email', asyncHandler(async (req, res) => {
 /**
  * Get employee by ID
  */
-router.get('/api/employees/:id', (req, res) => {
+router.get('/api/employees/:id', requireAuthenticatedSession, (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   db.get('SELECT * FROM employees WHERE id = ?', [id], (err, row) => {
@@ -351,12 +388,12 @@ router.get('/api/employees/:id', (req, res) => {
       debugError('❌ Error parsing employee JSON fields:', parseErr);
     }
 
-    res.json({
+    res.json(withoutSensitiveEmployeeFields({
       ...row,
       costCenters,
       selectedCostCenters,
       permissions
-    });
+    }));
   });
 });
 
@@ -995,19 +1032,19 @@ router.get('/api/current-employees', (req, res) => {
         // Use costCenters as selectedCostCenters if selectedCostCenters doesn't exist
         selectedCostCenters = [...costCenters];
         
-        return {
+        return withoutSensitiveEmployeeFields({
           ...row,
           costCenters,
           selectedCostCenters,
           defaultCostCenter: costCenters[0] || 'Program Services'
-        };
+        });
       } catch (parseErr) {
-        return {
+        return withoutSensitiveEmployeeFields({
           ...row,
           costCenters: ['Program Services'],
           selectedCostCenters: ['Program Services'],
           defaultCostCenter: 'Program Services'
-        };
+        });
       }
     });
     

@@ -130,11 +130,16 @@ class RateLimitedApiService {
     // header so 300+ staff sharing a single office egress IP each get their
     // own bucket instead of all colliding in one IP-based bucket.
     let employeeIdHeader: Record<string, string> = {};
+    let authHeader: Record<string, string> = {};
     try {
       if (typeof localStorage !== 'undefined') {
         const id = localStorage.getItem('currentEmployeeId');
         if (id && id.trim().length > 0) {
           employeeIdHeader = { 'x-employee-id': id.trim() };
+        }
+        const authToken = localStorage.getItem('authToken');
+        if (authToken && authToken.trim().length > 0) {
+          authHeader = { Authorization: `Bearer ${authToken.trim()}` };
         }
       }
     } catch {
@@ -147,6 +152,7 @@ class RateLimitedApiService {
       headers: {
         'Content-Type': 'application/json',
         ...employeeIdHeader,
+        ...authHeader,
         ...item.options.headers,
       },
     });

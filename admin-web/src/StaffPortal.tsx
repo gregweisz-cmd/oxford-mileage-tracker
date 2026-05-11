@@ -1558,11 +1558,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       try {
         // Fetch employee details from backend
-        const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${backendEmployeeId}`);
+        const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${backendEmployeeId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+        });
         if (!employeeResponse.ok) {
           // If employee not found, silently try with fallback ID
           debugLog(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
-          const fallbackResponse = await fetch(`${API_BASE_URL}/api/employees/mggwglbfk9dij3oze8l`);
+          const fallbackResponse = await fetch(`${API_BASE_URL}/api/employees/mggwglbfk9dij3oze8l`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+          });
           if (fallbackResponse.ok) {
             employee = await fallbackResponse.json();
             debugLog('✅ Successfully loaded fallback employee data for:', employee.name);

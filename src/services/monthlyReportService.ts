@@ -39,7 +39,7 @@ export class MonthlyReportService {
   ): Promise<MonthlyReport | null> {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/monthly-reports/employee/${employeeId}/${year}/${month}`
+        `${API_BASE_URL}/monthly-reports?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`
       );
       
       if (!response.ok) {
@@ -87,12 +87,22 @@ export class MonthlyReportService {
     report: Partial<MonthlyReport>
   ): Promise<{ success: boolean; reportId?: string; error?: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/monthly-reports`, {
+      const response = await fetch(`${API_BASE_URL}/expense-reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(report),
+        body: JSON.stringify({
+          employeeId: report.employeeId,
+          month: report.month,
+          year: report.year,
+          status: report.status || 'draft',
+          reportData: (report as any).reportData || {
+            totalMiles: report.totalMiles || 0,
+            totalExpenses: report.totalExpenses || 0,
+            comments: report.comments || '',
+          },
+        }),
       });
       
       if (!response.ok) {
@@ -120,13 +130,13 @@ export class MonthlyReportService {
       console.log(`📤 MonthlyReport: Submitting report ${reportId} for approval`);
       
       const response = await fetch(
-        `${API_BASE_URL}/monthly-reports/${reportId}/submit`,
+        `${API_BASE_URL}/expense-reports/${reportId}/status`,
         {
-          method: 'POST',
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ submittedBy }),
+          body: JSON.stringify({ status: 'submitted', submittedBy }),
         }
       );
       
@@ -153,13 +163,13 @@ export class MonthlyReportService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/monthly-reports/${reportId}/approve`,
+        `${API_BASE_URL}/expense-reports/${reportId}/approval`,
         {
-          method: 'POST',
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ approvedBy, comments }),
+          body: JSON.stringify({ action: 'approve', approverId: approvedBy, comments }),
         }
       );
       
@@ -186,13 +196,17 @@ export class MonthlyReportService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/monthly-reports/${reportId}/reject`,
+        `${API_BASE_URL}/expense-reports/${reportId}/approval`,
         {
-          method: 'POST',
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ rejectedBy, rejectionReason, comments }),
+          body: JSON.stringify({
+            action: 'reject',
+            approverId: rejectedBy,
+            comments: comments || rejectionReason,
+          }),
         }
       );
       
@@ -218,13 +232,13 @@ export class MonthlyReportService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/monthly-reports/${reportId}/request-revision`,
+        `${API_BASE_URL}/expense-reports/${reportId}/status`,
         {
-          method: 'POST',
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ reviewedBy, comments }),
+          body: JSON.stringify({ status: 'needs_revision', reviewedBy, comments }),
         }
       );
       

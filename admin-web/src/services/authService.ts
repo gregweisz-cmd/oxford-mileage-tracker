@@ -85,24 +85,21 @@ export class AuthService {
     this.setLoading(true);
     
     try {
-      // First, get all employees to find the one with matching email
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-      const response = await fetch(`${API_BASE_URL}/api/employees`);
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
       if (!response.ok) {
-        throw new Error('Failed to fetch employees');
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Login failed');
       }
 
-      const employees = await response.json();
-      const employee = employees.find((emp: any) => 
-        emp.email.toLowerCase() === email.toLowerCase()
-      );
-
-      if (!employee) {
-        throw new Error('Invalid email or password');
-      }
-
-      // For now, we'll skip password validation since passwords aren't fully implemented
-      // In production, you'd hash and compare passwords properly
+      const data = await response.json();
+      const employee = data.employee;
+      if (!employee || !data.token) throw new Error('Login failed');
       
       // Get role from database (stored separately from position)
       // Role is the login role (employee, supervisor, admin, finance), not the job title
@@ -138,6 +135,9 @@ export class AuthService {
 
       // Store in localStorage for persistence
       localStorage.setItem('authUser', JSON.stringify(user));
+      localStorage.setItem('authToken', data.token);
+      localStorage.setItem('currentEmployeeId', user.id);
+      localStorage.setItem('employeeData', JSON.stringify(employee));
 
       return { success: true, user };
       

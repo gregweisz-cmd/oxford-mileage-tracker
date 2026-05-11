@@ -163,7 +163,8 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
 
       // Fetch recent notifications (unread first, then recent)
       const notificationsResponse = await fetch(
-        `${API_BASE_URL}/api/notifications/${employeeId}?limit=${maxDisplay * 2}`
+        `${API_BASE_URL}/api/notifications/${employeeId}?limit=${maxDisplay * 2}`,
+        { headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` } }
       );
       if (notificationsResponse.ok) {
         const data = await notificationsResponse.json();
@@ -191,6 +192,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {
         method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
       });
       if (response.ok) {
         // Update local state
@@ -208,6 +210,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/read-all`, {
         method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
       });
       if (response.ok) {
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
@@ -222,6 +225,7 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/clear-all`, {
         method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
       });
       if (response.ok) {
         setNotifications(prev => {

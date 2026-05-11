@@ -718,7 +718,9 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
                       onClick={async () => {
                         try {
                           // Fetch employee details
-                          const empResponse = await fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`);
+                          const empResponse = await fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`, {
+                            headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+                          });
                           if (!empResponse.ok) throw new Error('Failed to load employee');
                           const employeeData = await empResponse.json();
                           
@@ -876,7 +878,9 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
                           onClick={async () => {
                             try {
                               // Fetch employee details
-                              const empResponse = await fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`);
+                              const empResponse = await fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`, {
+                                headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+                              });
                               if (!empResponse.ok) throw new Error('Failed to load employee');
                               const employeeData = await empResponse.json();
                               

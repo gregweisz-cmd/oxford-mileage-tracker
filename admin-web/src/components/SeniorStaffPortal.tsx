@@ -660,7 +660,9 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
   const loadDelegates = useCallback(async () => {
     setLoadingDelegates(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/employees?position=Supervisor&includeArchived=false`);
+      const response = await fetch(`${API_BASE_URL}/api/employees?position=Supervisor&includeArchived=false`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      });
       if (!response.ok) throw new Error('Failed to load supervisors');
       const data = await response.json();
       const mapped: Employee[] = data
@@ -841,7 +843,9 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
             return;
           }
           // If not in team, fetch employee details
-          const empResponse = await fetch(`${API_BASE_URL}/api/employees/${targetEmployeeId}`);
+          const empResponse = await fetch(`${API_BASE_URL}/api/employees/${targetEmployeeId}`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+          });
           if (empResponse.ok) {
             const empData = await empResponse.json();
             handleViewEmployeeReport(
@@ -874,7 +878,9 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
     } else {
       // Fetch employee if not in team
       try {
-        const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`);
+        const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+        });
         if (response.ok) {
           const empData = await response.json();
           handleViewEmployeeReport(
@@ -1299,7 +1305,9 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
                                     handleViewEmployeeReport(employee, report.month, report.year);
                                   } else {
                                     // If employee not in team list, fetch it
-                                    fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`)
+                                    fetch(`${API_BASE_URL}/api/employees/${report.employeeId}`, {
+                                      headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+                                    })
                                       .then(res => res.json())
                                       .then(empData => {
                                         handleViewEmployeeReport(

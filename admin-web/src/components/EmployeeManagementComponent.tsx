@@ -507,6 +507,16 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     return employees;
   }, [showArchived, archivedEmployees, existingEmployees, searchText, columnFilters, sortBy, sortDirection]);
 
+  const allKnownEmployees = React.useMemo(
+    () => [...existingEmployees, ...archivedEmployees],
+    [existingEmployees, archivedEmployees]
+  );
+
+  const visibleSelectedCount = React.useMemo(
+    () => filteredEmployees.filter(emp => selectedEmployees.includes(emp.id)).length,
+    [filteredEmployees, selectedEmployees]
+  );
+
   // Helper function to safely parse costCenters
   const parseCostCenters = (costCenters: any): string[] => {
     if (Array.isArray(costCenters)) {
@@ -708,10 +718,12 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   };
 
   const handleSelectAll = () => {
+    const visibleIds = filteredEmployees.map(emp => emp.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedEmployees.includes(id));
     setSelectedEmployees(
-      selectedEmployees.length === existingEmployees.length 
+      allVisibleSelected
         ? [] 
-        : existingEmployees.map(emp => emp.id)
+        : visibleIds
     );
   };
 
@@ -1128,8 +1140,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   <TableRow>
                     <TableCell padding="checkbox" sx={{ width: '56px', minWidth: '56px', paddingLeft: '10px', paddingRight: '10px' }}>
                       <Checkbox
-                        indeterminate={selectedEmployees.length > 0 && selectedEmployees.length < filteredEmployees.length}
-                        checked={selectedEmployees.length === filteredEmployees.length && filteredEmployees.length > 0}
+                        indeterminate={visibleSelectedCount > 0 && visibleSelectedCount < filteredEmployees.length}
+                        checked={visibleSelectedCount === filteredEmployees.length && filteredEmployees.length > 0}
                         onChange={handleSelectAll}
                         size="small"
                       />
@@ -1407,7 +1419,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           }}
                         >
                           {employee.supervisorId ? 
-                            existingEmployees.find(emp => emp.id === employee.supervisorId)?.name || 'Unknown' :
+                            allKnownEmployees.find(emp => emp.id === employee.supervisorId)?.name || 'Unknown' :
                             'No Supervisor'}
                         </Typography>
                       </TableCell>
@@ -1727,9 +1739,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     onChange={(e) => setEditingEmployee({
                       ...editingEmployee,
                       role: e.target.value as 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts',
-                      permissions: (editingEmployee.permissions && editingEmployee.permissions.length > 0)
-                        ? editingEmployee.permissions
-                        : getDefaultPermissions(e.target.value as string, editingEmployee.position || '')
+                      permissions: getDefaultPermissions(e.target.value as string, editingEmployee.position || '')
                     })}
                     label="Login Role (System Access)"
                   >
@@ -2261,7 +2271,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   <Typography variant="caption" color="text.secondary">Supervisor</Typography>
                   <Typography variant="body1">
                     {viewingEmployee.supervisorId ? 
-                      existingEmployees.find(emp => emp.id === viewingEmployee.supervisorId)?.name || 'Unknown' :
+                      allKnownEmployees.find(emp => emp.id === viewingEmployee.supervisorId)?.name || 'Unknown' :
                       'No Supervisor'
                     }
                   </Typography>
@@ -2270,7 +2280,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                   <Typography variant="caption" color="text.secondary">Senior Staff</Typography>
                   <Typography variant="body1">
                     {(viewingEmployee as any).seniorStaffId ? 
-                      existingEmployees.find(emp => emp.id === (viewingEmployee as any).seniorStaffId)?.name || 'Unknown' :
+                      allKnownEmployees.find(emp => emp.id === (viewingEmployee as any).seniorStaffId)?.name || 'Unknown' :
                       'No Senior Staff'
                     }
                   </Typography>
