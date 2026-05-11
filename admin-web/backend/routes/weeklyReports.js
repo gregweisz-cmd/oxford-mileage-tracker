@@ -11,7 +11,7 @@ const websocketService = require('../services/websocketService');
 const { debugLog, debugError } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use('/api/weekly-reports', requireAuth);
 
 // ===== WEEKLY REPORTS API ENDPOINTS =====
 

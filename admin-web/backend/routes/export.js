@@ -18,7 +18,7 @@ const { PDFDocument } = require('pdf-lib');
 const googleMapsService = require('../services/googleMapsService');
 const { requireAuth } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use('/api/export', requireAuth);
 
 // Match Staff Portal Cost Center description format: "BA to Name (Address) for Purpose to BA"
 function getBaseAddressLabel(addr, baseAddress, baseAddress2) {

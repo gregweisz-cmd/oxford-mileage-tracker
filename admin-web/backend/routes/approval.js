@@ -13,7 +13,7 @@ const notificationEventSettings = require('../services/notificationEventSettings
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use('/api/reports', requireAuth);
 
 function parsePreferences(preferences) {
   if (!preferences) return {};

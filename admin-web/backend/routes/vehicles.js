@@ -4,7 +4,7 @@ const dbService = require('../services/dbService');
 const { debugError, debugLog } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use('/api/vehicles', requireAuth);
 
 function makeVehicleId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 10);

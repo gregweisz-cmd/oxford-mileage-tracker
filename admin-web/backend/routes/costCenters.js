@@ -9,7 +9,13 @@ const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use([
+  '/api/cost-centers',
+  '/api/per-diem-rules',
+  '/api/ees-rules',
+  '/api/per-diem-monthly-rules',
+  '/api/finance-cost-center-assignments',
+], requireAuth);
 
 const normalizeCostCenter = (value) =>
   String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');

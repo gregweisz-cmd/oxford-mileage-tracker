@@ -12,7 +12,7 @@ const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use(['/api/supervisor', '/api/supervisors', '/api/monthly-reports/supervisor'], requireAuth);
 
 /**
  * Calculate total expenses from report data

@@ -9,7 +9,7 @@ const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
 const { requireAnyRole } = require('../middleware/auth');
 
-router.use(requireAnyRole(['admin', 'finance']));
+router.use('/api/power-bi', requireAnyRole(['admin', 'finance']));
 
 /**
  * Get all data for Power BI in a single request

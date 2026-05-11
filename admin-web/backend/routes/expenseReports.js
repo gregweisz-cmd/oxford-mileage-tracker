@@ -16,7 +16,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
 const { logAuditEvent } = require('../services/auditLogService');
 
-router.use(requireAuth);
+router.use(['/api/expense-reports', '/api/monthly-reports'], requireAuth);
 
 /**
  * Initialize approval workflow for a report

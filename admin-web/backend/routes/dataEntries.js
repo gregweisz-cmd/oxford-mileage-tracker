@@ -64,7 +64,13 @@ const validatePerDiemReceiptRequirement = (db, { category, costCenter, imageUri 
 const uploadsDir = config.upload.directory;
 const upload = multer({ dest: uploadsDir });
 
-router.use(requireAuth);
+router.use([
+  '/api/mileage-entries',
+  '/api/receipts',
+  '/api/time-tracking',
+  '/api/daily-descriptions',
+  '/api/daily-odometer-readings',
+], requireAuth);
 
 // ===== MILEAGE ENTRIES ROUTES =====
 

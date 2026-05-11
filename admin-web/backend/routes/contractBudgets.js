@@ -9,7 +9,7 @@ const helpers = require('../utils/helpers');
 const { debugError, debugLog } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use(['/api/supervisors', '/api/contract-budgets'], requireAuth);
 
 function monthRange(year, month) {
   const y = parseInt(String(year), 10);
