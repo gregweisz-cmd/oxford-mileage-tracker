@@ -32,3 +32,14 @@ export function isHttpClientError(error: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * If the sync error is an auth failure, append short guidance (sign out / sign in online).
+ */
+export function formatSyncUnauthorizedMessage(detail: string): string {
+  const d = (detail || '').toLowerCase();
+  if (!d.includes('401') && !d.includes('authentication required')) {
+    return detail;
+  }
+  return `${detail}\n\nTo fix this: sign out, then sign in again while you have internet (use the same password as the staff portal, or Google if you use that). If you once signed in with no connection, the app may never have received a cloud session—signing in online fixes that.`;
+}

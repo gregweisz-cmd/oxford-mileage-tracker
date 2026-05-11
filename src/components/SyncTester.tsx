@@ -11,6 +11,7 @@ import {
 import { ApiSyncService, SyncStatus } from '../services/apiSyncService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { DatabaseService } from '../services/database';
+import { formatSyncUnauthorizedMessage } from '../utils/errorAlerts';
 
 export const SyncTester: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -158,7 +159,7 @@ export const SyncTester: React.FC = () => {
         Alert.alert('Sync Success', 'Data successfully synced to backend');
       } else {
         addTestResult(`❌ Manual sync to backend FAILED: ${result.error}`);
-        Alert.alert('Sync Failed', result.error || 'Unknown error');
+        Alert.alert('Sync Failed', formatSyncUnauthorizedMessage(result.error || 'Unknown error'));
       }
     } catch (error) {
       addTestResult(`❌ Manual sync ERROR: ${error}`);
@@ -182,7 +183,7 @@ export const SyncTester: React.FC = () => {
         Alert.alert('Sync Success', 'Data successfully synced from backend');
       } else {
         addTestResult(`❌ Sync from backend FAILED: ${result.error}`);
-        Alert.alert('Sync Failed', result.error || 'Unknown error');
+        Alert.alert('Sync Failed', formatSyncUnauthorizedMessage(result.error || 'Unknown error'));
       }
     } catch (error) {
       addTestResult(`❌ Sync from backend ERROR: ${error}`);

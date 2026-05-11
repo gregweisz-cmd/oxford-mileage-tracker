@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { DatabaseService } from '../services/database';
 import { ApiSyncService, SyncStatus } from '../services/apiSyncService';
+import { formatSyncUnauthorizedMessage } from '../utils/errorAlerts';
 
 interface SyncManagerProps {
   employeeId?: string;
@@ -83,7 +84,7 @@ export const SyncManager: React.FC<SyncManagerProps> = ({
         onSyncComplete?.(true);
       } else {
         setLastSyncResult(`❌ Sync failed: ${result.error}`);
-        Alert.alert('Sync Failed', result.error || 'Unknown error occurred during sync.');
+        Alert.alert('Sync Failed', formatSyncUnauthorizedMessage(result.error || 'Unknown error occurred during sync.'));
         onSyncComplete?.(false);
       }
 
@@ -115,7 +116,7 @@ export const SyncManager: React.FC<SyncManagerProps> = ({
         onSyncComplete?.(true);
       } else {
         setLastSyncResult(`❌ Sync failed: ${result.error}`);
-        Alert.alert('Sync Failed', result.error || 'Unknown error occurred during sync.');
+        Alert.alert('Sync Failed', formatSyncUnauthorizedMessage(result.error || 'Unknown error occurred during sync.'));
         onSyncComplete?.(false);
       }
 

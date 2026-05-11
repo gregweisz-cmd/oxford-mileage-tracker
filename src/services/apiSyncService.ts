@@ -9,6 +9,7 @@ import { debugLog, debugError, debugWarn } from '../config/debug';
 import { API_BASE_URL } from '../config/api';
 import { getSyncMonthScope, monthDateBounds } from './syncScopeService';
 import { getAuthHeaders } from './authHeaders';
+import { refreshEmployeeJwtFromStoredCredentials } from './authSessionRefresh';
 
 /** Pull only a calendar month from the API, or the full history (large; use sparingly). */
 export type SyncFromBackendScope =
@@ -68,14 +69,25 @@ export class ApiSyncService {
     return getAuthHeaders();
   }
 
-  private static async authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
-    return fetch(input, {
+  private static async authenticatedFetch(
+    input: RequestInfo | URL,
+    init: RequestInit = {},
+    isAuthRetry = false
+  ): Promise<Response> {
+    const response = await fetch(input, {
       ...init,
       headers: {
         ...(await this.getAuthHeaders()),
         ...(init.headers || {}),
       },
     });
+    if (response.status === 401 && !isAuthRetry) {
+      const refreshed = await refreshEmployeeJwtFromStoredCredentials();
+      if (refreshed) {
+        return this.authenticatedFetch(input, init, true);
+      }
+    }
+    return response;
   }
 
   /** For thrown sync errors when `response.ok` is false (prefers JSON `error` field). */
@@ -3006,10 +3018,16 @@ export class ApiSyncService {
       } else {
         console.error(`❌ ApiSync: Some data sync operations failed for employee ${employeeId}`);
       }
-      
+
+      const failedErrors = results
+        .filter((r) => !r.success && r.error)
+        .map((r) => r.error as string);
+      const combinedError = failedErrors.length ? [...new Set(failedErrors)].join('; ') : undefined;
+
       return {
         success: allSuccessful,
         data: results,
+        error: combinedError,
         timestamp: new Date()
       };
       

@@ -18,7 +18,7 @@ import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { DatabaseService } from '../services/database';
 import UnifiedHeader from '../components/UnifiedHeader';
-import { showErrorWithGoBack, isHttpClientError } from '../utils/errorAlerts';
+import { showErrorWithGoBack, isHttpClientError, formatSyncUnauthorizedMessage } from '../utils/errorAlerts';
 
 interface DataSyncScreenProps {
   navigation: any;
@@ -173,7 +173,7 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
         // Refresh status
         loadSyncStatus();
       } else {
-        const msg = syncResult.error || 'Unknown error';
+        const msg = formatSyncUnauthorizedMessage(syncResult.error || 'Unknown error');
         const err = new Error(msg);
         if (isHttpClientError(err)) {
           showErrorWithGoBack(navigation, 'Sync Failed', msg);
