@@ -21,7 +21,6 @@ import { EmployeeApiService } from '../services/employeeApiService';
 import { debugError, debugVerbose } from '../config/debug';
 import { Employee } from '../types';
 import { NotificationBell } from './NotificationBell';
-import { ADMIN_WEB_UI_STAMP } from '../adminWebVersion';
 // import OxfordHouseLogo from './OxfordHouseLogo'; // Logo is in PortalSwitcher
 
 interface AdminPortalProps {
@@ -151,9 +150,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
             </Typography>
             <Typography variant="subtitle1" color="textSecondary">
               Welcome, {adminName}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              Staff portal UI {ADMIN_WEB_UI_STAMP}
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
