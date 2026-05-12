@@ -55,26 +55,15 @@ import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import { CostCenterApiService } from '../services/costCenterApiService';
+import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
 import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { toCanonicalAddress } from '../utils/locationSelection';
 import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart as updateParsedBaseAddressPart } from '../utils/addressParse';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-
-/** Same auth as rateLimitedApi — avoids relying only on patched global fetch. */
-function staffPortalAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  try {
-    const token = localStorage.getItem('authToken');
-    if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
-    const empId = localStorage.getItem('currentEmployeeId');
-    if (empId?.trim()) headers['x-employee-id'] = empId.trim();
-  } catch {
-    /* localStorage unavailable */
-  }
-  return headers;
-}
+const API_BASE_URL = (
+  process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'
+).replace(/\/+$/, '');
 
 function sessionExpiredMessage(status: number, fallback: string): string {
   if (status === 401) {
@@ -568,7 +557,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     try {
       const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/preview`, {
         method: 'POST',
-        headers: staffPortalAuthHeaders(),
+        headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -637,7 +626,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       const ignoreArchives = syncPreviewPlan.archives.filter((a) => syncPreviewIgnore.archives.has(a.id)).map((a) => a.id);
       const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/apply`, {
         method: 'POST',
-        headers: staffPortalAuthHeaders(),
+        headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ toCreate, toUpdate, toArchive, ignoreUpdates, ignoreArchives }),
       });
       const data = await res.json().catch(() => ({}));
@@ -715,7 +704,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     try {
       const res = await fetch(`${API_BASE_URL}/api/employees/dedupe-by-email`, {
         method: 'POST',
-        headers: staffPortalAuthHeaders(),
+        headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
