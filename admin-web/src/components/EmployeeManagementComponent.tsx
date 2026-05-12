@@ -218,6 +218,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   const [quickEditCostCenterSearch, setQuickEditCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [showEmployeeCostCenterDropdown, setShowEmployeeCostCenterDropdown] = useState(false);
+  /** Filter text inside Edit Employee cost center panel */
+  const [employeeEditCostCenterSearch, setEmployeeEditCostCenterSearch] = useState('');
   const [costCenterOptions, setCostCenterOptions] = useState<string[]>([...COST_CENTERS]);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedEmployees, setArchivedEmployees] = useState<Employee[]>([]);
@@ -250,8 +252,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   }>({ updates: new Set(), archives: new Set() });
   const [syncApplyLoading, setSyncApplyLoading] = useState(false);
   const [dedupeLoading, setDedupeLoading] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const employeeDropdownRef = useRef<HTMLDivElement>(null);
+  const quickEditCostCenterContainerRef = useRef<HTMLDivElement>(null);
+  const employeeCostCenterContainerRef = useRef<HTMLDivElement>(null);
 
   // Format phone number to (###) ###-####
   const formatPhoneNumber = (phone: string | null | undefined): string => {
@@ -276,14 +278,16 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     return '-';
   };
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (container includes trigger + panel)
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (quickEditCostCenterContainerRef.current && !quickEditCostCenterContainerRef.current.contains(target)) {
         setShowCostCenterDropdown(false);
       }
-      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target as Node)) {
+      if (employeeCostCenterContainerRef.current && !employeeCostCenterContainerRef.current.contains(target)) {
         setShowEmployeeCostCenterDropdown(false);
+        setEmployeeEditCostCenterSearch('');
       }
     };
 
@@ -303,6 +307,13 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     const filtered = q ? available.filter(cc => cc.toLowerCase().includes(q)) : available;
     return filtered.sort((a, b) => a.localeCompare(b));
   }, [quickEditCostCenters, quickEditCostCenterSearch, costCenterOptions]);
+
+  const employeeEditAvailableCostCenters = useMemo(() => {
+    const available = costCenterOptions.filter(cc => !selectedCostCenters.includes(cc));
+    const q = employeeEditCostCenterSearch.trim().toLowerCase();
+    const filtered = q ? available.filter(cc => cc.toLowerCase().includes(q)) : available;
+    return filtered.sort((a, b) => a.localeCompare(b));
+  }, [selectedCostCenters, employeeEditCostCenterSearch, costCenterOptions]);
 
   useEffect(() => {
     const loadCostCenterOptions = async () => {
@@ -792,6 +803,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setSelectedCostCenters(costCenters);
     setDefaultCostCenter(viewingEmployee.defaultCostCenter || costCenters[0] || '');
     setShowProfileDialog(false);
+    setEmployeeEditCostCenterSearch('');
     setShowEmployeeDialog(true);
   };
 
@@ -808,6 +820,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     const costCenters = parseCostCenters(employee.costCenters);
     setSelectedCostCenters(costCenters);
     setDefaultCostCenter(employee.defaultCostCenter || costCenters[0] || '');
+    setEmployeeEditCostCenterSearch('');
     setShowEmployeeDialog(true);
     setShowEmployeeCostCenterDropdown(true); // Open dropdown by default
   };
@@ -832,6 +845,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     });
     setSelectedCostCenters(['Program Services']);
     setDefaultCostCenter('Program Services');
+    setEmployeeEditCostCenterSearch('');
     setShowEmployeeDialog(true);
     setShowEmployeeCostCenterDropdown(true); // Open dropdown by default
   };
@@ -1705,6 +1719,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
           setSelectedCostCenters([]);
           setDefaultCostCenter('');
           setShowEmployeeCostCenterDropdown(false);
+          setEmployeeEditCostCenterSearch('');
         }}
         maxWidth="lg"
         fullWidth
@@ -1964,126 +1979,157 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 </Box>
                 
                 {/* Cost Centers Selection */}
-                <FormControl fullWidth sx={{ mt: 2, position: 'relative' }}>
-                  <InputLabel>Cost Centers</InputLabel>
-                  <OutlinedInput 
-                    label="Cost Centers" 
-                    value=""
-                    readOnly
-                    onClick={() => setShowEmployeeCostCenterDropdown(!showEmployeeCostCenterDropdown)}
-                    endAdornment={
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowEmployeeCostCenterDropdown(!showEmployeeCostCenterDropdown)}>
-                          {showEmployeeCostCenterDropdown ? <ExpandLess /> : <ExpandMore />}
-                        </IconButton>
-                      </InputAdornment>
-                    }
-                    sx={{ cursor: 'pointer' }}
-                  />
-                  {showEmployeeCostCenterDropdown && (
-                    <Paper 
-                      ref={employeeDropdownRef}
-                      sx={{ 
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        zIndex: 1300,
-                        maxHeight: 500,
-                        border: 1,
-                        borderColor: 'divider',
-                        borderTop: 0,
-                        boxShadow: 3
-                      }}
-                    >
-                      <Box sx={{ height: 500, display: 'flex', flexDirection: 'column' }}>
-                        {/* Selected Items - Fixed at Top */}
-                        {selectedCostCenters.length > 0 && (
-                          <Box sx={{ 
-                            flexShrink: 0,
-                            borderBottom: 1, 
-                            borderColor: 'divider',
-                            backgroundColor: 'primary.light',
-                            color: 'primary.contrastText',
-                            p: 2,
-                            maxHeight: 200,
-                            overflow: 'auto'
-                          }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                              Selected ({selectedCostCenters.length})
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <InputLabel shrink>Cost Centers</InputLabel>
+                  <Box ref={employeeCostCenterContainerRef} sx={{ position: 'relative', mt: 2 }}>
+                    <OutlinedInput
+                      label="Cost Centers"
+                      notched
+                      value=""
+                      readOnly
+                      onClick={() => setShowEmployeeCostCenterDropdown(true)}
+                      endAdornment={
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label={showEmployeeCostCenterDropdown ? 'Close cost centers' : 'Open cost centers'}
+                            edge="end"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowEmployeeCostCenterDropdown((v) => !v);
+                            }}
+                          >
+                            {showEmployeeCostCenterDropdown ? <ExpandLess /> : <ExpandMore />}
+                          </IconButton>
+                        </InputAdornment>
+                      }
+                      sx={{ cursor: 'pointer', width: '100%' }}
+                    />
+                    {showEmployeeCostCenterDropdown && (
+                      <Paper
+                        sx={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          zIndex: 1300,
+                          maxHeight: 500,
+                          border: 1,
+                          borderColor: 'divider',
+                          borderTop: 0,
+                          boxShadow: 3,
+                        }}
+                      >
+                        <Box sx={{ height: 500, display: 'flex', flexDirection: 'column' }}>
+                          {/* Selected Items - Fixed at Top */}
+                          {selectedCostCenters.length > 0 && (
+                            <Box
+                              sx={{
+                                flexShrink: 0,
+                                borderBottom: 1,
+                                borderColor: 'divider',
+                                backgroundColor: 'primary.light',
+                                color: 'primary.contrastText',
+                                p: 2,
+                                maxHeight: 200,
+                                overflow: 'auto',
+                              }}
+                            >
+                              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                                Selected ({selectedCostCenters.length})
+                              </Typography>
+                              {selectedCostCenters
+                                .sort((a, b) => a.localeCompare(b))
+                                .map((costCenter: string) => (
+                                  <MenuItem
+                                    key={costCenter}
+                                    onClick={() => {
+                                      setSelectedCostCenters((prev) => prev.filter((item) => item !== costCenter));
+                                      if (selectedCostCenters.length === 2) {
+                                        setDefaultCostCenter(
+                                          selectedCostCenters.find((item) => item !== costCenter) || ''
+                                        );
+                                      }
+                                      if (costCenter === defaultCostCenter) {
+                                        setDefaultCostCenter('');
+                                      }
+                                    }}
+                                    sx={{
+                                      py: 1,
+                                      '&:hover': { backgroundColor: 'primary.main' },
+                                    }}
+                                  >
+                                    <Checkbox checked={true} sx={{ color: 'primary.contrastText' }} />
+                                    <ListItemText primary={costCenter} sx={{ color: 'primary.contrastText' }} />
+                                  </MenuItem>
+                                ))}
+                            </Box>
+                          )}
+
+                          <Box
+                            sx={{
+                              flex: 1,
+                              overflow: 'auto',
+                              minHeight: 0,
+                            }}
+                          >
+                            <TextField
+                              fullWidth
+                              size="small"
+                              placeholder="Search cost centers..."
+                              value={employeeEditCostCenterSearch}
+                              onChange={(e) => setEmployeeEditCostCenterSearch(e.target.value)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              sx={{
+                                px: 2,
+                                pt: 1,
+                                pb: 0.5,
+                                '& .MuiOutlinedInput-root': { backgroundColor: 'background.default' },
+                              }}
+                              inputProps={{ 'aria-label': 'Search cost centers' }}
+                            />
+                            <Typography
+                              variant="subtitle2"
+                              sx={{
+                                p: 2,
+                                fontWeight: 'bold',
+                                borderBottom: 1,
+                                borderColor: 'divider',
+                                position: 'sticky',
+                                top: 0,
+                                backgroundColor: 'background.paper',
+                                zIndex: 1,
+                              }}
+                            >
+                              Available ({employeeEditAvailableCostCenters.length})
                             </Typography>
-                            {selectedCostCenters
-                              .sort((a, b) => a.localeCompare(b))
-                              .map((costCenter: string) => (
-                                <MenuItem 
-                                  key={costCenter} 
+                            {employeeEditAvailableCostCenters.length === 0 ? (
+                              <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+                                {employeeEditCostCenterSearch.trim()
+                                  ? 'No cost centers match your search.'
+                                  : 'All cost centers are selected.'}
+                              </Typography>
+                            ) : (
+                              employeeEditAvailableCostCenters.map((costCenter: string) => (
+                                <MenuItem
+                                  key={costCenter}
                                   onClick={() => {
-                                    setSelectedCostCenters(prev => prev.filter(item => item !== costCenter));
-                                    // If only one cost center is selected, set it as default
-                                    if (selectedCostCenters.length === 2) {
-                                      setDefaultCostCenter(selectedCostCenters.find(item => item !== costCenter) || '');
-                                    }
-                                    // If default cost center is removed, clear it
-                                    if (costCenter === defaultCostCenter) {
-                                      setDefaultCostCenter('');
+                                    setSelectedCostCenters((prev) => [...prev, costCenter]);
+                                    if (selectedCostCenters.length === 0) {
+                                      setDefaultCostCenter(costCenter);
                                     }
                                   }}
-                                  sx={{ 
-                                    py: 1,
-                                    '&:hover': { backgroundColor: 'primary.main' }
-                                  }}
+                                  sx={{ py: 1 }}
                                 >
-                                  <Checkbox checked={true} sx={{ color: 'primary.contrastText' }} />
-                                  <ListItemText 
-                                    primary={costCenter} 
-                                    sx={{ color: 'primary.contrastText' }}
-                                  />
+                                  <Checkbox checked={false} />
+                                  <ListItemText primary={costCenter} />
                                 </MenuItem>
-                              ))}
+                              ))
+                            )}
                           </Box>
-                        )}
-                        
-                        {/* Unselected Items - Scrollable Below */}
-                        <Box sx={{ 
-                          flex: 1,
-                          overflow: 'auto',
-                          minHeight: 0
-                        }}>
-                          <Typography variant="subtitle2" sx={{ 
-                            p: 2, 
-                            fontWeight: 'bold', 
-                            borderBottom: 1, 
-                            borderColor: 'divider',
-                            position: 'sticky',
-                            top: 0,
-                            backgroundColor: 'background.paper',
-                            zIndex: 1
-                          }}>
-                            Available ({costCenterOptions.length - selectedCostCenters.length})
-                          </Typography>
-                          {costCenterOptions
-                            .filter(costCenter => !selectedCostCenters.includes(costCenter))
-                            .sort((a, b) => a.localeCompare(b))
-                            .map((costCenter: string) => (
-                              <MenuItem 
-                                key={costCenter} 
-                                onClick={() => {
-                                  setSelectedCostCenters(prev => [...prev, costCenter]);
-                                  // If only one cost center is selected, set it as default
-                                  if (selectedCostCenters.length === 0) {
-                                    setDefaultCostCenter(costCenter);
-                                  }
-                                }}
-                                sx={{ py: 1 }}
-                              >
-                                <Checkbox checked={false} />
-                                <ListItemText primary={costCenter} />
-                              </MenuItem>
-                            ))}
                         </Box>
-                      </Box>
-                    </Paper>
-                  )}
+                      </Paper>
+                    )}
+                  </Box>
                 </FormControl>
                 
                 {/* Default Cost Center Selection - Only show if multiple cost centers are selected */}
@@ -2113,6 +2159,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
             setSelectedCostCenters([]);
             setDefaultCostCenter('');
             setShowEmployeeCostCenterDropdown(false);
+            setEmployeeEditCostCenterSearch('');
           }}>
             Cancel
           </Button>
@@ -2418,36 +2465,44 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
             </Typography>
             
             <FormControl fullWidth>
-              <InputLabel>Cost Centers</InputLabel>
-              <OutlinedInput 
-                label="Cost Centers" 
-                value=""
-                readOnly
-                onClick={() => setShowCostCenterDropdown(!showCostCenterDropdown)}
-                endAdornment={
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowCostCenterDropdown(!showCostCenterDropdown)}>
-                      {showCostCenterDropdown ? <ExpandLess /> : <ExpandMore />}
-                    </IconButton>
-                  </InputAdornment>
-                }
-                sx={{ cursor: 'pointer' }}
-              />
-              {showCostCenterDropdown && (
-                <Paper 
-                  ref={dropdownRef}
-                  elevation={0}
-                  sx={{ 
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    zIndex: 1300,
-                    maxHeight: 300,
-                    border: 'none',
-                    boxShadow: 'none'
-                  }}
-                >
+              <InputLabel shrink>Cost Centers</InputLabel>
+              <Box ref={quickEditCostCenterContainerRef} sx={{ position: 'relative', mt: 2 }}>
+                <OutlinedInput
+                  label="Cost Centers"
+                  notched
+                  value=""
+                  readOnly
+                  onClick={() => setShowCostCenterDropdown(true)}
+                  endAdornment={
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label={showCostCenterDropdown ? 'Close cost centers' : 'Open cost centers'}
+                        edge="end"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowCostCenterDropdown((v) => !v);
+                        }}
+                      >
+                        {showCostCenterDropdown ? <ExpandLess /> : <ExpandMore />}
+                      </IconButton>
+                    </InputAdornment>
+                  }
+                  sx={{ cursor: 'pointer', width: '100%' }}
+                />
+                {showCostCenterDropdown && (
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      zIndex: 1300,
+                      maxHeight: 300,
+                      border: 'none',
+                      boxShadow: 'none',
+                    }}
+                  >
                   <Box sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
                     {/* Selected Items - Fixed at Top */}
                     {quickEditCostCenters.length > 0 && (
@@ -2503,6 +2558,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         placeholder="Search cost centers..."
                         value={quickEditCostCenterSearch}
                         onChange={(e) => setQuickEditCostCenterSearch(e.target.value)}
+                        onMouseDown={(e) => e.stopPropagation()}
                         sx={{ 
                           px: 1, 
                           pt: 1, 
@@ -2548,7 +2604,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                     </Box>
                   </Box>
                 </Paper>
-              )}
+                )}
+              </Box>
             </FormControl>
           </Box>
         </DialogContent>
