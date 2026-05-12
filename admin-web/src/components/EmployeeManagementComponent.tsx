@@ -62,6 +62,27 @@ import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart as updatePar
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
+/** Same auth as rateLimitedApi — avoids relying only on patched global fetch. */
+function staffPortalAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = localStorage.getItem('authToken');
+    if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+    const empId = localStorage.getItem('currentEmployeeId');
+    if (empId?.trim()) headers['x-employee-id'] = empId.trim();
+  } catch {
+    /* localStorage unavailable */
+  }
+  return headers;
+}
+
+function sessionExpiredMessage(status: number, fallback: string): string {
+  if (status === 401) {
+    return 'Your session has expired or is missing. Sign out and sign in again, then retry.';
+  }
+  return fallback;
+}
+
 const PORTAL_PERMISSIONS = [
   {
     id: 'admin',
@@ -545,7 +566,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setSyncFromExternalLoading(true);
     setSyncFromExternalMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/preview`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/preview`, {
+        method: 'POST',
+        headers: staffPortalAuthHeaders(),
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         const plan = data as {
@@ -569,7 +593,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         setSyncPreviewIgnore({ updates: new Set(), archives: new Set() });
         setSyncPreviewOpen(true);
       } else {
-        setSyncFromExternalMessage({ type: 'error', text: data.error || `Preview failed (${res.status})` });
+        setSyncFromExternalMessage({
+          type: 'error',
+          text: sessionExpiredMessage(res.status, (data as { error?: string }).error || `Preview failed (${res.status})`),
+        });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Preview request failed';
@@ -610,7 +637,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       const ignoreArchives = syncPreviewPlan.archives.filter((a) => syncPreviewIgnore.archives.has(a.id)).map((a) => a.id);
       const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/apply`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: staffPortalAuthHeaders(),
         body: JSON.stringify({ toCreate, toUpdate, toArchive, ignoreUpdates, ignoreArchives }),
       });
       const data = await res.json().catch(() => ({}));
@@ -640,7 +667,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         setSyncPreviewPlan(null);
         if (onRefresh) onRefresh();
       } else {
-        setSyncFromExternalMessage({ type: 'error', text: data.error || `Apply failed (${res.status})` });
+        setSyncFromExternalMessage({
+          type: 'error',
+          text: sessionExpiredMessage(res.status, data.error || `Apply failed (${res.status})`),
+        });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Apply request failed';
@@ -683,7 +713,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     setDedupeLoading(true);
     setSyncFromExternalMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/employees/dedupe-by-email`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/api/employees/dedupe-by-email`, {
+        method: 'POST',
+        headers: staffPortalAuthHeaders(),
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         const n = typeof data.rowsRemoved === 'number' ? data.rowsRemoved : 0;
@@ -697,7 +730,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         });
         if (onRefresh) onRefresh();
       } else {
-        setSyncFromExternalMessage({ type: 'error', text: data.error || `Merge failed (${res.status})` });
+        setSyncFromExternalMessage({
+          type: 'error',
+          text: sessionExpiredMessage(res.status, data.error || `Merge failed (${res.status})`),
+        });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Merge request failed';
