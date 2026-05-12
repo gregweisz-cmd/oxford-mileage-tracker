@@ -174,6 +174,9 @@ interface SupervisorComment {
   isResolved?: boolean;
 }
 
+/** Controls which single-purpose flow the review dialog shows (never approve + revision together). */
+type SupervisorReviewDialogMode = 'approve' | 'revision' | 'finance_return';
+
 interface DashboardStats {
   totalTeamMembers: number;
   activeReports: number;
@@ -205,6 +208,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
   const [selectedReport, setSelectedReport] = useState<TeamReport | null>(null);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewDialogMode, setReviewDialogMode] = useState<SupervisorReviewDialogMode | null>(null);
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
   const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
   const [detailedReportViewOpen, setDetailedReportViewOpen] = useState(false);
@@ -228,6 +232,13 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
   // Error prompt for 403/404 so user can go back instead of raw error
   const { showErrorPrompt } = useErrorPrompt();
+
+  const closeReviewDialog = useCallback(() => {
+    setReviewDialogOpen(false);
+    setReviewDialogMode(null);
+    setSupervisorCertificationAcknowledged(false);
+    setReviewComment('');
+  }, []);
 
   // Loading states
   const [loading, setLoading] = useState(true);
@@ -400,10 +411,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         throw new Error('Failed to approve report');
       }
 
-      setReviewDialogOpen(false);
-      setReviewComment('');
-      setSupervisorCertificationAcknowledged(false);
+      closeReviewDialog();
       await loadTeamReports();
+      if (showEmployeeReportView) {
+        setShowEmployeeReportView(false);
+        alert('Report approved and sent to finance team successfully!');
+      }
     } catch (error) {
       debugError('Error approving report:', error);
       alert('Failed to approve report. Please try again.');
@@ -451,8 +464,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         throw new Error(`HTTP ${response.status}: ${msg}`);
       }
 
-      setReviewDialogOpen(false);
-      setReviewComment('');
+      closeReviewDialog();
       await loadTeamReports();
       alert('Report sent back to employee for revision.');
     } catch (error) {
@@ -479,99 +491,55 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     setSelectedItemsForRevision(selectedItems);
   }, []);
 
-  // Handler for approving report from StaffPortal - sends to finance
-  const handleApproveFromPortal = useCallback(async () => {
+  // Handler for approving report from StaffPortal — open approve-only dialog (certification + send to finance)
+  const handleApproveFromPortal = useCallback(() => {
     if (!viewingEmployeeReport || !viewingReportMonth || !viewingReportYear) {
       alert('Unable to approve: Missing report information');
       return;
     }
-    
-    // Find the report ID from teamReports
-    const report = teamReports.find(r => 
-      r.employeeId === viewingEmployeeReport.id && 
-      r.month === viewingReportMonth && 
-      r.year === viewingReportYear
+
+    const report = teamReports.find(
+      (r) =>
+        r.employeeId === viewingEmployeeReport.id &&
+        r.month === viewingReportMonth &&
+        r.year === viewingReportYear
     );
-    
+
     if (!report || !report.id) {
       alert('Unable to approve: Report not found');
       return;
     }
-    
-    const requiresSupervisorCertification = (report.submissionType || '').toLowerCase() !== 'weekly_checkup';
 
-    // Check if supervisor certification is acknowledged
-    if (requiresSupervisorCertification && !supervisorCertificationAcknowledged) {
-      const shouldAcknowledge = window.confirm('Please acknowledge the certification statement before approving. Would you like to acknowledge now?');
-      if (shouldAcknowledge) {
-        setSupervisorCertificationAcknowledged(true);
-      } else {
-        return;
-      }
-    }
-    
-    const confirmApprove = window.confirm(`Are you sure you want to approve this report and send it to the finance team?`);
-    if (!confirmApprove) {
-      return;
-    }
-    
-    setSavingAction(true);
-    try {
-      // Use 'approve' action which sends to finance
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${report.id}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'approve',
-          approverId: supervisorId,
-          approverName: supervisorName,
-          supervisorCertificationAcknowledged: requiresSupervisorCertification ? supervisorCertificationAcknowledged : false,
-        }),
-      });
+    setSelectedReport(report);
+    setReviewComment('');
+    setSupervisorCertificationAcknowledged(false);
+    setReviewDialogMode('approve');
+    setReviewDialogOpen(true);
+  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports]);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: Failed to approve report: ${errorText}`);
-      }
-
-      setSupervisorCertificationAcknowledged(false);
-      await loadTeamReports();
-      setShowEmployeeReportView(false);
-      alert('Report approved and sent to finance team successfully!');
-    } catch (error) {
-      debugError('Error approving report:', error);
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      if (isHttpClientError(error)) {
-        showErrorPrompt(msg, { title: 'Could not approve report', goBackLabel: 'Back to report' });
-      } else {
-        alert(`Failed to approve report. Please try again. Error: ${msg}`);
-      }
-    } finally {
-      setSavingAction(false);
-    }
-  }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports, supervisorId, supervisorName, supervisorCertificationAcknowledged, loadTeamReports, showErrorPrompt]);
-
-  // Handler for requesting revision from StaffPortal - sends back to employee with notes
-  const handleRequestRevisionFromPortal = useCallback(async () => {
+  // Handler for requesting revision from StaffPortal — open revision-only dialog
+  const handleRequestRevisionFromPortal = useCallback(() => {
     if (!viewingEmployeeReport || !viewingReportMonth || !viewingReportYear) {
       alert('Unable to request revision: Missing report information');
       return;
     }
-    
-    // Find the report ID from teamReports
-    const report = teamReports.find(r => 
-      r.employeeId === viewingEmployeeReport.id && 
-      r.month === viewingReportMonth && 
-      r.year === viewingReportYear
+
+    const report = teamReports.find(
+      (r) =>
+        r.employeeId === viewingEmployeeReport.id &&
+        r.month === viewingReportMonth &&
+        r.year === viewingReportYear
     );
-    
+
     if (!report || !report.id) {
       alert('Unable to request revision: Report not found');
       return;
     }
-    
-    // Open the review dialog with the report selected
+
     setSelectedReport(report);
+    setReviewComment('');
+    setSupervisorCertificationAcknowledged(false);
+    setReviewDialogMode('revision');
     setReviewDialogOpen(true);
   }, [viewingEmployeeReport, viewingReportMonth, viewingReportYear, teamReports]);
 
@@ -669,8 +637,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         throw new Error('Failed to resubmit to finance');
       }
 
-      setReviewDialogOpen(false);
-      setReviewComment('');
+      closeReviewDialog();
       await loadTeamReports();
       alert('Report resubmitted to Finance team.');
     } catch (error) {
@@ -1351,7 +1318,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                             color="success"
                             onClick={() => {
                               setSelectedReport(report);
-                              handleApproveReport(report.id);
+                              setReviewComment('');
+                              setSupervisorCertificationAcknowledged(false);
+                              setReviewDialogMode('approve');
+                              setReviewDialogOpen(true);
                             }}
                           >
                             <CheckIcon />
@@ -1363,6 +1333,9 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                             color="error"
                             onClick={() => {
                               setSelectedReport(report);
+                              setReviewComment('');
+                              setSupervisorCertificationAcknowledged(false);
+                              setReviewDialogMode('revision');
                               setReviewDialogOpen(true);
                             }}
                           >
@@ -1388,6 +1361,9 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                           color="success"
                           onClick={() => {
                             setSelectedReport(report);
+                            setReviewComment('');
+                            setSupervisorCertificationAcknowledged(false);
+                            setReviewDialogMode('finance_return');
                             setReviewDialogOpen(true);
                           }}
                         >
@@ -1546,170 +1522,218 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         </Paper>
       </Box>
 
-      {/* Review Dialog */}
-      <Dialog 
-        open={reviewDialogOpen} 
-        onClose={() => {
-          setReviewDialogOpen(false);
-          setSupervisorCertificationAcknowledged(false);
-          setReviewComment('');
-        }}
-        maxWidth="md"
-        fullWidth
-      >
+      {/* Review dialog: separate flows for approve vs revision vs finance follow-up */}
+      <Dialog open={reviewDialogOpen} onClose={closeReviewDialog} maxWidth="md" fullWidth>
         <DialogTitle>
-          {selectedReport ? `${selectedReport.employeeName}'s Report - ${new Date(selectedReport.year, selectedReport.month - 1).toLocaleString('default', { month: 'long' })} ${selectedReport.year}` : ''}
+          {reviewDialogMode === 'revision' && 'Request revision from employee'}
+          {reviewDialogMode === 'approve' && 'Approve and send to finance'}
+          {reviewDialogMode === 'finance_return' && 'Finance follow-up'}
         </DialogTitle>
         <DialogContent>
-          {selectedReport && (
-            <Box>
-              <Box sx={{ display: 'flex', gap: 4, mb: 3 }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Total Amount</Typography>
-                  <Typography variant="h5">${selectedReport.totalAmount.toFixed(2)}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Total Miles</Typography>
-                  <Typography variant="h5">{selectedReport.totalMiles.toFixed(1)}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Total Hours</Typography>
-                  <Typography variant="h5">{selectedReport.totalHours.toFixed(1)}</Typography>
-                </Box>
-              </Box>
-
-              <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
-                Cost Centers
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-                {selectedReport.costCenters.map((cc) => (
-                  <Chip key={cc} label={cc} />
-                ))}
-              </Box>
-
-              {selectedReport.comments && selectedReport.comments.length > 0 && (
-                <>
-                  <Typography variant="h6" gutterBottom>
-                    Previous Comments
-                  </Typography>
-                  <List>
-                    {selectedReport.comments.map((comment) => (
-                      <ListItem key={comment.id}>
-                        <ListItemText
-                          primary={comment.comment}
-                          secondary={`by ${comment.supervisorName} on ${new Date(comment.createdAt).toLocaleString()}`}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </>
-              )}
-
-              {(selectedReport?.submissionType || '').toLowerCase() !== 'weekly_checkup' && (
-                <Box sx={{ mt: 3, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
-                  <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
-                    By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
-                  </Typography>
-                  
-                  {/* Supervisor Acknowledgment Checkbox */}
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Checkbox
-                      checked={supervisorCertificationAcknowledged}
-                      onChange={(e) => setSupervisorCertificationAcknowledged(e.target.checked)}
-                      size="small"
-                    />
-                    <Typography variant="body2" component="div">
-                      Supervisor: I have read and agree to the certification statement above
+          {selectedReport && (() => {
+            const requiresSupervisorCertification =
+              (selectedReport.submissionType || '').toLowerCase() !== 'weekly_checkup';
+            const reportPeriodLabel = `${new Date(selectedReport.year, selectedReport.month - 1).toLocaleString('default', { month: 'long' })} ${selectedReport.year}`;
+            return (
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {selectedReport.employeeName} — {reportPeriodLabel}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 4, mb: 3 }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Amount
                     </Typography>
+                    <Typography variant="h5">${selectedReport.totalAmount.toFixed(2)}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Miles
+                    </Typography>
+                    <Typography variant="h5">{selectedReport.totalMiles.toFixed(1)}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Hours
+                    </Typography>
+                    <Typography variant="h5">{selectedReport.totalHours.toFixed(1)}</Typography>
                   </Box>
                 </Box>
-              )}
 
-              <Box sx={{ mt: 3, mb: 2 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<VisibilityIcon />}
-                  onClick={() => {
-                    if (selectedReport) {
+                <Typography variant="h6" gutterBottom sx={{ mt: 1 }}>
+                  Cost centers
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+                  {selectedReport.costCenters.map((cc) => (
+                    <Chip key={cc} label={cc} />
+                  ))}
+                </Box>
+
+                {selectedReport.comments && selectedReport.comments.length > 0 && (
+                  <>
+                    <Typography variant="h6" gutterBottom>
+                      Previous comments
+                    </Typography>
+                    <List>
+                      {selectedReport.comments.map((comment) => (
+                        <ListItem key={comment.id}>
+                          <ListItemText
+                            primary={comment.comment}
+                            secondary={`by ${comment.supervisorName} on ${new Date(comment.createdAt).toLocaleString()}`}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </>
+                )}
+
+                {reviewDialogMode === 'approve' && requiresSupervisorCertification && (
+                  <Box sx={{ mt: 2, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
+                    <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
+                      By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Checkbox
+                        checked={supervisorCertificationAcknowledged}
+                        onChange={(e) => setSupervisorCertificationAcknowledged(e.target.checked)}
+                        size="small"
+                      />
+                      <Typography variant="body2" component="div">
+                        Supervisor: I have read and agree to the certification statement above
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+
+                {reviewDialogMode === 'finance_return' && requiresSupervisorCertification && (
+                  <Box sx={{ mt: 2, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
+                    <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
+                      By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Checkbox
+                        checked={supervisorCertificationAcknowledged}
+                        onChange={(e) => setSupervisorCertificationAcknowledged(e.target.checked)}
+                        size="small"
+                      />
+                      <Typography variant="body2" component="div">
+                        Supervisor: I have read and agree to the certification statement above
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+
+                <Box sx={{ mt: 2, mb: 2 }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<VisibilityIcon />}
+                    onClick={() => {
                       setDetailedReportViewOpen(true);
                       setSelectedReportId(selectedReport.id);
-                    }
-                  }}
-                >
-                  View Full Report Details
-                </Button>
-              </Box>
+                    }}
+                  >
+                    View full report details
+                  </Button>
+                </Box>
 
-              <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
-                Add Review Comment
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-                placeholder={
-                  selectedReport?.status === 'needs_revision' && selectedReport?.currentApprovalStage === 'pending_supervisor'
-                    ? "Describe changes made (e.g., 'Fixed missing receipts, corrected mileage amounts per finance feedback')..."
-                    : "Add any feedback or notes about this report..."
-                }
-              />
-              {selectedReport?.status === 'needs_revision' && selectedReport?.currentApprovalStage === 'pending_supervisor' && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  <Typography component="div" variant="body2">
-                    This report was returned from Finance for revision. You can either:
-                    <Box component="ul" sx={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
-                      <li>Make changes and resubmit to Finance</li>
-                      <li>Send it back to the employee for revision</li>
-                    </Box>
-                  </Typography>
-                </Alert>
-              )}
-            </Box>
-          )}
+                {reviewDialogMode === 'revision' && (
+                  <>
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      The employee will get this report back as &quot;needs revision&quot; with the message below. You can select specific line items in full report details if your workflow uses item-level revision.
+                    </Alert>
+                    <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                      Feedback for employee (required)
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={4}
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Describe what needs to be corrected or clarified before they resubmit..."
+                    />
+                  </>
+                )}
+
+                {reviewDialogMode === 'approve' && (
+                  <>
+                    <Alert severity="success" sx={{ mb: 2 }} variant="outlined">
+                      This sends the report to the finance team. No revision notes are required; use revision instead if the employee still needs to make changes.
+                    </Alert>
+                    {!requiresSupervisorCertification && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Weekly check-up reports do not require the supervisor certification step.
+                      </Typography>
+                    )}
+                  </>
+                )}
+
+                {reviewDialogMode === 'finance_return' && (
+                  <>
+                    <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                      Comments (required)
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Describe changes made (e.g. 'Fixed missing receipts, corrected mileage per finance feedback') or explain if sending back to the employee..."
+                    />
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      <Typography component="div" variant="body2">
+                        This report was returned from Finance. You can resubmit to Finance after corrections, or send it back to the employee for revision.
+                      </Typography>
+                    </Alert>
+                  </>
+                )}
+              </Box>
+            );
+          })()}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setReviewDialogOpen(false);
-            setReviewComment('');
-            setSupervisorCertificationAcknowledged(false);
-          }}>Cancel</Button>
-          {/* Show different actions based on report status */}
-          {selectedReport?.status === 'needs_revision' && selectedReport?.currentApprovalStage === 'pending_supervisor' ? (
+        <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Button onClick={closeReviewDialog}>Cancel</Button>
+          {reviewDialogMode === 'revision' && (
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={() => selectedReport && handleRejectReport(selectedReport.id)}
+              disabled={savingAction || !reviewComment.trim()}
+            >
+              Request revision from employee
+            </Button>
+          )}
+          {reviewDialogMode === 'approve' && (
+            <Button
+              variant="contained"
+              color="success"
+              onClick={() => selectedReport && handleApproveReport(selectedReport.id)}
+              disabled={
+                savingAction ||
+                ((selectedReport?.submissionType || '').toLowerCase() !== 'weekly_checkup' &&
+                  !supervisorCertificationAcknowledged)
+              }
+            >
+              Approve and send to finance
+            </Button>
+          )}
+          {reviewDialogMode === 'finance_return' && (
             <>
-              <Button 
+              <Button
                 onClick={() => selectedReport && handleRejectReport(selectedReport.id)}
                 color="error"
                 disabled={savingAction || !reviewComment.trim()}
               >
-                Send Back to Employee
+                Send back to employee
               </Button>
-              <Button 
+              <Button
                 onClick={() => selectedReport && handleResubmitToFinance(selectedReport.id)}
                 color="success"
                 variant="contained"
                 disabled={savingAction || !reviewComment.trim()}
               >
-                Resubmit to Finance
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button 
-                onClick={() => selectedReport && handleRejectReport(selectedReport.id)}
-                color="error"
-                disabled={savingAction || !reviewComment.trim()}
-              >
-                Request Revision from Employee
-              </Button>
-              <Button 
-                onClick={() => selectedReport && handleApproveReport(selectedReport.id)}
-                color="success"
-                variant="contained"
-                disabled={savingAction}
-              >
-                Approve and Send to Finance
+                Resubmit to finance
               </Button>
             </>
           )}
