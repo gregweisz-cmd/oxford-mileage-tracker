@@ -7,6 +7,22 @@ import { LOCATION_TASK_NAME, GPS_TRACKING_STORAGE_KEY, PersistedGpsState } from 
 import { GooglePlacesService } from './googlePlacesService';
 import { StationaryNotificationService } from './stationaryNotificationService';
 
+/** Reject corrupt / partial AsyncStorage blobs so restore cannot throw mid-hydration. */
+function isPersistedStateRestorable(state: unknown): state is PersistedGpsState {
+  if (!state || typeof state !== 'object') return false;
+  const s = state as Partial<PersistedGpsState>;
+  if (!s.session || typeof s.session !== 'object') return false;
+  const { id, employeeId, startTime } = s.session;
+  if (typeof id !== 'string' || !id) return false;
+  if (typeof employeeId !== 'string' || !employeeId) return false;
+  if (typeof startTime !== 'string' || !startTime) return false;
+  if (!s.lastLocation || typeof s.lastLocation !== 'object') return false;
+  const { latitude, longitude } = s.lastLocation;
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return false;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+  return true;
+}
+
 export class GpsTrackingService {
   private static currentSession: GpsTrackingSession | null = null;
   private static lastLocation: Location.LocationObject | null = null;
@@ -282,7 +298,13 @@ export class GpsTrackingService {
       const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
       if (!raw) return false;
 
-      const state: PersistedGpsState = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
+      if (!isPersistedStateRestorable(parsed)) {
+        debugWarn('GPS: persisted session invalid or incomplete; clearing storage');
+        await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY);
+        return false;
+      }
+      const state = parsed;
       const session = state.session;
 
       this.currentSession = {
@@ -344,7 +366,9 @@ export class GpsTrackingService {
       const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
       if (!raw || !this.currentSession) return;
 
-      const state: PersistedGpsState = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
+      if (!isPersistedStateRestorable(parsed)) return;
+      const state = parsed;
       if (state.session.id !== this.currentSession.id) return;
 
       this.totalDistance = state.totalDistance;

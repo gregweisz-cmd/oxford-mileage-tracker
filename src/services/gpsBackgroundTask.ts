@@ -82,6 +82,15 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     if (!raw) return;
 
     const state: PersistedGpsState = JSON.parse(raw);
+    if (
+      !state.lastLocation ||
+      typeof state.lastLocation.latitude !== 'number' ||
+      typeof state.lastLocation.longitude !== 'number' ||
+      !Number.isFinite(state.lastLocation.latitude) ||
+      !Number.isFinite(state.lastLocation.longitude)
+    ) {
+      return;
+    }
     const lastLat = state.lastLocation.latitude;
     const lastLon = state.lastLocation.longitude;
 

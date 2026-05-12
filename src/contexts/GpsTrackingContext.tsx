@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Alert, AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, AppState, AppStateStatus, InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { GpsTrackingService } from '../services/gpsTrackingService';
 import { GpsTrackingSession, LocationDetails } from '../types';
@@ -47,6 +47,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const [shouldShowEndLocationModal, setShouldShowEndLocationModal] = useState(false);
   const [restoredTrackingOnLaunch, setRestoredTrackingOnLaunch] = useState(false);
   const [showStationaryPrompt, setShowStationaryPrompt] = useState(false);
+  const showStationaryPromptRef = useRef(false);
   const restoredRef = useRef(false);
   const pausedDrivingAlertVisibleRef = useRef(false);
 
@@ -86,6 +87,24 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     );
   };
 
+  const presentStationaryPrompt = () => {
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        try {
+          if (!GpsTrackingService.isTracking() || GpsTrackingService.isTripPaused()) return;
+          setShowStationaryPrompt(true);
+          void GpsTrackingService.consumeStationaryAlertPrompt();
+        } catch (e) {
+          console.error('Stationary prompt failed:', e);
+        }
+      }, 120);
+    });
+  };
+
+  useEffect(() => {
+    showStationaryPromptRef.current = showStationaryPrompt;
+  }, [showStationaryPrompt]);
+
   // Restore session from storage on mount (handles app kill/restart during tracking)
   useEffect(() => {
     let mounted = true;
@@ -97,6 +116,16 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
         refreshTrackingStatus();
       } else if (mounted && !restored) {
         refreshTrackingStatus();
+      }
+      if (mounted && GpsTrackingService.isTracking()) {
+        try {
+          const hasPending = await GpsTrackingService.hasPendingStationaryAlert();
+          if (hasPending) {
+            presentStationaryPrompt();
+          }
+        } catch {
+          /* ignore */
+        }
       }
     })();
     return () => { mounted = false; };
@@ -111,10 +140,10 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
         refreshTrackingStatus();
         const hasPendingAlert = await GpsTrackingService.hasPendingStationaryAlert();
         if (hasPendingAlert) {
-          setShowStationaryPrompt(true);
-          await GpsTrackingService.consumeStationaryAlertPrompt();
+          presentStationaryPrompt();
+        } else {
+          await checkPausedDrivingAlert();
         }
-        await checkPausedDrivingAlert();
       }
     });
     return () => sub.remove();
@@ -127,31 +156,44 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
 
     const openStationaryPrompt = async () => {
       if (!GpsTrackingService.isTracking() || GpsTrackingService.isTripPaused()) return;
-      setShowStationaryPrompt(true);
-      await GpsTrackingService.consumeStationaryAlertPrompt();
+      presentStationaryPrompt();
     };
 
     (async () => {
-      await StationaryNotificationService.initialize();
+      try {
+        await StationaryNotificationService.initialize();
+      } catch (e) {
+        console.error('Stationary notification init failed:', e);
+      }
       if (!mounted) return;
       receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
-        const type = (notification.request.content.data as any)?.type;
-        if (type === 'gps_stationary') {
-          void openStationaryPrompt();
+        try {
+          const type = (notification.request.content.data as any)?.type;
+          if (type === 'gps_stationary') {
+            void openStationaryPrompt();
+          }
+        } catch (e) {
+          console.error('Notification received handler:', e);
         }
       });
       responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        const actionId = response.actionIdentifier;
-        const type = (response.notification.request.content.data as any)?.type;
-        if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_END) {
-          setShowStationaryPrompt(false);
-          void GpsTrackingService.consumeStationaryAlertPrompt();
-          requestStopTracking();
-        } else if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_KEEP) {
-          setShowStationaryPrompt(false);
-          void GpsTrackingService.consumeStationaryAlertPrompt();
-        } else if (type === 'gps_stationary') {
-          void openStationaryPrompt();
+        try {
+          const actionId = response.actionIdentifier;
+          const type = (response.notification.request.content.data as any)?.type;
+          if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_END) {
+            setShowStationaryPrompt(false);
+            void GpsTrackingService.consumeStationaryAlertPrompt();
+            InteractionManager.runAfterInteractions(() => {
+              requestStopTracking();
+            });
+          } else if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_KEEP) {
+            setShowStationaryPrompt(false);
+            void GpsTrackingService.consumeStationaryAlertPrompt();
+          } else if (type === 'gps_stationary') {
+            void openStationaryPrompt();
+          }
+        } catch (e) {
+          console.error('Notification response handler:', e);
         }
       });
     })();
@@ -174,7 +216,9 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
           if (Math.abs(newDistance - prevDistance) > 0.01) return newDistance;
           return prevDistance;
         });
-        await checkPausedDrivingAlert();
+        if (!showStationaryPromptRef.current) {
+          await checkPausedDrivingAlert();
+        }
       }
     }, 15000);
     return () => clearInterval(interval);
@@ -298,7 +342,9 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
                 style={styles.stationaryPrimaryButton}
                 onPress={() => {
                   setShowStationaryPrompt(false);
-                  requestStopTracking();
+                  InteractionManager.runAfterInteractions(() => {
+                    requestStopTracking();
+                  });
                 }}
               >
                 <Text style={styles.stationaryPrimaryButtonText}>End Tracking</Text>
