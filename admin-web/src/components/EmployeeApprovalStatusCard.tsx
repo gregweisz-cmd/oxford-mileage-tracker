@@ -137,6 +137,27 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
   disableWithdraw,
 }) => {
   const statusChip = getStatusChipProps(status);
+  const normalizedStatus = (status || 'draft').toLowerCase();
+  const isDraft = normalizedStatus === 'draft';
+  const isTerminal = normalizedStatus === 'approved' || normalizedStatus === 'rejected';
+
+  const workflowEmptyMessage = () => {
+    if (loading) return 'Loading approval workflow…';
+    if (isDraft) return 'Approval workflow will appear here once the report is submitted.';
+    if (isTerminal) {
+      return 'This report is complete. Detailed workflow steps are not available to display.';
+    }
+    return 'Workflow steps are not available to display. The status above reflects where this report is in the process.';
+  };
+
+  const activityEmptyMessage = () => {
+    if (loading) return 'Loading activity…';
+    if (isDraft) return 'Activity will appear here as the report moves through approvals.';
+    if (isTerminal) {
+      return 'No timeline entries are available to display for this report.';
+    }
+    return 'No approval activity has been logged yet for this report.';
+  };
 
   return (
     <Card variant="outlined" sx={{ mb: 3 }}>
@@ -224,7 +245,7 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
           {workflow.length === 0 ? (
             <Box sx={{ gridColumn: '1 / -1' }}>
               <Typography variant="body2" color="text.secondary">
-                Approval workflow will appear here once the report is submitted.
+                {workflowEmptyMessage()}
               </Typography>
             </Box>
           ) : (
@@ -294,7 +315,7 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
 
         {history.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            Activity will appear here as the report moves through approvals.
+            {activityEmptyMessage()}
           </Typography>
         ) : (
           <List dense disablePadding>

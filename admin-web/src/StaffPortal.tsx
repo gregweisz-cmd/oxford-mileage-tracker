@@ -5898,6 +5898,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     );
   }
 
+  const loggedInEmployeeIdForSubmit =
+    typeof window !== 'undefined' ? localStorage.getItem('currentEmployeeId') : null;
+  const isViewingOwnExpenseReport =
+    !loggedInEmployeeIdForSubmit ||
+    !effectiveEmployeeId ||
+    loggedInEmployeeIdForSubmit === effectiveEmployeeId;
+  const showHeaderSubmitReport =
+    isViewingOwnExpenseReport &&
+    !supervisorMode &&
+    (reportStatus === 'draft' || reportStatus === 'needs_revision');
+
   return (
     <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
       {/* Dev-only: trigger error boundary to test "Go to dashboard" (throw during render so ErrorBoundary catches it) */}
@@ -5916,7 +5927,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         supervisorMode={supervisorMode}
         onExportPdf={handleExportPdf}
         onSaveReport={handleSaveReport}
-        onSubmitReport={handleSubmitReport}
+        onSubmitReport={showHeaderSubmitReport ? handleSubmitReport : undefined}
         onApproveReport={onApproveReport}
         onRequestRevision={onRequestRevision}
         onViewAllReports={fetchAllReports}
