@@ -90,6 +90,15 @@ export interface MileageEntryFormData {
   costCenter?: string;
 }
 
+interface DistanceRouteOption {
+  summary?: string;
+  miles: number;
+  distanceText?: string;
+  durationText?: string;
+  durationInTrafficText?: string | null;
+  warnings?: string[];
+}
+
 export interface ReceiptFormData {
   id?: string;
   employeeId: string;
@@ -157,6 +166,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const [isContinuingTripEntry, setIsContinuingTripEntry] = useState(false);
   const isContinuingTripEntryRef = useRef(false);
   const [continuationPromptData, setContinuationPromptData] = useState<MileageEntryFormData | null>(null);
+  const [routeOptions, setRouteOptions] = useState<DistanceRouteOption[]>([]);
 
   // Fetch travel reasons (purpose dropdown) – same options as mobile app
   useEffect(() => {
@@ -257,6 +267,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       setIsContinuingTripEntry(false);
       isContinuingTripEntryRef.current = false;
       setContinuationPromptData(null);
+      setRouteOptions([]);
     }
   }, [open, mode, initialData, employee?.id, employee?.defaultCostCenter, employee?.selectedCostCenters]);
 
@@ -450,8 +461,28 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       return;
     }
     setDistanceError(null);
+    setRouteOptions([]);
     setCalculatingMiles(true);
     try {
+      const routesRes = await fetch(`${API_BASE_URL}/api/distance/routes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+        headers: getStaffPortalAuthHeaders(),
+      });
+      const routesContentType = routesRes.headers.get('content-type') || '';
+      const routesData = routesContentType.includes('application/json') ? await routesRes.json() : null;
+      if (routesRes.ok && Array.isArray(routesData?.routes) && routesData.routes.length > 0) {
+        const routes = routesData.routes.filter((route: DistanceRouteOption) => typeof route.miles === 'number' && route.miles > 0);
+        if (routes.length > 1) {
+          setRouteOptions(routes);
+          return;
+        }
+        if (routes.length === 1) {
+          setFormData(prev => ({ ...prev, miles: routes[0].miles }));
+          setErrors(prev => ({ ...prev, miles: '' }));
+          return;
+        }
+      }
+
+      // Backwards-compatible fallback when Directions alternatives are unavailable.
       const res = await fetch(`${API_BASE_URL}/api/distance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
         headers: getStaffPortalAuthHeaders(),
       });
@@ -472,6 +503,13 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     } finally {
       setCalculatingMiles(false);
     }
+  };
+
+  const handleSelectRouteOption = (route: DistanceRouteOption) => {
+    setFormData(prev => ({ ...prev, miles: route.miles }));
+    setErrors(prev => ({ ...prev, miles: '' }));
+    setDistanceError(null);
+    setRouteOptions([]);
   };
 
   return (
@@ -824,6 +862,54 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         employeeId={employee.id}
         title={`Search ${addressSelectorType === 'start' ? 'Start' : 'End'} Location`}
       />
+      <Dialog
+        open={routeOptions.length > 0}
+        onClose={() => setRouteOptions([])}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Choose the route you traveled</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Google found multiple driving routes. Pick the one that best matches how you traveled.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {routeOptions.map((route, index) => {
+              const durationText = route.durationInTrafficText || route.durationText;
+              const routeLabel = route.summary ? `via ${route.summary}` : `Route ${index + 1}`;
+              return (
+                <Button
+                  key={`${route.summary || 'route'}-${route.miles}-${index}`}
+                  variant="outlined"
+                  onClick={() => handleSelectRouteOption(route)}
+                  sx={{ justifyContent: 'flex-start', textAlign: 'left', py: 1.5 }}
+                >
+                  <Box>
+                    <Typography variant="subtitle2">
+                      {route.miles} miles{durationText ? ` · ${durationText}` : ''} · {routeLabel}
+                    </Typography>
+                    {route.distanceText && (
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Google distance: {route.distanceText}
+                      </Typography>
+                    )}
+                    {route.warnings && route.warnings.length > 0 && (
+                      <Typography variant="caption" color="warning.main" display="block">
+                        {route.warnings.join(' ')}
+                      </Typography>
+                    )}
+                  </Box>
+                </Button>
+              );
+            })}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRouteOptions([])}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog
         open={!!continuationPromptData}
         onClose={handleDoneAfterSave}

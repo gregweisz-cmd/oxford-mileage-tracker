@@ -105,7 +105,73 @@ async function calculateDistance(startAddress, endAddress) {
   return rounded;
 }
 
+function summarizeRoute(route) {
+  const leg = route?.legs?.[0] || {};
+  const distanceMeters = Number(leg.distance?.value || 0);
+  const miles = Math.round(distanceMeters * 0.000621371);
+  const durationSeconds = Number(leg.duration?.value || 0);
+  const durationInTrafficSeconds = Number(leg.duration_in_traffic?.value || 0) || null;
+  const summary = route?.summary || '';
+
+  return {
+    summary,
+    miles,
+    distanceText: leg.distance?.text || `${miles} mi`,
+    durationText: leg.duration?.text || '',
+    durationInTrafficText: leg.duration_in_traffic?.text || null,
+    durationSeconds,
+    durationInTrafficSeconds,
+    startAddress: leg.start_address || '',
+    endAddress: leg.end_address || '',
+    warnings: Array.isArray(route?.warnings) ? route.warnings : [],
+  };
+}
+
+/**
+ * Calculate alternative driving routes between two addresses using Directions API.
+ * @returns {Promise<Array<{summary:string,miles:number,distanceText:string,durationText:string,durationInTrafficText?:string|null}>>}
+ */
+async function calculateRouteOptions(startAddress, endAddress) {
+  if (!isConfigured()) {
+    throw new Error('Google Maps API key is not configured');
+  }
+  if (!startAddress || !String(startAddress).trim()) {
+    throw new Error('Start address is required');
+  }
+  if (!endAddress || !String(endAddress).trim()) {
+    throw new Error('End address is required');
+  }
+
+  const origin = extractAddressFromLocation(String(startAddress).trim());
+  const destination = extractAddressFromLocation(String(endAddress).trim());
+  const url =
+    `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}` +
+    `&destination=${encodeURIComponent(destination)}&mode=driving&alternatives=true&departure_time=now&units=imperial&key=${GOOGLE_MAPS_API_KEY}`;
+
+  const response = await axios.get(url, { timeout: 10000 });
+  const data = response.data;
+
+  if (data.status !== 'OK') {
+    throw new Error(data.error_message || data.status || 'Failed to calculate route options');
+  }
+  if (!Array.isArray(data.routes) || data.routes.length === 0) {
+    throw new Error('No route options returned from Google Maps');
+  }
+
+  const seen = new Set();
+  return data.routes
+    .map(summarizeRoute)
+    .filter((route) => {
+      if (!route.miles || route.miles <= 0) return false;
+      const key = `${route.summary}|${route.miles}|${route.durationSeconds}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 module.exports = {
   isConfigured,
-  calculateDistance
+  calculateDistance,
+  calculateRouteOptions
 };

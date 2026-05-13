@@ -39,6 +39,24 @@ router.get('/api/distance', async (req, res) => {
   }
 });
 
+router.get('/api/distance/routes', async (req, res) => {
+  const from = req.query.from;
+  const to = req.query.to;
+  if (!from || !to) {
+    return res.status(400).json({ error: 'Query params "from" and "to" are required' });
+  }
+  if (!distanceService.isConfigured()) {
+    return res.status(503).json({ error: 'Google Maps API key is not configured' });
+  }
+  try {
+    const routes = await distanceService.calculateRouteOptions(from, to);
+    return res.json({ routes });
+  } catch (err) {
+    debugError('Distance route options failed:', err.message);
+    return res.status(400).json({ error: err.message || 'Failed to calculate route options' });
+  }
+});
+
 // ===== PLACES (Autocomplete / Details for mobile address entry; server-side key) =====
 
 router.get('/api/places/autocomplete', async (req, res) => {
