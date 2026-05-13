@@ -52,7 +52,25 @@ import GooglePlacesTextField from './GooglePlacesTextField';
 import { makeCanonicalLocationSelection } from '../utils/locationSelection';
 import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
 
-const API_BASE_URL = (process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com').replace(/\/+$/, '');
+const DEFAULT_API_BASE_URL = 'https://oxford-mileage-backend.onrender.com';
+const getApiBaseUrl = () => {
+  const configured = (process.env.REACT_APP_API_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '');
+  try {
+    const configuredUrl = new URL(configured);
+    if (configuredUrl.hostname.endsWith('.vercel.app')) return DEFAULT_API_BASE_URL;
+    if (
+      typeof window !== 'undefined' &&
+      configuredUrl.hostname === window.location.hostname &&
+      configuredUrl.pathname.replace(/\/+$/, '') === ''
+    ) {
+      return DEFAULT_API_BASE_URL;
+    }
+  } catch {
+    return DEFAULT_API_BASE_URL;
+  }
+  return configured;
+};
+const API_BASE_URL = getApiBaseUrl();
 
 // Form interfaces
 export interface MileageEntryFormData {

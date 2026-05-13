@@ -1,9 +1,28 @@
 import { getStaffPortalAuthHeaders } from './staffPortalAuthHeaders';
 
-const API_BASE_URL = (process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com').replace(
-  /\/+$/,
-  ''
-);
+const DEFAULT_API_BASE_URL = 'https://oxford-mileage-backend.onrender.com';
+
+function resolveApiBaseUrl(): string {
+  const configured = (process.env.REACT_APP_API_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '');
+  try {
+    const configuredUrl = new URL(configured);
+    if (
+      typeof window !== 'undefined' &&
+      configuredUrl.hostname === window.location.hostname &&
+      configuredUrl.pathname.replace(/\/+$/, '') === ''
+    ) {
+      return DEFAULT_API_BASE_URL;
+    }
+    if (configuredUrl.hostname.endsWith('.vercel.app')) {
+      return DEFAULT_API_BASE_URL;
+    }
+  } catch {
+    return DEFAULT_API_BASE_URL;
+  }
+  return configured;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 let installed = false;
 
@@ -58,6 +77,35 @@ function mergeBackendAuthHeaders(headers: Headers): void {
   }
 }
 
+function resolveBackendApiUrl(urlStr: string): string | null {
+  if (!urlStr) return null;
+  try {
+    const fallbackBase = typeof window !== 'undefined' ? window.location.href : `${API_BASE_URL}/`;
+    const target = new URL(urlStr, fallbackBase);
+    const isSameOriginApi =
+      typeof window !== 'undefined' &&
+      target.origin === window.location.origin &&
+      target.pathname.startsWith('/api/');
+    if (!isSameOriginApi && !urlStr.startsWith('/api/')) {
+      return null;
+    }
+
+    const backend = new URL(API_BASE_URL);
+    backend.pathname = target.pathname;
+    backend.search = target.search;
+    backend.hash = target.hash;
+    return backend.toString();
+  } catch {
+    return null;
+  }
+}
+
+function rewriteApiRequest(input: RequestInfo | URL, rewrittenUrl: string): RequestInfo | URL {
+  if (typeof input === 'string') return rewrittenUrl;
+  if (input instanceof URL) return new URL(rewrittenUrl);
+  return new Request(rewrittenUrl, input);
+}
+
 export function installAuthenticatedFetch() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
@@ -66,6 +114,9 @@ export function installAuthenticatedFetch() {
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const urlStr = resolveUrlString(input);
+    const backendApiUrl = resolveBackendApiUrl(urlStr);
+    const fetchInput = backendApiUrl ? rewriteApiRequest(input, backendApiUrl) : input;
+    const effectiveUrlStr = backendApiUrl || urlStr;
     const method =
       init?.method ||
       (input instanceof Request ? input.method : undefined) ||
@@ -78,13 +129,13 @@ export function installAuthenticatedFetch() {
       token = null;
     }
 
-    if (!token?.trim() || !shouldAttachAuth(urlStr) || isCredentialEndpoint(urlStr, method)) {
-      return originalFetch(input, init);
+    if (!token?.trim() || !shouldAttachAuth(effectiveUrlStr) || isCredentialEndpoint(effectiveUrlStr, method)) {
+      return originalFetch(fetchInput, init);
     }
 
     const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
     mergeBackendAuthHeaders(headers);
 
-    return originalFetch(input, { ...init, headers });
+    return originalFetch(fetchInput, { ...init, headers });
   };
 }
