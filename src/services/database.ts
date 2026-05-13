@@ -6,6 +6,7 @@ import { ApiSyncService } from './apiSyncService';
 import { getFullLocationAddress } from '../utils/addressFormatter';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { getAuthHeaders } from './authHeaders';
+import { API_BASE_URL } from '../config/api';
 // Removed SyncIntegrationService import to break circular dependency
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -2089,13 +2090,74 @@ export class DatabaseService {
   }
 
   // Vehicle methods
+  private static mapVehicleRow(row: any, employeeIdOverride?: string): Vehicle {
+    return {
+      id: row.id,
+      employeeId: employeeIdOverride || row.employeeId,
+      name: row.name,
+      plateNumber: row.plateNumber || undefined,
+      startingOdometer: Number(row.startingOdometer || 0),
+      isDefault: row.isDefault === 1 || row.isDefault === true,
+      isActive: row.isActive === 1 || row.isActive === true,
+      createdAt: row.createdAt ? new Date(row.createdAt) : new Date(),
+      updatedAt: row.updatedAt ? new Date(row.updatedAt) : new Date(),
+    };
+  }
+
+  private static async fetchBackendVehicles(localEmployeeId: string): Promise<Vehicle[]> {
+    const backendEmployeeId = await ApiSyncService.resolveBackendEmployeeId(localEmployeeId).catch(() => localEmployeeId);
+    const response = await fetch(
+      `${API_BASE_URL}/vehicles?employeeId=${encodeURIComponent(backendEmployeeId || localEmployeeId)}`,
+      { headers: await getAuthHeaders() }
+    );
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(`Failed to fetch backend vehicles: HTTP ${response.status} ${responseText.slice(0, 200)}`);
+    }
+    const rows = JSON.parse(responseText);
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row: any) => this.mapVehicleRow(row, localEmployeeId));
+  }
+
+  private static async replaceLocalVehiclesFromBackend(employeeId: string, vehicles: Vehicle[]): Promise<void> {
+    const database = await getDatabase();
+    if (vehicles.length === 0) return;
+
+    const backendIds = vehicles.map((vehicle) => vehicle.id);
+    const placeholders = backendIds.map(() => '?').join(', ');
+    await database.runAsync(
+      `UPDATE vehicles SET isActive = 0 WHERE employeeId = ? AND id NOT IN (${placeholders})`,
+      [employeeId, ...backendIds]
+    );
+
+    for (const vehicle of vehicles) {
+      const createdAt = vehicle.createdAt instanceof Date ? vehicle.createdAt.toISOString() : new Date().toISOString();
+      const updatedAt = vehicle.updatedAt instanceof Date ? vehicle.updatedAt.toISOString() : new Date().toISOString();
+      await database.runAsync(
+        `INSERT OR REPLACE INTO vehicles (id, employeeId, name, plateNumber, startingOdometer, isDefault, isActive, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          vehicle.id,
+          employeeId,
+          vehicle.name,
+          vehicle.plateNumber || '',
+          vehicle.startingOdometer || 0,
+          vehicle.isDefault ? 1 : 0,
+          vehicle.isActive ? 1 : 0,
+          createdAt,
+          updatedAt,
+        ]
+      );
+    }
+  }
+
   static async createVehicle(data: {
     employeeId: string;
     name: string;
     plateNumber?: string;
     startingOdometer: number;
     isDefault?: boolean;
-  }): Promise<Vehicle> {
+  }, syncBackend = true): Promise<Vehicle> {
     const database = await getDatabase();
     const id = this.generateId();
     const now = new Date().toISOString();
@@ -2108,7 +2170,7 @@ export class DatabaseService {
        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       [id, data.employeeId, data.name.trim(), data.plateNumber?.trim() || '', data.startingOdometer || 0, setDefault ? 1 : 0, now, now]
     );
-    return {
+    const createdVehicle = {
       id,
       employeeId: data.employeeId,
       name: data.name.trim(),
@@ -2119,32 +2181,62 @@ export class DatabaseService {
       createdAt: new Date(now),
       updatedAt: new Date(now),
     };
+
+    if (syncBackend) {
+      try {
+        const backendEmployeeId = await ApiSyncService.resolveBackendEmployeeId(data.employeeId).catch(() => data.employeeId);
+        const response = await fetch(`${API_BASE_URL}/vehicles`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(await getAuthHeaders()),
+          },
+          body: JSON.stringify({
+            employeeId: backendEmployeeId || data.employeeId,
+            name: data.name.trim(),
+            plateNumber: data.plateNumber?.trim() || '',
+            startingOdometer: Number(data.startingOdometer) || 0,
+            isDefault: setDefault,
+          }),
+        });
+        if (!response.ok) {
+          const responseText = await response.text().catch(() => '');
+          throw new Error(`HTTP ${response.status} ${responseText.slice(0, 200)}`);
+        }
+      } catch (error) {
+        debugWarn('⚠️ Database: Failed to sync created vehicle to backend:', error);
+      }
+    }
+
+    return createdVehicle;
   }
 
   static async getVehicles(employeeId: string): Promise<Vehicle[]> {
+    try {
+      const backendVehicles = await this.fetchBackendVehicles(employeeId);
+      if (backendVehicles.length > 0) {
+        await this.replaceLocalVehiclesFromBackend(employeeId, backendVehicles);
+        return backendVehicles.some((vehicle) => vehicle.isDefault)
+          ? backendVehicles
+          : backendVehicles.map((vehicle, index) => ({ ...vehicle, isDefault: index === 0 }));
+      }
+    } catch (error) {
+      debugWarn('⚠️ Database: Failed to load vehicles from backend, using local cache:', error);
+    }
+
     const database = await getDatabase();
     const rows = await database.getAllAsync(
       'SELECT * FROM vehicles WHERE employeeId = ? AND isActive = 1 ORDER BY isDefault DESC, createdAt ASC',
       [employeeId]
     );
-    const vehicles = rows.map((row: any) => ({
-      id: row.id,
-      employeeId: row.employeeId,
-      name: row.name,
-      plateNumber: row.plateNumber || undefined,
-      startingOdometer: Number(row.startingOdometer || 0),
-      isDefault: row.isDefault === 1 || row.isDefault === true,
-      isActive: row.isActive === 1 || row.isActive === true,
-      createdAt: new Date(row.createdAt),
-      updatedAt: new Date(row.updatedAt),
-    }));
+    const vehicles = rows.map((row: any) => this.mapVehicleRow(row));
     if (vehicles.length === 0) {
       const created = await this.createVehicle({
         employeeId,
         name: 'Vehicle A',
         startingOdometer: 0,
         isDefault: true,
-      });
+      }, false);
       return [created];
     }
     if (!vehicles.some((v) => v.isDefault)) {
@@ -2159,6 +2251,24 @@ export class DatabaseService {
     const now = new Date().toISOString();
     await database.runAsync('UPDATE vehicles SET isDefault = 0, updatedAt = ? WHERE employeeId = ?', [now, employeeId]);
     await database.runAsync('UPDATE vehicles SET isDefault = 1, updatedAt = ? WHERE id = ? AND employeeId = ?', [now, vehicleId, employeeId]);
+
+    try {
+      const backendEmployeeId = await ApiSyncService.resolveBackendEmployeeId(employeeId).catch(() => employeeId);
+      const response = await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(vehicleId)}/default`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(await getAuthHeaders()),
+        },
+        body: JSON.stringify({ employeeId: backendEmployeeId || employeeId }),
+      });
+      if (!response.ok) {
+        const responseText = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status} ${responseText.slice(0, 200)}`);
+      }
+    } catch (error) {
+      debugWarn('⚠️ Database: Failed to sync default vehicle to backend:', error);
+    }
   }
 
   static async updateVehicle(
@@ -2166,6 +2276,7 @@ export class DatabaseService {
     updates: Partial<Pick<Vehicle, 'name' | 'plateNumber' | 'startingOdometer' | 'isActive'>>
   ): Promise<void> {
     const database = await getDatabase();
+    const existing = await database.getFirstAsync('SELECT * FROM vehicles WHERE id = ?', [id]) as any | null;
     const fields: string[] = [];
     const values: any[] = [];
     if (updates.name !== undefined) {
@@ -2189,6 +2300,45 @@ export class DatabaseService {
     values.push(new Date().toISOString());
     values.push(id);
     await database.runAsync(`UPDATE vehicles SET ${fields.join(', ')} WHERE id = ?`, values);
+
+    if (existing?.employeeId) {
+      try {
+        const backendEmployeeId = await ApiSyncService.resolveBackendEmployeeId(existing.employeeId).catch(() => existing.employeeId);
+        if (updates.isActive === false) {
+          const response = await fetch(
+            `${API_BASE_URL}/vehicles/${encodeURIComponent(id)}?employeeId=${encodeURIComponent(backendEmployeeId || existing.employeeId)}`,
+            {
+              method: 'DELETE',
+              headers: await getAuthHeaders(),
+            }
+          );
+          if (!response.ok) {
+            const responseText = await response.text().catch(() => '');
+            throw new Error(`HTTP ${response.status} ${responseText.slice(0, 200)}`);
+          }
+        } else {
+          const response = await fetch(`${API_BASE_URL}/vehicles/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(await getAuthHeaders()),
+            },
+            body: JSON.stringify({
+              employeeId: backendEmployeeId || existing.employeeId,
+              name: updates.name,
+              plateNumber: updates.plateNumber,
+              startingOdometer: updates.startingOdometer,
+            }),
+          });
+          if (!response.ok) {
+            const responseText = await response.text().catch(() => '');
+            throw new Error(`HTTP ${response.status} ${responseText.slice(0, 200)}`);
+          }
+        }
+      } catch (error) {
+        debugWarn('⚠️ Database: Failed to sync vehicle update to backend:', error);
+      }
+    }
   }
 
   // Oxford House operations
