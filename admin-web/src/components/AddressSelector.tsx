@@ -815,15 +815,15 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           ) : (
             <List sx={{ maxHeight: 400, overflow: 'auto' }}>
               {filteredOxfordHouses.map((house, index) => {
-                const formattedAddress = `${house.name} (${house.address}, ${house.city}, ${house.state} ${house.zip})`;
+                const fullAddress = `${house.address}, ${house.city}, ${house.state} ${house.zip}`;
                 return (
                   <React.Fragment key={index}>
                     <ListItem disablePadding>
                       <ListItemButton
                         onClick={() =>
                           handleSelectAddress(
-                            formattedAddress,
-                            { name: house.name, source: 'oxfordHouse', sourceId: house.name, fullAddress: formattedAddress }
+                            fullAddress,
+                            { name: house.name, source: 'oxfordHouse', sourceId: house.name }
                           )
                         }
                       >

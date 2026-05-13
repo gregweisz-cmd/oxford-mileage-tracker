@@ -2759,7 +2759,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // Handle mileage entry save
-  const handleMileageEntrySave = async (formData: MileageEntryFormData) => {
+  const handleMileageEntrySave = async (
+    formData: MileageEntryFormData,
+    options?: { keepOpenAfterSave?: boolean }
+  ) => {
     try {
       // Prepare the data for the backend, mapping startingOdometer to odometerReading
       const backendData = {
@@ -2800,11 +2803,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Trigger a refresh of employee data by incrementing refreshTrigger
       setRefreshTrigger(prev => prev + 1);
       
-      setEditingMileageEntry(null);
-      setMileageFormOpen(false);
+      if (!options?.keepOpenAfterSave) {
+        setEditingMileageEntry(null);
+        setMileageFormOpen(false);
+      }
     } catch (error) {
       debugError('Error saving mileage entry:', error);
       alert(`Failed to ${editingMileageEntry && editingMileageEntry.id ? 'update' : 'create'} mileage entry. Please try again.`);
+      throw error;
     }
   };
 
@@ -7345,6 +7351,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               date: new Date(editingMileageEntry.date).toISOString().split('T')[0],
               startLocation: editingMileageEntry.startLocation || editingMileageEntry.startLocationName || '',
               endLocation: editingMileageEntry.endLocation || editingMileageEntry.endLocationName || '',
+              startLocationName: editingMileageEntry.startLocationName || '',
+              endLocationName: editingMileageEntry.endLocationName || '',
               purpose: editingMileageEntry.purpose || '',
               miles: editingMileageEntry.miles || 0,
               startingOdometer: editingMileageEntry.odometerReading || 0,

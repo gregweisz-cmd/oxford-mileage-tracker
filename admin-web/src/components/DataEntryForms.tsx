@@ -116,7 +116,7 @@ export interface TimeTrackingFormData {
 interface BaseFormProps {
   open: boolean;
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: any, options?: { keepOpenAfterSave?: boolean }) => void | Promise<void>;
   employee: Employee;
   loading?: boolean;
 }
@@ -154,6 +154,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const [dailyOdometerForDate, setDailyOdometerForDate] = useState<number | null>(null);
   const [dailyOdometerLoading, setDailyOdometerLoading] = useState(false);
   const [travelReasons, setTravelReasons] = useState<{ id: string; label: string }[]>([]);
+  const [isContinuingTripEntry, setIsContinuingTripEntry] = useState(false);
 
   // Fetch travel reasons (purpose dropdown) – same options as mobile app
   useEffect(() => {
@@ -251,6 +252,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       setReturnToBA(false);
       setErrors({});
       setDistanceError(null);
+      setIsContinuingTripEntry(false);
     }
   }, [open, mode, initialData, employee?.id, employee?.defaultCostCenter, employee?.selectedCostCenters]);
 
@@ -273,7 +275,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       newErrors.costCenter = 'Cost center is required';
     }
     // Starting odometer is mandatory once per day; if not already set for this date, user must enter it
-    if (dailyOdometerForDate == null && (formData.startingOdometer == null || Number(formData.startingOdometer) <= 0)) {
+    if ((dailyOdometerForDate == null || isContinuingTripEntry) && (formData.startingOdometer == null || Number(formData.startingOdometer) <= 0)) {
       newErrors.startingOdometer = 'Starting odometer is required once per day for this date';
     }
 
@@ -288,7 +290,9 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     if (returnToBA && !payload.purpose.trim()) {
       payload.purpose = 'Return to base';
     }
-    const effectiveOdometer = dailyOdometerForDate != null ? dailyOdometerForDate : (payload.startingOdometer ?? 0);
+    const effectiveOdometer = dailyOdometerForDate != null && !isContinuingTripEntry
+      ? dailyOdometerForDate
+      : (payload.startingOdometer ?? 0);
     payload.startingOdometer = effectiveOdometer;
 
     try {
@@ -303,7 +307,8 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
           }),
         });
       }
-      await onSave(payload);
+      const keepOpenForContinuationPrompt = mode === 'create';
+      await onSave(payload, { keepOpenAfterSave: keepOpenForContinuationPrompt });
       // Push start/end addresses to Recent list (same key as AddressSelector) so they appear next time
       const key = `recentAddresses_${employee.id}`;
       const max = 15;
@@ -330,6 +335,35 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         timestamp: new Date(),
         employeeId: employee.id
       });
+      if (mode === 'create') {
+        const addAnother = window.confirm('Mileage entry saved. Add another leg starting from this destination?');
+        if (addAnother) {
+          const nextOdometer = Number(payload.startingOdometer || 0) + Number(payload.miles || 0);
+          const nextStartLocation = payload.endLocation || '';
+          const nextStartLocationName = payload.endLocationName || '';
+
+          setFormData((prev) => ({
+            ...prev,
+            date: payload.date,
+            startLocation: nextStartLocation,
+            startLocationName: nextStartLocationName,
+            endLocation: '',
+            endLocationName: '',
+            purpose: '',
+            miles: 0,
+            startingOdometer: nextOdometer > 0 ? Math.round(nextOdometer) : 0,
+            notes: '',
+            isGpsTracked: false,
+          }));
+          setStartAddressParts(parseAddressToParts(nextStartLocation));
+          setEndAddressParts({ ...emptyAddressParts });
+          setReturnToBA(false);
+          setErrors({});
+          setDistanceError(null);
+          setIsContinuingTripEntry(true);
+          return;
+        }
+      }
       onClose();
     } catch (error) {
       debugError('Error saving mileage entry:', error);
@@ -702,9 +736,14 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
                   value={dailyOdometerLoading ? '…' : (formData.startingOdometer ?? '')}
                   onChange={(e) => handleInputChange('startingOdometer', parseInt(e.target.value, 10) || 0)}
                   error={!!errors.startingOdometer}
-                  helperText={errors.startingOdometer || (dailyOdometerForDate != null ? 'Set once per day (already entered for this date)' : 'Required once per day for this date')}
+                  helperText={
+                    errors.startingOdometer ||
+                    (dailyOdometerForDate != null && !isContinuingTripEntry
+                      ? 'Set once per day (already entered for this date)'
+                      : 'Required once per day for this date')
+                  }
                   inputProps={{ min: 0, step: 1 }}
-                  disabled={dailyOdometerLoading || dailyOdometerForDate != null}
+                  disabled={dailyOdometerLoading || (dailyOdometerForDate != null && !isContinuingTripEntry)}
                   sx={{ flex: '0 1 140px', minWidth: 100 }}
                 />
                 <TextField
