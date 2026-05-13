@@ -2,8 +2,44 @@ import Constants from 'expo-constants';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { API_BASE_URL } from '../config/api';
 
+export interface DistanceRouteOption {
+  summary?: string;
+  miles: number;
+  distanceText?: string;
+  durationText?: string;
+  durationInTrafficText?: string | null;
+  warnings?: string[];
+}
+
 export class DistanceService {
   private static readonly GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
+
+  private static normalizeForBackend(address: string): string {
+    const trimmed = (address || '').trim();
+    if (!trimmed || trimmed === 'BA') return trimmed;
+    const match = trimmed.match(/\(([^)]+)\)/);
+    return match && match[1] ? match[1].trim() : trimmed;
+  }
+
+  static async getRouteOptions(startAddress: string, endAddress: string): Promise<DistanceRouteOption[]> {
+    const from = this.normalizeForBackend(startAddress);
+    const to = this.normalizeForBackend(endAddress);
+    if (!from || !to) return [];
+
+    try {
+      const url = `${API_BASE_URL}/distance/routes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      debugLog('DistanceService: Trying backend /api/distance/routes');
+      const response = await fetch(url, { method: 'GET' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data.routes)) {
+        return [];
+      }
+      return data.routes.filter((route: DistanceRouteOption) => typeof route.miles === 'number' && route.miles > 0);
+    } catch (error) {
+      debugWarn('Backend route options request failed:', error);
+      return [];
+    }
+  }
 
   static async calculateDistance(startAddress: string, endAddress: string): Promise<number> {
     debugLog('DistanceService: Starting calculation');
@@ -14,14 +50,8 @@ export class DistanceService {
     try {
       // Normalize like backend: use address inside parentheses when present
       // e.g. "Oxford House 37th Street (1105 Longview Dr New Bern, NC 28562)" -> "1105 Longview Dr New Bern, NC 28562"
-      const normalizeForBackend = (s: string): string => {
-        const t = (s || '').trim();
-        if (!t || t === 'BA') return t;
-        const m = t.match(/\(([^)]+)\)/);
-        return (m && m[1] ? m[1].trim() : t);
-      };
-      const from = normalizeForBackend(startAddress);
-      const to = normalizeForBackend(endAddress);
+      const from = this.normalizeForBackend(startAddress);
+      const to = this.normalizeForBackend(endAddress);
       if (from && to) {
         const fromEnc = encodeURIComponent(from);
         const toEnc = encodeURIComponent(to);

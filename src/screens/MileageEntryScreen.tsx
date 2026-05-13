@@ -19,6 +19,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { DistanceService } from '../services/distanceService';
+import type { DistanceRouteOption } from '../services/distanceService';
 import { MileageEntry, Employee, LocationDetails, Vehicle } from '../types';
 import LocationCaptureModal from '../components/LocationCaptureModal';
 import { formatLocationForInput } from '../utils/locationFormatter';
@@ -84,6 +85,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const [hasStartedGpsToday, setHasStartedGpsToday] = useState(false);
   const [hasExistingEntriesToday, setHasExistingEntriesToday] = useState(false);
   const [lastTravelDayEndingOdometerNote, setLastTravelDayEndingOdometerNote] = useState('');
+  const [routeOptions, setRouteOptions] = useState<DistanceRouteOption[]>([]);
   
   // Location selection modal states
   const [showLocationOptionsModal, setShowLocationOptionsModal] = useState(false);
@@ -722,10 +724,18 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           endAddress = endLocationDetails.address;
         }
       }
-      const distance = await DistanceService.calculateDistance(
-        startAddress,
-        endAddress
-      );
+      const options = await DistanceService.getRouteOptions(startAddress, endAddress);
+      if (options.length > 1) {
+        setRouteOptions(options);
+        return;
+      }
+
+      const distance = options.length === 1
+        ? options[0].miles
+        : await DistanceService.calculateDistance(
+          startAddress,
+          endAddress
+        );
       
       setFormData(prev => ({ ...prev, miles: Math.round(distance).toString() }));
       
@@ -755,6 +765,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     } finally {
       setCalculatingDistance(false);
     }
+  };
+
+  const handleSelectRouteOption = (route: DistanceRouteOption) => {
+    const miles = Math.round(route.miles);
+    setFormData(prev => ({ ...prev, miles: miles.toString() }));
+    setRouteOptions([]);
+    Alert.alert('Success', `Distance set to ${miles} miles.`);
   };
 
   const testDistanceSystem = async () => {
@@ -1806,6 +1823,54 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Route Options Modal */}
+      <Modal
+        visible={routeOptions.length > 1}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRouteOptions([])}
+      >
+        <View style={styles.purposeModalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setRouteOptions([])}
+          />
+          <View style={styles.routeOptionsModalContent}>
+            <Text style={styles.routeOptionsModalTitle}>Choose the route you traveled</Text>
+            <Text style={styles.routeOptionsModalSubtitle}>
+              Google Maps found multiple routes. Select the one that best matches your trip.
+            </Text>
+            <ScrollView style={styles.routeOptionsList} keyboardShouldPersistTaps="handled">
+              {routeOptions.map((route, index) => {
+                const miles = Math.round(route.miles);
+                const label = route.summary || `Route ${index + 1}`;
+                const details = [route.distanceText || `${miles} miles`, route.durationText]
+                  .filter(Boolean)
+                  .join(' | ');
+
+                return (
+                  <TouchableOpacity
+                    key={`${label}-${index}-${miles}`}
+                    style={styles.routeOptionItem}
+                    onPress={() => handleSelectRouteOption(route)}
+                  >
+                    <View style={styles.routeOptionTextContainer}>
+                      <Text style={styles.routeOptionTitle}>{label}</Text>
+                      <Text style={styles.routeOptionDetails}>{details}</Text>
+                    </View>
+                    <Text style={styles.routeOptionMiles}>{miles} mi</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={styles.purposeModalClose} onPress={() => setRouteOptions([])}>
+              <Text style={styles.purposeModalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Trip Chaining Modal */}
       <TripChainingModal
         visible={showTripChainingModal}
@@ -2102,6 +2167,56 @@ const styles = StyleSheet.create({
   purposeModalCloseText: {
     fontSize: 16,
     color: '#666',
+  },
+  routeOptionsModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: '75%',
+  },
+  routeOptionsModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+  },
+  routeOptionsModalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  routeOptionsList: {
+    maxHeight: 360,
+  },
+  routeOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  routeOptionTextContainer: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  routeOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  routeOptionDetails: {
+    fontSize: 13,
+    color: '#666',
+  },
+  routeOptionMiles: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2196F3',
   },
   purposeSuggestionsContainer: {
     marginTop: 12,
