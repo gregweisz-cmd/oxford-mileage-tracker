@@ -212,11 +212,11 @@ router.post('/api/expense-reports', async (req, res) => {
         updateData.currentApproverName = workflowInit.currentApproverName;
         updateData.escalationDueAt = workflowInit.escalationDueAt;
         
-        // Notify supervisor if applicable
-        if (workflowInit.currentApprovalStage === 'supervisor' && workflowInit.currentApproverId) {
+        // Notify the first approver (senior staff, supervisor, or finance).
+        if (workflowInit.currentApproverId) {
           const employee = await dbService.getEmployeeById(employeeId);
           if (employee) {
-            notificationService.notifyReportSubmitted(existingReport.id, employeeId, employee.preferredName || employee.name).catch(err => {
+            notificationService.notifyReportSubmitted(existingReport.id, employeeId, employee.preferredName || employee.name, workflowInit.currentApproverId).catch(err => {
               debugError('❌ Error sending notification:', err);
             });
           }
@@ -270,11 +270,11 @@ router.post('/api/expense-reports', async (req, res) => {
         insertData.currentApproverName = workflowInit.currentApproverName;
         insertData.escalationDueAt = workflowInit.escalationDueAt;
         
-        // Notify supervisor if applicable
-        if (workflowInit.currentApprovalStage === 'supervisor' && workflowInit.currentApproverId) {
+        // Notify the first approver (senior staff, supervisor, or finance).
+        if (workflowInit.currentApproverId) {
           const employee = await dbService.getEmployeeById(employeeId);
           if (employee) {
-            notificationService.notifyReportSubmitted(id, employeeId, employee.preferredName || employee.name).catch(err => {
+            notificationService.notifyReportSubmitted(id, employeeId, employee.preferredName || employee.name, workflowInit.currentApproverId).catch(err => {
               debugError('❌ Error sending notification:', err);
             });
           }
@@ -1471,7 +1471,7 @@ router.get('/api/expense-reports/:id/history', async (req, res) => {
     }
 
     const employee = await new Promise((resolve, reject) => {
-      db.get('SELECT id, name, preferredName FROM employees WHERE id = ?', [report.employeeId], (err, row) => {
+      db.get('SELECT id, name, preferredName, role, supervisorId, seniorStaffId FROM employees WHERE id = ?', [report.employeeId], (err, row) => {
         if (err) reject(err);
         else resolve(row || null);
       });
@@ -1508,9 +1508,36 @@ router.get('/api/expense-reports/:id/history', async (req, res) => {
       );
     });
 
+    const actorIds = [...new Set(actionRows.map((row) => row.actorId).filter(Boolean))];
+    const actorRows = actorIds.length > 0
+      ? await new Promise((resolve, reject) => {
+          const placeholders = actorIds.map(() => '?').join(',');
+          db.all(
+            `SELECT id, role, position FROM employees WHERE id IN (${placeholders})`,
+            actorIds,
+            (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            }
+          );
+        })
+      : [];
+    const actorById = new Map(actorRows.map((actor) => [actor.id, actor]));
+
     const determineActorRole = (actorId) => {
       if (!actorId) return 'system';
-      return actorId === report.employeeId ? 'employee' : 'supervisor';
+      if (actorId === report.employeeId) return 'employee';
+      if (employee?.seniorStaffId && actorId === employee.seniorStaffId) return 'senior_staff';
+      if (employee?.supervisorId && actorId === employee.supervisorId) return 'supervisor';
+
+      const workflowStep = workflow.find((step) => step.approverId === actorId || step.delegatedToId === actorId);
+      if (workflowStep?.role) return workflowStep.role;
+
+      const actor = actorById.get(actorId);
+      if (actor && helpers.isEligibleForFinanceApproval(actor)) return 'finance';
+      if (actor?.role) return actor.role;
+
+      return 'approver';
     };
 
     const historyBase = actionRows.map((row) => ({
@@ -1616,30 +1643,39 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
     };
 
     if (status === 'submitted') {
-      debugLog(`📝 Submitting report ${id} for employee ${report.employeeId}`);
-      const workflowInit = await initializeApprovalWorkflow(report);
-      debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}, approverName=${workflowInit.currentApproverName}`);
-      
-      const stage = workflowInit.currentApprovalStage;
-      updateData.status = stage === 'finance' ? 'pending_finance' : (stage === 'senior_staff' ? 'pending_senior_staff' : 'pending_supervisor');
-      updateData.submittedAt = nowIso;
-      updateData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
-      updateData.currentApprovalStep = workflowInit.currentApprovalStep;
-      updateData.currentApprovalStage = workflowInit.currentApprovalStage;
-      updateData.currentApproverId = workflowInit.currentApproverId;
-      updateData.currentApproverName = workflowInit.currentApproverName;
-      updateData.escalationDueAt = workflowInit.escalationDueAt;
-      
-      debugLog(`📝 Report ${id} status set to: ${updateData.status}, currentApproverId: ${updateData.currentApproverId}`);
-      
-      // Notify first approver (senior staff or supervisor)
-      if (workflowInit.currentApproverId) {
-        const employee = await dbService.getEmployeeById(report.employeeId);
-        if (employee) {
-          debugLog(`📝 Sending notification to first approver ${workflowInit.currentApproverId} for report ${id}`);
-          notificationService.notifyReportSubmitted(id, report.employeeId, employee.preferredName || employee.name, workflowInit.currentApproverId).catch(err => {
-            debugError('❌ Error sending notification for report submission:', err);
-          });
+      const isAlreadyInApproval =
+        ['submitted', 'pending_supervisor', 'pending_senior_staff', 'pending_finance'].includes(report.status) &&
+        !!report.currentApprovalStage &&
+        !!report.approvalWorkflow;
+
+      if (isAlreadyInApproval) {
+        debugLog(`📝 Report ${id} is already in approval (${report.status}); preserving existing workflow`);
+      } else {
+        debugLog(`📝 Submitting report ${id} for employee ${report.employeeId}`);
+        const workflowInit = await initializeApprovalWorkflow(report);
+        debugLog(`📝 Workflow initialized: stage=${workflowInit.currentApprovalStage}, approver=${workflowInit.currentApproverId}, approverName=${workflowInit.currentApproverName}`);
+
+        const stage = workflowInit.currentApprovalStage;
+        updateData.status = stage === 'finance' ? 'pending_finance' : (stage === 'senior_staff' ? 'pending_senior_staff' : 'pending_supervisor');
+        updateData.submittedAt = nowIso;
+        updateData.approvalWorkflow = JSON.stringify(workflowInit.workflow);
+        updateData.currentApprovalStep = workflowInit.currentApprovalStep;
+        updateData.currentApprovalStage = workflowInit.currentApprovalStage;
+        updateData.currentApproverId = workflowInit.currentApproverId;
+        updateData.currentApproverName = workflowInit.currentApproverName;
+        updateData.escalationDueAt = workflowInit.escalationDueAt;
+
+        debugLog(`📝 Report ${id} status set to: ${updateData.status}, currentApproverId: ${updateData.currentApproverId}`);
+
+        // Notify first approver (senior staff, supervisor, or finance)
+        if (workflowInit.currentApproverId) {
+          const employee = await dbService.getEmployeeById(report.employeeId);
+          if (employee) {
+            debugLog(`📝 Sending notification to first approver ${workflowInit.currentApproverId} for report ${id}`);
+            notificationService.notifyReportSubmitted(id, report.employeeId, employee.preferredName || employee.name, workflowInit.currentApproverId).catch(err => {
+              debugError('❌ Error sending notification for report submission:', err);
+            });
+          }
         }
       }
     } else if (status === 'approved') {
@@ -2161,11 +2197,6 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           return;
         }
 
-        // Determine target role based on current step
-        // If supervisor rejects, goes back to employee
-        // If finance rejects, goes back to supervisor
-        const targetRole = currentStep.role === 'finance' ? 'supervisor' : 'employee';
-        
         currentStep.status = 'rejected';
         currentStep.actedAt = nowIso;
         currentStep.comments = comments;
@@ -2173,28 +2204,27 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
 
         updates.status = 'needs_revision';
         updates.currentApprovalStage = 'needs_revision';
-        
-        // Set the approver to the target role's approver (supervisor or employee)
-        if (targetRole === 'supervisor') {
-          // Finance rejected - goes back to supervisor
-          const employee = await dbService.getEmployeeById(report.employeeId);
-          if (employee && employee.supervisorId) {
-            const supervisor = await dbService.getEmployeeById(employee.supervisorId);
-            if (supervisor) {
-              updates.currentApproverId = supervisor.id;
-              updates.currentApproverName = supervisor.preferredName || supervisor.name || 'Supervisor';
-            }
-          }
-        } else {
-          // Supervisor rejected - goes back to employee
-          updates.currentApproverId = report.employeeId;
-          const employee = await dbService.getEmployeeById(report.employeeId);
-          if (employee) {
-            updates.currentApproverName = employee.preferredName || employee.name || 'Employee';
-          }
+
+        // Rejections in this workflow are corrective: the employee owns the revision.
+        updates.currentApproverId = report.employeeId;
+        const employee = await dbService.getEmployeeById(report.employeeId);
+        if (employee) {
+          updates.currentApproverName = employee.preferredName || employee.name || 'Employee';
         }
-        
         updates.escalationDueAt = null;
+
+        notificationService.notifyExpenseReportRevisionRequested(
+          id,
+          approverId || currentStep.approverId,
+          approverName || currentStep.approverName,
+          report.employeeId,
+          {
+            actorRole: currentStep.role,
+            includeFinanceObservers: false,
+          }
+        ).catch(err => {
+          debugError('❌ Error sending rejection revision notification:', err);
+        });
 
         logAction('rejected', approverId || currentStep.approverId, approverName || currentStep.approverName, comments);
         await saveAndRespond();
@@ -2253,12 +2283,13 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
       }
 
       case 'request_revision_to_supervisor': {
-        // Finance requests revision - send back to supervisor
+        // Legacy action name from the finance UI. Revisions now always go back to the employee.
         if (currentStep && currentStep.role !== 'finance') {
           res.status(400).json({ error: 'This action is only available for finance approvers' });
           return;
         }
-        if (!comments) {
+        const commentsStr = typeof comments === 'string' ? comments.trim() : (comments ? String(comments).trim() : '');
+        if (!commentsStr) {
           res.status(400).json({ error: 'Comments are required when requesting revision' });
           return;
         }
@@ -2266,63 +2297,32 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         if (currentStep) {
           currentStep.status = 'revision_requested';
           currentStep.actedAt = nowIso;
-          currentStep.comments = comments;
+          currentStep.comments = commentsStr;
           workflow[currentStepIndex] = currentStep;
         }
 
-        // Find supervisor step in workflow and reset it
-        const supervisorStepIndex = workflow.findIndex(step => step.role === 'supervisor');
-        let supervisorStep = null;
-        
-        // Get supervisor
         const employee = await dbService.getEmployeeById(report.employeeId);
-        if (employee && employee.supervisorId) {
-          const supervisor = await dbService.getEmployeeById(employee.supervisorId);
-          if (supervisor) {
-            const supervisorName = supervisor.preferredName || supervisor.name || 'Supervisor';
-            
-            // If supervisor step exists, reset it to pending
-            if (supervisorStepIndex !== -1) {
-              supervisorStep = workflow[supervisorStepIndex];
-              supervisorStep.status = 'pending';
-              supervisorStep.comments = comments || supervisorStep.comments || '';
-              supervisorStep.dueAt = helpers.computeEscalationDueAt(constants.SUPERVISOR_ESCALATION_HOURS);
-              workflow[supervisorStepIndex] = supervisorStep;
-            }
-            
-            updates.currentApproverId = supervisor.id;
-            updates.currentApproverName = supervisorName;
-            updates.currentApprovalStep = supervisorStepIndex !== -1 ? supervisorStepIndex : 0;
-          } else {
-            updates.currentApproverId = null;
-            updates.currentApproverName = null;
-            updates.currentApprovalStep = supervisorStepIndex !== -1 ? supervisorStepIndex : 0;
-          }
-        } else {
-          updates.currentApproverId = null;
-          updates.currentApproverName = null;
-          updates.currentApprovalStep = supervisorStepIndex !== -1 ? supervisorStepIndex : 0;
-        }
-
-        // Set status and send back to supervisor
         updates.status = 'needs_revision';
-        updates.currentApprovalStage = 'pending_supervisor';
-        updates.escalationDueAt = (supervisorStep && supervisorStep.dueAt) || null;
+        updates.currentApprovalStage = 'needs_revision';
+        updates.currentApproverId = report.employeeId;
+        updates.currentApproverName = employee ? (employee.preferredName || employee.name || 'Employee') : 'Employee';
+        updates.currentApprovalStep = currentStepIndex;
+        updates.escalationDueAt = null;
 
-        // Notify supervisor that finance requested revision
-        if (employee && employee.supervisorId) {
-          notificationService.notifyFinanceRevisionRequest(id, approverId, approverName, report.employeeId).catch(err => {
-            debugError('❌ Error sending notification to supervisor:', err);
-          });
-        }
+        notificationService.notifyExpenseReportRevisionRequested(id, approverId, approverName, report.employeeId, {
+          actorRole: 'finance',
+          includeFinanceObservers: false,
+        }).catch(err => {
+          debugError('❌ Error sending finance revision notification:', err);
+        });
 
-        logAction('request_revision_to_supervisor', approverId, approverName, comments);
+        logAction('request_revision_to_employee', approverId, approverName, commentsStr);
         await saveAndRespond();
         return;
       }
 
       case 'request_revision_to_senior_staff': {
-        // Supervisor requests revision - send back to senior staff (same steps back)
+        // Legacy action name. Revisions now always go back to the employee.
         if (currentStep && currentStep.role !== 'supervisor') {
           res.status(400).json({ error: 'This action is only available for supervisor approvers' });
           return;
@@ -2332,17 +2332,6 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           res.status(400).json({ error: 'Comments are required when requesting revision' });
           return;
         }
-        const seniorStaffStepIdx = workflow.findIndex(step => step.role === 'senior_staff');
-        if (seniorStaffStepIdx === -1) {
-          res.status(400).json({ error: 'No senior staff step in workflow; send revision to employee instead.' });
-          return;
-        }
-        const seniorStaffStepToReset = workflow[seniorStaffStepIdx];
-        seniorStaffStepToReset.status = 'pending';
-        seniorStaffStepToReset.actedAt = null;
-        seniorStaffStepToReset.comments = commentsStrRev;
-        seniorStaffStepToReset.dueAt = helpers.computeEscalationDueAt(constants.SUPERVISOR_ESCALATION_HOURS);
-        workflow[seniorStaffStepIdx] = seniorStaffStepToReset;
 
         if (currentStep) {
           currentStep.status = 'revision_requested';
@@ -2351,14 +2340,21 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           workflow[resolvedCurrentStepIndex] = currentStep;
         }
 
-        updates.status = 'pending_senior_staff';
-        updates.currentApprovalStage = 'pending_senior_staff';
-        updates.currentApprovalStep = seniorStaffStepIdx;
-        updates.currentApproverId = seniorStaffStepToReset.approverId || null;
-        updates.currentApproverName = seniorStaffStepToReset.approverName || 'Senior Staff';
-        updates.escalationDueAt = seniorStaffStepToReset.dueAt;
+        const employee = await dbService.getEmployeeById(report.employeeId);
+        updates.status = 'needs_revision';
+        updates.currentApprovalStage = 'needs_revision';
+        updates.currentApproverId = report.employeeId;
+        updates.currentApproverName = employee ? (employee.preferredName || employee.name || 'Employee') : 'Employee';
+        updates.escalationDueAt = null;
 
-        logAction('request_revision_to_senior_staff', approverId, approverName, commentsStrRev);
+        notificationService.notifyExpenseReportRevisionRequested(id, approverId, approverName, report.employeeId, {
+          actorRole: 'supervisor',
+          includeFinanceObservers: false,
+        }).catch(err => {
+          debugError('❌ Error sending supervisor revision notification:', err);
+        });
+
+        logAction('request_revision_to_employee', approverId, approverName, commentsStrRev);
         await saveAndRespond();
         return;
       }
@@ -2379,6 +2375,11 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           initialCurrentApproverId === approverId ||
           (employeeForRevision && employeeForRevision.seniorStaffId === approverId)
         );
+        let isAuthorizedFinance = false;
+        if (approverId && currentStep && currentStep.role === 'finance') {
+          const approver = await dbService.getEmployeeById(approverId);
+          isAuthorizedFinance = !!(approver && helpers.isEligibleForFinanceApproval(approver));
+        }
 
         // If current step is finance but approver is supervisor/senior staff, use pending supervisor/senior_staff step or re-init workflow
         if (currentStep && currentStep.role === 'finance' && approverId && employeeForRevision) {
@@ -2433,16 +2434,21 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
           updates.currentApprovalStep = supervisorStepIndex;
         }
         const allowedToRequestRevision = (currentStep && currentStep.role === 'supervisor' && isAuthorizedSupervisor) ||
-          (currentStep && currentStep.role === 'senior_staff' && isAuthorizedSeniorStaff);
+          (currentStep && currentStep.role === 'senior_staff' && isAuthorizedSeniorStaff) ||
+          (currentStep && currentStep.role === 'finance' && isAuthorizedFinance);
         if (!allowedToRequestRevision && currentStep && currentStep.approverId !== approverId && currentStep.delegatedToId !== approverId) {
           res.status(403).json({ error: 'Approver is not authorized to request revision for this report.' });
           return;
         }
-        if (!allowedToRequestRevision && (!currentStep || (currentStep.role !== 'supervisor' && currentStep.role !== 'senior_staff'))) {
-          res.status(400).json({ error: 'This action is only available for supervisor or senior staff approvers' });
+        if (!allowedToRequestRevision && (!currentStep || (currentStep.role !== 'supervisor' && currentStep.role !== 'senior_staff' && currentStep.role !== 'finance'))) {
+          res.status(400).json({ error: 'This action is only available for supervisor, senior staff, or finance approvers' });
           return;
         }
-        if (currentStep && (currentStep.role === 'supervisor' || currentStep.role === 'senior_staff')) {
+        const actorRoleForRevision =
+          currentStep && ['supervisor', 'senior_staff', 'finance'].includes(currentStep.role)
+            ? currentStep.role
+            : 'approver';
+        if (currentStep && (currentStep.role === 'supervisor' || currentStep.role === 'senior_staff' || currentStep.role === 'finance')) {
           currentStep.status = 'revision_requested';
           currentStep.actedAt = nowIso;
           currentStep.comments = commentsStr;
@@ -2486,7 +2492,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'mileage', noteItemId, 'mileage_entry', commentsStr, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, actorRoleForRevision, 'employee', 'mileage', noteItemId, 'mileage_entry', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2508,7 +2514,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'daily_description', dateKey, 'daily_description', commentsStr, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, actorRoleForRevision, 'employee', 'daily_description', dateKey, 'daily_description', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2528,7 +2534,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'receipt', receiptId, 'receipt', commentsStr, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, actorRoleForRevision, 'employee', 'receipt', receiptId, 'receipt', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2562,7 +2568,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'timesheet', timesheetItemId, 'timesheet', commentsStr, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, actorRoleForRevision, 'employee', 'timesheet', timesheetItemId, 'timesheet', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2584,7 +2590,7 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
                   `INSERT INTO report_revision_notes 
                    (id, reportId, employeeId, requestedBy, requestedByName, requestedByRole, targetRole, category, itemId, itemType, notes, resolved, createdAt, updatedAt) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                  [noteId, id, report.employeeId, requestorId, requestorName, 'supervisor', 'employee', 'per_diem', dateKey, 'per_diem_day', commentsStr, nowIso, nowIso],
+                  [noteId, id, report.employeeId, requestorId, requestorName, actorRoleForRevision, 'employee', 'per_diem', dateKey, 'per_diem_day', commentsStr, nowIso, nowIso],
                   (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -2609,9 +2615,17 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         }
         updates.escalationDueAt = null;
 
-        // Notify employee that supervisor requested revision
-        notificationService.notifySupervisorRevisionRequest(id, approverId || supervisorId || '', approverName || supervisorName || '', report.employeeId).catch(err => {
-          debugError('❌ Error sending notification to employee:', err);
+        notificationService.notifyExpenseReportRevisionRequested(
+          id,
+          approverId || supervisorId || '',
+          approverName || supervisorName || '',
+          report.employeeId,
+          {
+            actorRole: actorRoleForRevision,
+            includeFinanceObservers: false,
+          }
+        ).catch(err => {
+          debugError('❌ Error sending revision notification:', err);
         });
 
         logAction('request_revision_to_employee', approverId, approverName, commentsStr);

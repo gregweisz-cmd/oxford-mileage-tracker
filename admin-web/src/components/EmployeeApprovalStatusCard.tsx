@@ -21,7 +21,7 @@ import DoneIcon from '@mui/icons-material/TaskAltOutlined';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import PersonIcon from '@mui/icons-material/PersonOutline';
 
-type WorkflowStatus = 'pending' | 'waiting' | 'approved' | 'rejected';
+type WorkflowStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'revision_requested';
 
 export interface ApprovalWorkflowStepSummary {
   step: number;
@@ -42,7 +42,7 @@ export interface ApprovalHistoryEntry {
   action: string;
   actorId?: string | null;
   actorName?: string | null;
-  actorRole?: 'employee' | 'supervisor' | 'system';
+  actorRole?: 'employee' | 'supervisor' | 'senior_staff' | 'finance' | 'contracts' | 'admin' | 'approver' | 'system';
   timestamp: string;
   message?: string | null;
 }
@@ -81,6 +81,7 @@ const STEP_STATUS_CONFIG: Record<WorkflowStatus, { label: string; color: string;
   waiting: { label: 'Not Started', color: '#757575', icon: <ScheduleIcon fontSize="small" /> },
   approved: { label: 'Approved', color: '#2e7d32', icon: <DoneIcon fontSize="small" /> },
   rejected: { label: 'Rejected', color: '#c62828', icon: <DoneIcon fontSize="small" /> },
+  revision_requested: { label: 'Revision Requested', color: '#f57c00', icon: <ReplayIcon fontSize="small" /> },
 };
 
 const formatDateTime = (value?: string | null) => {

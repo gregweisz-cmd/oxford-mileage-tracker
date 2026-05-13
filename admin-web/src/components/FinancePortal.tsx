@@ -593,12 +593,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     }
 
     try {
-      // Use request_revision_to_supervisor action to send back to supervisor
+      // Finance revisions go directly back to the employee; supervisor/senior staff are notified as observers.
       const response = await fetch(`${API_BASE_URL}/api/expense-reports/${selectedReport.id}/approval`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'request_revision_to_supervisor',
+          action: 'request_revision_to_employee',
           approverId: financeUserId,
           approverName: financeUserName,
           comments: revisionComments.trim(),
@@ -607,7 +607,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
       if (!response.ok) throw new Error('Failed to request revision');
 
-      alert('Revision request sent to supervisor successfully!');
+      alert('Revision request sent to the employee successfully. Supervisor and senior staff observers were notified when applicable.');
       setRevisionDialogOpen(false);
       setRevisionComments('');
       loadReports();
@@ -1470,7 +1470,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredReports.filter(r => r.status === 'submitted').map((report) => (
+                {filteredReports.filter(r => r.status === 'pending_finance' || r.status === 'submitted').map((report) => (
                   <TableRow key={report.id} hover>
                     <TableCell>{getDisplayName(report)}</TableCell>
                     <TableCell>{monthNames[report.month - 1]} {report.year}</TableCell>
@@ -1685,13 +1685,13 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Request Revision from Supervisor</DialogTitle>
+        <DialogTitle>Request Revision from Employee</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            This will send the report back to the supervisor with your feedback. The supervisor can then:
+            This will send the report directly back to the employee with your feedback. The system will also notify:
             <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-              <li>Make changes themselves and resubmit to Finance</li>
-              <li>Send it back to the employee for revision</li>
+              <li>The employee's supervisor</li>
+              <li>Senior staff, if this report includes a senior staff review step</li>
             </ul>
           </Typography>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
@@ -1719,7 +1719,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
             onClick={handleRequestRevision}
             disabled={!revisionComments.trim()}
           >
-            Send Revision Request to Supervisor
+            Send Revision Request to Employee
           </Button>
         </DialogActions>
       </Dialog>

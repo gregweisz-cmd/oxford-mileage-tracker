@@ -1703,6 +1703,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 }
                 if (savedExpenseReport.id) {
                   setCurrentReportId(savedExpenseReport.id);
+                  fetchApprovalHistory(savedExpenseReport.id);
                 }
                 if (savedExpenseReport.submittedAt) {
                   setReportSubmittedAt(savedExpenseReport.submittedAt);

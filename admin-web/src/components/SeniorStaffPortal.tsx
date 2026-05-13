@@ -336,7 +336,7 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
   const calculateDashboardStats = useCallback(() => {
     const pendingStatuses: ReportStatus[] = ['pending_supervisor', 'pending_senior_staff', 'pending_finance', 'submitted', 'under_review'];
     const submittedReports = teamReports.filter(r => pendingStatuses.includes(r.status));
-    const pendingSupervisorReports = teamReports.filter(r => r.status === 'pending_supervisor');
+    const pendingSeniorStaffReports = teamReports.filter(r => r.status === 'pending_senior_staff');
     const currentMonth = new Date().getMonth() + 1;
     const totalMonthlyAmount = teamReports
       .filter(r => r.status === 'approved' && r.month === currentMonth)
@@ -348,7 +348,7 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
     setDashboardStats({
       totalTeamMembers: teamMembers.length,
       activeReports: submittedReports.length,
-      pendingReviews: pendingSupervisorReports.length,
+      pendingReviews: pendingSeniorStaffReports.length,
       monthlyTotal: totalMonthlyAmount,
       approvalRate,
       averageResponseTime: '48h',

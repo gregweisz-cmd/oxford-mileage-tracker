@@ -819,6 +819,8 @@ function ensureTablesExist() {
         'finance_approval_needed',
         'finance_revision_supervisor',
         'supervisor_revision_employee',
+        'expense_revision_employee',
+        'expense_revision_observer',
         'employee_report_approved',
         'report_rejected',
         'sunday_reminder',

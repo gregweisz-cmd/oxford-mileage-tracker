@@ -581,6 +581,142 @@ async function notifySupervisorRevisionRequest(reportId, supervisorId, superviso
 }
 
 /**
+ * Notify the employee and approval-chain observers when any approver sends an
+ * expense report back to the employee for revision.
+ */
+async function notifyExpenseReportRevisionRequested(reportId, actorId, actorName, employeeId, options = {}) {
+  try {
+    const db = dbService.getDb();
+    const employee = await dbService.getEmployeeById(employeeId);
+
+    if (!employee) {
+      debugWarn('⚠️ Employee not found for revision notification');
+      return [];
+    }
+
+    const report = await new Promise((resolve) => {
+      db.get('SELECT id, month, year, reportData FROM expense_reports WHERE id = ?', [reportId], (err, row) => {
+        if (err) resolve(null);
+        else resolve(row);
+      });
+    });
+
+    let staffPortalTabIndex = 0;
+    try {
+      staffPortalTabIndex = await computeStaffPortalTabIndexForRevisionReport(reportId, employeeId);
+    } catch (tabErr) {
+      debugWarn('⚠️ Could not compute revision tab index:', tabErr);
+      staffPortalTabIndex = 0;
+    }
+
+    const monthName = report ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+    const actorDisplay = actorName || 'An approver';
+    const employeeDisplay = employee.preferredName || employee.name;
+    const actorRole = options.actorRole || 'approver';
+    const notificationIds = [];
+    const metadata =
+      report && report.month != null && report.year != null
+        ? { month: report.month, year: report.year, staffPortalTabIndex }
+        : { staffPortalTabIndex };
+
+    const employeeDefaults = {
+      title: `Revision Requested${monthName ? ` - ${monthName}` : ''}`,
+      message: `${actorDisplay} has requested revisions to your expense report${monthName ? ` for ${monthName}` : ''}.`,
+    };
+    const employeeDelivery = await notificationEventSettings.resolveDelivery(
+      'expense_revision_employee',
+      employeeDefaults,
+      { employeeName: employeeDisplay, monthName, actorName: actorDisplay }
+    );
+    if (employeeDelivery.inAppEnabled || employeeDelivery.emailEnabled) {
+      const employeeNotificationId = await createNotification({
+        recipientId: employeeId,
+        recipientRole: employee.role || 'employee',
+        type: employeeDelivery.notificationType,
+        title: employeeDelivery.title,
+        message: employeeDelivery.message,
+        reportId,
+        employeeId,
+        employeeName: employeeDisplay,
+        actorId,
+        actorName: actorDisplay,
+        actorRole,
+        sendEmail: employeeDelivery.emailEnabled,
+        persistInApp: employeeDelivery.inAppEnabled,
+        metadata,
+      });
+      if (employeeNotificationId) notificationIds.push(employeeNotificationId);
+    }
+
+    const observerDelivery = await notificationEventSettings.resolveDelivery(
+      'expense_revision_observer',
+      {
+        title: `Revision Requested${monthName ? ` - ${monthName}` : ''}`,
+        message: `${actorDisplay} sent ${employeeDisplay}'s expense report${monthName ? ` for ${monthName}` : ''} back to the employee for revision.`,
+      },
+      { employeeName: employeeDisplay, monthName, actorName: actorDisplay }
+    );
+    if (!observerDelivery.inAppEnabled && !observerDelivery.emailEnabled) {
+      return notificationIds;
+    }
+
+    const observers = [];
+    if (employee.supervisorId) {
+      const supervisor = await dbService.getEmployeeById(employee.supervisorId);
+      if (supervisor) observers.push({ employee: supervisor, role: supervisor.role || 'supervisor' });
+    }
+    if (employee.seniorStaffId) {
+      const seniorStaff = await dbService.getEmployeeById(employee.seniorStaffId);
+      if (seniorStaff) observers.push({ employee: seniorStaff, role: seniorStaff.role || 'senior_staff' });
+    }
+
+    if (options.includeFinanceObservers) {
+      let parsedReportData = {};
+      try {
+        parsedReportData = report?.reportData ? JSON.parse(report.reportData) : {};
+      } catch (_) {
+        parsedReportData = {};
+      }
+      const reportCostCenters = Array.isArray(parsedReportData?.costCenters) ? parsedReportData.costCenters : [];
+      const financeApprovers = await dbService.getFinanceApproversForCostCenters(reportCostCenters);
+      financeApprovers.forEach((financeApprover) => {
+        observers.push({ employee: financeApprover, role: financeApprover.role || 'finance' });
+      });
+    }
+
+    const seenRecipientIds = new Set([employeeId, actorId].filter(Boolean));
+    for (const observer of observers) {
+      const recipient = observer.employee;
+      if (!recipient?.id || seenRecipientIds.has(recipient.id)) continue;
+      seenRecipientIds.add(recipient.id);
+
+      const observerNotificationId = await createNotification({
+        recipientId: recipient.id,
+        recipientRole: observer.role,
+        type: observerDelivery.notificationType,
+        title: observerDelivery.title,
+        message: observerDelivery.message,
+        reportId,
+        employeeId,
+        employeeName: employeeDisplay,
+        actorId,
+        actorName: actorDisplay,
+        actorRole,
+        sendEmail: observerDelivery.emailEnabled,
+        persistInApp: observerDelivery.inAppEnabled,
+        metadata,
+      });
+      if (observerNotificationId) notificationIds.push(observerNotificationId);
+    }
+
+    return notificationIds;
+  } catch (error) {
+    debugError('❌ Error notifying expense report revision request:', error);
+    return [];
+  }
+}
+
+/**
  * Create notification when Supervisor approves and sends to Finance
  */
 async function notifyFinanceApprovalNeeded(reportId, supervisorId, supervisorName, employeeId) {
@@ -844,6 +980,7 @@ module.exports = {
   notifyReportSubmitted,
   notifyFinanceRevisionRequest,
   notifySupervisorRevisionRequest,
+  notifyExpenseReportRevisionRequested,
   notifySupervisorApprovalNeeded,
   notifyFinanceApprovalNeeded,
   notifyEmployeeReportApproved,
