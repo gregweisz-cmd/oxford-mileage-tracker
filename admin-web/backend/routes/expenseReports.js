@@ -1540,6 +1540,28 @@ router.get('/api/expense-reports/:id/history', async (req, res) => {
       return 'approver';
     };
 
+    // Older approved reports may have the assigned finance owner in approvalWorkflow,
+    // while report_approvals has the person who actually clicked Approve.
+    const usedApprovalActionIndexes = new Set();
+    workflow.forEach((step) => {
+      if (step.status !== 'approved') return;
+
+      const approvalActionIndex = actionRows.findIndex((row, index) => {
+        if (usedApprovalActionIndexes.has(index)) return false;
+        if (row.action !== 'approved') return false;
+        return determineActorRole(row.actorId) === step.role;
+      });
+
+      if (approvalActionIndex === -1) return;
+      const approvalAction = actionRows[approvalActionIndex];
+      usedApprovalActionIndexes.add(approvalActionIndex);
+
+      step.approverId = approvalAction.actorId || step.approverId;
+      step.approverName = approvalAction.actorName || step.approverName;
+      step.actedAt = approvalAction.timestamp || step.actedAt;
+      step.comments = approvalAction.comments || step.comments;
+    });
+
     const historyBase = actionRows.map((row) => ({
       id: row.id,
       action: row.action || 'update',
@@ -2048,13 +2070,12 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         if (initialCurrentApproverId) allowedApproverIds.add(initialCurrentApproverId);
 
         // For finance step: allow any employee with finance/contracts role or finance-related position
+        let actingFinanceApprover = null;
         if (currentStep.role === 'finance') {
           const approver = await dbService.getEmployeeById(approverId);
           if (approver && helpers.isEligibleForFinanceApproval(approver)) {
+            actingFinanceApprover = approver;
             allowedApproverIds.add(approverId);
-            if (!currentStep.approverName || currentStep.approverName === 'Finance Team') {
-              currentStep.approverName = approver.preferredName || approver.name || approverName || 'Finance';
-            }
           }
         }
 
@@ -2089,8 +2110,17 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         currentStep.reminders = currentStep.reminders || [];
         currentStep.delegatedToId = null;
         currentStep.delegatedToName = null;
-        currentStep.approverId = currentStep.approverId || approverId;
-        currentStep.approverName = currentStep.approverName || approverName || 'Supervisor';
+        if (currentStep.role === 'finance') {
+          currentStep.approverId = approverId;
+          currentStep.approverName =
+            actingFinanceApprover?.preferredName ||
+            actingFinanceApprover?.name ||
+            approverName ||
+            'Finance';
+        } else {
+          currentStep.approverId = currentStep.approverId || approverId;
+          currentStep.approverName = currentStep.approverName || approverName || 'Supervisor';
+        }
 
         let newStatus = 'approved';
         let nextStage = 'completed';

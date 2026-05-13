@@ -50,8 +50,9 @@ import { formatAddressFromParts, parseAddressToParts, emptyAddressParts, updateA
 import type { AddressParts } from '../utils/addressFormatter';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { makeCanonicalLocationSelection } from '../utils/locationSelection';
+import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+const API_BASE_URL = (process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com').replace(/\/+$/, '');
 
 // Form interfaces
 export interface MileageEntryFormData {
@@ -139,7 +140,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   // Fetch travel reasons (purpose dropdown) – same options as mobile app
   useEffect(() => {
     if (!open) return;
-    fetch(`${API_BASE_URL}/api/travel-reasons`)
+    fetch(`${API_BASE_URL}/api/travel-reasons`, { headers: getStaffPortalAuthHeaders() })
       .then((res) => (res.ok ? res.json() : []))
       .then((rows: { id?: string; label: string }[]) => {
         const list = Array.isArray(rows) ? rows : [];
@@ -157,7 +158,9 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     }
     let cancelled = false;
     setDailyOdometerLoading(true);
-    fetch(`${API_BASE_URL}/api/daily-odometer-readings?employeeId=${encodeURIComponent(employee.id)}&date=${encodeURIComponent(normalizedFormDate)}`)
+    fetch(`${API_BASE_URL}/api/daily-odometer-readings?employeeId=${encodeURIComponent(employee.id)}&date=${encodeURIComponent(normalizedFormDate)}`, {
+      headers: getStaffPortalAuthHeaders(),
+    })
       .then((res) => (res.ok ? res.json() : []))
       .then((rows: { date: string; odometerReading: number }[]) => {
         if (cancelled) return;
@@ -274,7 +277,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       if (dailyOdometerForDate == null && effectiveOdometer > 0) {
         await fetch(`${API_BASE_URL}/api/daily-odometer-readings`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             employeeId: employee.id,
             date: normalizedFormDate,
@@ -380,10 +383,17 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     setDistanceError(null);
     setCalculatingMiles(true);
     try {
-      const base = API_BASE_URL || '';
-      const res = await fetch(`${base}/api/distance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to calculate distance');
+      const res = await fetch(`${API_BASE_URL}/api/distance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+        headers: getStaffPortalAuthHeaders(),
+      });
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') ? await res.json() : null;
+      if (!res.ok) {
+        throw new Error(data?.error || `Failed to calculate distance (${res.status})`);
+      }
+      if (!data || typeof data.miles !== 'number') {
+        throw new Error('Distance service returned an unexpected response.');
+      }
       setFormData(prev => ({ ...prev, miles: data.miles ?? 0 }));
       setErrors(prev => ({ ...prev, miles: '' }));
     } catch (err) {
