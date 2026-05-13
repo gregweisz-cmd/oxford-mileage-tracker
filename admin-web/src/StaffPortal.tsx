@@ -2800,10 +2800,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setRawMileageEntries(mileageEntries);
       }
       
-      // Trigger a refresh of employee data by incrementing refreshTrigger
-      setRefreshTrigger(prev => prev + 1);
-      
       if (!options?.keepOpenAfterSave) {
+        // Trigger a refresh of employee data by incrementing refreshTrigger.
+        // When the form stays open for "Add Another", avoid remounting it and losing continuation state.
+        setRefreshTrigger(prev => prev + 1);
         setEditingMileageEntry(null);
         setMileageFormOpen(false);
       }

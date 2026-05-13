@@ -155,6 +155,8 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const [dailyOdometerLoading, setDailyOdometerLoading] = useState(false);
   const [travelReasons, setTravelReasons] = useState<{ id: string; label: string }[]>([]);
   const [isContinuingTripEntry, setIsContinuingTripEntry] = useState(false);
+  const isContinuingTripEntryRef = useRef(false);
+  const [continuationPromptData, setContinuationPromptData] = useState<MileageEntryFormData | null>(null);
 
   // Fetch travel reasons (purpose dropdown) – same options as mobile app
   useEffect(() => {
@@ -185,7 +187,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         if (cancelled) return;
         const reading = rows && rows.length > 0 ? Number(rows[0].odometerReading) : null;
         setDailyOdometerForDate(reading != null && !isNaN(reading) ? reading : null);
-        if (reading != null && !isNaN(reading)) {
+        if (reading != null && !isNaN(reading) && !isContinuingTripEntryRef.current) {
           setFormData((prev) => ({ ...prev, startingOdometer: reading }));
         }
       })
@@ -253,6 +255,8 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       setErrors({});
       setDistanceError(null);
       setIsContinuingTripEntry(false);
+      isContinuingTripEntryRef.current = false;
+      setContinuationPromptData(null);
     }
   }, [open, mode, initialData, employee?.id, employee?.defaultCostCenter, employee?.selectedCostCenters]);
 
@@ -336,38 +340,51 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         employeeId: employee.id
       });
       if (mode === 'create') {
-        const addAnother = window.confirm('Mileage entry saved. Add another leg starting from this destination?');
-        if (addAnother) {
-          const nextOdometer = Number(payload.startingOdometer || 0) + Number(payload.miles || 0);
-          const nextStartLocation = payload.endLocation || '';
-          const nextStartLocationName = payload.endLocationName || '';
-
-          setFormData((prev) => ({
-            ...prev,
-            date: payload.date,
-            startLocation: nextStartLocation,
-            startLocationName: nextStartLocationName,
-            endLocation: '',
-            endLocationName: '',
-            purpose: '',
-            miles: 0,
-            startingOdometer: nextOdometer > 0 ? Math.round(nextOdometer) : 0,
-            notes: '',
-            isGpsTracked: false,
-          }));
-          setStartAddressParts(parseAddressToParts(nextStartLocation));
-          setEndAddressParts({ ...emptyAddressParts });
-          setReturnToBA(false);
-          setErrors({});
-          setDistanceError(null);
-          setIsContinuingTripEntry(true);
-          return;
-        }
+        setContinuationPromptData(payload);
+        return;
       }
       onClose();
     } catch (error) {
       debugError('Error saving mileage entry:', error);
     }
+  };
+
+  const handleDoneAfterSave = () => {
+    setContinuationPromptData(null);
+    setIsContinuingTripEntry(false);
+    isContinuingTripEntryRef.current = false;
+    onClose();
+  };
+
+  const handleAddAnotherAfterSave = () => {
+    if (!continuationPromptData) return;
+
+    const payload = continuationPromptData;
+    const nextOdometer = Number(payload.startingOdometer || 0) + Number(payload.miles || 0);
+    const nextStartLocation = payload.endLocation || '';
+    const nextStartLocationName = payload.endLocationName || '';
+
+    isContinuingTripEntryRef.current = true;
+    setIsContinuingTripEntry(true);
+    setContinuationPromptData(null);
+    setFormData((prev) => ({
+      ...prev,
+      date: payload.date,
+      startLocation: nextStartLocation,
+      startLocationName: nextStartLocationName,
+      endLocation: '',
+      endLocationName: '',
+      purpose: '',
+      miles: 0,
+      startingOdometer: nextOdometer > 0 ? Math.round(nextOdometer) : 0,
+      notes: '',
+      isGpsTracked: false,
+    }));
+    setStartAddressParts(parseAddressToParts(nextStartLocation));
+    setEndAddressParts({ ...emptyAddressParts });
+    setReturnToBA(false);
+    setErrors({});
+    setDistanceError(null);
   };
 
   const handleInputChange = (field: keyof MileageEntryFormData, value: any) => {
@@ -807,6 +824,27 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
         employeeId={employee.id}
         title={`Search ${addressSelectorType === 'start' ? 'Start' : 'End'} Location`}
       />
+      <Dialog
+        open={!!continuationPromptData}
+        onClose={handleDoneAfterSave}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Mileage entry saved</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Your mileage entry was saved. Are you done adding entries, or do you want to add another leg to this trip?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDoneAfterSave}>
+            Done
+          </Button>
+          <Button variant="contained" onClick={handleAddAnotherAfterSave}>
+            Add Another
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 };
