@@ -521,6 +521,8 @@ interface StaffPortalProps {
   }) => void; // Callback for selected items when in supervisor mode
   onApproveReport?: () => void; // Callback for approving report in supervisor mode
   onRequestRevision?: () => void; // Callback for requesting revision in supervisor mode
+  /** Logged-in user id for notification APIs when viewing another employee's report (finance/supervisor embed). */
+  viewerUserIdForNotifications?: string;
 }
 
 // Mock data interfaces matching spreadsheet structure
@@ -660,6 +662,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   onSelectedItemsChange,
   onApproveReport,
   onRequestRevision,
+  viewerUserIdForNotifications,
 }) => {
   // Debug: Log handlers when in supervisor mode
   React.useEffect(() => {
@@ -677,6 +680,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const effectiveEmployeeId = React.useMemo(() => {
     return employeeId || localStorage.getItem('currentEmployeeId') || '';
   }, [employeeId]);
+
+  /** Whose notifications to load in the header (always the authenticated viewer when acting on behalf of someone else). */
+  const notificationRecipientId = React.useMemo(
+    () => viewerUserIdForNotifications || employeeId,
+    [viewerUserIdForNotifications, employeeId]
+  );
 
   // Use state for current month/year so users can change them
   const [currentMonth, setCurrentMonth] = useState(reportMonth);
@@ -5926,6 +5935,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         subtitle="Comprehensive expense tracking and reporting system"
         employeeName={employeeData?.preferredName || employeeData?.name}
         employeeId={employeeId}
+        notificationEmployeeId={notificationRecipientId}
         employeeRole={employeeRole}
         reportMonth={currentMonth}
         reportYear={currentYear}
@@ -5984,7 +5994,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       {/* Dashboard Notifications - hidden in supervisor mode (viewing someone else's report) */}
       {!supervisorMode && (
         <DashboardNotifications
-          employeeId={employeeId}
+          employeeId={notificationRecipientId}
           role={employeeRole}
           onReportClick={navigateToReportFromNotification}
         />

@@ -38,6 +38,8 @@ interface EnhancedHeaderProps {
   subtitle?: string;
   employeeName?: string;
   employeeId?: string;
+  /** If set, notification bell polls this user (e.g. finance user) while the report is for `employeeId`. */
+  notificationEmployeeId?: string;
   employeeRole?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
   reportMonth?: number;
   reportYear?: number;
@@ -71,6 +73,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   subtitle,
   employeeName,
   employeeId,
+  notificationEmployeeId,
   employeeRole,
   reportMonth,
   reportYear,
@@ -94,6 +97,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
 }) => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const { showSuccess, showInfo } = useToast();
+  const bellEmployeeId = notificationEmployeeId || employeeId;
 
   /**
    * Opens the settings menu
@@ -533,9 +537,9 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
         {/* Right Side - Utility Icons */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {/* Notification Bell */}
-          {employeeId && (
+          {bellEmployeeId && (
             <NotificationBell 
-              employeeId={employeeId} 
+              employeeId={bellEmployeeId} 
               role={employeeRole}
               onReportClick={onReportClick}
             />

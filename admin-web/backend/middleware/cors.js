@@ -11,6 +11,7 @@ const { debugLog } = require('../debug');
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
+  'https://expense.oxfordhouse.org',
   'https://oxford-mileage-tracker.vercel.app',
   'https://oxford-house-mileage-tracker.vercel.app',
   'https://oxford-mileage-tracker-git-main-gregweisz-cmd.vercel.app',

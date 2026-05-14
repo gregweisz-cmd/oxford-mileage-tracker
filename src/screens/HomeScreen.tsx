@@ -472,7 +472,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
           if (shown === '1' || cancelled) return;
           Alert.alert(
             'Welcome',
-            'Take a few minutes to explore the features in this app.\n\nWhen you can, open the Staff web portal from your computer\'s browser (monthly report, approvals, and more):\nhttps://oxford-mileage-tracker.vercel.app/login\n\nHow-to PDFs: https://oxford-mileage-tracker.vercel.app/support.html',
+            'Take a few minutes to explore the features in this app.\n\nWhen you can, open the Staff web portal from your computer\'s browser (monthly report, approvals, and more):\nhttps://expense.oxfordhouse.org/login\n\nHow-to PDFs: https://expense.oxfordhouse.org/support.html',
             [
               {
                 text: 'OK',

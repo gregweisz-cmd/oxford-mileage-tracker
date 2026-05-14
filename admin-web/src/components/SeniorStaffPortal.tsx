@@ -1870,6 +1870,7 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
                 supervisorMode={true}
                 seniorStaffId={seniorStaffId}
                 seniorStaffName={seniorStaffName}
+                viewerUserIdForNotifications={seniorStaffId}
                 onSelectedItemsChange={handleSelectedItemsChange}
                 onApproveReport={stableApproveHandler}
                 onRequestRevision={stableRevisionHandler}

@@ -31,7 +31,7 @@ const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Oxford House Expense Tra
 // Email notifications are enabled by default when credentials are configured.
 // Set EMAIL_ENABLED=false to hard-disable all outbound email.
 const EMAIL_ENABLED = (process.env.EMAIL_ENABLED || 'true').toLowerCase() === 'true';
-const CANONICAL_ADMIN_PORTAL_URL = 'https://oxford-mileage-tracker.vercel.app';
+const CANONICAL_ADMIN_PORTAL_URL = 'https://expense.oxfordhouse.org';
 const ADMIN_PORTAL_URL_RAW =
   process.env.ADMIN_PORTAL_URL ||
   process.env.WEB_PORTAL_URL ||
@@ -54,7 +54,8 @@ function getAdminPortalBaseUrl() {
     if (url.hostname === 'vercel.com' || url.hostname === 'oxford-mileage-backend.onrender.com') {
       return CANONICAL_ADMIN_PORTAL_URL;
     }
-    if (url.hostname.endsWith('.vercel.app') && url.hostname !== 'oxford-mileage-tracker.vercel.app') {
+    // Legacy Vercel hostnames: point notification links at the production portal domain.
+    if (url.hostname.endsWith('.vercel.app')) {
       return CANONICAL_ADMIN_PORTAL_URL;
     }
     return url.origin.replace(/\/$/, '');

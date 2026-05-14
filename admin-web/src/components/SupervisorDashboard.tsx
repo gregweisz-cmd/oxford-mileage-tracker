@@ -1010,6 +1010,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
                 supervisorMode={true}
                 supervisorId={currentEmployee?.id}
                 supervisorName={currentEmployee?.name || currentEmployee?.preferredName || 'Supervisor'}
+                viewerUserIdForNotifications={currentEmployee?.id}
                 onSelectedItemsChange={handleSelectedItemsChange}
                 onApproveReport={handleApproveFromStaffPortal}
                 onRequestRevision={handleRevisionFromStaffPortal}

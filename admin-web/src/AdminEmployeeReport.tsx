@@ -237,6 +237,9 @@ const SupervisorEmployeeReport: React.FC = () => {
           reportYear={reportYear}
           isAdminView={true} // Pass flag to indicate this is supervisor view
           supervisorSignature={signatureImage} // Pass supervisor signature
+          viewerUserIdForNotifications={
+            typeof window !== 'undefined' ? localStorage.getItem('currentEmployeeId') || undefined : undefined
+          }
         />
       </Box>
     );

@@ -1880,6 +1880,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
                 supervisorMode={true}
                 supervisorId={supervisorId}
                 supervisorName={supervisorName}
+                viewerUserIdForNotifications={supervisorId}
                 onSelectedItemsChange={handleSelectedItemsChange}
                 onApproveReport={stableApproveHandler}
                 onRequestRevision={stableRevisionHandler}

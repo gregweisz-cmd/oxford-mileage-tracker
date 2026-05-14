@@ -37,7 +37,7 @@ import {
   Refresh as RefreshIcon,
   Edit as EditIcon,
   Visibility as ViewIcon,
-  Send as SendIcon,
+  Reply as RequestRevisionIcon,
   FilterList as FilterIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
@@ -607,7 +607,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
       if (!response.ok) throw new Error('Failed to request revision');
 
-      alert('Revision request sent to the employee successfully. Supervisor and senior staff observers were notified when applicable.');
+      alert('Revision request sent to the employee. Supervisor and senior staff received FYI observer notifications when applicable—they do not get the report for rework.');
       setRevisionDialogOpen(false);
       setRevisionComments('');
       loadReports();
@@ -1428,9 +1428,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                               setSelectedReport(report);
                               setRevisionDialogOpen(true);
                             }}
-                            title="Request Revision from Supervisor"
+                            title="Return report to the employee for edits. Supervisors and senior staff only get FYI notifications—they do not receive the report for rework."
                           >
-                            <SendIcon />
+                            <RequestRevisionIcon />
                           </IconButton>
                         </>
                       )}
@@ -1483,6 +1483,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                         size="small"
                         color="primary"
                         onClick={() => handleViewReport(report)}
+                        title="View report"
                       >
                         <ViewIcon />
                       </IconButton>
@@ -1493,8 +1494,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                           setSelectedReport(report);
                           setRevisionDialogOpen(true);
                         }}
+                        title="Return report to the employee for edits. Supervisors and senior staff only get FYI notifications—they do not receive the report for rework."
                       >
-                        <SendIcon />
+                        <RequestRevisionIcon />
                       </IconButton>
                       <IconButton
                         size="small"
@@ -1669,6 +1671,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                 reportYear={selectedReport.year}
                 supervisorMode={false}
                 isAdminView={false}
+                viewerUserIdForNotifications={financeUserId}
               />
             </Box>
           )}
@@ -1688,11 +1691,10 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         <DialogTitle>Request Revision from Employee</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            This will send the report directly back to the employee with your feedback. The system will also notify:
-            <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-              <li>The employee's supervisor</li>
-              <li>Senior staff, if this report includes a senior staff review step</li>
-            </ul>
+            <strong>The report is returned only to the employee</strong> to make corrections. Your comments below are shown to the employee with the revision request.
+          </Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            The employee&apos;s direct supervisor and senior staff (when this report has a senior staff step) receive <strong>observer notifications only</strong>—they are not asked to rework the report on Finance&apos;s behalf.
           </Typography>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
             Report: {selectedReport && getDisplayName(selectedReport)} - {selectedReport && monthNames[selectedReport.month - 1]} {selectedReport?.year}

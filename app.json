@@ -19,6 +19,7 @@
       "buildNumber": "26",
       "bundleIdentifier": "com.oxfordhouse.ohstafftracker",
       "associatedDomains": [
+        "applinks:expense.oxfordhouse.org",
         "applinks:oxford-mileage-backend.onrender.com"
       ],
       "infoPlist": {

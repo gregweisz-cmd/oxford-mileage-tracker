@@ -12,6 +12,17 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { authLimiter } = require('../middleware/rateLimiter');
 const { signAuthToken, verifyAuthToken, getEffectiveRole, ALLOWED_ROLES } = require('../middleware/auth');
 
+/** Web portal used in redirects (OAuth, magic links). Production default matches the public staff portal domain. */
+const DEFAULT_PRODUCTION_WEB_PORTAL = 'https://expense.oxfordhouse.org';
+function resolveWebPortalRedirectBase() {
+  return (
+    process.env.FRONTEND_URL ||
+    process.env.ADMIN_PORTAL_URL ||
+    process.env.WEB_PORTAL_URL ||
+    (process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_WEB_PORTAL : 'http://localhost:3000')
+  );
+}
+
 // Google OAuth support
 let OAuth2Client = null;
 let googleClient = null;
@@ -457,7 +468,7 @@ router.post('/api/employee-login', async (req, res) => {
 router.get('/api/auth/google', (req, res) => {
   if (!googleClient) {
     debugError('❌ Google OAuth not configured - missing credentials');
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = resolveWebPortalRedirectBase();
     return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Google login not available')}`);
   }
 
@@ -474,7 +485,7 @@ router.get('/api/auth/google', (req, res) => {
     res.redirect(authUrl);
   } catch (error) {
     debugError('❌ Error generating Google OAuth URL:', error);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = resolveWebPortalRedirectBase();
     res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Failed to initiate Google login')}`);
   }
 });
@@ -486,19 +497,19 @@ router.get('/api/auth/google/callback', async (req, res) => {
 
   if (error) {
     debugError('❌ Google OAuth error:', error);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = resolveWebPortalRedirectBase();
     return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error)}`);
   }
 
   if (!code) {
     debugError('❌ No authorization code received from Google');
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = resolveWebPortalRedirectBase();
     return res.redirect(`${frontendUrl}/login?error=no_code`);
   }
 
   if (!googleClient) {
     debugError('❌ Google OAuth client not initialized');
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = resolveWebPortalRedirectBase();
     return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Google login not configured')}`);
   }
 
@@ -530,7 +541,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
       const emailDomain = email.split('@')[1];
       if (!ALLOWED_EMAIL_DOMAINS.includes(emailDomain)) {
         debugWarn(`⚠️  Access denied for ${email} - not in allowed domains`);
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const frontendUrl = resolveWebPortalRedirectBase();
         return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Access restricted to organization email addresses only')}`);
       }
       debugLog(`✅ Email domain ${emailDomain} is allowed`);
@@ -543,7 +554,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
       async (err, employee) => {
         if (err) {
           debugError('❌ Database error during Google OAuth:', err);
-          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          const frontendUrl = resolveWebPortalRedirectBase();
           return res.redirect(`${frontendUrl}/login?error=database_error`);
         }
 
@@ -680,14 +691,14 @@ router.get('/api/auth/google/callback', async (req, res) => {
         } else {
           // Don't auto-create - redirect to error page
           debugWarn(`⚠️  Google login attempted for non-existent user: ${email}`);
-          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          const frontendUrl = resolveWebPortalRedirectBase();
           return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`);
         }
 
         function completeLogin() {
           if (!userToReturn) {
             debugError('❌ Failed to get user after Google OAuth');
-            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            const frontendUrl = resolveWebPortalRedirectBase();
             return res.redirect(`${frontendUrl}/login?error=user_not_found`);
           }
 
@@ -718,7 +729,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
 
           // Redirect to frontend with token in URL
           // Frontend will extract token and complete login
-          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          const frontendUrl = resolveWebPortalRedirectBase();
           const returnUrl = state || '/';
           const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
 
@@ -728,7 +739,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
     );
   } catch (error) {
     debugError('❌ Google OAuth callback error:', error);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = resolveWebPortalRedirectBase();
     res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
   }
 });
