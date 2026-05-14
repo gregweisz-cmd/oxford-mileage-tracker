@@ -10,6 +10,19 @@ const API_BASE_URL = (process.env.REACT_APP_API_URL || 'https://oxford-mileage-b
   ''
 );
 
+function flattenHeadersInit(h: HeadersInit | undefined): Record<string, string> {
+  if (!h) return {};
+  if (h instanceof Headers) {
+    const o: Record<string, string> = {};
+    h.forEach((value, key) => {
+      if (value != null && value !== '') o[key] = value;
+    });
+    return o;
+  }
+  if (Array.isArray(h)) return Object.fromEntries(h);
+  return { ...(h as Record<string, string>) };
+}
+
 interface RequestQueueItem {
   url: string;
   options: RequestInit;
@@ -135,8 +148,8 @@ class RateLimitedApiService {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...flattenHeadersInit(item.options.headers),
         ...getStaffPortalAuthHeaders(),
-        ...(item.options.headers as Record<string, string> | undefined),
       },
     });
 

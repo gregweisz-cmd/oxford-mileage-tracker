@@ -16,3 +16,14 @@ export function getStaffPortalAuthHeaders(
   }
   return headers;
 }
+
+/** Overwrite Authorization / x-employee-id from localStorage when present (fixes callers sending `Bearer `). */
+export function applyStaffPortalAuthToHeaders(headers: Headers): void {
+  const extra = getStaffPortalAuthHeaders();
+  if (extra.Authorization?.trim()) {
+    headers.set('Authorization', extra.Authorization);
+  }
+  if (extra['x-employee-id']?.trim()) {
+    headers.set('x-employee-id', extra['x-employee-id']);
+  }
+}

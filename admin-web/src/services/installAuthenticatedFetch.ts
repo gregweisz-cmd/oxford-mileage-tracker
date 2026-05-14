@@ -1,4 +1,5 @@
-import { getStaffPortalAuthHeaders } from './staffPortalAuthHeaders';
+import { applyStaffPortalAuthToHeaders } from './staffPortalAuthHeaders';
+import { dispatchStaffPortalSessionExpired } from './staffPortalSessionExpired';
 
 const DEFAULT_API_BASE_URL = 'https://oxford-mileage-backend.onrender.com';
 
@@ -63,20 +64,6 @@ function isCredentialEndpoint(urlStr: string, method: string): boolean {
   }
 }
 
-function hasAuthorization(headers: Headers): boolean {
-  return headers.has('Authorization') || headers.has('authorization');
-}
-
-function mergeBackendAuthHeaders(headers: Headers): void {
-  const extra = getStaffPortalAuthHeaders();
-  if (extra.Authorization && !hasAuthorization(headers)) {
-    headers.set('Authorization', extra.Authorization);
-  }
-  if (extra['x-employee-id'] && !headers.has('x-employee-id') && !headers.has('X-Employee-Id')) {
-    headers.set('x-employee-id', extra['x-employee-id']);
-  }
-}
-
 function resolveBackendApiUrl(urlStr: string): string | null {
   if (!urlStr) return null;
   try {
@@ -122,20 +109,20 @@ export function installAuthenticatedFetch() {
       (input instanceof Request ? input.method : undefined) ||
       'GET';
 
-    let token: string | null = null;
-    try {
-      token = localStorage.getItem('authToken');
-    } catch {
-      token = null;
+    const shouldTryAuth =
+      shouldAttachAuth(effectiveUrlStr) && !isCredentialEndpoint(effectiveUrlStr, method);
+
+    let finalInit: RequestInit | undefined = init;
+    if (shouldTryAuth) {
+      const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+      applyStaffPortalAuthToHeaders(headers);
+      finalInit = { ...init, headers };
     }
 
-    if (!token?.trim() || !shouldAttachAuth(effectiveUrlStr) || isCredentialEndpoint(effectiveUrlStr, method)) {
-      return originalFetch(fetchInput, init);
+    const response = await originalFetch(fetchInput, finalInit);
+    if (response.status === 401 && shouldTryAuth) {
+      dispatchStaffPortalSessionExpired();
     }
-
-    const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
-    mergeBackendAuthHeaders(headers);
-
-    return originalFetch(fetchInput, { ...init, headers });
+    return response;
   };
 }

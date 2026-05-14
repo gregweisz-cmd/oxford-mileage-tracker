@@ -17,6 +17,7 @@ import { ToastProvider } from './contexts/ToastContext';
 import { ErrorPromptProvider } from './contexts/ErrorPromptContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import AuthCallback from './components/AuthCallback';
+import { resetStaffPortalSessionExpiredDispatch } from './services/staffPortalSessionExpired';
 
 // Debug logging
 import { debugLog, debugError, debugVerbose } from './config/debug';
@@ -340,6 +341,25 @@ const App: React.FC = () => {
 
     checkAuthStatus();
   }, []);
+
+  useEffect(() => {
+    const onSessionExpired = () => {
+      try {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentEmployeeId');
+        localStorage.removeItem('employeeData');
+        localStorage.removeItem('authUser');
+      } catch {
+        /* ignore */
+      }
+      setCurrentUser(null);
+      setShowOnboarding(false);
+      setShowSetupWizard(false);
+      setCurrentPortal('staff');
+    };
+    window.addEventListener('oxford-staff-session-expired', onSessionExpired);
+    return () => window.removeEventListener('oxford-staff-session-expired', onSessionExpired);
+  }, []);
   
   // Listen for user profile updates to refresh currentUser and theme
   useEffect(() => {
@@ -442,6 +462,7 @@ const App: React.FC = () => {
   };
 
   const handleLoginSuccess = async (employee: any, token: string) => {
+    resetStaffPortalSessionExpiredDispatch();
     setCurrentUser(employee);
     localStorage.setItem('authToken', token);
     localStorage.setItem('currentEmployeeId', employee.id);
