@@ -48,11 +48,24 @@ import { EmployeeApiService } from '../services/employeeApiService';
 import { PerDiemRulesService } from '../services/perDiemRulesService';
 import { debugError } from '../config/debug';
 
+/** Sub-tab index under Cost Center Management (must match <Tab> order). */
+export const COST_CENTER_MGMT_TAB = {
+  COST_CENTERS: 0,
+  BULK_IMPORT: 1,
+  BULK_DELETE: 2,
+  FINANCE_ASSIGNMENTS: 3,
+} as const;
+
 interface CostCenterManagementProps {
   onCostCentersChange?: (costCenters: string[]) => void;
+  /** When set, opens this sub-tab (e.g. Finance Assignments from Finance Portal). */
+  initialSubTab?: number;
 }
 
-export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCostCentersChange }) => {
+export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
+  onCostCentersChange,
+  initialSubTab = COST_CENTER_MGMT_TAB.COST_CENTERS,
+}) => {
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   // const [loading, setLoading] = useState(true); // Currently unused
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,7 +80,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
     perDiemReceiptImageRequired: false,
   });
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(initialSubTab);
   const [selectedCostCenters, setSelectedCostCenters] = useState<string[]>([]);
   const [csvData, setCsvData] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
@@ -104,6 +117,10 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({ onCo
   useEffect(() => {
     loadCostCenters();
   }, [loadCostCenters]);
+
+  useEffect(() => {
+    setActiveTab(initialSubTab);
+  }, [initialSubTab]);
 
   const loadFinanceAssignments = useCallback(async () => {
     try {

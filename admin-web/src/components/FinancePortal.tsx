@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Card,
@@ -31,6 +31,7 @@ import {
   CircularProgress,
   Alert,
   Backdrop,
+  Link,
 } from '@mui/material';
 import {
   GetApp as DownloadIcon,
@@ -49,7 +50,7 @@ import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { getEmployeeDisplayName } from '../utils/employeeUtils';
 import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import { NotificationBell } from './NotificationBell';
-import { CostCenterManagement } from './CostCenterManagement';
+import { CostCenterManagement, COST_CENTER_MGMT_TAB } from './CostCenterManagement';
 import { CostCenter, CostCenterApiService } from '../services/costCenterApiService';
 import StaffPortal from '../StaffPortal';
 
@@ -134,6 +135,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [isCostCenterAssignmentRestricted, setIsCostCenterAssignmentRestricted] = useState(false);
   const [assignedCostCenterKeys, setAssignedCostCenterKeys] = useState<string[]>([]);
   const [assignedCostCenterNames, setAssignedCostCenterNames] = useState<string[]>([]);
+  const [costCenterMgmtSubTab, setCostCenterMgmtSubTab] = useState<number>(
+    COST_CENTER_MGMT_TAB.COST_CENTERS
+  );
   
   // Keyboard shortcuts state
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
@@ -161,6 +165,22 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     loadReports();
     loadCostCenters();
   }, []);
+
+  const openFinanceAssignments = () => {
+    setCostCenterMgmtSubTab(COST_CENTER_MGMT_TAB.FINANCE_ASSIGNMENTS);
+    setActiveTab(FINANCE_TAB.COST_CENTER_MANAGEMENT);
+  };
+
+  const prevFinanceTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (
+      prevFinanceTabRef.current === FINANCE_TAB.COST_CENTER_MANAGEMENT &&
+      activeTab !== FINANCE_TAB.COST_CENTER_MANAGEMENT
+    ) {
+      loadReports();
+    }
+    prevFinanceTabRef.current = activeTab;
+  }, [activeTab]);
 
   const loadCostCenters = async () => {
     try {
@@ -1501,13 +1521,33 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           </Box>
         ) : isCostCenterAssignmentRestricted ? (
           <Alert severity="info" sx={{ mb: 2 }}>
-            No cost centers are assigned to your finance profile yet. An admin can assign them under Cost Center
-            Management. Until then, use <strong>All Reports</strong> to browse every report.
+            You have not selected any cost centers to manage yet. Open{' '}
+            <Link
+              component="button"
+              type="button"
+              variant="body2"
+              onClick={openFinanceAssignments}
+              sx={{ verticalAlign: 'baseline', fontWeight: 600 }}
+            >
+              Finance Assignments
+            </Link>{' '}
+            (under Cost Center Management), find your name, and choose the cost centers you oversee. You can update
+            these anytime. Use <strong>All Reports</strong> to browse every report in the meantime.
           </Alert>
         ) : (
           <Alert severity="info" sx={{ mb: 2 }}>
             Finance cost center assignments are not configured yet. This tab shows all monthly reports until assignments
-            are set up.
+            are set up. You can still open{' '}
+            <Link
+              component="button"
+              type="button"
+              variant="body2"
+              onClick={openFinanceAssignments}
+              sx={{ verticalAlign: 'baseline', fontWeight: 600 }}
+            >
+              Finance Assignments
+            </Link>{' '}
+            to choose your cost centers.
           </Alert>
         )}
         {renderFinanceReportsTable('No reports found for your managed cost centers with the current filters.')}
@@ -1520,7 +1560,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
       {/* Cost Center Management - Per Diem rules and Google Map creator for reporting */}
       <TabPanel value={activeTab} index={FINANCE_TAB.COST_CENTER_MANAGEMENT}>
-        <CostCenterManagement />
+        <CostCenterManagement initialSubTab={costCenterMgmtSubTab} />
       </TabPanel>
 
       {/* Pending Review Tab */}
