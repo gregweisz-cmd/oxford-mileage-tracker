@@ -90,8 +90,26 @@ interface ExpenseReport {
 const normalizeCostCenter = (value: string): string =>
   String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+/** Finance portal tab indices (keep in sync with <Tab> order). */
+const FINANCE_TAB = {
+  ALL_REPORTS: 0,
+  MY_MANAGED_COST_CENTERS: 1,
+  PENDING_REVIEW: 2,
+  APPROVED: 3,
+  NEEDS_REVISION: 4,
+  ANALYTICS: 5,
+  COST_CENTER_MANAGEMENT: 6,
+} as const;
+
+const reportMatchesAssignmentKeys = (report: ExpenseReport, assignmentKeys: Set<string>): boolean => {
+  if (assignmentKeys.size === 0) return false;
+  const reportCenters = (report.costCenters || []).map(normalizeCostCenter).filter(Boolean);
+  return reportCenters.some((ccKey) => assignmentKeys.has(ccKey));
+};
+
 export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, financeUserName }) => {
-  const [reports, setReports] = useState<ExpenseReport[]>([]);
+  const [allReports, setAllReports] = useState<ExpenseReport[]>([]);
+  const [managedReports, setManagedReports] = useState<ExpenseReport[]>([]);
   const [filteredReports, setFilteredReports] = useState<ExpenseReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
@@ -115,6 +133,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [filterCostCenter, setFilterCostCenter] = useState<string>('all');
   const [isCostCenterAssignmentRestricted, setIsCostCenterAssignmentRestricted] = useState(false);
   const [assignedCostCenterKeys, setAssignedCostCenterKeys] = useState<string[]>([]);
+  const [assignedCostCenterNames, setAssignedCostCenterNames] = useState<string[]>([]);
   
   // Keyboard shortcuts state
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
@@ -209,7 +228,20 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   useEffect(() => {
     applyFilters();
-  }, [reports, filterStatus, filterMonth, filterYear, filterEmployee, dateRangePreset, filterStartDate, filterEndDate, filterState, filterCostCenter]);
+  }, [
+    allReports,
+    managedReports,
+    activeTab,
+    filterStatus,
+    filterMonth,
+    filterYear,
+    filterEmployee,
+    dateRangePreset,
+    filterStartDate,
+    filterEndDate,
+    filterState,
+    filterCostCenter,
+  ]);
 
   // Apply sorting to filtered reports
   useEffect(() => {
@@ -299,6 +331,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         debugError('Error loading finance cost center assignments:', assignmentError);
       }
       setIsCostCenterAssignmentRestricted(hasAnyAssignments);
+      setAssignedCostCenterNames(userAssignedCenters);
       setAssignedCostCenterKeys(userAssignedCenters.map(normalizeCostCenter).filter(Boolean));
 
       const response = await fetch(`${API_BASE_URL}/api/expense-reports`);
@@ -353,12 +386,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       const assignmentKeys = new Set(userAssignedCenters.map(normalizeCostCenter).filter(Boolean));
       const assignmentFiltered = !hasAnyAssignments
         ? monthlyOnly
-        : monthlyOnly.filter((report: ExpenseReport) => {
-            const reportCenters = (report.costCenters || []).map(normalizeCostCenter).filter(Boolean);
-            return reportCenters.some((ccKey) => assignmentKeys.has(ccKey));
-          });
+        : monthlyOnly.filter((report: ExpenseReport) =>
+            reportMatchesAssignmentKeys(report, assignmentKeys)
+          );
 
-      setReports(assignmentFiltered);
+      setAllReports(monthlyOnly);
+      setManagedReports(assignmentFiltered);
     } catch (error) {
       debugError('Error loading reports:', error);
     } finally {
@@ -430,8 +463,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     }
   };
 
+  const getReportsSourceForTab = (tab: number): ExpenseReport[] =>
+    tab === FINANCE_TAB.ALL_REPORTS ? allReports : managedReports;
+
   const applyFilters = () => {
-    let filtered = [...reports];
+    const source = getReportsSourceForTab(activeTab);
+    let filtered = [...source];
 
     // Filter by status
     if (filterStatus !== 'all') {
@@ -534,19 +571,19 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     month?: number,
     year?: number
   ) => {
-    // Find the report in the current reports list
-    const report = reports.find(r => r.id === reportId);
+    const report =
+      allReports.find((r) => r.id === reportId) || managedReports.find((r) => r.id === reportId);
     if (report) {
       handleViewReport(report);
-      // Switch to appropriate tab based on status
+      const inManagedQueue = managedReports.some((r) => r.id === reportId);
       if (report.status === 'pending_finance' || report.status === 'submitted') {
-        setActiveTab(1); // Pending Review tab
+        setActiveTab(inManagedQueue ? FINANCE_TAB.PENDING_REVIEW : FINANCE_TAB.ALL_REPORTS);
       } else if (report.status === 'approved') {
-        setActiveTab(2); // Approved Reports tab
+        setActiveTab(inManagedQueue ? FINANCE_TAB.APPROVED : FINANCE_TAB.ALL_REPORTS);
       } else if (report.status === 'needs_revision') {
-        setActiveTab(3); // Needs Revision tab
+        setActiveTab(inManagedQueue ? FINANCE_TAB.NEEDS_REVISION : FINANCE_TAB.ALL_REPORTS);
       } else {
-        setActiveTab(0); // All Reports tab
+        setActiveTab(FINANCE_TAB.ALL_REPORTS);
       }
       return;
     }
@@ -1036,24 +1073,24 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+  const reportsForFilters = getReportsSourceForTab(activeTab);
+
   // Get unique employees for filter
-  const uniqueEmployees = Array.from(new Set(reports.map(r => r.employeeId)))
-    .map(id => {
-      const report = reports.find(r => r.employeeId === id);
+  const uniqueEmployees = Array.from(new Set(reportsForFilters.map((r) => r.employeeId)))
+    .map((id) => {
+      const report = reportsForFilters.find((r) => r.employeeId === id);
       return { id, name: report ? getDisplayName(report) : id };
     });
 
   // Get unique states for filter
-  const uniqueStates = Array.from(new Set(
-    reports
-      .map(r => r.state)
-      .filter((state): state is string => !!state)
-  )).sort();
+  const uniqueStates = Array.from(
+    new Set(reportsForFilters.map((r) => r.state).filter((state): state is string => !!state))
+  ).sort();
 
   // Get unique cost centers for filter
-  const uniqueCostCenters = Array.from(new Set(
-    reports.flatMap(r => r.costCenters || [])
-  )).sort();
+  const uniqueCostCenters = Array.from(
+    new Set(reportsForFilters.flatMap((r) => r.costCenters || []))
+  ).sort();
 
   // Handle date range preset change
   const handleDateRangePresetChange = (preset: string) => {
@@ -1072,6 +1109,164 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
     </div>
   );
+
+  const renderFinanceReportsTable = (emptyMessage: string) => {
+    if (loading) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+    if (filteredReports.length === 0) {
+      return <Alert severity="info">{emptyMessage}</Alert>;
+    }
+    return (
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow sx={{ bgcolor: 'grey.100' }}>
+              <TableCell
+                sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                onClick={() => handleSort('employeeName')}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <strong>Employee</strong>
+                  {getSortIcon('employeeName')}
+                </Box>
+              </TableCell>
+              <TableCell><strong>Period</strong></TableCell>
+              <TableCell
+                align="right"
+                sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                onClick={() => handleSort('totalMiles')}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                  <strong>Miles</strong>
+                  {getSortIcon('totalMiles')}
+                </Box>
+              </TableCell>
+              <TableCell
+                align="right"
+                sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                onClick={() => handleSort('totalMileageAmount')}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                  <strong>Mileage ($)</strong>
+                  {getSortIcon('totalMileageAmount')}
+                </Box>
+              </TableCell>
+              <TableCell
+                align="right"
+                sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                onClick={() => handleSort('totalExpenses')}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                  <strong>Total Expenses ($)</strong>
+                  {getSortIcon('totalExpenses')}
+                </Box>
+              </TableCell>
+              <TableCell
+                sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                onClick={() => handleSort('status')}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <strong>Status</strong>
+                  {getSortIcon('status')}
+                </Box>
+              </TableCell>
+              <TableCell
+                sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
+                onClick={() => handleSort('submittedAt')}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <strong>Submitted</strong>
+                  {getSortIcon('submittedAt')}
+                </Box>
+              </TableCell>
+              <TableCell align="center"><strong>Actions</strong></TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredReports.map((report) => (
+              <TableRow key={report.id} hover>
+                <TableCell>{getDisplayName(report)}</TableCell>
+                <TableCell>
+                  {monthNames[report.month - 1]} {report.year}
+                </TableCell>
+                <TableCell align="right">{report.totalMiles.toFixed(1)}</TableCell>
+                <TableCell align="right">${report.totalMileageAmount.toFixed(2)}</TableCell>
+                <TableCell align="right">${report.totalExpenses.toFixed(2)}</TableCell>
+                <TableCell>
+                  <Chip
+                    label={report.status.replace('_', ' ').toUpperCase()}
+                    color={getStatusColor(report.status) as any}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  {report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : '-'}
+                </TableCell>
+                <TableCell align="center">
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => handleViewReport(report)}
+                    title="View Report"
+                  >
+                    <ViewIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="success"
+                    disabled={pdfExportLoadingReportId === report.id}
+                    onClick={() => {
+                      const mapsEnabled = hasMapsEnabled(report);
+                      handleExportToExcel(report, mapsEnabled ? 'day' : undefined);
+                    }}
+                    title="Export to PDF"
+                  >
+                    <DownloadIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleDeleteReportClick(report)}
+                    title="Delete report"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                  {(report.status === 'pending_finance' || report.status === 'submitted') && (
+                    <>
+                      <IconButton
+                        size="small"
+                        color="success"
+                        onClick={() => handleApproveReport(report.id)}
+                        title="Approve Report"
+                      >
+                        <CheckCircleIcon />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="warning"
+                        onClick={() => {
+                          setSelectedReport(report);
+                          setRevisionDialogOpen(true);
+                        }}
+                        title="Return report to the employee for edits. Supervisors and senior staff only get FYI notifications—they do not receive the report for rework."
+                      >
+                        <RequestRevisionIcon />
+                      </IconButton>
+                    </>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
+  };
 
   // Keyboard shortcuts setup (defined after all handler functions)
   const shortcuts: KeyboardShortcut[] = [
@@ -1111,12 +1306,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      {isCostCenterAssignmentRestricted && assignedCostCenterKeys.length === 0 && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          No cost centers are currently assigned to your finance profile. Ask an admin to assign at least one cost center in
-          Cost Center Management.
-        </Alert>
-      )}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>
           <Typography variant="h4" gutterBottom>
@@ -1139,6 +1328,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       {/* Tabs */}
       <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)} sx={{ mb: 3 }}>
         <Tab label="All Reports" />
+        <Tab label="My Managed Cost Centers" />
         <Tab label="Pending Review" />
         <Tab label="Approved Reports" />
         <Tab label="Needs Revision" />
@@ -1146,7 +1336,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         <Tab label="Cost Center Management" />
       </Tabs>
 
-      {/* Filters */}
+      {/* Filters (report list tabs only) */}
+      {activeTab <= FINANCE_TAB.NEEDS_REVISION && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1288,173 +1479,52 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
           </Box>
         </CardContent>
       </Card>
+      )}
 
       {/* Reports Table */}
-      <TabPanel value={activeTab} index={0}>
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-            <CircularProgress />
+      <TabPanel value={activeTab} index={FINANCE_TAB.ALL_REPORTS}>
+        {renderFinanceReportsTable('No reports found matching the filters.')}
+      </TabPanel>
+
+      {/* My Managed Cost Centers — reports for cost centers assigned to this finance user */}
+      <TabPanel value={activeTab} index={FINANCE_TAB.MY_MANAGED_COST_CENTERS}>
+        {assignedCostCenterNames.length > 0 ? (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              Cost centers you manage
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {assignedCostCenterNames.map((cc) => (
+                <Chip key={cc} label={cc} size="small" color="primary" variant="outlined" />
+              ))}
+            </Box>
           </Box>
-        ) : filteredReports.length === 0 ? (
-          <Alert severity="info">No reports found matching the filters.</Alert>
+        ) : isCostCenterAssignmentRestricted ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No cost centers are assigned to your finance profile yet. An admin can assign them under Cost Center
+            Management. Until then, use <strong>All Reports</strong> to browse every report.
+          </Alert>
         ) : (
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ bgcolor: 'grey.100' }}>
-                  <TableCell 
-                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
-                    onClick={() => handleSort('employeeName')}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <strong>Employee</strong>
-                      {getSortIcon('employeeName')}
-                    </Box>
-                  </TableCell>
-                  <TableCell><strong>Period</strong></TableCell>
-                  <TableCell 
-                    align="right"
-                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
-                    onClick={() => handleSort('totalMiles')}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <strong>Miles</strong>
-                      {getSortIcon('totalMiles')}
-                    </Box>
-                  </TableCell>
-                  <TableCell 
-                    align="right"
-                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
-                    onClick={() => handleSort('totalMileageAmount')}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <strong>Mileage ($)</strong>
-                      {getSortIcon('totalMileageAmount')}
-                    </Box>
-                  </TableCell>
-                  <TableCell 
-                    align="right"
-                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
-                    onClick={() => handleSort('totalExpenses')}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <strong>Total Expenses ($)</strong>
-                      {getSortIcon('totalExpenses')}
-                    </Box>
-                  </TableCell>
-                  <TableCell 
-                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
-                    onClick={() => handleSort('status')}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <strong>Status</strong>
-                      {getSortIcon('status')}
-                    </Box>
-                  </TableCell>
-                  <TableCell 
-                    sx={{ cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'grey.200' } }}
-                    onClick={() => handleSort('submittedAt')}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <strong>Submitted</strong>
-                      {getSortIcon('submittedAt')}
-                    </Box>
-                  </TableCell>
-                  <TableCell align="center"><strong>Actions</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredReports.map((report) => (
-                  <TableRow key={report.id} hover>
-                    <TableCell>{getDisplayName(report)}</TableCell>
-                    <TableCell>{monthNames[report.month - 1]} {report.year}</TableCell>
-                    <TableCell align="right">{report.totalMiles.toFixed(1)}</TableCell>
-                    <TableCell align="right">${report.totalMileageAmount.toFixed(2)}</TableCell>
-                    <TableCell align="right">${report.totalExpenses.toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={report.status.replace('_', ' ').toUpperCase()}
-                        color={getStatusColor(report.status) as any}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : '-'}
-                    </TableCell>
-                    <TableCell align="center">
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => handleViewReport(report)}
-                        title="View Report"
-                      >
-                        <ViewIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="success"
-                        disabled={pdfExportLoadingReportId === report.id}
-                        onClick={() => {
-                          const mapsEnabled = hasMapsEnabled(report);
-                          handleExportToExcel(report, mapsEnabled ? 'day' : undefined);
-                        }}
-                        title="Export to PDF"
-                      >
-                        <DownloadIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeleteReportClick(report)}
-                        title="Delete report"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                      {/* Show actions for pending finance reports */}
-                      {(report.status === 'pending_finance' || report.status === 'submitted') && (
-                        <>
-                          <IconButton
-                            size="small"
-                            color="success"
-                            onClick={() => handleApproveReport(report.id)}
-                            title="Approve Report"
-                          >
-                            <CheckCircleIcon />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            color="warning"
-                            onClick={() => {
-                              setSelectedReport(report);
-                              setRevisionDialogOpen(true);
-                            }}
-                            title="Return report to the employee for edits. Supervisors and senior staff only get FYI notifications—they do not receive the report for rework."
-                          >
-                            <RequestRevisionIcon />
-                          </IconButton>
-                        </>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Finance cost center assignments are not configured yet. This tab shows all monthly reports until assignments
+            are set up.
+          </Alert>
         )}
+        {renderFinanceReportsTable('No reports found for your managed cost centers with the current filters.')}
       </TabPanel>
 
       {/* Reports & Analytics */}
-      <TabPanel value={activeTab} index={4}>
+      <TabPanel value={activeTab} index={FINANCE_TAB.ANALYTICS}>
         <ReportsAnalyticsTab />
       </TabPanel>
 
       {/* Cost Center Management - Per Diem rules and Google Map creator for reporting */}
-      <TabPanel value={activeTab} index={5}>
+      <TabPanel value={activeTab} index={FINANCE_TAB.COST_CENTER_MANAGEMENT}>
         <CostCenterManagement />
       </TabPanel>
 
       {/* Pending Review Tab */}
-      <TabPanel value={activeTab} index={1}>
+      <TabPanel value={activeTab} index={FINANCE_TAB.PENDING_REVIEW}>
         {filteredReports.filter(r => r.status === 'pending_finance' || r.status === 'submitted').length === 0 ? (
           <Alert severity="info">No reports pending Finance review.</Alert>
         ) : (
@@ -1516,7 +1586,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       </TabPanel>
 
       {/* Approved Reports Tab */}
-      <TabPanel value={activeTab} index={2}>
+      <TabPanel value={activeTab} index={FINANCE_TAB.APPROVED}>
         {filteredReports.filter(r => r.status === 'approved').length === 0 ? (
           <Alert severity="info">No approved reports.</Alert>
         ) : (
@@ -1571,7 +1641,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       </TabPanel>
 
       {/* Needs Revision Tab */}
-      <TabPanel value={activeTab} index={3}>
+      <TabPanel value={activeTab} index={FINANCE_TAB.NEEDS_REVISION}>
         {filteredReports.filter(r => r.status === 'needs_revision').length === 0 ? (
           <Alert severity="info">No reports needing revision.</Alert>
         ) : (
