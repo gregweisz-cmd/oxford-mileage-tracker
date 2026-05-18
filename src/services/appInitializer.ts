@@ -6,6 +6,7 @@ import { PreferencesService } from './preferencesService';
 import { RealtimeSyncService } from './realtimeSyncService';
 import { ServiceInitializer } from './serviceInitializer';
 import { SyncIntegrationService } from './syncIntegrationService';
+import { ensureLocalNotificationChannels } from './localNotificationSetup';
 
 export class AppInitializer {
   static async initialize(): Promise<void> {
@@ -30,6 +31,9 @@ export class AppInitializer {
         
         console.log('🚀 AppInitializer: Initializing intelligence services...');
         await ServiceInitializer.initializeAllServices();
+
+        console.log('🚀 AppInitializer: Configuring local notification channels...');
+        await ensureLocalNotificationChannels();
         
         // Initialize location services
         try {

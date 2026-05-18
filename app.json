@@ -75,7 +75,9 @@
         {
           "icon": "./assets/icon.png",
           "color": "#1C75BC",
-          "sounds": []
+          "sounds": [],
+          "defaultChannel": "gps-stationary-alerts",
+          "enableBackgroundRemoteNotifications": false
         }
       ],
       [

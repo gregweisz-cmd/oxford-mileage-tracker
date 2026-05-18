@@ -3,8 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { GpsTrackingSession, LocationDetails } from '../types';
-import { LOCATION_TASK_NAME, GPS_TRACKING_STORAGE_KEY, PersistedGpsState } from './gpsBackgroundTask';
+import {
+  LOCATION_TASK_NAME,
+  GPS_TRACKING_STORAGE_KEY,
+  PersistedGpsState,
+  MAX_PERSISTED_TRACKING_SESSION_MS,
+} from './gpsBackgroundTask';
 import { GooglePlacesService } from './googlePlacesService';
+import { promptForNotificationAccessIfNeeded } from './localNotificationSetup';
 import { StationaryNotificationService } from './stationaryNotificationService';
 
 /** Reject corrupt / partial AsyncStorage blobs so restore cannot throw mid-hydration. */
@@ -111,6 +117,9 @@ export class GpsTrackingService {
     notes?: string
   ): Promise<GpsTrackingSession> {
     try {
+      await StationaryNotificationService.cancelAllStationaryAlerts();
+      StationaryNotificationService.resetAlertThrottle();
+
       debugLog('🚀 GPS: Starting tracking session...');
       debugLog('🚀 GPS: Employee ID:', employeeId);
       debugLog('🚀 GPS: Purpose:', purpose);
@@ -124,6 +133,9 @@ export class GpsTrackingService {
       if (!hasPermission) {
         throw new Error('Location permission denied. Please enable location permissions in your device settings.');
       }
+
+      await StationaryNotificationService.initialize();
+      await promptForNotificationAccessIfNeeded();
 
       // Check if location services are enabled
       const isEnabled = await Location.hasServicesEnabledAsync();
@@ -239,11 +251,8 @@ export class GpsTrackingService {
    */
   static async stopTracking(presetEndLocation?: LocationDetails): Promise<GpsTrackingSession | null> {
     try {
-      const rawState = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
-      if (rawState) {
-        const persistedState: PersistedGpsState = JSON.parse(rawState);
-        await StationaryNotificationService.cancelScheduledAlert(persistedState.stationaryAlertScheduledId);
-      }
+      await StationaryNotificationService.cancelAllStationaryAlerts();
+      StationaryNotificationService.resetAlertThrottle();
 
       if (!this.currentSession) {
         // Don't block UI on location stop / storage clearing.
@@ -292,16 +301,62 @@ export class GpsTrackingService {
     }
   }
 
-  /** Restore in-memory state from persisted storage (e.g. after app was killed and restarted) */
-  static async restoreFromStorage(): Promise<boolean> {
+  /** Clear orphaned/stale persisted GPS state and stop background updates. */
+  static async abandonPersistedTracking(reason?: string): Promise<void> {
+    debugLog('GPS: abandoning persisted tracking', reason ?? '');
+    await StationaryNotificationService.cancelAllStationaryAlerts();
+    StationaryNotificationService.resetAlertThrottle();
+    this.currentSession = null;
+    this.lastLocation = null;
+    this.totalDistance = 0;
+    this.tripPaused = false;
+    this.stationaryStartTime = null;
+    try {
+      void Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
+    } catch {
+      /* ignore */
+    }
+    await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY).catch(() => {});
+  }
+
+  /** Returns true if stale/invalid persisted state was removed. */
+  static async pruneStalePersistedSession(): Promise<boolean> {
     try {
       const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
       if (!raw) return false;
 
       const parsed: unknown = JSON.parse(raw);
       if (!isPersistedStateRestorable(parsed)) {
+        await this.abandonPersistedTracking('invalid-persisted-state');
+        return true;
+      }
+
+      const startMs = new Date(parsed.session.startTime).getTime();
+      if (!Number.isFinite(startMs) || Date.now() - startMs > MAX_PERSISTED_TRACKING_SESSION_MS) {
+        await this.abandonPersistedTracking('stale-persisted-session');
+        return true;
+      }
+    } catch {
+      await this.abandonPersistedTracking('corrupt-persisted-state');
+      return true;
+    }
+    return false;
+  }
+
+  /** Restore in-memory state from persisted storage (e.g. after app was killed and restarted) */
+  static async restoreFromStorage(): Promise<boolean> {
+    try {
+      if (await this.pruneStalePersistedSession()) {
+        return false;
+      }
+
+      const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+      if (!raw) return false;
+
+      const parsed: unknown = JSON.parse(raw);
+      if (!isPersistedStateRestorable(parsed)) {
         debugWarn('GPS: persisted session invalid or incomplete; clearing storage');
-        await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY);
+        await this.abandonPersistedTracking('invalid-persisted-state');
         return false;
       }
       const state = parsed;
@@ -409,7 +464,9 @@ export class GpsTrackingService {
       const state: PersistedGpsState = JSON.parse(raw);
       state.stationaryAlertPending = false;
       state.stationaryAlertLastPromptAt = Date.now();
+      state.stationaryAlertScheduledId = null;
       await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(state));
+      await StationaryNotificationService.cancelAllStationaryAlerts();
     } catch {
       // Ignore storage errors for non-critical UX prompts
     }
@@ -458,7 +515,7 @@ export class GpsTrackingService {
       const state: PersistedGpsState = JSON.parse(raw);
       if (state.session.id !== this.currentSession.id) return;
 
-      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      await StationaryNotificationService.cancelAllStationaryAlerts();
       state.stationaryAlertScheduledId = null;
       state.stationaryAlertPending = false;
       state.stationaryStartTime = null;
@@ -508,7 +565,7 @@ export class GpsTrackingService {
 
       state.isPaused = false;
       state.pausedDrivingAlertPending = false;
-      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      await StationaryNotificationService.cancelAllStationaryAlerts();
       state.stationaryAlertScheduledId = null;
       state.stationaryStartTime = null;
       state.nonDrivingCandidateStartTime = null;

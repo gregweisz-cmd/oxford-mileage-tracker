@@ -1,5 +1,9 @@
 import { registerRootComponent } from 'expo';
 
+// Foreground presentation (banner, list, sound) — must run before React mounts.
+import { configureNotificationPresentation } from './src/services/localNotificationSetup';
+configureNotificationPresentation();
+
 // Register GPS background task before any React code (required for expo-task-manager)
 import './src/services/gpsBackgroundTask';
 

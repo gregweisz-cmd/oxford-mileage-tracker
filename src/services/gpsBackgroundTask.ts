@@ -4,6 +4,7 @@
  */
 import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { debugLog } from '../config/debug';
 import { StationaryNotificationService } from './stationaryNotificationService';
@@ -46,6 +47,8 @@ const NON_DRIVING_GRACE_MS = 90 * 1000; // avoid false positives during slow par
 const STATIONARY_THRESHOLD_MS = 5 * 60 * 1000;
 const STATIONARY_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 const MIN_TRIP_DISTANCE_FOR_STATIONARY_ALERT_MILES = 0.25; // 1/4 mile
+/** Drop orphaned sessions so background GPS does not notify when the user is not on a trip. */
+export const MAX_PERSISTED_TRACKING_SESSION_MS = 8 * 60 * 60 * 1000;
 const R = 3959; // Earth radius in miles
 
 function toRadians(degrees: number): number {
@@ -70,6 +73,27 @@ function calculateDistance(
   return R * c;
 }
 
+async function abandonPersistedSession(reason: string): Promise<void> {
+  debugLog('GPS background: abandoning persisted session:', reason);
+  await StationaryNotificationService.cancelAllStationaryAlerts();
+  StationaryNotificationService.resetAlertThrottle();
+  await AsyncStorage.removeItem(STORAGE_KEY);
+  try {
+    const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+    if (running) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    }
+  } catch {
+    // Best-effort stop when clearing stale/orphan state.
+  }
+}
+
+function isSessionTooOld(startTimeIso: string): boolean {
+  const started = new Date(startTimeIso).getTime();
+  if (!Number.isFinite(started)) return true;
+  return Date.now() - started > MAX_PERSISTED_TRACKING_SESSION_MS;
+}
+
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
     debugLog('GPS background task error:', error.message);
@@ -82,6 +106,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     if (!raw) return;
 
     const state: PersistedGpsState = JSON.parse(raw);
+
+    if (!state.session?.id || !state.session?.startTime) {
+      await abandonPersistedSession('missing-session');
+      return;
+    }
+    if (isSessionTooOld(state.session.startTime)) {
+      await abandonPersistedSession('stale-session');
+      return;
+    }
+
     if (
       !state.lastLocation ||
       typeof state.lastLocation.latitude !== 'number' ||
@@ -143,7 +177,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       state.stationaryStartTime = null;
       state.nonDrivingCandidateStartTime = null;
       state.stationaryAlertPending = false;
-      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      await StationaryNotificationService.cancelAllStationaryAlerts();
       state.stationaryAlertScheduledId = null;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       return;
@@ -156,7 +190,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       state.stationaryStartTime = null;
       state.nonDrivingCandidateStartTime = null;
       state.stationaryAlertPending = false;
-      await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
+      await StationaryNotificationService.cancelAllStationaryAlerts();
       state.stationaryAlertScheduledId = null;
     } else if (!state.hasSeenVehicleSpeed && hasTraveledMeaningfully) {
       // Some devices intermittently report null/0 speed in background updates.
@@ -174,11 +208,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
       if (nonDrivingGraceComplete && !state.stationaryStartTime) {
         state.stationaryStartTime = state.nonDrivingCandidateStartTime + NON_DRIVING_GRACE_MS;
-        await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
-        state.stationaryAlertScheduledId = await StationaryNotificationService.scheduleDelayedStationaryAlert(
-          state.session.id,
-          STATIONARY_THRESHOLD_MS
-        );
       }
 
       const hasExceededStationaryThreshold =
@@ -189,10 +218,10 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
       if (hasExceededStationaryThreshold && cooldownComplete && !state.stationaryAlertPending) {
         state.stationaryAlertPending = true;
-        await StationaryNotificationService.scheduleStationaryAlert(state.session.id);
         state.stationaryAlertLastPromptAt = now;
-        await StationaryNotificationService.cancelScheduledAlert(state.stationaryAlertScheduledId);
         state.stationaryAlertScheduledId = null;
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        await StationaryNotificationService.scheduleStationaryAlert(state.session.id);
       }
     }
 

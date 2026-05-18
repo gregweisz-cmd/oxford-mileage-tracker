@@ -109,7 +109,12 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   useEffect(() => {
     let mounted = true;
     (async () => {
+      await GpsTrackingService.pruneStalePersistedSession();
       const restored = await GpsTrackingService.restoreFromStorage();
+      if (!GpsTrackingService.isTracking()) {
+        await StationaryNotificationService.cancelAllStationaryAlerts();
+        StationaryNotificationService.resetAlertThrottle();
+      }
       if (mounted && restored && !restoredRef.current) {
         restoredRef.current = true;
         setRestoredTrackingOnLaunch(true);
