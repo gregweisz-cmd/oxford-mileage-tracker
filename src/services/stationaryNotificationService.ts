@@ -2,10 +2,10 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import {
+  canDeliverGpsNotifications,
   ensureLocalNotificationChannels,
   GPS_STATIONARY_NOTIFICATION_CATEGORY_ID,
   GPS_STATIONARY_NOTIFICATION_CHANNEL_ID,
-  requestLocalNotificationPermissions,
 } from './localNotificationSetup';
 
 export {
@@ -73,9 +73,9 @@ export class StationaryNotificationService {
   static async scheduleStationaryAlert(sessionId: string): Promise<void> {
     if (Platform.OS === 'web') return;
 
+    if (!(await canDeliverGpsNotifications())) return;
+
     await this.initialize();
-    const granted = await requestLocalNotificationPermissions();
-    if (!granted) return;
 
     const now = Date.now();
     if (now - lastImmediateAlertAt < MIN_REPEAT_ALERT_MS) {

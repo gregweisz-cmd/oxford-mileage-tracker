@@ -134,8 +134,8 @@ export class GpsTrackingService {
         throw new Error('Location permission denied. Please enable location permissions in your device settings.');
       }
 
-      await StationaryNotificationService.initialize();
       await promptForNotificationAccessIfNeeded();
+      await StationaryNotificationService.initialize();
 
       // Check if location services are enabled
       const isEnabled = await Location.hasServicesEnabledAsync();

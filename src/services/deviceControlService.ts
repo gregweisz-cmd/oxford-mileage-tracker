@@ -5,8 +5,11 @@
  * to the device and app behavior.
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+
+const DEVICE_CONTROL_SETTINGS_KEY = '@device_control_settings';
 
 export interface DeviceControlSettings {
   theme: 'light' | 'dark' | 'auto';
@@ -26,7 +29,6 @@ export interface DeviceControlSettings {
 export class DeviceControlService {
   private static instance: DeviceControlService;
   private currentSettings: DeviceControlSettings | null = null;
-  private static storage: { [key: string]: string } = {};
 
   static getInstance(): DeviceControlService {
     if (!DeviceControlService.instance) {
@@ -40,7 +42,7 @@ export class DeviceControlService {
    */
   async initialize(): Promise<void> {
     try {
-      const savedSettings = DeviceControlService.storage['device_control_settings'];
+      const savedSettings = await AsyncStorage.getItem(DEVICE_CONTROL_SETTINGS_KEY);
       if (savedSettings) {
         this.currentSettings = JSON.parse(savedSettings);
       } else {
@@ -106,7 +108,7 @@ export class DeviceControlService {
    */
   private async saveSettings(): Promise<void> {
     if (this.currentSettings) {
-      DeviceControlService.storage['device_control_settings'] = JSON.stringify(this.currentSettings);
+      await AsyncStorage.setItem(DEVICE_CONTROL_SETTINGS_KEY, JSON.stringify(this.currentSettings));
     }
   }
 

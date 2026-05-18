@@ -1,8 +1,6 @@
 import { Alert, Linking, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-
-const NOTIFICATION_SETTINGS_PROMPT_KEY = '@gps_notification_settings_prompt_shown';
+import DeviceControlService from './deviceControlService';
 
 export const GPS_STATIONARY_NOTIFICATION_CHANNEL_ID = 'gps-stationary-alerts';
 export const GPS_STATIONARY_NOTIFICATION_CATEGORY_ID = 'GPS_STATIONARY_ACTIONS';
@@ -29,17 +27,27 @@ export function configureNotificationPresentation(): void {
   });
 }
 
-export async function hasLocalNotificationPermission(): Promise<boolean> {
+export async function hasOsNotificationPermission(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
 
   const existing = await Notifications.getPermissionsAsync();
   return existing.granted || existing.ios?.allowsAlert === true;
 }
 
+/** App Settings toggle + OS permission both required for GPS trip alerts. */
+export async function canDeliverGpsNotifications(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+
+  const appEnabled = await DeviceControlService.getInstance().isNotificationsEnabled();
+  if (!appEnabled) return false;
+
+  return hasOsNotificationPermission();
+}
+
 export async function requestLocalNotificationPermissions(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
 
-  if (await hasLocalNotificationPermission()) return true;
+  if (await hasOsNotificationPermission()) return true;
 
   const requested = await Notifications.requestPermissionsAsync({
     ios: {
@@ -53,36 +61,61 @@ export async function requestLocalNotificationPermissions(): Promise<boolean> {
   return requested.granted || requested.ios?.allowsAlert === true;
 }
 
-/** One-time alert when GPS starts without notification permission (lock screen / banner alerts). */
+/** Prompt when GPS starts but trip alerts cannot be delivered. */
 export async function promptForNotificationAccessIfNeeded(): Promise<void> {
   if (Platform.OS === 'web') return;
-  if (await hasLocalNotificationPermission()) return;
 
-  try {
-    const alreadyPrompted = await AsyncStorage.getItem(NOTIFICATION_SETTINGS_PROMPT_KEY);
-    if (alreadyPrompted === '1') return;
-    await AsyncStorage.setItem(NOTIFICATION_SETTINGS_PROMPT_KEY, '1');
-  } catch {
-    // Still show the alert if storage fails.
+  const appEnabled = await DeviceControlService.getInstance().isNotificationsEnabled();
+  const osEnabled = await hasOsNotificationPermission();
+
+  if (appEnabled && osEnabled) return;
+
+  let message: string;
+  if (!appEnabled && !osEnabled) {
+    message =
+      'GPS trip reminders are turned off in this app and on your phone. Turn on Notifications in App Settings, then allow alerts in your phone Settings so reminders appear on your lock screen and as banners.';
+  } else if (!appEnabled) {
+    message =
+      'GPS trip reminders are turned off in App Settings. Turn on the Notifications switch in Settings so you can receive lock-screen and banner alerts while tracking.';
+  } else {
+    message =
+      'GPS trip reminders need notification permission on your phone. Allow notifications in Settings so alerts appear on your lock screen, as banners, and in Notification Center.';
   }
 
-  Alert.alert(
-    'Turn on notifications',
-    'GPS trip reminders need notification permission to show on your lock screen, as banners, and in Notification Center. You can enable them in Settings.',
-    [
-      { text: 'Not now', style: 'cancel' },
-      {
-        text: 'Open Settings',
-        onPress: () => {
-          void Linking.openSettings();
-        },
+  const buttons: Array<{ text: string; style?: 'cancel' | 'default'; onPress?: () => void }> = [];
+
+  if (!appEnabled) {
+    buttons.push({
+      text: 'Enable in app',
+      onPress: () => {
+        void (async () => {
+          await DeviceControlService.getInstance().updateSettings({ notificationsEnabled: true });
+          await requestLocalNotificationPermissions();
+        })();
       },
-    ]
-  );
+    });
+  }
+
+  if (!osEnabled) {
+    buttons.push({
+      text: 'Phone settings',
+      onPress: () => {
+        void Linking.openSettings();
+      },
+    });
+  }
+
+  buttons.push({ text: 'Not now', style: 'cancel' });
+
+  Alert.alert('Turn on notifications', message, buttons);
 }
 
 export async function ensureLocalNotificationChannels(): Promise<void> {
   if (Platform.OS === 'web' || channelsReady) return;
+
+  if (!(await canDeliverGpsNotifications())) {
+    return;
+  }
 
   const granted = await requestLocalNotificationPermissions();
   if (!granted) return;
