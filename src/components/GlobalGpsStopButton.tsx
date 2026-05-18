@@ -57,7 +57,7 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
             if (currentRouteName === 'GpsTracking') {
               requestStopTracking();
             } else {
-              navigation.navigate('GpsTracking', { showEndModal: true });
+              navigation.navigate('GpsTracking', { endTripOverlay: true });
             }
           },
         },

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -59,6 +60,16 @@ type EndLocationOption =
   | 'oxfordHouse'
   | 'newLocation';
 
+const GPS_TRIP_UI_STATE_KEY = '@gps_trip_ui_state';
+
+interface PersistedGpsTripUiState {
+  employeeId: string;
+  startLocationDetails: LocationDetails | null;
+  selectedVehicleId: string;
+  selectedCostCenter: string;
+  trackingForm: { odometerReading: string; purpose: string; notes: string };
+}
+
 type StartLocationSuggestion = {
   details: LocationDetails;
   reason: string;
@@ -66,6 +77,7 @@ type StartLocationSuggestion = {
 };
 
 export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
+  const endTripOverlay = route?.params?.endTripOverlay === true;
   const { colors } = useTheme();
   const {
     isTracking,
@@ -76,8 +88,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     currentDistance,
     startTracking,
     stopTracking,
-    shouldShowEndLocationModal,
-    setShouldShowEndLocationModal,
+    registerEndTripFlowHandler,
   } = useGpsTracking();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [showGpsDuration, setShowGpsDuration] = useState(false);
@@ -154,8 +165,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const isTrackingRef = useRef(isTracking);
   isTrackingRef.current = isTracking;
   const lastAppliedEndFromFavoritesRef = useRef<string | null>(null);
-  /** Survives clearing route showEndModal so useFocusEffect re-run does not dismiss end-trip modals. */
   const endTripFlowPendingRef = useRef(false);
+  const endFlowOpenedThisFocusRef = useRef(false);
+  const openEndLocationOptionsRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     loadEmployee();
@@ -206,31 +218,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // createMileageEntry + goBack() and freezing iOS.
   useFocusEffect(
     React.useCallback(() => {
-      let skipModalReset = false;
+      const wantsOverlayEnd = route?.params?.endTripOverlay === true;
 
-      if (route?.params?.showEndModal) {
-        endTripFlowPendingRef.current = true;
-        navigation.setParams({ showEndModal: undefined });
-      }
-
-      if (shouldShowEndLocationModal) {
-        endTripFlowPendingRef.current = true;
-      }
-
-      if (endTripFlowPendingRef.current) {
-        skipModalReset = true;
+      if (wantsOverlayEnd && !endFlowOpenedThisFocusRef.current) {
+        endFlowOpenedThisFocusRef.current = true;
         if (isTrackingRef.current) {
-          endTripFlowPendingRef.current = false;
-          setShouldShowEndLocationModal(false);
-          openEndLocationOptions();
+          openEndLocationOptionsRef.current();
+        } else {
+          endTripFlowPendingRef.current = true;
         }
-      }
-
-      if (!skipModalReset) {
+      } else if (!wantsOverlayEnd && !endFlowOpenedThisFocusRef.current) {
+        // Never reset end-trip modals here — doing so closed the flow when deps changed mid-stop.
         setShowLocationOptionsModal(false);
         setShowStartLocationModal(false);
-        setShowEndLocationModal(false);
-        setShowEndLocationOptionsModal(false);
         setShowOxfordHouseSearchModal(false);
         setShowPurposeSuggestions(false);
       }
@@ -238,18 +238,76 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (currentEmployee) {
         checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
       }
-    // Intentionally omit route?.params?.showEndModal — clearing it via setParams must not re-run
-    // this effect and reset modals right after openEndLocationOptions().
-    }, [currentEmployee, selectedVehicleId, shouldShowEndLocationModal, navigation, setShouldShowEndLocationModal])
+
+      return () => {
+        endFlowOpenedThisFocusRef.current = false;
+      };
+    }, [currentEmployee, selectedVehicleId, route?.params?.endTripOverlay])
   );
 
-  // Open end-trip flow once tracking state is ready after navigation from Home/global stop.
   useEffect(() => {
     if (!endTripFlowPendingRef.current || !isTracking) return;
     endTripFlowPendingRef.current = false;
-    setShouldShowEndLocationModal(false);
-    openEndLocationOptions();
-  }, [isTracking, setShouldShowEndLocationModal]);
+    openEndLocationOptionsRef.current();
+  }, [isTracking]);
+
+  useEffect(() => {
+    if (!isTracking || !currentEmployee?.id) return;
+
+    const payload: PersistedGpsTripUiState = {
+      employeeId: currentEmployee.id,
+      startLocationDetails,
+      selectedVehicleId,
+      selectedCostCenter,
+      trackingForm,
+    };
+    void AsyncStorage.setItem(GPS_TRIP_UI_STATE_KEY, JSON.stringify(payload));
+  }, [
+    isTracking,
+    currentEmployee?.id,
+    startLocationDetails,
+    selectedVehicleId,
+    selectedCostCenter,
+    trackingForm,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!endTripOverlay) return;
+
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(GPS_TRIP_UI_STATE_KEY);
+        if (!raw) return;
+        const saved: PersistedGpsTripUiState = JSON.parse(raw);
+        if (saved.employeeId && currentEmployee?.id && saved.employeeId !== currentEmployee.id) {
+          return;
+        }
+        if (saved.startLocationDetails) {
+          setStartLocationDetails(saved.startLocationDetails);
+        }
+        if (saved.selectedVehicleId) {
+          setSelectedVehicleId(saved.selectedVehicleId);
+        }
+        if (saved.selectedCostCenter) {
+          setSelectedCostCenter(saved.selectedCostCenter);
+        }
+        if (saved.trackingForm) {
+          setTrackingForm(saved.trackingForm);
+        }
+      } catch {
+        // Best-effort restore for end-trip overlay from Home.
+      }
+    })();
+  }, [endTripOverlay, currentEmployee?.id]);
+
+  const dismissEndTripOverlay = () => {
+    setShowEndLocationOptionsModal(false);
+    setShowEndLocationModal(false);
+    setShowOxfordHouseSearchModal(false);
+    if (endTripOverlay) {
+      navigation.goBack();
+    }
+  };
 
   // Separate effect for timer that only restarts when session ID changes
   useEffect(() => {
@@ -1039,6 +1097,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     });
   };
 
+  openEndLocationOptionsRef.current = openEndLocationOptions;
+
+  useEffect(() => {
+    registerEndTripFlowHandler(() => {
+      if (isTrackingRef.current) {
+        openEndLocationOptionsRef.current();
+      }
+    });
+    return () => registerEndTripFlowHandler(null);
+  }, [registerEndTripFlowHandler]);
+
   const openEndLocationModalWithDetails = (details: Partial<LocationDetails> | null) => {
     setShowEndLocationOptionsModal(false);
     setManualEndInitialLocation(details || null);
@@ -1273,6 +1342,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           : '\n\nWarning: Trip ended, but saving took too long. Please check your mileage list and refresh if needed.';
         const message = `Trip completed!\nDistance: ${actualMiles} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}${saveWarning}`;
         // Auto-return to Home after save and show completion popup.
+        void AsyncStorage.removeItem(GPS_TRIP_UI_STATE_KEY);
         navigation.reset({
           index: 0,
           routes: [{ name: 'Home' }],
@@ -1397,7 +1467,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) || null;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: endTripOverlay ? 'transparent' : colors.background },
+        endTripOverlay && styles.endTripOverlayRoot,
+      ]}
+    >
+      {endTripOverlay ? (
+        <TouchableOpacity
+          style={styles.endTripOverlayBackdrop}
+          activeOpacity={1}
+          onPress={dismissEndTripOverlay}
+          accessibilityLabel="Dismiss end trip"
+        />
+      ) : null}
+
+      {!endTripOverlay ? (
+      <>
       <UnifiedHeader
         title="GPS Tracking"
         showBackButton={true}
@@ -1806,9 +1893,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           </View>
         )}
       </KeyboardAwareScrollView>
+      </>
+      ) : null}
 
       {/* Location Options Modal */}
-      {showLocationOptionsModal && (
+      {showLocationOptionsModal && !endTripOverlay && (
       <Modal
         visible
         transparent={true}
@@ -1953,7 +2042,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         transparent={true}
         animationType={Platform.OS === 'ios' ? 'none' : 'slide'}
         presentationStyle="overFullScreen"
-        onRequestClose={() => setShowEndLocationOptionsModal(false)}
+        onRequestClose={dismissEndTripOverlay}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -2074,7 +2163,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
             <TouchableOpacity
               style={styles.modalButtonSecondary}
-              onPress={() => setShowEndLocationOptionsModal(false)}
+              onPress={dismissEndTripOverlay}
             >
               <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
             </TouchableOpacity>
@@ -2319,6 +2408,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  endTripOverlayRoot: {
+    justifyContent: 'center',
+  },
+  endTripOverlayBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   header: {
     backgroundColor: '#2196F3',

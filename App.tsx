@@ -72,7 +72,7 @@ function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteNam
     if (hasNavigatedForStopRequestRef.current) return;
 
     hasNavigatedForStopRequestRef.current = true;
-    navigationRef.current.navigate('GpsTracking', { showEndModal: true });
+    navigationRef.current.navigate('GpsTracking', { endTripOverlay: true });
   }, [shouldShowEndLocationModal, currentRouteName, navigationRef]);
 
   return (
@@ -332,10 +332,19 @@ export default function App() {
             <Stack.Screen
               name="GpsTracking"
               component={GpsTrackingScreen}
-              options={{
-                // iOS transition snapshotting has caused intermittent freezes after ending GPS trips.
-                // Disable animation for this screen to avoid native snapshot race conditions.
-                animation: Platform.OS === 'ios' ? 'none' : 'default',
+              options={({ route }) => {
+                const endTripOverlay = (route.params as { endTripOverlay?: boolean } | undefined)
+                  ?.endTripOverlay;
+                return {
+                  // iOS transition snapshotting has caused intermittent freezes after ending GPS trips.
+                  animation: Platform.OS === 'ios' ? 'none' : endTripOverlay ? 'fade' : 'default',
+                  ...(endTripOverlay
+                    ? {
+                        presentation: 'transparentModal' as const,
+                        contentStyle: { backgroundColor: 'transparent' },
+                      }
+                    : {}),
+                };
               }}
             />
             <Stack.Screen

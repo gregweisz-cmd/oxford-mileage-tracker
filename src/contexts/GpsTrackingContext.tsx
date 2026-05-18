@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { Alert, AppState, AppStateStatus, InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { GpsTrackingService } from '../services/gpsTrackingService';
@@ -23,6 +23,8 @@ interface GpsTrackingContextType {
   startTracking: (employeeId: string, purpose: string, odometerReading: number, notes?: string) => Promise<void>;
   stopTracking: (presetEndLocation?: LocationDetails) => Promise<GpsTrackingSession | null>;
   requestStopTracking: () => void;
+  /** GpsTrackingScreen registers this to open end-trip UI without navigation loops. */
+  registerEndTripFlowHandler: (handler: (() => void) | null) => void;
   refreshTrackingStatus: () => void;
   isStationaryTooLong: () => boolean;
   getStationaryDuration: () => number;
@@ -50,6 +52,11 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const showStationaryPromptRef = useRef(false);
   const restoredRef = useRef(false);
   const pausedDrivingAlertVisibleRef = useRef(false);
+  const endTripFlowHandlerRef = useRef<(() => void) | null>(null);
+
+  const registerEndTripFlowHandler = useCallback((handler: (() => void) | null) => {
+    endTripFlowHandlerRef.current = handler;
+  }, []);
 
   const checkPausedDrivingAlert = async () => {
     if (!GpsTrackingService.isTracking() || !GpsTrackingService.isTripPaused()) return;
@@ -295,10 +302,14 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     return GpsTrackingService.getStationaryDuration();
   };
 
-  const requestStopTracking = () => {
-    // Signal to show the end location modal
+  const requestStopTracking = useCallback(() => {
+    if (endTripFlowHandlerRef.current) {
+      endTripFlowHandlerRef.current();
+      return;
+    }
+    // GPS screen not mounted (e.g. user on Home) — App.tsx navigates to end-trip overlay.
     setShouldShowEndLocationModal(true);
-  };
+  }, []);
 
   const value: GpsTrackingContextType = {
     isTracking,
@@ -313,6 +324,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     startTracking,
     stopTracking,
     requestStopTracking,
+    registerEndTripFlowHandler,
     refreshTrackingStatus,
     isStationaryTooLong,
     getStationaryDuration,

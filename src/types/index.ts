@@ -240,7 +240,7 @@ export interface SlackConfig {
 export type RootStackParamList = {
   Home: undefined;
   MileageEntry: { entryId?: string };
-  GpsTracking: { showEndModal?: boolean };
+  GpsTracking: { showEndModal?: boolean; endTripOverlay?: boolean };
   Receipts: { croppedImageUri?: string; receiptIdToUpdate?: string } | undefined;
   AddReceipt: { croppedImageUri?: string } | undefined;
   ReceiptCrop: { imageUri: string; returnTo: 'AddReceipt' | 'Receipts'; receiptIdToUpdate?: string };
