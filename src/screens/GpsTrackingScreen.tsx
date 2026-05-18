@@ -154,6 +154,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const isTrackingRef = useRef(isTracking);
   isTrackingRef.current = isTracking;
   const lastAppliedEndFromFavoritesRef = useRef<string | null>(null);
+  /** Survives clearing route showEndModal so useFocusEffect re-run does not dismiss end-trip modals. */
+  const endTripFlowPendingRef = useRef(false);
 
   useEffect(() => {
     loadEmployee();
@@ -204,43 +206,50 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   // createMileageEntry + goBack() and freezing iOS.
   useFocusEffect(
     React.useCallback(() => {
-      // Check if we should show end modal (from route params)
+      let skipModalReset = false;
+
       if (route?.params?.showEndModal) {
+        endTripFlowPendingRef.current = true;
+        navigation.setParams({ showEndModal: undefined });
+      }
+
+      if (shouldShowEndLocationModal) {
+        endTripFlowPendingRef.current = true;
+      }
+
+      if (endTripFlowPendingRef.current) {
+        skipModalReset = true;
         if (isTrackingRef.current) {
+          endTripFlowPendingRef.current = false;
+          setShouldShowEndLocationModal(false);
           openEndLocationOptions();
-        } else {
-          // If tracking state is still hydrating after navigation, queue the end-flow flag.
-          setShouldShowEndLocationModal(true);
         }
-        // Clear the param so it doesn't show again on next focus
-        navigation.setParams({ showEndModal: false });
-      } else {
-        // Reset all modal states when screen is focused (except if showEndModal param is set)
+      }
+
+      if (!skipModalReset) {
         setShowLocationOptionsModal(false);
         setShowStartLocationModal(false);
-        if (!route?.params?.showEndModal) {
-          setShowEndLocationModal(false);
-          setShowEndLocationOptionsModal(false);
-        }
+        setShowEndLocationModal(false);
+        setShowEndLocationOptionsModal(false);
         setShowOxfordHouseSearchModal(false);
         setShowPurposeSuggestions(false);
       }
-      
-      // Refresh GPS tracking status in case it's a new day
+
       if (currentEmployee) {
         checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
       }
-    }, [currentEmployee, selectedVehicleId, route?.params?.showEndModal, navigation, setShouldShowEndLocationModal])
+    // Intentionally omit route?.params?.showEndModal — clearing it via setParams must not re-run
+    // this effect and reset modals right after openEndLocationOptions().
+    }, [currentEmployee, selectedVehicleId, shouldShowEndLocationModal, navigation, setShouldShowEndLocationModal])
   );
 
-  // Watch for stop tracking request from global button
+  // Open end-trip flow once tracking state is ready after navigation from Home/global stop.
   useEffect(() => {
-    if (shouldShowEndLocationModal && isTracking) {
-      // End flow should mirror start flow: show location choices first.
-      openEndLocationOptions();
-      setShouldShowEndLocationModal(false); // Reset the flag
-    }
-  }, [shouldShowEndLocationModal, isTracking, setShouldShowEndLocationModal, currentEmployee, startLocationDetails]);
+    if (!endTripFlowPendingRef.current || !isTracking) return;
+    endTripFlowPendingRef.current = false;
+    setShouldShowEndLocationModal(false);
+    openEndLocationOptions();
+  }, [isTracking, setShouldShowEndLocationModal]);
 
   // Separate effect for timer that only restarts when session ID changes
   useEffect(() => {
