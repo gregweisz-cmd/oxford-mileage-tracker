@@ -21,6 +21,7 @@ import { Image } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { DatabaseService } from '../services/database';
+import { GoogleAuthService } from '../services/googleAuthService';
 import { Employee } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -36,6 +37,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -114,6 +116,60 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     );
   };
 
+  const syncEmployeeAfterCloudLogin = async (employeeData: any) => {
+    const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
+
+    if (existingEmployee) {
+      const canonicalId = employeeData.id;
+      if (existingEmployee.id !== canonicalId) {
+        await DatabaseService.realignEmployeeIdWithBackend(existingEmployee.id, canonicalId);
+      }
+      await DatabaseService.updateEmployee(canonicalId, {
+        name: employeeData.name,
+        email: employeeData.email,
+        password: existingEmployee.password || '',
+        oxfordHouseId: employeeData.oxfordHouseId ?? existingEmployee.oxfordHouseId ?? '',
+        position: employeeData.position ?? existingEmployee.position ?? '',
+        phoneNumber: employeeData.phoneNumber ?? existingEmployee.phoneNumber ?? '',
+        baseAddress: employeeData.baseAddress ?? existingEmployee.baseAddress ?? '',
+        costCenters: employeeData.costCenters ?? [],
+        selectedCostCenters: employeeData.selectedCostCenters?.length
+          ? employeeData.selectedCostCenters
+          : employeeData.costCenters ?? [],
+        defaultCostCenter:
+          employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? '',
+      });
+
+      const updatedEmployee = await DatabaseService.getEmployeeById(canonicalId);
+      if (!updatedEmployee) {
+        Alert.alert('Error', 'Failed to load updated employee data');
+        return false;
+      }
+
+      await DatabaseService.setCurrentEmployee(canonicalId, stayLoggedIn);
+      onLogin(updatedEmployee);
+      return true;
+    }
+
+    await DatabaseService.createEmployee({
+      id: employeeData.id,
+      name: employeeData.name,
+      email: employeeData.email,
+      password: '',
+      oxfordHouseId: employeeData.oxfordHouseId || '',
+      position: employeeData.position || '',
+      phoneNumber: employeeData.phoneNumber || '',
+      baseAddress: employeeData.baseAddress || '',
+      costCenters: employeeData.costCenters || [],
+      selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
+      defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || '',
+    });
+
+    await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
+    onLogin(employeeData);
+    return true;
+  };
+
   const performLogin = async (loginEmail: string, loginPassword: string) => {
     const backendUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '') || 'https://oxford-mileage-backend.onrender.com';
     
@@ -136,61 +192,16 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         if (data.token) {
           await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
         }
-        const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
-
-        if (existingEmployee) {
-          const canonicalId = employeeData.id;
-          try {
-            if (existingEmployee.id !== canonicalId) {
-              await DatabaseService.realignEmployeeIdWithBackend(existingEmployee.id, canonicalId);
-            }
-            await DatabaseService.updateEmployee(canonicalId, {
-              name: employeeData.name,
-              email: employeeData.email,
-              password: loginPassword,
-              oxfordHouseId: employeeData.oxfordHouseId ?? existingEmployee.oxfordHouseId ?? '',
-              position: employeeData.position ?? existingEmployee.position ?? '',
-              phoneNumber: employeeData.phoneNumber ?? existingEmployee.phoneNumber ?? '',
-              baseAddress: employeeData.baseAddress ?? existingEmployee.baseAddress ?? '',
-              costCenters: employeeData.costCenters ?? [],
-              selectedCostCenters: (employeeData.selectedCostCenters?.length ? employeeData.selectedCostCenters : (employeeData.costCenters ?? [])),
-              defaultCostCenter: employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? ''
-            });
-            
-            const updatedEmployee = await DatabaseService.getEmployeeById(canonicalId);
-            if (!updatedEmployee) {
-              Alert.alert('Error', 'Failed to load updated employee data');
-              return false;
-            }
-            
-            await DatabaseService.setCurrentEmployee(canonicalId, stayLoggedIn);
+        try {
+          const ok = await syncEmployeeAfterCloudLogin(employeeData);
+          if (ok) {
             await maybePromptEnableBiometric(loginEmail, loginPassword);
-            onLogin(updatedEmployee);
-            return true;
-          } catch (updateError) {
-            console.error('Failed to update employee:', updateError);
-            Alert.alert('Error', 'Failed to update employee record');
-            return false;
           }
-        } else {
-          await DatabaseService.createEmployee({
-            id: employeeData.id,
-            name: employeeData.name,
-            email: employeeData.email,
-            password: loginPassword,
-            oxfordHouseId: employeeData.oxfordHouseId || '',
-            position: employeeData.position || '',
-            phoneNumber: employeeData.phoneNumber || '',
-            baseAddress: employeeData.baseAddress || '',
-            costCenters: employeeData.costCenters || [],
-            selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
-            defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || ''
-          });
-          
-          await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
-          await maybePromptEnableBiometric(loginEmail, loginPassword);
-          onLogin(employeeData);
-          return true;
+          return ok;
+        } catch (updateError) {
+          console.error('Failed to update employee:', updateError);
+          Alert.alert('Error', 'Failed to update employee record');
+          return false;
         }
       }
     } catch (backendError) {
@@ -223,6 +234,27 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       setEmployees(allEmployees);
     } catch (error) {
       console.error('Error loading employees:', error);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const userInfo = await GoogleAuthService.signInWithGoogle();
+      if (!userInfo) {
+        return;
+      }
+
+      const employeeData = await GoogleAuthService.verifyWithBackend(userInfo);
+      await syncEmployeeAfterCloudLogin(employeeData);
+    } catch (error: any) {
+      const message = error?.message || 'Failed to sign in with Google';
+      if (!message.toLowerCase().includes('cancel')) {
+        console.error('Google sign-in error:', error);
+        Alert.alert('Google Sign-In Failed', message);
+      }
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -450,12 +482,29 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+            style={[styles.loginButton, (loading || googleLoading) && styles.loginButtonDisabled]}
             onPress={handleLogin}
-            disabled={loading}
+            disabled={loading || googleLoading}
           >
             <Text style={styles.loginButtonText} numberOfLines={1}>
               {loading ? 'Signing In...' : 'Sign In'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.googleButton, (loading || googleLoading) && styles.loginButtonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={loading || googleLoading || biometricLoading}
+          >
+            <MaterialIcons name="login" size={22} color="#1C75BC" />
+            <Text style={styles.googleButtonText} numberOfLines={1}>
+              {googleLoading ? 'Signing in with Google...' : 'Continue with Google'}
             </Text>
           </TouchableOpacity>
 
@@ -463,7 +512,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             <TouchableOpacity
               style={[styles.biometricButton, biometricLoading && styles.loginButtonDisabled]}
               onPress={handleBiometricLogin}
-              disabled={biometricLoading || loading}
+              disabled={biometricLoading || loading || googleLoading}
             >
               <MaterialIcons name="fingerprint" size={22} color="#1C75BC" />
               <Text style={styles.biometricButtonText} numberOfLines={1}>
@@ -597,6 +646,41 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   biometricButtonText: {
+    marginLeft: 8,
+    color: '#1C75BC',
+    fontSize: 16,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ddd',
+  },
+  dividerText: {
+    color: '#888',
+    fontSize: 14,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#1C75BC',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    marginBottom: 20,
+    minHeight: 52,
+  },
+  googleButtonText: {
     marginLeft: 8,
     color: '#1C75BC',
     fontSize: 16,

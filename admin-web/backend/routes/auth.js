@@ -30,6 +30,14 @@ function normalizeWebPortalUrl(raw, fallback) {
   return `https://${base}`;
 }
 
+function getMobileGoogleRedirectUri() {
+  const base = (process.env.API_BASE_URL || 'https://oxford-mileage-backend.onrender.com').replace(
+    /\/+$/,
+    ''
+  );
+  return process.env.GOOGLE_MOBILE_REDIRECT_URI || `${base}/api/auth/google/mobile/callback`;
+}
+
 function resolveWebPortalRedirectBase() {
   const raw =
     process.env.FRONTEND_URL ||
@@ -495,11 +503,37 @@ router.get('/api/auth/google/status', (req, res) => {
   res.json({
     configured: !!googleClient,
     redirectUri,
+    mobileRedirectUri: getMobileGoogleRedirectUri(),
     frontendUrl: resolveWebPortalRedirectBase(),
     allowedEmailDomains: ALLOWED_EMAIL_DOMAINS,
     autoCreateAccounts: process.env.AUTO_CREATE_ACCOUNTS === 'true',
     clientIdHasSchemePrefix: /^https?:\/\//i.test(rawClientId),
   });
+});
+
+// Mobile app: start Google OAuth (uses same client ID as web; mobile redirect URI)
+router.get('/api/auth/google/mobile', (req, res) => {
+  if (!googleClient) {
+    debugError('❌ Google OAuth not configured - missing credentials');
+    return res.status(503).send('Google login is not available. Please try again later.');
+  }
+
+  try {
+    const mobileRedirectUri = getMobileGoogleRedirectUri();
+    const authUrl = googleClient.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['openid', 'profile', 'email'],
+      prompt: 'consent',
+      state: 'mobile',
+      redirect_uri: mobileRedirectUri,
+    });
+
+    debugLog('🔐 Mobile: Redirecting to Google OAuth');
+    res.redirect(authUrl);
+  } catch (error) {
+    debugError('❌ Error generating mobile Google OAuth URL:', error);
+    res.status(500).send('Failed to start Google sign-in.');
+  }
 });
 
 // Google OAuth login - redirects to Google
@@ -1014,7 +1048,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     // Use backend proxy redirect URI (HTTPS URL)
     // This must match EXACTLY what mobile app sent in the OAuth authorization request
     // Mobile app sends: https://oxford-mileage-backend.onrender.com/api/auth/google/mobile/callback
-    const mobileRedirectUri = 'https://oxford-mileage-backend.onrender.com/api/auth/google/mobile/callback';
+    const mobileRedirectUri = getMobileGoogleRedirectUri();
     
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     
@@ -1618,7 +1652,7 @@ router.post('/api/auth/google/mobile', async (req, res) => {
     // The redirect URI must match what was used in the authorization request
     // For External apps, use backend proxy HTTPS redirect URI
     const baseUrl = process.env.API_BASE_URL || 'http://localhost:3003';
-    const mobileRedirectUri = redirectUri || `${baseUrl}/api/auth/google/mobile/callback`;
+    const mobileRedirectUri = redirectUri || getMobileGoogleRedirectUri();
     
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     
