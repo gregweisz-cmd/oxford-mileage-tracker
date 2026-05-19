@@ -1016,8 +1016,8 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     
     const mobileGoogleClient = new OAuth2Client(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
+      googleClientId,
+      String(process.env.GOOGLE_CLIENT_SECRET || '').trim(),
       mobileRedirectUri
     );
 
