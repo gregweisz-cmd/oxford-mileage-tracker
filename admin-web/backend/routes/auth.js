@@ -14,18 +14,37 @@ const { signAuthToken, verifyAuthToken, getEffectiveRole, ALLOWED_ROLES } = requ
 
 /** Web portal used in redirects (OAuth, magic links). Production default matches the public staff portal domain. */
 const DEFAULT_PRODUCTION_WEB_PORTAL = 'https://expense.oxfordhouse.org';
+
+/** Google client IDs must not include a scheme; Render/env typos often paste `http://` by mistake. */
+function normalizeGoogleClientId(raw) {
+  if (!raw) return '';
+  return String(raw).trim().replace(/^https?:\/\//i, '');
+}
+
+function normalizeWebPortalUrl(raw, fallback) {
+  const base = String(raw || fallback || '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (!base) return fallback;
+  if (/^https?:\/\//i.test(base)) return base;
+  return `https://${base}`;
+}
+
 function resolveWebPortalRedirectBase() {
-  return (
+  const raw =
     process.env.FRONTEND_URL ||
     process.env.ADMIN_PORTAL_URL ||
     process.env.WEB_PORTAL_URL ||
-    (process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_WEB_PORTAL : 'http://localhost:3000')
-  );
+    (process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_WEB_PORTAL : 'http://localhost:3000');
+  const fallback =
+    process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_WEB_PORTAL : 'http://localhost:3000';
+  return normalizeWebPortalUrl(raw, fallback);
 }
 
 // Google OAuth support
 let OAuth2Client = null;
 let googleClient = null;
+let googleClientId = null;
 let ALLOWED_EMAIL_DOMAINS = [];
 
 // Temporary storage for mobile OAuth tokens (in-memory, expires after 5 minutes)
@@ -48,13 +67,15 @@ try {
   OAuth2Client = GoogleOAuth2Client;
   
   // Initialize Google OAuth client if credentials are available
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  googleClientId = normalizeGoogleClientId(process.env.GOOGLE_CLIENT_ID);
+  const googleClientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+  if (googleClientId && googleClientSecret) {
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || 
       `${process.env.API_BASE_URL || 'http://localhost:3003'}/api/auth/google/callback`;
     
     googleClient = new OAuth2Client(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
+      googleClientId,
+      googleClientSecret,
       redirectUri
     );
     
@@ -470,12 +491,14 @@ router.get('/api/auth/google/status', (req, res) => {
     process.env.GOOGLE_REDIRECT_URI ||
     `${(process.env.API_BASE_URL || 'http://localhost:3003').replace(/\/+$/, '')}/api/auth/google/callback`;
 
+  const rawClientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
   res.json({
     configured: !!googleClient,
     redirectUri,
     frontendUrl: resolveWebPortalRedirectBase(),
     allowedEmailDomains: ALLOWED_EMAIL_DOMAINS,
     autoCreateAccounts: process.env.AUTO_CREATE_ACCOUNTS === 'true',
+    clientIdHasSchemePrefix: /^https?:\/\//i.test(rawClientId),
   });
 });
 
@@ -540,7 +563,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
     // Verify and get user info
     const ticket = await googleClient.verifyIdToken({
       idToken: tokens.id_token,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: googleClientId
     });
     
     const googleUser = ticket.getPayload();
@@ -1008,7 +1031,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
 
     const ticket = await mobileGoogleClient.verifyIdToken({
       idToken: tokens.id_token,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: googleClientId
     });
     
     const googleUser = ticket.getPayload();
@@ -1597,8 +1620,8 @@ router.post('/api/auth/google/mobile', async (req, res) => {
     debugLog('🔐 Mobile: Creating OAuth2Client with redirect URI:', mobileRedirectUri);
     
     const mobileGoogleClient = new OAuth2Client(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
+      googleClientId,
+      String(process.env.GOOGLE_CLIENT_SECRET || '').trim(),
       mobileRedirectUri
     );
 
@@ -1610,7 +1633,7 @@ router.post('/api/auth/google/mobile', async (req, res) => {
 
     const ticket = await mobileGoogleClient.verifyIdToken({
       idToken: tokens.id_token,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: googleClientId
     });
     
     const googleUser = ticket.getPayload();
