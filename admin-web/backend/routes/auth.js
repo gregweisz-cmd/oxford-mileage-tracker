@@ -585,15 +585,18 @@ router.get('/api/auth/google/callback', async (req, res) => {
       debugLog(`✅ Email domain ${emailDomain} is allowed`);
     }
 
-    // Find or create user
+    // Find or create user (case-insensitive email; googleId set after first Google login)
+    const normalizedEmail = String(email || '').trim().toLowerCase();
     db.get(
-      'SELECT * FROM employees WHERE email = ? OR googleId = ?',
-      [email, googleId],
+      'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ? OR googleId = ?',
+      [normalizedEmail, googleId],
       async (err, employee) => {
         if (err) {
           debugError('❌ Database error during Google OAuth:', err);
           const frontendUrl = resolveWebPortalRedirectBase();
-          return res.redirect(`${frontendUrl}/login?error=database_error`);
+          return res.redirect(
+            `${frontendUrl}/login?error=${encodeURIComponent('Sign-in failed while loading your account. Please try again in a minute.')}`
+          );
         }
 
         let userToReturn = null;
@@ -1103,8 +1106,8 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
 
     // Find or create user
     db.get(
-      'SELECT * FROM employees WHERE email = ? OR googleId = ?',
-      [email, googleId],
+      'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ? OR googleId = ?',
+      [String(email || '').trim().toLowerCase(), googleId],
       async (err, employee) => {
         if (err) {
           debugError('❌ Mobile: Database error during Google OAuth:', err);
@@ -1657,8 +1660,8 @@ router.post('/api/auth/google/mobile', async (req, res) => {
 
     // Find or create user (same logic as web callback)
     db.get(
-      'SELECT * FROM employees WHERE email = ? OR googleId = ?',
-      [email, googleId],
+      'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ? OR googleId = ?',
+      [String(email || '').trim().toLowerCase(), googleId],
       async (err, employee) => {
         if (err) {
           debugError('❌ Database error during Mobile Google OAuth:', err);

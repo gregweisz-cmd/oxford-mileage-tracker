@@ -41,7 +41,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     if (errorParam) {
       // Don't show "missing_token" error - it's not user-facing
       if (errorParam !== 'missing_token') {
-        setError(decodeURIComponent(errorParam));
+        const decoded = decodeURIComponent(errorParam);
+        const friendly: Record<string, string> = {
+          database_error:
+            'Sign-in failed while loading your account. Please try again in a minute or contact support.',
+        };
+        setError(friendly[decoded] || decoded);
       }
       // Clear the error from URL
       window.history.replaceState({}, document.title, '/login');

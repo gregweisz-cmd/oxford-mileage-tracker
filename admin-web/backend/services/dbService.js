@@ -981,6 +981,27 @@ function ensureTablesExist() {
             });
           }
 
+          if (!columnNames.includes('googleId')) {
+            db.run(`ALTER TABLE employees ADD COLUMN googleId TEXT DEFAULT NULL`, (err) => {
+              if (err) debugLog('Note: googleId column may already exist');
+              else debugLog('✅ Added googleId column to employees table');
+            });
+          }
+
+          if (!columnNames.includes('authProvider')) {
+            db.run(`ALTER TABLE employees ADD COLUMN authProvider TEXT DEFAULT 'local'`, (err) => {
+              if (err) debugLog('Note: authProvider column may already exist');
+              else debugLog('✅ Added authProvider column to employees table');
+            });
+          }
+
+          if (!columnNames.includes('emailVerified')) {
+            db.run(`ALTER TABLE employees ADD COLUMN emailVerified INTEGER DEFAULT 0`, (err) => {
+              if (err) debugLog('Note: emailVerified column may already exist');
+              else debugLog('✅ Added emailVerified column to employees table');
+            });
+          }
+
           if (!columnNames.includes('permissions')) {
             db.run(`ALTER TABLE employees ADD COLUMN permissions TEXT DEFAULT '[]'`, (err) => {
               if (err) debugLog('Note: permissions column may already exist');
