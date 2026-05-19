@@ -544,24 +544,34 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {/* Date */}
+            {/* Date — DatePicker opens on any click in the field (native type="date" only opens from the icon). */}
             <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Date"
-                type="date"
-                value={formData.date}
-                onChange={(e) => handleInputChange('date', e.target.value)}
-                error={!!errors.date}
-                helperText={errors.date}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CalendarIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <DatePicker
+                  label="Date"
+                  value={formData.date ? dayjs(formData.date) : null}
+                  onChange={(newValue: Dayjs | null) => {
+                    if (newValue) {
+                      handleInputChange('date', newValue.format('YYYY-MM-DD'));
+                    }
+                  }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      error: !!errors.date,
+                      helperText: errors.date,
+                      InputProps: {
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <CalendarIcon />
+                          </InputAdornment>
+                        ),
+                      },
+                    },
+                  }}
+                />
+              </LocalizationProvider>
             </Box>
 
             {/* Cost Center */}
@@ -1362,20 +1372,30 @@ export const TimeTrackingForm: React.FC<BaseFormProps & {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Date */}
             <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Date"
-                type="date"
-                value={formData.date}
-                onChange={(e) => handleInputChange('date', e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CalendarIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <DatePicker
+                  label="Date"
+                  value={formData.date ? dayjs(formData.date) : null}
+                  onChange={(newValue: Dayjs | null) => {
+                    if (newValue) {
+                      handleInputChange('date', newValue.format('YYYY-MM-DD'));
+                    }
+                  }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      InputProps: {
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <CalendarIcon />
+                          </InputAdornment>
+                        ),
+                      },
+                    },
+                  }}
+                />
+              </LocalizationProvider>
             </Box>
 
             {/* Cost Center */}
