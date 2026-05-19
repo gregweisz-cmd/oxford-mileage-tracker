@@ -6,6 +6,9 @@ interface AuthCallbackProps {
   onLoginSuccess: (employee: any, token: string) => void;
 }
 
+const getApiOrigin = () =>
+  (process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com').replace(/\/+$/, '');
+
 const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
   useEffect(() => {
     const handleOAuthCallback = async () => {
@@ -45,8 +48,7 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
         debugLog('🔍 Verifying OAuth session token');
 
         // Verify the token and use the canonical auth response shape.
-        const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-        const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
+        const response = await fetch(`${getApiOrigin()}/api/auth/verify`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,

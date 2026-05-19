@@ -23,5 +23,11 @@
   "env": {
     "REACT_APP_API_URL": "https://oxford-mileage-backend.onrender.com",
     "REACT_APP_WEB_URL": "https://expense.oxfordhouse.org"
+  },
+  "build": {
+    "env": {
+      "REACT_APP_API_URL": "https://oxford-mileage-backend.onrender.com",
+      "REACT_APP_WEB_URL": "https://expense.oxfordhouse.org"
+    }
   }
 }

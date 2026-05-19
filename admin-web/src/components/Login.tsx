@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -7,20 +7,22 @@ import {
   Typography,
   Alert,
   Container,
-  // Avatar, // Currently unused
+  Divider,
   InputAdornment,
-  IconButton
+  IconButton,
 } from '@mui/material';
 import {
   Visibility,
   VisibilityOff
 } from '@mui/icons-material';
 import OxfordHouseLogo from './OxfordHouseLogo';
-import { useEffect } from 'react';
 
 interface LoginProps {
   onLoginSuccess: (employee: any, token: string) => void;
 }
+
+const getApiOrigin = () =>
+  (process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com').replace(/\/+$/, '');
 
 export default function Login({ onLoginSuccess }: LoginProps) {
   const [email, setEmail] = useState('');
@@ -52,7 +54,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'}/api/auth/login`, {
+      const response = await fetch(`${getApiOrigin()}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,6 +100,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleSignIn = () => {
+    setError('');
+    const api = getApiOrigin();
+    const returnUrl = '/';
+    window.location.assign(`${api}/api/auth/google?returnUrl=${encodeURIComponent(returnUrl)}`);
   };
 
   return (
@@ -209,6 +218,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               {loading ? 'Signing In...' : requiresTwoFactor ? 'Verify & Sign In' : 'Sign In'}
             </Button>
           </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', my: 2, gap: 1 }}>
+            <Divider sx={{ flex: 1 }} />
+            <Typography variant="caption" color="text.secondary">
+              or
+            </Typography>
+            <Divider sx={{ flex: 1 }} />
+          </Box>
+
+          <Button
+            type="button"
+            fullWidth
+            variant="outlined"
+            sx={{ py: 1.25 }}
+            disabled={loading}
+            onClick={handleGoogleSignIn}
+          >
+            Continue with Google
+          </Button>
         </Paper>
 
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 3 }}>

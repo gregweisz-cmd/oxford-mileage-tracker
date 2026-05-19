@@ -464,6 +464,21 @@ router.post('/api/employee-login', async (req, res) => {
 
 // ===== GOOGLE OAUTH ENDPOINTS =====
 
+/** Public config check for staff portal Google sign-in (no secrets). */
+router.get('/api/auth/google/status', (req, res) => {
+  const redirectUri =
+    process.env.GOOGLE_REDIRECT_URI ||
+    `${(process.env.API_BASE_URL || 'http://localhost:3003').replace(/\/+$/, '')}/api/auth/google/callback`;
+
+  res.json({
+    configured: !!googleClient,
+    redirectUri,
+    frontendUrl: resolveWebPortalRedirectBase(),
+    allowedEmailDomains: ALLOWED_EMAIL_DOMAINS,
+    autoCreateAccounts: process.env.AUTO_CREATE_ACCOUNTS === 'true',
+  });
+});
+
 // Google OAuth login - redirects to Google
 router.get('/api/auth/google', (req, res) => {
   if (!googleClient) {
