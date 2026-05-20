@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Box, InputAdornment, Popover, TextField } from '@mui/material';
+import { Box, InputAdornment, Popover, TextField, SxProps, Theme } from '@mui/material';
 import { CalendarToday as CalendarIcon } from '@mui/icons-material';
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -14,6 +14,8 @@ export interface FormDatePickerProps {
   error?: boolean;
   helperText?: string;
   showStartIcon?: boolean;
+  size?: 'small' | 'medium';
+  sx?: SxProps<Theme>;
 }
 
 /**
@@ -28,6 +30,8 @@ export function FormDatePicker({
   error,
   helperText,
   showStartIcon = true,
+  size = 'medium',
+  sx,
 }: FormDatePickerProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -46,9 +50,10 @@ export function FormDatePicker({
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box ref={anchorRef} sx={{ width: '100%' }}>
+      <Box ref={anchorRef} sx={{ width: '100%', ...sx }}>
         <TextField
           fullWidth
+          size={size}
           label={label}
           value={displayValue}
           error={error}

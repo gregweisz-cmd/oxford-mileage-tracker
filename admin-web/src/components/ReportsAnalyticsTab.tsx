@@ -25,6 +25,7 @@ import {
   Refresh as RefreshIcon,
   Replay as ResetIcon,
 } from '@mui/icons-material';
+import FormDatePicker from './FormDatePicker';
 import { CostCenterApiService, CostCenter } from '../services/costCenterApiService';
 import {
   AttentionRecord,
@@ -333,21 +334,15 @@ export const ReportsAnalyticsTab: React.FC = () => {
       <Paper elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} flex={1}>
-            <TextField
+            <FormDatePicker
               label="Start Date"
-              type="date"
               value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+              onChange={setStartDate}
             />
-            <TextField
+            <FormDatePicker
               label="End Date"
-              type="date"
               value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+              onChange={setEndDate}
             />
             <TextField
               label="Attention Threshold (days)"

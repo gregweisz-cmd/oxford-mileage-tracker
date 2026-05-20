@@ -31,6 +31,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material';
+import FormDatePicker from './FormDatePicker';
 import {
   GetApp as DownloadIcon,
   Refresh as RefreshIcon,
@@ -1012,22 +1013,18 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
 
               {dateRangePreset === 'custom' && (
                 <>
-                  <TextField
+                  <FormDatePicker
                     size="small"
                     label="Start Date"
-                    type="date"
                     value={filterStartDate}
-                    onChange={(e) => setFilterStartDate(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
+                    onChange={setFilterStartDate}
                     sx={{ width: 160 }}
                   />
-                  <TextField
+                  <FormDatePicker
                     size="small"
                     label="End Date"
-                    type="date"
                     value={filterEndDate}
-                    onChange={(e) => setFilterEndDate(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
+                    onChange={setFilterEndDate}
                     sx={{ width: 160 }}
                   />
                   <FormControl size="small" sx={{ minWidth: 120 }}>

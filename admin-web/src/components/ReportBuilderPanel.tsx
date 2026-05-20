@@ -37,6 +37,7 @@ import {
   PlayArrow as PlayArrowIcon,
 } from '@mui/icons-material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
+import FormDatePicker from './FormDatePicker';
 import {
   ReportBuilderFilters,
   ReportBuilderField,
@@ -685,21 +686,15 @@ export const ReportBuilderPanel: React.FC<ReportBuilderPanelProps> = ({
           Filters
         </Typography>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-          <TextField
+          <FormDatePicker
             label="Start Date"
-            type="date"
             value={builderFilters.startDate ?? ''}
-            onChange={(event) => handleFilterChange('startDate', event.target.value || undefined)}
-            InputLabelProps={{ shrink: true }}
-            fullWidth
+            onChange={(v) => handleFilterChange('startDate', v || undefined)}
           />
-          <TextField
+          <FormDatePicker
             label="End Date"
-            type="date"
             value={builderFilters.endDate ?? ''}
-            onChange={(event) => handleFilterChange('endDate', event.target.value || undefined)}
-            InputLabelProps={{ shrink: true }}
-            fullWidth
+            onChange={(v) => handleFilterChange('endDate', v || undefined)}
           />
           <TextField
             label="Row Limit"

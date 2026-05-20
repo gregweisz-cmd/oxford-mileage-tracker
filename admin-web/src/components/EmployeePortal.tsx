@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import FormDatePicker from './FormDatePicker';
 import {
   Box,
   Typography,
@@ -529,23 +530,17 @@ export default function EmployeePortal({ employee, onBack }: EmployeePortalProps
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-              <TextField
+              <FormDatePicker
                 label="Start Date"
-                type="date"
-                fullWidth
                 value={reportFilters.startDate}
-                onChange={(e) => setReportFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                InputLabelProps={{ shrink: true }}
+                onChange={(startDate) => setReportFilters((prev) => ({ ...prev, startDate }))}
               />
             </Box>
             <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-              <TextField
+              <FormDatePicker
                 label="End Date"
-                type="date"
-                fullWidth
                 value={reportFilters.endDate}
-                onChange={(e) => setReportFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                InputLabelProps={{ shrink: true }}
+                onChange={(endDate) => setReportFilters((prev) => ({ ...prev, endDate }))}
               />
             </Box>
             <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
