@@ -95,11 +95,7 @@ import ReceiptImageCropModal from './components/ReceiptImageCropModal';
 import { ConfirmDeleteDialog } from './components/ConfirmDeleteDialog';
 import { CostCenterApiService } from './services/costCenterApiService';
 
-// Date picker imports
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import dayjs, { Dayjs } from 'dayjs';
+import FormDatePicker from './components/FormDatePicker';
 
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -9247,22 +9243,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <DialogTitle>{editingReceipt ? 'Edit Receipt' : 'Add Receipt'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DatePicker
-                label="Date"
-                value={editingReceipt?.date ? dayjs(editingReceipt.date) : null}
-                onChange={(newValue: Dayjs | null) => {
-                  if (newValue && editingReceipt) {
-                    setEditingReceipt({...editingReceipt, date: newValue.format('YYYY-MM-DD')});
-                  }
-                }}
-                slotProps={{
-                  textField: {
-                    fullWidth: true,
-                  },
-                }}
-              />
-            </LocalizationProvider>
+            <FormDatePicker
+              label="Date"
+              value={editingReceipt?.date || ''}
+              onChange={(date) => {
+                if (editingReceipt) {
+                  setEditingReceipt({ ...editingReceipt, date });
+                }
+              }}
+            />
             <TextField
               label="Vendor"
               value={editingReceipt?.vendor || ''}
