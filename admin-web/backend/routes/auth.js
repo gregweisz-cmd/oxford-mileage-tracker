@@ -1551,12 +1551,19 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
   <div class="container">
     <h1>✅ Sign In Successful!</h1>
     <p>You have successfully signed in with your Google account.</p>
-    <p style="font-size: 0.9rem; color: #999; margin-bottom: 1.5rem;">Tap the button below to return to the app:</p>
-    <a href="${redirectUrl}" class="app-link">Return to App</a>
+    <p style="font-size: 0.9rem; color: #999; margin-bottom: 1.5rem;">Returning to the app…</p>
+    <a href="${redirectUrl}" class="app-link" id="return-link">Return to App</a>
+    <script>
+      (function () {
+        var target = ${JSON.stringify(redirectUrl)};
+        window.location.replace(target);
+        setTimeout(function () { window.location.href = target; }, 800);
+      })();
+    </script>
     
     <div class="divider"></div>
     
-    <p style="font-size: 0.9rem; color: #666; margin-bottom: 0.5rem;">If the app doesn't open automatically, use this code:</p>
+    <p style="font-size: 0.9rem; color: #666; margin-bottom: 0.5rem;">If the app did not open, tap the button above or use this code:</p>
     <div class="code-box">${authCode}</div>
     <p class="info">Enter this code in the app if the redirect doesn't work. Code expires in 5 minutes.</p>
   </div>
