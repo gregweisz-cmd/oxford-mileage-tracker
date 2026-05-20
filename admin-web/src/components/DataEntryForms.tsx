@@ -28,7 +28,6 @@ import {
   // Add as AddIcon, // Currently unused
   // Edit as EditIcon, // Currently unused
   // Delete as DeleteIcon, // Currently unused
-  CalendarToday as CalendarIcon,
   LocationOn as LocationIcon,
   DirectionsCar as CarIcon,
   Receipt as ReceiptIcon,
@@ -37,10 +36,6 @@ import {
   Home as HomeIcon,
   Route as RouteIcon
 } from '@mui/icons-material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import dayjs, { Dayjs } from 'dayjs';
 import FormDatePicker from './FormDatePicker';
 // import { DataSyncService } from '../services/dataSyncService'; // Currently unused
 import { Employee } from '../types';
@@ -1072,32 +1067,13 @@ export const ReceiptForm: React.FC<BaseFormProps & {
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {/* Date */}
-            <Box sx={{ width: '100%' }}>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <DatePicker
-                  label="Date"
-                  value={formData.date ? dayjs(formData.date) : null}
-                  onChange={(newValue: Dayjs | null) => {
-                    if (newValue) {
-                      handleInputChange('date', newValue.format('YYYY-MM-DD'));
-                    }
-                  }}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true,
-                      InputProps: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <CalendarIcon />
-                          </InputAdornment>
-                        ),
-                      },
-                    },
-                  }}
-                />
-              </LocalizationProvider>
-            </Box>
+            <FormDatePicker
+              label="Date"
+              value={formData.date}
+              onChange={(date) => handleInputChange('date', date)}
+              error={!!errors.date}
+              helperText={errors.date}
+            />
 
             {/* Cost Center */}
             <Box sx={{ width: '100%' }}>
