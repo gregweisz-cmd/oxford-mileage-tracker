@@ -27,7 +27,6 @@ export interface UserPreferences {
   
   // Data Preferences
   autoSyncEnabled: boolean;
-  syncInterval: number; // seconds
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -72,7 +71,6 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   
   // Data defaults
   autoSyncEnabled: true,
-  syncInterval: 5,
 };
 
 const STORAGE_KEY = '@oxford_user_preferences';

@@ -243,7 +243,7 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
           <View style={dynamicStyles.preferenceLeft}>
             <Text style={dynamicStyles.preferenceTitle}>Auto-Sync</Text>
             <Text style={dynamicStyles.preferenceDescription}>
-              Automatically sync data to backend every {preferences.syncInterval} seconds
+              Saves sync to the cloud shortly after you add or edit entries (same timing for everyone). Turn off only if you want to sync manually from Home.
             </Text>
           </View>
           <Switch
@@ -252,31 +252,6 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
             disabled={saving}
           />
         </View>
-
-        <TouchableOpacity 
-          style={dynamicStyles.preferenceItem}
-          onPress={() => {
-            Alert.alert(
-              'Sync Interval',
-              'How often should the app sync to the backend?',
-              [
-                { text: '5 seconds (Fast)', onPress: () => updatePreference('syncInterval', 5) },
-                { text: '15 seconds', onPress: () => updatePreference('syncInterval', 15) },
-                { text: '30 seconds', onPress: () => updatePreference('syncInterval', 30) },
-                { text: '1 minute (Battery saver)', onPress: () => updatePreference('syncInterval', 60) },
-                { text: 'Cancel', style: 'cancel' },
-              ]
-            );
-          }}
-        >
-          <View style={dynamicStyles.preferenceLeft}>
-            <Text style={dynamicStyles.preferenceTitle}>Sync Interval</Text>
-            <Text style={dynamicStyles.preferenceDescription}>
-              Currently: Every {preferences.syncInterval} seconds
-            </Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
-        </TouchableOpacity>
 
         {/* Advanced Section */}
         <View style={dynamicStyles.sectionHeader}>
