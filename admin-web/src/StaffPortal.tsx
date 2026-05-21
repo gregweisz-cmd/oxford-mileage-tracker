@@ -8393,7 +8393,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         return (
                           <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? '#ffcccc' : 'transparent' }}>
                             <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                              {currentValue ? Number(currentValue) : ''}
+                              {Number(currentValue) || 0}
                             </Typography>
                           </TableCell>
                         );
@@ -8433,7 +8433,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       return (
                         <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
                           <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
-                            {currentValue ? Number(currentValue) : ''}
+                            {Number(currentValue) || 0}
                           </Typography>
                         </TableCell>
                       );
@@ -8547,7 +8547,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   fontSize: '0.75rem' 
                                 }}
                               >
-                                {currentValue}
+                                {Number(currentValue) || 0}
                               </Box>
                             )}
                           </TableCell>
@@ -8590,7 +8590,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       
                       return (
                         <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem', bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
-                          {totalHoursForDay}
+                          {Number(totalHoursForDay) || 0}
                         </TableCell>
                       );
                     })}
