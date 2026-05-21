@@ -1159,6 +1159,13 @@ function ensureTablesExist() {
               else debugLog('✅ Added dayOffType column to daily_descriptions table');
             });
           }
+
+          if (!columnNames.includes('hoursWorked')) {
+            db.run(`ALTER TABLE daily_descriptions ADD COLUMN hoursWorked REAL DEFAULT 0`, (err) => {
+              if (err) debugLog('Note: hoursWorked column may already exist');
+              else debugLog('✅ Added hoursWorked column to daily_descriptions table');
+            });
+          }
         }
       });
 

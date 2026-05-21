@@ -1517,7 +1517,7 @@ router.get('/api/daily-descriptions', (req, res) => {
  * Create or update daily description
  */
 router.post('/api/daily-descriptions', (req, res) => {
-  const { id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType } = req.body;
+  const { id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, hoursWorked } = req.body;
   const db = dbService.getDb();
   
   // Normalize date to YYYY-MM-DD format
@@ -1532,6 +1532,7 @@ router.post('/api/daily-descriptions', (req, res) => {
   const now = new Date().toISOString();
   const stayedOvernightValue = stayedOvernight ? 1 : 0;
   const dayOffValue = dayOff ? 1 : 0;
+  const hoursWorkedValue = Math.max(0, parseFloat(hoursWorked) || 0);
 
   // Check if description with this ID already exists
   db.get('SELECT id FROM daily_descriptions WHERE id = ?', [descriptionId], (checkErr, existingRow) => {
@@ -1545,8 +1546,8 @@ router.post('/api/daily-descriptions', (req, res) => {
   
     // Use INSERT OR REPLACE to handle both create and update cases
     db.run(
-      'INSERT OR REPLACE INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM daily_descriptions WHERE id = ?), ?), ?)',
-      [descriptionId, employeeId, normalizedDate, description, costCenter || '', stayedOvernightValue, dayOffValue, dayOffType || null, descriptionId, now, now],
+      'INSERT OR REPLACE INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, hoursWorked, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM daily_descriptions WHERE id = ?), ?), ?)',
+      [descriptionId, employeeId, normalizedDate, description, costCenter || '', stayedOvernightValue, dayOffValue, dayOffType || null, hoursWorkedValue, descriptionId, now, now],
       function(err) {
         if (err) {
           debugError('❌ Database error:', err.message);
@@ -1565,7 +1566,7 @@ router.post('/api/daily-descriptions', (req, res) => {
  */
 router.put('/api/daily-descriptions/:id', (req, res) => {
   const { id } = req.params;
-  const { description, costCenter, stayedOvernight, dayOff, dayOffType } = req.body;
+  const { description, costCenter, stayedOvernight, dayOff, dayOffType, hoursWorked } = req.body;
   const db = dbService.getDb();
 
   db.get('SELECT * FROM daily_descriptions WHERE id = ?', [id], (err, row) => {
@@ -1584,12 +1585,13 @@ router.put('/api/daily-descriptions/:id', (req, res) => {
       costCenter: costCenter !== undefined ? (costCenter || '') : (row.costCenter || ''),
       stayedOvernight: stayedOvernight !== undefined ? (stayedOvernight ? 1 : 0) : (row.stayedOvernight || 0),
       dayOff: dayOff !== undefined ? (dayOff ? 1 : 0) : (row.dayOff || 0),
-      dayOffType: dayOffType !== undefined ? (dayOffType || null) : (row.dayOffType || null)
+      dayOffType: dayOffType !== undefined ? (dayOffType || null) : (row.dayOffType || null),
+      hoursWorked: hoursWorked !== undefined ? Math.max(0, parseFloat(hoursWorked) || 0) : (row.hoursWorked || 0),
     };
 
     db.run(
-      'UPDATE daily_descriptions SET description = ?, costCenter = ?, stayedOvernight = ?, dayOff = ?, dayOffType = ?, updatedAt = ? WHERE id = ?',
-      [merged.description, merged.costCenter, merged.stayedOvernight, merged.dayOff, merged.dayOffType, now, id],
+      'UPDATE daily_descriptions SET description = ?, costCenter = ?, stayedOvernight = ?, dayOff = ?, dayOffType = ?, hoursWorked = ?, updatedAt = ? WHERE id = ?',
+      [merged.description, merged.costCenter, merged.stayedOvernight, merged.dayOff, merged.dayOffType, merged.hoursWorked, now, id],
       function(updateErr) {
         if (updateErr) {
           debugError('❌ Database error updating daily description:', updateErr.message);

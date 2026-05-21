@@ -591,9 +591,10 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
           
           const hasDescription = desc.description && desc.description.trim();
           const isDayOff = desc.dayOff || false;
+          const hasHours = Math.max(0, parseFloat(desc.hoursWorked) || 0) > 0;
           
-          // Only save if it has content OR is a day off (empty descriptions are already deleted in step 1)
-          if (hasDescription || isDayOff) {
+          // Only save if it has content, hours, or is a day off (empty descriptions are already deleted in step 1)
+          if (hasDescription || isDayOff || hasHours) {
             const id = desc.id || `desc-${employeeId}-${dateStr}`;
             const now = new Date().toISOString();
             const stayedOvernightValue = desc.stayedOvernight ? 1 : 0;
@@ -601,8 +602,8 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
             
             await new Promise((resolve, reject) => {
               db.run(
-                'INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [id, employeeId, dateStr, desc.description || '', desc.costCenter || '', stayedOvernightValue, dayOffValue, desc.dayOffType || null, now, now],
+                'INSERT INTO daily_descriptions (id, employeeId, date, description, costCenter, stayedOvernight, dayOff, dayOffType, hoursWorked, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [id, employeeId, dateStr, desc.description || '', desc.costCenter || '', stayedOvernightValue, dayOffValue, desc.dayOffType || null, Math.max(0, parseFloat(desc.hoursWorked) || 0), now, now],
                 function(insertErr) {
                   if (insertErr) {
                     debugError(`❌ Error saving daily description for date ${dateStr}:`, insertErr);

@@ -1663,6 +1663,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             if (normalized.dayOff && normalized.dayOffType && !(normalized.description || '').trim()) {
               normalized.description = normalized.dayOffType;
             }
+            const storedHours = parseFloat(normalized.hoursWorked);
+            if (!Number.isFinite(storedHours) || storedHours <= 0) {
+              const dateStr = normalized.date;
+              const [, , dayPart] = (dateStr || '').split('-');
+              const dayNum = parseInt(dayPart, 10);
+              const cc = normalized.costCenter || '';
+              const hoursFromTime = (timeTracking || [])
+                .filter((t: any) => {
+                  const tDate = typeof t.date === 'string' ? t.date.split('T')[0] : t.date;
+                  if (tDate !== dateStr) return false;
+                  if ((t.costCenter || '') !== cc) return false;
+                  const cat = t.category || '';
+                  return cat === 'Working Hours' || cat === 'Regular Hours' || cat === '';
+                })
+                .reduce((sum: number, t: any) => sum + (Number(t.hours) || 0), 0);
+              normalized.hoursWorked = hoursFromTime;
+            } else {
+              normalized.hoursWorked = storedHours;
+            }
             return normalized;
           });
           
@@ -2748,8 +2767,200 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
+  const buildDailyDescriptionPostBody = useCallback(
+    (desc: any, dateOverride?: string) => ({
+      id: desc.id,
+      employeeId: desc.employeeId,
+      date: dateOverride || normalizeDate(desc.date),
+      description: desc.description || '',
+      costCenter: desc.costCenter || '',
+      stayedOvernight: desc.stayedOvernight || false,
+      dayOff: desc.dayOff || false,
+      dayOffType: desc.dayOffType || null,
+      hoursWorked: Math.max(0, parseFloat(desc.hoursWorked) || 0),
+    }),
+    [normalizeDate]
+  );
+
+  /** Persist cost-center working hours to time_tracking (source of truth for Timesheet grid). */
+  const saveCostCenterHoursForDay = useCallback(
+    async (day: number, actualCostCenter: string, value: number): Promise<void> => {
+      if (!employeeData?.employeeId || !actualCostCenter) return;
+
+      const category = 'Working Hours';
+      const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+
+      const checkResponse = await fetch(
+        `${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`
+      );
+      let existingEntries: any[] = [];
+      if (checkResponse.ok) {
+        const allEntries = await checkResponse.json();
+        existingEntries = allEntries.filter((entry: any) => {
+          const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
+          const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
+          const entryCostCenter = entry.costCenter || '';
+          const entryCategory = entry.category || '';
+          const dateMatches = entryDay === day && entryMonth === currentMonth && entryYear === currentYear;
+          const costCenterMatches = entryCostCenter === actualCostCenter;
+          const categoryMatches =
+            entryCategory === category ||
+            (entryCategory === 'Regular Hours' || entryCategory === '' || !entryCategory);
+          return dateMatches && costCenterMatches && categoryMatches;
+        });
+      }
+
+      if (value === 0) {
+        if (existingEntries.length > 0) {
+          await Promise.allSettled(
+            existingEntries.map((entry) =>
+              fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, { method: 'DELETE' })
+            )
+          );
+        }
+        return;
+      }
+
+      if (existingEntries.length > 1) {
+        existingEntries.sort((a, b) => {
+          const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return bTime - aTime;
+        });
+        const entriesToDelete = existingEntries.slice(1);
+        await Promise.allSettled(
+          entriesToDelete.map((entry) =>
+            fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, { method: 'DELETE' })
+          )
+        );
+      }
+
+      const entryToUpdate =
+        existingEntries.length > 0
+          ? existingEntries.sort((a, b) => {
+              const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+              const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+              return bTime - aTime;
+            })[0]
+          : null;
+
+      const requestBody = {
+        employeeId: employeeData.employeeId,
+        date: dateStr,
+        hours: value,
+        category,
+        description: `${category} hours worked on ${dateStr}`,
+        costCenter: actualCostCenter,
+      };
+
+      const response = entryToUpdate
+        ? await fetch(`${API_BASE_URL}/api/time-tracking/${entryToUpdate.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+          })
+        : await fetch(`${API_BASE_URL}/api/time-tracking`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+          });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Failed to save hours (${response.status})`);
+      }
+    },
+    [employeeData, currentMonth, currentYear]
+  );
+
+  const getDailyDescriptionHoursDisplay = useCallback(
+    (dayDescription: any, entry: any) => {
+      if (dayDescription?.hoursWorked != null && dayDescription.hoursWorked !== '') {
+        return Number(dayDescription.hoursWorked) || 0;
+      }
+      const cc = dayDescription?.costCenter || entry?.costCenter || employeeData?.costCenters?.[0] || '';
+      const idx = employeeData?.costCenters?.findIndex((c: string) => c === cc) ?? -1;
+      if (idx >= 0) {
+        return Number((entry as any)?.[`costCenter${idx}Hours`]) || 0;
+      }
+      return 0;
+    },
+    [employeeData?.costCenters]
+  );
+
+  const handleDailyDescriptionHoursChange = useCallback(
+    async (entry: any, _dayDescription: any, rawValue: string) => {
+      if (!employeeData || isAdminView) return;
+      const value = Math.min(24, Math.max(0, parseFloat(rawValue) || 0));
+      const entryDateStr = normalizeDate(entry.date);
+      const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
+
+      const newDescriptions = [...(dailyDescriptionsRef.current ?? dailyDescriptions)];
+      const existingIndex = newDescriptions.findIndex(
+        (desc: any) => normalizeDate(desc.date) === entryDateStr
+      );
+
+      let descToSave: any;
+      if (existingIndex >= 0) {
+        newDescriptions[existingIndex] = { ...newDescriptions[existingIndex], hoursWorked: value };
+        descToSave = newDescriptions[existingIndex];
+      } else {
+        const costCenter = entry.costCenter || employeeData.costCenters[0] || '';
+        descToSave = {
+          id: `desc-${employeeId}-${entryDateStr}`,
+          employeeId,
+          date: entryDateStr,
+          description: '',
+          costCenter,
+          stayedOvernight: false,
+          dayOff: false,
+          dayOffType: null,
+          hoursWorked: value,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        newDescriptions.push(descToSave);
+      }
+
+      const costCenter =
+        descToSave.costCenter || entry.costCenter || employeeData.costCenters[0] || '';
+
+      setDailyDescriptionsWithRef(newDescriptions);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildDailyDescriptionPostBody(descToSave, entryDateStr)),
+        });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        await saveCostCenterHoursForDay(day, costCenter, value);
+        await refreshTimesheetData(employeeData);
+      } catch (error) {
+        debugError('Error saving daily description hours:', error);
+        alert('Failed to save hours. Please try again.');
+        refreshTimesheetData(employeeData).catch(() => {});
+      }
+    },
+    [
+      employeeData,
+      isAdminView,
+      dailyDescriptions,
+      normalizeDate,
+      employeeId,
+      buildDailyDescriptionPostBody,
+      saveCostCenterHoursForDay,
+      refreshTimesheetData,
+    ]
+  );
+
   // Handle timesheet cell editing
   const handleTimesheetCellEdit = (costCenter: number, day: number, type: string, currentValue: any) => {
+    if (type === 'costCenter' || type === 'billable') {
+      return;
+    }
     const nextValue = (currentValue ?? 0).toString();
     if (editingTimesheetCell && (
       editingTimesheetCell.costCenter !== costCenter ||
@@ -7380,7 +7591,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               Daily Activity Descriptions
             </Typography>
             <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-              Enter or edit descriptions of your daily work activities. These are separate from driving descriptions.
+              Enter or edit descriptions of your daily work activities and billable hours worked each day. Hours sync to the Timesheet cost center rows automatically.
             </Typography>
             
             <TableContainer component={Paper}>
@@ -7416,6 +7627,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     )}
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: supervisorMode ? '13%' : '15%' }}><strong>Date</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Activity Description</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '100px' }}><strong>Hours Worked</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '140px' }}><strong>Stayed 50+ mi from BA</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '80px' }}><strong>Day Off</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '15%' }}><strong>Cost Center</strong></TableCell>
@@ -7583,6 +7795,60 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               disabled={isAdminView || dayDescription?.dayOff}
                             />
                           )}
+                        </TableCell>
+                        <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '100px' }}>
+                          <TextField
+                            type="number"
+                            size="small"
+                            value={
+                              dayDescription?.dayOff
+                                ? ''
+                                : getDailyDescriptionHoursDisplay(dayDescription, entry)
+                            }
+                            onChange={(e) => {
+                              const entryDateStr = normalizeDate(entry.date);
+                              const newDescriptions = [...dailyDescriptions];
+                              const existingIndex = newDescriptions.findIndex(
+                                (desc: any) => normalizeDate(desc.date) === entryDateStr
+                              );
+                              const parsed = e.target.value === '' ? '' : parseFloat(e.target.value);
+                              if (existingIndex >= 0) {
+                                newDescriptions[existingIndex] = {
+                                  ...newDescriptions[existingIndex],
+                                  hoursWorked: parsed,
+                                };
+                              } else {
+                                newDescriptions.push({
+                                  id: `desc-${employeeId}-${entryDateStr}`,
+                                  employeeId,
+                                  date: entryDateStr,
+                                  description: '',
+                                  costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+                                  stayedOvernight: false,
+                                  dayOff: false,
+                                  dayOffType: null,
+                                  hoursWorked: parsed,
+                                  createdAt: new Date().toISOString(),
+                                  updatedAt: new Date().toISOString(),
+                                });
+                              }
+                              setDailyDescriptionsWithRef(newDescriptions);
+                            }}
+                            onBlur={(e) => {
+                              if (!dayDescription?.dayOff) {
+                                handleDailyDescriptionHoursChange(entry, dayDescription, e.target.value);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            disabled={isAdminView || dayDescription?.dayOff}
+                            inputProps={{ min: 0, max: 24, step: 0.25 }}
+                            placeholder="0"
+                            sx={{ width: 88 }}
+                          />
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1, textAlign: 'center', whiteSpace: 'nowrap', width: '140px' }}>
                           <Checkbox
@@ -7867,6 +8133,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       })
                                     });
                                     if (!response.ok) debugError('Error saving cost center:', await response.text());
+                                    else {
+                                      const hours = Math.max(0, parseFloat(descToSave.hoursWorked) || 0);
+                                      const dayNum =
+                                        entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
+                                      if (hours > 0 && Number.isFinite(dayNum)) {
+                                        await saveCostCenterHoursForDay(dayNum, newCostCenter, hours);
+                                        await refreshTimesheetData(employeeData);
+                                      }
+                                    }
                                   } catch (error) {
                                     debugError('Error saving cost center:', error);
                                   }
@@ -8285,7 +8560,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Box>
 
             <Typography variant="body2" color="error" sx={{ mb: 3 }}>
-              * Selected cost center(s) should appear below.
+              * Selected cost center(s) should appear below. Enter billable hours on the Daily Descriptions tab; they appear here automatically.
             </Typography>
 
             {/* Cost Center Hours Table */}
@@ -8369,10 +8644,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         const propertyName = `costCenter${index}Hours`;
                         const currentValue = (entry as any)?.[propertyName] || 0;
                         
-                        const isEditing = editingTimesheetCell?.costCenter === index && 
-                                        editingTimesheetCell?.day === day && 
-                                        editingTimesheetCell?.type === 'costCenter';
-                        
                         // Check if any time entries for this day need revision
                         const entryDate = new Date(currentYear, currentMonth - 1, day);
                         const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
@@ -8388,56 +8659,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         
                         return (
                           <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? '#ffcccc' : 'transparent' }}>
-                            {isEditing ? (
-                              <TextField
-                                value={editingTimesheetValue}
-                                onChange={(e) => setEditingTimesheetValue(e.target.value)}
-                                onBlur={handleTimesheetCellSave}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleTimesheetCellSave();
-                                  if (e.key === 'Escape') handleTimesheetCellCancel();
-                                }}
-                                autoFocus
-                                size="small"
-                                type="number"
-                                inputProps={{ 
-                                  min: 0, 
-                                  max: 24, 
-                                  step: 0.25,
-                                  style: { 
-                                    MozAppearance: 'textfield',
-                                    WebkitAppearance: 'none',
-                                    appearance: 'none'
-                                  }
-                                }}
-                                sx={{ 
-                                  width: 40, 
-                                  fontSize: '0.75rem',
-                                  '& input[type=number]': {
-                                    MozAppearance: 'textfield',
-                                  },
-                                  '& input[type=number]::-webkit-outer-spin-button': {
-                                    WebkitAppearance: 'none',
-                                    margin: 0,
-                                  },
-                                  '& input[type=number]::-webkit-inner-spin-button': {
-                                    WebkitAppearance: 'none',
-                                    margin: 0,
-                                  },
-                                }}
-                              />
-                            ) : (
-                              <Box 
-                                onClick={() => !isAdminView && handleTimesheetCellEdit(index, day, 'costCenter', currentValue)}
-                                sx={{ 
-                                  cursor: isAdminView ? 'default' : 'pointer', 
-                                  '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' }, 
-                                  fontSize: '0.75rem' 
-                                }}
-                              >
-                                {currentValue}
-                              </Box>
-                            )}
+                            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                              {currentValue ? Number(currentValue) : ''}
+                            </Typography>
                           </TableCell>
                         );
                       })}
@@ -8463,9 +8687,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         return sum + ((entry as any)?.[propertyName] || 0);
                       }, 0) || 0;
                       const currentValue = costCenterHours;
-                      const isEditing = editingTimesheetCell?.costCenter === -1 && 
-                                      editingTimesheetCell?.day === day && 
-                                      editingTimesheetCell?.type === 'billable';
                       
                       // Check if any time entries for this day need revision
                       const entryDate = new Date(currentYear, currentMonth - 1, day);
@@ -8478,33 +8699,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       
                       return (
                         <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
-                          {isEditing ? (
-                            <TextField
-                              value={editingTimesheetValue}
-                              onChange={(e) => setEditingTimesheetValue(e.target.value)}
-                              onBlur={handleTimesheetCellSave}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleTimesheetCellSave();
-                                if (e.key === 'Escape') handleTimesheetCellCancel();
-                              }}
-                              autoFocus
-                              size="small"
-                              type="number"
-                              inputProps={{ min: 0, max: 24, step: 0.25 }}
-                              sx={{ width: 40, fontSize: '0.75rem' }}
-                            />
-                          ) : (
-                            <Box 
-                              onClick={() => !isAdminView && handleTimesheetCellEdit(-1, day, 'billable', currentValue)}
-                              sx={{ 
-                                cursor: isAdminView ? 'default' : 'pointer', 
-                                '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' }, 
-                                fontSize: '0.75rem' 
-                              }}
-                            >
-                              {currentValue}
-                            </Box>
-                          )}
+                          <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
+                            {currentValue ? Number(currentValue) : ''}
+                          </Typography>
                         </TableCell>
                       );
                     })}
