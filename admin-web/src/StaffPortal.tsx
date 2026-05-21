@@ -206,6 +206,14 @@ function getBillableHoursForCostCenterDay(
   return Number(sorted[0]?.hours) || 0;
 }
 
+function timesheetDayHours(value: unknown): number {
+  return Number(value) || 0;
+}
+
+function timesheetHoursColor(hours: number): 'text.disabled' | 'text.primary' {
+  return timesheetDayHours(hours) === 0 ? 'text.disabled' : 'text.primary';
+}
+
 function dedupeTimeTrackingEntries(entries: any[]): any[] {
   const entryMap = new Map<string, any>();
   (entries || []).forEach((entry: any) => {
@@ -8389,11 +8397,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         // Check if this day needs revision from revision notes
                         const dayNeedsRevision = daysNeedingRevision.has(day);
                         const needsRevision = needsRevisionFromRaw || dayNeedsRevision;
+                        const dayHours = timesheetDayHours(currentValue);
                         
                         return (
                           <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? '#ffcccc' : 'transparent' }}>
-                            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                              {Number(currentValue) || 0}
+                            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: timesheetHoursColor(dayHours) }}>
+                              {dayHours}
                             </Typography>
                           </TableCell>
                         );
@@ -8419,7 +8428,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         const propertyName = `costCenter${costCenterIndex}Hours`;
                         return sum + ((entry as any)?.[propertyName] || 0);
                       }, 0) || 0;
-                      const currentValue = costCenterHours;
+                      const dayHours = timesheetDayHours(costCenterHours);
                       
                       // Check if any time entries for this day need revision
                       const entryDate = new Date(currentYear, currentMonth - 1, day);
@@ -8432,8 +8441,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       
                       return (
                         <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
-                          <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
-                            {Number(currentValue) || 0}
+                          <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 'bold', color: timesheetHoursColor(dayHours) }}>
+                            {dayHours}
                           </Typography>
                         </TableCell>
                       );
@@ -8488,6 +8497,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         const currentValue = (entry as any)?.categoryHours?.[category] || 0;
                         const isEditing = editingCategoryCell?.category === category && 
                                         editingCategoryCell?.day === day;
+                        const dayHours = timesheetDayHours(currentValue);
                         
                         // Check if any time entries for this day need revision
                         const entryDate = new Date(currentYear, currentMonth - 1, day);
@@ -8544,10 +8554,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 sx={{ 
                                   cursor: isAdminView ? 'default' : 'pointer', 
                                   '&:hover': isAdminView ? {} : { bgcolor: 'grey.100' }, 
-                                  fontSize: '0.75rem' 
+                                  fontSize: '0.75rem',
+                                  color: timesheetHoursColor(dayHours),
                                 }}
                               >
-                                {Number(currentValue) || 0}
+                                {dayHours}
                               </Box>
                             )}
                           </TableCell>
@@ -8578,6 +8589,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       }, 0);
                       
                       const totalHoursForDay = costCenterHours + categoryHours;
+                      const dayHours = timesheetDayHours(totalHoursForDay);
                       
                       // Check if any time entries for this day need revision
                       const entryDate = new Date(currentYear, currentMonth - 1, day);
@@ -8589,8 +8601,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       });
                       
                       return (
-                        <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem', bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
-                          {Number(totalHoursForDay) || 0}
+                        <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem', bgcolor: needsRevision ? 'warning.light' : 'transparent', color: timesheetHoursColor(dayHours) }}>
+                          {dayHours}
                         </TableCell>
                       );
                     })}
