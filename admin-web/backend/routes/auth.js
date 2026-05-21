@@ -858,7 +858,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
             db.get(
               'SELECT * FROM employees WHERE id = ?',
               [employee.id],
-              (fetchErr, updatedEmployee) => {
+              async (fetchErr, updatedEmployee) => {
                 if (!fetchErr && updatedEmployee) {
                   userToReturn = updatedEmployee;
                 } else {
@@ -912,7 +912,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
           db.get(
             'SELECT * FROM employees WHERE id = ?',
             [newEmployeeId],
-            (fetchErr, newEmployee) => {
+            async (fetchErr, newEmployee) => {
               if (!fetchErr && newEmployee) {
                 userToReturn = newEmployee;
               }
@@ -1385,18 +1385,18 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
             db.get(
               'SELECT * FROM employees WHERE id = ?',
               [employee.id],
-              (fetchErr, updatedEmployee) => {
+              async (fetchErr, updatedEmployee) => {
                 if (!fetchErr && updatedEmployee) {
                   userToReturn = updatedEmployee;
                 } else {
                   userToReturn = employee;
                 }
-                completeMobileCallbackLogin();
+                await completeMobileCallbackLogin();
               }
             );
           } else {
             userToReturn = employee;
-            completeMobileCallbackLogin();
+            await completeMobileCallbackLogin();
           }
         } else if (AUTO_CREATE_ACCOUNTS) {
           debugLog(`🆕 Mobile: Creating new user account for ${email}`);
@@ -1437,11 +1437,11 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
           db.get(
             'SELECT * FROM employees WHERE id = ?',
             [newEmployeeId],
-            (fetchErr, newEmployee) => {
+            async (fetchErr, newEmployee) => {
               if (!fetchErr && newEmployee) {
                 userToReturn = newEmployee;
               }
-              completeMobileCallbackLogin();
+              await completeMobileCallbackLogin();
             }
           );
         } else {
@@ -1498,7 +1498,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
           `);
         }
 
-        function completeMobileCallbackLogin() {
+        async function completeMobileCallbackLogin() {
           if (!userToReturn) {
             debugError('❌ Mobile: Failed to get user after Google OAuth');
             const redirectUrl = 'ohstafftracker://oauth/callback?error=user_not_found';
@@ -1907,7 +1907,7 @@ router.post('/api/auth/google/mobile', async (req, res) => {
             db.get(
               'SELECT * FROM employees WHERE id = ?',
               [employee.id],
-              (fetchErr, updatedEmployee) => {
+              async (fetchErr, updatedEmployee) => {
                 if (!fetchErr && updatedEmployee) {
                   userToReturn = updatedEmployee;
                 } else {
@@ -1960,7 +1960,7 @@ router.post('/api/auth/google/mobile', async (req, res) => {
           db.get(
             'SELECT * FROM employees WHERE id = ?',
             [newEmployeeId],
-            (fetchErr, newEmployee) => {
+            async (fetchErr, newEmployee) => {
               if (!fetchErr && newEmployee) {
                 userToReturn = newEmployee;
               }
