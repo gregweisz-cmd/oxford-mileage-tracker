@@ -146,16 +146,27 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   // When app returns to foreground, sync from persisted storage (background task may have updated it)
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
-      if (nextState === 'active' && GpsTrackingService.isTracking()) {
-        await GpsTrackingService.syncFromStorage();
-        setTripPaused(GpsTrackingService.isTripPaused());
-        refreshTrackingStatus();
-        const hasPendingAlert = await GpsTrackingService.hasPendingStationaryAlert();
-        if (hasPendingAlert) {
-          presentStationaryPrompt();
-        } else {
-          await checkPausedDrivingAlert();
-        }
+      if (nextState !== 'active') return;
+
+      await GpsTrackingService.syncFromStorage();
+      const tracking = GpsTrackingService.isTracking();
+      refreshTrackingStatus();
+
+      if (!tracking) {
+        // Clear stale GPS UI after end-trip / lock screen — invisible modals can block touches.
+        setShowStationaryPrompt(false);
+        setShouldShowEndLocationModal(false);
+        setShowMapOverlay(false);
+        pausedDrivingAlertVisibleRef.current = false;
+        return;
+      }
+
+      setTripPaused(GpsTrackingService.isTripPaused());
+      const hasPendingAlert = await GpsTrackingService.hasPendingStationaryAlert();
+      if (hasPendingAlert) {
+        presentStationaryPrompt();
+      } else {
+        await checkPausedDrivingAlert();
       }
     });
     return () => sub.remove();

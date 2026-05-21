@@ -76,6 +76,10 @@ function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteNam
     navigationRef.current.navigate('GpsTracking', { endTripOverlay: true });
   }, [shouldShowEndLocationModal, currentRouteName, navigationRef]);
 
+  if (!isTracking) {
+    return null;
+  }
+
   return (
     <View
       style={{
@@ -87,8 +91,7 @@ function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteNam
         zIndex: 9999,
         elevation: 9999,
       }}
-      // Never intercept touches when not actively tracking.
-      pointerEvents={isTracking ? (passThroughOnGpsScreen ? 'none' : 'box-none') : 'none'}
+      pointerEvents={passThroughOnGpsScreen ? 'none' : 'box-none'}
     >
       <GlobalGpsReturnButton currentRouteName={currentRouteName} />
       <GlobalGpsStopButton currentRouteName={currentRouteName} />

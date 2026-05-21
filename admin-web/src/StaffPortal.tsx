@@ -717,6 +717,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  /** While editing Hours Worked on Daily Descriptions, hold raw text so backspace can clear the field */
+  const [editingDailyHoursDateKey, setEditingDailyHoursDateKey] = useState<string | null>(null);
+  const [editingDailyHoursDraft, setEditingDailyHoursDraft] = useState('');
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   /** Receipt IDs whose image failed to load (404, etc.) - show upload UI instead of broken link */
   const [receiptImageLoadErrors, setReceiptImageLoadErrors] = useState<Set<string>>(new Set());
@@ -2886,15 +2889,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   const getDailyDescriptionHoursDisplay = useCallback(
     (dayDescription: any, entry: any) => {
-      const stored = parseFloat(dayDescription?.hoursWorked);
-      if (Number.isFinite(stored) && stored > 0) {
-        return stored;
+      if (
+        dayDescription &&
+        dayDescription.hoursWorked !== undefined &&
+        dayDescription.hoursWorked !== null &&
+        dayDescription.hoursWorked !== ''
+      ) {
+        const stored = parseFloat(dayDescription.hoursWorked);
+        if (Number.isFinite(stored)) {
+          return stored;
+        }
       }
       const cc = dayDescription?.costCenter || entry?.costCenter || employeeData?.costCenters?.[0] || '';
       const idx = employeeData?.costCenters?.findIndex((c: string) => c === cc) ?? -1;
       if (idx >= 0) {
         const fromEntry = Number((entry as any)?.[`costCenter${idx}Hours`]);
-        if (Number.isFinite(fromEntry) && fromEntry > 0) {
+        if (Number.isFinite(fromEntry)) {
           return fromEntry;
         }
       }
@@ -7529,44 +7539,33 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           )}
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1, width: '100px' }}>
+                          {(() => {
+                            const entryDateStr = normalizeDate(entry.date);
+                            const isEditingHours = editingDailyHoursDateKey === entryDateStr;
+                            const savedHours = getDailyDescriptionHoursDisplay(dayDescription, entry);
+                            const displayValue = isEditingHours
+                              ? editingDailyHoursDraft
+                              : savedHours === 0
+                                ? ''
+                                : String(savedHours);
+                            return (
                           <TextField
                             type="number"
                             size="small"
-                            value={
-                              dayDescription?.dayOff
-                                ? ''
-                                : getDailyDescriptionHoursDisplay(dayDescription, entry)
-                            }
+                            value={dayDescription?.dayOff ? '' : displayValue}
+                            onFocus={() => {
+                              if (dayDescription?.dayOff || isAdminView) return;
+                              setEditingDailyHoursDateKey(entryDateStr);
+                              setEditingDailyHoursDraft(savedHours === 0 ? '' : String(savedHours));
+                            }}
                             onChange={(e) => {
-                              const entryDateStr = normalizeDate(entry.date);
-                              const newDescriptions = [...dailyDescriptions];
-                              const existingIndex = newDescriptions.findIndex(
-                                (desc: any) => normalizeDate(desc.date) === entryDateStr
-                              );
-                              const parsed = e.target.value === '' ? '' : parseFloat(e.target.value);
-                              if (existingIndex >= 0) {
-                                newDescriptions[existingIndex] = {
-                                  ...newDescriptions[existingIndex],
-                                  hoursWorked: parsed,
-                                };
-                              } else {
-                                newDescriptions.push({
-                                  id: `desc-${employeeId}-${entryDateStr}`,
-                                  employeeId,
-                                  date: entryDateStr,
-                                  description: '',
-                                  costCenter: entry.costCenter || employeeData.costCenters[0] || '',
-                                  stayedOvernight: false,
-                                  dayOff: false,
-                                  dayOffType: null,
-                                  hoursWorked: parsed,
-                                  createdAt: new Date().toISOString(),
-                                  updatedAt: new Date().toISOString(),
-                                });
-                              }
-                              setDailyDescriptionsWithRef(newDescriptions);
+                              if (dayDescription?.dayOff) return;
+                              setEditingDailyHoursDateKey(entryDateStr);
+                              setEditingDailyHoursDraft(e.target.value);
                             }}
                             onBlur={(e) => {
+                              setEditingDailyHoursDateKey(null);
+                              setEditingDailyHoursDraft('');
                               if (!dayDescription?.dayOff) {
                                 handleDailyDescriptionHoursChange(entry, dayDescription, e.target.value);
                               }
@@ -7581,6 +7580,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             placeholder="0"
                             sx={{ width: 88 }}
                           />
+                            );
+                          })()}
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1, textAlign: 'center', whiteSpace: 'nowrap', width: '140px' }}>
                           <Checkbox

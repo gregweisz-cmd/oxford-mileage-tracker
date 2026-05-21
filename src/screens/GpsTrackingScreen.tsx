@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
@@ -14,6 +14,8 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Keyboard,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -89,6 +91,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     startTracking,
     stopTracking,
     registerEndTripFlowHandler,
+    setShouldShowEndLocationModal,
   } = useGpsTracking();
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [showGpsDuration, setShowGpsDuration] = useState(false);
@@ -250,6 +253,33 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     endTripFlowPendingRef.current = false;
     openEndLocationOptionsRef.current();
   }, [isTracking]);
+
+  const dismissStaleGpsModals = useCallback(() => {
+    setShowLocationOptionsModal(false);
+    setShowStartLocationModal(false);
+    setShowEndLocationModal(false);
+    setShowEndLocationOptionsModal(false);
+    setShowOxfordHouseSearchModal(false);
+    setShowPurposePickerModal(false);
+    setShowPurposeSuggestions(false);
+    setShouldShowEndLocationModal(false);
+    endTripFlowPendingRef.current = false;
+    endFlowOpenedThisFocusRef.current = false;
+  }, [setShouldShowEndLocationModal]);
+
+  // After lock/unlock or incomplete end-trip, hidden modals can block the GPS start form.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState !== 'active') return;
+      if (!GpsTrackingService.isTracking() && !isTrackingRef.current) {
+        dismissStaleGpsModals();
+        if (endTripOverlay) {
+          navigation.goBack();
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [dismissStaleGpsModals, endTripOverlay, navigation]);
 
   useEffect(() => {
     if (!isTracking || !currentEmployee?.id) return;

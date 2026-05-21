@@ -6,6 +6,8 @@ import {
   Text,
   Dimensions,
   Alert,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -35,6 +37,15 @@ export default function MapOverlay() {
       loadCurrentLocation();
     }
   }, [showMapOverlay]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active' && !isTracking) {
+        setShowMapOverlay(false);
+      }
+    });
+    return () => sub.remove();
+  }, [isTracking, setShowMapOverlay]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
