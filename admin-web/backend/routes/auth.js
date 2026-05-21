@@ -98,8 +98,156 @@ try {
   } else {
     debugWarn('⚠️  Google OAuth not configured - missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET');
   }
-} catch (err) {
+  } catch (err) {
   debugWarn('⚠️  google-auth-library not available:', err.message);
+}
+
+function getGoogleClientSecret() {
+  return String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+}
+
+/** Build Google auth URL. Omit prompt so returning users reuse their Google session (no forced re-consent). */
+function buildGoogleOAuthUrl(options = {}) {
+  const { state = '/', redirectUri, ensureRefresh = false } = options;
+  const authOptions = {
+    access_type: 'offline',
+    scope: ['openid', 'profile', 'email'],
+    state: String(state),
+    include_granted_scopes: true,
+  };
+  if (redirectUri) {
+    authOptions.redirect_uri = redirectUri;
+  }
+  if (ensureRefresh === true || ensureRefresh === '1' || ensureRefresh === 'true') {
+    authOptions.prompt = 'consent';
+  }
+  return googleClient.generateAuthUrl(authOptions);
+}
+
+function persistGoogleRefreshToken(employeeId, refreshToken) {
+  return new Promise((resolve, reject) => {
+    if (!employeeId || !refreshToken) {
+      resolve();
+      return;
+    }
+    const db = dbService.getDb();
+    const now = new Date().toISOString();
+    db.run(
+      'UPDATE employees SET googleRefreshToken = ?, updatedAt = ? WHERE id = ?',
+      [refreshToken, now, employeeId],
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+}
+
+function getEmployeeByNormalizedEmail(email) {
+  return new Promise((resolve, reject) => {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    dbService.getDb().get(
+      'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ?',
+      [normalizedEmail],
+      (err, row) => (err ? reject(err) : resolve(row || null))
+    );
+  });
+}
+
+function formatEmployeeAuthResponse(employee) {
+  let costCenters = [];
+  let selectedCostCenters = [];
+  let permissions = [];
+  try {
+    if (employee.costCenters) costCenters = JSON.parse(employee.costCenters);
+    if (employee.selectedCostCenters) selectedCostCenters = JSON.parse(employee.selectedCostCenters);
+    if (employee.permissions) permissions = JSON.parse(employee.permissions);
+  } catch (parseErr) {
+    debugError('Error parsing employee JSON fields:', parseErr);
+  }
+  const { password: _, googleRefreshToken: __, ...employeeData } = employee;
+  const validRole = getEffectiveRole(employee, ALLOWED_ROLES);
+  return {
+    ...employeeData,
+    role: validRole,
+    costCenters,
+    selectedCostCenters,
+    permissions,
+  };
+}
+
+async function issueSessionAfterGoogleTokens(userToReturn, tokens) {
+  if (tokens?.refresh_token && userToReturn?.id) {
+    await persistGoogleRefreshToken(userToReturn.id, tokens.refresh_token);
+  }
+  return signAuthToken(userToReturn);
+}
+
+async function renewGoogleSessionForEmail(email) {
+  if (!googleClient || !OAuth2Client) {
+    return { status: 503, body: { error: 'Google login not configured' } };
+  }
+
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return { status: 400, body: { error: 'Email is required' } };
+  }
+
+  if (ALLOWED_EMAIL_DOMAINS.length > 0) {
+    const emailDomain = normalizedEmail.split('@')[1];
+    if (!ALLOWED_EMAIL_DOMAINS.includes(emailDomain)) {
+      return { status: 403, body: { error: 'Access restricted to organization email addresses only' } };
+    }
+  }
+
+  const employee = await getEmployeeByNormalizedEmail(normalizedEmail);
+  if (!employee) {
+    return { status: 404, body: { error: 'Account not found' } };
+  }
+
+  const provider = employee.authProvider || 'local';
+  if (provider !== 'google' && provider !== 'both') {
+    return { status: 400, body: { error: 'This account does not use Google sign-in' } };
+  }
+
+  if (!employee.googleRefreshToken) {
+    return { status: 401, body: { error: 'GOOGLE_REAUTH_REQUIRED', message: 'Please sign in with Google again once.' } };
+  }
+
+  const redirectUri =
+    process.env.GOOGLE_REDIRECT_URI ||
+    `${(process.env.API_BASE_URL || 'http://localhost:3003').replace(/\/+$/, '')}/api/auth/google/callback`;
+
+  const refreshClient = new OAuth2Client(googleClientId, getGoogleClientSecret(), redirectUri);
+  refreshClient.setCredentials({ refresh_token: employee.googleRefreshToken });
+
+  try {
+    const { credentials } = await refreshClient.refreshAccessToken();
+    if (credentials.refresh_token) {
+      await persistGoogleRefreshToken(employee.id, credentials.refresh_token);
+    }
+    const now = new Date().toISOString();
+    await new Promise((resolve, reject) => {
+      dbService.getDb().run(
+        'UPDATE employees SET lastLoginAt = ?, updatedAt = ? WHERE id = ?',
+        [now, now, employee.id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+    employee.lastLoginAt = now;
+    const token = signAuthToken(employee);
+    return {
+      status: 200,
+      body: {
+        success: true,
+        token,
+        employee: formatEmployeeAuthResponse(employee),
+      },
+    };
+  } catch (refreshErr) {
+    debugError('❌ Google refresh token exchange failed:', refreshErr);
+    return {
+      status: 401,
+      body: { error: 'GOOGLE_REAUTH_REQUIRED', message: 'Please sign in with Google again.' },
+    };
+  }
 }
 
 // ===== AUTHENTICATION ENDPOINTS =====
@@ -511,6 +659,18 @@ router.get('/api/auth/google/status', (req, res) => {
   });
 });
 
+// Renew app session for returning Google users (no full OAuth UI when refresh token is valid)
+router.post('/api/auth/google/renew-session', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    const result = await renewGoogleSessionForEmail(email);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    debugError('❌ renew-session error:', error);
+    return res.status(500).json({ error: 'Failed to renew session' });
+  }
+});
+
 // Mobile app: start Google OAuth (uses same client ID as web; mobile redirect URI)
 router.get('/api/auth/google/mobile', (req, res) => {
   if (!googleClient) {
@@ -520,12 +680,10 @@ router.get('/api/auth/google/mobile', (req, res) => {
 
   try {
     const mobileRedirectUri = getMobileGoogleRedirectUri();
-    const authUrl = googleClient.generateAuthUrl({
-      access_type: 'offline',
-      scope: ['openid', 'profile', 'email'],
-      prompt: 'consent',
+    const authUrl = buildGoogleOAuthUrl({
       state: 'mobile',
-      redirect_uri: mobileRedirectUri,
+      redirectUri: mobileRedirectUri,
+      ensureRefresh: req.query.ensureRefresh,
     });
 
     debugLog('🔐 Mobile: Redirecting to Google OAuth');
@@ -546,11 +704,9 @@ router.get('/api/auth/google', (req, res) => {
 
   try {
     const returnUrl = req.query.returnUrl || '/';
-    const authUrl = googleClient.generateAuthUrl({
-      access_type: 'offline',
-      scope: ['openid', 'profile', 'email'],
-      prompt: 'consent',
-      state: returnUrl // Store return URL for after callback
+    const authUrl = buildGoogleOAuthUrl({
+      state: returnUrl,
+      ensureRefresh: req.query.ensureRefresh,
     });
 
     debugLog('🔐 Redirecting to Google OAuth:', authUrl);
@@ -708,12 +864,12 @@ router.get('/api/auth/google/callback', async (req, res) => {
                 } else {
                   userToReturn = { ...employee, googleId, emailVerified: emailVerified ? 1 : 0 };
                 }
-                completeLogin();
+                await completeLogin();
               }
             );
           } else {
             userToReturn = employee;
-            completeLogin();
+            await completeLogin();
           }
         } else if (AUTO_CREATE_ACCOUNTS) {
           // New user - auto-create account
@@ -760,7 +916,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
               if (!fetchErr && newEmployee) {
                 userToReturn = newEmployee;
               }
-              completeLogin();
+              await completeLogin();
             }
           );
         } else {
@@ -770,45 +926,25 @@ router.get('/api/auth/google/callback', async (req, res) => {
           return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`);
         }
 
-        function completeLogin() {
+        async function completeLogin() {
           if (!userToReturn) {
             debugError('❌ Failed to get user after Google OAuth');
             const frontendUrl = resolveWebPortalRedirectBase();
             return res.redirect(`${frontendUrl}/login?error=user_not_found`);
           }
 
-          // Parse JSON fields
-          let costCenters = [];
-          let selectedCostCenters = [];
-
           try {
-            if (userToReturn.costCenters) {
-              costCenters = JSON.parse(userToReturn.costCenters);
-            }
-            if (userToReturn.selectedCostCenters) {
-              selectedCostCenters = JSON.parse(userToReturn.selectedCostCenters);
-            }
-          } catch (parseErr) {
-            debugError('Error parsing cost centers:', parseErr);
+            const sessionToken = await issueSessionAfterGoogleTokens(userToReturn, tokens);
+            debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
+            const frontendUrl = resolveWebPortalRedirectBase();
+            const returnUrl = state || '/';
+            const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+            return res.redirect(redirectUrl);
+          } catch (loginErr) {
+            debugError('❌ Error finalizing Google login:', loginErr);
+            const frontendUrl = resolveWebPortalRedirectBase();
+            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
           }
-
-          // Create session token
-          const sessionToken = signAuthToken(userToReturn);
-
-          // Don't send password back
-          const { password: _, ...employeeData } = userToReturn;
-
-          const validRole = getEffectiveRole(userToReturn, ALLOWED_ROLES);
-
-          debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
-
-          // Redirect to frontend with token in URL
-          // Frontend will extract token and complete login
-          const frontendUrl = resolveWebPortalRedirectBase();
-          const returnUrl = state || '/';
-          const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
-
-          res.redirect(redirectUrl);
         }
       }
     );
@@ -1432,7 +1568,7 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
             debugError('Error parsing cost centers:', parseErr);
           }
 
-          const sessionToken = signAuthToken(userToReturn);
+          const sessionToken = await issueSessionAfterGoogleTokens(userToReturn, tokens);
           const validRole = getEffectiveRole(userToReturn, ALLOWED_ROLES);
 
           debugLog(`✅ Mobile: Google OAuth login successful for ${email}, serving redirect page...`);
@@ -1777,12 +1913,12 @@ router.post('/api/auth/google/mobile', async (req, res) => {
                 } else {
                   userToReturn = { ...employee, googleId, emailVerified: emailVerified ? 1 : 0 };
                 }
-                completeMobileLogin();
+                await completeMobileLogin();
               }
             );
           } else {
             userToReturn = employee;
-            completeMobileLogin();
+            await completeMobileLogin();
           }
         } else if (AUTO_CREATE_ACCOUNTS) {
           // New user - auto-create account
@@ -1828,7 +1964,7 @@ router.post('/api/auth/google/mobile', async (req, res) => {
               if (!fetchErr && newEmployee) {
                 userToReturn = newEmployee;
               }
-              completeMobileLogin();
+              await completeMobileLogin();
             }
           );
         } else {
@@ -1836,45 +1972,31 @@ router.post('/api/auth/google/mobile', async (req, res) => {
           return res.status(404).json({ error: 'Account not found. Please contact your administrator.' });
         }
 
-        function completeMobileLogin() {
+        async function completeMobileLogin() {
           if (!userToReturn) {
             debugError('❌ Mobile: Failed to get user after Google OAuth');
             return res.status(500).json({ error: 'User not found after authentication' });
           }
 
-          // Parse JSON fields
-          let costCenters = [];
-          let selectedCostCenters = [];
-
           try {
-            if (userToReturn.costCenters) {
-              costCenters = JSON.parse(userToReturn.costCenters);
-            }
-            if (userToReturn.selectedCostCenters) {
-              selectedCostCenters = JSON.parse(userToReturn.selectedCostCenters);
-            }
-          } catch (parseErr) {
-            debugError('Error parsing cost centers for mobile:', parseErr);
+            const sessionToken = await issueSessionAfterGoogleTokens(userToReturn, tokens);
+            const employeePayload = formatEmployeeAuthResponse({ ...userToReturn, lastLoginAt: now });
+
+            debugLog(`✅ Mobile: Google OAuth login successful for ${email}`);
+
+            res.json({
+              success: true,
+              token: sessionToken,
+              email: email,
+              employee: {
+                ...employeePayload,
+                lastLoginAt: now,
+              },
+            });
+          } catch (loginErr) {
+            debugError('❌ Mobile: Error finalizing Google login:', loginErr);
+            return res.status(500).json({ error: 'Authentication failed' });
           }
-
-          const sessionToken = signAuthToken(userToReturn);
-          const { password: _, ...employeeData } = userToReturn;
-          const validRole = getEffectiveRole(userToReturn, ALLOWED_ROLES);
-
-          debugLog(`✅ Mobile: Google OAuth login successful for ${email}`);
-
-          res.json({
-            success: true,
-            token: sessionToken,
-            email: email,
-            employee: {
-              ...employeeData,
-              lastLoginAt: now,
-              role: validRole,
-              costCenters,
-              selectedCostCenters
-            }
-          });
         }
       }
     );

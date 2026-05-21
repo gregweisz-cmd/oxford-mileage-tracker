@@ -73,6 +73,9 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
         // Store employee data
         localStorage.setItem('currentEmployeeId', employee.id);
         localStorage.setItem('employeeData', JSON.stringify(employee));
+        if (email) {
+          localStorage.setItem('googleLastEmail', email.trim().toLowerCase());
+        }
 
         // Call success callback
         onLoginSuccess(employee, token);

@@ -22,6 +22,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { DatabaseService } from '../services/database';
 import { GoogleAuthService } from '../services/googleAuthService';
+import { GOOGLE_LAST_EMAIL_KEY } from '../services/authSessionRefresh';
 import { Employee } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -116,7 +117,11 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     );
   };
 
-  const syncEmployeeAfterCloudLogin = async (employeeData: any) => {
+  const syncEmployeeAfterCloudLogin = async (
+    employeeData: any,
+    options?: { stayLoggedIn?: boolean }
+  ) => {
+    const persistStayLoggedIn = options?.stayLoggedIn ?? stayLoggedIn;
     const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
 
     if (existingEmployee) {
@@ -146,7 +151,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         return false;
       }
 
-      await DatabaseService.setCurrentEmployee(canonicalId, stayLoggedIn);
+      await DatabaseService.setCurrentEmployee(canonicalId, persistStayLoggedIn);
       onLogin(updatedEmployee);
       return true;
     }
@@ -165,7 +170,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || '',
     });
 
-    await DatabaseService.setCurrentEmployee(employeeData.id, stayLoggedIn);
+    await DatabaseService.setCurrentEmployee(employeeData.id, persistStayLoggedIn);
     onLogin(employeeData);
     return true;
   };
@@ -246,7 +251,10 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       }
 
       const employeeData = await GoogleAuthService.verifyWithBackend(userInfo);
-      await syncEmployeeAfterCloudLogin(employeeData);
+      if (employeeData?.email) {
+        await SecureStore.setItemAsync(GOOGLE_LAST_EMAIL_KEY, String(employeeData.email).trim().toLowerCase());
+      }
+      await syncEmployeeAfterCloudLogin(employeeData, { stayLoggedIn: true });
     } catch (error: any) {
       const message = error?.message || 'Failed to sign in with Google';
       if (!message.toLowerCase().includes('cancel')) {

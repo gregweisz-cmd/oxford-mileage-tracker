@@ -24,6 +24,7 @@ import { Employee } from './src/types';
 import LoginScreen from './src/screens/LoginScreen';
 import EmployeeProfileScreen from './src/screens/EmployeeProfileScreen';
 import LogoutService from './src/services/logoutService';
+import { tryRestoreSessionOnLaunch } from './src/services/authSessionRefresh';
 import HomeScreen from './src/screens/HomeScreen';
 import MileageEntryScreen from './src/screens/MileageEntryScreen';
 import GpsTrackingScreen from './src/screens/GpsTrackingScreen';
@@ -142,25 +143,27 @@ export default function App() {
       // Clean up old demo receipts (Comcast, Verizon, etc.)
       await DatabaseService.cleanupOldReceipts();
       
-      // Check if user is already logged in and wants to stay logged in
-      const currentSession = await DatabaseService.getCurrentEmployeeSession();
-      
-      if (currentSession && currentSession.stayLoggedIn) {
-        const employee = await DatabaseService.getEmployeeById(currentSession.employeeId);
-        if (employee) {
-          setCurrentEmployee(employee);
-          setIsAuthenticated(true);
-          
-          // Check if user has completed onboarding
-          const hasCompletedOnboarding = await DatabaseService.hasCompletedOnboarding(employee.id);
-          if (!hasCompletedOnboarding) {
-            setShowOnboarding(true);
-          } else {
-            // Check if user has completed the Setup Wizard
-            const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(employee.id);
-            if (!hasCompletedSetupWizard) {
-              setShowSetupWizard(true);
-            }
+      // Restore session: valid JWT or Google renew (then legacy stay-logged-in row)
+      let employee = await tryRestoreSessionOnLaunch();
+
+      if (!employee) {
+        const currentSession = await DatabaseService.getCurrentEmployeeSession();
+        if (currentSession?.stayLoggedIn) {
+          employee = await DatabaseService.getEmployeeById(currentSession.employeeId);
+        }
+      }
+
+      if (employee) {
+        setCurrentEmployee(employee);
+        setIsAuthenticated(true);
+
+        const hasCompletedOnboarding = await DatabaseService.hasCompletedOnboarding(employee.id);
+        if (!hasCompletedOnboarding) {
+          setShowOnboarding(true);
+        } else {
+          const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(employee.id);
+          if (!hasCompletedSetupWizard) {
+            setShowSetupWizard(true);
           }
         }
       }

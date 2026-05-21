@@ -1002,6 +1002,13 @@ function ensureTablesExist() {
             });
           }
 
+          if (!columnNames.includes('googleRefreshToken')) {
+            db.run(`ALTER TABLE employees ADD COLUMN googleRefreshToken TEXT DEFAULT NULL`, (err) => {
+              if (err) debugLog('Note: googleRefreshToken column may already exist');
+              else debugLog('✅ Added googleRefreshToken column to employees table');
+            });
+          }
+
           if (!columnNames.includes('permissions')) {
             db.run(`ALTER TABLE employees ADD COLUMN permissions TEXT DEFAULT '[]'`, (err) => {
               if (err) debugLog('Note: permissions column may already exist');

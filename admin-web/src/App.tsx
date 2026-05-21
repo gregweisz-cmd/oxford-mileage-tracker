@@ -229,20 +229,49 @@ const App: React.FC = () => {
               }
             });
             
-            if (!response.ok) {
-              // Invalid token, clear and force re-login
-              localStorage.clear();
+            let employee: Record<string, unknown> | null = null;
+            if (response.ok) {
+              ({ employee } = await response.json());
+            } else {
+              const googleEmail = localStorage.getItem('googleLastEmail');
+              if (googleEmail) {
+                const renewRes = await apiFetch('/api/auth/google/renew-session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: googleEmail }),
+                });
+                if (renewRes.ok) {
+                  const renewData = await renewRes.json();
+                  if (renewData.token) {
+                    localStorage.setItem('authToken', renewData.token);
+                  }
+                  employee = renewData.employee ?? null;
+                }
+              }
+              if (!employee) {
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('currentEmployeeId');
+                localStorage.removeItem('employeeData');
+                setCurrentUser(null);
+                setLoading(false);
+                return;
+              }
+            }
+
+            if (!employee) {
               setCurrentUser(null);
               setLoading(false);
               return;
             }
-            
-            // Valid token, get employee data
-            const { employee } = await response.json();
+
+            if (employee.id) {
+              localStorage.setItem('currentEmployeeId', String(employee.id));
+              localStorage.setItem('employeeData', JSON.stringify(employee));
+            }
             setCurrentUser(employee);
             
             // Load theme preference from user profile (default to 'light' if not set)
-            if (employee?.preferences) {
+            if (employee.preferences) {
               try {
                 const prefs = typeof employee.preferences === 'string' 
                   ? JSON.parse(employee.preferences) 
@@ -262,26 +291,26 @@ const App: React.FC = () => {
             
             // Check if user has completed onboarding (from backend employee data, not localStorage)
             // Handle both boolean and integer values, and treat null/undefined as false
-            const hasCompletedOnboarding = employee?.hasCompletedOnboarding === true || 
-                                           employee?.hasCompletedOnboarding === 1 || 
-                                           employee?.hasCompletedOnboarding === '1';
+            const hasCompletedOnboarding = employee.hasCompletedOnboarding === true || 
+                                           employee.hasCompletedOnboarding === 1 || 
+                                           employee.hasCompletedOnboarding === '1';
             if (!hasCompletedOnboarding) {
               setShowOnboarding(true);
             } else {
               // Check if user has completed setup wizard (from backend employee data, not localStorage)
               // Handle both boolean and integer values, and treat null/undefined as false
-              const hasCompletedSetupWizard = employee?.hasCompletedSetupWizard === true || 
-                                               employee?.hasCompletedSetupWizard === 1 || 
-                                               employee?.hasCompletedSetupWizard === '1';
+              const hasCompletedSetupWizard = employee.hasCompletedSetupWizard === true || 
+                                               employee.hasCompletedSetupWizard === 1 || 
+                                               employee.hasCompletedSetupWizard === '1';
               if (!hasCompletedSetupWizard) {
                 setShowSetupWizard(true);
               }
             }
             
             // Set initial portal based on user preference, then role, then position (fallback)
-            const role = employee?.role?.toLowerCase() || '';
-            const position = employee?.position?.toLowerCase() || '';
-            const permissions = normalizePermissionsValue(employee?.permissions);
+            const role = String(employee.role ?? '').toLowerCase();
+            const position = String(employee.position ?? '').toLowerCase();
+            const permissions = normalizePermissionsValue(employee.permissions);
             
             // First, check if user has a saved default portal preference
             try {
