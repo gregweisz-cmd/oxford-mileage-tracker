@@ -183,6 +183,29 @@ function buildTimeTrackingDedupKey(entry: any): string {
   return `${dateKey}::${bucket}`;
 }
 
+/** Billable cost-center hours for one day (deduped — matches Timesheet grid, does not sum duplicates). */
+function getBillableHoursForCostCenterDay(
+  timeEntries: any[],
+  dateStr: string,
+  costCenter: string
+): number {
+  if (!dateStr || !costCenter) return 0;
+  const matching = dedupeTimeTrackingEntries(timeEntries || []).filter((t: any) => {
+    const tDate = typeof t.date === 'string' ? t.date.split('T')[0] : t.date;
+    if (tDate !== dateStr) return false;
+    if ((t.costCenter || '') !== costCenter) return false;
+    const cat = t.category || '';
+    return cat === 'Working Hours' || cat === 'Regular Hours' || cat === '';
+  });
+  if (matching.length === 0) return 0;
+  const sorted = [...matching].sort((a, b) => {
+    const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return bT - aT;
+  });
+  return Number(sorted[0]?.hours) || 0;
+}
+
 function dedupeTimeTrackingEntries(entries: any[]): any[] {
   const entryMap = new Map<string, any>();
   (entries || []).forEach((entry: any) => {
@@ -1661,19 +1684,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               normalized.description = normalized.dayOffType;
             }
             const storedHours = parseFloat(normalized.hoursWorked);
+            const dateStr = normalized.date;
+            const cc = normalized.costCenter || '';
             if (!Number.isFinite(storedHours) || storedHours <= 0) {
-              const dateStr = normalized.date;
-              const cc = normalized.costCenter || '';
-              const hoursFromTime = (timeTracking || [])
-                .filter((t: any) => {
-                  const tDate = typeof t.date === 'string' ? t.date.split('T')[0] : t.date;
-                  if (tDate !== dateStr) return false;
-                  if ((t.costCenter || '') !== cc) return false;
-                  const cat = t.category || '';
-                  return cat === 'Working Hours' || cat === 'Regular Hours' || cat === '';
-                })
-                .reduce((sum: number, t: any) => sum + (Number(t.hours) || 0), 0);
-              normalized.hoursWorked = hoursFromTime;
+              normalized.hoursWorked = getBillableHoursForCostCenterDay(timeTracking, dateStr, cc);
             } else {
               normalized.hoursWorked = storedHours;
             }
@@ -2797,11 +2811,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const entryCostCenter = entry.costCenter || '';
           const entryCategory = entry.category || '';
           const dateMatches = entryDay === day && entryMonth === currentMonth && entryYear === currentYear;
-          const costCenterMatches = entryCostCenter === actualCostCenter;
-          const categoryMatches =
+          const costCenterMatches = entryCostCenter === actualCostCenter && actualCostCenter !== '';
+          const isBillableCostCenter =
             entryCategory === category ||
-            (entryCategory === 'Regular Hours' || entryCategory === '' || !entryCategory);
-          return dateMatches && costCenterMatches && categoryMatches;
+            entryCategory === 'Regular Hours' ||
+            entryCategory === '' ||
+            !entryCategory;
+          return dateMatches && costCenterMatches && isBillableCostCenter;
         });
       }
 
@@ -2870,17 +2886,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   const getDailyDescriptionHoursDisplay = useCallback(
     (dayDescription: any, entry: any) => {
-      if (dayDescription?.hoursWorked != null && dayDescription.hoursWorked !== '') {
-        return Number(dayDescription.hoursWorked) || 0;
+      const stored = parseFloat(dayDescription?.hoursWorked);
+      if (Number.isFinite(stored) && stored > 0) {
+        return stored;
       }
       const cc = dayDescription?.costCenter || entry?.costCenter || employeeData?.costCenters?.[0] || '';
       const idx = employeeData?.costCenters?.findIndex((c: string) => c === cc) ?? -1;
       if (idx >= 0) {
-        return Number((entry as any)?.[`costCenter${idx}Hours`]) || 0;
+        const fromEntry = Number((entry as any)?.[`costCenter${idx}Hours`]);
+        if (Number.isFinite(fromEntry) && fromEntry > 0) {
+          return fromEntry;
+        }
       }
-      return 0;
+      const dateStr = normalizeDate(entry?.date || dayDescription?.date);
+      return getBillableHoursForCostCenterDay(rawTimeEntries, dateStr, cc);
     },
-    [employeeData?.costCenters]
+    [employeeData?.costCenters, normalizeDate, rawTimeEntries]
   );
 
   const handleDailyDescriptionHoursChange = useCallback(
@@ -2932,7 +2953,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           throw new Error(await response.text());
         }
         await saveCostCenterHoursForDay(day, costCenter, value);
+        setDailyDescriptionsWithRef((prev) =>
+          prev.map((d: any) =>
+            normalizeDate(d.date) === entryDateStr ? { ...d, hoursWorked: value } : d
+          )
+        );
         await refreshTimesheetData(employeeData);
+        const timeRes = await fetch(
+          `${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`
+        );
+        if (timeRes.ok) {
+          setRawTimeEntries(dedupeTimeTrackingEntries(await timeRes.json()));
+        }
       } catch (error) {
         debugError('Error saving daily description hours:', error);
         alert('Failed to save hours. Please try again.');
@@ -2949,6 +2981,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       saveCostCenterHoursForDay,
       refreshTimesheetData,
       setDailyDescriptionsWithRef,
+      currentMonth,
+      currentYear,
     ]
   );
 
