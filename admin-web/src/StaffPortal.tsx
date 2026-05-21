@@ -852,11 +852,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   employeeCertificationAcknowledgedRef.current = employeeCertificationAcknowledged;
   supervisorCertificationAcknowledgedRef.current = supervisorCertificationAcknowledged;
   receiptsRef.current = receipts;
-  const [editingTimesheetCell, setEditingTimesheetCell] = useState<{costCenter: number, day: number, type: string} | null>(null);
-  const [editingTimesheetValue, setEditingTimesheetValue] = useState('');
   const [editingCategoryCell, setEditingCategoryCell] = useState<{category: string, day: number} | null>(null);
   const [editingCategoryValue, setEditingCategoryValue] = useState('');
-  const pendingTimesheetFocusRef = useRef<{ costCenter: number; day: number; type: string; value: string } | null>(null);
   const pendingCategoryFocusRef = useRef<{ category: string; day: number; value: string } | null>(null);
   const [reportsDialogOpen, setReportsDialogOpen] = useState(false);
   const [allReports, setAllReports] = useState<any[]>([]);
@@ -1666,8 +1663,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             const storedHours = parseFloat(normalized.hoursWorked);
             if (!Number.isFinite(storedHours) || storedHours <= 0) {
               const dateStr = normalized.date;
-              const [, , dayPart] = (dateStr || '').split('-');
-              const dayNum = parseInt(dayPart, 10);
               const cc = normalized.costCenter || '';
               const hoursFromTime = (timeTracking || [])
                 .filter((t: any) => {
@@ -2953,26 +2948,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       buildDailyDescriptionPostBody,
       saveCostCenterHoursForDay,
       refreshTimesheetData,
+      setDailyDescriptionsWithRef,
     ]
   );
-
-  // Handle timesheet cell editing
-  const handleTimesheetCellEdit = (costCenter: number, day: number, type: string, currentValue: any) => {
-    if (type === 'costCenter' || type === 'billable') {
-      return;
-    }
-    const nextValue = (currentValue ?? 0).toString();
-    if (editingTimesheetCell && (
-      editingTimesheetCell.costCenter !== costCenter ||
-      editingTimesheetCell.day !== day ||
-      editingTimesheetCell.type !== type
-    )) {
-      pendingTimesheetFocusRef.current = { costCenter, day, type, value: nextValue };
-      return;
-    }
-    setEditingTimesheetCell({ costCenter, day, type });
-    setEditingTimesheetValue(nextValue);
-  };
 
   // Handle mileage entry save
   const handleMileageEntrySave = async (
@@ -3161,286 +3139,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  // Save timesheet cell edit
-  // Save timesheet cell edit - NEW APPROACH: Daily Hours Distribution with Validation
-  const handleTimesheetCellSave = async () => {
-    if (!editingTimesheetCell || !employeeData) return;
-    
-    const { costCenter, day, type } = editingTimesheetCell;
-    const value = parseFloat(editingTimesheetValue) || 0;
-    
-    // Validate daily hours limit
-    if (value > 24) {
-      alert('Cannot enter more than 24 hours in a single day');
-      return;
-    }
-    
-    debugLog('🔍 NEW APPROACH: Saving timesheet cell');
-    debugLog(`  Day: ${day}, Type: ${type}, Cost Center Index: ${costCenter}, Value: ${value}`);
-    
-    // Determine the actual cost center name and category based on the cell type
-    let actualCostCenter = '';
-    let category = '';
-    
-    if (type === 'costCenter' || type === 'billable') {
-      // For cost center rows, use the specific cost center based on the costCenter index
-      actualCostCenter = employeeData.costCenters[costCenter] || 'Program Services';
-      category = 'Working Hours';
-    } else if (type === 'workingHours') {
-      // For working hours row, use the first cost center
-      actualCostCenter = employeeData.costCenters[0] || 'Program Services';
-      category = 'Working Hours';
-    } else {
-      // For other category rows (G&A, Holiday, PTO, etc.)
-      const categoryMap: { [key: string]: string } = {
-        'ga': 'G&A',
-        'holiday': 'Holiday',
-        'pto': 'PTO',
-        'stdLtd': 'STD/LTD',
-        'pflPfml': 'PFL/PFML'
-      };
-      category = categoryMap[type] || 'Working Hours';
-      actualCostCenter = ''; // Category entries don't have cost centers
-    }
-    
-    debugLog(`  Final actualCostCenter: "${actualCostCenter}"`);
-    debugLog(`  Final category: "${category}"`);
-    
-    // Update the UI optimistically FIRST - show the change immediately
-    setEmployeeData(prev => {
-      if (!prev) return null;
-      const updatedEntries = prev.dailyEntries.map((entry: any) => {
-        if (entry.day === day) {
-          const updatedEntry = { ...entry };
-          if (type === 'costCenter' || type === 'billable') {
-            // Update cost center hours
-            const costCenterKey = `costCenter${costCenter}Hours`;
-            const oldValue = (updatedEntry as any)[costCenterKey] || 0;
-            (updatedEntry as any)[costCenterKey] = value;
-            updatedEntry.hoursWorked = Math.max(0, (updatedEntry.hoursWorked || 0) - oldValue + value);
-            updatedEntry.workingHours = Math.max(0, (updatedEntry.workingHours || 0) - oldValue + value);
-          } else if (type === 'workingHours') {
-            // Update working hours (cost center 0)
-            const oldValue = (updatedEntry as any).costCenter0Hours || 0;
-            (updatedEntry as any).costCenter0Hours = value;
-            updatedEntry.hoursWorked = Math.max(0, (updatedEntry.hoursWorked || 0) - oldValue + value);
-            updatedEntry.workingHours = Math.max(0, (updatedEntry.workingHours || 0) - oldValue + value);
-          }
-          return updatedEntry;
-        }
-        return entry;
-      });
-      return {
-        ...prev,
-        dailyEntries: updatedEntries,
-        totalHours: updatedEntries.reduce((sum: number, e: any) => sum + (e.hoursWorked || 0), 0)
-      };
-    });
-    
-    // Save to time tracking API with correct cost center and category
-    try {
-      const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      
-      // First, check if entries exist for this day, category, and cost center
-      // IMPORTANT: Find ALL matching entries (not just one) to handle duplicates
-      const checkResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`);
-      let existingEntries: any[] = [];
-      
-      if (checkResponse.ok) {
-        const allEntries = await checkResponse.json();
-        
-        // Find ALL entries matching this day, category, and cost center
-        // Use local date parsing to avoid timezone issues
-        existingEntries = allEntries.filter((entry: any) => {
-          const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
-          const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
-          const entryCostCenter = entry.costCenter || '';
-          const entryCategory = entry.category || '';
-          
-          // For cost center entries, we need to match:
-          // 1. Same date (day, month, year)
-          // 2. Same cost center
-          // 3. Category should be "Working Hours", "Regular Hours", or empty/null (for entries created via sync-to-source)
-          const dateMatches = entryDay === day && entryMonth === currentMonth && entryYear === currentYear;
-          const costCenterMatches = entryCostCenter === actualCostCenter && actualCostCenter !== '';
-          
-          // Category matching: for cost center entries, accept:
-          // - Exact match with "Working Hours"
-          // - "Regular Hours" (legacy)
-          // - Empty/null category (from sync-to-source endpoint)
-          const categoryMatches = entryCategory === category || 
-                                  (category === 'Working Hours' && (
-                                    entryCategory === 'Working Hours' || 
-                                    entryCategory === 'Regular Hours' || 
-                                    entryCategory === '' || 
-                                    !entryCategory
-                                  ));
-          
-          return dateMatches && costCenterMatches && categoryMatches;
-        });
-      }
-      
-      // If value is 0, delete ALL matching entries (handle duplicates)
-      if (value === 0) {
-        if (existingEntries.length > 0) {
-          debugLog(`🗑️ Deleting ${existingEntries.length} time tracking entry/entries (0 hours):`, existingEntries.map(e => e.id));
-          
-          // Delete all matching entries in parallel
-          const deletePromises = existingEntries.map(entry => 
-            fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, {
-              method: 'DELETE',
-            })
-          );
-          
-          const deleteResults = await Promise.allSettled(deletePromises);
-          
-          // Check if any deletions failed
-          const failedDeletions = deleteResults.filter((result, index) => {
-            if (result.status === 'rejected') {
-              debugError(`❌ Failed to delete entry ${existingEntries[index].id}:`, result.reason);
-              return true;
-            }
-            if (result.status === 'fulfilled' && !result.value.ok) {
-              debugError(`❌ Failed to delete entry ${existingEntries[index].id}: ${result.value.status}`);
-              return true;
-            }
-            return false;
-          });
-          
-          if (failedDeletions.length > 0) {
-            // Revert optimistic update on error
-            refreshTimesheetData(employeeData).catch(() => {});
-            throw new Error(`Failed to delete ${failedDeletions.length} of ${existingEntries.length} entries`);
-          }
-          
-          debugLog(`✅ Deleted ${existingEntries.length} time tracking entry/entries for day ${day}`);
-        } else {
-          debugLog(`ℹ️ Value is 0 and no existing entries found - nothing to delete`);
-          // Even if no entry found, the optimistic update already shows 0, which is correct
-        }
-      } else if (value > 0) {
-        // Save or update entry
-        // If multiple entries exist, delete all but the most recent one, then update that one
-        if (existingEntries.length > 1) {
-          debugLog(`⚠️ Found ${existingEntries.length} duplicate entries, deleting all but the most recent`);
-          // Sort by updatedAt (most recent first) and keep the first one
-          existingEntries.sort((a, b) => {
-            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-            return bTime - aTime; // Most recent first
-          });
-          
-          // Delete all but the first (most recent) entry
-          const entriesToDelete = existingEntries.slice(1);
-          const deletePromises = entriesToDelete.map(entry => 
-            fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, {
-              method: 'DELETE',
-            })
-          );
-          
-          await Promise.allSettled(deletePromises);
-          debugLog(`🗑️ Deleted ${entriesToDelete.length} duplicate entries`);
-        }
-        
-        // Use the most recent entry if one exists, otherwise create new
-        const entryToUpdate = existingEntries.length > 0 
-          ? existingEntries.sort((a, b) => {
-              const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-              const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-              return bTime - aTime; // Most recent first
-            })[0]
-          : null;
-        
-        const requestBody = {
-            employeeId: employeeData.employeeId,
-            date: dateStr,
-            hours: value,
-            category: category,
-            description: `${category} hours worked on ${dateStr}`,
-            costCenter: actualCostCenter
-        };
-        
-        debugLog(`📤 Saving to time tracking API:`, requestBody);
-        debugLog(`🔍 Existing entry to update:`, entryToUpdate);
-        
-        // Use PUT if entry exists, POST if it doesn't
-        const response = entryToUpdate 
-          ? await fetch(`${API_BASE_URL}/api/time-tracking/${entryToUpdate.id}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(requestBody),
-            })
-          : await fetch(`${API_BASE_URL}/api/time-tracking`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(requestBody),
-            });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
-          throw new Error(`Failed to save: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        debugLog(`✅ Saved ${value} hours as "${category}" for "${actualCostCenter}" on day ${day}. Response:`, result);
-      }
-    } catch (error) {
-      debugError('❌ Error saving to time tracking API:', error);
-      alert(`Failed to save hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Revert optimistic update on error
-      refreshTimesheetData(employeeData).catch(() => {});
-      return; // Don't continue if save failed
-    }
-    
-    // Clear editing state
-    setEditingTimesheetCell(null);
-    setEditingTimesheetValue('');
-    const pendingTimesheetFocus = pendingTimesheetFocusRef.current;
-    pendingTimesheetFocusRef.current = null;
-    if (pendingTimesheetFocus) {
-      setEditingTimesheetCell({
-        costCenter: pendingTimesheetFocus.costCenter,
-        day: pendingTimesheetFocus.day,
-        type: pendingTimesheetFocus.type
-      });
-      setEditingTimesheetValue(pendingTimesheetFocus.value);
-    }
-    
-    // Save to expense report table for persistence
-    try {
-      await syncReportData();
-    } catch (error) {
-      debugError('Error saving timesheet to expense report:', error);
-    }
-    
-    // REMOVED: Automatic refresh after save
-    // The optimistic update already shows the correct value in the UI immediately
-    // Refreshing immediately can overwrite the optimistic update if:
-    // 1. Backend hasn't fully processed the save yet (race condition)
-    // 2. User clicks on another cell before refresh completes
-    // 3. There are duplicate entries that haven't been cleaned up yet
-    // 
-    // Data will be refreshed naturally on:
-    // - Next page navigation
-    // - Explicit "Refresh Data" button click
-    // - Month/year change
-    // - Initial page load
-    //
-    // This ensures the optimistic update persists and user sees their changes immediately
-  };
-
-  // Cancel timesheet cell edit
-  const handleTimesheetCellCancel = () => {
-    pendingTimesheetFocusRef.current = null;
-    setEditingTimesheetCell(null);
-    setEditingTimesheetValue('');
-  };
-
   // Handle category cell editing
   const handleCategoryCellEdit = (category: string, day: number, currentValue: any) => {
     const nextValue = (currentValue ?? 0).toString();
@@ -3627,7 +3325,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setEditingCategoryValue('');
     
     // REMOVED: Automatic refresh after save
-    // Same reasoning as handleTimesheetCellSave - optimistic update already shows correct value
+    // Optimistic update already shows the correct value in the UI
     // Refreshing immediately can overwrite the optimistic update before backend processes the save
     // Data will be refreshed naturally on next page navigation or explicit refresh
   };
