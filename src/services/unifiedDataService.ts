@@ -6,6 +6,7 @@
 
 import { DatabaseService } from './database';
 import { MileageEntry, TimeTracking, Receipt, Employee } from '../types';
+import { aggregateHoursFromTimeEntries } from '../utils/timeTrackingDedup';
 
 export interface UnifiedDayData {
   date: Date;
@@ -81,60 +82,7 @@ export class UnifiedDataService {
       this.toLocalDateKey(receipt.date) === dateStr
     );
     
-    const costCenterHours: Record<string, number> = {};
-    const hoursBreakdown = {
-      workingHours: 0,
-      gahours: 0,
-      holidayHours: 0,
-      ptoHours: 0,
-      stdLtdHours: 0,
-      pflPfmlHours: 0
-    };
-
-    // Working-hours entries: category '' or 'Working Hours' or 'Regular Hours' — group by costCenter
-    dayTimeTracking.forEach(entry => {
-      const category = (entry.category || '').trim();
-      const cc = (entry.costCenter || '').trim();
-      const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
-      if (isWorking && entry.hours > 0) {
-        const key = cc || 'Unassigned';
-        costCenterHours[key] = (costCenterHours[key] || 0) + entry.hours;
-      }
-    });
-    hoursBreakdown.workingHours = Object.values(costCenterHours).reduce((s, h) => s + h, 0);
-
-    // Other categories (dedupe by category, keep most recent)
-    const categoryMap = new Map<string, any>();
-    dayTimeTracking.forEach(entry => {
-      const category = String(entry.category || '');
-      const isWorking = category === 'Working Hours' || category === 'Regular Hours';
-      if (isWorking) return;
-      const existing = categoryMap.get(category);
-      if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
-        categoryMap.set(category, entry);
-      }
-    });
-    categoryMap.forEach(entry => {
-      switch (entry.category) {
-        case 'G&A Hours':
-          hoursBreakdown.gahours += entry.hours;
-          break;
-        case 'Holiday Hours':
-          hoursBreakdown.holidayHours += entry.hours;
-          break;
-        case 'PTO Hours':
-          hoursBreakdown.ptoHours += entry.hours;
-          break;
-        case 'STD/LTD Hours':
-          hoursBreakdown.stdLtdHours += entry.hours;
-          break;
-        case 'PFL/PFML Hours':
-          hoursBreakdown.pflPfmlHours += entry.hours;
-          break;
-      }
-    });
-
-    const totalHours = hoursBreakdown.workingHours + Object.values(hoursBreakdown).slice(1).reduce((s, h) => s + h, 0);
+    const { costCenterHours, hoursBreakdown, totalHours } = aggregateHoursFromTimeEntries(dayTimeTracking);
     const totalMiles = dayMileage.reduce((sum, entry) => sum + entry.miles, 0);
     const totalReceipts = dayReceipts
       .filter(receipt => receipt.category !== 'Per Diem')
@@ -244,58 +192,9 @@ export class UnifiedDataService {
       const [year, month, day] = dateKey.split('-').map(Number);
       const date = new Date(year, month - 1, day);
       
-      const costCenterHours: Record<string, number> = {};
-      const hoursBreakdown = {
-        workingHours: 0,
-        gahours: 0,
-        holidayHours: 0,
-        ptoHours: 0,
-        stdLtdHours: 0,
-        pflPfmlHours: 0
-      };
-
-      dayData.timeTracking.forEach(entry => {
-        const category = (entry.category || '').trim();
-        const cc = (entry.costCenter || '').trim();
-        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
-        if (isWorking && entry.hours > 0) {
-          const key = cc || 'Unassigned';
-          costCenterHours[key] = (costCenterHours[key] || 0) + entry.hours;
-        }
-      });
-      hoursBreakdown.workingHours = Object.values(costCenterHours).reduce((s, h) => s + h, 0);
-
-      const categoryMap = new Map<string, any>();
-      dayData.timeTracking.forEach(entry => {
-        const category = entry.category || '';
-        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
-        if (isWorking) return;
-        const existing = categoryMap.get(category);
-        if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
-          categoryMap.set(category, entry);
-        }
-      });
-      categoryMap.forEach(entry => {
-        switch (entry.category) {
-          case 'G&A Hours':
-            hoursBreakdown.gahours += entry.hours;
-            break;
-          case 'Holiday Hours':
-            hoursBreakdown.holidayHours += entry.hours;
-            break;
-          case 'PTO Hours':
-            hoursBreakdown.ptoHours += entry.hours;
-            break;
-          case 'STD/LTD Hours':
-            hoursBreakdown.stdLtdHours += entry.hours;
-            break;
-          case 'PFL/PFML Hours':
-            hoursBreakdown.pflPfmlHours += entry.hours;
-            break;
-        }
-      });
-
-      const totalHours = hoursBreakdown.workingHours + Object.values(hoursBreakdown).slice(1).reduce((s, h) => s + h, 0);
+      const { costCenterHours, hoursBreakdown, totalHours } = aggregateHoursFromTimeEntries(
+        dayData.timeTracking
+      );
       const totalMiles = dayData.mileage.reduce((sum, entry) => sum + entry.miles, 0);
       const totalReceipts = dayData.receipts
         .filter(receipt => receipt.category !== 'Per Diem')

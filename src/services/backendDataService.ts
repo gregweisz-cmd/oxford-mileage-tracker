@@ -15,6 +15,7 @@ import { Employee, MileageEntry, Receipt, TimeTracking, DailyDescription } from 
 import { UnifiedDayData } from './unifiedDataService';
 import { ApiSyncService } from './apiSyncService';
 import { getAuthHeaders } from './authHeaders';
+import { aggregateHoursFromTimeEntries } from '../utils/timeTrackingDedup';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -418,80 +419,9 @@ export class BackendDataService {
       const [y, m, d] = dateKey.split('-').map(Number);
       const date = new Date(y, m - 1, d);
 
-      const costCenterHours: Record<string, number> = {};
-      const hoursBreakdown = {
-        workingHours: 0,
-        gahours: 0,
-        holidayHours: 0,
-        ptoHours: 0,
-        stdLtdHours: 0,
-        pflPfmlHours: 0
-      };
-
-      // Guard against duplicate backend rows for the same day/category/cost-center
-      // by keeping only the latest updated record per key.
-      const dedupedTimeEntries = (() => {
-        const byKey = new Map<string, TimeTracking>();
-        dayData.timeTracking.forEach((entry) => {
-          const categoryKey = String(entry.category || '').trim().toLowerCase();
-          const costCenterKey = String(entry.costCenter || '').trim().toLowerCase();
-          const key = `${categoryKey}|${costCenterKey}`;
-          const existing = byKey.get(key);
-          if (!existing) {
-            byKey.set(key, entry);
-            return;
-          }
-          const existingUpdated = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
-          const incomingUpdated = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
-          if (incomingUpdated >= existingUpdated) {
-            byKey.set(key, entry);
-          }
-        });
-        return Array.from(byKey.values());
-      })();
-
-      dedupedTimeEntries.forEach(entry => {
-        const category = (entry.category || '').trim();
-        const cc = (entry.costCenter || '').trim();
-        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
-        if (isWorking && entry.hours > 0) {
-          const key = cc || 'Unassigned';
-          costCenterHours[key] = (costCenterHours[key] || 0) + entry.hours;
-        }
-      });
-      hoursBreakdown.workingHours = Object.values(costCenterHours).reduce((s, h) => s + h, 0);
-
-      const categoryMap = new Map<string, TimeTracking>();
-      dedupedTimeEntries.forEach(entry => {
-        const category = String(entry.category || '');
-        const isWorking = category === '' || category === 'Working Hours' || category === 'Regular Hours';
-        if (isWorking) return;
-        const existing = categoryMap.get(category);
-        if (!existing || (entry.updatedAt && existing.updatedAt && new Date(entry.updatedAt) > new Date(existing.updatedAt))) {
-          categoryMap.set(category, entry);
-        }
-      });
-      categoryMap.forEach(entry => {
-        switch (entry.category) {
-          case 'G&A Hours':
-            hoursBreakdown.gahours += entry.hours;
-            break;
-          case 'Holiday Hours':
-            hoursBreakdown.holidayHours += entry.hours;
-            break;
-          case 'PTO Hours':
-            hoursBreakdown.ptoHours += entry.hours;
-            break;
-          case 'STD/LTD Hours':
-            hoursBreakdown.stdLtdHours += entry.hours;
-            break;
-          case 'PFL/PFML Hours':
-            hoursBreakdown.pflPfmlHours += entry.hours;
-            break;
-        }
-      });
-
-      const totalHours = hoursBreakdown.workingHours + Object.values(hoursBreakdown).slice(1).reduce((s, h) => s + h, 0);
+      const { costCenterHours, hoursBreakdown, totalHours } = aggregateHoursFromTimeEntries(
+        dayData.timeTracking
+      );
       const totalMiles = dayData.mileage.reduce((sum, entry) => sum + entry.miles, 0);
       const totalReceipts = dayData.receipts
         .filter(receipt => receipt.category !== 'Per Diem')

@@ -7,6 +7,7 @@ import { getFullLocationAddress } from '../utils/addressFormatter';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { getAuthHeaders } from './authHeaders';
 import { API_BASE_URL } from '../config/api';
+import { dedupeTimeTrackingEntries } from '../utils/timeTrackingDedup';
 // Removed SyncIntegrationService import to break circular dependency
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -1581,7 +1582,12 @@ export class DatabaseService {
   // Calculate total hours ONLY from time tracking entries
   // NOTE: hoursWorked on mileage entries is DEPRECATED and should NOT be counted
   // Hours should only come from TimeTracking entries to avoid double-counting
-  const totalTimeTrackingHours: number = monthlyTimeTracking.reduce((sum: number, entry: any) => sum + (entry.hours || 0), 0);
+  const totalTimeTrackingHours: number = dedupeTimeTrackingEntries(
+    monthlyTimeTracking as TimeTracking[]
+  ).reduce(
+    (sum: number, entry: any) => sum + (entry.hours || 0),
+    0
+  );
   const totalHours: number = totalTimeTrackingHours; // Only use time tracking hours
   
   debugLog('🕒 Database: Hours calculation debug:', {
