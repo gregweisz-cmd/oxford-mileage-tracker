@@ -418,6 +418,40 @@ function buildCostCenterRowsForIndex(params: {
   return targetRows;
 }
 
+/** Full-width layout for cost-center travel grids (13 columns, no horizontal scroll). */
+const COST_CENTER_TRAVEL_TABLE_SX = {
+  tableLayout: 'fixed',
+  borderCollapse: 'collapse',
+  width: '100%',
+  '& td, & th': { border: '1px solid #ccc' },
+} as const;
+const COST_CENTER_TRAVEL_CONTAINER_SX = {
+  width: '100%',
+  maxHeight: '65vh',
+  overflowX: 'hidden',
+  overflowY: 'auto',
+} as const;
+const costCenterTravelHeaderSx = {
+  border: '1px solid #ccc',
+  p: 0.5,
+  whiteSpace: 'normal',
+  wordBreak: 'break-word',
+  lineHeight: 1.2,
+  fontSize: 'clamp(0.58rem, 0.7vw, 0.72rem)',
+} as const;
+const costCenterTravelCol = {
+  date: { width: '7%' },
+  description: { width: '26%', overflowWrap: 'anywhere' },
+  hours: { width: '5%' },
+  odometer: { width: '6%' },
+  miles: { width: '5%' },
+  mileage: { width: '6%' },
+  expense: { width: '6.5%' },
+  perDiem: { width: '6.5%' },
+} as const;
+const costCenterTravelBodyCellSx = { border: '1px solid #ccc', p: 0.5 } as const;
+const costCenterTravelBodyDescSx = { ...costCenterTravelBodyCellSx, wordWrap: 'break-word', overflowWrap: 'anywhere' } as const;
+
 /** Renders the cost center travel table from pre-built rows (from buildCostCenterRows). */
 function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
   const { rows } = props;
@@ -432,73 +466,68 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
   const subLodging = rows.reduce((s, r) => s + r.lodging, 0);
   const subPerDiem = rows.reduce((s, r) => s + r.perDiem, 0);
   const stickyHeaderCellSx = {
-    border: '1px solid #ccc',
-    p: 0.75,
+    ...costCenterTravelHeaderSx,
     position: 'sticky',
     top: 0,
     zIndex: 3,
     bgcolor: 'grey.300',
-    whiteSpace: 'normal',
-    wordBreak: 'break-word',
-    lineHeight: 1.2,
-    fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)',
   } as const;
   return (
-    <TableContainer component={Paper} sx={{ overflow: 'auto', maxHeight: '65vh' }}>
-      <Table stickyHeader size="small" sx={{ minWidth: 900, '& td, & th': { border: '1px solid #ccc' } }}>
+    <TableContainer component={Paper} sx={COST_CENTER_TRAVEL_CONTAINER_SX}>
+      <Table stickyHeader size="small" sx={COST_CENTER_TRAVEL_TABLE_SX}>
         <TableHead>
           <TableRow>
-            <TableCell sx={stickyHeaderCellSx}>DATE</TableCell>
-            <TableCell sx={stickyHeaderCellSx}>Description of Activity</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Hours Worked</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Odometer Start</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Odometer End</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Miles Traveled</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Mileage ($)</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Air / Rail / Bus</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Vehicle Rental / Fuel</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Parking / Tolls</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Ground Transport</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Lodging Hotel / AirBnB</TableCell>
-            <TableCell align="center" sx={stickyHeaderCellSx}>Per Diem ($)</TableCell>
+            <TableCell sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.date }}>DATE</TableCell>
+            <TableCell sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.description }}>Description of Activity</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.hours }}>Hours Worked</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.odometer }}>Odometer Start</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.odometer }}>Odometer End</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.miles }}>Miles Traveled</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.mileage }}>Mileage ($)</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.expense }}>Air / Rail / Bus</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.expense }}>Vehicle Rental / Fuel</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.expense }}>Parking / Tolls</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.expense }}>Ground Transport</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.expense }}>Lodging Hotel / AirBnB</TableCell>
+            <TableCell align="center" sx={{ ...stickyHeaderCellSx, ...costCenterTravelCol.perDiem }}>Per Diem ($)</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.day} sx={row.dayOff ? { bgcolor: '#e0e0e0', opacity: 0.6, '& td': { bgcolor: '#e0e0e0', opacity: 0.6 } } : {}}>
-              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+              <TableCell sx={costCenterTravelBodyCellSx}>
                 <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                   <span>{row.dateStr}</span>
                   <Typography variant="caption" color="text.secondary">{row.weekdayStr}</Typography>
                 </Box>
               </TableCell>
-              <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>{row.dayOff ? <Box sx={{ fontStyle: 'italic', color: 'text.secondary' }}>{row.dayOffType || 'Day Off'}</Box> : <Box component="span" sx={{ whiteSpace: 'pre-wrap' }}>{row.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}</Box>}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.hoursWorked ? row.hoursWorked.toFixed(1) : ''}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.odometerStart}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.odometerEnd}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.milesTraveled}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.mileageAmount.toFixed(2)}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.airRailBus.toFixed(2)}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.vehicleRentalFuel.toFixed(2)}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.parkingTolls.toFixed(2)}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.groundTransportation.toFixed(2)}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.lodging.toFixed(2)}</TableCell>
-              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.perDiem.toFixed(2)}</TableCell>
+              <TableCell sx={costCenterTravelBodyDescSx}>{row.dayOff ? <Box sx={{ fontStyle: 'italic', color: 'text.secondary' }}>{row.dayOffType || 'Day Off'}</Box> : <Box component="span" sx={{ whiteSpace: 'pre-wrap' }}>{row.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}</Box>}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>{row.hoursWorked ? row.hoursWorked.toFixed(1) : ''}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>{row.odometerStart}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>{row.odometerEnd}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>{row.milesTraveled}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.mileageAmount.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.airRailBus.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.vehicleRentalFuel.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.parkingTolls.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.groundTransportation.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.lodging.toFixed(2)}</TableCell>
+              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.perDiem.toFixed(2)}</TableCell>
             </TableRow>
           ))}
           <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
-            <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
-            <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subHours.toFixed(1)}</strong></TableCell>
-            <TableCell colSpan={2} sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subMiles}</strong></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subMileage.toFixed(2)}</strong></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subAirRailBus.toFixed(2)}</strong></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subVehicleRentalFuel.toFixed(2)}</strong></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subParkingTolls.toFixed(2)}</strong></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subGroundTransportation.toFixed(2)}</strong></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subLodging.toFixed(2)}</strong></TableCell>
-            <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
+            <TableCell sx={costCenterTravelBodyCellSx}><strong>SUBTOTALS</strong></TableCell>
+            <TableCell sx={costCenterTravelBodyCellSx}></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>{subHours.toFixed(1)}</strong></TableCell>
+            <TableCell colSpan={2} sx={costCenterTravelBodyCellSx}></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>{subMiles}</strong></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subMileage.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subAirRailBus.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subVehicleRentalFuel.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subParkingTolls.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subGroundTransportation.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subLodging.toFixed(2)}</strong></TableCell>
+            <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
           </TableRow>
         </TableBody>
       </Table>
@@ -7945,32 +7974,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Box>
 
             {/* Daily travel table */}
-            <TableContainer component={Paper} sx={{ mt: 2, maxHeight: '65vh', overflow: 'auto' }}>
-              <Table
-                stickyHeader
-                size="small"
-                sx={{
-                  tableLayout: 'fixed',
-                  borderCollapse: 'collapse',
-                  width: '100%',
-                  minWidth: 1500,
-                }}
-              >
+            <TableContainer component={Paper} sx={{ mt: 2, ...COST_CENTER_TRAVEL_CONTAINER_SX }}>
+              <Table stickyHeader size="small" sx={COST_CENTER_TRAVEL_TABLE_SX}>
                 <TableHead>
                   <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 0.75, width: '10%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>DATE</strong></TableCell>
-                    <TableCell sx={{ border: '1px solid #ccc', p: 0.75, width: '40%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Description of Activity</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '8%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Hours Worked</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '8%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Odometer Start</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '8%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Odometer End</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '8%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Miles Traveled</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Mileage ($)</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Air / Rail / Bus</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Vehicle Rental / Fuel</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Parking / Tolls</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Ground Transport</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Lodging</strong></TableCell>
-                    <TableCell align="center" sx={{ border: '1px solid #ccc', p: 0.75, width: '9%', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, fontSize: 'clamp(0.62rem, 0.85vw, 0.75rem)' }}><strong>Per Diem ($)</strong></TableCell>
+                    <TableCell sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.date }}><strong>DATE</strong></TableCell>
+                    <TableCell sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.description }}><strong>Description of Activity</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.hours }}><strong>Hours Worked</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.odometer }}><strong>Odometer Start</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.odometer }}><strong>Odometer End</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.miles }}><strong>Miles Traveled</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.mileage }}><strong>Mileage ($)</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.expense }}><strong>Air / Rail / Bus</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.expense }}><strong>Vehicle Rental / Fuel</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.expense }}><strong>Parking / Tolls</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.expense }}><strong>Ground Transport</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.expense }}><strong>Lodging</strong></TableCell>
+                    <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.perDiem }}><strong>Per Diem ($)</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -8016,7 +8036,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 ...(row.dayOff && !needsRevision && !dayNeedsRevision && { bgcolor: '#e0e0e0', opacity: 0.6, '& td': { bgcolor: '#e0e0e0', opacity: 0.6 } })
                               }}
                             >
-                              <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                              <TableCell sx={costCenterTravelBodyCellSx}>
                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                                   <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
                                     <span>{row.dateStr}</span>
@@ -8025,37 +8045,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   <Typography variant="caption" color="text.secondary">{row.weekdayStr}</Typography>
                                 </Box>
                               </TableCell>
-                              <TableCell sx={{ wordWrap: 'break-word', border: '1px solid #ccc', p: 1 }}>
+                              <TableCell sx={costCenterTravelBodyDescSx}>
                                 {row.dayOff ? <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap', color: 'text.secondary', fontStyle: 'italic' }}>{row.dayOffType || 'Day Off'}</Box> : <Box sx={{ minHeight: '24px', whiteSpace: 'pre-wrap' }} tabIndex={-1} aria-readonly="true">{row.description || <span style={{ color: '#999', fontStyle: 'italic' }}>—</span>}</Box>}
                               </TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>{row.hoursWorked ? row.hoursWorked.toFixed(1) : ''}</Box></TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>{row.odometerStart}</Box></TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>{row.odometerEnd}</Box></TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>{row.milesTraveled}</TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.mileageAmount.toFixed(2)}</TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.airRailBus.toFixed(2)}</TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.vehicleRentalFuel.toFixed(2)}</TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.parkingTolls.toFixed(2)}</TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.groundTransportation.toFixed(2)}</TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${row.lodging.toFixed(2)}</TableCell>
-                              <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><Box sx={{ cursor: 'default' }}>${row.perDiem.toFixed(2)}</Box></TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}><Box sx={{ cursor: 'default' }}>{row.hoursWorked ? row.hoursWorked.toFixed(1) : ''}</Box></TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}><Box sx={{ cursor: 'default' }}>{row.odometerStart}</Box></TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}><Box sx={{ cursor: 'default' }}>{row.odometerEnd}</Box></TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}>{row.milesTraveled}</TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.mileageAmount.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.airRailBus.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.vehicleRentalFuel.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.parkingTolls.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.groundTransportation.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}>${row.lodging.toFixed(2)}</TableCell>
+                              <TableCell align="center" sx={costCenterTravelBodyCellSx}><Box sx={{ cursor: 'default' }}>${row.perDiem.toFixed(2)}</Box></TableCell>
                             </TableRow>
                           );
                         })}
                         <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
-                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>SUBTOTALS</strong></TableCell>
-                          <TableCell sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subHours.toFixed(1)}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>{subMiles}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subMileage.toFixed(2)}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subAirRailBus.toFixed(2)}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subVehicleRentalFuel.toFixed(2)}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subParkingTolls.toFixed(2)}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subGroundTransportation.toFixed(2)}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subLodging.toFixed(2)}</strong></TableCell>
-                          <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
+                          <TableCell sx={costCenterTravelBodyCellSx}><strong>SUBTOTALS</strong></TableCell>
+                          <TableCell sx={costCenterTravelBodyCellSx}></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>{subHours.toFixed(1)}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>{subMiles}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subMileage.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subAirRailBus.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subVehicleRentalFuel.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subParkingTolls.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subGroundTransportation.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subLodging.toFixed(2)}</strong></TableCell>
+                          <TableCell align="center" sx={costCenterTravelBodyCellSx}><strong>${subPerDiem.toFixed(2)}</strong></TableCell>
                         </TableRow>
                       </>
                     );
