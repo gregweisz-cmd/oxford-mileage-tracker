@@ -29,8 +29,6 @@ import EesRulesService from '../services/eesRulesService';
 import { CostCenterAutoSelectionService } from '../services/costCenterAutoSelectionService';
 import { VendorSuggestion, NearbyVendor } from '../services/vendorIntelligenceService';
 import { Employee, Receipt } from '../types';
-import { AnomalyDetectionService } from '../services/anomalyDetectionService';
-import { useNotifications } from '../contexts/NotificationContext';
 import { CategoryAiService, CategorySuggestion } from '../services/categoryAiService';
 import { showErrorWithGoBack, isHttpClientError } from '../utils/errorAlerts';
 import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiService';
@@ -77,7 +75,6 @@ const EES_NOTE_SUFFIX = ` - ${EES_NOTE_TEXT}`;
 export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) {
   const { colors } = useTheme();
   const route = useRoute<RouteProp<RootStackParamList, 'AddReceipt'>>();
-  const { showAnomalyAlert } = useNotifications();
   const lastNonPerDiemCategoryRef = useRef<string>('Other');
   const [formData, setFormData] = useState({
     date: new Date(),
@@ -1285,36 +1282,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       // Note: Cost center usage is tracked automatically through receipt history
       // No need to explicitly save - it will be used for future suggestions
       
-      // Run anomaly detection BEFORE showing success alert
-      let anomalyMessage = '';
-      try {
-        console.log('🔍 Running anomaly detection for new receipt...');
-        const anomalies = await AnomalyDetectionService.detectReceiptAnomaly(
-          currentEmployee.id,
-          receiptData as Receipt
-        );
-        
-        if (anomalies.length > 0) {
-          console.log('🚨 Receipt anomalies detected:', anomalies.length);
-          const alerts = AnomalyDetectionService.generateAlerts(
-            currentEmployee.id,
-            anomalies,
-            'receipt'
-          );
-          
-          // Build anomaly message for the success alert
-          anomalyMessage = '\n\n⚠️ Smart Alert:\n' + alerts.map(alert => `• ${alert.message}`).join('\n');
-          
-          // Also show the detailed anomaly alert
-          showAnomalyAlert(anomalies, 'Receipt');
-        } else {
-          console.log('✅ No receipt anomalies detected');
-        }
-      } catch (error) {
-        console.error('❌ Error running receipt anomaly detection:', error);
-      }
-      
-      Alert.alert('Success', `Receipt added successfully${anomalyMessage}`);
+      Alert.alert('Success', 'Receipt added successfully');
       navigation.navigate('Home');
     } catch (error) {
       console.error('Error saving receipt:', error);

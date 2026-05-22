@@ -38,9 +38,7 @@ import { dismissKeyboardForSelection } from '../utils/formInteraction';
 import { DuplicateDetectionService } from '../services/duplicateDetectionService';
 import { HoursEstimationService } from '../services/hoursEstimationService';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
-import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 import { getTravelReasons, TravelReason } from '../services/travelReasonsService';
-import { useNotifications } from '../contexts/NotificationContext';
 import { TripChainingAiService, TripChainSuggestion } from '../services/tripChainingAiService';
 import TripChainingModal from '../components/TripChainingModal';
 import { COST_CENTERS } from '../constants/costCenters';
@@ -52,7 +50,6 @@ interface MileageEntryScreenProps {
 }
 
 export default function MileageEntryScreen({ navigation, route }: MileageEntryScreenProps) {
-  const { showAnomalyAlert } = useNotifications();
   const [formData, setFormData] = useState({
     date: new Date(),
     odometerReading: '',
@@ -393,36 +390,32 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       
       setHasExistingEntriesToday(entriesForDate.length > 0);
       
-      // Check if there's a daily odometer reading for this date
       const dailyOdometerReading = await DatabaseService.getDailyOdometerReading(
         currentEmployee.id,
         date,
         selectedVehicleId || undefined
       );
-      if (dailyOdometerReading) {
-        // If daily odometer reading exists, use it and disable input
-        setFormData(prev => ({
+      const hasGpsOnDate = await DatabaseService.hasGpsMileageOnDate(
+        currentEmployee.id,
+        date,
+        activeVehicleId
+      );
+
+      if (hasGpsOnDate && dailyOdometerReading) {
+        setFormData((prev) => ({
           ...prev,
-          odometerReading: dailyOdometerReading.odometerReading.toString()
+          odometerReading: dailyOdometerReading.odometerReading.toString(),
         }));
-        setHasStartedGpsToday(true); // This will disable the input
-      } else if (entriesForDate.length > 0 && !isEditing) {
-        // If there are existing entries and we're not editing, set the odometer reading from the first entry
-        const firstEntry = entriesForDate[0];
-        setFormData(prev => ({
-          ...prev,
-          odometerReading: firstEntry.odometerReading?.toString() || ''
-        }));
-        setHasStartedGpsToday(false); // Allow editing if no daily reading
+        setHasStartedGpsToday(true);
       } else if (!isEditing) {
-        const defaultOdometer = await DatabaseService.resolveDefaultStartingOdometer(
+        const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
           currentEmployee.id,
           date,
           activeVehicleId
         );
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
-          odometerReading: defaultOdometer != null ? String(defaultOdometer) : '',
+          odometerReading: nextTripOdometer != null ? String(nextTripOdometer) : '',
         }));
         setHasStartedGpsToday(false);
       } else {
@@ -903,42 +896,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         // Note: Auto-sync service will handle syncing to backend automatically
         console.log('✅ Mileage entry saved locally, auto-sync will handle backend');
         
-        // Run anomaly detection BEFORE showing success alert
-        let anomalyMessage = '';
-        try {
-          console.log('🔍 Running anomaly detection for new entry...');
-          const anomalies = await AnomalyDetectionService.detectMileageAnomaly(
-            currentEmployee.id,
-            entryData as MileageEntry
-          );
-          
-          if (anomalies.length > 0) {
-            console.log('🚨 Anomalies detected:', anomalies.length);
-            const alerts = AnomalyDetectionService.generateAlerts(
-              currentEmployee.id,
-              anomalies,
-              'mileage'
-            );
-            
-            // Build anomaly message for the success alert
-            anomalyMessage = '\n\n⚠️ Smart Alert:\n' + alerts.map(alert => `• ${alert.message}`).join('\n');
-            
-            // Also show the detailed anomaly alert
-            showAnomalyAlert(anomalies, 'Mileage');
-          } else {
-            console.log('✅ No anomalies detected');
-          }
-        } catch (error) {
-          console.error('❌ Error running anomaly detection:', error);
-        }
-        
         // Remember the date for smart defaulting
         setLastSavedDate(formData.date);
         
-        // Show success alert with anomaly info (if any)
         Alert.alert(
           'Success',
-          `Mileage entry created successfully${anomalyMessage}`,
+          'Mileage entry created successfully',
           [
             { text: 'Done', onPress: () => navigation.goBack() },
             {
@@ -1228,7 +1191,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           </View>
         </View>
 
-        {!hasStartedGpsToday && !hasExistingEntriesToday ? (
+        {!hasStartedGpsToday ? (
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Starting Odometer Reading *</Text>
             <ScrollToOnFocusView>
@@ -1246,7 +1209,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
               />
             </ScrollToOnFocusView>
             <Text style={styles.helpText}>
-              Enter the odometer reading at the start of this trip{selectedVehicle ? ` (${selectedVehicle.name})` : ''}
+              {hasExistingEntriesToday
+                ? `Prefilled from where you left off today${selectedVehicle ? ` (${selectedVehicle.name})` : ''}`
+                : `Enter the odometer reading at the start of this trip${selectedVehicle ? ` (${selectedVehicle.name})` : ''}`}
             </Text>
             {lastTravelDayEndingOdometerNote ? (
               <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
@@ -1258,10 +1223,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             <View style={styles.odometerDisplay}>
               <Text style={styles.odometerValue}>{formData.odometerReading}</Text>
               <Text style={styles.odometerNote}>
-                {hasStartedGpsToday 
-                  ? 'GPS tracking started today - odometer reading captured automatically'
-                  : 'Odometer reading from existing entry for this date'
-                }
+                GPS tracking started today — odometer reading captured automatically
               </Text>
               {lastTravelDayEndingOdometerNote ? (
                 <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>

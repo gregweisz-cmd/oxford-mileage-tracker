@@ -106,17 +106,15 @@ export class AnomalyDetectionService {
         maxTripMiles: baseline.maxTripMiles
       });
       
-      // Check daily mileage anomaly
-      const dailyMileageResult = this.checkDailyMileageAnomaly(employeeId, newEntry, baseline);
-      if (dailyMileageResult.isAnomaly) {
-        results.push(dailyMileageResult);
-      }
-      
-      // Check single trip anomaly
-      const tripMileageResult = this.checkTripMileageAnomaly(newEntry, baseline);
-      if (tripMileageResult.isAnomaly) {
-        results.push(tripMileageResult);
-      }
+      // High daily/trip mileage alerts disabled per user request
+      // const dailyMileageResult = this.checkDailyMileageAnomaly(employeeId, newEntry, baseline);
+      // if (dailyMileageResult.isAnomaly) {
+      //   results.push(dailyMileageResult);
+      // }
+      // const tripMileageResult = this.checkTripMileageAnomaly(newEntry, baseline);
+      // if (tripMileageResult.isAnomaly) {
+      //   results.push(tripMileageResult);
+      // }
       
       // Check duplicate trip anomaly - DISABLED per user request
       // const duplicateResult = await this.checkDuplicateTripAnomaly(employeeId, newEntry);
@@ -155,11 +153,11 @@ export class AnomalyDetectionService {
     try {
       const baseline = await this.getBaseline(employeeId);
       
-      // Check amount anomaly
-      const amountResult = this.checkReceiptAmountAnomaly(newReceipt, baseline);
-      if (amountResult.isAnomaly) {
-        results.push(amountResult);
-      }
+      // High receipt amount alerts disabled per user request
+      // const amountResult = this.checkReceiptAmountAnomaly(newReceipt, baseline);
+      // if (amountResult.isAnomaly) {
+      //   results.push(amountResult);
+      // }
       
       // Check daily expense anomaly
       const dailyExpenseResult = await this.checkDailyExpenseAnomaly(employeeId, newReceipt, baseline);

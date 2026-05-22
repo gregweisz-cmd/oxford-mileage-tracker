@@ -2131,6 +2131,72 @@ export class DatabaseService {
     return null;
   }
 
+  /** Ending odometer for a calendar day that already has mileage (start + sum of miles). */
+  static async getTravelDayEndingOdometerForDate(
+    employeeId: string,
+    date: Date,
+    vehicleId?: string
+  ): Promise<number | null> {
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+
+    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const entries = await this.getMileageEntries(employeeId);
+    const entriesForDay = entries.filter((entry) => {
+      const entryDate = new Date(entry.date);
+      entryDate.setHours(0, 0, 0, 0);
+      return (
+        entryDate.getTime() === day.getTime() &&
+        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+      );
+    });
+    if (entriesForDay.length === 0) return null;
+
+    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(
+      day.getDate()
+    ).padStart(2, '0')}`;
+    const ending = await this.computeTravelDayEnding(
+      employeeId,
+      dayKey,
+      entriesForDay,
+      vehicleId
+    );
+    return ending.endingOdometer > 0 ? Math.round(ending.endingOdometer) : null;
+  }
+
+  static async hasGpsMileageOnDate(
+    employeeId: string,
+    date: Date,
+    vehicleId?: string
+  ): Promise<boolean> {
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const entries = await this.getMileageEntries(employeeId);
+    return entries.some((entry) => {
+      const entryDate = new Date(entry.date);
+      entryDate.setHours(0, 0, 0, 0);
+      return (
+        entryDate.getTime() === day.getTime() &&
+        Boolean(entry.isGpsTracked) &&
+        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+      );
+    });
+  }
+
+  /**
+   * Odometer for the next trip on `date`: today's ending if trips exist, else prior-day default.
+   */
+  static async resolveOdometerForNextTrip(
+    employeeId: string,
+    date: Date,
+    vehicleId?: string
+  ): Promise<number | null> {
+    const todayEnding = await this.getTravelDayEndingOdometerForDate(employeeId, date, vehicleId);
+    if (todayEnding != null) return todayEnding;
+    return this.resolveDefaultStartingOdometer(employeeId, date, vehicleId);
+  }
+
   /** Keep vehicles.startingOdometer aligned with the latest trip day's ending odometer. */
   static async refreshVehicleStartingOdometerFromTrips(
     employeeId: string,

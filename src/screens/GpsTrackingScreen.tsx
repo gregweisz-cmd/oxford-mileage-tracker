@@ -560,34 +560,35 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       console.log('🚗 GPS: Checking GPS status for date:', today.toISOString().split('T')[0]);
       
-      // Check if there's a daily odometer reading for today
+      const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
+        employeeId,
+        today,
+        vehicleId
+      );
       const existingReading = await DatabaseService.getDailyOdometerReading(
         employeeId,
         today,
         vehicleId
       );
-      
-      if (existingReading) {
-        console.log('🚗 GPS: Daily odometer reading exists, GPS tracking has been started today');
-        console.log('🚗 GPS: Current odometer reading:', existingReading.odometerReading);
+
+      if (hasGpsTripToday && existingReading) {
+        console.log('🚗 GPS: GPS trip already recorded today; showing daily start odometer');
         setHasStartedGpsToday(true);
-        
-        // Set the odometer reading from the existing reading
-        setTrackingForm(prev => ({
+        setTrackingForm((prev) => ({
           ...prev,
-          odometerReading: existingReading.odometerReading.toString()
+          odometerReading: existingReading.odometerReading.toString(),
         }));
       } else {
-        console.log('🚗 GPS: No daily odometer reading found, GPS tracking not started today');
-        setHasStartedGpsToday(false);
-        const defaultOdometer = await DatabaseService.resolveDefaultStartingOdometer(
+        const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
           employeeId,
           today,
           vehicleId
         );
+        console.log('🚗 GPS: Next trip starting odometer:', nextTripOdometer);
+        setHasStartedGpsToday(false);
         setTrackingForm((prev) => ({
           ...prev,
-          odometerReading: defaultOdometer != null ? String(defaultOdometer) : '',
+          odometerReading: nextTripOdometer != null ? String(nextTripOdometer) : '',
         }));
         await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
       }
