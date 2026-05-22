@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   Modal,
+  Keyboard,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -15,6 +16,8 @@ import { DatabaseService } from '../services/database';
 import { TimeTracking, Employee } from '../types';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { dismissKeyboardForSelection } from '../utils/formInteraction';
+import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
 import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 
 interface TimeTrackingScreenProps {
@@ -42,6 +45,13 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
   const [inlineEditingEntry, setInlineEditingEntry] = useState<string | null>(null);
   const [inlineEditingValue, setInlineEditingValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useDismissStaleUiOnAppResume(
+    useCallback(() => {
+      Keyboard.dismiss();
+    }, []),
+    showAddModal
+  );
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -201,6 +211,9 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
   };
 
   const handleInputChange = (field: string, value: string) => {
+    if (field === 'category') {
+      dismissKeyboardForSelection();
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -702,7 +715,10 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
                         styles.costCenterOption,
                         selectedCostCenter === costCenter && styles.costCenterOptionSelected
                       ]}
-                      onPress={() => setSelectedCostCenter(costCenter)}
+                      onPress={() => {
+                        dismissKeyboardForSelection();
+                        setSelectedCostCenter(costCenter);
+                      }}
                     >
                       <Text style={[
                         styles.costCenterOptionText,

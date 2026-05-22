@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Alert,
   Modal,
   Keyboard,
-  TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -19,6 +18,7 @@ import { DatabaseService } from '../services/database';
 import { UnifiedDataService, UnifiedDayData } from '../services/unifiedDataService';
 import { Employee } from '../types';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
 
 interface HoursWorkedScreenProps {
   navigation: any;
@@ -41,6 +41,8 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
   const [selectedDay, setSelectedDay] = useState<UnifiedDayData | null>(null);
   /** Keys: 'cc:Cost Center Name' for cost center hours, or category name for G&A, PTO, etc. */
   const [timeTrackingInputs, setTimeTrackingInputs] = useState<{[key: string]: number}>({});
+
+  useDismissStaleUiOnAppResume(useCallback(() => Keyboard.dismiss(), []), showEditModal);
 
   useEffect(() => {
     loadData();
@@ -163,7 +165,6 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
   }
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
         <StatusBar style="light" />
       
@@ -198,7 +199,13 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
       </View>
 
       {/* Days List */}
-      <ScrollView style={styles.daysList} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.daysList}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={() => Keyboard.dismiss()}
+      >
         {daysWithHours.length === 0 ? (
           <View style={styles.emptyState}>
             <MaterialIcons name="schedule" size={48} color="#ccc" />
@@ -328,7 +335,6 @@ export default function HoursWorkedScreen({ navigation }: HoursWorkedScreenProps
         </KeyboardAvoidingView>
       </Modal>
       </View>
-    </TouchableWithoutFeedback>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,8 @@ import {
 } from '../utils/oxfordHousePicker';
 import EnhancedLocationInput from '../components/EnhancedLocationInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
+import { dismissKeyboardForSelection } from '../utils/formInteraction';
 import { DuplicateDetectionService } from '../services/duplicateDetectionService';
 import { HoursEstimationService } from '../services/hoursEstimationService';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
@@ -116,6 +118,18 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const milesInputRef = useRef<TextInput>(null);
   const notesInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const dismissMileageUiOverlays = useCallback(() => {
+    setShowLocationOptionsModal(false);
+    setShowStartLocationModal(false);
+    setShowEndLocationModal(false);
+    setShowOxfordHouseSearchModal(false);
+    setShowPurposePickerModal(false);
+    setShowTripChainingModal(false);
+    setIsOxfordHouseStatePickerVisible(false);
+  }, []);
+
+  useDismissStaleUiOnAppResume(dismissMileageUiOverlays);
 
   useEffect(() => {
     getTravelReasons().then(setTravelReasons);
@@ -1342,6 +1356,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                           key={r.id}
                           style={[styles.purposeModalItem, formData.purpose === r.label && styles.purposeModalItemSelected]}
                           onPress={() => {
+                            dismissKeyboardForSelection();
                             setFormData(prev => ({ ...prev, purpose: r.label }));
                             setShowCustomPurposeInput(false);
                             setShowPurposePickerModal(false);
@@ -1519,6 +1534,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                     selectedCostCenter === costCenter && styles.costCenterOptionSelected
                   ]}
                   onPress={() => {
+                    dismissKeyboardForSelection();
                     setSelectedCostCenter(costCenter);
                     // Clear auto-selection flag when user manually changes it
                     if (costCenter !== costCenterSuggestion?.costCenter) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -17,6 +18,8 @@ import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
+import { dismissKeyboardForSelection } from '../utils/formInteraction';
 
 interface EmployeeProfileScreenProps {
   navigation: any;
@@ -28,6 +31,11 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showCostCenterModal, setShowCostCenterModal] = useState(false);
+
+  useDismissStaleUiOnAppResume(
+    useCallback(() => setShowCostCenterModal(false), []),
+    showCostCenterModal
+  );
   
   const [formData, setFormData] = useState({
     name: employee.name || '',
@@ -106,6 +114,7 @@ export default function EmployeeProfileScreen({ navigation, employee, onEmployee
   };
 
   const addCostCenter = () => {
+    dismissKeyboardForSelection();
     if (!newCostCenter.trim()) {
       Alert.alert('Error', 'Please enter a cost center');
       return;

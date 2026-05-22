@@ -29,6 +29,7 @@ import { API_BASE_URL } from '../config/api';
 import { getSyncMonthScope, setSyncMonthScope } from '../services/syncScopeService';
 import { costCenterApiService } from '../services/costCenterApiService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { dismissKeyboardForSelection } from '../utils/formInteraction';
 
 // Helper function to resolve image URI (handles both local files and backend URLs)
 function resolveImageUri(imageUri: string | undefined | null): string {
@@ -336,6 +337,7 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
   };
 
   const handleToggleEligible = (dateKey: string) => {
+    dismissKeyboardForSelection();
     if (saving) return;
     const entry = perDiemEntries.get(dateKey);
     if (!entry) return;

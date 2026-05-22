@@ -42,6 +42,7 @@ import {
 } from '../utils/oxfordHousePicker';
 import { buildPartsFromGeocode } from '../utils/addressFormatter';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { dismissKeyboardForSelection } from '../utils/formInteraction';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -1728,6 +1729,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                             key={r.id}
                             style={[styles.purposeModalItem, trackingForm.purpose === r.label && styles.purposeModalItemSelected]}
                             onPress={() => {
+                              dismissKeyboardForSelection();
                               setTrackingForm(prev => ({ ...prev, purpose: r.label }));
                               setShowCustomPurposeInput(false);
                               setShowPurposePickerModal(false);
@@ -1803,7 +1805,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                         styles.costCenterOption,
                         selectedCostCenter === costCenter && styles.costCenterOptionSelected
                       ]}
-                      onPress={() => setSelectedCostCenter(costCenter)}
+                      onPress={() => {
+                        dismissKeyboardForSelection();
+                        setSelectedCostCenter(costCenter);
+                      }}
                     >
                       <Text style={[
                         styles.costCenterOptionText,
@@ -1824,6 +1829,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                         key={index}
                         style={styles.suggestionItem}
                         onPress={() => {
+                          dismissKeyboardForSelection();
                           setSelectedCostCenter(suggestion.costCenter);
                           setShowCostCenterSuggestions(false);
                         }}

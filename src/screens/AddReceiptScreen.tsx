@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import {
   ScrollView,
   Dimensions,
   Keyboard,
-  TouchableWithoutFeedback,
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -42,6 +41,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { costCenterApiService } from '../services/costCenterApiService';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
+import { dismissKeyboardForSelection } from '../utils/formInteraction';
 
 interface AddReceiptScreenProps {
   navigation: any;
@@ -241,6 +242,17 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }, [route.params?.croppedImageUri, applyCroppedImage])
   );
 
+  /** Close overlays that can block scroll/touches after lock screen or incomplete flows (same class of bug as GPS). */
+  const dismissReceiptUiOverlays = useCallback(() => {
+    setShowDatePicker(false);
+    setReadingImageToFillData(false);
+    setShowVendorSuggestions(false);
+    setShowNearbyVendors(false);
+    setShowCategorySuggestions(false);
+  }, []);
+
+  useDismissStaleUiOnAppResume(dismissReceiptUiOverlays);
+
   // Load category suggestions when vendor and amount are entered
   useEffect(() => {
     const loadCategorySuggestions = async () => {
@@ -435,6 +447,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   };
 
   const handleInputChange = async (field: string, value: string) => {
+    if (field === 'category') {
+      dismissKeyboardForSelection();
+      dismissReceiptUiOverlays();
+    }
+
     // Auto-set amount based on Per Diem rules when Per Diem is selected
     if (field === 'category' && value === 'Per Diem') {
       let defaultAmount = ''; // No default if using actual amount
@@ -1315,7 +1332,6 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const headerTitle = isEditMode ? 'Edit Receipt' : 'Add Receipt';
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={[styles.container, dynamicStyles.container]}>
         <UnifiedHeader
           title={headerTitle}
@@ -1330,6 +1346,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           transparent
           animationType="fade"
           statusBarTranslucent
+          onRequestClose={() => setReadingImageToFillData(false)}
         >
           <View style={styles.readingImageOverlay}>
             <View style={[styles.readingImageCard, { backgroundColor: colors.surface }]}>
@@ -1346,7 +1363,9 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
 
       <KeyboardAwareScrollView
         style={styles.content}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
       >
         {/* Receipt Photo */}
         <View style={styles.photoContainer}>
@@ -1817,7 +1836,11 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                     formData.category === category && styles.categoryButtonSelected,
                     formData.category === category && dynamicStyles.categoryButtonSelected,
                   ]}
-                  onPress={async () => await handleInputChange('category', category)}
+                  onPress={() => {
+                    dismissKeyboardForSelection();
+                    dismissReceiptUiOverlays();
+                    void handleInputChange('category', category);
+                  }}
                 >
                   <Text
                     style={[
@@ -1863,7 +1886,10 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                     selectedCostCenter === costCenter && styles.costCenterOptionSelected,
                     selectedCostCenter === costCenter && dynamicStyles.costCenterOptionSelected
                   ]}
-                  onPress={() => setSelectedCostCenter(costCenter)}
+                  onPress={() => {
+                    dismissKeyboardForSelection();
+                    setSelectedCostCenter(costCenter);
+                  }}
                 >
                   <Text style={[
                     styles.costCenterOptionText,
@@ -1961,7 +1987,6 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         </TouchableOpacity>
       </KeyboardAwareScrollView>
       </View>
-    </TouchableWithoutFeedback>
   );
 }
 
@@ -1987,6 +2012,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  scrollContent: {
+    paddingBottom: 48,
   },
   photoContainer: {
     marginBottom: 20,

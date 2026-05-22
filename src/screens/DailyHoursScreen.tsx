@@ -10,7 +10,6 @@ import {
   Modal,
   Keyboard,
   BackHandler,
-  TouchableWithoutFeedback,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -30,6 +29,8 @@ import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { getSyncMonthScope, setSyncMonthScope } from '../services/syncScopeService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
+import { dismissKeyboardForSelection } from '../utils/formInteraction';
 
 interface DailyHoursScreenProps {
   navigation: any;
@@ -573,6 +574,13 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
     setShowEditModal(false);
   }, []);
 
+  const dismissEditPickerOverlays = useCallback(() => {
+    setShowDayOffDropdown(false);
+    setShowDescriptionPickerModal(false);
+  }, []);
+
+  useDismissStaleUiOnAppResume(dismissEditPickerOverlays, showEditModal);
+
   useEffect(() => {
     if (Platform.OS !== 'android' || !showEditModal) return;
     const onBack = () => {
@@ -735,7 +743,6 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
   const allTemplates = [...recentDescriptions, ...descriptionTemplates, 'Custom...'];
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
         <StatusBar style="dark" />
         
@@ -778,6 +785,9 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
           ref={scrollViewRef}
           style={styles.daysList} 
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={() => Keyboard.dismiss()}
           onScroll={(event) => {
             scrollPositionRef.current = event.nativeEvent.contentOffset.y;
           }}
@@ -937,6 +947,7 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                   <TouchableOpacity
                     style={styles.checkbox}
                     onPress={() => {
+                      dismissKeyboardForSelection();
                       const newValue = !isDayOff;
                       setIsDayOff(newValue);
                       markHoursDirty();
@@ -981,6 +992,7 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                                 key={type}
                                 style={[styles.descriptionPickerItem, dayOffType === type && styles.descriptionPickerItemSelected]}
                                 onPress={() => {
+                                  dismissKeyboardForSelection();
                                   setDayOffType(type);
                                   markHoursDirty();
                                   setShowDayOffDropdown(false);
@@ -1010,6 +1022,7 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                     <TouchableOpacity
                       style={styles.checkbox}
                       onPress={() => {
+                        dismissKeyboardForSelection();
                         setStayedOvernight(!stayedOvernight);
                         markHoursDirty();
                       }}
@@ -1059,6 +1072,7 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                                   key={o.id}
                                   style={[styles.descriptionPickerItem, descriptionText === o.label && styles.descriptionPickerItemSelected]}
                                   onPress={() => {
+                                    dismissKeyboardForSelection();
                                     setDescriptionText(o.label);
                                     markHoursDirty();
                                     setShowDescriptionPickerModal(false);
@@ -1185,7 +1199,6 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
           </KeyboardAvoidingView>
         </Modal>
       </View>
-    </TouchableWithoutFeedback>
   );
 }
 

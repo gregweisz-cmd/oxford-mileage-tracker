@@ -11,6 +11,7 @@ import {
   findNodeHandle,
   type ScrollViewProps,
   type NativeSyntheticEvent,
+  type NativeScrollEvent,
   type TextInputFocusEventData,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -44,6 +45,8 @@ export const KeyboardAwareScrollView = React.forwardRef<ScrollView, KeyboardAwar
   style,
   contentContainerStyle,
   keyboardVerticalOffset = Platform.OS === 'ios' ? 88 : 0,
+  onScrollBeginDrag,
+  nestedScrollEnabled = true,
   ...scrollViewProps
 }: KeyboardAwareScrollViewProps, forwardedRef) {
   const scrollRef = useRef<ScrollView>(null);
@@ -133,6 +136,14 @@ export const KeyboardAwareScrollView = React.forwardRef<ScrollView, KeyboardAwar
     lastFocusHandledAtRef.current = Date.now();
   }, []);
 
+  const handleScrollBeginDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      Keyboard.dismiss();
+      onScrollBeginDrag?.(event);
+    },
+    [onScrollBeginDrag]
+  );
+
   const contextValue = useMemo(
     () => ({
       scrollToY: scrollToFocusedInput,
@@ -169,6 +180,8 @@ export const KeyboardAwareScrollView = React.forwardRef<ScrollView, KeyboardAwar
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          nestedScrollEnabled={nestedScrollEnabled}
+          onScrollBeginDrag={handleScrollBeginDrag}
           showsVerticalScrollIndicator={false}
           {...scrollViewProps}
         >

@@ -11,7 +11,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  TouchableWithoutFeedback,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -433,7 +432,6 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.container}>
           <View
             style={[
@@ -483,7 +481,6 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
             }}
             showsVerticalScrollIndicator
             keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
           >
             {renderStepContent()}
           </KeyboardAwareScrollView>
@@ -520,7 +517,6 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
             </View>
           </View>
         </View>
-      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 };
