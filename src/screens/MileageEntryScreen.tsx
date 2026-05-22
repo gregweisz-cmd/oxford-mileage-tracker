@@ -380,11 +380,14 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       const activeVehicleId = selectedVehicleId || undefined;
       
       // Filter entries for the selected date and currently selected vehicle
+      const soleVehicleId = await DatabaseService.getSoleVehicleIdIfAny(currentEmployee.id);
       const entriesForDate = entries.filter(entry => {
         const entryDate = new Date(entry.date);
         const entryDateStr = entryDate.toISOString().split('T')[0];
-        const vehicleMatches =
-          !activeVehicleId ? !entry.vehicleId : entry.vehicleId === activeVehicleId;
+        const vehicleMatches = !activeVehicleId
+          ? !entry.vehicleId
+          : entry.vehicleId === activeVehicleId ||
+            (!entry.vehicleId && soleVehicleId === activeVehicleId);
         return entryDateStr === dateStr && vehicleMatches;
       });
       
@@ -411,31 +414,18 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           odometerReading: firstEntry.odometerReading?.toString() || ''
         }));
         setHasStartedGpsToday(false); // Allow editing if no daily reading
+      } else if (!isEditing) {
+        const defaultOdometer = await DatabaseService.resolveDefaultStartingOdometer(
+          currentEmployee.id,
+          date,
+          activeVehicleId
+        );
+        setFormData(prev => ({
+          ...prev,
+          odometerReading: defaultOdometer != null ? String(defaultOdometer) : '',
+        }));
+        setHasStartedGpsToday(false);
       } else {
-        // First entry of the day for this specific vehicle:
-        // prefer vehicle baseline, else fall back to last travel-day ending odometer.
-        const selectedVehicle = vehicles.find((v) => v.id === activeVehicleId);
-        if (selectedVehicle && !isEditing) {
-          const roundedVehicleStart = Math.round(selectedVehicle.startingOdometer || 0);
-          if (roundedVehicleStart > 0) {
-            setFormData(prev => ({
-              ...prev,
-              odometerReading: String(roundedVehicleStart),
-            }));
-          } else {
-            const lastTravelDay = await DatabaseService.getLastTravelDayEndingOdometer(
-              currentEmployee.id,
-              date,
-              activeVehicleId
-            );
-            setFormData(prev => ({
-              ...prev,
-              odometerReading: lastTravelDay
-                ? String(Math.round(lastTravelDay.endingOdometer))
-                : '',
-            }));
-          }
-        }
         setHasStartedGpsToday(false);
       }
     } catch (error) {

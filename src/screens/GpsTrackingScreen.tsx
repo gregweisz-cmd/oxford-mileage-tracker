@@ -580,21 +580,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       } else {
         console.log('🚗 GPS: No daily odometer reading found, GPS tracking not started today');
         setHasStartedGpsToday(false);
-        const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
-        const roundedVehicleStart = Math.round(selectedVehicle?.startingOdometer || 0);
-        if (roundedVehicleStart > 0) {
-          setTrackingForm((prev) => ({
-            ...prev,
-            odometerReading: String(roundedVehicleStart),
-          }));
-          await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
-        } else {
-          const fallbackEndingOdometer = await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
-          setTrackingForm((prev) => ({
-            ...prev,
-            odometerReading: fallbackEndingOdometer != null ? String(fallbackEndingOdometer) : '',
-          }));
-        }
+        const defaultOdometer = await DatabaseService.resolveDefaultStartingOdometer(
+          employeeId,
+          today,
+          vehicleId
+        );
+        setTrackingForm((prev) => ({
+          ...prev,
+          odometerReading: defaultOdometer != null ? String(defaultOdometer) : '',
+        }));
+        await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
       }
     } catch (error) {
       console.error('Error checking GPS tracking status:', error);

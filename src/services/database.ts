@@ -1102,8 +1102,15 @@ export class DatabaseService {
       console.error('❌ Database: Error analyzing mileage entry:', error);
     });
 
-    // End odometer is calculated at end of day, not after each entry
-    // No need to update here
+    const vehicleIdForRefresh = (entry.vehicleId || '').trim()
+      || (await this.getSoleVehicleIdIfAny(entry.employeeId));
+    if (vehicleIdForRefresh) {
+      void this.refreshVehicleStartingOdometerFromTrips(entry.employeeId, vehicleIdForRefresh).catch(
+        (error) => {
+          console.error('❌ Database: Failed to refresh vehicle starting odometer:', error);
+        }
+      );
+    }
 
     return newEntry;
   }
@@ -1237,6 +1244,16 @@ export class DatabaseService {
     const updatedEntry = await this.getMileageEntryById(id);
     if (updatedEntry) {
       await this.syncToApi('updateMileageEntry', updatedEntry);
+      const vehicleIdForRefresh = (updatedEntry.vehicleId || '').trim()
+        || (await this.getSoleVehicleIdIfAny(updatedEntry.employeeId));
+      if (vehicleIdForRefresh) {
+        void this.refreshVehicleStartingOdometerFromTrips(
+          updatedEntry.employeeId,
+          vehicleIdForRefresh
+        ).catch((error) => {
+          console.error('❌ Database: Failed to refresh vehicle starting odometer:', error);
+        });
+      }
     }
   }
 
@@ -1974,6 +1991,93 @@ export class DatabaseService {
     }));
   }
 
+  static async getSoleVehicleIdIfAny(employeeId: string): Promise<string | null> {
+    const vehicles = await this.getVehicles(employeeId);
+    const active = vehicles.filter((v) => v.isActive !== false);
+    return active.length === 1 ? active[0].id : null;
+  }
+
+  private static entryMatchesVehicle(
+    entry: MileageEntry,
+    vehicleId: string | undefined,
+    soleVehicleId: string | null
+  ): boolean {
+    if (!vehicleId) {
+      return !entry.vehicleId;
+    }
+    if (entry.vehicleId === vehicleId) return true;
+    if (!entry.vehicleId && soleVehicleId === vehicleId) return true;
+    return false;
+  }
+
+  private static groupMileageEntriesByDay(entries: MileageEntry[]): Map<string, MileageEntry[]> {
+    const entriesByDay = new Map<string, MileageEntry[]>();
+    entries.forEach((entry) => {
+      const d = new Date(entry.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`;
+      const existing = entriesByDay.get(key) || [];
+      existing.push(entry);
+      entriesByDay.set(key, existing);
+    });
+    return entriesByDay;
+  }
+
+  private static async computeTravelDayEnding(
+    employeeId: string,
+    dayKey: string,
+    dayEntries: MileageEntry[],
+    vehicleId?: string
+  ): Promise<{ date: Date; startingOdometer: number; totalMiles: number; endingOdometer: number }> {
+    const [year, month, day] = dayKey.split('-').map(Number);
+    const latestDay = new Date(year, month - 1, day);
+    const totalMiles = dayEntries.reduce((sum, entry) => sum + (Number(entry.miles) || 0), 0);
+
+    const dailyReading = await this.getDailyOdometerReading(employeeId, latestDay, vehicleId);
+    const fallbackStart =
+      dayEntries.reduce((min, entry) => {
+        const reading = Number(entry.odometerReading) || 0;
+        return min === null ? reading : Math.min(min, reading);
+      }, null as number | null) ?? undefined;
+    const startingOdometer = dailyReading?.odometerReading ?? fallbackStart ?? 0;
+    const endingOdometer = startingOdometer + totalMiles;
+
+    return {
+      date: latestDay,
+      startingOdometer,
+      totalMiles,
+      endingOdometer,
+    };
+  }
+
+  /** Most recent travel day with mileage (includes today). */
+  static async getLatestTravelDayEndingOdometer(
+    employeeId: string,
+    vehicleId?: string
+  ): Promise<{ date: Date; startingOdometer: number; totalMiles: number; endingOdometer: number } | null> {
+    const entries = await this.getMileageEntries(employeeId);
+    if (!entries.length) return null;
+
+    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const filteredEntries = entries.filter((entry) =>
+      this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+    );
+    if (!filteredEntries.length) return null;
+
+    const entriesByDay = this.groupMileageEntriesByDay(filteredEntries);
+    const latestDayKey = Array.from(entriesByDay.keys()).sort().pop();
+    if (!latestDayKey) return null;
+
+    return this.computeTravelDayEnding(
+      employeeId,
+      latestDayKey,
+      entriesByDay.get(latestDayKey) || [],
+      vehicleId
+    );
+  }
+
+  /** Last travel day strictly before `beforeDate` (typical default for a new day's starting odometer). */
   static async getLastTravelDayEndingOdometer(
     employeeId: string,
     beforeDate?: Date,
@@ -1985,47 +2089,62 @@ export class DatabaseService {
     const cutoff = beforeDate ? new Date(beforeDate) : new Date();
     cutoff.setHours(0, 0, 0, 0);
 
+    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
     const filteredEntries = entries.filter((entry) => {
       const d = new Date(entry.date);
       d.setHours(0, 0, 0, 0);
-      const vehicleMatches = !vehicleId || entry.vehicleId === vehicleId;
-      return d.getTime() < cutoff.getTime() && vehicleMatches;
+      return (
+        d.getTime() < cutoff.getTime() &&
+        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+      );
     });
     if (!filteredEntries.length) return null;
 
-    const entriesByDay = new Map<string, MileageEntry[]>();
-    filteredEntries.forEach((entry) => {
-      const d = new Date(entry.date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-        d.getDate()
-      ).padStart(2, '0')}`;
-      const existing = entriesByDay.get(key) || [];
-      existing.push(entry);
-      entriesByDay.set(key, existing);
-    });
-
+    const entriesByDay = this.groupMileageEntriesByDay(filteredEntries);
     const latestDayKey = Array.from(entriesByDay.keys()).sort().pop();
     if (!latestDayKey) return null;
 
-    const [year, month, day] = latestDayKey.split('-').map(Number);
-    const latestDay = new Date(year, month - 1, day);
-    const latestDayEntries = entriesByDay.get(latestDayKey) || [];
-    const totalMiles = latestDayEntries.reduce((sum, entry) => sum + (Number(entry.miles) || 0), 0);
+    return this.computeTravelDayEnding(
+      employeeId,
+      latestDayKey,
+      entriesByDay.get(latestDayKey) || [],
+      vehicleId
+    );
+  }
 
-    const dailyReading = await this.getDailyOdometerReading(employeeId, latestDay, vehicleId);
-    const fallbackStart = latestDayEntries.reduce((min, entry) => {
-      const reading = Number(entry.odometerReading) || 0;
-      return min === null ? reading : Math.min(min, reading);
-    }, null as number | null) ?? undefined;
-    const startingOdometer = dailyReading?.odometerReading ?? fallbackStart ?? 0;
-    const endingOdometer = startingOdometer + totalMiles;
+  /** Prefer last travel-day ending for this vehicle; fall back to stored vehicle baseline. */
+  static async resolveDefaultStartingOdometer(
+    employeeId: string,
+    forDate: Date,
+    vehicleId?: string
+  ): Promise<number | null> {
+    const lastTravel = await this.getLastTravelDayEndingOdometer(employeeId, forDate, vehicleId);
+    if (lastTravel && lastTravel.endingOdometer > 0) {
+      return Math.round(lastTravel.endingOdometer);
+    }
+    if (vehicleId) {
+      const vehicle = (await this.getVehicles(employeeId)).find((v) => v.id === vehicleId);
+      if (vehicle && (vehicle.startingOdometer || 0) > 0) {
+        return Math.round(vehicle.startingOdometer);
+      }
+    }
+    return null;
+  }
 
-    return {
-      date: latestDay,
-      startingOdometer,
-      totalMiles,
-      endingOdometer,
-    };
+  /** Keep vehicles.startingOdometer aligned with the latest trip day's ending odometer. */
+  static async refreshVehicleStartingOdometerFromTrips(
+    employeeId: string,
+    vehicleId: string
+  ): Promise<void> {
+    const latest = await this.getLatestTravelDayEndingOdometer(employeeId, vehicleId);
+    if (!latest || latest.endingOdometer <= 0) return;
+
+    const rounded = Math.round(latest.endingOdometer);
+    const vehicles = await this.getVehicles(employeeId);
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
+    if (!vehicle || Math.round(vehicle.startingOdometer || 0) === rounded) return;
+
+    await this.updateVehicle(vehicleId, { startingOdometer: rounded });
   }
 
   static async updateDailyOdometerReading(id: string, updates: Partial<DailyOdometerReading>): Promise<void> {
