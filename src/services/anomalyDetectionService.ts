@@ -83,105 +83,25 @@ export class AnomalyDetectionService {
   /**
    * Detect anomalies in a new mileage entry
    */
+  /** Post-save mileage alerts disabled; see `checkDailyMileageAnomaly` / `checkTripMileageAnomaly` to re-enable. */
   static async detectMileageAnomaly(
-    employeeId: string, 
-    newEntry: MileageEntry
+    employeeId: string,
+    _newEntry: MileageEntry
   ): Promise<AnomalyDetectionResult[]> {
-    const results: AnomalyDetectionResult[] = [];
-    
-    try {
-      console.log('🔍 AnomalyDetection: Starting mileage anomaly detection for entry:', {
-        entryId: newEntry.id,
-        miles: newEntry.miles,
-        startLocation: newEntry.startLocation,
-        endLocation: newEntry.endLocation
-      });
-      
-      const baseline = await this.getBaseline(employeeId);
-      
-      console.log('🔍 AnomalyDetection: Baseline data:', {
-        averageDailyMiles: baseline.averageDailyMiles,
-        maxDailyMiles: baseline.maxDailyMiles,
-        averageTripMiles: baseline.averageTripMiles,
-        maxTripMiles: baseline.maxTripMiles
-      });
-      
-      // High daily/trip mileage alerts disabled per user request
-      // const dailyMileageResult = this.checkDailyMileageAnomaly(employeeId, newEntry, baseline);
-      // if (dailyMileageResult.isAnomaly) {
-      //   results.push(dailyMileageResult);
-      // }
-      // const tripMileageResult = this.checkTripMileageAnomaly(newEntry, baseline);
-      // if (tripMileageResult.isAnomaly) {
-      //   results.push(tripMileageResult);
-      // }
-      
-      // Check duplicate trip anomaly - DISABLED per user request
-      // const duplicateResult = await this.checkDuplicateTripAnomaly(employeeId, newEntry);
-      // if (duplicateResult.isAnomaly) {
-      //   results.push(duplicateResult);
-      // }
-      
-      // Check unusual route anomaly
-      const routeResult = this.checkUnusualRouteAnomaly(newEntry, baseline);
-      if (routeResult.isAnomaly) {
-        results.push(routeResult);
-      }
-      
-      console.log('🔍 AnomalyDetection: Mileage anomaly check completed:', {
-        entryId: newEntry.id,
-        anomaliesFound: results.length,
-        results: results.map(r => ({ reason: r.reason, severity: r.severity }))
-      });
-      
-    } catch (error) {
-      console.error('❌ AnomalyDetection: Error detecting mileage anomaly:', error);
-    }
-    
-    return results;
+    void employeeId;
+    return [];
   }
 
   /**
    * Detect anomalies in a new receipt
    */
+  /** Post-save receipt amount alerts disabled; see `checkReceiptAmountAnomaly` to re-enable. */
   static async detectReceiptAnomaly(
-    employeeId: string, 
-    newReceipt: Receipt
+    employeeId: string,
+    _newReceipt: Receipt
   ): Promise<AnomalyDetectionResult[]> {
-    const results: AnomalyDetectionResult[] = [];
-    
-    try {
-      const baseline = await this.getBaseline(employeeId);
-      
-      // High receipt amount alerts disabled per user request
-      // const amountResult = this.checkReceiptAmountAnomaly(newReceipt, baseline);
-      // if (amountResult.isAnomaly) {
-      //   results.push(amountResult);
-      // }
-      
-      // Check daily expense anomaly
-      const dailyExpenseResult = await this.checkDailyExpenseAnomaly(employeeId, newReceipt, baseline);
-      if (dailyExpenseResult.isAnomaly) {
-        results.push(dailyExpenseResult);
-      }
-      
-      // Check vendor anomaly
-      const vendorResult = this.checkVendorAnomaly(newReceipt, baseline);
-      if (vendorResult.isAnomaly) {
-        results.push(vendorResult);
-      }
-      
-      console.log('🔍 AnomalyDetection: Receipt anomaly check completed:', {
-        receiptId: newReceipt.id,
-        anomaliesFound: results.length,
-        results: results.map(r => ({ reason: r.reason, severity: r.severity }))
-      });
-      
-    } catch (error) {
-      console.error('❌ AnomalyDetection: Error detecting receipt anomaly:', error);
-    }
-    
-    return results;
+    void employeeId;
+    return [];
   }
 
   /**

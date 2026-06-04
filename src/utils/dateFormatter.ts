@@ -1,7 +1,25 @@
 /**
  * Date Formatting Utilities
- * Handles timezone-safe date display
+ * Handles timezone-safe date display and local calendar-day keys.
  */
+
+/** YYYY-MM-DD in the device local calendar (avoids UTC day shift from `toISOString`). */
+export function toLocalDateKey(date: Date): string {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Midnight at the start of the local calendar day for `date`. */
+export function startOfLocalDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+export function isSameLocalCalendarDay(a: Date, b: Date): boolean {
+  return toLocalDateKey(a) === toLocalDateKey(b);
+}
 
 /**
  * Format a date for display, handling date-only values correctly

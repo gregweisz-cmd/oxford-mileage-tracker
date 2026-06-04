@@ -8,6 +8,7 @@ import { debugLog, debugError, debugWarn } from '../config/debug';
 import { getAuthHeaders } from './authHeaders';
 import { API_BASE_URL } from '../config/api';
 import { dedupeTimeTrackingEntries } from '../utils/timeTrackingDedup';
+import { startOfLocalDay, toLocalDateKey } from '../utils/dateFormatter';
 // Removed SyncIntegrationService import to break circular dependency
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -1991,10 +1992,30 @@ export class DatabaseService {
     }));
   }
 
+  // --- Per-vehicle odometer helpers (day start, same-day roll-forward, vehicle baseline sync) ---
+
   static async getSoleVehicleIdIfAny(employeeId: string): Promise<string | null> {
     const vehicles = await this.getVehicles(employeeId);
     const active = vehicles.filter((v) => v.isActive !== false);
     return active.length === 1 ? active[0].id : null;
+  }
+
+  /** Mileage entries on a local calendar day, optionally scoped to one vehicle. */
+  static async getMileageEntriesForVehicleOnDate(
+    employeeId: string,
+    date: Date,
+    vehicleId?: string
+  ): Promise<MileageEntry[]> {
+    const day = startOfLocalDay(date);
+    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const entries = await this.getMileageEntries(employeeId);
+    return entries.filter((entry) => {
+      const entryDay = startOfLocalDay(new Date(entry.date));
+      return (
+        entryDay.getTime() === day.getTime() &&
+        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+      );
+    });
   }
 
   private static entryMatchesVehicle(
@@ -2013,10 +2034,7 @@ export class DatabaseService {
   private static groupMileageEntriesByDay(entries: MileageEntry[]): Map<string, MileageEntry[]> {
     const entriesByDay = new Map<string, MileageEntry[]>();
     entries.forEach((entry) => {
-      const d = new Date(entry.date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-        d.getDate()
-      ).padStart(2, '0')}`;
+      const key = toLocalDateKey(new Date(entry.date));
       const existing = entriesByDay.get(key) || [];
       existing.push(entry);
       entriesByDay.set(key, existing);
@@ -2086,15 +2104,13 @@ export class DatabaseService {
     const entries = await this.getMileageEntries(employeeId);
     if (!entries.length) return null;
 
-    const cutoff = beforeDate ? new Date(beforeDate) : new Date();
-    cutoff.setHours(0, 0, 0, 0);
+    const cutoff = startOfLocalDay(beforeDate ? new Date(beforeDate) : new Date());
 
     const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
     const filteredEntries = entries.filter((entry) => {
-      const d = new Date(entry.date);
-      d.setHours(0, 0, 0, 0);
+      const entryDay = startOfLocalDay(new Date(entry.date));
       return (
-        d.getTime() < cutoff.getTime() &&
+        entryDay.getTime() < cutoff.getTime() &&
         this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
       );
     });
@@ -2137,24 +2153,14 @@ export class DatabaseService {
     date: Date,
     vehicleId?: string
   ): Promise<number | null> {
-    const day = new Date(date);
-    day.setHours(0, 0, 0, 0);
-
-    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
-    const entries = await this.getMileageEntries(employeeId);
-    const entriesForDay = entries.filter((entry) => {
-      const entryDate = new Date(entry.date);
-      entryDate.setHours(0, 0, 0, 0);
-      return (
-        entryDate.getTime() === day.getTime() &&
-        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
-      );
-    });
+    const entriesForDay = await this.getMileageEntriesForVehicleOnDate(
+      employeeId,
+      date,
+      vehicleId
+    );
     if (entriesForDay.length === 0) return null;
 
-    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(
-      day.getDate()
-    ).padStart(2, '0')}`;
+    const dayKey = toLocalDateKey(date);
     const ending = await this.computeTravelDayEnding(
       employeeId,
       dayKey,
@@ -2164,24 +2170,18 @@ export class DatabaseService {
     return ending.endingOdometer > 0 ? Math.round(ending.endingOdometer) : null;
   }
 
+  /** True when a GPS-tracked mileage row exists on this local day (locks day-start odometer on GPS screen). */
   static async hasGpsMileageOnDate(
     employeeId: string,
     date: Date,
     vehicleId?: string
   ): Promise<boolean> {
-    const day = new Date(date);
-    day.setHours(0, 0, 0, 0);
-    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
-    const entries = await this.getMileageEntries(employeeId);
-    return entries.some((entry) => {
-      const entryDate = new Date(entry.date);
-      entryDate.setHours(0, 0, 0, 0);
-      return (
-        entryDate.getTime() === day.getTime() &&
-        Boolean(entry.isGpsTracked) &&
-        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
-      );
-    });
+    const entriesForDay = await this.getMileageEntriesForVehicleOnDate(
+      employeeId,
+      date,
+      vehicleId
+    );
+    return entriesForDay.some((entry) => Boolean(entry.isGpsTracked));
   }
 
   /**

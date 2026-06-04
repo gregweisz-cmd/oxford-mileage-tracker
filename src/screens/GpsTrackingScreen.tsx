@@ -560,6 +560,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       console.log('🚗 GPS: Checking GPS status for date:', today.toISOString().split('T')[0]);
       
+      // Manual trips may create a daily odometer row; only lock after a GPS trip exists today.
       const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
         employeeId,
         today,

@@ -372,21 +372,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     if (!currentEmployee) return;
     
     try {
-      const dateStr = date.toISOString().split('T')[0];
-      const entries = await DatabaseService.getMileageEntries(currentEmployee.id);
       const activeVehicleId = selectedVehicleId || undefined;
-      
-      // Filter entries for the selected date and currently selected vehicle
-      const soleVehicleId = await DatabaseService.getSoleVehicleIdIfAny(currentEmployee.id);
-      const entriesForDate = entries.filter(entry => {
-        const entryDate = new Date(entry.date);
-        const entryDateStr = entryDate.toISOString().split('T')[0];
-        const vehicleMatches = !activeVehicleId
-          ? !entry.vehicleId
-          : entry.vehicleId === activeVehicleId ||
-            (!entry.vehicleId && soleVehicleId === activeVehicleId);
-        return entryDateStr === dateStr && vehicleMatches;
-      });
+      const entriesForDate = await DatabaseService.getMileageEntriesForVehicleOnDate(
+        currentEmployee.id,
+        date,
+        activeVehicleId
+      );
       
       setHasExistingEntriesToday(entriesForDate.length > 0);
       
@@ -430,24 +421,27 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
   const checkGpsTrackingStatus = async () => {
     if (!currentEmployee) return;
-    
+
     try {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const dateStr = today.toISOString().split('T')[0];
-      
-      const existingReading = await DatabaseService.getDailyOdometerReading(
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const vehicleId = selectedVehicleId || undefined;
+      const hasGpsOnDate = await DatabaseService.hasGpsMileageOnDate(
         currentEmployee.id,
         today,
-        selectedVehicleId || undefined
+        vehicleId
       );
-      
-      if (existingReading) {
+      const dailyReading = await DatabaseService.getDailyOdometerReading(
+        currentEmployee.id,
+        today,
+        vehicleId
+      );
+
+      if (hasGpsOnDate && dailyReading) {
         setHasStartedGpsToday(true);
-        // Set the odometer reading from the existing reading
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
-          odometerReading: existingReading.odometerReading.toString()
+          odometerReading: dailyReading.odometerReading.toString(),
         }));
       } else {
         setHasStartedGpsToday(false);

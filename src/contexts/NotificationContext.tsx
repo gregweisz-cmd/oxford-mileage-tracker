@@ -51,6 +51,7 @@ export function NotificationProvider({ children, currentEmployeeId }: Notificati
     );
   };
 
+  /** Mileage/receipt post-save alerts were removed; still used for time-tracking flows if re-wired. */
   const showAnomalyAlert = (anomalies: any[], context: string) => {
     if (anomalies.length === 0) return;
 
