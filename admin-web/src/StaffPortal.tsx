@@ -97,7 +97,7 @@ import {
   readPngFileAsDataUrl,
   saveEmployeeSavedSignature,
 } from './utils/signatureApi';
-import { useAppStickyOffset } from './hooks/useAppStickyOffset';
+import { EMBEDDED_STICKY_TABLE_CONTAINER_SX, useAppStickyOffset } from './hooks/useAppStickyOffset';
 import { CostCenterApiService } from './services/costCenterApiService';
 
 import FormDatePicker from './components/FormDatePicker';
@@ -747,6 +747,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   const reportScopeRef = useRef<HTMLDivElement>(null);
   const headerStickyRef = useAppStickyOffset<HTMLDivElement>(reportScopeRef);
+  /** Report opened in supervisor/finance modal — table body scrolls inside TableContainer. */
+  const embeddedReportView = supervisorMode || financeMode;
 
   useEffect(() => {
     if (!supervisorMode || !approverProfileId) return;
@@ -7123,10 +7125,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               </Button>
             </Box>
             
-            <TableContainer component={Paper}>
-              <Table size="small">
+            <TableContainer
+              component={Paper}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+            >
+              <Table stickyHeader size="small">
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                  <TableRow sx={{ bgcolor: 'grey.100', '& th': { bgcolor: 'grey.100' } }}>
                     {supervisorMode && (
                       <TableCell
                         padding="checkbox"
@@ -7418,7 +7423,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               Enter or edit descriptions of your daily work activities and billable hours worked each day. Hours sync to the Timesheet cost center rows automatically.
             </Typography>
             
-            <TableContainer component={Paper}>
+            <TableContainer
+              component={Paper}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+            >
               <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.100', '& th': { bgcolor: 'grey.100' } }}>
@@ -8424,10 +8432,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Typography>
 
             {/* Cost Center Hours Table */}
-            <TableContainer component={Paper} sx={{ mb: 4, overflowX: 'auto' }}>
-              <Table size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
+            <TableContainer
+              component={Paper}
+              sx={{
+                mb: 4,
+                overflowX: 'auto',
+                ...(embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : {}),
+              }}
+            >
+              <Table stickyHeader size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                  <TableRow sx={{ bgcolor: 'grey.100', '& th': { bgcolor: 'grey.100' } }}>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 120, minWidth: 120, maxWidth: 120 }}><strong>Cost Center</strong></TableCell>
                     {Array.from({ length: daysInMonth }, (_, i) => {
                       const day = i + 1;
@@ -8632,10 +8647,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Typography>
 
             {/* Category Hours Table */}
-            <TableContainer component={Paper}>
-              <Table size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
+            <TableContainer
+              component={Paper}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+            >
+              <Table stickyHeader size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                  <TableRow sx={{ bgcolor: 'grey.100', '& th': { bgcolor: 'grey.100' } }}>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 120, minWidth: 120, maxWidth: 120 }}><strong>Category</strong></TableCell>
                     {Array.from({ length: daysInMonth }, (_, i) => {
                       const day = i + 1;
@@ -8823,10 +8841,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               </Button>
             </Box>
 
-            <TableContainer component={Paper}>
-              <Table sx={{ borderCollapse: 'collapse' }}>
+            <TableContainer
+              component={Paper}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+            >
+              <Table stickyHeader sx={{ borderCollapse: 'collapse' }}>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                  <TableRow sx={{ bgcolor: 'grey.100', '& th': { bgcolor: 'grey.100' } }}>
                     {supervisorMode && (
                       <TableCell
                         padding="checkbox"

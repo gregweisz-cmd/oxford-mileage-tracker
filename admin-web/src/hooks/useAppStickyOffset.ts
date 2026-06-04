@@ -46,3 +46,15 @@ export function useAppStickyOffset<T extends HTMLElement>(
 export const SCROLLABLE_TABLE_CONTAINER_SX = {
   '--app-sticky-offset': '0px',
 } as const;
+
+/**
+ * Supervisor/finance report modal: scroll the table body here so thead sticky works
+ * (MUI Dialog transform breaks sticky relative to the dialog scrollport).
+ */
+export const EMBEDDED_STICKY_TABLE_CONTAINER_SX = {
+  ...SCROLLABLE_TABLE_CONTAINER_SX,
+  display: 'block',
+  maxHeight: 'min(58vh, calc(100vh - 17rem))',
+  overflow: 'auto',
+  WebkitOverflowScrolling: 'touch',
+} as const;
