@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, InputAdornment, Popover, TextField, SxProps, Theme } from '@mui/material';
 import { CalendarToday as CalendarIcon } from '@mui/icons-material';
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
@@ -11,12 +11,51 @@ export interface FormDatePickerProps {
   /** ISO date string YYYY-MM-DD */
   value: string;
   onChange: (value: string) => void;
+  /** Month shown when value is empty (YYYY-MM-DD). Defaults to today. */
+  initialCalendarDate?: string;
   error?: boolean;
   helperText?: string;
   showStartIcon?: boolean;
   size?: 'small' | 'medium';
   sx?: SxProps<Theme>;
 }
+
+function resolveCalendarAnchor(value: string, initialCalendarDate?: string): Dayjs {
+  if (value && dayjs(value).isValid()) {
+    return dayjs(value);
+  }
+  if (initialCalendarDate && dayjs(initialCalendarDate).isValid()) {
+    return dayjs(initialCalendarDate);
+  }
+  return dayjs();
+}
+
+const MemoizedDateCalendar = React.memo(
+  function MemoizedDateCalendar({
+    dayValue,
+    viewMonth,
+    onMonthChange,
+    onSelect,
+  }: {
+    dayValue: Dayjs | null;
+    viewMonth: Dayjs;
+    onMonthChange: (month: Dayjs) => void;
+    onSelect: (newValue: Dayjs | null) => void;
+  }) {
+    return (
+      <DateCalendar
+        value={dayValue}
+        referenceDate={viewMonth}
+        onMonthChange={onMonthChange}
+        onYearChange={onMonthChange}
+        onChange={onSelect}
+      />
+    );
+  },
+  (prev, next) =>
+    prev.dayValue?.format('YYYY-MM-DD') === next.dayValue?.format('YYYY-MM-DD') &&
+    prev.viewMonth.format('YYYY-MM') === next.viewMonth.format('YYYY-MM')
+);
 
 /**
  * Date control that opens a calendar when the user clicks anywhere on the field.
@@ -27,6 +66,7 @@ export function FormDatePicker({
   label,
   value,
   onChange,
+  initialCalendarDate,
   error,
   helperText,
   showStartIcon = true,
@@ -35,16 +75,33 @@ export function FormDatePicker({
 }: FormDatePickerProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [viewMonth, setViewMonth] = useState<Dayjs>(() =>
+    resolveCalendarAnchor(value, initialCalendarDate)
+  );
 
-  const dayValue = value ? dayjs(value) : null;
+  const dayValue = value && dayjs(value).isValid() ? dayjs(value) : null;
   const displayValue = dayValue?.isValid() ? dayValue.format('MM/DD/YYYY') : '';
 
-  const handleSelect = (newValue: Dayjs | null) => {
-    if (newValue?.isValid()) {
-      onChange(newValue.format('YYYY-MM-DD'));
+  useEffect(() => {
+    if (open) {
+      setViewMonth(resolveCalendarAnchor(value, initialCalendarDate));
     }
-    setOpen(false);
-  };
+  }, [open, value, initialCalendarDate]);
+
+  const handleSelect = useCallback(
+    (newValue: Dayjs | null) => {
+      if (newValue?.isValid()) {
+        onChange(newValue.format('YYYY-MM-DD'));
+        setViewMonth(newValue);
+      }
+      setOpen(false);
+    },
+    [onChange]
+  );
+
+  const handleMonthChange = useCallback((month: Dayjs) => {
+    setViewMonth(month);
+  }, []);
 
   const openCalendar = () => setOpen(true);
 
@@ -95,7 +152,12 @@ export function FormDatePicker({
           anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
           transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         >
-          <DateCalendar value={dayValue} onChange={handleSelect} />
+          <MemoizedDateCalendar
+            dayValue={dayValue}
+            viewMonth={viewMonth}
+            onMonthChange={handleMonthChange}
+            onSelect={handleSelect}
+          />
         </Popover>
       </Box>
     </LocalizationProvider>

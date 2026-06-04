@@ -141,6 +141,15 @@ function signatureDateDisplay(
   return storedDate || dateCompleted || '___________';
 }
 
+/** Default receipt date when adding to a report month (today if in-month, else first of month). */
+function defaultReceiptDateForReport(month: number, year: number): string {
+  const now = new Date();
+  if (now.getFullYear() === year && now.getMonth() + 1 === month) {
+    return `${year}-${String(month).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  return `${year}-${String(month).padStart(2, '0')}-01`;
+}
+
 function parseTimesheetRevisionDay(itemId: string): number | null {
   const timeParts = itemId.split('-');
   if (itemId.startsWith('time-category-') && timeParts.length >= 4) {
@@ -8961,7 +8970,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 onClick={() => {
                   setEditingReceipt({
                     id: '',
-                    date: '',
+                    date: defaultReceiptDateForReport(currentMonth, currentYear),
                     amount: 0,
                     vendor: '',
                     description: '',
@@ -9345,6 +9354,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             <FormDatePicker
               label="Date"
               value={editingReceipt?.date || ''}
+              initialCalendarDate={defaultReceiptDateForReport(currentMonth, currentYear)}
               onChange={(date) => {
                 if (editingReceipt) {
                   setEditingReceipt({ ...editingReceipt, date });
