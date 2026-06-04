@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "cd admin-web && npm ci",
-  "buildCommand": "cd admin-web && npm run build",
+  "buildCommand": "cd admin-web && GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true node --max-old-space-size=8192 ./node_modules/react-scripts/scripts/build.js",
   "outputDirectory": "admin-web/build",
   "rewrites": [
     {
@@ -26,7 +26,9 @@
   },
   "build": {
     "env": {
-      "NODE_OPTIONS": "--max-old-space-size=4096",
+      "NODE_OPTIONS": "--max-old-space-size=8192",
+      "GENERATE_SOURCEMAP": "false",
+      "DISABLE_ESLINT_PLUGIN": "true",
       "REACT_APP_API_URL": "https://oxford-mileage-backend.onrender.com",
       "REACT_APP_WEB_URL": "https://expense.oxfordhouse.org"
     }
