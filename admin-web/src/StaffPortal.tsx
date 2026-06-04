@@ -128,6 +128,19 @@ function timesheetCategoryRevisionId(categoryIndex: number, day: number): string
   return `time-category-${categoryIndex}-${day}`;
 }
 
+function formatSignatureDateStamp(): string {
+  return new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
+}
+
+function signatureDateDisplay(
+  hasSignature: boolean,
+  storedDate: string | null | undefined,
+  dateCompleted: string
+): string {
+  if (!hasSignature) return '___________';
+  return storedDate || dateCompleted || '___________';
+}
+
 function parseTimesheetRevisionDay(itemId: string): number | null {
   const timeParts = itemId.split('-');
   if (itemId.startsWith('time-category-') && timeParts.length >= 4) {
@@ -962,6 +975,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [financeSignatureDialogOpen, setFinanceSignatureDialogOpen] = useState(false);
   const [supervisorSignatureState, setSupervisorSignatureState] = useState<string | null>(supervisorSignature || null);
   const [financeSignatureState, setFinanceSignatureState] = useState<string | null>(null);
+  const [employeeSignatureDate, setEmployeeSignatureDate] = useState<string | null>(null);
+  const [supervisorSignatureDate, setSupervisorSignatureDate] = useState<string | null>(null);
+  const [financeSignatureDate, setFinanceSignatureDate] = useState<string | null>(null);
   const [employeeCertificationAcknowledged, setEmployeeCertificationAcknowledged] = useState<boolean>(false);
   const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
   // Refs so Save always sends latest checkbox value (state updates async; clicking Save right after checking can otherwise send stale false)
@@ -1831,6 +1847,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 if (savedExpenseReport.reportData.financeSignature) {
                   setFinanceSignatureState(savedExpenseReport.reportData.financeSignature);
                 }
+                if (savedExpenseReport.reportData.employeeSignatureDate) {
+                  setEmployeeSignatureDate(savedExpenseReport.reportData.employeeSignatureDate);
+                }
+                if (savedExpenseReport.reportData.supervisorSignatureDate) {
+                  setSupervisorSignatureDate(savedExpenseReport.reportData.supervisorSignatureDate);
+                }
+                if (savedExpenseReport.reportData.financeSignatureDate) {
+                  setFinanceSignatureDate(savedExpenseReport.reportData.financeSignatureDate);
+                }
                 
                 // Restore report status and ID
                 if (savedExpenseReport.status) {
@@ -1863,6 +1888,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             setSignatureImage(null);
             setSupervisorSignatureState(null);
             setFinanceSignatureState(null);
+            setEmployeeSignatureDate(null);
+            setSupervisorSignatureDate(null);
+            setFinanceSignatureDate(null);
             setCurrentReportId(null);
             setReportStatus('draft');
             setReportSubmittedAt(null);
@@ -3529,11 +3557,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       employeeSignature: signatureImage,
       supervisorSignature: supervisorSignatureState,
       financeSignature: financeSignatureState,
+      employeeSignatureDate,
+      supervisorSignatureDate,
+      financeSignatureDate,
       employeeCertificationAcknowledged: employeeCertificationAcknowledged,
       supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
       ...overrides,
     };
-  }, [employeeData, dailyDescriptions, currentMonth, currentYear, receipts, signatureImage, supervisorSignatureState, financeSignatureState, employeeCertificationAcknowledged, supervisorCertificationAcknowledged, normalizeDate]);
+  }, [employeeData, dailyDescriptions, currentMonth, currentYear, receipts, signatureImage, supervisorSignatureState, financeSignatureState, employeeSignatureDate, supervisorSignatureDate, financeSignatureDate, employeeCertificationAcknowledged, supervisorCertificationAcknowledged, normalizeDate]);
 
   const syncReportData = useCallback(async (overrides: Record<string, unknown> = {}) => {
     if (!employeeData) return;
@@ -3560,11 +3591,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   }, [employeeData, currentMonth, currentYear, buildReportData]);
 
   const applyEmployeeSignatureToReport = async (result: string, saveToProfile: boolean) => {
+    const signedDate = formatSignatureDateStamp();
     setSignatureImage(result);
+    setEmployeeSignatureDate(signedDate);
     setSignatureDialogOpen(false);
     if (!employeeData) return;
     try {
-      await syncReportData({ employeeSignature: result });
+      await syncReportData({ employeeSignature: result, employeeSignatureDate: signedDate });
       setEmployeeData({ ...employeeData, employeeSignature: result } as any);
       if (saveToProfile) {
         await saveEmployeeSavedSignature(employeeData.employeeId, result);
@@ -3580,11 +3613,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   const applySupervisorSignatureToReport = async (result: string, saveToProfile: boolean) => {
+    const signedDate = formatSignatureDateStamp();
     setSupervisorSignatureState(result);
+    setSupervisorSignatureDate(signedDate);
     setSupervisorSignatureDialogOpen(false);
     if (!employeeData) return;
     try {
-      await syncReportData({ supervisorSignature: result });
+      await syncReportData({ supervisorSignature: result, supervisorSignatureDate: signedDate });
       if (saveToProfile && approverProfileId) {
         await saveEmployeeSavedSignature(approverProfileId, result);
         setSavedSupervisorSignature(result);
@@ -3599,11 +3634,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   const applyFinanceSignatureToReport = async (result: string, saveToProfile: boolean) => {
+    const signedDate = formatSignatureDateStamp();
     setFinanceSignatureState(result);
+    setFinanceSignatureDate(signedDate);
     setFinanceSignatureDialogOpen(false);
     if (!employeeData) return;
     try {
-      await syncReportData({ financeSignature: result });
+      await syncReportData({ financeSignature: result, financeSignatureDate: signedDate });
       if (saveToProfile && approverProfileId) {
         await saveEmployeeSavedSignature(approverProfileId, result);
         setSavedFinanceSignature(result);
@@ -3635,12 +3672,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Remove signature
   const handleRemoveSignature = async () => {
     setSignatureImage(null);
+    setEmployeeSignatureDate(null);
     // Don't clear savedSignature - user may want to re-import it later
     
     // Auto-save signature removal
     if (employeeData) {
       try {
-        await syncReportData({ employeeSignature: null });
+        await syncReportData({ employeeSignature: null, employeeSignatureDate: null });
         
         // Update employeeData for status indicator
         setEmployeeData({ ...employeeData, employeeSignature: null } as any);
@@ -3917,12 +3955,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     pdf.line(25, 280, 80, 280);
     pdf.text('Date', 85, 275);
     pdf.line(100, 280, 120, 280);
+    const supervisorDate = (data as any).supervisorSignatureDate || data.dateCompleted;
+    if ((data as any).supervisorSignature && supervisorDate) {
+      pdf.text(supervisorDate, 101, 279);
+    }
     
     // Finance Department
     pdf.text('Finance Department', 25, 290);
     pdf.line(25, 295, 80, 295);
     pdf.text('Date', 85, 290);
     pdf.line(100, 295, 120, 295);
+    const financeDate = (data as any).financeSignatureDate || data.dateCompleted;
+    if ((data as any).financeSignature && financeDate) {
+      pdf.text(financeDate, 101, 289);
+    }
     
     // Approval Cover Sheet generated
   };
@@ -5075,12 +5121,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       // Restore the saved data
       if (savedReport.reportData) {
-        const { receipts: savedReceipts, signatureImage: savedSignature, supervisorSignature: savedSupervisorSignature, employeeCertificationAcknowledged: savedEmployeeCert, supervisorCertificationAcknowledged: savedSupervisorCert, ...savedEmployeeData } = savedReport.reportData;
+        const {
+          receipts: savedReceipts,
+          signatureImage: savedSignature,
+          supervisorSignature: savedSupervisorSignature,
+          employeeSignatureDate: savedEmployeeSignatureDate,
+          supervisorSignatureDate: savedSupervisorSignatureDate,
+          financeSignatureDate: savedFinanceSignatureDate,
+          employeeCertificationAcknowledged: savedEmployeeCert,
+          supervisorCertificationAcknowledged: savedSupervisorCert,
+          ...savedEmployeeData
+        } = savedReport.reportData;
         
         setEmployeeData(savedEmployeeData);
         setReceipts(savedReceipts || []);
         setSignatureImage(savedSignature || null);
         setSupervisorSignatureState(savedSupervisorSignature || null);
+        setEmployeeSignatureDate(savedEmployeeSignatureDate || null);
+        setSupervisorSignatureDate(savedSupervisorSignatureDate || null);
+        setFinanceSignatureDate(savedFinanceSignatureDate || null);
         setEmployeeCertificationAcknowledged(savedEmployeeCert || false);
         setSupervisorCertificationAcknowledged(savedSupervisorCert || false);
         
@@ -6371,7 +6430,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       )}
                     </Box>
                     <Typography variant="body2" color="textSecondary">{employeeData.name}</Typography>
-                    <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Date: {signatureDateDisplay(!!signatureImage, employeeSignatureDate, employeeData.dateCompleted)}
+                    </Typography>
                   </Box>
                 </Box>
                 <Box sx={{ flex: 1 }}>
@@ -6445,6 +6506,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                           color="error"
                           onClick={async () => {
                             setSupervisorSignatureState(null);
+                            setSupervisorSignatureDate(null);
                             setSupervisorCertificationAcknowledged(false);
                             
                             // Auto-save signature removal
@@ -6452,6 +6514,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               try {
                                 await syncReportData({
                                   supervisorSignature: null,
+                                  supervisorSignatureDate: null,
                                   supervisorCertificationAcknowledged: false,
                                 });
                                 
@@ -6470,7 +6533,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </Button>
                       </Box>
                     )}
-                    <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Date: {signatureDateDisplay(!!supervisorSignatureState, supervisorSignatureDate, employeeData.dateCompleted)}
+                    </Typography>
                   </Box>
                 </Box>
                 <Box sx={{ flex: 1 }}>
@@ -6523,7 +6588,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       )}
                     </Box>
                     <Typography variant="body2" color="textSecondary">Finance Signature:</Typography>
-                    <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Date: {signatureDateDisplay(!!financeSignatureState, financeSignatureDate, employeeData.dateCompleted)}
+                    </Typography>
                   </Box>
                 </Box>
               </Box>
@@ -7108,7 +7175,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </Typography>
                       )}
                     </Box>
-                    <Typography variant="body1" component="div"><strong>Date Signed:</strong> {employeeData.dateCompleted}</Typography>
+                    <Typography variant="body1" component="div">
+                      <strong>Date Signed:</strong>{' '}
+                      {signatureDateDisplay(!!signatureImage, employeeSignatureDate, employeeData.dateCompleted)}
+                    </Typography>
                   </Box>
                 </Box>
               </Box>
@@ -9221,10 +9291,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onUploadNew={handleSupervisorSignatureUploadNew}
         onRemove={async () => {
           setSupervisorSignatureState(null);
+          setSupervisorSignatureDate(null);
           setSupervisorCertificationAcknowledged(false);
           if (employeeData) {
             await syncReportData({
               supervisorSignature: null,
+              supervisorSignatureDate: null,
               supervisorCertificationAcknowledged: false,
             });
           }
@@ -9243,8 +9315,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onUploadNew={handleFinanceSignatureUploadNew}
         onRemove={async () => {
           setFinanceSignatureState(null);
+          setFinanceSignatureDate(null);
           if (employeeData) {
-            await syncReportData({ financeSignature: null });
+            await syncReportData({ financeSignature: null, financeSignatureDate: null });
           }
           setFinanceSignatureDialogOpen(false);
           showSuccess('Finance signature removed from this report');
@@ -9828,12 +9901,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               onClick={() => {
                                 // Load this report
                                 if (report.reportData) {
-                                  const { receipts: savedReceipts, signatureImage: savedSignature, supervisorSignature: savedSupervisorSignature, ...savedEmployeeData } = report.reportData;
+                                  const {
+                                    receipts: savedReceipts,
+                                    signatureImage: savedSignature,
+                                    supervisorSignature: savedSupervisorSignature,
+                                    employeeSignatureDate: savedEmployeeSignatureDate,
+                                    supervisorSignatureDate: savedSupervisorSignatureDate,
+                                    financeSignatureDate: savedFinanceSignatureDate,
+                                    ...savedEmployeeData
+                                  } = report.reportData;
                                   
                                   setEmployeeData(savedEmployeeData);
                                   setReceipts(savedReceipts || []);
                                   setSignatureImage(savedSignature || null);
                                   setSupervisorSignatureState(savedSupervisorSignature || null);
+                                  setEmployeeSignatureDate(savedEmployeeSignatureDate || null);
+                                  setSupervisorSignatureDate(savedSupervisorSignatureDate || null);
+                                  setFinanceSignatureDate(savedFinanceSignatureDate || null);
                                   
                                   // Update the current month/year to match the loaded report
                                   setCurrentMonth(report.month);
