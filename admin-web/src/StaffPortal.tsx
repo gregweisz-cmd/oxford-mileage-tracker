@@ -8348,7 +8348,63 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               </Box>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6"><strong>Supervisor:</strong></Typography>
-                <Box sx={{ mt: 2, mb: 2, borderBottom: '1px solid #333', minHeight: 40, width: 200 }} />
+                <Box sx={{
+                  mt: 2,
+                  mb: 2,
+                  minHeight: 40,
+                  width: 200,
+                  border: '1px solid #ccc',
+                  borderRadius: 1,
+                  bgcolor: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  {supervisorSignatureState ? (
+                    <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+                      <img
+                        src={supervisorSignatureState}
+                        alt="Supervisor Signature"
+                        style={{
+                          maxHeight: '100%',
+                          maxWidth: '100%',
+                          objectFit: 'contain',
+                        }}
+                      />
+                      {supervisorMode && (
+                        <IconButton
+                          size="small"
+                          onClick={() => setSupervisorSignatureDialogOpen(true)}
+                          sx={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            bgcolor: 'white',
+                            '&:hover': { bgcolor: 'grey.100' },
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Box>
+                  ) : supervisorMode ? (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setSupervisorSignatureDialogOpen(true)}
+                      startIcon={<UploadIcon />}
+                      sx={{ m: 1, fontSize: '0.7rem' }}
+                    >
+                      Add signature
+                    </Button>
+                  ) : (
+                    <Typography variant="caption" color="textSecondary">
+                      Supervisor signature will appear here
+                    </Typography>
+                  )}
+                </Box>
                 <Typography variant="body2" color="textSecondary">Supervisor Signature:</Typography>
               </Box>
             </Box>
