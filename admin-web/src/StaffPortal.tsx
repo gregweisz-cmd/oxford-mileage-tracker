@@ -122,6 +122,29 @@ function isPdfReceiptUri(uri: string | undefined): boolean {
   return noQuery.endsWith('.pdf');
 }
 
+const TIMESHEET_CATEGORY_TYPES = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'] as const;
+
+function timesheetCategoryRevisionId(categoryIndex: number, day: number): string {
+  return `time-category-${categoryIndex}-${day}`;
+}
+
+function parseTimesheetRevisionDay(itemId: string): number | null {
+  const timeParts = itemId.split('-');
+  if (itemId.startsWith('time-category-') && timeParts.length >= 4) {
+    const day = parseInt(timeParts[3], 10);
+    return Number.isNaN(day) ? null : day;
+  }
+  if (itemId.startsWith('time-') && timeParts.length >= 3) {
+    const day = parseInt(timeParts[2], 10);
+    return Number.isNaN(day) ? null : day;
+  }
+  if (/^\d+$/.test(itemId)) {
+    const day = parseInt(itemId, 10) + 1;
+    return Number.isNaN(day) ? null : day;
+  }
+  return null;
+}
+
 /** Build driving summary from mileage entries. Each entry is "Start to End" or "Start to End for Purpose"; multiple entries joined with " ; ". */
 function buildDrivingSummaryFromMileage(
   entries: any[],
@@ -2575,15 +2598,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 } else if (category === 'per_diem' && itemId) {
                   itemsNeedingRev.add(`perdiem-${itemId}`);
                 } else if ((category === 'time' || category === 'timesheet') && itemId) {
-                  itemsNeedingRev.add(itemId.startsWith('time-') ? itemId : `time-${itemId}`);
-                  const timeParts = itemId.split('-');
-                  if (itemId.startsWith('time-') && timeParts.length >= 3) {
-                    const day = parseInt(timeParts[2], 10);
-                    if (!isNaN(day)) {
-                      daysNeedingRev.add(day);
-                    }
-                  } else if (/^\d+$/.test(itemId)) {
-                    const day = parseInt(itemId, 10) + 1;
+                  const normalizedId = itemId.startsWith('time-') ? itemId : `time-${itemId}`;
+                  itemsNeedingRev.add(normalizedId);
+                  const day = parseTimesheetRevisionDay(normalizedId);
+                  if (day != null) {
                     daysNeedingRev.add(day);
                   }
                 }
@@ -8459,95 +8477,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     })}
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }}><strong>TOTALS</strong></TableCell>
                   </TableRow>
-                  {supervisorMode && (
-                    <TableRow sx={{ bgcolor: 'grey.100' }}>
-                      <TableCell
-                        sx={{
-                          border: '1px solid #ccc',
-                          p: 1,
-                          width: 120,
-                          minWidth: 120,
-                          maxWidth: 120,
-                          verticalAlign: 'middle',
-                        }}
-                      >
-                        <Typography
-                          variant="caption"
-                          sx={{ fontSize: '0.7rem', fontWeight: 'bold', display: 'block', textAlign: 'center', lineHeight: 1.15, mb: 0.5 }}
-                        >
-                          Needs Revision
-                        </Typography>
-                        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                          <Checkbox
-                            indeterminate={
-                              selectedTimeTrackingItems.size > 0 &&
-                              selectedTimeTrackingItems.size <
-                                daysInMonth * (employeeData?.costCenters.length || 0)
-                            }
-                            checked={
-                              daysInMonth > 0 &&
-                              (employeeData?.costCenters.length || 0) > 0 &&
-                              selectedTimeTrackingItems.size ===
-                                daysInMonth * (employeeData?.costCenters.length || 0)
-                            }
-                            onChange={(e) => {
-                              if (!employeeData) return;
-                              const newSet = new Set<string>();
-                              if (e.target.checked) {
-                                employeeData.costCenters.forEach((_, costCenterIdx) => {
-                                  for (let d = 1; d <= daysInMonth; d++) {
-                                    newSet.add(`time-${costCenterIdx}-${d}`);
-                                  }
-                                });
-                              }
-                              setSelectedTimeTrackingItems(newSet);
-                            }}
-                            size="small"
-                          />
-                        </Box>
-                      </TableCell>
-                      {Array.from({ length: daysInMonth }, (_, i) => {
-                        const day = i + 1;
-                        const allCostCentersSelected =
-                          employeeData?.costCenters.every((_, costCenterIdx) =>
-                            selectedTimeTrackingItems.has(`time-${costCenterIdx}-${day}`)
-                          ) || false;
-                        const someCostCentersSelected =
-                          employeeData?.costCenters.some((_, costCenterIdx) =>
-                            selectedTimeTrackingItems.has(`time-${costCenterIdx}-${day}`)
-                          ) || false;
-
-                        return (
-                          <TableCell
-                            key={i}
-                            align="center"
-                            sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5 }}
-                          >
-                            <Checkbox
-                              indeterminate={someCostCentersSelected && !allCostCentersSelected}
-                              checked={allCostCentersSelected && (employeeData?.costCenters.length || 0) > 0}
-                              onChange={(e) => {
-                                const newSet = new Set(selectedTimeTrackingItems);
-                                if (e.target.checked && employeeData) {
-                                  employeeData.costCenters.forEach((_, costCenterIdx) => {
-                                    newSet.add(`time-${costCenterIdx}-${day}`);
-                                  });
-                                } else {
-                                  employeeData?.costCenters.forEach((_, costCenterIdx) => {
-                                    newSet.delete(`time-${costCenterIdx}-${day}`);
-                                  });
-                                }
-                                setSelectedTimeTrackingItems(newSet);
-                              }}
-                              size="small"
-                              sx={{ p: 0 }}
-                            />
-                          </TableCell>
-                        );
-                      })}
-                      <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }} />
-                    </TableRow>
-                  )}
                 </TableHead>
                 <TableBody>
                   {/* Used Cost Centers */}
@@ -8670,11 +8599,132 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     })}
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }}><strong>TOTAL</strong></TableCell>
                   </TableRow>
+                  {supervisorMode && (
+                    <TableRow sx={{ bgcolor: 'grey.100' }}>
+                      <TableCell
+                        sx={{
+                          border: '1px solid #ccc',
+                          p: 1,
+                          width: 120,
+                          minWidth: 120,
+                          maxWidth: 120,
+                          verticalAlign: 'middle',
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          sx={{ fontSize: '0.7rem', fontWeight: 'bold', display: 'block', textAlign: 'center', lineHeight: 1.15, mb: 0.5 }}
+                        >
+                          Needs Revision
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                          <Checkbox
+                            indeterminate={
+                              selectedTimeTrackingItems.size > 0 &&
+                              selectedTimeTrackingItems.size <
+                                daysInMonth * TIMESHEET_CATEGORY_TYPES.length
+                            }
+                            checked={
+                              daysInMonth > 0 &&
+                              selectedTimeTrackingItems.size ===
+                                daysInMonth * TIMESHEET_CATEGORY_TYPES.length
+                            }
+                            onChange={(e) => {
+                              const newSet = new Set<string>();
+                              if (e.target.checked) {
+                                TIMESHEET_CATEGORY_TYPES.forEach((_, categoryIdx) => {
+                                  for (let d = 1; d <= daysInMonth; d++) {
+                                    newSet.add(timesheetCategoryRevisionId(categoryIdx, d));
+                                  }
+                                });
+                              }
+                              setSelectedTimeTrackingItems(newSet);
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                      </TableCell>
+                      {Array.from({ length: daysInMonth }, (_, i) => {
+                        const day = i + 1;
+                        const allCategoriesSelected = TIMESHEET_CATEGORY_TYPES.every((_, categoryIdx) =>
+                          selectedTimeTrackingItems.has(timesheetCategoryRevisionId(categoryIdx, day))
+                        );
+                        const someCategoriesSelected = TIMESHEET_CATEGORY_TYPES.some((_, categoryIdx) =>
+                          selectedTimeTrackingItems.has(timesheetCategoryRevisionId(categoryIdx, day))
+                        );
+
+                        return (
+                          <TableCell
+                            key={i}
+                            align="center"
+                            sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5 }}
+                          >
+                            <Checkbox
+                              indeterminate={someCategoriesSelected && !allCategoriesSelected}
+                              checked={allCategoriesSelected}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedTimeTrackingItems);
+                                TIMESHEET_CATEGORY_TYPES.forEach((_, categoryIdx) => {
+                                  const id = timesheetCategoryRevisionId(categoryIdx, day);
+                                  if (e.target.checked) {
+                                    newSet.add(id);
+                                  } else {
+                                    newSet.delete(id);
+                                  }
+                                });
+                                setSelectedTimeTrackingItems(newSet);
+                              }}
+                              size="small"
+                              sx={{ p: 0 }}
+                            />
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }} />
+                    </TableRow>
+                  )}
                 </TableHead>
                 <TableBody>
-                  {['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'].map((category) => (
+                  {TIMESHEET_CATEGORY_TYPES.map((category, categoryIndex) => (
                     <TableRow key={category}>
-                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>{category}</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', border: '1px solid #ccc', p: 1, fontSize: '0.75rem' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {supervisorMode && (
+                            <Checkbox
+                              indeterminate={
+                                selectedTimeTrackingItems.size > 0 &&
+                                !Array.from({ length: daysInMonth }, (_, d) => d + 1).every((d) =>
+                                  selectedTimeTrackingItems.has(timesheetCategoryRevisionId(categoryIndex, d))
+                                ) &&
+                                Array.from({ length: daysInMonth }, (_, d) => d + 1).some((d) =>
+                                  selectedTimeTrackingItems.has(timesheetCategoryRevisionId(categoryIndex, d))
+                                )
+                              }
+                              checked={
+                                daysInMonth > 0 &&
+                                Array.from({ length: daysInMonth }, (_, d) => d + 1).every((d) =>
+                                  selectedTimeTrackingItems.has(timesheetCategoryRevisionId(categoryIndex, d))
+                                )
+                              }
+                              onChange={(e) => {
+                                const newSet = new Set(selectedTimeTrackingItems);
+                                for (let d = 1; d <= daysInMonth; d++) {
+                                  const id = timesheetCategoryRevisionId(categoryIndex, d);
+                                  if (e.target.checked) {
+                                    newSet.add(id);
+                                  } else {
+                                    newSet.delete(id);
+                                  }
+                                }
+                                setSelectedTimeTrackingItems(newSet);
+                              }}
+                              size="small"
+                              sx={{ p: 0 }}
+                            />
+                          )}
+                          <span>{category}</span>
+                        </Box>
+                      </TableCell>
                       {Array.from({ length: daysInMonth }, (_, i) => {
                         const day = i + 1;
                         const entry = employeeData?.dailyEntries.find(e => e.day === day);
@@ -8682,18 +8732,32 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         const isEditing = editingCategoryCell?.category === category && 
                                         editingCategoryCell?.day === day;
                         const dayHours = timesheetDayHours(currentValue);
-                        
-                        // Check if any time entries for this day need revision
+                        const categoryRevisionId = timesheetCategoryRevisionId(categoryIndex, day);
+                        const needsRevisionFromNotes =
+                          itemsNeedingRevision.has(categoryRevisionId) || daysNeedingRevision.has(day);
                         const entryDate = new Date(currentYear, currentMonth - 1, day);
-                        const needsRevision = rawTimeEntries.some((t: any) => {
+                        const needsRevisionFromRaw = rawTimeEntries.some((t: any) => {
                           const tDate = new Date(t.date);
-                          return tDate.getUTCDate() === entryDate.getUTCDate() && 
-                                 tDate.getUTCMonth() === entryDate.getUTCMonth() && 
-                                 t.needsRevision;
+                          return (
+                            tDate.getUTCDate() === entryDate.getUTCDate() &&
+                            tDate.getUTCMonth() === entryDate.getUTCMonth() &&
+                            t.category === category &&
+                            t.needsRevision
+                          );
                         });
+                        const needsRevision = needsRevisionFromNotes || needsRevisionFromRaw;
+                        const isSelectedForRevision = selectedTimeTrackingItems.has(categoryRevisionId);
                         
                         return (
-                          <TableCell key={i} align="center" sx={{ border: '1px solid #ccc', p: 0.5, bgcolor: needsRevision ? 'warning.light' : 'transparent' }}>
+                          <TableCell
+                            key={i}
+                            align="center"
+                            sx={{
+                              border: '1px solid #ccc',
+                              p: 0.5,
+                              bgcolor: needsRevision ? '#ffcccc' : isSelectedForRevision ? 'action.selected' : 'transparent',
+                            }}
+                          >
                             {isEditing ? (
                               <TextField
                                 value={editingCategoryValue}
