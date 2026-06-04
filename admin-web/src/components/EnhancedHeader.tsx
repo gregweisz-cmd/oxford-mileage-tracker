@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAppStickyOffset } from '../hooks/useAppStickyOffset';
 import {
   AppBar,
   Toolbar,
@@ -98,6 +99,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const { showSuccess, showInfo } = useToast();
   const bellEmployeeId = notificationEmployeeId || employeeId;
+  const stickyOffsetRef = useAppStickyOffset<HTMLDivElement>();
 
   /**
    * Opens the settings menu
@@ -180,6 +182,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
    */
   return (
     <Box
+      ref={stickyOffsetRef}
       sx={{
         position: 'sticky',
         top: 0,

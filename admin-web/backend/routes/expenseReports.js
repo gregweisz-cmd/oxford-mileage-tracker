@@ -197,6 +197,15 @@ router.post('/api/expense-reports', async (req, res) => {
 
       // If submitting, initialize approval workflow
       if (status === 'submitted') {
+        const employeeSig = reportData.employeeSignature || reportData.signatureImage;
+        if (!employeeSig) {
+          res.status(400).json({ error: 'Employee signature is required before submission. Upload a signature on the Cover Sheet.' });
+          return;
+        }
+        if (!reportData.employeeCertificationAcknowledged) {
+          res.status(400).json({ error: 'Employee certification acknowledgment is required before submission.' });
+          return;
+        }
         const report = { id: existingReport.id, employeeId, month, year };
         debugLog(`📝 Submitting report ${existingReport.id} for employee ${employeeId} via POST`);
         const workflowInit = await initializeApprovalWorkflow(report, reportData);
@@ -255,6 +264,15 @@ router.post('/api/expense-reports', async (req, res) => {
 
       // If submitting, initialize approval workflow
       if (status === 'submitted') {
+        const employeeSigInsert = reportData.employeeSignature || reportData.signatureImage;
+        if (!employeeSigInsert) {
+          res.status(400).json({ error: 'Employee signature is required before submission. Upload a signature on the Cover Sheet.' });
+          return;
+        }
+        if (!reportData.employeeCertificationAcknowledged) {
+          res.status(400).json({ error: 'Employee certification acknowledgment is required before submission.' });
+          return;
+        }
         const report = { id, employeeId, month, year };
         debugLog(`📝 Creating and submitting report ${id} for employee ${employeeId} via POST`);
         const workflowInit = await initializeApprovalWorkflow(report, reportData);
@@ -2062,6 +2080,28 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         if (!approverId) {
           res.status(400).json({ error: 'Approver ID is required' });
           return;
+        }
+
+        const reportDataForSig = helpers.parseJsonSafe(report.reportData, {});
+        const submissionTypeForSig = (report.submissionType || reportDataForSig.submissionType || '').toLowerCase();
+        const approverRole = currentStep.role || '';
+        if (approverRole === 'supervisor' || approverRole === 'senior_staff') {
+          if (submissionTypeForSig !== 'weekly_checkup') {
+            if (!reportDataForSig.supervisorSignature) {
+              res.status(400).json({ error: 'Supervisor signature is required before approval. Upload a signature on the Cover Sheet.' });
+              return;
+            }
+            if (!reportDataForSig.supervisorCertificationAcknowledged) {
+              res.status(400).json({ error: 'Supervisor certification acknowledgment is required before approval.' });
+              return;
+            }
+          }
+        }
+        if (approverRole === 'finance') {
+          if (!reportDataForSig.financeSignature) {
+            res.status(400).json({ error: 'Finance signature is required before approval. Upload a signature on the report Cover Sheet.' });
+            return;
+          }
         }
 
         const allowedApproverIds = new Set();

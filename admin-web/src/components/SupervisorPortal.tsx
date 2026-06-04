@@ -72,6 +72,10 @@ import {
 
 // Import StaffPortal for team member report viewing
 import StaffPortal from '../StaffPortal';
+import {
+  fetchExpenseReportById,
+  requiresSupervisorCertification,
+} from '../utils/signatureApi';
 import { useErrorPrompt, isHttpClientError } from '../contexts/ErrorPromptContext';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
@@ -387,10 +391,25 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
   const handleApproveReport = async (reportId: string) => {
     const report = teamReports.find((r) => r.id === reportId);
-    const requiresSupervisorCertification = (report?.submissionType || '').toLowerCase() !== 'weekly_checkup';
+    const needsCert = requiresSupervisorCertification(report?.submissionType);
 
-    if (requiresSupervisorCertification && !supervisorCertificationAcknowledged) {
+    if (needsCert && !supervisorCertificationAcknowledged) {
       alert('Please acknowledge the certification statement before approving the report.');
+      return;
+    }
+
+    try {
+      const fullReport = await fetchExpenseReportById(reportId);
+      const reportData = (fullReport.reportData || {}) as Record<string, unknown>;
+      if (needsCert && !reportData.supervisorSignature) {
+        alert(
+          'Please upload your supervisor signature on the Cover Sheet before approving. Use Upload Signature and choose Upload saved or Upload new.'
+        );
+        return;
+      }
+    } catch (error) {
+      debugError('Error validating supervisor signature:', error);
+      alert('Could not verify supervisor signature. Please try again.');
       return;
     }
     
@@ -403,7 +422,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           action: 'approve',
           approverId: supervisorId,
           approverName: supervisorName,
-          supervisorCertificationAcknowledged: requiresSupervisorCertification ? supervisorCertificationAcknowledged : false,
+          supervisorCertificationAcknowledged: needsCert ? supervisorCertificationAcknowledged : false,
         }),
       });
 

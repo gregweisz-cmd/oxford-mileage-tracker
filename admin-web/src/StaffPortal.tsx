@@ -44,8 +44,6 @@ import {
   Delete as DeleteIcon,
   Close as CloseIcon,
   CloudUpload as UploadIcon,
-  CloudDownload as CloudDownloadIcon,
-  Check as CheckIcon,
   CheckCircle as CheckCircleIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
@@ -93,6 +91,12 @@ import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShort
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 import ReceiptImageCropModal from './components/ReceiptImageCropModal';
 import { ConfirmDeleteDialog } from './components/ConfirmDeleteDialog';
+import { SignatureUploadDialog } from './components/SignatureUploadDialog';
+import {
+  fetchEmployeeSavedSignature,
+  readPngFileAsDataUrl,
+  saveEmployeeSavedSignature,
+} from './utils/signatureApi';
 import { CostCenterApiService } from './services/costCenterApiService';
 
 import FormDatePicker from './components/FormDatePicker';
@@ -430,6 +434,7 @@ const COST_CENTER_TRAVEL_CONTAINER_SX = {
   maxHeight: '65vh',
   overflowX: 'hidden',
   overflowY: 'auto',
+  '--app-sticky-offset': '0px',
 } as const;
 const costCenterTravelHeaderSx = {
   border: '1px solid #ccc',
@@ -467,9 +472,6 @@ function CostCenterTravelTable(props: { rows: CostCenterRow[] }) {
   const subPerDiem = rows.reduce((s, r) => s + r.perDiem, 0);
   const stickyHeaderCellSx = {
     ...costCenterTravelHeaderSx,
-    position: 'sticky',
-    top: 0,
-    zIndex: 3,
     bgcolor: 'grey.300',
   } as const;
   return (
@@ -579,6 +581,9 @@ interface StaffPortalProps {
   onRequestRevision?: () => void; // Callback for requesting revision in supervisor mode
   /** Logged-in user id for notification APIs when viewing another employee's report (finance/supervisor embed). */
   viewerUserIdForNotifications?: string;
+  /** Finance user editing/approving a report — enables finance signature on cover sheet. */
+  financeMode?: boolean;
+  financeUserId?: string;
 }
 
 // Mock data interfaces matching spreadsheet structure
@@ -719,6 +724,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   onApproveReport,
   onRequestRevision,
   viewerUserIdForNotifications,
+  financeMode = false,
+  financeUserId,
 }) => {
   // Debug: Log handlers when in supervisor mode
   React.useEffect(() => {
@@ -730,6 +737,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       });
     }
   }, [supervisorMode, onApproveReport, onRequestRevision]);
+
+  const approverProfileId = supervisorMode
+    ? (supervisorId || localStorage.getItem('currentEmployeeId') || '')
+    : financeMode
+      ? (financeUserId || localStorage.getItem('currentEmployeeId') || '')
+      : '';
+
+  useEffect(() => {
+    if (!supervisorMode || !approverProfileId) return;
+    void fetchEmployeeSavedSignature(approverProfileId).then(setSavedSupervisorSignature);
+  }, [supervisorMode, approverProfileId]);
+
+  useEffect(() => {
+    if (!financeMode || !approverProfileId) return;
+    void fetchEmployeeSavedSignature(approverProfileId).then(setSavedFinanceSignature);
+  }, [financeMode, approverProfileId]);
 
   // Get effective employeeId from props or localStorage (for dependency tracking)
   // This must be declared early so it can be used in callbacks and effects
@@ -902,10 +925,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [viewImageUrl, setViewImageUrl] = useState<string | null>(null);
   const [viewPdfUrl, setViewPdfUrl] = useState<string | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
-  const [savedSignature, setSavedSignature] = useState<string | null>(null); // Signature saved in Settings
+  const [savedSignature, setSavedSignature] = useState<string | null>(null); // Profile signature (backend), not auto-applied to report
+  const [savedSupervisorSignature, setSavedSupervisorSignature] = useState<string | null>(null);
+  const [savedFinanceSignature, setSavedFinanceSignature] = useState<string | null>(null);
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
   const [supervisorSignatureDialogOpen, setSupervisorSignatureDialogOpen] = useState(false);
+  const [financeSignatureDialogOpen, setFinanceSignatureDialogOpen] = useState(false);
   const [supervisorSignatureState, setSupervisorSignatureState] = useState<string | null>(supervisorSignature || null);
+  const [financeSignatureState, setFinanceSignatureState] = useState<string | null>(null);
   const [employeeCertificationAcknowledged, setEmployeeCertificationAcknowledged] = useState<boolean>(false);
   const [supervisorCertificationAcknowledged, setSupervisorCertificationAcknowledged] = useState<boolean>(false);
   // Refs so Save always sends latest checkbox value (state updates async; clicking Save right after checking can otherwise send stale false)
@@ -1763,11 +1790,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 setSupervisorCertificationAcknowledged(savedSupervisorCert || false);
                 
                 // Also restore signature images if they exist
-                if (savedExpenseReport.reportData.signatureImage) {
-                  setSignatureImage(savedExpenseReport.reportData.signatureImage);
+                const savedEmployeeSig =
+                  savedExpenseReport.reportData.employeeSignature ||
+                  savedExpenseReport.reportData.signatureImage;
+                if (savedEmployeeSig) {
+                  setSignatureImage(savedEmployeeSig);
                 }
                 if (savedExpenseReport.reportData.supervisorSignature) {
                   setSupervisorSignatureState(savedExpenseReport.reportData.supervisorSignature);
+                }
+                if (savedExpenseReport.reportData.financeSignature) {
+                  setFinanceSignatureState(savedExpenseReport.reportData.financeSignature);
                 }
                 
                 // Restore report status and ID
@@ -1800,6 +1833,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             setSupervisorCertificationAcknowledged(false);
             setSignatureImage(null);
             setSupervisorSignatureState(null);
+            setFinanceSignatureState(null);
             setCurrentReportId(null);
             setReportStatus('draft');
             setReportSubmittedAt(null);
@@ -2297,7 +2331,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           (expenseData as any).ptoHours = ptoHours;
           (expenseData as any).receipts = currentMonthReceipts;
           // Set employeeSignature from saved expense report or signature state
-          (expenseData as any).employeeSignature = savedExpenseReport?.reportData?.signatureImage || savedExpenseReport?.reportData?.employeeSignature || signatureImage || employee.signature || null;
+          (expenseData as any).employeeSignature =
+            savedExpenseReport?.reportData?.signatureImage ||
+            savedExpenseReport?.reportData?.employeeSignature ||
+            signatureImage ||
+            null;
           // Set employeeCertificationAcknowledged from saved expense report or current state
           (expenseData as any).employeeCertificationAcknowledged = savedExpenseReport?.reportData?.employeeCertificationAcknowledged || employeeCertificationAcknowledged || false;
           
@@ -2321,10 +2359,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             (expenseData as any).receipts = currentMonthReceipts;
             setDailyDescriptionsWithRef(dailyDescriptions);
             
-            // Load signature from employee data
+            // Profile signature is available for "Upload saved" but is not applied to the report automatically
             if (employee.signature) {
-              setSavedSignature(employee.signature); // Save as the saved signature
-              setSignatureImage(employee.signature); // Also set as current for this report
+              setSavedSignature(employee.signature);
             }
             
             // Refresh timesheet data immediately using the data we just loaded
@@ -3467,11 +3504,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       dailyDescriptions: normalizedDailyDescriptions,
       employeeSignature: signatureImage,
       supervisorSignature: supervisorSignatureState,
+      financeSignature: financeSignatureState,
       employeeCertificationAcknowledged: employeeCertificationAcknowledged,
       supervisorCertificationAcknowledged: supervisorCertificationAcknowledged,
       ...overrides,
     };
-  }, [employeeData, dailyDescriptions, currentMonth, currentYear, receipts, signatureImage, supervisorSignatureState, employeeCertificationAcknowledged, supervisorCertificationAcknowledged, normalizeDate]);
+  }, [employeeData, dailyDescriptions, currentMonth, currentYear, receipts, signatureImage, supervisorSignatureState, financeSignatureState, employeeCertificationAcknowledged, supervisorCertificationAcknowledged, normalizeDate]);
 
   const syncReportData = useCallback(async (overrides: Record<string, unknown> = {}) => {
     if (!employeeData) return;
@@ -3497,85 +3535,77 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   }, [employeeData, currentMonth, currentYear, buildReportData]);
 
-  // Handle signature file upload
-  const handleSignatureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === 'image/png') {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const result = e.target?.result as string;
-        // Signature uploaded successfully
-        setSignatureImage(result);
-        setSavedSignature(result); // Also save as the saved signature
-        setSignatureDialogOpen(false);
-        
-        // Auto-save signature to expense report
-        if (employeeData) {
-          try {
-            await syncReportData({ employeeSignature: result });
-            
-            // Update employeeData for status indicator
-            setEmployeeData({ ...employeeData, employeeSignature: result } as any);
-            
-            debugVerbose('✅ Signature upload synced to expense report');
-            
-            // Also save to user settings in the backend
-            await fetch(`${API_BASE_URL}/api/employees/${employeeData.employeeId}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                signature: result
-              }),
-            });
-            
-            debugLog('✅ Signature saved to user settings');
-            showSuccess('Signature saved to Settings and applied to this report');
-          } catch (error) {
-            debugError('Error saving signature:', error);
-            showError('Failed to save signature');
-          }
-        }
-      };
-      reader.readAsDataURL(file);
-    } else {
-      alert('Please upload a PNG file only.');
+  const applyEmployeeSignatureToReport = async (result: string, saveToProfile: boolean) => {
+    setSignatureImage(result);
+    setSignatureDialogOpen(false);
+    if (!employeeData) return;
+    try {
+      await syncReportData({ employeeSignature: result });
+      setEmployeeData({ ...employeeData, employeeSignature: result } as any);
+      if (saveToProfile) {
+        await saveEmployeeSavedSignature(employeeData.employeeId, result);
+        setSavedSignature(result);
+        showSuccess('Signature saved to your profile and applied to this report');
+      } else {
+        showSuccess('Saved signature applied to this report');
+      }
+    } catch (error) {
+      debugError('Error saving signature:', error);
+      showError('Failed to save signature on this report');
     }
   };
 
-  // Handle supervisor signature upload
-  const handleSupervisorSignatureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === 'image/png') {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const result = e.target?.result as string;
-        // Supervisor signature uploaded successfully
-        setSupervisorSignatureState(result);
-        setSupervisorSignatureDialogOpen(false);
-        setSupervisorCertificationAcknowledged(true); // Auto-check the checkbox when signature is uploaded
-        
-        // Auto-save supervisor signature to expense report
-        if (employeeData) {
-          try {
-            await syncReportData({ 
-              supervisorSignature: result,
-              supervisorCertificationAcknowledged: true,
-            });
-            
-            debugVerbose('✅ Supervisor signature upload synced to expense report');
-            showSuccess('Supervisor signature saved and acknowledgment checked');
-          } catch (error) {
-            debugError('Error saving supervisor signature:', error);
-            showError('Failed to save supervisor signature');
-          }
-        }
-      };
-      reader.readAsDataURL(file);
-    } else {
-      alert('Please upload a PNG file only.');
+  const applySupervisorSignatureToReport = async (result: string, saveToProfile: boolean) => {
+    setSupervisorSignatureState(result);
+    setSupervisorSignatureDialogOpen(false);
+    if (!employeeData) return;
+    try {
+      await syncReportData({ supervisorSignature: result });
+      if (saveToProfile && approverProfileId) {
+        await saveEmployeeSavedSignature(approverProfileId, result);
+        setSavedSupervisorSignature(result);
+        showSuccess('Signature saved to your profile and applied to this report');
+      } else {
+        showSuccess('Saved signature applied to this report');
+      }
+    } catch (error) {
+      debugError('Error saving supervisor signature:', error);
+      showError('Failed to save supervisor signature on this report');
     }
+  };
+
+  const applyFinanceSignatureToReport = async (result: string, saveToProfile: boolean) => {
+    setFinanceSignatureState(result);
+    setFinanceSignatureDialogOpen(false);
+    if (!employeeData) return;
+    try {
+      await syncReportData({ financeSignature: result });
+      if (saveToProfile && approverProfileId) {
+        await saveEmployeeSavedSignature(approverProfileId, result);
+        setSavedFinanceSignature(result);
+        showSuccess('Signature saved to your profile and applied to this report');
+      } else {
+        showSuccess('Saved signature applied to this report');
+      }
+    } catch (error) {
+      debugError('Error saving finance signature:', error);
+      showError('Failed to save finance signature on this report');
+    }
+  };
+
+  const handleEmployeeSignatureUploadNew = async (file: File) => {
+    const result = await readPngFileAsDataUrl(file);
+    await applyEmployeeSignatureToReport(result, true);
+  };
+
+  const handleSupervisorSignatureUploadNew = async (file: File) => {
+    const result = await readPngFileAsDataUrl(file);
+    await applySupervisorSignatureToReport(result, true);
+  };
+
+  const handleFinanceSignatureUploadNew = async (file: File) => {
+    const result = await readPngFileAsDataUrl(file);
+    await applyFinanceSignatureToReport(result, true);
   };
 
   // Remove signature
@@ -5151,7 +5181,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     // Check if employee signature exists
     if (!signatureImage) {
-      alert('Please add your employee signature before submitting your report. Click "Signature Capture" to upload your signature.');
+      alert('Please add your employee signature before submitting. Use Upload Signature on the Cover Sheet and choose Upload saved or Upload new.');
       return;
     }
     
@@ -5162,7 +5192,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         return;
       }
       if (!supervisorSignatureState) {
-        alert('Please add supervisor signature before submitting your report. Check the supervisor acknowledgment box to upload the signature.');
+        alert('Please add your supervisor signature before approving. Use Upload Signature on the Cover Sheet and choose Upload saved or Upload new.');
         return;
       }
     }
@@ -6228,7 +6258,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     const checked = e.target.checked;
                     // If checking the box and no employee signature exists, prompt user to add signature first
                     if (checked && !signatureImage) {
-                      alert('Please upload your signature first before checking the acknowledgment box. Click "Signature Capture" to upload your signature.');
+                      alert('Please upload your signature first. Use Upload Signature on the Cover Sheet and choose Upload saved or Upload new.');
                       setEmployeeCertificationAcknowledged(false);
                     } else {
                       setEmployeeCertificationAcknowledged(checked);
@@ -6248,22 +6278,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Checkbox
                     checked={supervisorCertificationAcknowledged}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const checked = e.target.checked;
-                      setSupervisorCertificationAcknowledged(checked);
-                      
-                      // If checking the box and no supervisor signature exists, open signature dialog
                       if (checked && !supervisorSignatureState) {
-                        setSupervisorSignatureDialogOpen(true);
+                        alert('Please upload your supervisor signature first. Use Upload Signature on the Cover Sheet and choose Upload saved or Upload new.');
+                        return;
                       }
-                      // If unchecking, clear the signature requirement
-                      else if (!checked) {
-                        setSupervisorSignatureState(null);
-                      }
-
+                      setSupervisorCertificationAcknowledged(checked);
                       void syncReportData({
                         supervisorCertificationAcknowledged: checked,
-                        supervisorSignature: checked ? supervisorSignatureState : null,
                       }).catch((error) => debugError('Error syncing supervisor acknowledgment:', error));
                     }}
                     size="small"
@@ -6335,53 +6358,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </Box>
                       )}
                     </Box>
-                    {/* Import Saved Signature Button */}
-                    {savedSignature && (!signatureImage || signatureImage !== savedSignature) && (
-                      <Box sx={{ mt: 1 }}>
-                        <Button
-                          variant="text"
-                          size="small"
-                          onClick={async () => {
-                            setSignatureImage(savedSignature);
-                            
-                            // Auto-save to expense report
-                            if (employeeData) {
-                              try {
-                                const reportData = {
-                                  ...employeeData,
-                                  receipts: receipts,
-                                  employeeSignature: savedSignature,
-                                  supervisorSignature: supervisorSignatureState
-                                };
-
-                                await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({
-                                    employeeId: employeeData.employeeId,
-                                    month: currentMonth,
-                                    year: currentYear,
-                                    reportData: reportData
-                                  }),
-                                });
-                                
-                                debugLog('✅ Imported saved signature to report');
-                                showSuccess('Saved signature imported');
-                              } catch (error) {
-                                debugError('Error importing signature:', error);
-                                showError('Failed to import signature');
-                              }
-                            }
-                          }}
-                          startIcon={<CloudDownloadIcon />}
-                          sx={{ fontSize: '0.8rem', textTransform: 'none' }}
-                        >
-                          Import Saved Signature
-                        </Button>
-                      </Box>
-                    )}
                     <Typography variant="body2" color="textSecondary">{employeeData.name}</Typography>
                     <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
                   </Box>
@@ -6440,7 +6416,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             onClick={() => setSupervisorSignatureDialogOpen(true)}
                             startIcon={<UploadIcon />}
                           >
-                            Upload Supervisor Signature
+                            Upload Signature
                           </Button>
                         </Box>
                       ) : (
@@ -6488,7 +6464,53 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
                     <Typography variant="body1" component="div"><strong>Finance Department</strong></Typography>
-                    <Box sx={{ mt: 2, mb: 2, borderBottom: '1px solid #333', minHeight: 40 }} />
+                    <Box sx={{
+                      mt: 2,
+                      mb: 2,
+                      minHeight: 40,
+                      border: '1px solid #ccc',
+                      borderRadius: 1,
+                      bgcolor: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}>
+                      {financeSignatureState ? (
+                        <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+                          <img
+                            src={financeSignatureState}
+                            alt="Finance Signature"
+                            style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
+                          />
+                          {financeMode && (
+                            <IconButton
+                              size="small"
+                              onClick={() => setFinanceSignatureDialogOpen(true)}
+                              sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'white', '&:hover': { bgcolor: 'grey.100' } }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
+                      ) : financeMode ? (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => setFinanceSignatureDialogOpen(true)}
+                          startIcon={<UploadIcon />}
+                          sx={{ m: 1, fontSize: '0.7rem' }}
+                        >
+                          Upload Signature
+                        </Button>
+                      ) : (
+                        <Typography variant="caption" color="textSecondary">
+                          Finance signature will appear here
+                        </Typography>
+                      )}
+                    </Box>
+                    <Typography variant="body2" color="textSecondary">Finance Signature:</Typography>
                     <Typography variant="body2" color="textSecondary">Date: ___________</Typography>
                   </Box>
                 </Box>
@@ -7070,7 +7092,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         />
                       ) : (
                         <Typography variant="caption" color="textSecondary">
-                          Upload signature using "Signature Capture" button
+                          Upload signature using the Upload Signature button on the Cover Sheet
                         </Typography>
                       )}
                     </Box>
@@ -7119,9 +7141,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
                       >
                         <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
-                          Select for
-                          <br />
-                          Revision
+                          Needs Revision
                         </Typography>
                         <Checkbox
                           indeterminate={selectedMileageItems.size > 0 && selectedMileageItems.size < currentMonthMileageList.length}
@@ -7416,9 +7436,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
                       >
                         <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
-                          Select for
-                          <br />
-                          Revision
+                          Needs Revision
                         </Typography>
                         <Checkbox
                           indeterminate={selectedDailyDescriptionItems.size > 0 && selectedDailyDescriptionItems.size < employeeData.dailyEntries.length}
@@ -8010,7 +8028,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             <TableContainer component={Paper} sx={{ mt: 2, ...COST_CENTER_TRAVEL_CONTAINER_SX }}>
               <Table stickyHeader size="small" sx={COST_CENTER_TRAVEL_TABLE_SX}>
                 <TableHead>
-                  <TableRow sx={{ '& th': { position: 'sticky', top: 0, zIndex: 4, bgcolor: 'grey.100' } }}>
+                  <TableRow>
                     <TableCell sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.date }}><strong>DATE</strong></TableCell>
                     <TableCell sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.description }}><strong>Description of Activity</strong></TableCell>
                     <TableCell align="center" sx={{ ...costCenterTravelHeaderSx, ...costCenterTravelCol.hours }}><strong>Hours Worked</strong></TableCell>
@@ -8339,7 +8357,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <>
                       {/* No signature image, showing placeholder */}
                       <Typography variant="caption" color="textSecondary">
-                        Upload signature using "Signature Capture" button
+                        Upload signature using the Upload Signature button on the Cover Sheet
                       </Typography>
                     </>
                   )}
@@ -8776,9 +8794,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         sx={{ border: '1px solid #ccc', p: 1, width: 96, minWidth: 96, maxWidth: 96, verticalAlign: 'top' }}
                       >
                         <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', mb: 0.5, display: 'block', textAlign: 'center', lineHeight: 1.15 }}>
-                          Select for
-                          <br />
-                          Revision
+                          Needs Revision
                         </Typography>
                         <Checkbox
                           indeterminate={selectedReceiptItems.size > 0 && selectedReceiptItems.size < receipts.length}
@@ -9060,226 +9076,56 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </Card>
       </TabPanel>
 
-      {/* Signature Dialog */}
-      <Dialog 
-        open={signatureDialogOpen} 
-        onClose={() => setSignatureDialogOpen(false)} 
-        maxWidth={false}
-        fullWidth
-        PaperProps={{
-          sx: {
-            maxWidth: '90vw',
-            maxHeight: '90vh',
-            width: 'auto',
-            height: 'auto',
+      <SignatureUploadDialog
+        open={signatureDialogOpen}
+        onClose={() => setSignatureDialogOpen(false)}
+        title="Upload Signature"
+        currentSignature={signatureImage}
+        savedSignature={savedSignature}
+        onApplySaved={() => savedSignature && applyEmployeeSignatureToReport(savedSignature, false)}
+        onUploadNew={handleEmployeeSignatureUploadNew}
+        onRemove={handleRemoveSignature}
+      />
+
+      <SignatureUploadDialog
+        open={supervisorSignatureDialogOpen}
+        onClose={() => setSupervisorSignatureDialogOpen(false)}
+        title="Upload Supervisor Signature"
+        currentSignature={supervisorSignatureState}
+        savedSignature={savedSupervisorSignature}
+        onApplySaved={() => savedSupervisorSignature && applySupervisorSignatureToReport(savedSupervisorSignature, false)}
+        onUploadNew={handleSupervisorSignatureUploadNew}
+        onRemove={async () => {
+          setSupervisorSignatureState(null);
+          setSupervisorCertificationAcknowledged(false);
+          if (employeeData) {
+            await syncReportData({
+              supervisorSignature: null,
+              supervisorCertificationAcknowledged: false,
+            });
           }
+          setSupervisorSignatureDialogOpen(false);
+          showSuccess('Supervisor signature removed from this report');
         }}
-      >
-        <DialogTitle>Signature Capture</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <Typography variant="body1">
-              Upload a PNG file containing your signature. Please ensure the background is transparent or white for best results.
-            </Typography>
-            
-            {signatureImage && (
-              <Box sx={{ textAlign: 'center', mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>Current Signature:</Typography>
-                <Box sx={{ 
-                  border: '1px solid #ccc', 
-                  borderRadius: 1, 
-                  p: 2, 
-                  bgcolor: 'white',
-                  display: 'inline-block'
-                }}>
-                  <img 
-                    src={signatureImage} 
-                    alt="Current Signature" 
-                    style={{ 
-                      maxHeight: 100, 
-                      maxWidth: 200,
-                      objectFit: 'contain'
-                    }} 
-                  />
-                </Box>
-              </Box>
-            )}
+      />
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {savedSignature && (
-                <Button
-                  variant="outlined"
-                  color="success"
-                  startIcon={<CheckIcon />}
-                  onClick={async () => {
-                    setSignatureImage(savedSignature);
-                    
-                    // Auto-save to expense report
-                    if (employeeData) {
-                      try {
-                        await syncReportData({ employeeSignature: savedSignature });
-                        
-                        debugVerbose('✅ Saved signature synced to source tables');
-                      } catch (error) {
-                        debugError('Error syncing saved signature:', error);
-                      }
-                    }
-                    
-                    setSignatureDialogOpen(false);
-                    showSuccess('Using saved signature');
-                  }}
-                  fullWidth
-                >
-                  Use Saved Signature
-                </Button>
-              )}
-              
-              <input
-                type="file"
-                accept=".png"
-                onChange={handleSignatureUpload}
-                style={{ display: 'none' }}
-                id="signature-upload"
-              />
-              <label htmlFor="signature-upload">
-                <Button
-                  variant="outlined"
-                  component="span"
-                  startIcon={<UploadIcon />}
-                  fullWidth
-                >
-                  Upload New Signature
-                </Button>
-              </label>
-              
-              {signatureImage && (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={handleRemoveSignature}
-                  fullWidth
-                >
-                  Remove Signature
-                </Button>
-              )}
-            </Box>
-
-            <Typography variant="caption" color="textSecondary" component="div">
-              <strong>Instructions:</strong>
-              <br />• Use a PNG file with transparent background for best results
-              <br />• Signature should be black or dark colored
-              <br />• Recommended size: 200x100 pixels or similar
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSignatureDialogOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Supervisor Signature Dialog */}
-      <Dialog 
-        open={supervisorSignatureDialogOpen} 
-        onClose={() => setSupervisorSignatureDialogOpen(false)} 
-        maxWidth={false}
-        fullWidth
-        PaperProps={{
-          sx: {
-            maxWidth: '90vw',
-            maxHeight: '90vh',
-            width: 'auto',
-            height: 'auto',
+      <SignatureUploadDialog
+        open={financeSignatureDialogOpen}
+        onClose={() => setFinanceSignatureDialogOpen(false)}
+        title="Upload Finance Signature"
+        currentSignature={financeSignatureState}
+        savedSignature={savedFinanceSignature}
+        onApplySaved={() => savedFinanceSignature && applyFinanceSignatureToReport(savedFinanceSignature, false)}
+        onUploadNew={handleFinanceSignatureUploadNew}
+        onRemove={async () => {
+          setFinanceSignatureState(null);
+          if (employeeData) {
+            await syncReportData({ financeSignature: null });
           }
+          setFinanceSignatureDialogOpen(false);
+          showSuccess('Finance signature removed from this report');
         }}
-      >
-        <DialogTitle>Supervisor Signature Capture</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <Typography variant="body1">
-              Upload a PNG file containing the supervisor signature. Please ensure the background is transparent or white for best results.
-            </Typography>
-            
-            {supervisorSignatureState && (
-              <Box sx={{ textAlign: 'center', mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>Current Supervisor Signature:</Typography>
-                <Box sx={{ 
-                  border: '1px solid #ccc', 
-                  borderRadius: 1, 
-                  p: 2, 
-                  bgcolor: 'white',
-                  display: 'inline-block'
-                }}>
-                  <img 
-                    src={supervisorSignatureState} 
-                    alt="Current Supervisor Signature" 
-                    style={{ 
-                      maxHeight: 100, 
-                      maxWidth: 200,
-                      objectFit: 'contain'
-                    }} 
-                  />
-                </Box>
-              </Box>
-            )}
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <input
-                type="file"
-                accept=".png"
-                onChange={handleSupervisorSignatureUpload}
-                style={{ display: 'none' }}
-                id="supervisor-signature-upload"
-              />
-              <label htmlFor="supervisor-signature-upload">
-                <Button
-                  variant="outlined"
-                  component="span"
-                  startIcon={<UploadIcon />}
-                  fullWidth
-                >
-                  Upload Supervisor Signature
-                </Button>
-              </label>
-              
-              {supervisorSignatureState && (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<DeleteIcon />}
-                  onClick={async () => {
-                    setSupervisorSignatureState(null);
-                    setSupervisorCertificationAcknowledged(false);
-                    
-                    // Auto-save signature removal
-                    if (employeeData) {
-                      try {
-                        await syncReportData({
-                          supervisorSignature: null,
-                          supervisorCertificationAcknowledged: false,
-                        });
-                        
-                        debugVerbose('✅ Supervisor signature removal synced to expense report');
-                        showSuccess('Supervisor signature removed');
-                      } catch (error) {
-                        debugError('Error removing supervisor signature:', error);
-                        showError('Failed to remove supervisor signature');
-                      }
-                    }
-                    
-                    setSupervisorSignatureDialogOpen(false);
-                  }}
-                  fullWidth
-                >
-                  Remove Supervisor Signature
-                </Button>
-              )}
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSupervisorSignatureDialogOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      />
 
       {/* Receipt Dialog */}
       <Dialog 

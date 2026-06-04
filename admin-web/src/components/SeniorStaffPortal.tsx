@@ -71,6 +71,10 @@ import {
 
 // Import StaffPortal for team member report viewing
 import StaffPortal from '../StaffPortal';
+import {
+  fetchExpenseReportById,
+  requiresSupervisorCertification,
+} from '../utils/signatureApi';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import { NotificationBell } from './NotificationBell';
 import DetailedReportView from './DetailedReportView';
@@ -379,10 +383,25 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
 
   const handleApproveReport = async (reportId: string) => {
     const report = teamReports.find((r) => r.id === reportId);
-    const requiresSupervisorCertification = (report?.submissionType || '').toLowerCase() !== 'weekly_checkup';
+    const needsCert = requiresSupervisorCertification(report?.submissionType);
 
-    if (requiresSupervisorCertification && !supervisorCertificationAcknowledged) {
+    if (needsCert && !supervisorCertificationAcknowledged) {
       alert('Please acknowledge the certification statement before approving the report.');
+      return;
+    }
+
+    try {
+      const fullReport = await fetchExpenseReportById(reportId);
+      const reportData = (fullReport.reportData || {}) as Record<string, unknown>;
+      if (needsCert && !reportData.supervisorSignature) {
+        alert(
+          'Please upload your signature on the Cover Sheet before approving. Use Upload Signature and choose Upload saved or Upload new.'
+        );
+        return;
+      }
+    } catch (error) {
+      debugError('Error validating signature:', error);
+      alert('Could not verify signature. Please try again.');
       return;
     }
 
@@ -395,7 +414,7 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
           action: 'approve',
           approverId: seniorStaffId,
           approverName: seniorStaffName,
-          supervisorCertificationAcknowledged: requiresSupervisorCertification
+          supervisorCertificationAcknowledged: needsCert
             ? supervisorCertificationAcknowledged
             : false,
         }),

@@ -1171,10 +1171,11 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 maxHeight: 600,
                 width: '100%',
                 overflowX: 'auto',
-                overflowY: 'auto'
+                overflowY: 'auto',
+                '--app-sticky-offset': '0px',
               }}
             >
-              <Table stickyHeader size="medium" sx={{ tableLayout: 'fixed', width: '100%' }}>
+              <Table size="medium" sx={{ tableLayout: 'fixed', width: '100%' }}>
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox" sx={{ width: '56px', minWidth: '56px', paddingLeft: '10px', paddingRight: '10px' }}>

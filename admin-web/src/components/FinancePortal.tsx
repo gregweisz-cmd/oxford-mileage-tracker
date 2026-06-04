@@ -54,6 +54,14 @@ import { NotificationBell } from './NotificationBell';
 import { CostCenterManagement, COST_CENTER_MGMT_TAB } from './CostCenterManagement';
 import { CostCenter, CostCenterApiService } from '../services/costCenterApiService';
 import StaffPortal from '../StaffPortal';
+import { SignatureUploadPanel } from './SignatureUploadPanel';
+import {
+  fetchEmployeeSavedSignature,
+  fetchExpenseReportById,
+  mergeReportDataFields,
+  readPngFileAsDataUrl,
+  saveEmployeeSavedSignature,
+} from '../utils/signatureApi';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
@@ -147,6 +155,11 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
   const [reportToDelete, setReportToDelete] = useState<ExpenseReport | null>(null);
   // PDF export loading (prevents double-clicks and shows feedback)
   const [pdfExportLoadingReportId, setPdfExportLoadingReportId] = useState<string | null>(null);
+  const [financeApproveDialogOpen, setFinanceApproveDialogOpen] = useState(false);
+  const [financeApproveReport, setFinanceApproveReport] = useState<ExpenseReport | null>(null);
+  const [financeApproveSignature, setFinanceApproveSignature] = useState<string | null>(null);
+  const [savedFinanceSignature, setSavedFinanceSignature] = useState<string | null>(null);
+  const [financeApproveSaving, setFinanceApproveSaving] = useState(false);
   
   // Sorting state
   const [sortField, setSortField] = useState<keyof ExpenseReport | ''>('');
@@ -161,6 +174,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     showLogo: true,
     pageOrientation: 'portrait', // Always portrait to match Staff Portal
   });
+
+  useEffect(() => {
+    if (financeUserId) {
+      void fetchEmployeeSavedSignature(financeUserId).then(setSavedFinanceSignature);
+    }
+  }, [financeUserId]);
 
   useEffect(() => {
     loadReports();
@@ -675,9 +694,47 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     }
   };
 
-  const handleApproveReport = async (reportId: string) => {
+  const openFinanceApproveDialog = (report: ExpenseReport) => {
+    setFinanceApproveReport(report);
+    setFinanceApproveSignature(null);
+    setFinanceApproveDialogOpen(true);
+  };
+
+  const applyFinanceSignatureForApproval = async (signature: string, saveToProfile: boolean) => {
+    if (!financeApproveReport) return;
+    setFinanceApproveSignature(signature);
+    await mergeReportDataFields(
+      financeApproveReport.employeeId,
+      financeApproveReport.month,
+      financeApproveReport.year,
+      { financeSignature: signature }
+    );
+    if (saveToProfile && financeUserId) {
+      await saveEmployeeSavedSignature(financeUserId, signature);
+      setSavedFinanceSignature(signature);
+    }
+  };
+
+  const handleFinanceSignatureUploadNew = async (file: File) => {
+    const result = await readPngFileAsDataUrl(file);
+    await applyFinanceSignatureForApproval(result, true);
+  };
+
+  const handleConfirmFinanceApprove = async () => {
+    if (!financeApproveReport) return;
+    if (!financeApproveSignature) {
+      alert('Please upload your finance signature before approving. Choose Upload saved or Upload new.');
+      return;
+    }
+    setFinanceApproveSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
+      const fullReport = await fetchExpenseReportById(financeApproveReport.id);
+      const reportData = (fullReport.reportData || {}) as Record<string, unknown>;
+      if (!reportData.financeSignature) {
+        alert('Please upload your finance signature on the report before approving.');
+        return;
+      }
+      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${financeApproveReport.id}/approval`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -688,13 +745,21 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to approve report');
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.error || 'Failed to approve report');
+      }
 
+      setFinanceApproveDialogOpen(false);
+      setFinanceApproveReport(null);
+      setFinanceApproveSignature(null);
       alert('Report approved successfully!');
       loadReports();
     } catch (error) {
       debugError('Error approving report:', error);
-      alert('Failed to approve report');
+      alert(error instanceof Error ? error.message : 'Failed to approve report');
+    } finally {
+      setFinanceApproveSaving(false);
     }
   };
 
@@ -1262,7 +1327,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                       <IconButton
                         size="small"
                         color="success"
-                        onClick={() => handleApproveReport(report.id)}
+                        onClick={() => openFinanceApproveDialog(report)}
                         title="Approve Report"
                       >
                         <CheckCircleIcon />
@@ -1778,6 +1843,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                 reportYear={selectedReport.year}
                 supervisorMode={false}
                 isAdminView={false}
+                financeMode={true}
+                financeUserId={financeUserId}
                 viewerUserIdForNotifications={financeUserId}
               />
             </Box>
@@ -1829,6 +1896,52 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
             disabled={!revisionComments.trim()}
           >
             Send Revision Request to Employee
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={financeApproveDialogOpen}
+        onClose={() => !financeApproveSaving && setFinanceApproveDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Approve report</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {financeApproveReport
+              ? `${getDisplayName(financeApproveReport)} — ${monthNames[financeApproveReport.month - 1]} ${financeApproveReport.year}`
+              : ''}
+          </Typography>
+          <SignatureUploadPanel
+            currentSignature={financeApproveSignature}
+            savedSignature={savedFinanceSignature}
+            onApplySaved={async () => {
+              if (savedFinanceSignature) {
+                await applyFinanceSignatureForApproval(savedFinanceSignature, false);
+              }
+            }}
+            onUploadNew={handleFinanceSignatureUploadNew}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setFinanceApproveDialogOpen(false);
+              setFinanceApproveReport(null);
+              setFinanceApproveSignature(null);
+            }}
+            disabled={financeApproveSaving}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={() => void handleConfirmFinanceApprove()}
+            disabled={financeApproveSaving || !financeApproveSignature}
+          >
+            {financeApproveSaving ? 'Approving…' : 'Approve report'}
           </Button>
         </DialogActions>
       </Dialog>

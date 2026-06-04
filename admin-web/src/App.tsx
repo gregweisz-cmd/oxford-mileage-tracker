@@ -18,6 +18,7 @@ import { ErrorPromptProvider } from './contexts/ErrorPromptContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import AuthCallback from './components/AuthCallback';
 import { resetStaffPortalSessionExpiredDispatch } from './services/staffPortalSessionExpired';
+import { stickyTableThemeComponents } from './theme/stickyTableTheme';
 
 // Debug logging
 import { debugLog, debugError, debugVerbose } from './config/debug';
@@ -156,6 +157,7 @@ const createAppTheme = (mode: 'light' | 'dark') => {
         fontFamily: '"Myriad Pro", "Segoe UI", Arial, sans-serif',
       },
       components: {
+        ...stickyTableThemeComponents,
         MuiCard: {
           styleOverrides: {
             root: {
@@ -200,6 +202,7 @@ const createAppTheme = (mode: 'light' | 'dark') => {
       typography: {
         fontFamily: '"Myriad Pro", "Segoe UI", Arial, sans-serif',
       },
+      components: stickyTableThemeComponents,
     });
   }
 };

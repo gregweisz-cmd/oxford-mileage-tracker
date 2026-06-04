@@ -48,6 +48,10 @@ import {
   YAxis,
 } from 'recharts';
 import StaffPortal from '../StaffPortal';
+import {
+  fetchExpenseReportById,
+  requiresSupervisorCertification,
+} from '../utils/signatureApi';
 import { debugError } from '../config/debug';
 
 interface MonthlyReport {
@@ -288,6 +292,26 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
     if (!currentEmployee?.id) {
       alert('Unable to submit: Supervisor information not available');
       return;
+    }
+
+    if (reviewAction === 'approve') {
+      const needsCert = requiresSupervisorCertification(selectedReport.submissionType);
+      if (needsCert) {
+        try {
+          const fullReport = await fetchExpenseReportById(selectedReport.id);
+          const reportData = (fullReport.reportData || {}) as Record<string, unknown>;
+          if (!reportData.supervisorSignature) {
+            alert(
+              'Please upload your supervisor signature on the Cover Sheet before approving. Use Upload Signature and choose Upload saved or Upload new.'
+            );
+            return;
+          }
+        } catch (error) {
+          debugError('Error validating supervisor signature:', error);
+          alert('Could not verify supervisor signature. Please try again.');
+          return;
+        }
+      }
     }
 
     try {
