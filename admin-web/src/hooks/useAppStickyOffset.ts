@@ -1,18 +1,27 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 
 const STICKY_OFFSET_VAR = '--app-sticky-offset';
 
-/** Publishes sticky header height so table thead cells sit below fixed portal chrome. */
-export function useAppStickyOffset<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
+/**
+ * Measures sticky portal chrome (EnhancedHeader) and publishes height as --app-sticky-offset
+ * on scopeEl so table headers stick below it (works inside MUI dialogs, not only document root).
+ */
+export function useAppStickyOffset<T extends HTMLElement>(
+  scopeRef?: RefObject<HTMLElement | null>
+) {
+  const chromeRef = useRef<T | null>(null);
 
   useLayoutEffect(() => {
-    const el = ref.current;
+    const el = chromeRef.current;
     if (!el) return;
 
-    const root = document.documentElement;
     const update = () => {
-      root.style.setProperty(STICKY_OFFSET_VAR, `${el.getBoundingClientRect().height}px`);
+      const heightPx = `${el.getBoundingClientRect().height}px`;
+      const scope = scopeRef?.current;
+      if (scope) {
+        scope.style.setProperty(STICKY_OFFSET_VAR, heightPx);
+      }
+      document.documentElement.style.setProperty(STICKY_OFFSET_VAR, heightPx);
     };
 
     update();
@@ -23,11 +32,14 @@ export function useAppStickyOffset<T extends HTMLElement>() {
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', update);
-      root.style.removeProperty(STICKY_OFFSET_VAR);
+      if (scopeRef?.current) {
+        scopeRef.current.style.removeProperty(STICKY_OFFSET_VAR);
+      }
+      document.documentElement.style.removeProperty(STICKY_OFFSET_VAR);
     };
-  }, []);
+  }, [scopeRef]);
 
-  return ref;
+  return chromeRef;
 }
 
 /** Reset sticky offset inside a table that scrolls within its own container. */

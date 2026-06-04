@@ -1883,7 +1883,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
             Close
           </Button>
         </DialogTitle>
-        <DialogContent sx={{ p: 0 }}>
+        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
           {viewingEmployeeReport && (
             <Box sx={{ p: 2 }}>
               <Alert severity="info" sx={{ mb: 2 }}>

@@ -1019,7 +1019,7 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
               Close
             </Button>
           </DialogTitle>
-          <DialogContent sx={{ p: 0 }}>
+          <DialogContent sx={{ p: 0, overflow: 'auto' }}>
             <Box sx={{ p: 2 }}>
               <Alert severity="info" sx={{ mb: 2 }}>
                 <Typography variant="body2">

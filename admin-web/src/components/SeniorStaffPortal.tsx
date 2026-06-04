@@ -1873,7 +1873,7 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
             Close
           </Button>
         </DialogTitle>
-        <DialogContent sx={{ p: 0 }}>
+        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
           {viewingEmployeeReport && (
             <Box sx={{ p: 2 }}>
               <Alert severity="info" sx={{ mb: 2 }}>

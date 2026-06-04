@@ -10,19 +10,12 @@ export const stickyTableThemeComponents: Components<Theme> = {
       stickyHeader: true,
     },
   },
-  MuiDialog: {
-    styleOverrides: {
-      paper: {
-        '--app-sticky-offset': '0px',
-      },
-    },
-  },
   MuiTableCell: {
     styleOverrides: {
       head: ({ theme }) => ({
         '&.MuiTableCell-stickyHeader': {
           top: 'var(--app-sticky-offset, 0px)',
-          zIndex: theme.zIndex.appBar - 1,
+          zIndex: theme.zIndex.appBar - 2,
           backgroundColor: stickyHeadBg(theme),
         },
       }),

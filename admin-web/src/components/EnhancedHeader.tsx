@@ -1,5 +1,4 @@
 import React from 'react';
-import { useAppStickyOffset } from '../hooks/useAppStickyOffset';
 import {
   AppBar,
   Toolbar,
@@ -67,6 +66,8 @@ interface EnhancedHeaderProps {
     staffPortalTabIndex?: number
   ) => void;
   tabs?: React.ReactNode; // Tabs navigation component
+  /** Ref for sticky chrome wrapper (parent measures height for table header offset). */
+  stickyChromeRef?: React.Ref<HTMLDivElement>;
 }
 
 export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
@@ -95,11 +96,11 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   notifications = 0,
   showRealTimeStatus = true,
   onReportClick,
+  stickyChromeRef,
 }) => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const { showSuccess, showInfo } = useToast();
   const bellEmployeeId = notificationEmployeeId || employeeId;
-  const stickyOffsetRef = useAppStickyOffset<HTMLDivElement>();
 
   /**
    * Opens the settings menu
@@ -182,7 +183,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
    */
   return (
     <Box
-      ref={stickyOffsetRef}
+      ref={stickyChromeRef}
       sx={{
         position: 'sticky',
         top: 0,

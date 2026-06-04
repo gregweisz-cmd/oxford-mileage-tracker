@@ -97,6 +97,7 @@ import {
   readPngFileAsDataUrl,
   saveEmployeeSavedSignature,
 } from './utils/signatureApi';
+import { useAppStickyOffset } from './hooks/useAppStickyOffset';
 import { CostCenterApiService } from './services/costCenterApiService';
 
 import FormDatePicker from './components/FormDatePicker';
@@ -743,6 +744,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     : financeMode
       ? (financeUserId || localStorage.getItem('currentEmployeeId') || '')
       : '';
+
+  const reportScopeRef = useRef<HTMLDivElement>(null);
+  const headerStickyRef = useAppStickyOffset<HTMLDivElement>(reportScopeRef);
 
   useEffect(() => {
     if (!supervisorMode || !approverProfileId) return;
@@ -5959,11 +5963,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     (reportStatus === 'draft' || reportStatus === 'needs_revision');
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
+    <Container ref={reportScopeRef} maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
       {/* Dev-only: trigger error boundary to test "Go to dashboard" (throw during render so ErrorBoundary catches it) */}
       {process.env.NODE_ENV === 'development' && <DevErrorBoundaryTrigger />}
       {/* Enhanced Header */}
         <EnhancedHeader
+        stickyChromeRef={headerStickyRef}
         title="MONTHLY EXPENSE REPORT - OXFORD HOUSE, INC."
         subtitle="Comprehensive expense tracking and reporting system"
         employeeName={employeeData?.preferredName || employeeData?.name}
@@ -7414,9 +7419,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Typography>
             
             <TableContainer component={Paper}>
-              <Table size="small">
+              <Table stickyHeader size="small">
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                  <TableRow sx={{ bgcolor: 'grey.100', '& th': { bgcolor: 'grey.100' } }}>
                     {supervisorMode && (
                       <TableCell
                         padding="checkbox"
@@ -8426,61 +8431,108 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 120, minWidth: 120, maxWidth: 120 }}><strong>Cost Center</strong></TableCell>
                     {Array.from({ length: daysInMonth }, (_, i) => {
                       const day = i + 1;
-                      // Check if all cost centers for this day are selected
-                      const allCostCentersSelected = employeeData?.costCenters.every((_, costCenterIdx) => {
-                        const dayId = `time-${costCenterIdx}-${day}`;
-                        return selectedTimeTrackingItems.has(dayId);
-                      }) || false;
-                      const someCostCentersSelected = employeeData?.costCenters.some((_, costCenterIdx) => {
-                        const dayId = `time-${costCenterIdx}-${day}`;
-                        return selectedTimeTrackingItems.has(dayId);
-                      }) || false;
-                      
                       return (
-                        <TableCell key={i} align="center" sx={{ width: supervisorMode ? 30 : 25, minWidth: supervisorMode ? 30 : 25, maxWidth: supervisorMode ? 30 : 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
-                          {supervisorMode ? (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                              <Checkbox
-                                indeterminate={someCostCentersSelected && !allCostCentersSelected}
-                                checked={allCostCentersSelected && (employeeData?.costCenters.length || 0) > 0}
-                                onChange={(e) => {
-                                  const newSet = new Set(selectedTimeTrackingItems);
-                                  if (e.target.checked && employeeData) {
-                                    // Select all cost centers for this day
-                                    employeeData.costCenters.forEach((_, costCenterIdx) => {
-                                      newSet.add(`time-${costCenterIdx}-${day}`);
-                                    });
-                                  } else {
-                                    // Deselect all cost centers for this day
-                                    employeeData?.costCenters.forEach((_, costCenterIdx) => {
-                                      newSet.delete(`time-${costCenterIdx}-${day}`);
-                                    });
-                                  }
-                                  setSelectedTimeTrackingItems(newSet);
-                                }}
-                                size="small"
-                                sx={{ p: 0 }}
-                              />
-                              <Typography variant="caption" sx={{ fontSize: '0.65rem', lineHeight: 1 }}>
-                                {i + 1}
-                              </Typography>
-                              <Typography variant="caption" sx={{ fontSize: '0.58rem', lineHeight: 1, color: 'text.secondary' }}>
-                                {getTimesheetHeaderWeekday(day)}
-                              </Typography>
-                            </Box>
-                          ) : (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-                              <span>{i + 1}</span>
-                              <Typography variant="caption" sx={{ fontSize: '0.58rem', lineHeight: 1, color: 'text.secondary' }}>
-                                {getTimesheetHeaderWeekday(day)}
-                              </Typography>
-                            </Box>
-                          )}
+                        <TableCell key={i} align="center" sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5, fontSize: '0.75rem' }}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+                            <span>{day}</span>
+                            <Typography variant="caption" sx={{ fontSize: '0.58rem', lineHeight: 1, color: 'text.secondary' }}>
+                              {getTimesheetHeaderWeekday(day)}
+                            </Typography>
+                          </Box>
                         </TableCell>
                       );
                     })}
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }}><strong>TOTALS</strong></TableCell>
                   </TableRow>
+                  {supervisorMode && (
+                    <TableRow sx={{ bgcolor: 'grey.100' }}>
+                      <TableCell
+                        sx={{
+                          border: '1px solid #ccc',
+                          p: 1,
+                          width: 120,
+                          minWidth: 120,
+                          maxWidth: 120,
+                          verticalAlign: 'middle',
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          sx={{ fontSize: '0.7rem', fontWeight: 'bold', display: 'block', textAlign: 'center', lineHeight: 1.15, mb: 0.5 }}
+                        >
+                          Needs Revision
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                          <Checkbox
+                            indeterminate={
+                              selectedTimeTrackingItems.size > 0 &&
+                              selectedTimeTrackingItems.size <
+                                daysInMonth * (employeeData?.costCenters.length || 0)
+                            }
+                            checked={
+                              daysInMonth > 0 &&
+                              (employeeData?.costCenters.length || 0) > 0 &&
+                              selectedTimeTrackingItems.size ===
+                                daysInMonth * (employeeData?.costCenters.length || 0)
+                            }
+                            onChange={(e) => {
+                              if (!employeeData) return;
+                              const newSet = new Set<string>();
+                              if (e.target.checked) {
+                                employeeData.costCenters.forEach((_, costCenterIdx) => {
+                                  for (let d = 1; d <= daysInMonth; d++) {
+                                    newSet.add(`time-${costCenterIdx}-${d}`);
+                                  }
+                                });
+                              }
+                              setSelectedTimeTrackingItems(newSet);
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                      </TableCell>
+                      {Array.from({ length: daysInMonth }, (_, i) => {
+                        const day = i + 1;
+                        const allCostCentersSelected =
+                          employeeData?.costCenters.every((_, costCenterIdx) =>
+                            selectedTimeTrackingItems.has(`time-${costCenterIdx}-${day}`)
+                          ) || false;
+                        const someCostCentersSelected =
+                          employeeData?.costCenters.some((_, costCenterIdx) =>
+                            selectedTimeTrackingItems.has(`time-${costCenterIdx}-${day}`)
+                          ) || false;
+
+                        return (
+                          <TableCell
+                            key={i}
+                            align="center"
+                            sx={{ width: 25, minWidth: 25, maxWidth: 25, border: '1px solid #ccc', p: 0.5 }}
+                          >
+                            <Checkbox
+                              indeterminate={someCostCentersSelected && !allCostCentersSelected}
+                              checked={allCostCentersSelected && (employeeData?.costCenters.length || 0) > 0}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedTimeTrackingItems);
+                                if (e.target.checked && employeeData) {
+                                  employeeData.costCenters.forEach((_, costCenterIdx) => {
+                                    newSet.add(`time-${costCenterIdx}-${day}`);
+                                  });
+                                } else {
+                                  employeeData?.costCenters.forEach((_, costCenterIdx) => {
+                                    newSet.delete(`time-${costCenterIdx}-${day}`);
+                                  });
+                                }
+                                setSelectedTimeTrackingItems(newSet);
+                              }}
+                              size="small"
+                              sx={{ p: 0 }}
+                            />
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1, width: 100, minWidth: 100, maxWidth: 100 }} />
+                    </TableRow>
+                  )}
                 </TableHead>
                 <TableBody>
                   {/* Used Cost Centers */}
