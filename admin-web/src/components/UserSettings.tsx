@@ -359,7 +359,11 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         setProfile(savedProfile);
         showMessage('success', 'Profile updated successfully!');
         if (onSettingsUpdate) {
-          onSettingsUpdate(savedProfile);
+          onSettingsUpdate({
+            ...savedProfile,
+            baseAddress: updateData.baseAddress,
+            baseAddress2: updateData.baseAddress2,
+          });
         }
         // Reload the profile to confirm changes were saved
         await loadUserProfile();
@@ -1233,7 +1237,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
         borderColor: 'divider',
         p: 2,
         boxShadow: '0 -2px 8px rgba(0,0,0,0.1)',
-        zIndex: 1000
+        zIndex: (theme) => theme.zIndex.modal - 1,
       }}>
         <Box sx={{ maxWidth: 1200, mx: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
           <Button

@@ -51,22 +51,16 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
 
   const handleClose = () => {
     setOpen(false);
-    // Refresh count after closing dialog (in case notifications were read)
-    setTimeout(() => {
-      fetchUnreadCount();
-    }, 500);
   };
 
   const handleNotificationsUpdate = (options?: { markAllAsRead?: boolean; unreadCount?: number }) => {
+    if (options?.markAllAsRead) {
+      setUnreadCount(0);
+      return;
+    }
     if (typeof options?.unreadCount === 'number') {
       setUnreadCount(Math.max(0, options.unreadCount));
     }
-    if (options?.markAllAsRead) {
-      setUnreadCount(0);
-    }
-    setTimeout(() => {
-      fetchUnreadCount();
-    }, 150);
   };
 
   return (

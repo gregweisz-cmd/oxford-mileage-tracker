@@ -81,7 +81,25 @@ type StartLocationSuggestion = {
 
 export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScreenProps) {
   const endTripOverlay = route?.params?.endTripOverlay === true;
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+
+  const purposeThemedStyles = useMemo(
+    () => ({
+      dropdown: {
+        backgroundColor: colors.card,
+        borderColor: colors.border,
+      },
+      dropdownText: { color: colors.text },
+      dropdownPlaceholder: { color: colors.textSecondary },
+      modalTitle: { color: colors.text },
+      modalItemText: { color: colors.text },
+      modalEmpty: { color: colors.textSecondary },
+      modalCloseText: { color: colors.primary },
+      modalItemBorder: { borderBottomColor: colors.border },
+      modalItemSelected: { backgroundColor: isDark ? 'rgba(76, 175, 80, 0.2)' : 'rgba(76, 175, 80, 0.08)' },
+    }),
+    [colors, isDark]
+  );
   const {
     isTracking,
     tripPaused,
@@ -1693,13 +1711,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Purpose *</Text>
               <TouchableOpacity
-                style={styles.purposeDropdown}
+                style={[styles.purposeDropdown, purposeThemedStyles.dropdown]}
                 onPress={() => setShowPurposePickerModal(true)}
               >
-                <Text style={[styles.purposeDropdownText, !trackingForm.purpose && styles.purposeDropdownPlaceholder]}>
+                <Text
+                  style={[
+                    styles.purposeDropdownText,
+                    purposeThemedStyles.dropdownText,
+                    !trackingForm.purpose && purposeThemedStyles.dropdownPlaceholder,
+                  ]}
+                >
                   {trackingForm.purpose || (travelReasons.length === 0 ? 'Loading...' : 'Select purpose...')}
                 </Text>
-                <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+                <MaterialIcons name="arrow-drop-down" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
               {showPurposePickerModal && (
               <Modal
@@ -1715,16 +1739,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     activeOpacity={1}
                     onPress={() => setShowPurposePickerModal(false)}
                   />
-                  <View style={[styles.purposeModalContent, { backgroundColor: colors.background }]}>
-                    <Text style={styles.purposeModalTitle}>Purpose</Text>
+                  <View style={[styles.purposeModalContent, { backgroundColor: colors.surface }]}>
+                    <Text style={[styles.purposeModalTitle, purposeThemedStyles.modalTitle]}>Purpose</Text>
                     <ScrollView style={styles.purposeModalList} keyboardShouldPersistTaps="handled">
                       {travelReasons.filter((r) => r.label !== 'Other').length === 0 ? (
-                        <Text style={styles.purposeModalEmpty}>No options configured. Set up Travel Reasons in Admin Portal.</Text>
+                        <Text style={[styles.purposeModalEmpty, purposeThemedStyles.modalEmpty]}>
+                          No options configured. Set up Travel Reasons in Admin Portal.
+                        </Text>
                       ) : (
                         travelReasons.filter((r) => r.label !== 'Other').map((r) => (
                           <TouchableOpacity
                             key={r.id}
-                            style={[styles.purposeModalItem, trackingForm.purpose === r.label && styles.purposeModalItemSelected]}
+                            style={[
+                              styles.purposeModalItem,
+                              purposeThemedStyles.modalItemBorder,
+                              trackingForm.purpose === r.label && purposeThemedStyles.modalItemSelected,
+                            ]}
                             onPress={() => {
                               dismissKeyboardForSelection();
                               setTrackingForm(prev => ({ ...prev, purpose: r.label }));
@@ -1732,7 +1762,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                               setShowPurposePickerModal(false);
                             }}
                           >
-                            <Text style={styles.purposeModalItemText}>{r.label}</Text>
+                            <Text style={[styles.purposeModalItemText, purposeThemedStyles.modalItemText]}>
+                              {r.label}
+                            </Text>
                             {trackingForm.purpose === r.label && (
                               <MaterialIcons name="check" size={20} color="#4CAF50" />
                             )}
@@ -1740,18 +1772,20 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                         ))
                       )}
                       <TouchableOpacity
-                        style={styles.purposeModalItem}
+                        style={[styles.purposeModalItem, purposeThemedStyles.modalItemBorder]}
                         onPress={() => {
                           setShowPurposePickerModal(false);
                           setShowCustomPurposeInput(true);
                           setTimeout(() => purposeInputRef.current?.focus(), 0);
                         }}
                       >
-                        <Text style={styles.purposeModalItemText}>Other (Type custom purpose)</Text>
+                        <Text style={[styles.purposeModalItemText, purposeThemedStyles.modalItemText]}>
+                          Other (Type custom purpose)
+                        </Text>
                       </TouchableOpacity>
                     </ScrollView>
                     <TouchableOpacity style={styles.purposeModalClose} onPress={() => setShowPurposePickerModal(false)}>
-                      <Text style={styles.purposeModalCloseText}>Cancel</Text>
+                      <Text style={[styles.purposeModalCloseText, purposeThemedStyles.modalCloseText]}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
                 </View>

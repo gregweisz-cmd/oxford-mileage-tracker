@@ -2177,7 +2177,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               addCategoryAmount('groundTransportation', amount, costCenterIndex);
             } else if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) {
               addCategoryAmount('hotelsAirbnb', amount, costCenterIndex);
-            } else if (category.includes('phone') || category.includes('internet') || category.includes('fax')) {
+            } else if (
+              category.includes('phone') ||
+              category.includes('internet') ||
+              category.includes('fax') ||
+              category.includes('communication')
+            ) {
               addCategoryAmount('phoneInternetFax', amount, costCenterIndex);
             } else if (category.includes('shipping') || category.includes('postage')) {
               addCategoryAmount('shippingPostage', amount, costCenterIndex);
@@ -2221,6 +2226,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           autoPopulateCategory('printingCopying', categoryTotals['printingCopying'] || 0, expenseData.printingCopying || 0);
           autoPopulateCategory('officeSupplies', categoryTotals['officeSupplies'] || 0, expenseData.officeSupplies || 0);
           autoPopulateCategory('eesReceipt', categoryTotals['eesReceipt'] || 0, expenseData.eesReceipt || 0);
+
+          // Mileage by cost center (so per-CC subtotals match category totals)
+          const mileageByCostCenter = new Array(employee.costCenters.length).fill(0);
+          currentMonthMileage.forEach((entry: any) => {
+            const costCenterIndex = resolveCostCenterIndex(entry.costCenter);
+            const mileageAmount =
+              Number(entry.mileageAmount) ||
+              Math.round((Number(entry.miles) || 0) * 0.445 * 100) / 100;
+            mileageByCostCenter[costCenterIndex] += mileageAmount;
+          });
+          if (!autoPopulatedData.costCenterBreakdowns) autoPopulatedData.costCenterBreakdowns = {};
+          (autoPopulatedData.costCenterBreakdowns as any).totalMileageAmount = mileageByCostCenter;
+          const mileageBreakdownSum = mileageByCostCenter.reduce((s, v) => s + v, 0);
+          if (mileageBreakdownSum > 0 && Math.abs(mileageBreakdownSum - totalMileageAmount) > 0.02) {
+            (autoPopulatedData as any).totalMileageAmount = mileageBreakdownSum;
+          }
           
           // Save auto-populated data to backend if it changed
           if (needsUpdate) {
@@ -2290,6 +2311,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               vendor: receipt.vendor,
               description: receipt.description,
               category: receipt.category,
+              costCenter: receipt.costCenter || employee.defaultCostCenter || employee.costCenters?.[0] || '',
               imageUri: receipt.imageUri,
               fileType: receipt.fileType || (isPdfReceiptUri(receipt.imageUri) ? 'pdf' : 'image')
             }));
@@ -5605,6 +5627,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   const getSummarySubtotalForCostCenter = (costCenterIndex: number): number => {
     const categoryKeys = [
+      'totalMileageAmount',
       'airRailBus',
       'vehicleRentalFuel',
       'parkingTolls',
@@ -5623,6 +5646,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     );
     return categorySubtotal + getOtherExpensesAmountForCostCenter(costCenterIndex);
   };
+
+  const overallSubtotalFromCostCenters = employeeData
+    ? employeeData.costCenters.reduce(
+        (sum, _cc, index) => sum + getSummarySubtotalForCostCenter(index),
+        0
+      )
+    : 0;
 
   const handleCoverSheetCostCentersChange = async (event: any) => {
     if (!employeeData) return;
@@ -6561,13 +6591,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       Mileage
                     </TableCell>
                     <TableCell align="right">
-                      ${employeeData.totalMileageAmount.toFixed(2)}
+                      ${getCostCenterAmount('totalMileageAmount', 0).toFixed(2)}
                     </TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
                           <TableCell key={index + 1} align="center">
-                            $0.00
+                            ${getCostCenterAmount('totalMileageAmount', index + 1).toFixed(2)}
                           </TableCell>
                         ))}
                       </>
@@ -6986,7 +7016,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     {/* Hide unused cost center placeholder row */}
                     <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
                       <TableCell>Overall Subtotal:</TableCell>
-                      <TableCell align="right"><strong>${totalExpenses.toFixed(2)}</strong></TableCell>
+                      <TableCell align="right"><strong>${overallSubtotalFromCostCenters.toFixed(2)}</strong></TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>Less Cash Advance:</TableCell>
@@ -6994,7 +7024,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     </TableRow>
                     <TableRow sx={{ bgcolor: 'grey.300', fontWeight: 'bold' }}>
                       <TableCell>GRAND TOTAL REQUESTED:</TableCell>
-                      <TableCell align="right"><strong>${totalExpenses.toFixed(2)}</strong></TableCell>
+                      <TableCell align="right"><strong>${overallSubtotalFromCostCenters.toFixed(2)}</strong></TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -7005,9 +7035,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             <Box sx={{ mt: 6 }}>
               <Box sx={{ display: 'flex', gap: 4 }}>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body1"><strong>Payable to:</strong> {employeeData.name}</Typography>
-                  <Typography variant="body1"><strong>Base Address #1:</strong> {(employeeData.baseAddress || '').split(',')[0]?.trim() || '—'}</Typography>
-                  <Typography variant="body1"><strong>City, State Zip:</strong> {(employeeData.baseAddress || '').split(',').slice(1).join(',').trim() || '—'}</Typography>
+                  <Typography variant="body1"><strong>Payable to (name on check):</strong> {employeeData.name}</Typography>
+                  <Typography variant="body1"><strong>Mailing address — street:</strong> {(employeeData.baseAddress || '').split(',')[0]?.trim() || '—'}</Typography>
+                  <Typography variant="body1"><strong>Mailing address — city, state, ZIP:</strong> {(employeeData.baseAddress || '').split(',').slice(1).join(',').trim() || '—'}</Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Update mailing address under Settings → Base Address (saved to your profile).
+                  </Typography>
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1, minHeight: 80 }}>
@@ -8667,7 +8700,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     amount: 0,
                     vendor: '',
                     description: '',
-                    category: ''
+                    category: '',
+                    costCenter: employeeData?.defaultCostCenter || employeeData?.costCenters?.[0] || '',
                   });
                   setReceiptDialogOpen(true);
                 }}
@@ -8710,6 +8744,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Description</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>Amount</strong></TableCell>
                     <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Category</strong></TableCell>
+                    <TableCell sx={{ border: '1px solid #ccc', p: 1 }}><strong>Cost Center</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>Picture</strong></TableCell>
                     <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}><strong>Actions</strong></TableCell>
                   </TableRow>
@@ -8770,6 +8805,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>${receipt.amount.toFixed(2)}</TableCell>
                       <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>{receipt.category}</TableCell>
+                      <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
+                        {receipt.costCenter || employeeData?.costCenters?.[0] || '—'}
+                      </TableCell>
                       <TableCell align="center" sx={{ border: '1px solid #ccc', p: 1 }}>
                         {(() => {
                           const raw = receipt.imageUri || '';
@@ -9261,6 +9299,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <MenuItem value="Travel">Travel</MenuItem>
               </Select>
             </FormControl>
+            <FormControl fullWidth>
+              <InputLabel>Cost Center</InputLabel>
+              <Select
+                value={editingReceipt?.costCenter || employeeData?.costCenters?.[0] || ''}
+                label="Cost Center"
+                onChange={(e) =>
+                  setEditingReceipt({ ...editingReceipt!, costCenter: e.target.value })
+                }
+              >
+                {(employeeData?.costCenters || []).map((cc) => (
+                  <MenuItem key={cc} value={cc}>
+                    {cc}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -9349,7 +9403,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     categoryTotals['groundTransportation'] = (categoryTotals['groundTransportation'] || 0) + amount;
                   } else if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) {
                     categoryTotals['hotelsAirbnb'] = (categoryTotals['hotelsAirbnb'] || 0) + amount;
-                  } else if (category.includes('phone') || category.includes('internet') || category.includes('fax')) {
+                  } else if (
+                    category.includes('phone') ||
+                    category.includes('internet') ||
+                    category.includes('fax') ||
+                    category.includes('communication')
+                  ) {
                     categoryTotals['phoneInternetFax'] = (categoryTotals['phoneInternetFax'] || 0) + amount;
                   } else if (category.includes('shipping') || category.includes('postage')) {
                     categoryTotals['shippingPostage'] = (categoryTotals['shippingPostage'] || 0) + amount;
@@ -9364,17 +9423,59 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   }
                 });
                 
-                // Update summary sheet amounts from receipt totals (always update when receipt is saved)
                 const updatedData = { ...employeeData };
+                const categoryTotalsByCostCenter: { [key: string]: number[] } = {};
+                const normalizeCcKey = (value: string) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                const resolveCcIndex = (receiptCostCenter?: string) => {
+                  if (!receiptCostCenter) return 0;
+                  const normalized = normalizeCcKey(receiptCostCenter);
+                  const direct = (employeeData.costCenters || []).findIndex(
+                    (cc: string) => normalizeCcKey(cc) === normalized
+                  );
+                  return direct >= 0 ? direct : 0;
+                };
+                const addReceiptToBreakdown = (categoryKey: string, amount: number, costCenterIndex: number) => {
+                  if (!categoryTotalsByCostCenter[categoryKey]) {
+                    categoryTotalsByCostCenter[categoryKey] = new Array(employeeData.costCenters.length).fill(0);
+                  }
+                  categoryTotalsByCostCenter[categoryKey][costCenterIndex] += amount;
+                };
+                updatedReceipts.forEach((receipt: any) => {
+                  const cat = receipt.category?.toLowerCase() || '';
+                  const amt = receipt.amount || 0;
+                  const ccIdx = resolveCcIndex(receipt.costCenter);
+                  if (cat.includes('air') || cat.includes('rail') || cat.includes('bus') || cat.includes('flight')) {
+                    addReceiptToBreakdown('airRailBus', amt, ccIdx);
+                  } else if (cat.includes('vehicle') || cat.includes('rental') || cat.includes('fuel')) {
+                    addReceiptToBreakdown('vehicleRentalFuel', amt, ccIdx);
+                  } else if (cat.includes('parking') || cat.includes('toll')) {
+                    addReceiptToBreakdown('parkingTolls', amt, ccIdx);
+                  } else if (cat.includes('ground') || cat.includes('transportation') || cat.includes('taxi') || cat.includes('uber') || cat.includes('lyft')) {
+                    addReceiptToBreakdown('groundTransportation', amt, ccIdx);
+                  } else if (cat.includes('hotel') || cat.includes('lodging') || cat.includes('airbnb')) {
+                    addReceiptToBreakdown('hotelsAirbnb', amt, ccIdx);
+                  } else if (cat.includes('phone') || cat.includes('internet') || cat.includes('fax') || cat.includes('communication')) {
+                    addReceiptToBreakdown('phoneInternetFax', amt, ccIdx);
+                  } else if (cat.includes('shipping') || cat.includes('postage')) {
+                    addReceiptToBreakdown('shippingPostage', amt, ccIdx);
+                  } else if (cat.includes('printing') || cat.includes('copying')) {
+                    addReceiptToBreakdown('printingCopying', amt, ccIdx);
+                  } else if (cat.includes('supplies') || cat.includes('office')) {
+                    addReceiptToBreakdown('officeSupplies', amt, ccIdx);
+                  } else if (cat.includes('ees')) {
+                    addReceiptToBreakdown('eesReceipt', amt, ccIdx);
+                  }
+                });
                 const updateCategory = (categoryKey: string, receiptTotal: number) => {
                   if (receiptTotal > 0) {
                     (updatedData as any)[categoryKey] = receiptTotal;
                     if (!updatedData.costCenterBreakdowns) updatedData.costCenterBreakdowns = {};
-                    if (!updatedData.costCenterBreakdowns[categoryKey]) (updatedData.costCenterBreakdowns as any)[categoryKey] = [];
-                    (updatedData.costCenterBreakdowns as any)[categoryKey][0] = receiptTotal;
+                    (updatedData.costCenterBreakdowns as any)[categoryKey] = (
+                      categoryTotalsByCostCenter[categoryKey] ||
+                      new Array(employeeData.costCenters.length).fill(0)
+                    ).slice();
                   }
                 };
-                
                 updateCategory('airRailBus', categoryTotals['airRailBus'] || 0);
                 updateCategory('vehicleRentalFuel', categoryTotals['vehicleRentalFuel'] || 0);
                 updateCategory('parkingTolls', categoryTotals['parkingTolls'] || 0);
@@ -9866,21 +9967,33 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       <TabPanel value={activeTab} index={employeeData ? employeeData.costCenters.length + 7 : 7}>
         <UserSettings 
           employeeId={employeeId} 
-          onSettingsUpdate={(settings) => {
-            // Keep settings + report signature state aligned so "Save Entries"
-            // does not re-apply an older in-memory signature.
+          onSettingsUpdate={(settings: any) => {
             if (typeof settings?.signature !== 'undefined') {
               const nextSignature = settings.signature || null;
               setSavedSignature(nextSignature);
               setSignatureImage(nextSignature);
               setEmployeeData((prev: any) => prev ? { ...prev, signature: nextSignature } : prev);
             }
+            if (settings?.baseAddress) {
+              setEmployeeData((prev: any) =>
+                prev
+                  ? {
+                      ...prev,
+                      name: settings.name || prev.name,
+                      baseAddress: settings.baseAddress,
+                      baseAddress2: settings.baseAddress2 || prev.baseAddress2,
+                    }
+                  : prev
+              );
+            }
             debugLog('Settings updated:', settings);
           }} 
         />
       </TabPanel>
 
-      {!supervisorMode && !isAdminView && (
+      {!supervisorMode &&
+        !isAdminView &&
+        activeTab !== (employeeData ? employeeData.costCenters.length + 7 : 7) && (
         <Fab
           variant="extended"
           color="primary"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -271,6 +271,11 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     }
   };
 
+  const handleDialogClose = useCallback(() => {
+    onUpdate?.({ unreadCount: notifications.filter((n) => !n.isRead).length });
+    onClose();
+  }, [notifications, onUpdate, onClose]);
+
   const handleNotificationClick = async (notification: Notification) => {
     // Mark as read if not already read
     if (!notification.isRead) {
@@ -293,7 +298,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
             report.year ?? meta.year,
             tab
           );
-          onClose();
+          handleDialogClose();
         } else {
           onReportClick(
             notification.reportId,
@@ -302,12 +307,12 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
             meta.year,
             tab
           );
-          onClose();
+          handleDialogClose();
         }
       } catch (error) {
         debugError('Error fetching report details:', error);
         onReportClick(notification.reportId, notification.employeeId, meta.month, meta.year, tab);
-        onClose();
+        handleDialogClose();
       }
     }
   };
@@ -331,7 +336,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={handleDialogClose}
       maxWidth="md"
       fullWidth
       PaperProps={{
@@ -370,7 +375,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
               Mark All Read
             </Button>
           )}
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={handleDialogClose} size="small">
             <CloseIcon />
           </IconButton>
         </Box>
@@ -462,7 +467,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
       </DialogContent>
 
       <DialogActions sx={{ p: 1.5 }}>
-        <Button onClick={onClose} variant="outlined" size="small">
+        <Button onClick={handleDialogClose} variant="outlined" size="small">
           Close
         </Button>
       </DialogActions>
