@@ -11,14 +11,11 @@ Portable summary for continuing on another machine. **Shipped to `main` via OTA 
 | `92aa1ca` | Fix mobile hours doubling vs web portal (time dedupe key) |
 | `afe712d` | Scroll/touch freeze fixes after picker/chip taps |
 
-## Uncommitted cleanup (local only)
+## Latest commit
 
-End-of-day audit hardened odometer date matching and consolidated DB helpers — **commit + OTA when ready**:
-
-- `src/utils/dateFormatter.ts` — `toLocalDateKey`, `startOfLocalDay`, `isSameLocalCalendarDay`
-- `src/services/database.ts` — `getMileageEntriesForVehicleOnDate`, shared local-day logic
-- `src/services/anomalyDetectionService.ts` — mileage/receipt `detect*` no-ops (checks kept for re-enable)
-- `src/screens/MileageEntryScreen.tsx` — aligned `checkGpsTrackingStatus` with GPS odometer rules
+| Commit     | Summary |
+|-----------|---------|
+| `ea17fe0` | Odometer local-day hardening; mileage entry GPS lock aligned with GPS screen; session handoff doc |
 
 ## Mobile — odometer (per vehicle)
 
@@ -36,7 +33,7 @@ Key APIs: `resolveOdometerForNextTrip`, `hasGpsMileageOnDate`, `getMileageEntrie
 
 ## Deploy
 
-- **OTA:** production channel, runtime `1.0.9` — latest published group `90e288c7-4f2d-47d6-a3f7-0be4ae893709`.
+- **OTA:** production channel, runtime `1.0.9` — latest published group `e5766d4e-52cc-4a71-9d76-747a2a8e8503` (`ea17fe0`).
 - **Staff portal:** prior table-width fix on Vercel (`42e2546`); no portal changes this session.
 
 ## QA checklist (next session)
