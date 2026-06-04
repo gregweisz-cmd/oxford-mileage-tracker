@@ -26,6 +26,7 @@
   },
   "build": {
     "env": {
+      "NODE_OPTIONS": "--max-old-space-size=4096",
       "REACT_APP_API_URL": "https://oxford-mileage-backend.onrender.com",
       "REACT_APP_WEB_URL": "https://expense.oxfordhouse.org"
     }

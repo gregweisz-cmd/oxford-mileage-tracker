@@ -5622,19 +5622,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  // Calculate totals
-  const totalExpenses = employeeData ? (
-    employeeData.totalMileageAmount + 
-    employeeData.phoneInternetFax + 
-    employeeData.airRailBus + 
-    employeeData.vehicleRentalFuel + 
-    employeeData.parkingTolls + 
-    employeeData.groundTransportation + 
-    employeeData.hotelsAirbnb + 
-    employeeData.perDiem +
-    (employeeData.other || 0)
-  ) : 0;
-
   // Handle Summary Sheet editing
   // Helper function to get cost center amount for a category
   const getCostCenterAmount = (category: string, costCenterIndex: number): number => {
