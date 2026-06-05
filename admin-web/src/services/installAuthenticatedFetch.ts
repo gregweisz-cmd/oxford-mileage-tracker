@@ -123,6 +123,11 @@ export function installAuthenticatedFetch() {
     if (response.status === 401 && shouldTryAuth) {
       dispatchStaffPortalSessionExpired();
     }
+    if (response.ok && shouldTryAuth && method.toUpperCase() !== 'GET') {
+      void import('./rateLimitedApi').then(({ invalidateCachesForMutation }) => {
+        invalidateCachesForMutation(effectiveUrlStr, method);
+      });
+    }
     return response;
   };
 }

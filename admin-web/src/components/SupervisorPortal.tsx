@@ -94,6 +94,11 @@ import { debugError, debugLog } from '../config/debug';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
+async function putExpenseReportApproval(reportId: string, body: Record<string, unknown>) {
+  const { apiPut } = await import('../services/rateLimitedApi');
+  return apiPut(`/api/expense-reports/${reportId}/approval`, body);
+}
+
 interface SupervisorPortalProps {
   supervisorId: string;
   supervisorName: string;
@@ -415,20 +420,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     
     setSavingAction(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'approve',
-          approverId: supervisorId,
-          approverName: supervisorName,
-          supervisorCertificationAcknowledged: needsCert ? supervisorCertificationAcknowledged : false,
-        }),
+      await putExpenseReportApproval(reportId, {
+        action: 'approve',
+        approverId: supervisorId,
+        approverName: supervisorName,
+        supervisorCertificationAcknowledged: needsCert ? supervisorCertificationAcknowledged : false,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to approve report');
-      }
 
       closeReviewDialog();
       await loadTeamReports();
@@ -471,17 +468,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
         };
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        const msg = errBody?.error || response.statusText || 'Failed to request revision';
-        throw new Error(`HTTP ${response.status}: ${msg}`);
-      }
+      await putExpenseReportApproval(reportId, body);
 
       closeReviewDialog();
       await loadTeamReports();
@@ -641,20 +628,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
     setSavingAction(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'resubmit_to_finance',
-          approverId: supervisorId,
-          approverName: supervisorName,
-          comments: reviewComment.trim(),
-        }),
+      await putExpenseReportApproval(reportId, {
+        action: 'resubmit_to_finance',
+        approverId: supervisorId,
+        approverName: supervisorName,
+        comments: reviewComment.trim(),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to resubmit to finance');
-      }
 
       closeReviewDialog();
       await loadTeamReports();
@@ -718,20 +697,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
     setSavingAction(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${delegateReport.id}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'delegate',
-          approverId: supervisorId,
-          approverName: supervisorName,
-          delegateId: selectedDelegateId,
-        }),
+      await putExpenseReportApproval(delegateReport.id, {
+        action: 'delegate',
+        approverId: supervisorId,
+        approverName: supervisorName,
+        delegateId: selectedDelegateId,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to delegate report');
-      }
 
       await loadTeamReports();
       handleCloseDelegateDialog();
@@ -745,19 +716,11 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
   const handleSendReminder = async (reportId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'remind',
-          approverId: supervisorId,
-          approverName: supervisorName,
-        }),
+      await putExpenseReportApproval(reportId, {
+        action: 'remind',
+        approverId: supervisorId,
+        approverName: supervisorName,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to send reminder');
-      }
 
       await loadTeamReports();
     } catch (error) {
@@ -771,20 +734,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
     setSavingAction(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'comment',
-          approverId: supervisorId,
-          approverName: supervisorName,
-          comments: reviewComment.trim(),
-        }),
+      await putExpenseReportApproval(reportId, {
+        action: 'comment',
+        approverId: supervisorId,
+        approverName: supervisorName,
+        comments: reviewComment.trim(),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to add comment');
-      }
 
       setCommentDialogOpen(false);
       setReviewComment('');
@@ -806,9 +761,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     if (!reportToDelete) return;
     const id = reportToDelete.id;
     try {
-      const { apiDelete, rateLimitedApi } = await import('../services/rateLimitedApi');
+      const { apiDelete } = await import('../services/rateLimitedApi');
       await apiDelete(`/api/expense-reports/${id}`);
-      rateLimitedApi.invalidateExpenseReportListCache();
       setTeamReports((prev) => prev.filter((r) => r.id !== id));
       setReportToDelete(null);
       setDeleteDialogOpen(false);

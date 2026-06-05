@@ -585,9 +585,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     if (!reportToDelete) return;
     const id = reportToDelete.id;
     try {
-      const { apiDelete, rateLimitedApi } = await import('../services/rateLimitedApi');
+      const { apiDelete } = await import('../services/rateLimitedApi');
       await apiDelete(`/api/expense-reports/${id}`);
-      rateLimitedApi.invalidateExpenseReportListCache();
       setAllReports((prev) => prev.filter((r) => r.id !== id));
       setManagedReports((prev) => prev.filter((r) => r.id !== id));
       setReportToDelete(null);

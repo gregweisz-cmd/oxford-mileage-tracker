@@ -342,19 +342,8 @@ export default function SupervisorDashboard({ currentEmployee, showKpiCards = tr
         currentEmployee: currentEmployee?.id
       });
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        const errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(errorMessage);
-      }
+      const { apiPut } = await import('../services/rateLimitedApi');
+      await apiPut(endpoint, body);
 
       // Success!
       setShowReviewDialog(false);

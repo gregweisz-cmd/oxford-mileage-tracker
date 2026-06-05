@@ -2535,11 +2535,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // freshly-saved checkbox state with stale cached values.
     if (refreshTrigger > 0) {
       import('./services/rateLimitedApi').then(({ rateLimitedApi }) => {
-        rateLimitedApi.clearCacheFor('/api/daily-descriptions');
-        rateLimitedApi.clearCacheFor('/api/time-tracking');
-        rateLimitedApi.clearCacheFor('/api/mileage-entries');
-        rateLimitedApi.clearCacheFor('/api/receipts');
-        rateLimitedApi.clearCacheFor('/api/expense-reports');
+        rateLimitedApi.invalidateStaffMonthDataCache();
       });
     }
     
@@ -5062,12 +5058,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // (and signatures) read back correctly on the post-save refetch instead of
       // returning the pre-save cached payload.
       const { rateLimitedApi } = await import('./services/rateLimitedApi');
-      rateLimitedApi.clearCacheFor('/api/daily-descriptions');
-      rateLimitedApi.clearCacheFor('/api/time-tracking');
-      rateLimitedApi.clearCacheFor('/api/mileage-entries');
-      rateLimitedApi.clearCacheFor('/api/receipts');
-      rateLimitedApi.clearCacheFor('/api/expense-reports');
-      
+      rateLimitedApi.invalidateStaffMonthDataCache();
+
       // Wait longer to ensure backend processes all deletions before reloading
       // This is especially important for daily descriptions that were deleted
       // Show loading state during the wait
@@ -5246,12 +5238,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setStartFreshDialogOpen(false);
     // Clear API cache so refetch returns wiped state, not cached data
     const { rateLimitedApi } = await import('./services/rateLimitedApi');
-    rateLimitedApi.clearCacheFor('/api/daily-descriptions');
-    rateLimitedApi.clearCacheFor('/api/time-tracking');
-    rateLimitedApi.clearCacheFor('/api/mileage-entries');
-    rateLimitedApi.clearCacheFor('/api/receipts');
-    rateLimitedApi.clearCacheFor('/api/daily-odometer-readings');
-    rateLimitedApi.clearCacheFor('/api/expense-reports');
+    rateLimitedApi.invalidateStaffMonthDataCache();
     setRefreshTrigger((prev) => prev + 1);
     if (typeof showSuccess === 'function') {
       showSuccess('Report cleared. You can start fresh for this month.');

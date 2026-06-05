@@ -424,9 +424,8 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
     if (!reportToDelete) return;
     const id = reportToDelete.id;
     try {
-      const { apiDelete, rateLimitedApi } = await import('../services/rateLimitedApi');
+      const { apiDelete } = await import('../services/rateLimitedApi');
       await apiDelete(`/api/expense-reports/${id}`);
-      rateLimitedApi.invalidateExpenseReportListCache();
       setReports((prev) => prev.filter((r) => r.id !== id));
       setReportToDelete(null);
       setDeleteDialogOpen(false);

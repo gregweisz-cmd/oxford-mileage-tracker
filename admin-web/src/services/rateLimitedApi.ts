@@ -111,10 +111,10 @@ class RateLimitedApiService {
           } catch {
             // If response isn't JSON, don't cache
           }
-        } else if (method === 'DELETE' && item.url.includes('/api/expense-reports/')) {
-          this.invalidateExpenseReportListCache();
+        } else if (method !== 'GET') {
+          invalidateCachesForMutation(item.url, method);
         }
-        
+
         item.resolve(response);
       } catch (error) {
         // Handle rate limiting with exponential backoff
@@ -195,10 +195,92 @@ class RateLimitedApiService {
     keysToDelete.forEach(key => this.cache.delete(key));
   }
 
-  /** Drop cached supervisor/finance report lists after a report is deleted. */
+  /** Drop cached supervisor/finance report lists after report workflow changes. */
   invalidateExpenseReportListCache() {
     this.clearCacheFor('/api/monthly-reports');
     this.clearCacheFor('/api/expense-reports');
+  }
+
+  /** Drop cached staff month data after edits to source tables or report sync. */
+  invalidateStaffMonthDataCache() {
+    this.invalidateExpenseReportListCache();
+    [
+      '/api/daily-descriptions',
+      '/api/time-tracking',
+      '/api/mileage-entries',
+      '/api/receipts',
+      '/api/daily-odometer-readings',
+      '/api/daily-odometer',
+    ].forEach((pattern) => this.clearCacheFor(pattern));
+  }
+}
+
+function pathFromMutationUrl(url: string): string {
+  try {
+    if (url.startsWith('/')) return url.split('?')[0];
+    return new URL(url).pathname;
+  } catch {
+    return url.split('?')[0];
+  }
+}
+
+/**
+ * Invalidate rateLimitedApi GET caches after a successful mutation.
+ * Called from processQueue and installAuthenticatedFetch so raw fetch() and apiPost/apiPut/apiDelete stay in sync.
+ */
+export function invalidateCachesForMutation(url: string, method: string): void {
+  const verb = (method || 'GET').toUpperCase();
+  if (verb === 'GET' || verb === 'HEAD' || verb === 'OPTIONS') return;
+
+  const path = pathFromMutationUrl(url);
+
+  if (path.includes('/api/expense-reports')) {
+    rateLimitedApi.invalidateExpenseReportListCache();
+    const isStaffMonthMutation =
+      path.includes('/sync-to-source') ||
+      path.includes('/wipe-month') ||
+      path.includes('/status') ||
+      (verb === 'POST' && /\/api\/expense-reports\/?$/.test(path));
+    if (isStaffMonthMutation) {
+      rateLimitedApi.invalidateStaffMonthDataCache();
+    }
+  }
+
+  const staffDataPatterns = [
+    '/api/mileage-entries',
+    '/api/receipts',
+    '/api/time-tracking',
+    '/api/daily-descriptions',
+    '/api/daily-odometer-readings',
+    '/api/daily-odometer',
+  ];
+  for (const pattern of staffDataPatterns) {
+    if (path.includes(pattern)) {
+      rateLimitedApi.clearCacheFor(pattern);
+      rateLimitedApi.clearCacheFor('/api/expense-reports');
+      break;
+    }
+  }
+
+  if (path.includes('/api/employees')) {
+    rateLimitedApi.clearCacheFor('/api/employees');
+  }
+
+  if (path.includes('/api/per-diem-rules')) {
+    rateLimitedApi.clearCacheFor('/api/per-diem-rules');
+  }
+
+  if (path.includes('/api/notifications')) {
+    rateLimitedApi.clearCacheFor('/api/notifications');
+  }
+
+  if (path.includes('/api/vehicles')) {
+    rateLimitedApi.clearCacheFor('/api/vehicles');
+  }
+
+  if (path.includes('/api/supervisors')) {
+    rateLimitedApi.clearCacheFor('/api/supervisors');
+    rateLimitedApi.invalidateExpenseReportListCache();
   }
 }
 
@@ -209,8 +291,16 @@ export const rateLimitedApi = new RateLimitedApiService();
 export const apiFetch = (url: string, options?: RequestInit) => 
   rateLimitedApi.fetch(url, options);
 
-export const apiGet = async <T = any>(url: string): Promise<T> => {
-  const response = await rateLimitedApi.fetch(url, { method: 'GET' });
+export interface ApiGetOptions {
+  /** Bypass the 60s in-memory cache (appends a cache-bust query param). */
+  skipCache?: boolean;
+}
+
+export const apiGet = async <T = any>(url: string, options?: ApiGetOptions): Promise<T> => {
+  const fetchUrl = options?.skipCache
+    ? `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`
+    : url;
+  const response = await rateLimitedApi.fetch(fetchUrl, { method: 'GET' });
   return response.json();
 };
 

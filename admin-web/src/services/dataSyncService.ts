@@ -109,9 +109,10 @@ class DataSyncServiceClass {
     
     cacheKeysToClear.forEach(key => {
       this.cache.delete(key);
+      this.syncRateLimitedApiForDataSyncKey(key);
       debugVerbose(`🗑️ DataSyncService: Cleared cache for ${key}`);
     });
-    
+
     // Trigger cache refresh for affected data
     this.refreshAffectedData(type, update.employeeId);
   }
@@ -244,13 +245,41 @@ class DataSyncServiceClass {
   }
 
   /**
+   * Keep rateLimitedApi GET cache aligned when this service's cache is cleared.
+   */
+  private syncRateLimitedApiForDataSyncKey(key: string): void {
+    void import('./rateLimitedApi').then(({ rateLimitedApi }) => {
+      if (key.includes('mileage')) {
+        rateLimitedApi.clearCacheFor('/api/mileage-entries');
+      }
+      if (key.includes('receipt')) {
+        rateLimitedApi.clearCacheFor('/api/receipts');
+      }
+      if (key.includes('time_tracking')) {
+        rateLimitedApi.clearCacheFor('/api/time-tracking');
+      }
+      if (key.includes('expense_reports')) {
+        rateLimitedApi.invalidateExpenseReportListCache();
+      }
+      if (key.includes('employee')) {
+        rateLimitedApi.clearCacheFor('/api/employees');
+      }
+    });
+  }
+
+  /**
    * Clear cache
    */
   clearCache(key?: string): void {
     if (key) {
       this.cache.delete(key);
+      this.syncRateLimitedApiForDataSyncKey(key);
     } else {
       this.cache.clear();
+      void import('./rateLimitedApi').then(({ rateLimitedApi }) => {
+        rateLimitedApi.invalidateStaffMonthDataCache();
+        rateLimitedApi.clearCacheFor('/api/employees');
+      });
     }
   }
 
