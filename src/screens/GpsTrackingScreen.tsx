@@ -100,6 +100,34 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }),
     [colors, isDark]
   );
+
+  const formThemedStyles = useMemo(
+    () => ({
+      sectionTitle: { color: colors.text },
+      label: { color: colors.text },
+      helpText: { color: colors.textSecondary },
+      input: {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        color: colors.text,
+      },
+      statusCard: { backgroundColor: colors.surface },
+      statusText: { color: colors.textSecondary },
+      odometerDisplay: {
+        backgroundColor: isDark ? colors.card : '#f8f9fa',
+        borderColor: colors.border,
+      },
+      odometerValue: { color: colors.text },
+      odometerNote: { color: colors.textSecondary },
+      suggestionsTitle: { color: colors.text },
+      suggestionText: { color: colors.text },
+      suggestionReason: { color: colors.textSecondary },
+      instructionsTitle: { color: colors.text },
+      instructionsText: { color: colors.textSecondary },
+      purposeOtherLabel: { color: colors.textSecondary },
+    }),
+    [colors, isDark]
+  );
   const {
     isTracking,
     tripPaused,
@@ -1553,6 +1581,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           <View
             style={[
               styles.statusCard,
+              formThemedStyles.statusCard,
               isTracking && styles.statusCardActive,
               isTracking && tripPaused && styles.statusCardPaused,
             ]}
@@ -1565,6 +1594,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             <Text
               style={[
                 styles.statusText,
+                formThemedStyles.statusText,
                 isTracking && !tripPaused && styles.statusTextActive,
                 isTracking && tripPaused && styles.statusTextPaused,
               ]}
@@ -1592,10 +1622,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         {/* Tracking Form */}
         {!isTracking && (
           <View style={styles.formContainer}>
-            <Text style={styles.sectionTitle}>Trip Details</Text>
+            <Text style={[styles.sectionTitle, formThemedStyles.sectionTitle]}>Trip Details</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Vehicle</Text>
+              <Text style={[styles.label, formThemedStyles.label]}>Vehicle</Text>
               <View style={styles.vehicleSelector}>
                 {vehicles.map((vehicle) => (
                   <TouchableOpacity
@@ -1632,23 +1662,23 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             {/* Only show odometer input on first GPS session of the day */}
             {!hasStartedGpsToday && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Starting Odometer Reading *</Text>
+                <Text style={[styles.label, formThemedStyles.label]}>Starting Odometer Reading *</Text>
                 <ScrollToOnFocusView>
                   <TextInput
                     ref={odometerInputRef}
-                    style={styles.input}
+                    style={[styles.input, formThemedStyles.input]}
                     value={trackingForm.odometerReading}
                     onChangeText={(value) => handleInputChange('odometerReading', value)}
                     placeholder="e.g., 12345"
                     keyboardType="numeric"
-                    placeholderTextColor="#999"
+                    placeholderTextColor={colors.textSecondary}
                     returnKeyType="next"
                     blurOnSubmit={false}
                     onSubmitEditing={handleOdometerSubmit}
                   />
                 </ScrollToOnFocusView>
                 {lastTravelDayEndingOdometerNote ? (
-                  <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
+                  <Text style={[styles.helpText, formThemedStyles.helpText]}>{lastTravelDayEndingOdometerNote}</Text>
                 ) : null}
               </View>
             )}
@@ -1656,11 +1686,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             {/* Show current odometer reading if GPS has been started today */}
             {hasStartedGpsToday && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Daily Starting Odometer</Text>
+                <Text style={[styles.label, formThemedStyles.label]}>Daily Starting Odometer</Text>
                 {!isEditingOdometer ? (
-                  <View style={styles.odometerDisplay}>
-                    <Text style={styles.odometerValue}>{trackingForm.odometerReading}</Text>
-                    <Text style={styles.odometerNote}>
+                  <View style={[styles.odometerDisplay, formThemedStyles.odometerDisplay]}>
+                    <Text style={[styles.odometerValue, formThemedStyles.odometerValue]}>{trackingForm.odometerReading}</Text>
+                    <Text style={[styles.odometerNote, formThemedStyles.odometerNote]}>
                       Set from first GPS session today
                     </Text>
                     <TouchableOpacity
@@ -1671,19 +1701,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       <Text style={styles.editOdometerButtonText}>Edit</Text>
                     </TouchableOpacity>
                     {lastTravelDayEndingOdometerNote ? (
-                      <Text style={styles.helpText}>{lastTravelDayEndingOdometerNote}</Text>
+                      <Text style={[styles.helpText, formThemedStyles.helpText]}>{lastTravelDayEndingOdometerNote}</Text>
                     ) : null}
                   </View>
                 ) : (
                   <View style={styles.odometerEditContainer}>
                     <ScrollToOnFocusView>
                       <TextInput
-                        style={styles.input}
+                        style={[styles.input, formThemedStyles.input]}
                         value={trackingForm.odometerReading}
                         onChangeText={(value) => handleInputChange('odometerReading', value)}
                         placeholder="e.g., 12345"
                         keyboardType="numeric"
-                        placeholderTextColor="#999"
+                        placeholderTextColor={colors.textSecondary}
                         autoFocus={true}
                       />
                     </ScrollToOnFocusView>
@@ -1709,7 +1739,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             )}
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Purpose *</Text>
+              <Text style={[styles.label, formThemedStyles.label]}>Purpose *</Text>
               <TouchableOpacity
                 style={[styles.purposeDropdown, purposeThemedStyles.dropdown]}
                 onPress={() => setShowPurposePickerModal(true)}
@@ -1795,11 +1825,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 <ScrollToOnFocusView>
                   <TextInput
                     ref={purposeInputRef}
-                    style={[styles.input, { marginTop: 8 }]}
+                    style={[styles.input, formThemedStyles.input, { marginTop: 8 }]}
                     value={trackingForm.purpose}
                     onChangeText={(value) => handleInputChange('purpose', value)}
                     placeholder="Type custom purpose..."
-                    placeholderTextColor="#999"
+                    placeholderTextColor={colors.textSecondary}
                     returnKeyType="done"
                   />
                 </ScrollToOnFocusView>
@@ -1807,15 +1837,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Notes (Optional)</Text>
+              <Text style={[styles.label, formThemedStyles.label]}>Notes (Optional)</Text>
               <ScrollToOnFocusView>
                 <TextInput
                   ref={notesInputRef}
-                  style={[styles.input, styles.textArea]}
+                  style={[styles.input, formThemedStyles.input, styles.textArea]}
                   value={trackingForm.notes}
                   onChangeText={(value) => handleInputChange('notes', value)}
                   placeholder="Additional notes about this trip..."
-                  placeholderTextColor="#999"
+                  placeholderTextColor={colors.textSecondary}
                   multiline
                   numberOfLines={3}
                   returnKeyType="done"
@@ -1827,7 +1857,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             {/* Cost Center Selector - only show if user has multiple cost centers */}
             {currentEmployee && currentEmployee.selectedCostCenters && currentEmployee.selectedCostCenters.length > 1 && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Cost Center</Text>
+                <Text style={[styles.label, formThemedStyles.label]}>Cost Center</Text>
                 <View style={styles.costCenterSelector}>
                   {currentEmployee.selectedCostCenters.map((costCenter) => (
                     <TouchableOpacity
@@ -1854,7 +1884,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 {/* AI Cost Center Suggestions */}
                 {showCostCenterSuggestions && costCenterSuggestions.length > 0 && (
                   <View style={styles.suggestionsContainer}>
-                    <Text style={styles.suggestionsTitle}>🤖 AI Cost Center Suggestions</Text>
+                    <Text style={[styles.suggestionsTitle, formThemedStyles.suggestionsTitle]}>🤖 AI Cost Center Suggestions</Text>
                     {costCenterSuggestions.slice(0, 3).map((suggestion, index) => (
                       <TouchableOpacity
                         key={index}
@@ -1866,8 +1896,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                         }}
                       >
                         <View style={styles.suggestionContent}>
-                          <Text style={styles.suggestionText}>{suggestion.costCenter}</Text>
-                          <Text style={styles.suggestionReason}>{suggestion.reasoning}</Text>
+                          <Text style={[styles.suggestionText, formThemedStyles.suggestionText]}>{suggestion.costCenter}</Text>
+                          <Text style={[styles.suggestionReason, formThemedStyles.suggestionReason]}>{suggestion.reasoning}</Text>
                         </View>
                         <View style={styles.confidenceBadge}>
                           <Text style={styles.confidenceText}>
@@ -1945,8 +1975,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         {/* Instructions */}
         {!isTracking && (
           <View style={styles.instructionsContainer}>
-            <Text style={styles.instructionsTitle}>How GPS Tracking Works:</Text>
-            <Text style={styles.instructionsText}>
+            <Text style={[styles.instructionsTitle, formThemedStyles.instructionsTitle]}>How GPS Tracking Works:</Text>
+            <Text style={[styles.instructionsText, formThemedStyles.instructionsText]}>
               • Enter the purpose of your trip{'\n'}
               • Tap "Start GPS Tracking" to auto-detect your current address{'\n'}
               • Confirm the address and choose a location name{'\n'}
