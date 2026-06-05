@@ -806,11 +806,10 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
     if (!reportToDelete) return;
     const id = reportToDelete.id;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/expense-reports/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Delete failed (${res.status})`);
-      }
+      const { apiDelete, rateLimitedApi } = await import('../services/rateLimitedApi');
+      await apiDelete(`/api/expense-reports/${id}`);
+      rateLimitedApi.invalidateExpenseReportListCache();
+      setTeamReports((prev) => prev.filter((r) => r.id !== id));
       setReportToDelete(null);
       setDeleteDialogOpen(false);
       if (selectedReport?.id === id) setSelectedReport(null);

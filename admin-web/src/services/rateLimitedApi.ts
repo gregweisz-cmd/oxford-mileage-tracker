@@ -98,8 +98,10 @@ class RateLimitedApiService {
         const response = await this.executeRequest(item);
         this.lastRequestTime = Date.now();
         
+        const method = (item.options.method || 'GET').toUpperCase();
+
         // Cache successful GET requests
-        if (item.options.method === 'GET' || !item.options.method) {
+        if (method === 'GET') {
           try {
             const data = await response.clone().json();
             this.cache.set(`${item.url}-${JSON.stringify(item.options)}`, {
@@ -109,6 +111,8 @@ class RateLimitedApiService {
           } catch {
             // If response isn't JSON, don't cache
           }
+        } else if (method === 'DELETE' && item.url.includes('/api/expense-reports/')) {
+          this.invalidateExpenseReportListCache();
         }
         
         item.resolve(response);
@@ -189,6 +193,12 @@ class RateLimitedApiService {
       }
     });
     keysToDelete.forEach(key => this.cache.delete(key));
+  }
+
+  /** Drop cached supervisor/finance report lists after a report is deleted. */
+  invalidateExpenseReportListCache() {
+    this.clearCacheFor('/api/monthly-reports');
+    this.clearCacheFor('/api/expense-reports');
   }
 }
 
