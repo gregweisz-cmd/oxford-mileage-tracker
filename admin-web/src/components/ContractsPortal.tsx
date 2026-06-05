@@ -61,6 +61,7 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 // Debug logging
 import { debugLog, debugError, debugVerbose } from '../config/debug';
 import { apiDelete, apiFetch, apiGet } from '../services/rateLimitedApi';
+import { calculateGrandTotalFromReportData } from '../utils/expenseReportTotals';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -266,7 +267,7 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
           ...report,
           totalMiles: reportData.totalMiles || 0,
           totalMileageAmount: reportData.totalMileageAmount || 0,
-          totalExpenses: calculateTotalExpenses(reportData),
+          totalExpenses: calculateGrandTotalFromReportData(reportData),
           state: state,
           costCenters: reportData.costCenters || [],
         };
@@ -278,29 +279,6 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
     } finally {
       setLoading(false);
     }
-  };
-
-  const calculateTotalExpenses = (reportData: any) => {
-    const {
-      totalMileageAmount = 0,
-      airRailBus = 0,
-      vehicleRentalFuel = 0,
-      parkingTolls = 0,
-      groundTransportation = 0,
-      hotelsAirbnb = 0,
-      perDiem = 0,
-      phoneInternetFax = 0,
-      shippingPostage = 0,
-      printingCopying = 0,
-      officeSupplies = 0,
-      eesReceipt = 0,
-      meals = 0,
-      other = 0,
-    } = reportData;
-
-    return totalMileageAmount + airRailBus + vehicleRentalFuel + parkingTolls +
-           groundTransportation + hotelsAirbnb + perDiem + phoneInternetFax +
-           shippingPostage + printingCopying + officeSupplies + eesReceipt + meals + other;
   };
 
   // Helper function to check if a report month/year falls within a preset range
@@ -478,7 +456,7 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
         status: fetchedReport.status,
         totalMiles: reportData.totalMiles || 0,
         totalMileageAmount: reportData.totalMileageAmount || 0,
-        totalExpenses: calculateTotalExpenses(reportData),
+        totalExpenses: calculateGrandTotalFromReportData(reportData),
         submittedAt: fetchedReport.submittedAt,
         reportData: reportData,
         state: fetchedReport.state,
