@@ -69,6 +69,7 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 
 // Debug logging
 import { debugLog, debugError, debugVerbose } from '../config/debug';
+import { apiDelete, apiFetch, apiGet, apiPut } from '../services/rateLimitedApi';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -374,10 +375,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       setAssignedCostCenterNames(userAssignedCenters);
       setAssignedCostCenterKeys(userAssignedCenters.map(normalizeCostCenter).filter(Boolean));
 
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports`);
-      if (!response.ok) throw new Error('Failed to load reports');
-      
-      const data = await response.json();
+      const data = await apiGet<any[]>('/api/expense-reports');
       debugVerbose('📊 Loaded reports:', data.length, 'reports');
       debugVerbose('📊 First report structure:', data[0]);
       
@@ -585,7 +583,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
     if (!reportToDelete) return;
     const id = reportToDelete.id;
     try {
-      const { apiDelete } = await import('../services/rateLimitedApi');
       await apiDelete(`/api/expense-reports/${id}`);
       setAllReports((prev) => prev.filter((r) => r.id !== id));
       setManagedReports((prev) => prev.filter((r) => r.id !== id));
@@ -629,36 +626,31 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
     // If report not in current list, fetch it
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${reportId}`);
-      if (response.ok) {
-        const fetchedReport = await response.json();
-        // Convert to ExpenseReport format
-        const reportData = fetchedReport.reportData || {};
-        const expenseReport: ExpenseReport = {
-          id: fetchedReport.id,
-          employeeId: fetchedReport.employeeId,
-          employeeName: fetchedReport.employeeName || 'Unknown',
-          employeeFullName: fetchedReport.employeeFullName,
-          employeeEmail: fetchedReport.employeeEmail || '',
-          month: fetchedReport.month,
-          year: fetchedReport.year,
-          status: fetchedReport.status,
-          totalMiles: reportData.totalMiles || 0,
-          totalMileageAmount: reportData.totalMileageAmount || 0,
-          totalExpenses: calculateTotalExpenses(reportData),
-          submittedAt: fetchedReport.submittedAt,
-          reportData: reportData,
-          state: fetchedReport.state,
-          costCenters: reportData.costCenters || [],
-          currentApprovalStage: fetchedReport.currentApprovalStage,
-          currentApproverId: fetchedReport.currentApproverId,
-        };
-        handleViewReport(expenseReport);
-        // Reload reports to include this one
-        loadReports();
-      }
+      const fetchedReport = await apiGet<any>(`/api/expense-reports/id/${reportId}`);
+      const reportData = fetchedReport.reportData || {};
+      const expenseReport: ExpenseReport = {
+        id: fetchedReport.id,
+        employeeId: fetchedReport.employeeId,
+        employeeName: fetchedReport.employeeName || 'Unknown',
+        employeeFullName: fetchedReport.employeeFullName,
+        employeeEmail: fetchedReport.employeeEmail || '',
+        month: fetchedReport.month,
+        year: fetchedReport.year,
+        status: fetchedReport.status,
+        totalMiles: reportData.totalMiles || 0,
+        totalMileageAmount: reportData.totalMileageAmount || 0,
+        totalExpenses: calculateTotalExpenses(reportData),
+        submittedAt: fetchedReport.submittedAt,
+        reportData: reportData,
+        state: fetchedReport.state,
+        costCenters: reportData.costCenters || [],
+        currentApprovalStage: fetchedReport.currentApprovalStage,
+        currentApproverId: fetchedReport.currentApproverId,
+      };
+      handleViewReport(expenseReport);
+      loadReports();
     } catch (error) {
-        debugError('Error fetching report for navigation:', error);
+      debugError('Error fetching report for navigation:', error);
     }
   };
 
@@ -670,18 +662,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
 
     try {
       // Finance revisions go directly back to the employee; supervisor/senior staff are notified as observers.
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${selectedReport.id}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'request_revision_to_employee',
-          approverId: financeUserId,
-          approverName: financeUserName,
-          comments: revisionComments.trim(),
-        }),
+      await apiPut(`/api/expense-reports/${selectedReport.id}/approval`, {
+        action: 'request_revision_to_employee',
+        approverId: financeUserId,
+        approverName: financeUserName,
+        comments: revisionComments.trim(),
       });
-
-      if (!response.ok) throw new Error('Failed to request revision');
 
       alert('Revision request sent to the employee. Supervisor and senior staff received FYI observer notifications when applicable—they do not get the report for rework.');
       setRevisionDialogOpen(false);
@@ -733,21 +719,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
         alert('Please upload your finance signature on the report before approving.');
         return;
       }
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${financeApproveReport.id}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'approve',
-          approverId: financeUserId,
-          approverName: financeUserName,
-          comments: 'Approved by Finance team',
-        }),
+      await apiPut(`/api/expense-reports/${financeApproveReport.id}/approval`, {
+        action: 'approve',
+        approverId: financeUserId,
+        approverName: financeUserName,
+        comments: 'Approved by Finance team',
       });
-
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error(errBody.error || 'Failed to approve report');
-      }
 
       setFinanceApproveDialogOpen(false);
       setFinanceApproveReport(null);
@@ -771,28 +748,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       const mapsEnabled = hasMapsEnabled(report);
       
       // Build URL with map view mode if maps are enabled and mode is specified
-      let exportUrl = `${API_BASE_URL}/api/export/expense-report-pdf/${report.id}`;
+      let exportUrl = `/api/export/expense-report-pdf/${report.id}`;
       if (mapsEnabled && viewMode && viewMode !== 'none') {
         exportUrl += `?mapViewMode=${viewMode}`;
       }
-      
-      // Get auth token from localStorage
-      const authToken = localStorage.getItem('authToken');
-      
-      const response = await fetch(exportUrl, {
-        method: 'GET',
-        headers: {
-          ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
-        },
-      });
 
-      if (!response.ok) {
-        debugError('❌ Export failed with status:', response.status);
-        const errorText = await response.text();
-        debugError('❌ Export error response:', errorText);
-        throw new Error(`Export failed: ${response.status} ${errorText}`);
-      }
-
+      const response = await apiFetch(exportUrl);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');

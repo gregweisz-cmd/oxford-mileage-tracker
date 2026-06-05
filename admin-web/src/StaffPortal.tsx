@@ -101,6 +101,18 @@ import { EMBEDDED_STICKY_TABLE_CONTAINER_SX, useAppStickyOffset } from './hooks/
 import { CostCenterApiService } from './services/costCenterApiService';
 
 import FormDatePicker from './components/FormDatePicker';
+import {
+  apiDelete,
+  apiFetch,
+  apiGet,
+  apiPost,
+  apiPut,
+  fetchMileageEntriesForMonth,
+  fetchTimeTrackingForMonth,
+  rateLimitedApi,
+  saveDailyDescription,
+  syncExpenseReportToSource,
+} from './services/staffPortalApi';
 
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -902,9 +914,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Load daily description options for dropdown (shared with mobile Hours & Description)
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/daily-description-options`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d: any) => setDailyDescriptionOptions(Array.isArray(d) ? d : []))
+    apiGet<any[]>('/api/daily-description-options')
+      .then((d) => setDailyDescriptionOptions(Array.isArray(d) ? d : []))
       .catch(() => setDailyDescriptionOptions([]));
   }, []);
 
@@ -1117,20 +1128,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${reportId}`);
-        if (response.ok) {
-          const report = await response.json();
-          if (report.month && report.year) {
-            applyMonthYear(report.month, report.year);
-          } else {
-            showError('Could not determine which month this report belongs to.');
-          }
+        const report = await apiGet<{ month?: number; year?: number }>(`/api/expense-reports/id/${reportId}`);
+        if (report.month && report.year) {
+          applyMonthYear(report.month, report.year);
         } else {
-          showError('Could not open that report.');
+          showError('Could not determine which month this report belongs to.');
         }
       } catch (error) {
         debugError('Error fetching report for navigation:', error);
-        showError('Could not navigate to report.');
+        showError('Could not open that report.');
       }
     },
     [showSuccess, showError]
@@ -1231,12 +1237,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       setApprovalHistoryLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/api/expense-reports/${reportId}/history`);
-        if (!response.ok) {
-          throw new Error(`Failed to load approval history (${response.status})`);
-        }
-
-        const data = await response.json();
+        const data = await apiGet<{
+          workflow?: ApprovalWorkflowStepSummary[];
+          history?: ApprovalHistoryEntry[];
+          report?: {
+            status?: string;
+            currentApprovalStage?: string | null;
+            currentApprovalStep?: number;
+            currentApproverName?: string | null;
+            submittedAt?: string | null;
+            approvedAt?: string | null;
+          };
+        }>(`/api/expense-reports/${reportId}/history`);
         if (Array.isArray(data.workflow)) {
           setApprovalWorkflow(data.workflow);
         } else {
@@ -1301,8 +1313,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     
     try {
       // Fetch updated time tracking data - no delay needed
-      const timeTrackingResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
-      const timeTracking = timeTrackingResponse.ok ? await timeTrackingResponse.json() : [];
+      let timeTracking: any[] = [];
+      try {
+        timeTracking = await fetchTimeTrackingForMonth(effectiveEmployeeId, currentMonth, currentYear, {
+          skipCache: true,
+        });
+      } catch {
+        timeTracking = [];
+      }
       
       // Reduced logging for performance
       
@@ -1704,24 +1722,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       
       try {
         // Fetch employee details from backend
-        const employeeResponse = await fetch(`${API_BASE_URL}/api/employees/${backendEmployeeId}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
-        });
-        if (!employeeResponse.ok) {
-          // If employee not found, silently try with fallback ID
-          debugLog(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
-          const fallbackResponse = await fetch(`${API_BASE_URL}/api/employees/mggwglbfk9dij3oze8l`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
-          });
-          if (fallbackResponse.ok) {
-            employee = await fallbackResponse.json();
-            debugLog('✅ Successfully loaded fallback employee data for:', employee.name);
-          } else {
-            throw new Error('Failed to fetch employee data');
-          }
-        } else {
-          employee = await employeeResponse.json();
+        try {
+          employee = await apiGet(`/api/employees/${backendEmployeeId}`);
           debugVerbose('✅ Successfully loaded employee data for:', employee.name);
+        } catch {
+          debugLog(`Employee ${backendEmployeeId} not found in backend, using fallback employee data...`);
+          employee = await apiGet('/api/employees/mggwglbfk9dij3oze8l');
+          debugLog('✅ Successfully loaded fallback employee data for:', employee.name);
         }
         
         // Set employee role for notifications
@@ -1765,7 +1772,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           
           // Fetch real data from backend APIs using rate-limited API.
           // Keep each request isolated so one transient failure doesn't blank the whole report.
-          const { apiFetch } = await import('./services/rateLimitedApi');
           const safeApiFetch = async (url: string, fallbackBody: string = '[]') => {
             try {
               return await apiFetch(url);
@@ -2346,18 +2352,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Save auto-populated data to backend if it changed
           if (needsUpdate) {
             try {
-              const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  reportData: autoPopulatedData
-                })
+              await apiPut(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, {
+                reportData: autoPopulatedData,
               });
-              if (response.ok) {
-                debugLog('✅ Auto-populated summary sheet from receipt totals on load');
-                // Update expenseData with auto-populated values
-                Object.assign(expenseData, autoPopulatedData);
-              }
+              debugLog('✅ Auto-populated summary sheet from receipt totals on load');
+              Object.assign(expenseData, autoPopulatedData);
             } catch (error) {
               debugError('Error auto-populating summary sheet on load:', error);
             }
@@ -2534,9 +2533,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // payload, so it must be invalidated here too or the refetch will overwrite
     // freshly-saved checkbox state with stale cached values.
     if (refreshTrigger > 0) {
-      import('./services/rateLimitedApi').then(({ rateLimitedApi }) => {
-        rateLimitedApi.invalidateStaffMonthDataCache();
-      });
+      rateLimitedApi.invalidateStaffMonthDataCache();
     }
     
     loadEmployeeData();
@@ -2567,7 +2564,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       try {
         // Fetch receipts, mileage entries, and time entries to check for revision flags
-        const { apiFetch } = await import('./services/rateLimitedApi');
         const [receiptsRes, mileageRes, timeRes] = await Promise.all([
           apiFetch(`/api/receipts?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
           apiFetch(`/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`),
@@ -2603,10 +2599,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const fetchRevisionNotes = async () => {
       if (currentReportId && reportStatus === 'needs_revision') {
         try {
-          const response = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}/revision-notes?resolved=false`);
-          if (response.ok) {
-            const notes = await response.json();
-            setRevisionNotes(Array.isArray(notes) ? notes : []);
+          const notes = await apiGet<any[]>(
+            `/api/expense-reports/${currentReportId}/revision-notes?resolved=false`
+          );
+          if (Array.isArray(notes)) {
+            setRevisionNotes(notes);
             const itemsNeedingRev = new Set<string>();
             const daysNeedingRev = new Set<number>();
             
@@ -2769,26 +2766,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         });
         
         if (descToSave) {
-          const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              id: descToSave.id,
-              employeeId: descToSave.employeeId,
-              date: dateStr,
-              description: descToSave.description || '',
-              costCenter: descToSave.costCenter || '',
-              stayedOvernight: descToSave.stayedOvernight || false,
-              dayOff: descToSave.dayOff || false,
-              dayOffType: descToSave.dayOffType || null
-            })
+          await saveDailyDescription({
+            id: descToSave.id,
+            employeeId: descToSave.employeeId,
+            date: dateStr,
+            description: descToSave.description || '',
+            costCenter: descToSave.costCenter || '',
+            stayedOvernight: descToSave.stayedOvernight || false,
+            dayOff: descToSave.dayOff || false,
+            dayOffType: descToSave.dayOffType || null,
           });
-          
-          if (!response.ok) {
-            debugError('Error saving description:', response.status);
-          }
         }
       } catch (error) {
         debugError('Error saving description to backend:', error);
@@ -2880,17 +2867,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
 
       // Sync to source tables and expense report (we send reportData directly so state doesn't need to be updated yet)
-      await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          employeeId: updatedData.employeeId,
-          month: currentMonth,
-          year: currentYear,
-          reportData: reportData
-        }),
+      await syncExpenseReportToSource({
+        employeeId: updatedData.employeeId,
+        month: currentMonth,
+        year: currentYear,
+        reportData,
       });
 
       // Persist starting odometer for the day when user edits odometerStart (so it survives reload and syncs to mobile)
@@ -2898,31 +2879,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         const dayDate = newEntries[row].date;
         const startVal = newEntries[row].odometerStart ?? 0;
         try {
-          await fetch(`${API_BASE_URL}/api/daily-odometer-readings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              employeeId: updatedData.employeeId,
-              date: dayDate,
-              odometerReading: startVal,
-              notes: ''
-            }),
+          await apiPost('/api/daily-odometer-readings', {
+            employeeId: updatedData.employeeId,
+            date: dayDate,
+            odometerReading: startVal,
+            notes: '',
           });
-          const { rateLimitedApi } = await import('./services/rateLimitedApi');
-          rateLimitedApi.clearCacheFor('/api/daily-odometer-readings');
         } catch (odometerErr) {
           debugError('Error saving daily odometer reading:', odometerErr);
         }
       }
       
       debugVerbose('✅ Changes auto-saved and synced to source tables');
-      
-      // No reload on description save: we already updated local state, so the UI shows the new value.
-      // Data is persisted via POST + sync-to-source; next manual refresh or navigation will show saved data.
-      if (field === 'description') {
-        const { rateLimitedApi } = await import('./services/rateLimitedApi');
-        rateLimitedApi.clearCacheFor('/api/daily-descriptions');
-      }
     } catch (error) {
       debugError('Error auto-saving changes:', error);
       // Don't show alert for auto-save failures to avoid interrupting user workflow
@@ -2980,9 +2948,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (value === 0) {
         if (existingEntries.length > 0) {
           await Promise.allSettled(
-            existingEntries.map((entry) =>
-              fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, { method: 'DELETE' })
-            )
+            existingEntries.map((entry) => apiDelete(`/api/time-tracking/${entry.id}`))
           );
         }
         return;
@@ -2996,9 +2962,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         });
         const entriesToDelete = existingEntries.slice(1);
         await Promise.allSettled(
-          entriesToDelete.map((entry) =>
-            fetch(`${API_BASE_URL}/api/time-tracking/${entry.id}`, { method: 'DELETE' })
-          )
+          entriesToDelete.map((entry) => apiDelete(`/api/time-tracking/${entry.id}`))
         );
       }
 
@@ -3020,21 +2984,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         costCenter: actualCostCenter,
       };
 
-      const response = entryToUpdate
-        ? await fetch(`${API_BASE_URL}/api/time-tracking/${entryToUpdate.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          })
-        : await fetch(`${API_BASE_URL}/api/time-tracking`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Failed to save hours (${response.status})`);
+      if (entryToUpdate) {
+        await apiPut(`/api/time-tracking/${entryToUpdate.id}`, requestBody);
+      } else {
+        await apiPost('/api/time-tracking', requestBody);
       }
     },
     [employeeData, currentMonth, currentYear]
@@ -3107,14 +3060,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       setDailyDescriptionsWithRef(newDescriptions);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildDailyDescriptionPostBody(descToSave, entryDateStr)),
-        });
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
+        await saveDailyDescription(buildDailyDescriptionPostBody(descToSave, entryDateStr));
         await saveCostCenterHoursForDay(day, costCenter, value);
         setDailyDescriptionsWithRef((prev) =>
           prev.map((d: any) =>
@@ -3122,12 +3068,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           )
         );
         await refreshTimesheetData(employeeData);
-        const timeRes = await fetch(
-          `${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`
+        const timeEntries = await fetchTimeTrackingForMonth(
+          employeeData.employeeId,
+          currentMonth,
+          currentYear,
+          { skipCache: true }
         );
-        if (timeRes.ok) {
-          setRawTimeEntries(dedupeTimeTrackingEntries(await timeRes.json()));
-        }
+        setRawTimeEntries(dedupeTimeTrackingEntries(timeEntries));
       } catch (error) {
         debugError('Error saving daily description hours:', error);
         alert('Failed to save hours. Please try again.');
@@ -3161,35 +3108,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         odometerReading: formData.startingOdometer || 0
       };
       
-      let response;
       const isEdit = editingMileageEntry && editingMileageEntry.id;
-      
+
       if (isEdit) {
-        // Update existing entry
-        response = await fetch(`${API_BASE_URL}/api/mileage-entries/${editingMileageEntry.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(backendData)
-        });
+        await apiPut(`/api/mileage-entries/${editingMileageEntry.id}`, backendData);
       } else {
-        // Create new entry
-        response = await fetch(`${API_BASE_URL}/api/mileage-entries`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(backendData)
-        });
+        await apiPost('/api/mileage-entries', backendData);
       }
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${isEdit ? 'update' : 'create'} mileage entry`);
-      }
-      
-      // Reload mileage entries to refresh the display
-      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${employeeId}&month=${currentMonth}&year=${currentYear}`);
-      if (mileageRes.ok) {
-        const mileageEntries = await mileageRes.json();
-        setRawMileageEntries(mileageEntries);
-      }
+
+      const mileageEntries = await fetchMileageEntriesForMonth(employeeId, currentMonth, currentYear, {
+        skipCache: true,
+      });
+      setRawMileageEntries(mileageEntries);
       
       if (!options?.keepOpenAfterSave) {
         // Trigger a refresh of employee data by incrementing refreshTrigger.
@@ -3211,21 +3141,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/mileage-entries/${entryId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete mileage entry');
-      }
-      
-      // Reload mileage entries to refresh the display
-      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
-      if (mileageRes.ok) {
-        const mileageEntries = await mileageRes.json();
-        setRawMileageEntries(mileageEntries);
-      }
+      await apiDelete(`/api/mileage-entries/${entryId}`);
+
+      const mileageEntries = await fetchMileageEntriesForMonth(
+        effectiveEmployeeId,
+        currentMonth,
+        currentYear,
+        { skipCache: true }
+      );
+      setRawMileageEntries(mileageEntries);
       
       // Trigger a full refresh of employee data to recalculate odometer end and daily entries
       // This ensures odometer end is recalculated after deletion
@@ -3256,17 +3180,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const handleMileageReorder = async (newOrderedIds: string[]) => {
     if (newOrderedIds.length === 0) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/mileage-entries/reorder`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: effectiveEmployeeId, orderedIds: newOrderedIds })
+      await apiPost('/api/mileage-entries/reorder', {
+        employeeId: effectiveEmployeeId,
+        orderedIds: newOrderedIds,
       });
-      if (!response.ok) throw new Error('Failed to reorder');
-      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
-      if (mileageRes.ok) {
-        const mileageEntries = await mileageRes.json();
-        setRawMileageEntries(mileageEntries);
-      }
+      const mileageEntries = await fetchMileageEntriesForMonth(
+        effectiveEmployeeId,
+        currentMonth,
+        currentYear,
+        { skipCache: true }
+      );
+      setRawMileageEntries(mileageEntries);
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
       debugError('Error reordering mileage entries:', error);
@@ -3287,17 +3211,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     try {
       for (const entry of entriesForDate) {
-        const response = await fetch(`${API_BASE_URL}/api/mileage-entries/${entry.id}`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        if (!response.ok) throw new Error(`Failed to delete entry ${entry.id}`);
+        await apiDelete(`/api/mileage-entries/${entry.id}`);
       }
-      const mileageRes = await fetch(`${API_BASE_URL}/api/mileage-entries?employeeId=${effectiveEmployeeId}&month=${currentMonth}&year=${currentYear}`);
-      if (mileageRes.ok) {
-        const mileageEntries = await mileageRes.json();
-        setRawMileageEntries(mileageEntries);
-      }
+      const mileageEntries = await fetchMileageEntriesForMonth(
+        effectiveEmployeeId,
+        currentMonth,
+        currentYear,
+        { skipCache: true }
+      );
+      setRawMileageEntries(mileageEntries);
       // Clear this day's odometer/miles in saved reportData so reload merge doesn't restore old values
       if (employeeData?.dailyEntries) {
         const updatedEntries = employeeData.dailyEntries.map((e: any) => {
@@ -3317,15 +3239,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           employeeCertificationAcknowledged: employeeCertificationAcknowledged,
           supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
         };
-        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            employeeId: employeeData.employeeId,
-            month: currentMonth,
-            year: currentYear,
-            reportData
-          })
+        await syncExpenseReportToSource({
+          employeeId: employeeData.employeeId,
+          month: currentMonth,
+          year: currentYear,
+          reportData,
         });
         setEmployeeData({ ...employeeData, dailyEntries: updatedEntries });
       }
@@ -3423,14 +3341,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       
       // First, check if an entry already exists for this day and category
-      const checkResponse = await fetch(`${API_BASE_URL}/api/time-tracking?employeeId=${employeeData.employeeId}&month=${currentMonth}&year=${currentYear}`);
+      const allEntries = await fetchTimeTrackingForMonth(
+        employeeData.employeeId,
+        currentMonth,
+        currentYear,
+        { skipCache: true }
+      );
       let existingEntry = null;
-      
-      if (checkResponse.ok) {
-        const allEntries = await checkResponse.json();
-        // Find entry for this specific day and category
-        // Use local date parsing to avoid timezone issues
-        existingEntry = allEntries.find((entry: any) => {
+
+      // Find entry for this specific day and category
+      existingEntry = allEntries.find((entry: any) => {
           const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
           const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
           return entryDay === day && 
@@ -3439,8 +3359,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                  entry.category === mappedCategory &&
                  (!entry.costCenter || entry.costCenter === '');
         });
-      }
-      
+
       const requestBody = {
           employeeId: employeeData.employeeId,
           date: dateStr,
@@ -3457,50 +3376,28 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (value === 0) {
         if (existingEntry) {
           debugLog(`🗑️ Deleting time tracking entry (0 hours):`, existingEntry.id);
-          const deleteResponse = await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
-            method: 'DELETE',
-          });
-          
-          if (!deleteResponse.ok) {
-            // If entry doesn't exist (404), that's fine - it's already deleted
-            // Only throw error for other status codes
-            if (deleteResponse.status === 404) {
+          try {
+            await apiDelete(`/api/time-tracking/${existingEntry.id}`);
+            debugLog(`✅ Deleted time tracking entry for day ${day}`);
+          } catch (deleteError) {
+            const message = deleteError instanceof Error ? deleteError.message : '';
+            if (message.includes('404')) {
               debugLog(`ℹ️ Entry ${existingEntry.id} already deleted (404) - continuing`);
             } else {
-              const errorText = await deleteResponse.text();
-              debugError(`❌ Failed to delete time tracking: ${deleteResponse.status} - ${errorText}`);
-              // Revert optimistic update on error
+              debugError(`❌ Failed to delete time tracking:`, deleteError);
               refreshTimesheetData(employeeData).catch(() => {});
-              throw new Error(`Failed to delete: ${deleteResponse.status}`);
+              throw deleteError;
             }
-          } else {
-            debugLog(`✅ Deleted time tracking entry for day ${day}`);
           }
         } else {
           debugLog(`ℹ️ Value is 0 and no existing entry found - nothing to delete`);
         }
       } else if (value > 0) {
         // Use PUT if entry exists, POST if it doesn't (POST will use INSERT OR REPLACE with deterministic ID)
-        const response = existingEntry 
-          ? await fetch(`${API_BASE_URL}/api/time-tracking/${existingEntry.id}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(requestBody),
-            })
-          : await fetch(`${API_BASE_URL}/api/time-tracking`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(requestBody),
-            });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          debugError(`❌ Failed to save time tracking: ${response.status} - ${errorText}`);
-          throw new Error(`Failed to save: ${response.status}`);
+        if (existingEntry) {
+          await apiPut(`/api/time-tracking/${existingEntry.id}`, requestBody);
+        } else {
+          await apiPost('/api/time-tracking', requestBody);
         }
         
         const result = await response.json();
@@ -3576,23 +3473,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const reportData = buildReportData(overrides);
     if (!reportData) return;
 
-    const response = await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        employeeId: employeeData.employeeId,
-        month: currentMonth,
-        year: currentYear,
-        reportData: reportData,
-      }),
+    await syncExpenseReportToSource({
+      employeeId: employeeData.employeeId,
+      month: currentMonth,
+      year: currentYear,
+      reportData,
     });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(`Failed to sync report data: ${errorData.error || errorData.message || 'Unknown error'}`);
-    }
   }, [employeeData, currentMonth, currentYear, buildReportData]);
 
   const applyEmployeeSignatureToReport = async (result: string, saveToProfile: boolean) => {
@@ -3747,20 +3633,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           // Update receipt in backend
           const receipt = updatedReceipts.find(r => r.id === receiptId);
           if (receipt) {
-            const response = await fetch(`${API_BASE_URL}/api/receipts/${receiptId}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                ...receipt,
-                imageUri: result,
-                fileType: uploadedFileType
-              })
+            await apiPut(`/api/receipts/${receiptId}`, {
+              ...receipt,
+              imageUri: result,
+              fileType: uploadedFileType,
             });
-            
-            if (response.ok) {
-              // Also save to expense report table for persistence
-              await syncReportData();
-            }
+            await syncReportData();
           }
         } catch (error) {
           debugError('Error saving receipt image:', error);
@@ -3794,18 +3672,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       const receipt = updatedReceipts.find((r) => r.id === receiptId);
       if (!receipt) return;
-      const response = await fetch(`${API_BASE_URL}/api/receipts/${receiptId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...receipt,
-          imageUri: '',
-          fileType: 'image',
-        }),
+      await apiPut(`/api/receipts/${receiptId}`, {
+        ...receipt,
+        imageUri: '',
+        fileType: 'image',
       });
-      if (!response.ok) {
-        throw new Error(`Failed to remove receipt photo (${response.status})`);
-      }
       await syncReportData();
       showSuccess('Receipt photo removed');
     } catch (error) {
@@ -3835,17 +3706,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       const receipt = updatedReceipts.find(r => r.id === receiptId);
       if (receipt) {
-        const response = await fetch(`${API_BASE_URL}/api/receipts/${receiptId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...receipt, imageUri: croppedDataUrl, fileType: 'image' })
+        await apiPut(`/api/receipts/${receiptId}`, {
+          ...receipt,
+          imageUri: croppedDataUrl,
+          fileType: 'image',
         });
-        if (response.ok) {
-          await syncReportData();
-          showSuccess('Receipt image updated');
-        } else {
-          showError('Failed to save cropped image. Please try again.');
-        }
+        await syncReportData();
+        showSuccess('Receipt image updated');
       }
     } catch (error) {
       debugError('Error saving cropped receipt image:', error);
@@ -5007,39 +4874,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         supervisorCertificationAcknowledged: superCertAck
       };
 
-      // Use the sync endpoint to save AND sync to source tables
-      const syncUrl = `${API_BASE_URL}/api/expense-reports/sync-to-source`;
-      const response = await fetch(syncUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      try {
+        await syncExpenseReportToSource({
           employeeId: employeeData.employeeId,
           month: currentMonth,
           year: currentYear,
-          reportData: reportData
-        }),
-      });
-
-      const responseText = await response.text();
-      if (!response.ok) {
-        let errorMsg = `Server returned ${response.status}`;
-        try {
-          const errorData = responseText ? JSON.parse(responseText) : {};
-          const msg = errorData.error || errorData.message || errorData.details;
-          if (msg) errorMsg = typeof msg === 'string' ? msg : JSON.stringify(msg);
-        } catch {
-          if (responseText && responseText.length < 200) errorMsg = responseText;
-        }
-        debugError('❌ Save error response:', response.status, responseText?.slice(0, 500));
-        throw new Error(`${errorMsg} (${response.status})`);
-      }
-
-      try {
-        JSON.parse(responseText);
-      } catch {
-        // ignore if body is empty or not JSON
+          reportData,
+        });
+      } catch (saveError) {
+        const errorMsg = saveError instanceof Error ? saveError.message : 'Server returned an error';
+        debugError('❌ Save error response:', errorMsg);
+        throw new Error(errorMsg);
       }
 
       // Optimistic update: show exactly what we just saved so the table never flashes empty
@@ -5057,7 +4902,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // /api/expense-reports must be cleared so the certification checkbox states
       // (and signatures) read back correctly on the post-save refetch instead of
       // returning the pre-save cached payload.
-      const { rateLimitedApi } = await import('./services/rateLimitedApi');
       rateLimitedApi.invalidateStaffMonthDataCache();
 
       // Wait longer to ensure backend processes all deletions before reloading
@@ -5096,28 +4940,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       setLoading(true);
       
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}/${reportMonth}/${reportYear}`);
-      
-      if (response.status === 404) {
-        setCurrentReportId(null);
-        setApprovalWorkflow([]);
-        setApprovalHistory([]);
-        setCurrentApprovalStage(null);
-        setCurrentApproverName(null);
-        setReportSubmittedAt(null);
-        setReportApprovedAt(null);
-        showErrorPrompt('No report found for this month and year. You can start a new report from here.', {
-          title: 'Report not found',
-          goBackLabel: 'Stay here',
-        });
-        return;
+      let savedReport: any;
+      try {
+        savedReport = await apiGet(`/api/expense-reports/${employeeId}/${reportMonth}/${reportYear}`);
+      } catch (loadError) {
+        if (loadError instanceof Error && loadError.message.includes('HTTP 404')) {
+          setCurrentReportId(null);
+          setApprovalWorkflow([]);
+          setApprovalHistory([]);
+          setCurrentApprovalStage(null);
+          setCurrentApproverName(null);
+          setReportSubmittedAt(null);
+          setReportApprovedAt(null);
+          showErrorPrompt('No report found for this month and year. You can start a new report from here.', {
+            title: 'Report not found',
+            goBackLabel: 'Stay here',
+          });
+          return;
+        }
+        throw loadError;
       }
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Failed to load expense report`);
-      }
-
-      const savedReport = await response.json();
       // Loaded saved report
       
       // Restore the saved data
@@ -5201,22 +5043,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     try {
       // Always wipe month source data (works even when no report row exists yet)
-      const wipeRes = await fetch(`${API_BASE_URL}/api/expense-reports/wipe-month`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId, month: currentMonth, year: currentYear })
+      await apiPost('/api/expense-reports/wipe-month', {
+        employeeId,
+        month: currentMonth,
+        year: currentYear,
       });
-      if (!wipeRes.ok) {
-        const data = await wipeRes.json().catch(() => ({}));
-        throw new Error(data.error || `Wipe failed (${wipeRes.status})`);
-      }
-      // If a report row exists, delete it too
       if (currentReportId) {
-        const res = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}`, { method: 'DELETE' });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `Delete failed (${res.status})`);
-        }
+        await apiDelete(`/api/expense-reports/${currentReportId}`);
       }
     } catch (e) {
       debugError('Start fresh delete error:', e);
@@ -5237,7 +5070,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setCurrentApproverName(null);
     setStartFreshDialogOpen(false);
     // Clear API cache so refetch returns wiped state, not cached data
-    const { rateLimitedApi } = await import('./services/rateLimitedApi');
     rateLimitedApi.invalidateStaffMonthDataCache();
     setRefreshTrigger((prev) => prev + 1);
     if (typeof showSuccess === 'function') {
@@ -5311,45 +5143,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         throw new Error('Missing report data for submission');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      await apiPost('/api/expense-reports', {
+        employeeId: employeeData.employeeId,
+        month: currentMonth,
+        year: currentYear,
+        reportData: {
+          ...reportData,
+          submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission',
         },
-        body: JSON.stringify({
-          employeeId: employeeData.employeeId,
-          month: currentMonth,
-          year: currentYear,
-          reportData: {
-            ...reportData,
-            submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission'
-          },
-          status: 'submitted',
-          submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission'
-        }),
+        status: 'submitted',
+        submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission',
       });
-
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        const msg = errBody?.error || `Failed to submit expense report`;
-        throw new Error(`HTTP ${response.status}: ${msg}`);
-      }
-
-      await response.json();
 
       let resolvedReportId = currentReportId;
 
       if (!resolvedReportId) {
         try {
-          const latestReportResponse = await fetch(
-            `${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}`
+          const latestReport = await apiGet<any>(
+            `/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}`,
+            { skipCache: true }
           );
-          if (latestReportResponse.ok) {
-            const latestReport = await latestReportResponse.json();
-            if (latestReport && latestReport.id) {
-              resolvedReportId = latestReport.id;
-              setCurrentReportId(latestReport.id);
-            }
+          if (latestReport?.id) {
+            resolvedReportId = latestReport.id;
+            setCurrentReportId(latestReport.id);
           }
         } catch (resolveError) {
           debugError('Error determining report ID after submission:', resolveError);
@@ -5357,19 +5173,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       if (resolvedReportId) {
-        const statusResponse = await fetch(`${API_BASE_URL}/api/expense-reports/${resolvedReportId}/status`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ status: 'submitted' }),
+        const statusPayload = await apiPut<any>(`/api/expense-reports/${resolvedReportId}/status`, {
+          status: 'submitted',
         });
-
-        if (!statusResponse.ok) {
-          throw new Error('Failed to start approval workflow');
-        }
-
-        const statusPayload = await statusResponse.json();
         const statusValue = (statusPayload.status || 'submitted') as
           | 'draft'
           | 'submitted'
@@ -5449,15 +5255,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'draft' }),
-      });
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error(errBody?.error || response.statusText || 'Failed to withdraw');
-      }
+      await apiPut(`/api/expense-reports/${currentReportId}/status`, { status: 'draft' });
       setReportStatus('draft');
       setReportSubmittedAt(null);
       setCurrentApprovalStage(null);
@@ -5490,22 +5288,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${currentReportId}/approval`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'comment',
-          approverId: employeeData.employeeId,
-          approverName: employeeData.preferredName || employeeData.name,
-          comments: approvalCommentText.trim(),
-        }),
+      await apiPut(`/api/expense-reports/${currentReportId}/approval`, {
+        action: 'comment',
+        approverId: employeeData.employeeId,
+        approverName: employeeData.preferredName || employeeData.name,
+        comments: approvalCommentText.trim(),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to send comment');
-      }
 
       if (typeof showSuccess === 'function') {
         showSuccess('Comment sent to your supervisor.');
@@ -5567,13 +5355,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     try {
       setReportsLoading(true);
       
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeId}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch reports');
-      }
-
-      const reports = await response.json();
+      const reports = await apiGet<any[]>(`/api/expense-reports/${employeeId}`);
       
       // Handle empty response
       if (!reports || reports.length === 0) {
@@ -5635,42 +5417,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           supervisorCertificationAcknowledged: supervisorCertificationAcknowledged
         };
 
-        // Save report to backend
-        await fetch(`${API_BASE_URL}/api/expense-reports/sync-to-source`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            employeeId: employeeData.employeeId,
-            month: currentMonth,
-            year: currentYear,
-            reportData: reportData
-          }),
+        await syncExpenseReportToSource({
+          employeeId: employeeData.employeeId,
+          month: currentMonth,
+          year: currentYear,
+          reportData,
         });
 
-        // Now fetch the report to get its ID
-        const loadResponse = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}`);
-        
-        if (!loadResponse.ok) {
-          throw new Error('Failed to load expense report');
-        }
-
-        const savedReport = await loadResponse.json();
+        const savedReport = await apiGet<{ id: string }>(
+          `/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}`
+        );
         const reportId = savedReport.id;
 
-        // Use the backend PDF export endpoint (same as Finance Portal)
-        const response = await fetch(`${API_BASE_URL}/api/export/expense-report-pdf/${reportId}`, {
-          method: 'GET',
-        });
-
-        if (!response.ok) {
-          debugError('❌ Export failed with status:', response.status);
-          const errorText = await response.text();
-          debugError('❌ Export error response:', errorText);
-          throw new Error(`Export failed: ${response.status} ${errorText}`);
-        }
-
+        const response = await apiFetch(`/api/export/expense-report-pdf/${reportId}`);
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -5776,15 +5535,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         selectedCostCenters: nextCostCenters,
         defaultCostCenter: nextDefault,
       });
-      await fetch(`${API_BASE_URL}/api/employees/${employeeData.employeeId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          costCenters: nextCostCenters,
-          selectedCostCenters: nextCostCenters,
-          defaultCostCenter: nextDefault,
-          settingsSource: 'user-settings',
-        }),
+      await apiPut(`/api/employees/${employeeData.employeeId}`, {
+        costCenters: nextCostCenters,
+        selectedCostCenters: nextCostCenters,
+        defaultCostCenter: nextDefault,
+        settingsSource: 'user-settings',
       });
     } catch (error) {
       debugError('Error updating cost centers from cover sheet selector:', error);
@@ -5993,7 +5748,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         reportData.other = 0;
       }
 
-      const { apiPut } = await import('./services/rateLimitedApi');
       await apiPut(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, { reportData });
 
       setSummaryEditDialogOpen(false);
@@ -7022,7 +6776,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       otherExpenses: updatedData.otherExpenses,
                                       other: updatedData.other
                                     };
-                                    const { apiPut } = await import('./services/rateLimitedApi');
                                     await apiPut(`/api/expense-reports/${employeeId}/${currentMonth}/${currentYear}/summary`, { reportData });
                                     window.location.reload();
                                   }
@@ -7622,10 +7375,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   const dateToSave = normalizeDate(descToSave.date);
                                   setTimeout(async () => {
                                     try {
-                                      const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: descToSave.id, employeeId: descToSave.employeeId, date: dateToSave, description: descToSave.description || '', costCenter: descToSave.costCenter || '', stayedOvernight: descToSave.stayedOvernight || false, dayOff: descToSave.dayOff || false, dayOffType: descToSave.dayOffType || null }) });
-                                      if (response.ok) syncDescriptionToCostCenter(descToSave, new Date(entry.date));
-                                      else debugError('Error saving description:', await response.text());
-                                    } catch (error) { debugError('Error saving description:', error); }
+                                      await saveDailyDescription({
+                                        id: descToSave.id,
+                                        employeeId: descToSave.employeeId,
+                                        date: dateToSave,
+                                        description: descToSave.description || '',
+                                        costCenter: descToSave.costCenter || '',
+                                        stayedOvernight: descToSave.stayedOvernight || false,
+                                        dayOff: descToSave.dayOff || false,
+                                        dayOffType: descToSave.dayOffType || null,
+                                      });
+                                      syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                    } catch (error) {
+                                      debugError('Error saving description:', error);
+                                    }
                                   }, 500);
                                 } catch (error) { debugError('Error saving description:', error); }
                               }}
@@ -7671,22 +7434,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   const dateToSave = normalizeDate(descToSave.date);
                                   setTimeout(async () => {
                                     try {
-                                      const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                          id: descToSave.id,
-                                          employeeId: descToSave.employeeId,
-                                          date: dateToSave,
-                                          description: descToSave.description || '',
-                                          costCenter: descToSave.costCenter || '',
-                                          stayedOvernight: descToSave.stayedOvernight || false,
-                                          dayOff: descToSave.dayOff || false,
-                                          dayOffType: descToSave.dayOffType || null
-                                        })
+                                      await saveDailyDescription({
+                                        id: descToSave.id,
+                                        employeeId: descToSave.employeeId,
+                                        date: dateToSave,
+                                        description: descToSave.description || '',
+                                        costCenter: descToSave.costCenter || '',
+                                        stayedOvernight: descToSave.stayedOvernight || false,
+                                        dayOff: descToSave.dayOff || false,
+                                        dayOffType: descToSave.dayOffType || null,
                                       });
-                                      if (response.ok) syncDescriptionToCostCenter(descToSave, new Date(entry.date));
-                                      else debugError('Error saving description:', await response.text());
+                                      syncDescriptionToCostCenter(descToSave, new Date(entry.date));
                                     } catch (error) {
                                       debugError('Error saving description:', error);
                                     }
@@ -7797,30 +7555,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 
                                 // Save to backend first
                                 const dateToSave = normalizeDate(descToSave.date);
-                                const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({
-                                    id: descToSave.id,
-                                    employeeId: descToSave.employeeId,
-                                    date: dateToSave,
-                                    description: descToSave.description || '',
-                                    costCenter: descToSave.costCenter || '',
-                                    stayedOvernight: descToSave.stayedOvernight || false,
-                                    dayOff: descToSave.dayOff || false,
-                                    dayOffType: descToSave.dayOffType || null
-                                  })
+                                await saveDailyDescription({
+                                  id: descToSave.id,
+                                  employeeId: descToSave.employeeId,
+                                  date: dateToSave,
+                                  description: descToSave.description || '',
+                                  costCenter: descToSave.costCenter || '',
+                                  stayedOvernight: descToSave.stayedOvernight || false,
+                                  dayOff: descToSave.dayOff || false,
+                                  dayOffType: descToSave.dayOffType || null,
                                 });
-                                
-                                if (!response.ok) {
-                                  const errorText = await response.text();
-                                  debugError('Error saving stayed overnight status:', response.status, errorText);
-                                } else {
-                                  // Only sync to cost center screen AFTER successful save
-                                  syncDescriptionToCostCenter(descToSave, new Date(entry.date));
-                                }
+                                syncDescriptionToCostCenter(descToSave, new Date(entry.date));
                               } catch (error) {
                                 debugError('Error saving stayed overnight status:', error);
                               }
@@ -7896,27 +7641,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   
                                   // Immediately save to backend - use normalized date string
                                   const dateToSave = normalizeDate(descToSave.date);
-                                  const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-                                    method: 'POST',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({
-                                      id: descToSave.id,
-                                      employeeId: descToSave.employeeId,
-                                      date: dateToSave, // Use normalized date string
-                                      description: descToSave.description || '',
-                                      costCenter: descToSave.costCenter || '',
-                                      stayedOvernight: descToSave.stayedOvernight || false,
-                                      dayOff: descToSave.dayOff || false,
-                                      dayOffType: descToSave.dayOffType || null
-                                    })
+                                  await saveDailyDescription({
+                                    id: descToSave.id,
+                                    employeeId: descToSave.employeeId,
+                                    date: dateToSave,
+                                    description: descToSave.description || '',
+                                    costCenter: descToSave.costCenter || '',
+                                    stayedOvernight: descToSave.stayedOvernight || false,
+                                    dayOff: descToSave.dayOff || false,
+                                    dayOffType: descToSave.dayOffType || null,
                                   });
-                                  
-                                  if (!response.ok) {
-                                    const errorText = await response.text();
-                                    debugError('Error saving day off status:', response.status, errorText);
-                                  }
                                 } catch (error) {
                                   debugError('Error saving day off status:', error);
                                 }
@@ -7953,27 +7687,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                         
                                         // Save to backend
                                         const dateToSave = normalizeDate(descToSave.date);
-                                        const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-                                          method: 'POST',
-                                          headers: {
-                                            'Content-Type': 'application/json',
-                                          },
-                                          body: JSON.stringify({
-                                            id: descToSave.id,
-                                            employeeId: descToSave.employeeId,
-                                            date: dateToSave,
-                                            description: descToSave.description || '',
-                                            costCenter: descToSave.costCenter || '',
-                                            stayedOvernight: descToSave.stayedOvernight || false,
-                                            dayOff: descToSave.dayOff || false,
-                                            dayOffType: descToSave.dayOffType || null
-                                          })
+                                        await saveDailyDescription({
+                                          id: descToSave.id,
+                                          employeeId: descToSave.employeeId,
+                                          date: dateToSave,
+                                          description: descToSave.description || '',
+                                          costCenter: descToSave.costCenter || '',
+                                          stayedOvernight: descToSave.stayedOvernight || false,
+                                          dayOff: descToSave.dayOff || false,
+                                          dayOffType: descToSave.dayOffType || null,
                                         });
-                                        
-                                        if (!response.ok) {
-                                          const errorText = await response.text();
-                                          debugError('Error saving day off type:', response.status, errorText);
-                                        }
                                       }
                                     } catch (error) {
                                       debugError('Error saving day off type:', error);
@@ -8023,29 +7746,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   setDailyDescriptionsWithRef(newDescriptions);
                                   syncDescriptionToCostCenter(descToSave, new Date(entry.date));
                                   try {
-                                    const response = await fetch(`${API_BASE_URL}/api/daily-descriptions`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        id: descToSave.id,
-                                        employeeId: descToSave.employeeId,
-                                        date: entryDateStr,
-                                        description: descToSave.description || '',
-                                        costCenter: descToSave.costCenter || '',
-                                        stayedOvernight: descToSave.stayedOvernight || false,
-                                        dayOff: descToSave.dayOff || false,
-                                        dayOffType: descToSave.dayOffType || null
-                                      })
+                                    await saveDailyDescription({
+                                      id: descToSave.id,
+                                      employeeId: descToSave.employeeId,
+                                      date: entryDateStr,
+                                      description: descToSave.description || '',
+                                      costCenter: descToSave.costCenter || '',
+                                      stayedOvernight: descToSave.stayedOvernight || false,
+                                      dayOff: descToSave.dayOff || false,
+                                      dayOffType: descToSave.dayOffType || null,
                                     });
-                                    if (!response.ok) debugError('Error saving cost center:', await response.text());
-                                    else {
-                                      const hours = Math.max(0, parseFloat(descToSave.hoursWorked) || 0);
-                                      const dayNum =
-                                        entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
-                                      if (hours > 0 && Number.isFinite(dayNum)) {
-                                        await saveCostCenterHoursForDay(dayNum, newCostCenter, hours);
-                                        await refreshTimesheetData(employeeData);
-                                      }
+                                    const hours = Math.max(0, parseFloat(descToSave.hoursWorked) || 0);
+                                    const dayNum =
+                                      entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
+                                    if (hours > 0 && Number.isFinite(dayNum)) {
+                                      await saveCostCenterHoursForDay(dayNum, newCostCenter, hours);
+                                      await refreshTimesheetData(employeeData);
                                     }
                                   } catch (error) {
                                     debugError('Error saving cost center:', error);
@@ -9452,22 +9168,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   };
                   
                   if (editingReceipt.id && !editingReceipt.id.startsWith('receipt-')) {
-                    // Update existing receipt (has real backend ID)
-                    const response = await fetch(`${API_BASE_URL}/api/receipts/${editingReceipt.id}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(receiptToSave)
-                    });
-                    if (!response.ok) throw new Error('Failed to update receipt');
+                    await apiPut(`/api/receipts/${editingReceipt.id}`, receiptToSave);
                   } else {
-                    // Create new receipt
-                    const response = await fetch(`${API_BASE_URL}/api/receipts`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(receiptToSave)
-                    });
-                    if (!response.ok) throw new Error('Failed to create receipt');
-                    const savedReceipt = await response.json();
+                    const savedReceipt = await apiPost<{ id: string }>('/api/receipts', receiptToSave);
                     // Update the receipt ID with the one from backend
                     updatedReceipts = updatedReceipts.map(r => 
                       (!r.id || r.id.startsWith('receipt-')) && r.vendor === editingReceipt.vendor && r.date === editingReceipt.date
@@ -9585,18 +9288,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 
                 // Save updated summary sheet to backend
                 try {
-                  const response = await fetch(`${API_BASE_URL}/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}/summary`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                  await apiPut(
+                    `/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}/summary`,
+                    {
                       reportData: {
                         ...updatedData,
-                        receipts: updatedReceipts
-                      }
-                    })
-                  });
-                  if (!response.ok) throw new Error('Failed to update summary sheet');
-                  
+                        receipts: updatedReceipts,
+                      },
+                    }
+                  );
                   setEmployeeData(updatedData);
                   debugLog('✅ Auto-populated summary sheet from receipt totals');
                 } catch (error) {

@@ -60,6 +60,7 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 
 // Debug logging
 import { debugLog, debugError, debugVerbose } from '../config/debug';
+import { apiDelete, apiFetch, apiGet } from '../services/rateLimitedApi';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -231,10 +232,7 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
   const loadReports = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports`);
-      if (!response.ok) throw new Error('Failed to load reports');
-      
-      const data = await response.json();
+      const data = await apiGet<any[]>('/api/expense-reports');
       debugVerbose('📊 Loaded reports:', data.length, 'reports');
       debugVerbose('📊 First report structure:', data[0]);
       
@@ -467,36 +465,31 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
 
     // If report not in current list, fetch it
     try {
-      const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${reportId}`);
-      if (response.ok) {
-        const fetchedReport = await response.json();
-        // Convert to ExpenseReport format
-        const reportData = fetchedReport.reportData || {};
-        const expenseReport: ExpenseReport = {
-          id: fetchedReport.id,
-          employeeId: fetchedReport.employeeId,
-          employeeName: fetchedReport.employeeName || 'Unknown',
-          employeeFullName: fetchedReport.employeeFullName,
-          employeeEmail: fetchedReport.employeeEmail || '',
-          month: fetchedReport.month,
-          year: fetchedReport.year,
-          status: fetchedReport.status,
-          totalMiles: reportData.totalMiles || 0,
-          totalMileageAmount: reportData.totalMileageAmount || 0,
-          totalExpenses: calculateTotalExpenses(reportData),
-          submittedAt: fetchedReport.submittedAt,
-          reportData: reportData,
-          state: fetchedReport.state,
-          costCenters: reportData.costCenters || [],
-          currentApprovalStage: fetchedReport.currentApprovalStage,
-          currentApproverId: fetchedReport.currentApproverId,
-        };
-        handleViewReport(expenseReport);
-        // Reload reports to include this one
-        loadReports();
-      }
+      const fetchedReport = await apiGet<any>(`/api/expense-reports/id/${reportId}`);
+      const reportData = fetchedReport.reportData || {};
+      const expenseReport: ExpenseReport = {
+        id: fetchedReport.id,
+        employeeId: fetchedReport.employeeId,
+        employeeName: fetchedReport.employeeName || 'Unknown',
+        employeeFullName: fetchedReport.employeeFullName,
+        employeeEmail: fetchedReport.employeeEmail || '',
+        month: fetchedReport.month,
+        year: fetchedReport.year,
+        status: fetchedReport.status,
+        totalMiles: reportData.totalMiles || 0,
+        totalMileageAmount: reportData.totalMileageAmount || 0,
+        totalExpenses: calculateTotalExpenses(reportData),
+        submittedAt: fetchedReport.submittedAt,
+        reportData: reportData,
+        state: fetchedReport.state,
+        costCenters: reportData.costCenters || [],
+        currentApprovalStage: fetchedReport.currentApprovalStage,
+        currentApproverId: fetchedReport.currentApproverId,
+      };
+      handleViewReport(expenseReport);
+      loadReports();
     } catch (error) {
-        debugError('Error fetching report for navigation:', error);
+      debugError('Error fetching report for navigation:', error);
     }
   };
 
@@ -506,17 +499,7 @@ export const ContractsPortal: React.FC<ContractsPortalProps> = ({ contractsUserI
   const handleExportToExcel = async (report: ExpenseReport) => {
     try {
       debugVerbose('📊 Exporting report:', report.id, report.employeeName);
-      const response = await fetch(`${API_BASE_URL}/api/export/expense-report-pdf/${report.id}`, {
-        method: 'GET',
-      });
-
-      if (!response.ok) {
-        debugError('❌ Export failed with status:', response.status);
-        const errorText = await response.text();
-        debugError('❌ Export error response:', errorText);
-        throw new Error(`Export failed: ${response.status} ${errorText}`);
-      }
-
+      const response = await apiFetch(`/api/export/expense-report-pdf/${report.id}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
