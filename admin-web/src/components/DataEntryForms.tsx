@@ -47,6 +47,7 @@ import type { AddressParts } from '../utils/addressFormatter';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { makeCanonicalLocationSelection } from '../utils/locationSelection';
 import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
+import { defaultDateForReport } from '../utils/calendarDate';
 
 const DEFAULT_API_BASE_URL = 'https://oxford-mileage-backend.onrender.com';
 const getApiBaseUrl = () => {
@@ -130,10 +131,22 @@ interface BaseFormProps {
 export const MileageEntryForm: React.FC<BaseFormProps & {
   initialData?: MileageEntryFormData;
   mode: 'create' | 'edit';
-}> = ({ open, onClose, onSave, employee, initialData, mode, loading = false }) => {
+  /** Report month (1–12) for default date and calendar when adding entries from Staff Portal */
+  reportMonth?: number;
+  reportYear?: number;
+}> = ({ open, onClose, onSave, employee, initialData, mode, loading = false, reportMonth, reportYear }) => {
+  const defaultEntryDate =
+    reportMonth != null && reportYear != null
+      ? defaultDateForReport(reportMonth, reportYear)
+      : new Date().toISOString().split('T')[0];
+  const initialCalendarDate =
+    reportMonth != null && reportYear != null
+      ? defaultDateForReport(reportMonth, reportYear)
+      : undefined;
+
   const [formData, setFormData] = useState<MileageEntryFormData>({
     employeeId: employee.id,
-    date: new Date().toISOString().split('T')[0],
+    date: defaultEntryDate,
     startLocation: '',
     endLocation: '',
     startLocationName: '',
@@ -242,7 +255,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       hasResetForOpenRef.current = true;
       setFormData({
         employeeId: employee.id,
-        date: new Date().toISOString().split('T')[0],
+        date: defaultEntryDate,
         startLocation: '',
         endLocation: '',
         startLocationName: '',
@@ -265,7 +278,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       setContinuationPromptData(null);
       setRouteOptions([]);
     }
-  }, [open, mode, initialData, employee?.id, employee?.defaultCostCenter, employee?.selectedCostCenters]);
+  }, [open, mode, initialData, employee?.id, employee?.defaultCostCenter, employee?.selectedCostCenters, defaultEntryDate]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -543,6 +556,7 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
             <FormDatePicker
               label="Date"
               value={formData.date}
+              initialCalendarDate={initialCalendarDate}
               onChange={(date) => handleInputChange('date', date)}
               error={!!errors.date}
               helperText={errors.date}

@@ -21,6 +21,15 @@ export function parseCalendarYearMonthFromStoredDate(value: unknown): { year: nu
   return p ? { year: p.year, month: p.month } : null;
 }
 
+/** Default entry date for a report month: today if in-month, else first of month (YYYY-MM-DD). */
+export function defaultDateForReport(month: number, year: number): string {
+  const now = new Date();
+  if (now.getFullYear() === year && now.getMonth() + 1 === month) {
+    return `${year}-${String(month).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  return `${year}-${String(month).padStart(2, '0')}-01`;
+}
+
 /** Display a stored DB date in en-US short form using the calendar YYYY-MM-DD when present. */
 export function formatStoredDateForDisplay(value: unknown): string {
   if (value == null || value === '') return '';

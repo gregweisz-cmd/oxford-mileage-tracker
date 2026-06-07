@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Box, InputAdornment, Popover, TextField, SxProps, Theme } from '@mui/material';
 import { CalendarToday as CalendarIcon } from '@mui/icons-material';
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
@@ -42,9 +42,18 @@ const MemoizedDateCalendar = React.memo(
     onMonthChange: (month: Dayjs) => void;
     onSelect: (newValue: Dayjs | null) => void;
   }) {
+    // Only highlight the selected day when it falls in the visible month; otherwise
+    // MUI snaps the calendar back to value's month when the user navigates away.
+    const calendarValue =
+      dayValue &&
+      dayValue.year() === viewMonth.year() &&
+      dayValue.month() === viewMonth.month()
+        ? dayValue
+        : null;
+
     return (
       <DateCalendar
-        value={dayValue}
+        value={calendarValue}
         referenceDate={viewMonth}
         onMonthChange={onMonthChange}
         onYearChange={onMonthChange}
@@ -82,12 +91,6 @@ export function FormDatePicker({
   const dayValue = value && dayjs(value).isValid() ? dayjs(value) : null;
   const displayValue = dayValue?.isValid() ? dayValue.format('MM/DD/YYYY') : '';
 
-  useEffect(() => {
-    if (open) {
-      setViewMonth(resolveCalendarAnchor(value, initialCalendarDate));
-    }
-  }, [open, value, initialCalendarDate]);
-
   const handleSelect = useCallback(
     (newValue: Dayjs | null) => {
       if (newValue?.isValid()) {
@@ -103,7 +106,10 @@ export function FormDatePicker({
     setViewMonth(month);
   }, []);
 
-  const openCalendar = () => setOpen(true);
+  const openCalendar = () => {
+    setViewMonth(resolveCalendarAnchor(value, initialCalendarDate));
+    setOpen(true);
+  };
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
