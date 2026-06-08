@@ -3385,13 +3385,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }
       } else if (value > 0) {
         // Use PUT if entry exists, POST if it doesn't (POST will use INSERT OR REPLACE with deterministic ID)
-        if (existingEntry) {
-          await apiPut(`/api/time-tracking/${existingEntry.id}`, requestBody);
-        } else {
-          await apiPost('/api/time-tracking', requestBody);
-        }
-        
-        const result = await response.json();
+        const result = existingEntry
+          ? await apiPut(`/api/time-tracking/${existingEntry.id}`, requestBody)
+          : await apiPost('/api/time-tracking', requestBody);
         debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
       } else {
         // Value is 0 and no existing entry - nothing to do

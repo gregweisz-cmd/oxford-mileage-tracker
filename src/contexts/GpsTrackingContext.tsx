@@ -32,6 +32,8 @@ interface GpsTrackingContextType {
   setShouldShowEndLocationModal: (show: boolean) => void;
   /** True when we restored an active session from storage (e.g. app was killed during tracking) */
   restoredTrackingOnLaunch: boolean;
+  /** Clears end-trip / stationary UI flags (e.g. after save or cancel). */
+  clearEndTripUiState: () => void;
 }
 
 const GpsTrackingContext = createContext<GpsTrackingContextType | undefined>(undefined);
@@ -50,9 +52,17 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   const [restoredTrackingOnLaunch, setRestoredTrackingOnLaunch] = useState(false);
   const [showStationaryPrompt, setShowStationaryPrompt] = useState(false);
   const showStationaryPromptRef = useRef(false);
+  const shouldShowEndLocationModalRef = useRef(false);
+  const endTripFlowActiveRef = useRef(false);
   const restoredRef = useRef(false);
   const pausedDrivingAlertVisibleRef = useRef(false);
   const endTripFlowHandlerRef = useRef<(() => void) | null>(null);
+
+  const clearEndTripUiState = useCallback(() => {
+    endTripFlowActiveRef.current = false;
+    setShouldShowEndLocationModal(false);
+    setShowStationaryPrompt(false);
+  }, []);
 
   const registerEndTripFlowHandler = useCallback((handler: (() => void) | null) => {
     endTripFlowHandlerRef.current = handler;
@@ -95,9 +105,11 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   };
 
   const presentStationaryPrompt = () => {
+    if (endTripFlowActiveRef.current || shouldShowEndLocationModalRef.current) return;
     InteractionManager.runAfterInteractions(() => {
       setTimeout(() => {
         try {
+          if (endTripFlowActiveRef.current || shouldShowEndLocationModalRef.current) return;
           if (!GpsTrackingService.isTracking() || GpsTrackingService.isTripPaused()) return;
           setShowStationaryPrompt(true);
           void GpsTrackingService.consumeStationaryAlertPrompt();
@@ -111,6 +123,10 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   useEffect(() => {
     showStationaryPromptRef.current = showStationaryPrompt;
   }, [showStationaryPrompt]);
+
+  useEffect(() => {
+    shouldShowEndLocationModalRef.current = shouldShowEndLocationModal;
+  }, [shouldShowEndLocationModal]);
 
   // Restore session from storage on mount (handles app kill/restart during tracking)
   useEffect(() => {
@@ -154,14 +170,17 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
 
       if (!tracking) {
         // Clear stale GPS UI after end-trip / lock screen — invisible modals can block touches.
-        setShowStationaryPrompt(false);
-        setShouldShowEndLocationModal(false);
+        clearEndTripUiState();
         setShowMapOverlay(false);
         pausedDrivingAlertVisibleRef.current = false;
         return;
       }
 
       setTripPaused(GpsTrackingService.isTripPaused());
+      if (endTripFlowActiveRef.current || shouldShowEndLocationModalRef.current) {
+        await checkPausedDrivingAlert();
+        return;
+      }
       const hasPendingAlert = await GpsTrackingService.hasPendingStationaryAlert();
       if (hasPendingAlert) {
         presentStationaryPrompt();
@@ -178,6 +197,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     let mounted = true;
 
     const openStationaryPrompt = async () => {
+      if (endTripFlowActiveRef.current || shouldShowEndLocationModalRef.current) return;
       if (!GpsTrackingService.isTracking() || GpsTrackingService.isTripPaused()) return;
       presentStationaryPrompt();
     };
@@ -204,11 +224,14 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
           const actionId = response.actionIdentifier;
           const type = (response.notification.request.content.data as any)?.type;
           if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_END) {
-            setShowStationaryPrompt(false);
-            void GpsTrackingService.consumeStationaryAlertPrompt();
-            InteractionManager.runAfterInteractions(() => {
-              requestStopTracking();
-            });
+            void (async () => {
+              setShowStationaryPrompt(false);
+              endTripFlowActiveRef.current = true;
+              await GpsTrackingService.consumeStationaryAlertPrompt();
+              InteractionManager.runAfterInteractions(() => {
+                requestStopTracking();
+              });
+            })();
           } else if (type === 'gps_stationary' && actionId === GPS_STATIONARY_ACTION_KEEP) {
             setShowStationaryPrompt(false);
             void GpsTrackingService.consumeStationaryAlertPrompt();
@@ -295,7 +318,7 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
       setTripPaused(false);
       setCurrentDistance(0);
       setShowMapOverlay(false);
-      setShowStationaryPrompt(false);
+      clearEndTripUiState();
       return completedSession;
     } catch (error) {
       console.error('Error stopping tracking:', error);
@@ -314,6 +337,8 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
   };
 
   const requestStopTracking = useCallback(() => {
+    endTripFlowActiveRef.current = true;
+    setShowStationaryPrompt(false);
     if (endTripFlowHandlerRef.current) {
       endTripFlowHandlerRef.current();
       return;
@@ -342,13 +367,14 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     shouldShowEndLocationModal,
     setShouldShowEndLocationModal,
     restoredTrackingOnLaunch,
+    clearEndTripUiState,
   };
 
   return (
     <GpsTrackingContext.Provider value={value}>
       {children}
       <Modal
-        visible={showStationaryPrompt && isTracking && !tripPaused}
+        visible={showStationaryPrompt && isTracking && !tripPaused && !shouldShowEndLocationModal}
         transparent
         animationType="fade"
         onRequestClose={() => setShowStationaryPrompt(false)}
