@@ -673,8 +673,21 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
             const explicitValue = Number(entry[`costCenter${i}Hours`]);
             return Number.isFinite(explicitValue) && explicitValue > 0;
           });
+          const categoryHoursTotal =
+            entry.categoryHours && typeof entry.categoryHours === 'object'
+              ? Object.values(entry.categoryHours).reduce(
+                  (sum, h) => sum + (Number(h) || 0),
+                  0
+                )
+              : 0;
+          const reportedWorkingHours = Number(entry.workingHours);
+          const hoursWorkedField = Number(entry.hoursWorked) || 0;
+          const inferredWorkingHours =
+            Number.isFinite(reportedWorkingHours) && reportedWorkingHours >= 0
+              ? reportedWorkingHours
+              : Math.max(0, hoursWorkedField - categoryHoursTotal);
           const fallbackWorkingHours =
-            !hasExplicitCostCenterHours && Number(entry.hoursWorked) > 0 ? Number(entry.hoursWorked) : 0;
+            !hasExplicitCostCenterHours && inferredWorkingHours > 0 ? inferredWorkingHours : 0;
 
           for (let i = 0; i < costCenters.length; i++) {
             const costCenterName = costCenters[i];

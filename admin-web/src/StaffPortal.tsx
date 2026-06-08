@@ -136,6 +136,10 @@ function isPdfReceiptUri(uri: string | undefined): boolean {
 
 const TIMESHEET_CATEGORY_TYPES = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'] as const;
 
+function isTimesheetCategoryType(category: unknown): category is (typeof TIMESHEET_CATEGORY_TYPES)[number] {
+  return TIMESHEET_CATEGORY_TYPES.includes(category as (typeof TIMESHEET_CATEGORY_TYPES)[number]);
+}
+
 function timesheetCategoryRevisionId(categoryIndex: number, day: number): string {
   return `time-category-${categoryIndex}-${day}`;
 }
@@ -1370,7 +1374,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         
         // Create a unique key for this entry: day-costCenter-category
         let key: string;
-        if (tracking.costCenter && tracking.costCenter !== '') {
+        if (isTimesheetCategoryType(tracking.category)) {
+          key = `${day}--${tracking.category}`;
+        } else if (tracking.costCenter && tracking.costCenter !== '') {
           key = `${day}-${tracking.costCenter}-Working Hours`;
         } else if (tracking.category) {
           key = `${day}--${tracking.category}`;
@@ -1402,21 +1408,22 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         
         if (day >= 1 && day <= daysInMonth) {
           const dayData = dailyHourDistributions[day];
-          const categoryTypes = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'];
           
-          if (tracking.costCenter && tracking.costCenter !== '') {
+          if (isTimesheetCategoryType(tracking.category)) {
+            // Category entry (PTO, Holiday, etc.) — never billable
+            dayData.categoryHours[tracking.category] = (tracking.hours || 0);
+          } else if (tracking.costCenter && tracking.costCenter !== '') {
             // Cost center entry - use assignment (deduplication already handled)
             const costCenterIndex = data.costCenters.findIndex((cc: string) => cc === tracking.costCenter);
             if (costCenterIndex >= 0) {
               dayData.costCenterHours[costCenterIndex] = (tracking.hours || 0);
             }
-          } else if (categoryTypes.includes(tracking.category)) {
-            // Category entry - use assignment (deduplication already handled)
-            dayData.categoryHours[tracking.category] = (tracking.hours || 0);
-            // Reduced logging for performance
-            // debugLog(`✅ Processed ${tracking.category} for day ${day}: ${tracking.hours} hours (ID: ${tracking.id})`);
-          } else if (tracking.category === 'Working Hours' || tracking.category === 'Regular Hours') {
-            // Working hours entry - treat as cost center 0, use assignment (deduplication already handled)
+          } else if (
+            tracking.category === 'Working Hours' ||
+            tracking.category === 'Regular Hours' ||
+            !tracking.category
+          ) {
+            // Working hours without cost center — treat as cost center 0
             dayData.costCenterHours[0] = (tracking.hours || 0);
           }
         } else {
@@ -1534,7 +1541,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         // Build updated entry with distributed hours
         const updatedEntry = {
           ...entry,
-          hoursWorked: dayData.totalHours,
+          // hoursWorked = billable/working only; category hours are in categoryHours (not billable)
+          hoursWorked: dayData.workingHours,
           workingHours: dayData.workingHours
         };
         
@@ -2090,17 +2098,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             const categoryHours: { [key: string]: number } = {};
             
             dayTimeTrackingEntries.forEach((tracking: any) => {
-              if (tracking.costCenter && tracking.costCenter !== '') {
-                // Cost center entry
+              if (isTimesheetCategoryType(tracking.category)) {
+                categoryHours[tracking.category] = (tracking.hours || 0);
+              } else if (tracking.costCenter && tracking.costCenter !== '') {
                 const costCenterIndex = costCenters.findIndex((cc: string) => cc === tracking.costCenter);
                 if (costCenterIndex >= 0) {
                   costCenterHours[costCenterIndex] = (tracking.hours || 0);
                 }
-              } else if (tracking.category && tracking.category !== '') {
-                // Category entry (PTO, Holiday, etc.)
-                categoryHours[tracking.category] = (tracking.hours || 0);
-              } else {
-                // Default to cost center 0 for working hours
+              } else if (
+                tracking.category === 'Working Hours' ||
+                tracking.category === 'Regular Hours' ||
+                !tracking.category
+              ) {
                 costCenterHours[0] = (tracking.hours || 0);
               }
             });
@@ -3283,18 +3292,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       if (!prev) return null;
       const updatedEntries = prev.dailyEntries.map((entry: any) => {
         if (entry.day === day) {
-          const currentCategoryHours = (entry as any).categoryHours || {};
-          const oldValue = currentCategoryHours[category] || 0;
           const updatedCategoryHours = {
-            ...currentCategoryHours,
+            ...((entry as any).categoryHours || {}),
             [category]: value
           };
-          // Recalculate total hours for the day
-          const newTotalHours = (entry.hoursWorked || 0) - oldValue + value;
           return {
             ...entry,
             categoryHours: updatedCategoryHours,
-            hoursWorked: newTotalHours
           };
         }
         return entry;
@@ -3351,7 +3355,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                  (!entry.costCenter || entry.costCenter === '');
         });
 
+      const categoryEntryId = `time-${employeeData.employeeId}-${dateStr}-category-${mappedCategory}`;
       const requestBody = {
+          id: categoryEntryId,
           employeeId: employeeData.employeeId,
           date: dateStr,
           hours: value,
@@ -3404,11 +3410,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     // Clear editing state
     setEditingCategoryCell(null);
     setEditingCategoryValue('');
-    
-    // REMOVED: Automatic refresh after save
-    // Optimistic update already shows the correct value in the UI
-    // Refreshing immediately can overwrite the optimistic update before backend processes the save
-    // Data will be refreshed naturally on next page navigation or explicit refresh
+
+    // Reconcile from API so billable rows never inherit category-only hours
+    await refreshTimesheetData(employeeData);
   };
 
   // Cancel category cell edit
