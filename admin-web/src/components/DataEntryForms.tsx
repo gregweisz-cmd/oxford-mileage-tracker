@@ -171,6 +171,9 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
   const [addressSelectorType, setAddressSelectorType] = useState<'start' | 'end'>('start');
   const [dailyOdometerForDate, setDailyOdometerForDate] = useState<number | null>(null);
   const [dailyOdometerLoading, setDailyOdometerLoading] = useState(false);
+  const [suggestedOdometerNote, setSuggestedOdometerNote] = useState('');
+  const [odometerPrefillSource, setOdometerPrefillSource] = useState<'today_ending' | 'last_travel_day' | null>(null);
+  const lastOdometerSuggestionKeyRef = useRef('');
   const [travelReasons, setTravelReasons] = useState<{ id: string; label: string }[]>([]);
   const [isContinuingTripEntry, setIsContinuingTripEntry] = useState(false);
   const isContinuingTripEntryRef = useRef(false);
@@ -218,6 +221,60 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       });
     return () => { cancelled = true; };
   }, [open, employee?.id, normalizedFormDate]);
+
+  // Suggested starting odometer (last travel day / today's ending) — mirrors mobile app
+  useEffect(() => {
+    if (!open || !employee?.id || !normalizedFormDate || mode === 'edit' || dailyOdometerLoading) {
+      if (!open) {
+        setSuggestedOdometerNote('');
+        setOdometerPrefillSource(null);
+        lastOdometerSuggestionKeyRef.current = '';
+      }
+      return;
+    }
+    if (dailyOdometerForDate != null) {
+      setSuggestedOdometerNote('');
+      setOdometerPrefillSource(null);
+      return;
+    }
+
+    let cancelled = false;
+    const suggestionKey = `${employee.id}:${normalizedFormDate}`;
+    fetch(
+      `${API_BASE_URL}/api/mileage-entries/suggested-starting-odometer?employeeId=${encodeURIComponent(employee.id)}&date=${encodeURIComponent(normalizedFormDate)}`,
+      { headers: getStaffPortalAuthHeaders() }
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: {
+        suggestedOdometer?: number | null;
+        prefillSource?: 'today_ending' | 'last_travel_day' | null;
+        lastTravelDayNote?: string;
+      } | null) => {
+        if (cancelled || !data) return;
+        setSuggestedOdometerNote(data.lastTravelDayNote || '');
+        setOdometerPrefillSource(data.prefillSource || null);
+        if (
+          isContinuingTripEntryRef.current ||
+          data.suggestedOdometer == null ||
+          Number(data.suggestedOdometer) <= 0 ||
+          lastOdometerSuggestionKeyRef.current === suggestionKey
+        ) {
+          return;
+        }
+        lastOdometerSuggestionKeyRef.current = suggestionKey;
+        setFormData((prev) => ({
+          ...prev,
+          startingOdometer: Math.round(Number(data.suggestedOdometer)),
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSuggestedOdometerNote('');
+          setOdometerPrefillSource(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [open, employee?.id, normalizedFormDate, mode, dailyOdometerLoading, dailyOdometerForDate]);
 
   // Initialize form data only when dialog first opens for edit (not on every re-render; parent passes new object each render)
   const hasInitializedFromEditRef = useRef(false);
@@ -783,22 +840,31 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
             {/* Starting odometer: mandatory once per day; greyed out if already set for this date */}
             <Box sx={{ width: '100%' }}>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
-                <TextField
-                  label="Starting odometer"
-                  type="number"
-                  value={dailyOdometerLoading ? '…' : (formData.startingOdometer ?? '')}
-                  onChange={(e) => handleInputChange('startingOdometer', parseInt(e.target.value, 10) || 0)}
-                  error={!!errors.startingOdometer}
-                  helperText={
-                    errors.startingOdometer ||
-                    (dailyOdometerForDate != null && !isContinuingTripEntry
-                      ? 'Set once per day (already entered for this date)'
-                      : 'Required once per day for this date')
-                  }
-                  inputProps={{ min: 0, step: 1 }}
-                  disabled={dailyOdometerLoading || (dailyOdometerForDate != null && !isContinuingTripEntry)}
-                  sx={{ flex: '0 1 140px', minWidth: 100 }}
-                />
+                <Box sx={{ flex: '0 1 140px', minWidth: 100 }}>
+                  <TextField
+                    label="Starting odometer"
+                    type="number"
+                    value={dailyOdometerLoading ? '…' : (formData.startingOdometer ?? '')}
+                    onChange={(e) => handleInputChange('startingOdometer', parseInt(e.target.value, 10) || 0)}
+                    error={!!errors.startingOdometer}
+                    helperText={
+                      errors.startingOdometer ||
+                      (dailyOdometerForDate != null && !isContinuingTripEntry
+                        ? 'Set once per day (already entered for this date)'
+                        : odometerPrefillSource === 'today_ending'
+                          ? 'Prefilled from where you left off today'
+                          : 'Required once per day for this date')
+                    }
+                    inputProps={{ min: 0, step: 1 }}
+                    disabled={dailyOdometerLoading || (dailyOdometerForDate != null && !isContinuingTripEntry)}
+                    fullWidth
+                  />
+                  {suggestedOdometerNote && dailyOdometerForDate == null && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      {suggestedOdometerNote}
+                    </Typography>
+                  )}
+                </Box>
                 <TextField
                   label="Miles"
                   type="number"

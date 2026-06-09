@@ -21,6 +21,7 @@ const { checkAndNotify50PlusHours } = require('../services/notificationService')
 const websocketService = require('../services/websocketService');
 const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
 const { enrichAddressIfNeeded } = require('../utils/addressEnrichment');
+const { resolveSuggestedStartingOdometer } = require('../utils/odometerSuggestion');
 const { requireAuth } = require('../middleware/auth');
 
 const normalizeCostCenterKey = (value) =>
@@ -158,6 +159,30 @@ router.get('/api/mileage-entries', (req, res) => {
     }
     res.json(rows);
   });
+});
+
+/**
+ * Suggested starting odometer for the next mileage entry on a given date.
+ */
+router.get('/api/mileage-entries/suggested-starting-odometer', async (req, res) => {
+  const { employeeId, date } = req.query;
+  if (!employeeId || !date) {
+    return res.status(400).json({ error: 'employeeId and date are required' });
+  }
+
+  const normalizedDate = dateHelpers.normalizeDateString(date);
+  if (!normalizedDate) {
+    return res.status(400).json({ error: 'Invalid date format.' });
+  }
+
+  try {
+    const db = dbService.getDb();
+    const result = await resolveSuggestedStartingOdometer(db, employeeId, normalizedDate);
+    res.json(result);
+  } catch (err) {
+    debugError('❌ Error in GET /api/mileage-entries/suggested-starting-odometer:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
