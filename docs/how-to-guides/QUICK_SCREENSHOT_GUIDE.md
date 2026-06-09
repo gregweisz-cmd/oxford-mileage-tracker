@@ -133,10 +133,10 @@ Baseline captures from April 2026 are mostly done. **Priority now:** 9 new scree
    - Navigate to: Settings/preferences
    - Capture: Settings screen
 
-10. **Description Edit** (`staff-portal-description-edit.png`)
+10. **Description Dropdown** (`staff-portal-description-dropdown.png`)
     - Navigate to: Daily Descriptions tab
-    - Click edit on a description
-    - Capture: Tall, multi-line edit box
+    - Click a description cell to open the preset list
+    - Capture: Dropdown open with options (e.g. Telework from Base Address, Staff Meeting)
 
 11. **Portal Switcher** (`staff-portal-portal-switcher.png`)
     - Navigate to: Click portal switcher dropdown

@@ -76,19 +76,23 @@ export default function GooglePlacesAddressInput({
 
   const selectPrediction = async (item: AddressPrediction) => {
     suppressNextLookupRef.current = true;
-    onChangeText(toCanonicalAddress(item.description));
     setShowPredictions(false);
     setPredictions([]);
     inputRef.current?.blur();
     Keyboard.dismiss();
-    if (!onPlaceSelected) return;
+
     const details = await GooglePlacesService.getAddressDetails(item.placeId);
-    if (details) {
+    if (onPlaceSelected && details) {
+      const parts = GooglePlacesService.addressPartsFromDetails(details);
+      onChangeText(parts.street || toCanonicalAddress(item.description));
       onPlaceSelected({
         ...details,
         formattedAddress: toCanonicalAddress(details.formattedAddress),
       });
+      return;
     }
+
+    onChangeText(toCanonicalAddress(item.description));
   };
 
   return (

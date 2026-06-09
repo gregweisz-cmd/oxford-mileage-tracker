@@ -79,7 +79,7 @@ Save to `docs/how-to-guides/images/screenshots/web-portal/`. All screenshots cap
 | 7 | `staff-portal-report-status.png` | Report status indicators | ✅ |
 | 8 | `staff-portal-notifications.png` | Notification bell/panel | ✅ |
 | 9 | `staff-portal-settings.png` | Settings | ✅ |
-| 10 | `staff-portal-description-edit.png` | Description edit (tall edit box) | ✅ |
+| 10 | `staff-portal-description-dropdown.png` | Description preset dropdown open | ✅ |
 | 11 | `staff-portal-portal-switcher.png` | Portal switcher dropdown | ✅ |
 
 ---

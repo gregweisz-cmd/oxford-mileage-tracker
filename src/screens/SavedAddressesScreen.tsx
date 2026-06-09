@@ -19,7 +19,7 @@ import UnifiedHeader from '../components/UnifiedHeader';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { ApiSyncService } from '../services/apiSyncService';
-import { API_BASE_URL } from '../config/api';
+import { GooglePlacesService } from '../services/googlePlacesService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { formatAddressParts, parseAddressParts, updateAddressPart } from '../utils/addressFormatter';
 import { makeLocationDetails } from '../utils/locationSelection';
@@ -37,6 +37,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
+  const [placeCoordinates, setPlaceCoordinates] = useState<{ latitude?: number; longitude?: number } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     street: '',
@@ -132,6 +133,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
       category: 'Other',
     });
     setEditingAddress(null);
+    setPlaceCoordinates(null);
   };
 
   const buildAddressString = () => {
@@ -169,6 +171,10 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
       category: address.category || 'Other',
     });
     setEditingAddress(address);
+    setPlaceCoordinates({
+      latitude: address.latitude,
+      longitude: address.longitude,
+    });
     setShowEditModal(true);
   };
 
@@ -181,24 +187,12 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
 
     try {
       if (editingAddress) {
-        const response = await fetch(`${API_BASE_URL}/saved-addresses/${editingAddress.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formData.name.trim(),
-            address: addressString,
-            category: formData.category,
-            latitude: editingAddress.latitude,
-            longitude: editingAddress.longitude,
-          }),
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to update saved address on backend (${response.status})`);
-        }
         await DatabaseService.updateSavedAddress(editingAddress.id, {
           name: formData.name.trim(),
           address: addressString,
           category: formData.category,
+          latitude: placeCoordinates?.latitude ?? editingAddress.latitude,
+          longitude: placeCoordinates?.longitude ?? editingAddress.longitude,
         });
         Alert.alert('Success', 'Address updated successfully');
         setShowEditModal(false);
@@ -208,6 +202,8 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           name: formData.name.trim(),
           address: addressString,
           category: formData.category,
+          latitude: placeCoordinates?.latitude,
+          longitude: placeCoordinates?.longitude,
         });
         Alert.alert('Success', 'Address saved successfully');
         setShowAddModal(false);
@@ -232,15 +228,9 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_BASE_URL}/saved-addresses/${address.id}`, {
-                method: 'DELETE',
-              });
-              if (!response.ok) {
-                throw new Error(`Failed to delete saved address on backend (${response.status})`);
-              }
               await DatabaseService.deleteSavedAddress(address.id);
               Alert.alert('Success', 'Address deleted successfully');
-              await loadData(); // Refresh the list
+              await loadData();
             } catch (error) {
               console.error('Error deleting address:', error);
               Alert.alert('Error', 'Failed to delete address');
@@ -494,14 +484,20 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
             value={formData.street}
             onChangeText={(value) => handleInputChange('street', value)}
             onPlaceSelected={(details) => {
-              const parsed = parseAddressToForm(details.formattedAddress);
+              const parsed = GooglePlacesService.addressPartsFromDetails(details);
               setFormData((prev) => ({
                 ...prev,
                 street: parsed.street || prev.street,
-                city: parsed.city,
-                state: parsed.state,
-                zip: parsed.zip,
+                city: parsed.city || '',
+                state: parsed.state || '',
+                zip: parsed.zipCode || '',
               }));
+              if (details.latitude != null && details.longitude != null) {
+                setPlaceCoordinates({
+                  latitude: details.latitude,
+                  longitude: details.longitude,
+                });
+              }
             }}
             placeholderTextColor="#999"
           />

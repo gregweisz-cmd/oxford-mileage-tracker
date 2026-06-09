@@ -34,7 +34,7 @@ Still need:
 7. `staff-portal-report-status.png` - Report status indicators
 8. `staff-portal-notifications.png` - Notification bell/panel
 9. `staff-portal-settings.png` - Settings/preferences
-10. `staff-portal-description-edit.png` - Description editing with tall edit box
+10. `staff-portal-description-dropdown.png` - Daily Descriptions preset dropdown open
 11. `staff-portal-portal-switcher.png` - Portal switcher dropdown
 
 ## Capture Instructions

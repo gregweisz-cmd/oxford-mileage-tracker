@@ -55,6 +55,7 @@ See `FEATURES_UPDATE.md` for the full change log.
 - [ ] `staff-portal-timesheet-pto-entry.png` — PTO (or G&A) hours entered; billable row **0** same day
 - [ ] `staff-portal-open-revisions.png` — Approval Progress → **Open revisions** (needs-revision report)
 - [x] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
+- [x] `staff-portal-description-dropdown.png` — Description preset dropdown open on Daily Descriptions
 - [x] `staff-portal-monthly-summary.png` — Monthly Summary tab
 - [x] `staff-portal-submission-workflow.png` — Submit dialog (Monthly vs Weekly)
 - [ ] `staff-portal-report-status.png` — 🔄 **Refresh:** Approval Progress / status chips

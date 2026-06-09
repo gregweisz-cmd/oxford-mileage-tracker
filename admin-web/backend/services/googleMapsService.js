@@ -767,7 +767,7 @@ async function placeDetails(placeId) {
     const url =
       'https://maps.googleapis.com/maps/api/place/details/json' +
       `?place_id=${encodeURIComponent(placeId)}` +
-      '&fields=name,formatted_address,geometry' +
+      '&fields=name,formatted_address,geometry,address_components' +
       '&language=en' +
       `&key=${GOOGLE_MAPS_API_KEY}`;
     const response = await axios.get(url, { timeout: 8000 });

@@ -92,13 +92,78 @@ export const formatAddressParts = ({ street, city, state, zipCode }: AddressPart
   return [line1, line2, zip].filter(Boolean).join(' ').trim();
 };
 
+const COUNTRY_SUFFIXES = new Set([
+  'usa',
+  'us',
+  'u.s.',
+  'u.s.a.',
+  'united states',
+  'united states of america',
+]);
+
+const stripTrailingCountry = (segments: string[]): string[] => {
+  if (segments.length <= 1) return segments;
+  const last = segments[segments.length - 1].toLowerCase().replace(/\./g, '');
+  if (COUNTRY_SUFFIXES.has(last)) {
+    return segments.slice(0, -1);
+  }
+  return segments;
+};
+
+const parseStateZipSegment = (segment: string): { state: string; zipCode: string } => {
+  const match = segment.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+  if (!match) return { state: '', zipCode: '' };
+  return { state: match[1].toUpperCase(), zipCode: match[2] };
+};
+
+export type GoogleAddressComponent = {
+  long_name: string;
+  short_name: string;
+  types: string[];
+};
+
+/** Structured fields from Google Place Details address_components */
+export const parseGoogleAddressComponents = (
+  components: GoogleAddressComponent[] | undefined
+): AddressParts => {
+  if (!components?.length) return {};
+
+  const find = (...types: string[]) =>
+    components.find((component) => types.some((type) => component.types.includes(type)));
+
+  const streetNumber = find('street_number')?.long_name || '';
+  const route = find('route')?.long_name || '';
+  const street = [streetNumber, route].filter(Boolean).join(' ').trim();
+  const city =
+    find('locality', 'postal_town', 'sublocality', 'administrative_area_level_3')?.long_name || '';
+  const state = (find('administrative_area_level_1')?.short_name || '').toUpperCase().slice(0, 2);
+  const zipCode = find('postal_code')?.long_name || '';
+
+  return { street, city, state, zipCode };
+};
+
 export const parseAddressParts = (fullAddress: string): AddressParts => {
   const trimmed = fullAddress?.trim() || '';
   if (!trimmed) return {};
 
-  const parts = trimmed.split(',').map(part => part.trim()).filter(Boolean);
+  let parts = stripTrailingCountry(
+    trimmed.split(',').map(part => part.trim()).filter(Boolean)
+  );
   if (parts.length === 1) {
     return { street: trimmed };
+  }
+
+  // Google-style: "222 Paradise Hills Cir, Mooresville, NC 28117"
+  if (parts.length === 3) {
+    const { state, zipCode } = parseStateZipSegment(parts[2]);
+    if (state && zipCode) {
+      return {
+        street: parts[0],
+        city: parts[1],
+        state,
+        zipCode,
+      };
+    }
   }
 
   if (parts.length >= 4) {
@@ -114,20 +179,27 @@ export const parseAddressParts = (fullAddress: string): AddressParts => {
     }
   }
 
-  const street = parts.length > 2 ? parts.slice(0, -2).join(', ') : parts[0] || '';
-  const cityPart = parts.length > 2 ? parts[parts.length - 2] : '';
+  const street = parts.length > 2 ? parts[0] : parts[0] || '';
+  const cityPart = parts.length > 2 ? parts[1] : '';
   const stateZipPart = parts.length > 2 ? parts[parts.length - 1] : parts[1] || '';
 
   let city = cityPart;
   let state = '';
   let zipCode = '';
 
-  const stateZipMatch = stateZipPart.match(/([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?/);
-  if (stateZipMatch) {
-    state = stateZipMatch[1] || '';
-    zipCode = stateZipMatch[2] || '';
-  } else if (parts.length >= 3) {
-    city = parts[1] || '';
+  const combinedStateZip = parseStateZipSegment(stateZipPart);
+  if (combinedStateZip.state) {
+    state = combinedStateZip.state;
+    zipCode = combinedStateZip.zipCode;
+    city = cityPart;
+  } else {
+    const stateZipMatch = stateZipPart.match(/([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?/);
+    if (stateZipMatch && stateZipMatch[1] !== 'US') {
+      state = stateZipMatch[1] || '';
+      zipCode = stateZipMatch[2] || '';
+    } else if (parts.length >= 3) {
+      city = parts[1] || '';
+    }
   }
 
   // Handle cases like "City ST 12345" when only 2 parts exist

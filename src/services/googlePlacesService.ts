@@ -1,5 +1,11 @@
 import Constants from 'expo-constants';
 import API_BASE_URL from '../config/api';
+import {
+  AddressParts,
+  parseAddressParts,
+  parseGoogleAddressComponents,
+  GoogleAddressComponent,
+} from '../utils/addressFormatter';
 
 interface PlacesPrediction {
   place_id: string;
@@ -17,6 +23,7 @@ interface PlaceDetailsResponse {
   result?: {
     formatted_address?: string;
     name?: string;
+    address_components?: GoogleAddressComponent[];
     geometry?: {
       location?: {
         lat: number;
@@ -43,6 +50,10 @@ export interface AddressPrediction {
 export interface AddressDetails {
   name: string;
   formattedAddress: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
   latitude?: number;
   longitude?: number;
 }
@@ -119,6 +130,26 @@ export class GooglePlacesService {
     }
   }
 
+  private static mapPlaceResultToAddressDetails(result: NonNullable<PlaceDetailsResponse['result']>): AddressDetails {
+    const fromComponents = parseGoogleAddressComponents(result.address_components);
+    const fromFormatted = parseAddressParts(result.formatted_address || '');
+    const street = fromComponents.street || fromFormatted.street || '';
+    const city = fromComponents.city || fromFormatted.city || '';
+    const state = fromComponents.state || fromFormatted.state || '';
+    const zipCode = fromComponents.zipCode || fromFormatted.zipCode || '';
+
+    return {
+      name: result.name || result.formatted_address || '',
+      formattedAddress: result.formatted_address || '',
+      street,
+      city,
+      state,
+      zipCode,
+      latitude: result.geometry?.location?.lat,
+      longitude: result.geometry?.location?.lng,
+    };
+  }
+
   private static async fetchDetailsViaBackend(placeId: string): Promise<AddressDetails | null> {
     try {
       const url = `${apiBaseTrimmed()}/places/details?place_id=${encodeURIComponent(placeId)}`;
@@ -127,12 +158,7 @@ export class GooglePlacesService {
       if (!response.ok) return null;
       const data = (await response.json()) as PlaceDetailsResponse;
       if (data.status !== 'OK' || !data.result) return null;
-      return {
-        name: data.result.name || data.result.formatted_address || '',
-        formattedAddress: data.result.formatted_address || '',
-        latitude: data.result.geometry?.location?.lat,
-        longitude: data.result.geometry?.location?.lng,
-      };
+      return this.mapPlaceResultToAddressDetails(data.result);
     } catch {
       return null;
     }
@@ -195,7 +221,7 @@ export class GooglePlacesService {
     const url =
       'https://maps.googleapis.com/maps/api/place/details/json' +
       `?place_id=${encodeURIComponent(placeId)}` +
-      '&fields=name,formatted_address,geometry' +
+      '&fields=name,formatted_address,geometry,address_components' +
       '&language=en' +
       `&key=${encodeURIComponent(key)}`;
 
@@ -206,12 +232,20 @@ export class GooglePlacesService {
       return null;
     }
 
-    return {
-      name: data.result.name || data.result.formatted_address || '',
-      formattedAddress: data.result.formatted_address || '',
-      latitude: data.result.geometry?.location?.lat,
-      longitude: data.result.geometry?.location?.lng,
-    };
+    return this.mapPlaceResultToAddressDetails(data.result);
+  }
+
+  /** Split place details into street / city / state / zip for multi-field forms */
+  static addressPartsFromDetails(details: AddressDetails): AddressParts {
+    if (details.street || details.city || details.state || details.zipCode) {
+      return {
+        street: details.street || '',
+        city: details.city || '',
+        state: details.state || '',
+        zipCode: details.zipCode || '',
+      };
+    }
+    return parseAddressParts(details.formattedAddress || '');
   }
 
   static async getAddressFromCoordinates(latitude: number, longitude: number): Promise<string | null> {
