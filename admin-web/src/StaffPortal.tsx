@@ -7569,6 +7569,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         <TableCell sx={{ border: '1px solid #ccc', p: 1, whiteSpace: 'nowrap', width: '80px' }}>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
                             <Tooltip
+                              placement="right"
+                              arrow
                               title={
                                 isAdminView
                                   ? 'Day off cannot be changed in admin view'
