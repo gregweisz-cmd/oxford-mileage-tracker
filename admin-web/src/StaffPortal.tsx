@@ -113,6 +113,7 @@ import {
   saveDailyDescription,
   syncExpenseReportToSource,
 } from './services/staffPortalApi';
+import { getStaffPortalAuthHeaders } from './services/staffPortalAuthHeaders';
 
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -122,8 +123,14 @@ function getReceiptImageUrl(uri: string | undefined): string {
   const raw = (uri || '').trim();
   if (!raw) return '';
   if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-  if (raw.startsWith('/')) return `${API_BASE_URL}${raw}`;
-  return `${API_BASE_URL}/uploads/${raw}`;
+  const path = raw.startsWith('/uploads')
+    ? raw
+    : raw.startsWith('/')
+      ? raw
+      : raw.startsWith('uploads')
+        ? `/${raw}`
+        : `/uploads/${raw}`;
+  return `${API_BASE_URL}${path}`;
 }
 
 function isPdfReceiptUri(uri: string | undefined): boolean {
@@ -980,7 +987,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [cropModalReceipt, setCropModalReceipt] = useState<{ id: string; imageUri: string } | null>(null);
   const [viewImageUrl, setViewImageUrl] = useState<string | null>(null);
-  const [viewPdfUrl, setViewPdfUrl] = useState<string | null>(null);
+  const [viewPdfDialogOpen, setViewPdfDialogOpen] = useState(false);
+  const [viewPdfDisplayUrl, setViewPdfDisplayUrl] = useState<string | null>(null);
+  const [viewPdfLoading, setViewPdfLoading] = useState(false);
+  const viewPdfBlobRef = useRef<string | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null); // Profile signature (backend), not auto-applied to report
   const [savedSupervisorSignature, setSavedSupervisorSignature] = useState<string | null>(null);
@@ -1094,6 +1104,61 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const { showSuccess, showError } = useToast();
   const { showErrorPrompt } = useErrorPrompt();
   const { isLoading: uiLoading, startLoading, stopLoading } = useLoadingState();
+
+  const closeReceiptPdfViewer = useCallback(() => {
+    if (viewPdfBlobRef.current) {
+      URL.revokeObjectURL(viewPdfBlobRef.current);
+      viewPdfBlobRef.current = null;
+    }
+    setViewPdfDisplayUrl(null);
+    setViewPdfDialogOpen(false);
+    setViewPdfLoading(false);
+  }, []);
+
+  const openReceiptPdfViewer = useCallback(async (raw: string) => {
+    const resolvedUrl = getReceiptImageUrl(raw);
+    if (!resolvedUrl) {
+      showError('No PDF available for this receipt');
+      return;
+    }
+    if (viewPdfBlobRef.current) {
+      URL.revokeObjectURL(viewPdfBlobRef.current);
+      viewPdfBlobRef.current = null;
+    }
+    setViewPdfDialogOpen(true);
+    setViewPdfDisplayUrl(null);
+    if (resolvedUrl.startsWith('data:')) {
+      setViewPdfDisplayUrl(resolvedUrl);
+      return;
+    }
+    setViewPdfLoading(true);
+    try {
+      const response = await fetch(resolvedUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: getStaffPortalAuthHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      viewPdfBlobRef.current = blobUrl;
+      setViewPdfDisplayUrl(blobUrl);
+    } catch (error) {
+      debugError('Failed to load receipt PDF:', error);
+      showError('Failed to load PDF. The file may be missing or unavailable.');
+      closeReceiptPdfViewer();
+    } finally {
+      setViewPdfLoading(false);
+    }
+  }, [closeReceiptPdfViewer, showError]);
+
+  useEffect(() => () => {
+    if (viewPdfBlobRef.current) {
+      URL.revokeObjectURL(viewPdfBlobRef.current);
+    }
+  }, []);
 
   const navigateToReportFromNotification = useCallback(
     async (
@@ -8835,8 +8900,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       variant="outlined"
                                       startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
                                       onClick={() => {
-                                        const url = getReceiptImageUrl(raw);
-                                        if (url) setViewPdfUrl(url);
+                                        void openReceiptPdfViewer(raw);
                                       }}
                                       sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
                                     >
@@ -9347,30 +9411,35 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
       {/* Receipt PDF Viewer Dialog */}
       <Dialog
-        open={!!viewPdfUrl}
-        onClose={() => setViewPdfUrl(null)}
+        open={viewPdfDialogOpen}
+        onClose={closeReceiptPdfViewer}
         maxWidth="lg"
         fullWidth
         PaperProps={{ sx: { bgcolor: '#1a1a1a', height: '90vh' } }}
       >
         <DialogTitle sx={{ color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           Receipt PDF
-          <IconButton onClick={() => setViewPdfUrl(null)} sx={{ color: '#fff' }}>
+          <IconButton onClick={closeReceiptPdfViewer} sx={{ color: '#fff' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ p: 0, height: '100%' }}>
-          {viewPdfUrl && (
-            <iframe
-              src={viewPdfUrl}
+        <DialogContent sx={{ p: 0, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {viewPdfLoading ? (
+            <CircularProgress sx={{ color: '#fff' }} />
+          ) : viewPdfDisplayUrl ? (
+            <object
+              data={viewPdfDisplayUrl}
+              type="application/pdf"
               title="Receipt PDF"
-              style={{ width: '100%', height: '100%', border: 'none', minHeight: '70vh' }}
-              onError={() => {
-                showError('Failed to load PDF');
-                setViewPdfUrl(null);
-              }}
-            />
-          )}
+              style={{ width: '100%', height: '100%', minHeight: '70vh', border: 'none' }}
+            >
+              <iframe
+                src={viewPdfDisplayUrl}
+                title="Receipt PDF"
+                style={{ width: '100%', height: '100%', border: 'none', minHeight: '70vh' }}
+              />
+            </object>
+          ) : null}
         </DialogContent>
       </Dialog>
 
