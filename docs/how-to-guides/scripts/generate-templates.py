@@ -296,7 +296,7 @@ def create_template(title, content_sections):
     <!-- Footer Note -->
     <div style="margin-top: 40pt; padding-top: 20pt; border-top: 1px solid #ddd; font-size: 9pt; color: #666; text-align: center;">
         <p>This document is part of the Oxford House Expense Tracker documentation suite.</p>
-        <p>For technical support, please contact your system administrator.</p>
+        <p>Submit feedback or request support: <a href="https://tinyurl.com/ExpenseTrackerFeedback">tinyurl.com/ExpenseTrackerFeedback</a></p>
         <p>Document Version: 1.0 | Last Updated: January 2026</p>
     </div>
 </body>

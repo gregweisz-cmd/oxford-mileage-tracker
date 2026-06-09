@@ -116,3 +116,7 @@ Reference these files for accurate feature documentation:
 - `admin-web/src/components/ContractsPortal.tsx`
 - `admin-web/src/StaffPortal.tsx`
 - `src/screens/HomeScreen.tsx` (mobile app)
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

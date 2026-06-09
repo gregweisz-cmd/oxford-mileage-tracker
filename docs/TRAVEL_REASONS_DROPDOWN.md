@@ -84,3 +84,7 @@ Daily descriptions use the same dropdown pattern for simpler reporting:
 2. Should we track usage frequency and show most common at top?
 3. Should "Other" allow free text, or should we have a separate "Custom" option?
 4. Do we need different lists for different employee roles/positions?
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

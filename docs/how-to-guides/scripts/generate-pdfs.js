@@ -10,6 +10,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const { pdfFooterTemplate } = require('./doc-footer');
 
 const templatesDir = path.join(__dirname, '../templates');
 const outputDir = path.join(__dirname, '..');
@@ -105,7 +106,7 @@ async function generatePDF(templateFile, outputFile, title) {
             margin: {
                 top: '0.75in',
                 right: '0.75in',
-                bottom: '0.75in',
+                bottom: '0.9in',
                 left: '0.75in'
             },
             printBackground: true,
@@ -115,11 +116,7 @@ async function generatePDF(templateFile, outputFile, title) {
                     ${title}
                 </div>
             `,
-            footerTemplate: `
-                <div style="font-size: 10px; text-align: center; width: 100%; color: #666; padding-bottom: 10px;">
-                    Page <span class="pageNumber"></span> of <span class="totalPages"></span>
-                </div>
-            `
+            footerTemplate: pdfFooterTemplate()
         });
         
         await browser.close();

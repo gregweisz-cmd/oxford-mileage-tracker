@@ -27,7 +27,7 @@ Use this quick guide for setup, access, and reporting during beta.
 ## 3) Submit feedback
 
 - Feedback form: [https://forms.gle/vmUf6qzESDk5uTai8](https://forms.gle/vmUf6qzESDk5uTai8)
-- Quick link: [https://tinyurl.com/ExpenseTracker-Feedback](https://tinyurl.com/ExpenseTracker-Feedback)
+- Quick link: [https://tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)
 
 When submitting, include:
 

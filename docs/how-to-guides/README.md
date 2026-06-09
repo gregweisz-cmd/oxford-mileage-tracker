@@ -50,6 +50,10 @@ To update guide content:
 
 ## Version
 
-Current version: 1.0
-Last updated: January 2026
-See `FEATURES_UPDATE.md` for Jan 2026 feature changes (Sync from HR API, Go to today).
+Guide templates: **1.3** (May 2026) for Staff Portal and Mobile App; Supervisor/Admin **1.2**; Finance **1.1** (Total Expenses note). Screenshot refresh pending — see checklist.
+
+See `FEATURES_UPDATE.md` for the full May 2026 change log and new screenshot filenames.
+
+**Before distributing PDFs:** capture screenshots per `SCREENSHOT_CHECKLIST.md`, then run `node generate-pdfs.js` in `scripts/`.
+
+**Support:** Every guide PDF page includes a footer link to submit feedback: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback).

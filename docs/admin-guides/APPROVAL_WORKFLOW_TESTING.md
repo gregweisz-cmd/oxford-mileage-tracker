@@ -320,3 +320,7 @@ Once testing is complete:
 
 Good luck testing! 🚀
 
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

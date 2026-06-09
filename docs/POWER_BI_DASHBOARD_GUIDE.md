@@ -391,3 +391,7 @@ A: Yes! Right-click any visual → **Export data** → Choose Excel format.
 ---
 
 **Need help with specific visualizations?** Let me know what you'd like to build next!
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

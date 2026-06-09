@@ -140,3 +140,7 @@ docs/how-to-guides/
 - PDF generation script is ready to use once dependencies are installed
 - Content guide provides detailed requirements for remaining templates
 - Templates can be easily updated as features change
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

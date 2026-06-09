@@ -81,3 +81,7 @@ This document records the design decisions for the Senior Staff → Supervisor �
 - [x] Validation: require `supervisorId` for all employees except CEO (role or position contains "ceo").
 - [x] Validation: reject save when `supervisorId === seniorStaffId` (same person cannot be both).
 - [x] Portal switcher: use “Supervisor Portal” and “Senior Staff Portal” naming; description copy as agreed.
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

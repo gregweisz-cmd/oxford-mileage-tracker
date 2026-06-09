@@ -69,5 +69,11 @@ Keep active, current documentation in the root directory. Archive old or resolve
 
 ---
 
-**Last Updated:** 2025-01-XX
+## Support
+
+Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)
+
+---
+
+**Last Updated:** 2026-05-19
 

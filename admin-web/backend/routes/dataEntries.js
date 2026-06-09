@@ -20,6 +20,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { checkAndNotify50PlusHours } = require('../services/notificationService');
 const websocketService = require('../services/websocketService');
 const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
+const { enrichAddressIfNeeded } = require('../utils/addressEnrichment');
 const { requireAuth } = require('../middleware/auth');
 
 const normalizeCostCenterKey = (value) =>
@@ -225,13 +226,13 @@ router.post('/api/mileage-entries', (req, res) => {
     const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
     const finalStartLocation = normStart ? normStart.display : (startLocation || '');
     const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
-    const finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
+    let finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
     const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
     const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
-    const finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
+    let finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
 
   // Check if entry with this ID already exists
-  db.get('SELECT id, sortOrder FROM mileage_entries WHERE id = ?', [entryId], (checkErr, existingRow) => {
+  db.get('SELECT id, sortOrder FROM mileage_entries WHERE id = ?', [entryId], async (checkErr, existingRow) => {
     if (checkErr) {
       debugError('❌ Error checking for existing mileage entry:', checkErr);
       return res.status(500).json({ error: checkErr.message });
@@ -239,6 +240,13 @@ router.post('/api/mileage-entries', (req, res) => {
 
     const isUpdate = !!existingRow;
     const action = isUpdate ? 'updated' : 'created';
+
+    try {
+      finalStartAddr = await enrichAddressIfNeeded(finalStartAddr, startLocationLat, startLocationLng);
+      finalEndAddr = await enrichAddressIfNeeded(finalEndAddr, endLocationLat, endLocationLng);
+    } catch (enrichErr) {
+      debugWarn('Mileage address enrichment skipped:', enrichErr.message);
+    }
 
     const runInsert = (sortOrderVal) => {
       db.run(
@@ -369,10 +377,18 @@ router.put('/api/mileage-entries/:id', (req, res) => {
     const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
     const finalStartLocation = normStart ? normStart.display : (startLocation || '');
     const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
-    const finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
+    let finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
     const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
     const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
-    const finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
+    let finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
+
+  (async () => {
+    try {
+      finalStartAddr = await enrichAddressIfNeeded(finalStartAddr, startLocationLat, startLocationLng);
+      finalEndAddr = await enrichAddressIfNeeded(finalEndAddr, endLocationLat, endLocationLng);
+    } catch (enrichErr) {
+      debugWarn('Mileage address enrichment skipped:', enrichErr.message);
+    }
 
   db.run(
     'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, vehicleId = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
@@ -413,6 +429,7 @@ router.put('/api/mileage-entries/:id', (req, res) => {
       res.json({ message: 'Mileage entry updated successfully' });
     }
   );
+  })();
   });
 });
 

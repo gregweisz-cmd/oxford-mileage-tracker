@@ -35,3 +35,7 @@ npm run build
 ```
 
 Then spot-check the generated PDFs in `docs/how-to-guides/`.
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

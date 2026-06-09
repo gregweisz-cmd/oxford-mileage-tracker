@@ -238,3 +238,7 @@ No database schema changes required. The existing `employees` table already supp
 - See `AdminPortal.tsx` for frontend admin interface
 - See `employeeApiService.ts` for frontend API service
 
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

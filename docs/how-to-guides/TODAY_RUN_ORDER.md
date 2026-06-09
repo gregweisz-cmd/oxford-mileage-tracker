@@ -114,3 +114,7 @@ Same folder: `web-portal/`.
 1. In **SCREENSHOT_CHECKLIST.md**, change `- [ ]` to `- [x]` for each screenshot you saved.
 2. Regenerate PDFs:  
    `cd docs/how-to-guides/scripts && npm run generate`
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

@@ -160,7 +160,7 @@ Use this form for **every** issue, improvement idea, or concern (one submission 
 
 Printed URL: `https://forms.gle/vmUf6qzESDk5uTai8`
 
-**Quick link (same form):** [Expense Tracker — Feedback](https://tinyurl.com/ExpenseTracker-Feedback) — `https://tinyurl.com/ExpenseTracker-Feedback` (also on the [Support page](https://oxford-mileage-tracker.vercel.app/support.html)).
+**Quick link (same form):** [Expense Tracker — Feedback](https://tinyurl.com/ExpenseTrackerFeedback) — `https://tinyurl.com/ExpenseTrackerFeedback` (also on the [Support page](https://oxford-mileage-tracker.vercel.app/support.html)).
 
 Below is what each field is for—fill in every item that applies to your report.
 

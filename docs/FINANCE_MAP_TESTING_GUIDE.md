@@ -88,3 +88,7 @@ Only reports that **use at least one cost center with this checked** will show t
 - [ ] Choose **By Day** or **By Cost Center** → PDF downloads and contains **map image(s)**.
 
 Once this works, finance can use the same flow whenever they need maps on exported reports.
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

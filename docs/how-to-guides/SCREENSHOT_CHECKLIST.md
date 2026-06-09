@@ -2,7 +2,9 @@
 
 Checklist for capturing and saving screenshots used by the how-to PDFs. Use **exact filenames**; save paths are under each section.
 
-**Current focus:** Keep screenshots aligned with each release update. All web portals use the same login screenshot: `web-portal-login.png`.
+**Current focus (May 2026):** Capture **new** screenshots below and **refresh** any marked 🔄 so PDFs match Timesheet, GPS stationary, and revision UX. All web portals share login: `web-portal-login.png`.
+
+See `FEATURES_UPDATE.md` for the full change log.
 
 **Optional:** Use [TODAY_RUN_ORDER.md](TODAY_RUN_ORDER.md) as a run list if it exists (same screens in capture order).
 
@@ -15,7 +17,7 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 - [x] `login-screen.png` — Login (logo + email/password)
 - [x] `home-screen.png` — Home overview
 - [x] `home-dashboard-full.png` — Full dashboard, all tiles (scroll to show all)
-- [x] `gps-tracking-screen.png` — GPS in progress (map + Stop)
+- [ ] `gps-tracking-screen.png` — 🔄 **Refresh:** GPS in progress (legible labels on Android dark mode; pause/stop UI)
 - [x] `manual-entry-screen.png` — Manual mileage entry form
 - [x] `receipt-capture-screen.png` — Add Receipt screen (or "Reading receipt image…" popup)
 - [x] `daily-hours-screen.png` — Daily Hours — **include "Go to today" in frame**
@@ -23,7 +25,11 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 - [x] `settings-screen.png` — Settings
 - [x] `saved-addresses-screen.png` — Saved addresses list
 
-**Mobile subtotal:** 10 / 10
+- [ ] `mobile-gps-stationary-prompt.png` — Stationary notification or in-app “Still tracking your trip?” modal
+- [ ] `mobile-gps-global-controls.png` — Global GPS chip (distance + stop) on Home or another screen while tracking
+- [ ] `mobile-gps-pause-mileage.png` — Trip options with Pause / Resume mileage (optional)
+
+**Mobile subtotal:** 3 new + 1 refresh pending (see also section 1 legacy 10)
 
 ---
 
@@ -39,20 +45,23 @@ Checklist for capturing and saving screenshots used by the how-to PDFs. Use **ex
 - [x] `staff-portal-overview-tab-navigation.png` — Zoomed tab-navigation strip from portal overview (Approval Cover Sheet through Per Diem)
 - [x] `staff-portal-mileage-tab.png` — Mileage Entries tab (date, start/end, miles, cost center, actions)
 - [x] `staff-portal-mileage-editing-window.png` — Mileage entry editing view after clicking a table cell
-- [x] `staff-portal-add-mileage-entry-window.png` — Add Mileage Entry popup/window with required fields
+- [ ] `staff-portal-add-mileage-entry-window.png` — 🔄 **Refresh:** Add Mileage Entry dialog (report-month date default)
+- [ ] `staff-portal-mileage-date-picker.png` — Calendar open on a **past report month** (month arrows visible)
 - [x] `staff-portal-receipts-tab.png` — Receipts tab (Crop option)
 - [x] `staff-portal-receipt-details-view.png` — Receipt details view with full image and editable fields
 - [x] `staff-portal-receipt-crop-dialog.png` — Crop dialog for a receipt image (selection box + Apply)
 - [x] `staff-portal-upload-receipt-dialog.png` — Add/Upload Receipt dialog from the web portal
-- [x] `staff-portal-hours-tab.png` — Hours Worked tab
+- [ ] `staff-portal-timesheet-tab.png` — **Replaces** `staff-portal-hours-tab.png` — full Timesheet (billable + category tables)
+- [ ] `staff-portal-timesheet-pto-entry.png` — PTO (or G&A) hours entered; billable row **0** same day
+- [ ] `staff-portal-open-revisions.png` — Approval Progress → **Open revisions** (needs-revision report)
 - [x] `staff-portal-descriptions-tab.png` — Daily Descriptions tab
 - [x] `staff-portal-monthly-summary.png` — Monthly Summary tab
 - [x] `staff-portal-submission-workflow.png` — Submit dialog (Monthly vs Weekly)
-- [x] `staff-portal-report-status.png` — Report status indicators
-- [x] `staff-portal-notifications.png` — Notification bell/panel
+- [ ] `staff-portal-report-status.png` — 🔄 **Refresh:** Approval Progress / status chips
+- [ ] `staff-portal-notifications.png` — 🔄 **Refresh:** Revision notification with **Open report**
 - [x] `staff-portal-settings.png` — Settings / preferences
 
-**Staff subtotal:** 22 / 22
+**Staff subtotal:** 4 new + 4 refresh pending (+ prior captures still valid for unchanged screens)
 
 ---
 
@@ -75,9 +84,10 @@ Optional screenshots for the Senior Staff how-to guide. (There is no separate Se
 - [x] `supervisor-portal-approvals.png` — **Approvals** tab (reports pending your review)
 - [x] `supervisor-portal-reports.png` — **Reports** tab (all team reports, filters)
 - [x] `supervisor-portal-team.png` — **Team** tab (team members list)
-- [x] `supervisor-portal-notifications.png` — Notification bell panel
+- [ ] `supervisor-portal-notifications.png` — 🔄 **Refresh:** may include weekly hours threshold alert
+- [ ] `supervisor-portal-weekly-hours-alert.png` — Zoom: hours-threshold notification (optional)
 
-**Supervisor subtotal:** 6 / 6
+**Supervisor subtotal:** 1 new + 1 refresh pending (+ 5 prior captures)
 
 ---
 
@@ -96,10 +106,11 @@ Optional screenshots for the Senior Staff how-to guide. (There is no separate Se
 - [x] `admin-portal-travel-reasons.png` — **Travel Reasons** tab
 - [x] `admin-portal-daily-description.png` — **Daily Description** (options) tab
 - [x] `admin-portal-system-settings.png` — **System Settings** tab
-- [x] `admin-portal-notifications.png` — Notification bell panel
+- [ ] `admin-portal-notifications.png` — 🔄 **Refresh:** Notifications tab overview
+- [ ] `admin-portal-weekly-hours-threshold.png` — Weekly hours threshold setting on Notifications tab
 - [x] `admin-portal-edit-pencil-icon.png` — Small screenshot showing the pencil/edit icon in the Actions column
 
-**Admin subtotal:** 15 / 15
+**Admin subtotal:** 1 new + 1 refresh pending (+ 14 prior captures)
 
 ---
 
@@ -116,16 +127,21 @@ See **`docs/deployment/images/tester-packet/README.md`** for full capture notes.
 
 ---
 
-## Summary
+## Summary (May 2026 capture pass)
 
-| Section          | Required | Optional |
-|------------------|----------|----------|
-| Mobile App       | 10       | —        |
-| Staff Portal     | 22       | —        |
-| Senior Staff     | —        | 3        |
-| Supervisor       | 6        | —        |
-| Admin Portal     | 15       | —        |
-| Tester packets   | 4        | —        |
-| **Total**        | **57**   | **4**    |
+| Section | New screenshots | Refresh | Prior OK |
+|---------|-----------------|---------|----------|
+| Mobile App | 3 (+ optional pause) | 1 (`gps-tracking-screen`) | 9 unchanged |
+| Staff Portal | 4 | 4 | ~18 unchanged |
+| Senior Staff | — | — | 3 |
+| Supervisor | 1 (optional) | 1 | 5 |
+| Admin Portal | 1 | 1 | 14 |
+| Tester packets | — | — | 4 |
+
+**May 2026 minimum new captures:** 9 required + 2 optional. **Refreshes:** 7 recommended.
 
 To mark done: change `- [ ]` to `- [x]` for each screenshot you've saved.
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

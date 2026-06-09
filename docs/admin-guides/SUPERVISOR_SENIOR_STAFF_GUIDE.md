@@ -290,3 +290,7 @@ For questions or issues, contact the development team.
 - **v1.0** - Initial supervisor management
 - **v2.0** - Added Senior Staff designation, tabs, delete functionality
 
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

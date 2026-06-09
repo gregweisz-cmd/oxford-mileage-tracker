@@ -143,12 +143,58 @@ export default function LocationCaptureModal({
     }
   };
 
+  const fillMissingPartsFromGps = async (
+    street: string,
+    city: string,
+    state: string,
+    zip: string
+  ): Promise<{ street: string; city: string; state: string; zip: string }> => {
+    if (city && state && zip) {
+      return { street, city, state, zip };
+    }
+    if (!currentLocation) {
+      return { street, city, state, zip };
+    }
+    try {
+      const addressResponse = await Location.reverseGeocodeAsync({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      });
+      if (addressResponse.length > 0) {
+        const geo = buildPartsFromGeocode(addressResponse[0]);
+        return {
+          street: street || geo.street || '',
+          city: city || geo.city || '',
+          state: state || geo.state || '',
+          zip: zip || geo.zipCode || '',
+        };
+      }
+    } catch (error) {
+      console.log('Could not fill address parts from GPS before save:', error);
+    }
+    return { street, city, state, zip };
+  };
+
   const saveLocation = async () => {
     const trimmedName = locationName.trim();
-    const trimmedAddress = locationAddress.trim();
-    const trimmedCity = locationCity.trim();
-    const trimmedState = locationState.trim().toUpperCase();
-    const trimmedZip = locationZip.trim();
+    let trimmedAddress = locationAddress.trim();
+    let trimmedCity = locationCity.trim();
+    let trimmedState = locationState.trim().toUpperCase();
+    let trimmedZip = locationZip.trim();
+
+    if (!trimmedCity || !trimmedState || !trimmedZip) {
+      const filled = await fillMissingPartsFromGps(
+        trimmedAddress,
+        trimmedCity,
+        trimmedState,
+        trimmedZip
+      );
+      trimmedAddress = filled.street;
+      trimmedCity = filled.city;
+      trimmedState = filled.state.toUpperCase();
+      trimmedZip = filled.zip;
+    }
+
     const composedAddress = formatAddressParts({
       street: trimmedAddress,
       city: trimmedCity,
@@ -164,13 +210,12 @@ export default function LocationCaptureModal({
     // Allow address-only manual entry by deriving a display name from the address.
     const finalName = trimmedName || trimmedAddress.split(',')[0]?.trim() || 'Location';
 
-    // If address is empty, use location name as fallback to ensure address is always populated
-    // This prevents issues where reverse geocoding fails or returns incomplete addresses
-    const finalAddress = composedAddress || trimmedAddress || finalName;
-
     const locationDetails: LocationDetails = makeLocationDetails({
       name: finalName,
-      address: finalAddress,
+      address: trimmedAddress || composedAddress || finalName,
+      city: trimmedCity,
+      state: trimmedState,
+      zipCode: trimmedZip,
       source: 'manual',
       latitude: currentLocation?.coords.latitude,
       longitude: currentLocation?.coords.longitude,
@@ -182,7 +227,7 @@ export default function LocationCaptureModal({
         await DatabaseService.createSavedAddress({
           employeeId: currentEmployee.id,
           name: finalName,
-          address: finalAddress,
+          address: composedAddress || locationDetails.address,
           latitude: currentLocation?.coords.latitude,
           longitude: currentLocation?.coords.longitude,
           category: category,

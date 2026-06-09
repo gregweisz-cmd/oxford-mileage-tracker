@@ -271,3 +271,7 @@ in
 3. **If you need offline access** - Use Option 2 (database export)
 
 Let me know which approach you'd like to use, and I can help you set it up!
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

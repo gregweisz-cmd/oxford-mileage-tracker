@@ -11,7 +11,7 @@ All templates follow this structure:
 4. Comprehensive Reference
 5. Tips & Best Practices
 6. Troubleshooting
-7. Footer
+7. Footer — include support link: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback) (also on every PDF page via `generate-pdfs.js`)
 
 ## Supervisor Portal Content
 
@@ -52,6 +52,7 @@ All templates follow this structure:
 
 ### Comprehensive Reference
 - **Portal Overview**: Tabs, report builder
+- **All Reports — Total Expenses**: List total matches Staff Portal Monthly Summary grand total (May 2026); refresh after edits
 - **Report Builder**: Advanced filtering (employee, date range, status, cost center, state)
 - **Viewing Reports**: Detailed report view, navigation
 - **PDF Export**: Export dialog, map view modes (by day, by cost center), Google Maps integration
@@ -160,6 +161,10 @@ Each template includes screenshot placeholders. Key screenshots needed:
 - Per diem rules management
 
 ### Staff Portal
+- **Timesheet tab** — Two grids: top = billable cost centers + BILLABLE HOURS; bottom = category hours (G&A, Holiday, PTO, STD/LTD, PFL/PFML). Category hours do not copy to billable rows. DAILY TOTALS = billable + category.
+- **Add Mileage Entry** — Date picker defaults to open report month; calendar month navigation for past months.
+- **Approval Progress** — **Open revisions** and revision notifications deep-link to the tab with the most revision notes.
+- **Signature dates** on Approval Cover Sheet when signed.
 - Receipts tab: **Crop** on a receipt image to adjust the visible area; cropped image is saved back to the receipt.
 
 ### Admin Portal
@@ -179,6 +184,12 @@ Each template includes screenshot placeholders. Key screenshots needed:
 
 ## Mobile App Content (additions)
 
+### GPS tracking (additions May 2026)
+- **Global GPS chip** while tracking — distance + end trip from any screen.
+- **Pause mileage / Resume mileage** — errand stops without ending the session.
+- **Stationary reminder** (~5 min) — notification and in-app prompt; can end trip from notification.
+- **Dark mode** — form labels legible on Android GPS Tracking screen.
+
 ### Go to today
 - **Daily Hours & Descriptions**: A “Go to today” control in the month navigation scrolls the view to today’s date. Use it when viewing another month to jump back to today.
 - **Per Diem**: A “Go to today” control in the month navigation does the same—scrolls to today’s row when viewing the current month, or switches to the current month then scrolls.
@@ -186,9 +197,11 @@ Each template includes screenshot placeholders. Key screenshots needed:
 ### Receipt capture (Add Receipt)
 - After taking or selecting a receipt photo, a **“Reading receipt image to fill in the data…”** popup appears while the app runs a quality check and OCR. When finished, the popup closes and vendor, amount, date, and category may be pre-filled for the user to confirm or edit. Optional screenshot: capture this popup during the few seconds it is visible.
 
-### Screenshot note
-- When capturing `daily-hours-screen.png` and `per-diem-screen.png`, include the “Go to today” control in the frame so the how-to matches the current UI.
-- **Monthly Report screen** has been removed from the mobile app; do not include a monthly report screenshot. Staff use the Staff Portal (web) for monthly reports.
+### Screenshot note (May 2026)
+- See `FEATURES_UPDATE.md` for **new filenames** and **refresh** list.
+- When capturing `daily-hours-screen.png` and `per-diem-screen.png`, include the “Go to today” control in the frame.
+- **Monthly Report screen** has been removed from the mobile app; staff use the Staff Portal for monthly reports.
+- Replace `staff-portal-hours-tab.png` with `staff-portal-timesheet-tab.png` (tab renamed).
 
 ## Content Updates
 

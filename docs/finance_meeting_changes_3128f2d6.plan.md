@@ -180,3 +180,7 @@ Ensure split receipts and canonical cost center mapping flow through existing an
   - custom purpose persistence
   - split receipt totals/tax handling
 - Run end-to-end checks for key finance report pulls that previously failed from spelling mismatch.
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

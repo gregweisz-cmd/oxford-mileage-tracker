@@ -1,12 +1,41 @@
 # Quick Screenshot Capture Guide
 
-**→ For a step-by-step run list, use [SCREENSHOT_SESSION.md](SCREENSHOT_SESSION.md)** (Session 1 = new features, then mobile, then Staff Portal).
+**Master list:** [SCREENSHOT_CHECKLIST.md](SCREENSHOT_CHECKLIST.md) (checkboxes + full inventory)  
+**May 2026 features:** [FEATURES_UPDATE.md](FEATURES_UPDATE.md)  
+**Optional run order:** [SCREENSHOT_SESSION.md](SCREENSHOT_SESSION.md)
 
-## Current Status
-- ✅ 4 Staff Portal screenshots exist
-- ❌ 0 Mobile App screenshots exist
+## Current status (May 2026)
 
-## Quick Start: Mobile App Screenshots
+Baseline captures from April 2026 are mostly done. **Priority now:** 9 new screenshots + 7 refreshes for Timesheet, GPS stationary, mileage date picker, and revision UX. See checklist for unchecked items.
+
+---
+
+## Priority pass — May 2026 new features
+
+### Staff Portal (`images/screenshots/web-portal/`)
+
+1. `staff-portal-timesheet-tab.png` — Timesheet tab, both grids visible  
+2. `staff-portal-timesheet-pto-entry.png` — PTO entered; billable **0** same day  
+3. `staff-portal-mileage-date-picker.png` — Add Mileage Entry, calendar on past month  
+4. `staff-portal-open-revisions.png` — Approval Progress → **Open revisions**  
+5. **Refresh** `staff-portal-add-mileage-entry-window.png`, `staff-portal-report-status.png`, `staff-portal-notifications.png`
+
+### Mobile App (`images/screenshots/mobile-app/`)
+
+1. `mobile-gps-stationary-prompt.png` — Wait ~5 min stationary or trigger notification  
+2. `mobile-gps-global-controls.png` — Start GPS, navigate to Home, capture chip  
+3. `mobile-gps-pause-mileage.png` — Trip options with Pause/Resume (optional)  
+4. **Refresh** `gps-tracking-screen.png` — Android dark mode labels visible
+
+### Supervisor / Admin
+
+1. `supervisor-portal-weekly-hours-alert.png` — Threshold notification (optional)  
+2. `admin-portal-weekly-hours-threshold.png` — Admin → Notifications → threshold field  
+3. **Refresh** notification panel screenshots if needed
+
+---
+
+## Baseline: Mobile App Screenshots
 
 ### Step 1: Open the Mobile App
 - If you have the app on a physical device, open it
@@ -47,19 +76,15 @@
    - Navigate to: Add Receipt screen
    - Capture: Camera/upload interface
 
-9. **Monthly Report** (`monthly-report-screen.png`)
-   - Navigate to: Monthly report view
-   - Capture: Report summary screen
-
-10. **Settings** (`settings-screen.png`)
+9. **Settings** (`settings-screen.png`)
     - Navigate to: Settings screen
     - Capture: Settings options
 
-11. **Saved Addresses** (`saved-addresses-screen.png`)
+10. **Saved Addresses** (`saved-addresses-screen.png`)
     - Navigate to: Saved addresses list
     - Capture: List of saved addresses
 
-12. **App Store** (`app-store-download.png`)
+11. **App Store** (`app-store-download.png`)
     - This can be a mockup or actual App Store/Play Store page
     - Or skip if not available
 
@@ -80,9 +105,9 @@
    - Navigate to: Receipts tab
    - Capture: Receipt list view
 
-3. **Hours Tab** (`staff-portal-hours-tab.png`)
-   - Navigate to: Hours Worked tab
-   - Capture: Timesheet view
+3. **Timesheet Tab** (`staff-portal-timesheet-tab.png`) — replaces `staff-portal-hours-tab.png`
+   - Navigate to: Timesheet tab
+   - Capture: Billable grid + category grid
 
 4. **Descriptions Tab** (`staff-portal-descriptions-tab.png`)
    - Navigate to: Daily Descriptions tab
@@ -140,3 +165,7 @@ Once you have screenshots:
 2. Check file sizes are reasonable
 3. Update HTML templates to reference the images
 4. Regenerate PDFs using the scripts
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

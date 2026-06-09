@@ -80,3 +80,7 @@ Still need:
 
 - Mobile App: `docs/how-to-guides/images/screenshots/mobile-app/`
 - Web Portal: `docs/how-to-guides/images/screenshots/web-portal/`
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

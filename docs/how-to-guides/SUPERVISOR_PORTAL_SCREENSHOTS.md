@@ -65,3 +65,7 @@ Capture these **4 screenshots** for the Supervisor Portal How-To guide. Save eac
 **Save location:** `docs/how-to-guides/images/screenshots/web-portal/`
 
 **✅ Complete.** All 4 Supervisor Portal screenshots captured. Next: Finance Portal (5), then Contracts Portal (3). After saving any new screenshots, regenerate the how-to PDFs (see `scripts/` in this folder) so the guides use the new images.
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

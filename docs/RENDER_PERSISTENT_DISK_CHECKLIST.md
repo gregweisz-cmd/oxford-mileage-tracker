@@ -75,3 +75,7 @@ Use this checklist so the Oxford Mileage Tracker backend keeps data across resta
 ---
 
 *Full context and other options (e.g. PostgreSQL) are in [DATABASE_PERSISTENCE_OPTIONS.md](./DATABASE_PERSISTENCE_OPTIONS.md).*
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

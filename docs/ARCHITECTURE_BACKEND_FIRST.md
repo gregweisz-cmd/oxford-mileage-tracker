@@ -74,3 +74,7 @@ Refresh UI from backend
 3. Test thoroughly
 4. Remove old sync code
 5. Clean up local database usage
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

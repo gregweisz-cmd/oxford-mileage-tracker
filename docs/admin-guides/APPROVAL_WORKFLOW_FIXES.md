@@ -159,3 +159,7 @@ The approval workflow runs **Staff → [Senior Staff] → Supervisor → Finance
 3. Check that the UI properly displays revision status
 4. Ensure employees can see and handle revision requests
 
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

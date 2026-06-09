@@ -8,23 +8,52 @@ export interface AddressParts {
 const hasCompleteAddressParts = (parts: AddressParts): boolean =>
   Boolean(parts.street?.trim() && parts.city?.trim() && parts.state?.trim() && parts.zipCode?.trim());
 
-/** expo-location / Apple-style reverse geocode fields */
+/** expo-location reverse geocode fields (Android often omits city; subregion/district may hold it) */
 export type GeocodeAddressFields = {
   streetNumber?: string | null;
   street?: string | null;
   city?: string | null;
+  district?: string | null;
+  subregion?: string | null;
   region?: string | null;
   postalCode?: string | null;
+  name?: string | null;
 };
+
+/** Pick city from expo geocode result with Android/iOS fallbacks */
+export const cityFromGeocode = (g: GeocodeAddressFields): string =>
+  (g.city || g.subregion || g.district || '').trim();
+
+/** Pick state from expo geocode result */
+export const stateFromGeocode = (g: GeocodeAddressFields): string =>
+  (g.region || '').trim();
 
 /** Normalize geocode into separated parts and a canonical one-line address for matching and storage */
 export const buildPartsFromGeocode = (
   g: GeocodeAddressFields
 ): AddressParts & { oneLine: string } => {
   const street = [g.streetNumber, g.street].filter(Boolean).join(' ').trim();
-  const city = (g.city || '').trim();
-  const state = (g.region || '').trim();
-  const zipCode = (g.postalCode || '').trim();
+  let city = cityFromGeocode(g);
+  let state = stateFromGeocode(g);
+  let zipCode = (g.postalCode || '').trim();
+
+  // When platform only returns a formatted name line, parse it for missing parts
+  if ((!city || !state || !zipCode) && g.name?.trim()) {
+    const parsed = parseAddressParts(g.name);
+    if (!street && parsed.street) {
+      return buildPartsFromGeocode({
+        streetNumber: null,
+        street: parsed.street,
+        city: parsed.city || city,
+        region: parsed.state || state,
+        postalCode: parsed.zipCode || zipCode,
+      });
+    }
+    if (!city && parsed.city) city = parsed.city;
+    if (!state && parsed.state) state = parsed.state;
+    if (!zipCode && parsed.zipCode) zipCode = parsed.zipCode;
+  }
+
   const oneLine = formatAddressParts({ street, city, state, zipCode });
   return { street, city, state, zipCode, oneLine };
 };

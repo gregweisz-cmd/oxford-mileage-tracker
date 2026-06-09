@@ -141,3 +141,7 @@ Save all screenshots to `docs/how-to-guides/images/screenshots/web-portal/`.
 - **Size:** Keep under ~500 KB per image; compress if needed.
 
 After capturing, run the PDF generation scripts to refresh the how-to PDFs (see `scripts/` in this folder).
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

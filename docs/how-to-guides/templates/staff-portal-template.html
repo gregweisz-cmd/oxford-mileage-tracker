@@ -285,7 +285,7 @@
     <div class="cover-page">
         <h1>Staff Portal How-To Guide</h1>
         <div class="subtitle">Oxford House Expense Tracker</div>
-        <div class="version">Version 1.2 | April 2026</div>
+        <div class="version">Version 1.3 | May 2026</div>
     </div>
     
     <!-- Table of Contents -->
@@ -304,7 +304,7 @@
                     <li><a href="#portal-overview">Portal Overview and Navigation</a></li>
                     <li><a href="#viewing-mileage">Viewing Mileage Entries</a></li>
                     <li><a href="#viewing-receipts">Viewing Receipts</a></li>
-                    <li><a href="#viewing-hours">Viewing Hours Worked</a></li>
+                    <li><a href="#timesheet">Timesheet (Billable &amp; Category Hours)</a></li>
                     <li><a href="#viewing-descriptions">Viewing Daily Descriptions</a></li>
                     <li><a href="#monthly-report">Monthly Report Creation</a></li>
                     <li><a href="#report-submission">Report Submission Workflow</a></li>
@@ -578,6 +578,11 @@
             <li>Fill in the required information (date, start location, end location, miles, cost center)</li>
             <li>Save the entry</li>
         </ol>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-mileage-date-picker"></div>
+        <div class="tip-box">
+            <h4>Date picker and report month</h4>
+            <p>When you add mileage for the <strong>open report month</strong>, the date field defaults to today if you are in that month, or the first of the month for past months. Click the date field to open the calendar and use the arrows to change month before picking a day.</p>
+        </div>
         
         <h2 id="viewing-receipts">Viewing Receipts</h2>
         
@@ -641,38 +646,43 @@
             <p>The portal supports PDF receipt uploads in addition to image files. This is especially useful for digital receipts or scanned documents. PDF receipts are displayed in the receipt viewer just like image receipts.</p>
         </div>
         
-        <h2 id="viewing-hours">Viewing Hours Worked</h2>
+        <h2 id="timesheet">Timesheet (Billable &amp; Category Hours)</h2>
         
-        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-hours-tab"></div>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-timesheet-tab"></div>
         
-        <h3>Hours Worked Tab</h3>
-        <p>The Hours Worked tab shows a grid view of your time tracking entries. The grid displays:</p>
-        <ul>
-            <li>Days of the month (columns)</li>
-            <li>Cost centers (rows)</li>
-            <li>Hours worked for each day/cost center combination</li>
-            <li>Daily totals</li>
-            <li>Monthly totals by cost center</li>
-        </ul>
+        <h3>Timesheet tab overview</h3>
+        <p>The <strong>Timesheet</strong> tab has <strong>two grids</strong>:</p>
+        <ol>
+            <li><strong>Top — Cost center / billable hours</strong> — Program Services (and other assigned cost centers) plus a <strong>BILLABLE HOURS</strong> summary row. Billable hours usually come from the <strong>Daily Descriptions</strong> tab or cost-center travel tabs; this grid shows the month at a glance.</li>
+            <li><strong>Bottom — Category hours</strong> — G&amp;A, Holiday, <strong>PTO</strong>, STD/LTD, and PFL/PFML. Enter non-billable time here when applicable.</li>
+        </ol>
+        <div class="warning-box">
+            <h4>Category hours are not billable</h4>
+            <p>Hours entered in the <strong>bottom</strong> category table (for example PTO) stay in that table. They do <strong>not</strong> copy into Program Services or BILLABLE HOURS. The <strong>DAILY TOTALS</strong> row adds billable + category hours for each day.</p>
+        </div>
         
-        <h3>Editing Hours</h3>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-timesheet-pto-entry"></div>
+        
+        <h3>Entering category hours (PTO, G&amp;A, etc.)</h3>
         <div class="step">
             <span class="step-number">1</span>
-            <strong>Click on a Cell</strong>
-            <p>Click on any cell in the hours grid to edit hours for that day and cost center.</p>
+            <strong>Click a category cell</strong>
+            <p>In the bottom table, click the cell for the category (e.g. <strong>PTO</strong>) and day.</p>
         </div>
-        
         <div class="step">
             <span class="step-number">2</span>
-            <strong>Enter Hours</strong>
-            <p>Enter the number of hours worked. You can use decimal values (e.g., 7.5 for 7 hours 30 minutes).</p>
+            <strong>Enter hours</strong>
+            <p>Type the hours (e.g. <strong>8</strong> for a full PTO day). Maximum 24 hours per day across all entries.</p>
         </div>
-        
         <div class="step">
             <span class="step-number">3</span>
             <strong>Save</strong>
-            <p>Press Enter or click outside the cell to save. The totals will update automatically.</p>
+            <p>Press <strong>Enter</strong> or click outside the cell. The value saves automatically.</p>
         </div>
+        <p>To clear a category cell, enter <strong>0</strong>.</p>
+        
+        <h3>Billable hours</h3>
+        <p>Enter billable working hours on the <strong>Daily Descriptions</strong> tab (Hours column) or via your cost-center daily travel tabs. Those hours flow into the top Timesheet grid and BILLABLE HOURS row.</p>
         
         <h2 id="viewing-descriptions">Viewing Daily Descriptions</h2>
         
@@ -870,14 +880,16 @@
             </tbody>
         </table>
         
-        <h3>Approval Status Card</h3>
-        <p>The portal includes an approval status card that shows:</p>
+        <h3>Approval Progress card</h3>
+        <div class="screenshot-placeholder" data-screenshot-name="staff-portal-open-revisions"></div>
+        <p>The <strong>Approval Progress</strong> card shows:</p>
         <ul>
             <li>Current approval stage</li>
             <li>Who is reviewing the report</li>
-            <li>Approval history with timestamps</li>
+            <li>Approval history with timestamps and <strong>signature dates</strong> on the Approval Cover Sheet</li>
             <li>Any comments or revision requests</li>
         </ul>
+        <p>When your report status is <strong>Needs Revision</strong>, use <strong>Open revisions</strong> on the Approval Progress card (or <strong>Open report</strong> from a revision notification) to jump to the tab with the most revision notes — typically Mileage, Timesheet, or Receipts.</p>
         
         <h2 id="notifications">Notifications and Alerts</h2>
         
@@ -887,7 +899,7 @@
         <p>The notification bell in the header shows you important alerts and updates:</p>
         <ul>
             <li><strong>Report Approval</strong> - When your supervisor or finance approves your report</li>
-            <li><strong>Revision Requests</strong> - When changes are needed</li>
+            <li><strong>Revision Requests</strong> - When changes are needed; tap <strong>Open report</strong> to go to the right tab</li>
             <li><strong>Report Status Changes</strong> - Updates on your report's progress</li>
             <li><strong>System Messages</strong> - Important announcements</li>
         </ul>
@@ -1086,6 +1098,26 @@
             <li>Contact support if entries should be there but aren't</li>
         </ul>
         
+        <h2>Timesheet Issues</h2>
+        
+        <h3>PTO Hours Appear in Billable Rows</h3>
+        <p><strong>Problem:</strong> After entering PTO (or G&amp;A), Program Services or BILLABLE HOURS also show hours for that day.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Enter PTO only in the <strong>bottom</strong> category table — not on Daily Descriptions or cost-center travel tabs</li>
+            <li>Refresh the page after saving; totals should show billable and category separately</li>
+            <li>If billable rows still look wrong after refresh, contact support (legacy data may need a one-time correction)</li>
+        </ul>
+        
+        <h3>Can't Change Mileage Entry Date Month</h3>
+        <p><strong>Problem:</strong> The Add Mileage Entry calendar won't move to a different month.</p>
+        <p><strong>Solutions:</strong></p>
+        <ul>
+            <li>Use the <strong>month arrows</strong> in the calendar header — the picker opens on the open report month by default</li>
+            <li>Confirm the portal month/year selector matches the report you are editing</li>
+            <li>Close and reopen the dialog if the calendar view looks stuck</li>
+        </ul>
+        
         <h2>General Issues</h2>
         
         <h3>Portal is Slow</h3>
@@ -1140,8 +1172,8 @@
     <!-- Footer Note -->
     <div style="margin-top: 40pt; padding-top: 20pt; border-top: 1px solid #ddd; font-size: 9pt; color: #666; text-align: center;">
         <p>This document is part of the Oxford House Expense Tracker documentation suite.</p>
-        <p>For technical support, please contact your system administrator.</p>
-        <p>Document Version: 1.2 | Last Updated: April 2026</p>
+        <p>Submit feedback or request support: <a href="https://tinyurl.com/ExpenseTrackerFeedback">tinyurl.com/ExpenseTrackerFeedback</a></p>
+        <p>Document Version: 1.3 | Last Updated: May 2026</p>
     </div>
 </body>
 </html>

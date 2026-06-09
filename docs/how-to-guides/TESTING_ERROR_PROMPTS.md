@@ -101,3 +101,7 @@ This guide covers how to verify the 403/404 error prompts and "Go back" / "Go to
 ## Dev-only: trigger error boundary
 
 When running the web app in development (`npm start`), the **Staff** portal shows a **"Test error boundary"** button in the bottom-right corner. Click it to trigger the error boundary and verify **"Go to dashboard"**, **"Try Again"**, and **"Reload Page"**.
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

@@ -37,6 +37,7 @@ After using a text field then tapping a **chip, dropdown, or checkbox**, the scr
 | **Saved Addresses** | Add/edit modal | Inherits KASV defaults; test if issues reported |
 | **Receipt Crop** | Crop UI | Separate; map overlay uses `pointerEvents` |
 | **Global GPS overlay** | Floating buttons | Fixed earlier: `pointerEvents` / hide when not tracking |
+| **GPS stationary → end trip** | Notification/modal → destination save | Fixed OTA `071ea2d8`: clear end-trip modals before `navigation.reset`; block stationary prompt during end-trip flow (`GpsTrackingContext`, `GpsTrackingScreen`) |
 
 ## When adding new UI
 
@@ -44,3 +45,7 @@ After using a text field then tapping a **chip, dropdown, or checkbox**, the scr
 2. Transparent picker `Modal` → always `onRequestClose`; register close fn in `useDismissStaleUiOnAppResume`
 3. Form body → `KeyboardAwareScrollView`, not TWF parent
 4. Nested `FlatList` in scroll → rely on `nestedScrollEnabled` (default on KASV)
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

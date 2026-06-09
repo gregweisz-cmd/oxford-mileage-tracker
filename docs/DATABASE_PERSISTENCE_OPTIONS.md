@@ -111,3 +111,7 @@ After that, restarts and redeploys will keep using the data on the persistent di
 - **Web portal:** Vercel; talks to Render backend API.
 - **Backend:** Render (`admin-web/backend`); Node + SQLite + uploads on same server.
 - **Database:** SQLite file on backend server filesystem (ephemeral on free tier; use persistent disk on Starter+ for persistence).
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*

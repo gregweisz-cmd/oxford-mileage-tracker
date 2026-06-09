@@ -207,3 +207,7 @@ To test the feature:
 
 For issues or questions, contact the development team.
 
+
+---
+
+*Submit feedback or request support: [tinyurl.com/ExpenseTrackerFeedback](https://tinyurl.com/ExpenseTrackerFeedback)*
