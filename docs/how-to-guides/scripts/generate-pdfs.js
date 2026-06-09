@@ -12,9 +12,48 @@ const fs = require('fs');
 const path = require('path');
 const { pdfFooterTemplate } = require('./doc-footer');
 
+function resolveBrowserExecutable() {
+    if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+        return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    const candidates = [];
+    if (process.platform === 'win32') {
+        candidates.push(
+            path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google\\Chrome\\Application\\chrome.exe'),
+            path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google\\Chrome\\Application\\chrome.exe'),
+            path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+            path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Microsoft\\Edge\\Application\\msedge.exe')
+        );
+    } else if (process.platform === 'darwin') {
+        candidates.push(
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+        );
+    } else {
+        candidates.push('/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/usr/bin/chromium');
+    }
+    return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null;
+}
+
 const templatesDir = path.join(__dirname, '../templates');
 const outputDir = path.join(__dirname, '..');
 const imagesDir = path.join(__dirname, '../images/screenshots');
+
+/** Fallback filenames when a screenshot was saved under a legacy or alternate name. */
+const screenshotAliases = {
+    'staff-portal-timesheet-tab': 'staff-portal-hours-tab',
+};
+
+function resolveScreenshotPath(screenshotDir, screenshotName) {
+    const candidates = [screenshotName];
+    const alias = screenshotAliases[screenshotName];
+    if (alias) candidates.push(alias);
+    for (const name of candidates) {
+        const imagePath = path.join(imagesDir, screenshotDir, `${name}.png`);
+        if (fs.existsSync(imagePath)) return imagePath;
+    }
+    return null;
+}
 
 // All template definitions (Finance & Contracts not yet generated)
 const allTemplates = [
@@ -59,9 +98,9 @@ async function generatePDF(templateFile, outputFile, title) {
         
         while ((match = placeholderRegex.exec(html)) !== null) {
             const screenshotName = match[1];
-            const imagePath = path.join(imagesDir, screenshotDir, `${screenshotName}.png`);
-            
-            if (fs.existsSync(imagePath)) {
+            const imagePath = resolveScreenshotPath(screenshotDir, screenshotName);
+
+            if (imagePath) {
                 try {
                     // Read image and convert to base64
                     const imageBuffer = fs.readFileSync(imagePath);
@@ -87,8 +126,10 @@ async function generatePDF(templateFile, outputFile, title) {
         });
         
         // Launch browser
+        const executablePath = resolveBrowserExecutable();
         const browser = await puppeteer.launch({
             headless: true,
+            executablePath: executablePath || undefined,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         

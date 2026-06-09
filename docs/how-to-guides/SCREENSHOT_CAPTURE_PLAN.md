@@ -1,9 +1,10 @@
 # Screenshot Capture Plan
 
-## Current Status
-- ✅ 4 web portal screenshots exist
-- ❌ 0 mobile app screenshots exist
-- 📋 Total needed: ~80+ screenshots across all portals
+## Current Status (May 2026)
+- ✅ Mobile base set (10) refreshed in `images/screenshots/mobile-app/`
+- ✅ Staff / Supervisor / Admin / Senior Staff web captures in `images/screenshots/web-portal/`
+- ✅ How-to PDFs regenerated (`npm run generate` in `scripts/`)
+- ⚠️ 8 May 2026 filenames still missing in repo — see **Pending filenames** in `SCREENSHOT_CHECKLIST.md` (PDFs show placeholders for those slots)
 
 ## High Priority Screenshots (Start Here)
 
@@ -71,10 +72,9 @@ Still need:
 
 ## Next Steps
 
-1. Start with Mobile App screenshots (highest priority)
-2. Then capture remaining Staff Portal screenshots
-3. Move to Supervisor Portal screenshots
-4. Continue with other portals as needed
+1. Copy any remaining captures into the repo using **exact filenames** from `SCREENSHOT_CHECKLIST.md`
+2. Re-run `npm run generate` in `docs/how-to-guides/scripts/`
+3. Commit screenshots + updated PDFs to `main`
 
 ## Quick Reference: File Locations
 
