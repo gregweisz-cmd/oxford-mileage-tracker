@@ -47,6 +47,15 @@ export const SCROLLABLE_TABLE_CONTAINER_SX = {
   '--app-sticky-offset': '0px',
 } as const;
 
+/** Staff Portal tables: scroll inside the container so stickyHeader rows stay visible. */
+export const STICKY_SCROLLABLE_TABLE_CONTAINER_SX = {
+  ...SCROLLABLE_TABLE_CONTAINER_SX,
+  display: 'block',
+  maxHeight: '65vh',
+  overflow: 'auto',
+  WebkitOverflowScrolling: 'touch',
+} as const;
+
 /**
  * Supervisor/finance report modal: scroll the table body here so thead sticky works
  * (MUI Dialog transform breaks sticky relative to the dialog scrollport).

@@ -97,7 +97,7 @@ import {
   readPngFileAsDataUrl,
   saveEmployeeSavedSignature,
 } from './utils/signatureApi';
-import { EMBEDDED_STICKY_TABLE_CONTAINER_SX, useAppStickyOffset } from './hooks/useAppStickyOffset';
+import { EMBEDDED_STICKY_TABLE_CONTAINER_SX, STICKY_SCROLLABLE_TABLE_CONTAINER_SX, useAppStickyOffset } from './hooks/useAppStickyOffset';
 import { CostCenterApiService } from './services/costCenterApiService';
 
 import FormDatePicker from './components/FormDatePicker';
@@ -395,7 +395,20 @@ export function buildCostCenterRows(params: {
     } else {
       description = drivingSummary;
     }
-    const perDiem = (dayDescription && (dayDescription.costCenter || costCenters[0]) === costCenter) ? (perDiemByDate[normDate] ?? 0) : 0;
+    const perDiemFromReceipts = receiptsForDayAndCC
+      .filter((receipt: any) => String(receipt.category || '').trim() === 'Per Diem')
+      .reduce((sum: number, receipt: any) => sum + (Number(receipt.amount) || 0), 0);
+    const hasCostCenterDayActivity =
+      mileageForDayAndCC.length > 0 ||
+      timeForDayAndCC.length > 0 ||
+      receiptsForDayAndCC.length > 0 ||
+      !!(dayDescription && normalizeCostCenterForMatch(dayDescription.costCenter || costCenters[0] || '') === normalizeCostCenterForMatch(costCenter));
+    const perDiem =
+      perDiemFromReceipts > 0
+        ? perDiemFromReceipts
+        : hasCostCenterDayActivity
+          ? (perDiemByDate[normDate] ?? 0)
+          : 0;
     return {
       dateStr,
       weekdayStr,
@@ -485,16 +498,16 @@ function buildCostCenterRowsForIndex(params: {
 /** Full-width layout for cost-center travel grids (13 columns, no horizontal scroll). */
 const COST_CENTER_TRAVEL_TABLE_SX = {
   tableLayout: 'fixed',
-  borderCollapse: 'collapse',
+  // separate (not collapse) — position:sticky on thead breaks with border-collapse:collapse
+  borderCollapse: 'separate',
+  borderSpacing: 0,
   width: '100%',
   '& td, & th': { border: '1px solid #ccc' },
 } as const;
 const COST_CENTER_TRAVEL_CONTAINER_SX = {
   width: '100%',
-  maxHeight: '65vh',
   overflowX: 'hidden',
-  overflowY: 'auto',
-  '--app-sticky-offset': '0px',
+  ...STICKY_SCROLLABLE_TABLE_CONTAINER_SX,
 } as const;
 const costCenterTravelHeaderSx = {
   border: '1px solid #ccc',
@@ -503,6 +516,7 @@ const costCenterTravelHeaderSx = {
   wordBreak: 'break-word',
   lineHeight: 1.2,
   fontSize: 'clamp(0.58rem, 0.7vw, 0.72rem)',
+  bgcolor: 'grey.300',
 } as const;
 const costCenterTravelCol = {
   date: { width: '7%' },
@@ -3239,8 +3253,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
   // Per-diem by date for cost center tab row building (from dailyEntries)
   const perDiemByDate = React.useMemo(() => {
-    return Object.fromEntries((employeeData?.dailyEntries || []).map((e: any) => [normalizeDate(e.date), e.perDiem ?? 0]));
-  }, [employeeData?.dailyEntries, normalizeDate]);
+    const map: Record<string, number> = Object.fromEntries(
+      (employeeData?.dailyEntries || []).map((e: any) => [normalizeDate(e.date), e.perDiem ?? 0])
+    );
+    (receipts || []).forEach((receipt: any) => {
+      if (String(receipt.category || '').trim() !== 'Per Diem') return;
+      const key = normalizeDate(receipt.date);
+      if (!key) return;
+      map[key] = Number(receipt.amount) || 0;
+    });
+    return map;
+  }, [employeeData?.dailyEntries, receipts, normalizeDate]);
 
   const handleMileageReorder = async (newOrderedIds: string[]) => {
     if (newOrderedIds.length === 0) return;
@@ -7020,7 +7043,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             
             <TableContainer
               component={Paper}
-              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : STICKY_SCROLLABLE_TABLE_CONTAINER_SX}
             >
               <Table stickyHeader size="small">
                 <TableHead>
@@ -7320,7 +7343,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             
             <TableContainer
               component={Paper}
-              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : STICKY_SCROLLABLE_TABLE_CONTAINER_SX}
             >
               <Table stickyHeader size="small">
                 <TableHead>
@@ -8297,7 +8320,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               sx={{
                 mb: 4,
                 overflowX: 'auto',
-                ...(embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : {}),
+                ...(embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : STICKY_SCROLLABLE_TABLE_CONTAINER_SX),
               }}
             >
               <Table stickyHeader size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
@@ -8420,7 +8443,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             {/* Category Hours Table */}
             <TableContainer
               component={Paper}
-              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : STICKY_SCROLLABLE_TABLE_CONTAINER_SX}
             >
               <Table stickyHeader size="small" sx={{ borderCollapse: 'collapse', minWidth: '100%' }}>
                 <TableHead>
@@ -8749,7 +8772,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
             <TableContainer
               component={Paper}
-              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : undefined}
+              sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : STICKY_SCROLLABLE_TABLE_CONTAINER_SX}
             >
               <Table stickyHeader sx={{ borderCollapse: 'collapse' }}>
                 <TableHead>

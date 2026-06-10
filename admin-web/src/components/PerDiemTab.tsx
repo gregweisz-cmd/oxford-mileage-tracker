@@ -278,6 +278,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           vendor: 'Per Diem',
           description: 'Per Diem',
           category: 'Per Diem',
+          costCenter,
           imageUri: '',
           fileType: 'image',
         };
@@ -311,8 +312,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       setEntries(nextEntries);
       setHasUnsavedChanges(false);
       setSaveMessage('success');
-      // Do not call onDataChange() here: it triggers parent refreshTrigger and refetch,
-      // which can overwrite our state with backend data and cause date-shift bugs.
+      onDataChange?.();
       setTimeout(() => setSaveMessage(null), 3000);
       // Clear caches so next load (e.g. change month or refresh) gets fresh data. Do NOT refetch
       // here—keeping current UI state so the user's selections stay visible instead of being
