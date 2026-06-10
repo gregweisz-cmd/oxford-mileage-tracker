@@ -22,6 +22,12 @@ const websocketService = require('../services/websocketService');
 const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
 const { enrichAddressIfNeeded } = require('../utils/addressEnrichment');
 const { resolveSuggestedStartingOdometer } = require('../utils/odometerSuggestion');
+const {
+  resolveReceiptFilePath,
+  contentTypeForPath,
+  parseDataUrl,
+  canViewEmployeeReceipts,
+} = require('../utils/receiptFile');
 const { requireAuth } = require('../middleware/auth');
 
 const normalizeCostCenterKey = (value) =>
@@ -692,6 +698,59 @@ router.post('/api/receipts', (req, res) => {
       );
     });
   });
+});
+
+/**
+ * Stream receipt file (image or PDF) for authenticated viewers (employee, supervisor, senior staff, admin).
+ */
+router.get('/api/receipts/:id/file', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const db = dbService.getDb();
+
+  try {
+    const receipt = await new Promise((resolve, reject) => {
+      db.get('SELECT id, employeeId, imageUri, fileType FROM receipts WHERE id = ?', [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      });
+    });
+
+    if (!receipt) {
+      return res.status(404).json({ error: 'Receipt not found' });
+    }
+
+    const allowed = await canViewEmployeeReceipts(req.authenticatedEmployee, receipt.employeeId);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const imageUri = String(receipt.imageUri || '').trim();
+    if (!imageUri) {
+      return res.status(404).json({ error: 'Receipt has no file attached' });
+    }
+
+    const dataUrl = parseDataUrl(imageUri);
+    if (dataUrl) {
+      res.setHeader('Content-Type', dataUrl.mimeType);
+      res.setHeader('Content-Disposition', 'inline');
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.send(dataUrl.buffer);
+    }
+
+    const filePath = resolveReceiptFilePath(imageUri);
+    if (!filePath) {
+      return res.status(404).json({ error: 'Receipt file not found on server' });
+    }
+
+    const contentType = contentTypeForPath(filePath);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    debugError('❌ Error in GET /api/receipts/:id/file:', err);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 /**
