@@ -7,6 +7,13 @@ import { installAuthenticatedFetch } from './services/installAuthenticatedFetch'
 
 installAuthenticatedFetch();
 
+// Staff Portal is browser-only — do not register as an installable PWA (breaks auth, PDFs, etc.).
+if ('serviceWorker' in navigator) {
+  void navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => void registration.unregister());
+  });
+}
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
