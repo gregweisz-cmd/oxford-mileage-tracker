@@ -22,7 +22,7 @@ const SUMMARY_CATEGORY_KEYS = [
   'eesReceipt',
 ] as const;
 
-function getCostCenterAmountFromReport(
+export function getCostCenterAmountFromReport(
   reportData: any,
   category: string,
   costCenterIndex: number
@@ -31,7 +31,50 @@ function getCostCenterAmountFromReport(
   if (breakdown && breakdown[costCenterIndex] !== undefined) {
     return Number(breakdown[costCenterIndex]) || 0;
   }
+  // Per diem is often stored on reportData.perDiem only (not in costCenterBreakdowns).
+  if (category === 'perDiem' && costCenterIndex === 0) {
+    const breakdownSum = breakdown
+      ? breakdown.reduce((sum: number, value: number) => sum + (Number(value) || 0), 0)
+      : 0;
+    if (breakdownSum <= 0 && (Number(reportData?.perDiem) || 0) > 0) {
+      return Number(reportData.perDiem) || 0;
+    }
+  }
   return 0;
+}
+
+const PER_DIEM_MONTHLY_CAP = 350;
+
+export function buildPerDiemBreakdownFromReceipts(
+  receipts: Array<{ category?: string; amount?: number; costCenter?: string }>,
+  costCenters: string[],
+  monthlyCap = PER_DIEM_MONTHLY_CAP
+): { total: number; byCostCenter: number[] } {
+  const byCostCenter = new Array(Math.max(costCenters.length, 1)).fill(0);
+  const normalizeKey = (value: string) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const resolveIndex = (receiptCostCenter?: string) => {
+    if (!receiptCostCenter) return 0;
+    const normalized = normalizeKey(receiptCostCenter);
+    const direct = costCenters.findIndex((cc) => normalizeKey(cc) === normalized);
+    return direct >= 0 ? direct : 0;
+  };
+
+  receipts.forEach((receipt) => {
+    if (String(receipt.category || '').trim() !== 'Per Diem') return;
+    const idx = resolveIndex(receipt.costCenter);
+    byCostCenter[idx] += Number(receipt.amount) || 0;
+  });
+
+  const rawTotal = byCostCenter.reduce((sum, value) => sum + value, 0);
+  const total = Math.min(rawTotal, monthlyCap);
+  if (rawTotal > monthlyCap && rawTotal > 0) {
+    const scale = monthlyCap / rawTotal;
+    for (let i = 0; i < byCostCenter.length; i += 1) {
+      byCostCenter[i] = Math.round(byCostCenter[i] * scale * 100) / 100;
+    }
+  }
+
+  return { total, byCostCenter };
 }
 
 function getOtherExpensesForCostCenter(reportData: any, costCenterIndex: number): number {

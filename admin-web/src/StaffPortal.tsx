@@ -114,6 +114,7 @@ import {
   syncExpenseReportToSource,
 } from './services/staffPortalApi';
 import { getStaffPortalAuthHeaders } from './services/staffPortalAuthHeaders';
+import { buildPerDiemBreakdownFromReceipts, getCostCenterAmountFromReport } from './utils/expenseReportTotals';
 
 // API URL configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -2333,11 +2334,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const totalHours = currentMonthTimeTracking.reduce((sum: number, tracking: any) => sum + (tracking.hours || 0), 0);
           
           // Per diem: claimed Per Diem receipts (same source as Per Diem tab / app). Cap $350/mo default.
+          const PER_DIEM_MONTHLY_CAP = 350;
           const totalPerDiemFromReceipts = currentMonthReceipts
             .filter((receipt: any) => receipt.category === 'Per Diem')
             .reduce((sum: number, receipt: any) => sum + (receipt.amount || 0), 0);
-          const PER_DIEM_MONTHLY_CAP = 350;
-          const perDiemSummaryTotal = Math.min(totalPerDiemFromReceipts, PER_DIEM_MONTHLY_CAP);
+          const perDiemBreakdown = buildPerDiemBreakdownFromReceipts(
+            currentMonthReceipts,
+            employee.costCenters || costCenters,
+            PER_DIEM_MONTHLY_CAP
+          );
+          const perDiemSummaryTotal = perDiemBreakdown.total;
           
           // Create employee expense data with real data
           const expenseData: EmployeeExpenseData = {
@@ -2421,6 +2427,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               addCategoryAmount('groundTransportation', amount, costCenterIndex);
             } else if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) {
               addCategoryAmount('hotelsAirbnb', amount, costCenterIndex);
+            } else if (category.includes('per diem')) {
+              addCategoryAmount('perDiem', amount, costCenterIndex);
             } else if (
               category.includes('phone') ||
               category.includes('internet') ||
@@ -2470,6 +2478,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           autoPopulateCategory('printingCopying', categoryTotals['printingCopying'] || 0, expenseData.printingCopying || 0);
           autoPopulateCategory('officeSupplies', categoryTotals['officeSupplies'] || 0, expenseData.officeSupplies || 0);
           autoPopulateCategory('eesReceipt', categoryTotals['eesReceipt'] || 0, expenseData.eesReceipt || 0);
+          if (perDiemSummaryTotal > 0) {
+            (autoPopulatedData as any).perDiem = perDiemSummaryTotal;
+            if (!autoPopulatedData.costCenterBreakdowns) autoPopulatedData.costCenterBreakdowns = {};
+            (autoPopulatedData.costCenterBreakdowns as any).perDiem = perDiemBreakdown.byCostCenter.slice();
+            const existingBreakdown = expenseData.costCenterBreakdowns?.perDiem;
+            const existingBreakdownSum = existingBreakdown
+              ? existingBreakdown.reduce((sum: number, value: number) => sum + (Number(value) || 0), 0)
+              : 0;
+            if ((expenseData.perDiem || 0) !== perDiemSummaryTotal || existingBreakdownSum <= 0) {
+              needsUpdate = true;
+            }
+            if (!expenseData.costCenterBreakdowns) expenseData.costCenterBreakdowns = {};
+            expenseData.perDiem = perDiemSummaryTotal;
+            expenseData.costCenterBreakdowns.perDiem = perDiemBreakdown.byCostCenter.slice();
+          }
 
           // Mileage by cost center (so per-CC subtotals match category totals)
           const mileageByCostCenter = new Array(employee.costCenters.length).fill(0);
@@ -5601,13 +5624,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Handle Summary Sheet editing
   // Helper function to get cost center amount for a category
   const getCostCenterAmount = (category: string, costCenterIndex: number): number => {
-    if (!employeeData) return 0;
-    const breakdown = employeeData.costCenterBreakdowns?.[category];
-    if (breakdown && breakdown[costCenterIndex] !== undefined) {
-      return breakdown[costCenterIndex];
-    }
-    // If no breakdown exists, return 0 (will be populated when user edits)
-    return 0;
+    return getCostCenterAmountFromReport(employeeData, category, costCenterIndex);
   };
 
   const getOtherExpensesAmountForCostCenter = (costCenterIndex: number): number => {
@@ -6715,15 +6732,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     <TableCell align="center">
                       Per Diem
                     </TableCell>
-                    <TableCell align="right">${employeeData.perDiem.toFixed(2)}</TableCell>
+                    <TableCell align="right">${getCostCenterAmount('perDiem', 0).toFixed(2)}</TableCell>
                     {employeeData.costCenters.length > 1 && (
                       <>
                         {employeeData.costCenters.slice(1).map((center, index) => (
-                          <TableCell key={index + 1} align="center">$0.00</TableCell>
+                          <TableCell key={index + 1} align="center">
+                            ${getCostCenterAmount('perDiem', index + 1).toFixed(2)}
+                          </TableCell>
                         ))}
                       </>
                     )}
-                    <TableCell align="right">${employeeData.perDiem.toFixed(2)}</TableCell>
+                    <TableCell align="right"><strong>${employeeData.perDiem.toFixed(2)}</strong></TableCell>
                   </TableRow>
                   
                   {/* COMMUNICATIONS Section */}
@@ -9343,6 +9362,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     categoryTotals['groundTransportation'] = (categoryTotals['groundTransportation'] || 0) + amount;
                   } else if (category.includes('hotel') || category.includes('lodging') || category.includes('airbnb')) {
                     categoryTotals['hotelsAirbnb'] = (categoryTotals['hotelsAirbnb'] || 0) + amount;
+                  } else if (category.includes('per diem')) {
+                    categoryTotals['perDiem'] = (categoryTotals['perDiem'] || 0) + amount;
                   } else if (
                     category.includes('phone') ||
                     category.includes('internet') ||
@@ -9394,6 +9415,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     addReceiptToBreakdown('groundTransportation', amt, ccIdx);
                   } else if (cat.includes('hotel') || cat.includes('lodging') || cat.includes('airbnb')) {
                     addReceiptToBreakdown('hotelsAirbnb', amt, ccIdx);
+                  } else if (cat.includes('per diem')) {
+                    addReceiptToBreakdown('perDiem', amt, ccIdx);
                   } else if (cat.includes('phone') || cat.includes('internet') || cat.includes('fax') || cat.includes('communication')) {
                     addReceiptToBreakdown('phoneInternetFax', amt, ccIdx);
                   } else if (cat.includes('shipping') || cat.includes('postage')) {
@@ -9426,6 +9449,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 updateCategory('printingCopying', categoryTotals['printingCopying'] || 0);
                 updateCategory('officeSupplies', categoryTotals['officeSupplies'] || 0);
                 updateCategory('eesReceipt', categoryTotals['eesReceipt'] || 0);
+                const perDiemBreakdown = buildPerDiemBreakdownFromReceipts(
+                  updatedReceipts,
+                  employeeData.costCenters,
+                );
+                if (perDiemBreakdown.total > 0) {
+                  updatedData.perDiem = perDiemBreakdown.total;
+                  if (!updatedData.costCenterBreakdowns) updatedData.costCenterBreakdowns = {};
+                  updatedData.costCenterBreakdowns.perDiem = perDiemBreakdown.byCostCenter.slice();
+                }
                 
                 // Save updated summary sheet to backend
                 try {
