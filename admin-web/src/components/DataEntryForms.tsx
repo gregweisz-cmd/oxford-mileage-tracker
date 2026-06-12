@@ -49,6 +49,20 @@ import { makeCanonicalLocationSelection } from '../utils/locationSelection';
 import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
 import { defaultDateForReport } from '../utils/calendarDate';
 
+/** Scroll the open dialog to the first invalid field after validation fails. */
+function scrollToFirstFormError(): void {
+  requestAnimationFrame(() => {
+    const dialogContent = document.querySelector(
+      '.MuiDialog-root:not([aria-hidden="true"]) .MuiDialogContent-root'
+    );
+    const root = dialogContent ?? document;
+    const firstError =
+      root.querySelector('.Mui-error input, .Mui-error textarea, .Mui-error [role="combobox"]') ??
+      root.querySelector('.MuiFormHelperText-root.Mui-error');
+    firstError?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
 const DEFAULT_API_BASE_URL = 'https://oxford-mileage-backend.onrender.com';
 const getApiBaseUrl = () => {
   const configured = (process.env.REACT_APP_API_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '');
@@ -361,6 +375,9 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
     }
 
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      scrollToFirstFormError();
+    }
     return Object.keys(newErrors).length === 0;
   };
 
@@ -1083,6 +1100,9 @@ export const ReceiptForm: React.FC<BaseFormProps & {
     }
 
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      scrollToFirstFormError();
+    }
     return Object.keys(newErrors).length === 0;
   };
 
@@ -1341,6 +1361,9 @@ export const TimeTrackingForm: React.FC<BaseFormProps & {
     }
 
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      scrollToFirstFormError();
+    }
     return Object.keys(newErrors).length === 0;
   };
 

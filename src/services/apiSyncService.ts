@@ -2109,10 +2109,9 @@ export class ApiSyncService {
   ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${dailyDescriptions.length} daily descriptions to local database...`);
-      
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
-      
+
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
+      await withDatabaseConnection(async (database) => {
       // Check sync queue for pending deletions to avoid overwriting them
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('dailyDescription');
@@ -2239,8 +2238,9 @@ export class ApiSyncService {
           }
         }
       }
-      
+
       debugLog(`✅ ApiSync: Daily descriptions sync completed`);
+      });
     } catch (error) {
       console.error('❌ ApiSync: Error syncing daily descriptions to local database:', error);
     }
@@ -2256,9 +2256,9 @@ export class ApiSyncService {
   ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${mileageEntries.length} mileage entries to local database...`);
-      
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
+
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
+      await withDatabaseConnection(async (database) => {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('mileageEntry');
       const pendingUpsertIds = SyncIntegrationService.getPendingUpsertIds('mileageEntry');
@@ -2409,8 +2409,9 @@ export class ApiSyncService {
           }
         }
       }
-      
+
       debugLog(`✅ ApiSync: Mileage entries sync completed`);
+      });
     } catch (error) {
       console.error('❌ ApiSync: Error syncing mileage entries to local database:', error);
     }
@@ -2429,9 +2430,9 @@ export class ApiSyncService {
   ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${receipts.length} receipts to local database...`);
-      
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
+
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
+      await withDatabaseConnection(async (database) => {
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingUpsertIds = SyncIntegrationService.getPendingUpsertIds('receipt');
       
@@ -2556,6 +2557,7 @@ export class ApiSyncService {
       }
       
       debugLog(`✅ ApiSync: Receipts sync completed`);
+      });
     } catch (error) {
       console.error('❌ ApiSync: Error syncing receipts to local database:', error);
     }
@@ -2619,10 +2621,9 @@ export class ApiSyncService {
   ): Promise<void> {
     try {
       debugLog(`📥 ApiSync: Syncing ${timeTracking.length} time tracking entries to local database...`);
-      
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
-      
+
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
+      await withDatabaseConnection(async (database) => {
       // Check sync queue for pending deletions to avoid overwriting them
       const { SyncIntegrationService } = await import('./syncIntegrationService');
       const pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('timeTracking');
@@ -2744,6 +2745,7 @@ export class ApiSyncService {
       }
       
       debugLog(`✅ ApiSync: Time tracking sync completed`);
+      });
     } catch (error) {
       console.error('❌ ApiSync: Error syncing time tracking to local database:', error);
     }
@@ -2760,9 +2762,8 @@ export class ApiSyncService {
       if (!localEmployeeId) return;
       debugLog(`📥 ApiSync: Syncing ${savedAddresses.length} saved addresses to local database...`);
 
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
-
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
+      await withDatabaseConnection(async (database) => {
       const backendIds = new Set(savedAddresses.map((a) => a.id).filter(Boolean));
       let pendingDeletionIds = new Set<string>();
       let pendingUpsertIds = new Set<string>();
@@ -2830,6 +2831,7 @@ export class ApiSyncService {
       }
 
       debugLog(`✅ ApiSync: Saved addresses sync completed`);
+      });
     } catch (error) {
       console.error('❌ ApiSync: Error syncing saved addresses to local database:', error);
     }

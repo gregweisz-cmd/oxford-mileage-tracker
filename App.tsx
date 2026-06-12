@@ -25,6 +25,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import EmployeeProfileScreen from './src/screens/EmployeeProfileScreen';
 import LogoutService from './src/services/logoutService';
 import { tryRestoreSessionOnLaunch } from './src/services/authSessionRefresh';
+import { withDatabaseConnection } from './src/utils/databaseConnection';
 import HomeScreen from './src/screens/HomeScreen';
 import MileageEntryScreen from './src/screens/MileageEntryScreen';
 import GpsTrackingScreen from './src/screens/GpsTrackingScreen';
@@ -179,40 +180,37 @@ export default function App() {
 
   const handleLogin = async (employee: Employee) => {
     setIsAuthenticated(true);
-    
-    // Always fetch fresh employee data from database to avoid stale cache issues
-    const freshEmployee = await DatabaseService.getEmployeeById(employee.id);
-    if (!freshEmployee) {
-      console.error('❌ Could not fetch employee after login');
-      setIsAuthenticated(false);
-      return;
-    }
-    
-    setCurrentEmployee(freshEmployee);
-    
-    // Check if user has completed onboarding
-    const hasCompleted = await DatabaseService.hasCompletedOnboarding(freshEmployee.id);
-    if (!hasCompleted) {
-      setShowOnboarding(true);
-      return;
-    }
-    
-    // Check if user has completed the Setup Wizard
-    // The wizard will show on first login regardless of backend data
-    // Backend data (if exists) will be used to pre-populate the wizard fields
-    const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(freshEmployee.id);
-    console.log('🔍 Setup Wizard Check (with fresh data):', {
-      employeeId: freshEmployee.id,
-      hasCompletedSetupWizard,
-      baseAddress: freshEmployee.baseAddress || '(will be pre-filled)',
-      defaultCostCenter: freshEmployee.defaultCostCenter || '(will be pre-filled)',
+
+    await withDatabaseConnection(async () => {
+      const freshEmployee = await DatabaseService.getEmployeeById(employee.id);
+      if (!freshEmployee) {
+        console.error('❌ Could not fetch employee after login');
+        setIsAuthenticated(false);
+        return;
+      }
+
+      setCurrentEmployee(freshEmployee);
+
+      const hasCompleted = await DatabaseService.hasCompletedOnboarding(freshEmployee.id);
+      if (!hasCompleted) {
+        setShowOnboarding(true);
+        return;
+      }
+
+      const hasCompletedSetupWizard = await DatabaseService.hasCompletedSetupWizard(freshEmployee.id);
+      console.log('🔍 Setup Wizard Check (with fresh data):', {
+        employeeId: freshEmployee.id,
+        hasCompletedSetupWizard,
+        baseAddress: freshEmployee.baseAddress || '(will be pre-filled)',
+        defaultCostCenter: freshEmployee.defaultCostCenter || '(will be pre-filled)',
+      });
+      if (!hasCompletedSetupWizard) {
+        console.log('✅ Showing Setup Wizard (first login - will pre-populate with backend data if available)');
+        setShowSetupWizard(true);
+      } else {
+        console.log('⏭️ Setup Wizard already completed, skipping');
+      }
     });
-    if (!hasCompletedSetupWizard) {
-      console.log('✅ Showing Setup Wizard (first login - will pre-populate with backend data if available)');
-      setShowSetupWizard(true);
-    } else {
-      console.log('⏭️ Setup Wizard already completed, skipping');
-    }
   };
 
   const handleLogout = async () => {

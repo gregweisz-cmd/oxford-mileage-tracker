@@ -200,6 +200,11 @@ export class SyncIntegrationService {
 
   private static async syncOnAppActive(): Promise<void> {
     try {
+      const { isLoginInProgress } = await import('../utils/loginGate');
+      if (isLoginInProgress()) {
+        debugLog('🔄 SyncIntegration: Skipping sync on app active (login in progress)');
+        return;
+      }
       if (!this.autoSyncEnabled) {
         debugLog('🔄 SyncIntegration: Skipping sync on app active (auto-sync off)');
         return;

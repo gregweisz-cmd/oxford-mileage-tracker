@@ -19,6 +19,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import AuthCallback from './components/AuthCallback';
 import { resetStaffPortalSessionExpiredDispatch } from './services/staffPortalSessionExpired';
 import { stickyTableThemeComponents } from './theme/stickyTableTheme';
+import { scrollableThemeComponents } from './theme/scrollableTheme';
 
 // Debug logging
 import { debugLog, debugError, debugVerbose } from './config/debug';
@@ -158,6 +159,7 @@ const createAppTheme = (mode: 'light' | 'dark') => {
       },
       components: {
         ...stickyTableThemeComponents,
+        ...scrollableThemeComponents,
         MuiCard: {
           styleOverrides: {
             root: {
@@ -183,6 +185,9 @@ const createAppTheme = (mode: 'light' | 'dark') => {
           styleOverrides: {
             paper: {
               backgroundColor: '#2d2d2d',
+              scrollbarGutter: 'stable',
+              overflowY: 'scroll',
+              overflowX: 'auto',
             },
           },
         },
@@ -202,7 +207,10 @@ const createAppTheme = (mode: 'light' | 'dark') => {
       typography: {
         fontFamily: '"Myriad Pro", "Segoe UI", Arial, sans-serif',
       },
-      components: stickyTableThemeComponents,
+      components: {
+        ...stickyTableThemeComponents,
+        ...scrollableThemeComponents,
+      },
     });
   }
 };

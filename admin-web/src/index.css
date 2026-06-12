@@ -34,3 +34,77 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/*
+ * Always show scrollbars in dialogs and other scroll regions so users can see
+ * when content (e.g. validation errors) extends below the visible area.
+ */
+.MuiDialogContent-root,
+.MuiDrawer-paper,
+.app-scroll-panel {
+  overflow-y: scroll !important;
+  scrollbar-gutter: stable;
+}
+
+.MuiDialogContent-root::-webkit-scrollbar,
+.MuiDrawer-paper::-webkit-scrollbar,
+.app-scroll-panel::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.MuiDialogContent-root::-webkit-scrollbar-track,
+.MuiDrawer-paper::-webkit-scrollbar-track,
+.app-scroll-panel::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
+}
+
+.MuiDialogContent-root::-webkit-scrollbar-thumb,
+.MuiDrawer-paper::-webkit-scrollbar-thumb,
+.app-scroll-panel::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.MuiDialogContent-root::-webkit-scrollbar-thumb:hover,
+.MuiDrawer-paper::-webkit-scrollbar-thumb:hover,
+.app-scroll-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.4);
+  background-clip: content-box;
+}
+
+[data-mui-color-scheme='dark'] .MuiDialogContent-root::-webkit-scrollbar-track,
+[data-mui-color-scheme='dark'] .MuiDrawer-paper::-webkit-scrollbar-track,
+[data-mui-color-scheme='dark'] .app-scroll-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-mui-color-scheme='dark'] .MuiDialogContent-root::-webkit-scrollbar-thumb,
+[data-mui-color-scheme='dark'] .MuiDrawer-paper::-webkit-scrollbar-thumb,
+[data-mui-color-scheme='dark'] .app-scroll-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  background-clip: content-box;
+}
+
+[data-mui-color-scheme='dark'] .MuiDialogContent-root::-webkit-scrollbar-thumb:hover,
+[data-mui-color-scheme='dark'] .MuiDrawer-paper::-webkit-scrollbar-thumb:hover,
+[data-mui-color-scheme='dark'] .app-scroll-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.42);
+  background-clip: content-box;
+}
+
+.MuiDialogContent-root,
+.MuiDrawer-paper,
+.app-scroll-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.35) rgba(0, 0, 0, 0.08);
+}
+
+[data-mui-color-scheme='dark'] .MuiDialogContent-root,
+[data-mui-color-scheme='dark'] .MuiDrawer-paper,
+[data-mui-color-scheme='dark'] .app-scroll-panel {
+  scrollbar-color: rgba(255, 255, 255, 0.35) rgba(255, 255, 255, 0.08);
+}

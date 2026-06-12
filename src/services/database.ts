@@ -14,6 +14,7 @@ import { startOfLocalDay, toLocalDateKey } from '../utils/dateFormatter';
 let db: SQLite.SQLiteDatabase | null = null;
 let dbReady: Promise<void> | null = null;
 let dbTaskChain: Promise<unknown> = Promise.resolve();
+let dbQueueDepth = 0;
 
 // Callback system to avoid circular dependency
 let syncCallback: ((operation: string, entityType: string, data: any) => void) | null = null;
@@ -89,7 +90,20 @@ export async function getSharedDatabase(): Promise<SQLite.SQLiteDatabase> {
 export async function withDatabase<T>(
   operation: (database: SQLite.SQLiteDatabase) => Promise<T>
 ): Promise<T> {
-  return runSerializedDbTask(() => withSqliteRetry(async () => operation(await getDatabase())));
+  const execute = () => withSqliteRetry(async () => operation(await getDatabase()));
+
+  if (dbQueueDepth > 0) {
+    return execute();
+  }
+
+  return runSerializedDbTask(async () => {
+    dbQueueDepth += 1;
+    try {
+      return await execute();
+    } finally {
+      dbQueueDepth -= 1;
+    }
+  });
 }
 
 export class DatabaseService {

@@ -25,6 +25,8 @@ import { GoogleAuthService } from '../services/googleAuthService';
 import { GOOGLE_LAST_EMAIL_KEY } from '../services/authSessionRefresh';
 import { Employee } from '../types';
 import { API_BASE_URL } from '../config/api';
+import { setLoginInProgress } from '../utils/loginGate';
+import { withDatabaseConnection } from '../utils/databaseConnection';
 
 interface LoginScreenProps {
   navigation?: any;
@@ -122,6 +124,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     options?: { stayLoggedIn?: boolean }
   ) => {
     const persistStayLoggedIn = options?.stayLoggedIn ?? stayLoggedIn;
+    return withDatabaseConnection(async () => {
     const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
 
     if (existingEmployee) {
@@ -152,7 +155,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       }
 
       await DatabaseService.setCurrentEmployee(canonicalId, persistStayLoggedIn);
-      onLogin(updatedEmployee);
+      await Promise.resolve(onLogin(updatedEmployee));
       return true;
     }
 
@@ -171,66 +174,71 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     });
 
     await DatabaseService.setCurrentEmployee(employeeData.id, persistStayLoggedIn);
-    onLogin(employeeData);
+    await Promise.resolve(onLogin(employeeData));
     return true;
+    });
   };
 
   const performLogin = async (loginEmail: string, loginPassword: string) => {
     const backendUrl = (API_BASE_URL ?? '').replace(/\/api\/?$/, '') || 'https://oxford-mileage-backend.onrender.com';
-    
+    setLoginInProgress(true);
     try {
-      const response = await fetch(`${backendUrl}/api/employee-login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: loginEmail.toLowerCase(),
-          password: loginPassword,
-        }),
-      });
+      try {
+        const response = await fetch(`${backendUrl}/api/employee-login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: loginEmail.toLowerCase(),
+            password: loginPassword,
+          }),
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (response.ok) {
-        const employeeData = data;
-        if (data.token) {
-          await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
-        }
-        try {
-          const ok = await syncEmployeeAfterCloudLogin(employeeData);
-          if (ok) {
-            await maybePromptEnableBiometric(loginEmail, loginPassword);
+        if (response.ok) {
+          const employeeData = data;
+          if (data.token) {
+            await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
           }
-          return ok;
-        } catch (updateError) {
-          console.error('Failed to update employee:', updateError);
-          Alert.alert('Error', 'Failed to update employee record');
-          return false;
+          try {
+            const ok = await syncEmployeeAfterCloudLogin(employeeData);
+            if (ok) {
+              await maybePromptEnableBiometric(loginEmail, loginPassword);
+            }
+            return ok;
+          } catch (updateError) {
+            console.error('Failed to update employee:', updateError);
+            Alert.alert('Error', 'Failed to update employee record');
+            return false;
+          }
         }
+      } catch (backendError) {
+        console.warn('Backend authentication failed, falling back to local:', backendError);
       }
-    } catch (backendError) {
-      console.warn('Backend authentication failed, falling back to local:', backendError);
-    }
-    
-    const employee = employees.find(emp => 
-      emp.email.toLowerCase() === loginEmail.toLowerCase() &&
-      emp.password === loginPassword
-    );
 
-    if (employee) {
-      await DatabaseService.setCurrentEmployee(employee.id, stayLoggedIn);
-      await maybePromptEnableBiometric(loginEmail, loginPassword);
-      onLogin(employee);
-      return true;
-    }
+      const employee = employees.find(emp =>
+        emp.email.toLowerCase() === loginEmail.toLowerCase() &&
+        emp.password === loginPassword
+      );
 
-    Alert.alert(
-      'Login Failed',
-      'Invalid email or password. Please check your credentials and try again.',
-      [{ text: 'OK', style: 'default' }]
-    );
-    return false;
+      if (employee) {
+        await DatabaseService.setCurrentEmployee(employee.id, stayLoggedIn);
+        await maybePromptEnableBiometric(loginEmail, loginPassword);
+        onLogin(employee);
+        return true;
+      }
+
+      Alert.alert(
+        'Login Failed',
+        'Invalid email or password. Please check your credentials and try again.',
+        [{ text: 'OK', style: 'default' }]
+      );
+      return false;
+    } finally {
+      setLoginInProgress(false);
+    }
   };
 
   const loadEmployees = async () => {
@@ -244,6 +252,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
+    setLoginInProgress(true);
     try {
       const userInfo = await GoogleAuthService.signInWithGoogle();
       if (!userInfo) {
@@ -262,6 +271,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         Alert.alert('Google Sign-In Failed', message);
       }
     } finally {
+      setLoginInProgress(false);
       setGoogleLoading(false);
     }
   };
