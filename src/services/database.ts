@@ -80,6 +80,18 @@ const getDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
   return db;
 };
 
+/** Same SQLite file/handle as DatabaseService — use instead of opening a second connection. */
+export async function getSharedDatabase(): Promise<SQLite.SQLiteDatabase> {
+  return getDatabase();
+}
+
+/** Serialize a multi-statement SQLite unit of work (login, sync, transactions). */
+export async function withDatabase<T>(
+  operation: (database: SQLite.SQLiteDatabase) => Promise<T>
+): Promise<T> {
+  return runSerializedDbTask(() => withSqliteRetry(async () => operation(await getDatabase())));
+}
+
 export class DatabaseService {
   private static isInitialized = false;
 
@@ -732,14 +744,13 @@ export class DatabaseService {
   }
 
   static async setCurrentEmployee(employeeId: string, stayLoggedIn: boolean = false): Promise<void> {
-    const database = await getDatabase();
-    
-    // Clear existing current employee and set new one
-    await database.execAsync('DELETE FROM current_employee');
-    await database.runAsync(
-      'INSERT INTO current_employee (employeeId, lastLogin, stayLoggedIn) VALUES (?, ?, ?)',
-      [employeeId, new Date().toISOString(), stayLoggedIn ? 1 : 0]
-    );
+    return withDatabase(async (database) => {
+      await database.execAsync('DELETE FROM current_employee');
+      await database.runAsync(
+        'INSERT INTO current_employee (employeeId, lastLogin, stayLoggedIn) VALUES (?, ?, ?)',
+        [employeeId, new Date().toISOString(), stayLoggedIn ? 1 : 0]
+      );
+    });
   }
 
   static async clearCurrentEmployee(): Promise<void> {
@@ -753,44 +764,45 @@ export class DatabaseService {
    */
   static async realignEmployeeIdWithBackend(oldId: string, newId: string): Promise<void> {
     if (oldId === newId) return;
-    const database = await getDatabase();
-    const collision = await database.getFirstAsync<{ id: string }>(
-      'SELECT id FROM employees WHERE id = ?',
-      [newId]
-    );
-    if (collision) {
-      console.warn('⚠️ Database: realign skipped — employee id already exists locally:', newId);
-      return;
-    }
-    const tables = [
-      'mileage_entries',
-      'monthly_reports',
-      'weekly_reports',
-      'biweekly_reports',
-      'receipts',
-      'daily_odometer_readings',
-      'vehicles',
-      'saved_addresses',
-      'time_tracking',
-      'daily_descriptions',
-      'cost_center_summaries',
-      'current_employee',
-    ];
-    await database.execAsync('BEGIN');
-    try {
-      for (const t of tables) {
-        await database.runAsync(`UPDATE ${t} SET employeeId = ? WHERE employeeId = ?`, [newId, oldId]);
+    await withDatabase(async (database) => {
+      const collision = await database.getFirstAsync<{ id: string }>(
+        'SELECT id FROM employees WHERE id = ?',
+        [newId]
+      );
+      if (collision) {
+        console.warn('⚠️ Database: realign skipped — employee id already exists locally:', newId);
+        return;
       }
-      await database.runAsync('UPDATE employees SET id = ? WHERE id = ?', [newId, oldId]);
-      await database.execAsync('COMMIT');
-    } catch (e) {
+      const tables = [
+        'mileage_entries',
+        'monthly_reports',
+        'weekly_reports',
+        'biweekly_reports',
+        'receipts',
+        'daily_odometer_readings',
+        'vehicles',
+        'saved_addresses',
+        'time_tracking',
+        'daily_descriptions',
+        'cost_center_summaries',
+        'current_employee',
+      ];
+      await database.execAsync('BEGIN');
       try {
-        await database.execAsync('ROLLBACK');
-      } catch {
-        // ignore
+        for (const t of tables) {
+          await database.runAsync(`UPDATE ${t} SET employeeId = ? WHERE employeeId = ?`, [newId, oldId]);
+        }
+        await database.runAsync('UPDATE employees SET id = ? WHERE id = ?', [newId, oldId]);
+        await database.execAsync('COMMIT');
+      } catch (e) {
+        try {
+          await database.execAsync('ROLLBACK');
+        } catch {
+          // ignore
+        }
+        throw e;
       }
-      throw e;
-    }
+    });
     const { ApiSyncService } = await import('./apiSyncService');
     ApiSyncService.clearEmployeeIdResolutionCache();
   }
@@ -928,7 +940,7 @@ export class DatabaseService {
 
 
   static async getEmployeeById(id: string): Promise<Employee | null> {
-    const database = await getDatabase();
+    return withDatabase(async (database) => {
     const result = await database.getFirstAsync('SELECT * FROM employees WHERE id = ?', [id]) as any;
     
     if (!result) return null;
@@ -954,10 +966,11 @@ export class DatabaseService {
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt)
     };
+    });
   }
 
   static async getEmployeeByEmail(email: string): Promise<Employee | null> {
-    const database = await getDatabase();
+    return withDatabase(async (database) => {
     const result = await database.getFirstAsync('SELECT * FROM employees WHERE email = ?', [email.toLowerCase()]) as any;
     
     if (!result) return null;
@@ -983,34 +996,35 @@ export class DatabaseService {
       createdAt: new Date(result.createdAt),
       updatedAt: new Date(result.updatedAt)
     };
+    });
   }
 
   static async createEmployee(employee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Employee> {
     const id = employee.id || this.generateId();
     const now = new Date().toISOString();
-    const database = await getDatabase();
-    
-    await database.runAsync(
-      'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, employee.name, employee.preferredName || '', employee.email, employee.password, employee.oxfordHouseId, employee.position, employee.phoneNumber || '', employee.baseAddress, JSON.stringify(employee.costCenters || []), JSON.stringify(employee.selectedCostCenters || []), employee.defaultCostCenter || '', now, now]
-    );
 
-    const newEmployee = {
-      id,
-      ...employee,
-      phoneNumber: employee.phoneNumber,
-      createdAt: new Date(now),
-      updatedAt: new Date(now)
-    };
+    const newEmployee = await withDatabase(async (database) => {
+      await database.runAsync(
+        'INSERT INTO employees (id, name, preferredName, email, password, oxfordHouseId, position, phoneNumber, baseAddress, costCenters, selectedCostCenters, defaultCostCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, employee.name, employee.preferredName || '', employee.email, employee.password, employee.oxfordHouseId, employee.position, employee.phoneNumber || '', employee.baseAddress, JSON.stringify(employee.costCenters || []), JSON.stringify(employee.selectedCostCenters || []), employee.defaultCostCenter || '', now, now]
+      );
 
-    // Sync to API service
+      return {
+        id,
+        ...employee,
+        phoneNumber: employee.phoneNumber,
+        createdAt: new Date(now),
+        updatedAt: new Date(now),
+      };
+    });
+
     await this.syncToApi('addEmployee', newEmployee);
 
     return newEmployee;
   }
 
   static async getEmployees(): Promise<Employee[]> {
-    const database = await getDatabase();
+    return withDatabase(async (database) => {
     const result = await database.getAllAsync('SELECT * FROM employees ORDER BY name');
     
     return result.map((row: any) => ({
@@ -1026,39 +1040,39 @@ export class DatabaseService {
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
+    });
   }
 
   static async updateEmployee(id: string, updates: Partial<Employee>): Promise<void> {
     const now = new Date().toISOString();
-    const database = await getDatabase();
-    
-    // Filter out fields we don't want to update
-    const fields = Object.keys(updates).filter(key => 
-      key !== 'id' && 
-      key !== 'createdAt' && 
+
+    const fields = Object.keys(updates).filter(key =>
+      key !== 'id' &&
+      key !== 'createdAt' &&
       key !== 'updatedAt'
     );
-    
+
     if (fields.length === 0) {
-      return; // Nothing to update
+      return;
     }
-    
+
     const setClause = fields.map(field => `${field} = ?`).join(', ');
     const values = fields.map(field => {
       const value = updates[field as keyof Employee];
-      // Handle Date objects by converting to ISO string
       if (value instanceof Date) return value.toISOString();
-      // Handle array fields by converting to JSON
-      if ((field === 'costCenters' || field === 'selectedCostCenters') && Array.isArray(value)) return JSON.stringify(value);
+      if ((field === 'costCenters' || field === 'selectedCostCenters') && Array.isArray(value)) {
+        return JSON.stringify(value);
+      }
       return value;
     });
-    
-    await database.runAsync(
-      `UPDATE employees SET ${setClause}, updatedAt = ? WHERE id = ?`,
-      [...values, now, id] as any[]
-    );
-    
-    // Sync updated employee to backend
+
+    await withDatabase(async (database) => {
+      await database.runAsync(
+        `UPDATE employees SET ${setClause}, updatedAt = ? WHERE id = ?`,
+        [...values, now, id] as any[]
+      );
+    });
+
     try {
       const updatedEmployee = await this.getEmployeeById(id);
       if (updatedEmployee) {
@@ -1066,7 +1080,6 @@ export class DatabaseService {
       }
     } catch (error) {
       console.error('❌ Database: Error syncing employee update:', error);
-      // Don't throw - employee is still updated locally
     }
   }
 
@@ -1907,11 +1920,9 @@ export class DatabaseService {
 
   // Daily Odometer Reading methods
   static async createDailyOdometerReading(reading: Omit<DailyOdometerReading, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }, skipSync = false): Promise<DailyOdometerReading> {
-    return runSerializedDbTask(() =>
-      withSqliteRetry(async () => {
+    const newReading = await withDatabase(async (database) => {
         const id = reading.id || this.generateId();
         const now = new Date().toISOString();
-        const database = await getDatabase();
 
         // Use local timezone for date storage to avoid timezone issues
         const year = reading.date.getFullYear();
@@ -1941,35 +1952,34 @@ export class DatabaseService {
 
         debugLog('✅ Database: Daily odometer reading created successfully with ID:', id);
 
-        const newReading = {
+        return {
           id,
           ...reading,
           notes: reading.notes,
           createdAt: new Date(now),
           updatedAt: new Date(now),
         };
+    });
 
-        if (!skipSync) {
-          await this.syncToApi('addDailyOdometerReading', newReading);
-        }
+    if (!skipSync) {
+      await this.syncToApi('addDailyOdometerReading', newReading);
+    }
 
-        return newReading;
-      })
-    );
+    return newReading;
   }
 
   static async getDailyOdometerReading(employeeId: string, date: Date, vehicleId?: string): Promise<DailyOdometerReading | null> {
-    return runSerializedDbTask(() =>
-      withSqliteRetry(async () => this.getDailyOdometerReadingUnlocked(employeeId, date, vehicleId))
+    return withDatabase(async (database) =>
+      this.getDailyOdometerReadingUnlocked(employeeId, date, vehicleId, database)
     );
   }
 
   private static async getDailyOdometerReadingUnlocked(
     employeeId: string,
     date: Date,
-    vehicleId?: string
+    vehicleId: string | undefined,
+    database: SQLite.SQLiteDatabase
   ): Promise<DailyOdometerReading | null> {
-    const database = await getDatabase();
     // Use local timezone instead of UTC to avoid timezone issues
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -2060,20 +2070,16 @@ export class DatabaseService {
     date: Date,
     vehicleId?: string
   ): Promise<MileageEntry[]> {
-    return runSerializedDbTask(() =>
-      withSqliteRetry(async () => {
-        const day = startOfLocalDay(date);
-        const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
-        const entries = await this.getMileageEntries(employeeId);
-        return entries.filter((entry) => {
-          const entryDay = startOfLocalDay(new Date(entry.date));
-          return (
-            entryDay.getTime() === day.getTime() &&
-            this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
-          );
-        });
-      })
-    );
+    const day = startOfLocalDay(date);
+    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const entries = await this.getMileageEntries(employeeId);
+    return entries.filter((entry) => {
+      const entryDay = startOfLocalDay(new Date(entry.date));
+      return (
+        entryDay.getTime() === day.getTime() &&
+        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+      );
+    });
   }
 
   /** Sum of mileage entry miles for a local calendar day (lighter than loading full entries). */
@@ -2082,29 +2088,26 @@ export class DatabaseService {
     date: Date,
     vehicleId?: string
   ): Promise<number> {
-    return runSerializedDbTask(() =>
-      withSqliteRetry(async () => {
-        const database = await getDatabase();
-        const dateStr = toLocalDateKey(startOfLocalDay(date));
-        const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
-        const rows = (await database.getAllAsync(
-          'SELECT miles, vehicleId FROM mileage_entries WHERE employeeId = ? AND date(date) = date(?)',
-          [employeeId, dateStr]
-        )) as Array<{ miles: number; vehicleId?: string | null }>;
+    return withDatabase(async (database) => {
+      const dateStr = toLocalDateKey(startOfLocalDay(date));
+      const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+      const rows = (await database.getAllAsync(
+        'SELECT miles, vehicleId FROM mileage_entries WHERE employeeId = ? AND date(date) = date(?)',
+        [employeeId, dateStr]
+      )) as Array<{ miles: number; vehicleId?: string | null }>;
 
-        const total = rows
-          .filter((row) =>
-            this.entryMatchesVehicle(
-              { vehicleId: row.vehicleId || undefined } as MileageEntry,
-              vehicleId,
-              soleVehicleId
-            )
+      const total = rows
+        .filter((row) =>
+          this.entryMatchesVehicle(
+            { vehicleId: row.vehicleId || undefined } as MileageEntry,
+            vehicleId,
+            soleVehicleId
           )
-          .reduce((sum, row) => sum + (Number(row.miles) || 0), 0);
+        )
+        .reduce((sum, row) => sum + (Number(row.miles) || 0), 0);
 
-        return Math.round(total);
-      })
-    );
+      return Math.round(total);
+    });
   }
 
   private static entryMatchesVehicle(

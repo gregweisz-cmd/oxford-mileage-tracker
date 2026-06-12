@@ -1,31 +1,24 @@
 /**
- * Database Connection Utility
- * 
- * This utility provides a direct database connection to avoid circular dependencies
- * between services and the main DatabaseService.
+ * Shared SQLite connection for services that cannot import DatabaseService directly.
+ * Must use the same singleton as database.ts — a second openDatabaseAsync on the same
+ * file causes "database is locked" / finalizeAsync failures during login and sync.
  */
 
-import * as SQLite from 'expo-sqlite';
-
-let databaseInstance: SQLite.SQLiteDatabase | null = null;
+import type * as SQLite from 'expo-sqlite';
 
 export async function getDatabaseConnection(): Promise<SQLite.SQLiteDatabase> {
-  if (!databaseInstance) {
-    try {
-      databaseInstance = await SQLite.openDatabaseAsync('oxford_tracker.db');
-      console.log('🔗 Database connection established');
-    } catch (error) {
-      console.error('❌ Error opening database:', error);
-      throw error;
-    }
-  }
-  return databaseInstance;
+  const { getSharedDatabase } = await import('../services/database');
+  return getSharedDatabase();
 }
 
-export function closeDatabaseConnection(): void {
-  if (databaseInstance) {
-    databaseInstance.closeAsync();
-    databaseInstance = null;
-    console.log('🔗 Database connection closed');
-  }
+/** Run a block of SQLite work on the shared connection through the global queue. */
+export async function withDatabaseConnection<T>(
+  operation: (database: SQLite.SQLiteDatabase) => Promise<T>
+): Promise<T> {
+  const { withDatabase } = await import('../services/database');
+  return withDatabase(operation);
+}
+
+export async function closeDatabaseConnection(): Promise<void> {
+  // No-op: connection lifecycle is owned by database.ts
 }

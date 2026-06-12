@@ -2067,33 +2067,31 @@ export class ApiSyncService {
     try {
       debugLog(`📥 ApiSync: Syncing ${perDiemRules.length} Per Diem rules to local database...`);
       
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
+      await withDatabaseConnection(async (database) => {
+        await database.runAsync('DELETE FROM per_diem_rules');
 
-      // Clear existing rules
-      await database.runAsync('DELETE FROM per_diem_rules');
-
-      // Insert new rules
-      for (const rule of perDiemRules) {
-        await database.runAsync(
-          `INSERT INTO per_diem_rules (
-            id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
-            description, useActualAmount, createdAt, updatedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            rule.id,
-            rule.costCenter,
-            rule.maxAmount,
-            rule.minHours,
-            rule.minMiles,
-            rule.minDistanceFromBase,
-            rule.description,
-            rule.useActualAmount ? 1 : 0,
-            rule.createdAt,
-            rule.updatedAt
-          ]
-        );
-      }
+        for (const rule of perDiemRules) {
+          await database.runAsync(
+            `INSERT INTO per_diem_rules (
+              id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
+              description, useActualAmount, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              rule.id,
+              rule.costCenter,
+              rule.maxAmount,
+              rule.minHours,
+              rule.minMiles,
+              rule.minDistanceFromBase,
+              rule.description,
+              rule.useActualAmount ? 1 : 0,
+              rule.createdAt,
+              rule.updatedAt,
+            ]
+          );
+        }
+      });
 
       debugLog(`✅ ApiSync: Stored ${perDiemRules.length} Per Diem rules locally`);
     } catch (error) {
