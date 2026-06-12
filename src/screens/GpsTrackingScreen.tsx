@@ -221,6 +221,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const isEndingTrackingRef = useRef(false);
   isEndingTrackingRef.current = isEndingTracking;
   const [isStartingTracking, setIsStartingTracking] = useState(false);
+  const isStartingTrackingRef = useRef(false);
+  isStartingTrackingRef.current = isStartingTracking;
+  const gpsStatusCheckRef = useRef<Promise<void> | null>(null);
   // Ref so useFocusEffect does not depend on isTracking — when tracking stops, isTracking flips
   // false and would re-run the effect mid-end-trip, racing checkGpsTrackingStatus with save/goBack (iOS freeze).
   const isTrackingRef = useRef(isTracking);
@@ -247,7 +250,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   }, []);
 
   useEffect(() => {
-    if (currentEmployee && selectedVehicleId) {
+    if (currentEmployee && selectedVehicleId && !isStartingTrackingRef.current) {
       void checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId);
       void refreshLastTravelDayEndingOdometerNote(currentEmployee.id, selectedVehicleId);
     }
@@ -296,8 +299,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setShowPurposeSuggestions(false);
       }
 
-      if (currentEmployee) {
-        checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
+      if (currentEmployee && !isStartingTrackingRef.current) {
+        void checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
       }
 
       return () => {
@@ -497,7 +500,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             trackingForm.notes
           );
 
-          await checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
+          if (!existingReading && odometerForTrip) {
+            setHasStartedGpsToday(true);
+            setDailyStartingOdometer(String(odometerForTrip));
+          }
 
           setTrackingTime(0);
 
@@ -617,54 +623,63 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const checkGpsTrackingStatus = async (employeeId: string, vehicleId?: string) => {
-    try {
-      // Use device's local timezone instead of UTC
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      console.log('🚗 GPS: Checking GPS status for date:', today.toISOString().split('T')[0]);
+    const run = async () => {
+      if (isStartingTrackingRef.current) return;
 
-      const existingReading = await DatabaseService.getDailyOdometerReading(
-        employeeId,
-        today,
-        vehicleId
-      );
-      const entriesForDay = await DatabaseService.getMileageEntriesForVehicleOnDate(
-        employeeId,
-        today,
-        vehicleId
-      );
-      const totalMilesToday = entriesForDay.reduce(
-        (sum, entry) => sum + (Number(entry.miles) || 0),
-        0
-      );
-      setMilesDrivenToday(Math.round(totalMilesToday));
+      try {
+        // Use device's local timezone instead of UTC
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      if (existingReading) {
-        console.log('🚗 GPS: Daily starting odometer already set; showing locked summary');
-        setHasStartedGpsToday(true);
-        setDailyStartingOdometer(existingReading.odometerReading.toString());
-      } else {
-        const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
+        console.log('🚗 GPS: Checking GPS status for date:', today.toISOString().split('T')[0]);
+
+        const existingReading = await DatabaseService.getDailyOdometerReading(
           employeeId,
           today,
           vehicleId
         );
-        console.log('🚗 GPS: Next trip starting odometer:', nextTripOdometer);
+        const totalMilesToday = await DatabaseService.getTotalMilesForVehicleOnDate(
+          employeeId,
+          today,
+          vehicleId
+        );
+        setMilesDrivenToday(totalMilesToday);
+
+        if (existingReading) {
+          console.log('🚗 GPS: Daily starting odometer already set; showing locked summary');
+          setHasStartedGpsToday(true);
+          setDailyStartingOdometer(existingReading.odometerReading.toString());
+        } else {
+          const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
+            employeeId,
+            today,
+            vehicleId
+          );
+          console.log('🚗 GPS: Next trip starting odometer:', nextTripOdometer);
+          setHasStartedGpsToday(false);
+          setDailyStartingOdometer('');
+          setTrackingForm((prev) => ({
+            ...prev,
+            odometerReading: nextTripOdometer != null ? String(nextTripOdometer) : '',
+          }));
+          await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
+        }
+      } catch (error) {
+        console.error('Error checking GPS tracking status:', error);
         setHasStartedGpsToday(false);
         setDailyStartingOdometer('');
-        setTrackingForm((prev) => ({
-          ...prev,
-          odometerReading: nextTripOdometer != null ? String(nextTripOdometer) : '',
-        }));
-        await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
+        setMilesDrivenToday(0);
       }
-    } catch (error) {
-      console.error('Error checking GPS tracking status:', error);
-      setHasStartedGpsToday(false);
-      setDailyStartingOdometer('');
-      setMilesDrivenToday(0);
-    }
+    };
+
+    const previous = gpsStatusCheckRef.current;
+    const next = (previous ?? Promise.resolve()).then(run, run);
+    gpsStatusCheckRef.current = next.finally(() => {
+      if (gpsStatusCheckRef.current === next) {
+        gpsStatusCheckRef.current = null;
+      }
+    });
+    await next;
   };
 
   const resolveOdometerForTripStart = async (): Promise<number> => {
@@ -1219,7 +1234,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         trackingForm.notes
       );
 
-      await checkGpsTrackingStatus(currentEmployee!.id, selectedVehicleId || undefined);
+      if (!existingReading && odometerForTrip) {
+        setHasStartedGpsToday(true);
+        setDailyStartingOdometer(String(odometerForTrip));
+      }
 
       setTrackingTime(0);
 

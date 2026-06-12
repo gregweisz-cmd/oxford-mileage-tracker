@@ -12,9 +12,42 @@ import { startOfLocalDay, toLocalDateKey } from '../utils/dateFormatter';
 // Removed SyncIntegrationService import to break circular dependency
 
 let db: SQLite.SQLiteDatabase | null = null;
+let dbReady: Promise<void> | null = null;
+let dbTaskChain: Promise<unknown> = Promise.resolve();
 
 // Callback system to avoid circular dependency
 let syncCallback: ((operation: string, entityType: string, data: any) => void) | null = null;
+
+const isSqliteLockedError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('database is locked') || message.includes('finalizeAsync');
+};
+
+/** Serialize SQLite access — expo-sqlite uses one connection and throws when statements overlap. */
+export function runSerializedDbTask<T>(task: () => Promise<T>): Promise<T> {
+  const next = dbTaskChain.then(task, task);
+  dbTaskChain = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
+}
+
+async function withSqliteRetry<T>(task: () => Promise<T>, retries = 4): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      lastError = error;
+      if (!isSqliteLockedError(error) || attempt === retries - 1) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 75 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
 
 export const setSyncCallback = (callback: (operation: string, entityType: string, data: any) => void) => {
   syncCallback = callback;
@@ -32,10 +65,17 @@ const getDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       // Use different database names for web vs native to avoid conflicts
       const dbName = Platform.OS === 'web' ? 'oxford_tracker_web.db' : 'oxford_tracker.db';
       db = await SQLite.openDatabaseAsync(dbName);
+      dbReady = (async () => {
+        await db!.execAsync('PRAGMA journal_mode=WAL;');
+        await db!.execAsync('PRAGMA busy_timeout=10000;');
+      })();
     } catch (error) {
       console.error('❌ Database: Failed to open database:', error);
       throw error;
     }
+  }
+  if (dbReady) {
+    await dbReady;
   }
   return db;
 };
@@ -1867,54 +1907,68 @@ export class DatabaseService {
 
   // Daily Odometer Reading methods
   static async createDailyOdometerReading(reading: Omit<DailyOdometerReading, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }, skipSync = false): Promise<DailyOdometerReading> {
-    const id = reading.id || this.generateId();
-    const now = new Date().toISOString();
-    const database = await getDatabase();
-    
-    // Use local timezone for date storage to avoid timezone issues
-    const year = reading.date.getFullYear();
-    const month = String(reading.date.getMonth() + 1).padStart(2, '0');
-    const day = String(reading.date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
-    
-    debugLog('💾 Database: Creating daily odometer reading');
-    debugLog('💾 Database: Employee ID:', reading.employeeId);
-    debugLog('💾 Database: Vehicle ID:', reading.vehicleId || '(none)');
-    debugLog('💾 Database: Date (local):', dateStr);
-    debugLog('💾 Database: Odometer Reading:', reading.odometerReading);
-    
-    await database.runAsync(
-      'INSERT INTO daily_odometer_readings (id, employeeId, vehicleId, date, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        id, 
-        reading.employeeId, 
-        reading.vehicleId || '',
-        dateStr, 
-        reading.odometerReading,
-        reading.notes || '', 
-        now, 
-        now
-      ]
+    return runSerializedDbTask(() =>
+      withSqliteRetry(async () => {
+        const id = reading.id || this.generateId();
+        const now = new Date().toISOString();
+        const database = await getDatabase();
+
+        // Use local timezone for date storage to avoid timezone issues
+        const year = reading.date.getFullYear();
+        const month = String(reading.date.getMonth() + 1).padStart(2, '0');
+        const day = String(reading.date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+
+        debugLog('💾 Database: Creating daily odometer reading');
+        debugLog('💾 Database: Employee ID:', reading.employeeId);
+        debugLog('💾 Database: Vehicle ID:', reading.vehicleId || '(none)');
+        debugLog('💾 Database: Date (local):', dateStr);
+        debugLog('💾 Database: Odometer Reading:', reading.odometerReading);
+
+        await database.runAsync(
+          'INSERT INTO daily_odometer_readings (id, employeeId, vehicleId, date, odometerReading, notes, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            id,
+            reading.employeeId,
+            reading.vehicleId || '',
+            dateStr,
+            reading.odometerReading,
+            reading.notes || '',
+            now,
+            now,
+          ]
+        );
+
+        debugLog('✅ Database: Daily odometer reading created successfully with ID:', id);
+
+        const newReading = {
+          id,
+          ...reading,
+          notes: reading.notes,
+          createdAt: new Date(now),
+          updatedAt: new Date(now),
+        };
+
+        if (!skipSync) {
+          await this.syncToApi('addDailyOdometerReading', newReading);
+        }
+
+        return newReading;
+      })
     );
-
-    debugLog('✅ Database: Daily odometer reading created successfully with ID:', id);
-
-    const newReading = {
-      id,
-      ...reading,
-      notes: reading.notes,
-      createdAt: new Date(now),
-      updatedAt: new Date(now)
-    };
-
-    if (!skipSync) {
-      await this.syncToApi('addDailyOdometerReading', newReading);
-    }
-
-    return newReading;
   }
 
   static async getDailyOdometerReading(employeeId: string, date: Date, vehicleId?: string): Promise<DailyOdometerReading | null> {
+    return runSerializedDbTask(() =>
+      withSqliteRetry(async () => this.getDailyOdometerReadingUnlocked(employeeId, date, vehicleId))
+    );
+  }
+
+  private static async getDailyOdometerReadingUnlocked(
+    employeeId: string,
+    date: Date,
+    vehicleId?: string
+  ): Promise<DailyOdometerReading | null> {
     const database = await getDatabase();
     // Use local timezone instead of UTC to avoid timezone issues
     const year = date.getFullYear();
@@ -2006,16 +2060,51 @@ export class DatabaseService {
     date: Date,
     vehicleId?: string
   ): Promise<MileageEntry[]> {
-    const day = startOfLocalDay(date);
-    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
-    const entries = await this.getMileageEntries(employeeId);
-    return entries.filter((entry) => {
-      const entryDay = startOfLocalDay(new Date(entry.date));
-      return (
-        entryDay.getTime() === day.getTime() &&
-        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
-      );
-    });
+    return runSerializedDbTask(() =>
+      withSqliteRetry(async () => {
+        const day = startOfLocalDay(date);
+        const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+        const entries = await this.getMileageEntries(employeeId);
+        return entries.filter((entry) => {
+          const entryDay = startOfLocalDay(new Date(entry.date));
+          return (
+            entryDay.getTime() === day.getTime() &&
+            this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+          );
+        });
+      })
+    );
+  }
+
+  /** Sum of mileage entry miles for a local calendar day (lighter than loading full entries). */
+  static async getTotalMilesForVehicleOnDate(
+    employeeId: string,
+    date: Date,
+    vehicleId?: string
+  ): Promise<number> {
+    return runSerializedDbTask(() =>
+      withSqliteRetry(async () => {
+        const database = await getDatabase();
+        const dateStr = toLocalDateKey(startOfLocalDay(date));
+        const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+        const rows = (await database.getAllAsync(
+          'SELECT miles, vehicleId FROM mileage_entries WHERE employeeId = ? AND date(date) = date(?)',
+          [employeeId, dateStr]
+        )) as Array<{ miles: number; vehicleId?: string | null }>;
+
+        const total = rows
+          .filter((row) =>
+            this.entryMatchesVehicle(
+              { vehicleId: row.vehicleId || undefined } as MileageEntry,
+              vehicleId,
+              soleVehicleId
+            )
+          )
+          .reduce((sum, row) => sum + (Number(row.miles) || 0), 0);
+
+        return Math.round(total);
+      })
+    );
   }
 
   private static entryMatchesVehicle(
