@@ -569,7 +569,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
    */
   const refreshAfterLocalChange = async () => {
     try {
-      await SyncIntegrationService.processSyncQueue();
+      await SyncIntegrationService.forceSync(currentEmployee?.id);
       await refreshLocalDataOnly();
     } catch (error) {
       console.error('Error pushing changes and refreshing:', error);
@@ -585,8 +585,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     setIsSyncing(true);
     try {
       const { ApiSyncService } = await import('../services/apiSyncService');
-      await SyncIntegrationService.processSyncQueue();
-      const syncResult = await ApiSyncService.syncFromBackend(employee.id);
+      const pushResult = await SyncIntegrationService.forceSync(employee.id);
+      if (!pushResult.success) {
+        Alert.alert('Sync failed', pushResult.error || 'Could not upload local changes. Check connection and try again.');
+        return;
+      }
+      const syncResult = await ApiSyncService.syncFromBackend(employee.id, undefined, { skipSyncQueue: true });
       if (syncResult.success) {
         setLastSyncTime(new Date());
         await loadEmployeeData(employee.id, employee);
@@ -760,7 +764,15 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         setIsSyncing(true);
         try {
           const { ApiSyncService } = await import('../services/apiSyncService');
-          const syncPromise = ApiSyncService.syncFromBackend(employee.id);
+          const pushPromise = SyncIntegrationService.forceSync(employee.id);
+          const pushTimeout = new Promise<{ success: boolean; error?: string }>((resolve) =>
+            setTimeout(() => resolve({ success: true, error: 'Push timed out; pull will continue' }), 12000)
+          );
+          const pushResult = await Promise.race([pushPromise, pushTimeout]);
+          if (!pushResult.success) {
+            debugWarn('⚠️ Initial push had errors (continuing with pull):', pushResult.error);
+          }
+          const syncPromise = ApiSyncService.syncFromBackend(employee.id, undefined, { skipSyncQueue: true });
           const timeoutPromise = new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('Initial sync timed out')), INITIAL_SYNC_TIMEOUT_MS)
           );
@@ -1498,8 +1510,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
               {isSyncing 
                 ? "Syncing..." 
                 : lastSyncTime 
-                  ? `Last synced: ${lastSyncTime.toLocaleTimeString()} • Tap to refresh` 
-                  : "Tap to sync"}
+                  ? `Last synced: ${lastSyncTime.toLocaleTimeString()} • Auto-sync on` 
+                  : "Auto-sync on • Tap to sync now"}
             </Text>
           </View>
         </TouchableOpacity>

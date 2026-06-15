@@ -4,6 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEFAULT_SYNC_INTERVAL, SyncInterval } from '../utils/syncIntervalConfig';
 
 export interface UserPreferences {
   // GPS Tracking Preferences
@@ -27,6 +28,7 @@ export interface UserPreferences {
   
   // Data Preferences
   autoSyncEnabled: boolean;
+  syncInterval: SyncInterval;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -71,6 +73,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   
   // Data defaults
   autoSyncEnabled: true,
+  syncInterval: DEFAULT_SYNC_INTERVAL,
 };
 
 const STORAGE_KEY = '@oxford_user_preferences';

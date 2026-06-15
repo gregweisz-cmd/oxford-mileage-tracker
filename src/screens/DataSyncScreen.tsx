@@ -199,10 +199,13 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
     try {
       setLoading(true);
       
-      const success = await SyncIntegrationService.forceSync();
+      const result = await SyncIntegrationService.forceSync();
       
-      if (success) {
-        Alert.alert('Force Sync Successful', 'All pending changes have been synced to the web portal!');
+      if (result.success) {
+        Alert.alert(
+          'Force Sync Successful',
+          result.error || 'All pending changes have been synced to the web portal!'
+        );
         // Refresh status
         loadSyncStatus();
         loadRealtimeStatus();
@@ -233,7 +236,11 @@ export default function DataSyncScreen({ navigation }: DataSyncScreenProps) {
       loadSyncQueueStatus();
       Alert.alert(
         'Auto Sync Toggled',
-        `Auto sync has been ${next ? 'enabled' : 'disabled'}. ${next ? 'Your data will sync automatically when you change data and when you return to the app.' : 'You can still sync manually using the buttons above.'}`
+        `Auto sync has been ${next ? 'enabled' : 'disabled'}. ${
+          next
+            ? 'Your entries upload automatically based on your Sync Interval in App Preferences.'
+            : 'You can still sync manually from Home.'
+        }`
       );
     } catch (error) {
       console.error('Error saving auto-sync preference:', error);

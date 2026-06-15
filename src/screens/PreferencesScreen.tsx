@@ -7,11 +7,17 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { PreferencesService, UserPreferences } from '../services/preferencesService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
+import {
+  SYNC_INTERVAL_OPTIONS,
+  SyncInterval,
+  formatSyncIntervalLabel,
+} from '../utils/syncIntervalConfig';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -24,6 +30,7 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncIntervalDialogOpen, setSyncIntervalDialogOpen] = useState(false);
 
   useEffect(() => {
     loadPreferences();
@@ -55,6 +62,9 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
       if (key === 'autoSyncEnabled' && typeof value === 'boolean') {
         SyncIntegrationService.setAutoSyncEnabled(value);
       }
+      if (key === 'syncInterval') {
+        SyncIntegrationService.setSyncInterval(value as SyncInterval);
+      }
     } catch (error) {
       console.error('Error updating preference:', error);
       Alert.alert('Error', 'Failed to save preference');
@@ -77,6 +87,7 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
               const defaults = await PreferencesService.resetPreferences();
               setPreferences(defaults);
               SyncIntegrationService.setAutoSyncEnabled(defaults.autoSyncEnabled);
+              SyncIntegrationService.setSyncInterval(defaults.syncInterval);
               Alert.alert('Success', 'Preferences reset to defaults');
             } catch (error) {
               Alert.alert('Error', 'Failed to reset preferences');
@@ -243,7 +254,7 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
           <View style={dynamicStyles.preferenceLeft}>
             <Text style={dynamicStyles.preferenceTitle}>Auto-Sync</Text>
             <Text style={dynamicStyles.preferenceDescription}>
-              Saves sync to the cloud shortly after you add or edit entries (same timing for everyone). Turn off only if you want to sync manually from Home.
+              Automatically uploads your entries to the Staff Portal. Manual sync on Home is optional.
             </Text>
           </View>
           <Switch
@@ -252,6 +263,25 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
             disabled={saving}
           />
         </View>
+
+        <TouchableOpacity
+          style={dynamicStyles.preferenceItem}
+          onPress={() => setSyncIntervalDialogOpen(true)}
+          disabled={saving || !preferences.autoSyncEnabled}
+        >
+          <View style={dynamicStyles.preferenceLeft}>
+            <Text style={dynamicStyles.preferenceTitle}>Sync Interval</Text>
+            <Text style={dynamicStyles.preferenceDescription}>
+              {preferences.autoSyncEnabled
+                ? SYNC_INTERVAL_OPTIONS.find((o) => o.value === preferences.syncInterval)?.description ||
+                  'How often changes are uploaded while the app is open'
+                : 'Enable Auto-Sync to choose an interval'}
+            </Text>
+          </View>
+          <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>
+            {formatSyncIntervalLabel(preferences.syncInterval)}
+          </Text>
+        </TouchableOpacity>
 
         {/* Advanced Section */}
         <View style={dynamicStyles.sectionHeader}>
@@ -279,6 +309,41 @@ export default function PreferencesScreen({ navigation }: PreferencesScreenProps
           </Text>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={syncIntervalDialogOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSyncIntervalDialogOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Sync Interval</Text>
+            {SYNC_INTERVAL_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={styles.modalOption}
+                onPress={() => {
+                  void updatePreference('syncInterval', option.value).then(() => {
+                    setSyncIntervalDialogOpen(false);
+                  });
+                }}
+              >
+                <Text style={[styles.modalOptionTitle, { color: colors.text }]}>{option.label}</Text>
+                <Text style={[styles.modalOptionDescription, { color: colors.textSecondary }]}>
+                  {option.description}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setSyncIntervalDialogOpen(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <StatusBar style="auto" />
     </View>
@@ -313,6 +378,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 24,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  modalOption: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  modalOptionDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  modalCancel: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: '#666',
   },
 });
 

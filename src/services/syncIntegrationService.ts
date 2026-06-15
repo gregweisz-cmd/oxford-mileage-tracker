@@ -3,6 +3,12 @@ import { DatabaseService } from './database';
 import { ApiSyncService } from './apiSyncService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
+import { PreferencesService } from './preferencesService';
+import {
+  DEFAULT_SYNC_INTERVAL,
+  getSyncTiming,
+  SyncInterval,
+} from '../utils/syncIntervalConfig';
 
 function redactEntityForDebugLog(entity: unknown): unknown {
   if (!entity || typeof entity !== 'object' || Array.isArray(entity)) return entity;
@@ -22,12 +28,49 @@ export interface SyncQueueItem {
 export class SyncIntegrationService {
   private static syncQueue: SyncQueueItem[] = [];
   private static isProcessingQueue = false;
-  private static autoSyncEnabled = true; // Event-driven sync on change
+  private static autoSyncEnabled = true;
+  private static syncInterval: SyncInterval = DEFAULT_SYNC_INTERVAL;
+  private static syncDebounceMs = getSyncTiming(DEFAULT_SYNC_INTERVAL).debounceMs;
+  private static periodicSyncMs = getSyncTiming(DEFAULT_SYNC_INTERVAL).periodicMs;
   private static syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private static periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private static nextPeriodicSyncAt: number | null = null;
   private static appStateListener: { remove: () => void } | null = null;
   private static lastAppState: AppStateStatus = 'active';
   private static readonly MAX_RETRY_ATTEMPTS = 3;
-  private static readonly SYNC_DEBOUNCE_MS = 15000; // Debounce local changes before syncing
+
+  /**
+   * Load auto-sync toggle and interval from user preferences.
+   */
+  static async applyPreferencesFromStorage(): Promise<void> {
+    try {
+      const prefs = await PreferencesService.getPreferences();
+      this.setAutoSyncEnabled(prefs.autoSyncEnabled);
+      this.setSyncInterval(prefs.syncInterval || DEFAULT_SYNC_INTERVAL);
+    } catch (error) {
+      debugWarn('⚠️ SyncIntegration: Could not load sync preferences:', error);
+    }
+  }
+
+  /**
+   * Update how often background auto-sync runs.
+   */
+  static setSyncInterval(interval: SyncInterval): void {
+    this.syncInterval = interval;
+    const timing = getSyncTiming(interval);
+    this.syncDebounceMs = timing.debounceMs;
+    this.periodicSyncMs = timing.periodicMs;
+    debugLog(
+      `🔄 SyncIntegration: Sync interval set to ${timing.label} (debounce ${timing.debounceMs}ms, periodic ${timing.periodicMs}ms)`
+    );
+    if (this.autoSyncEnabled) {
+      this.restartPeriodicSync();
+    }
+  }
+
+  static getSyncInterval(): SyncInterval {
+    return this.syncInterval;
+  }
 
   /**
    * Initialize the sync integration service
@@ -42,6 +85,8 @@ export class SyncIntegrationService {
         this.queueSyncOperation(operation as any, entityType as any, data);
       });
       debugLog('✅ SyncIntegration: Callback registered with DatabaseService');
+
+      await this.applyPreferencesFromStorage();
       
       // Initialize API sync service
       await ApiSyncService.initialize();
@@ -77,20 +122,37 @@ export class SyncIntegrationService {
   }
 
   /**
-   * Start auto-sync timer
+   * Start periodic auto-sync and keep event-driven debounced sync enabled.
    */
   private static startAutoSync(): void {
-    debugLog('🔄 SyncIntegration: Auto-sync set to event-driven mode');
+    this.restartPeriodicSync();
+    debugLog('🔄 SyncIntegration: Auto-sync started (event-driven + periodic)');
+  }
+
+  private static restartPeriodicSync(): void {
+    if (this.periodicSyncTimer) {
+      clearInterval(this.periodicSyncTimer);
+      this.periodicSyncTimer = null;
+    }
+    this.nextPeriodicSyncAt = Date.now() + this.periodicSyncMs;
+    this.periodicSyncTimer = setInterval(() => {
+      void this.runPeriodicSync();
+    }, this.periodicSyncMs);
   }
 
   /**
-   * Stop auto-sync timer
+   * Stop auto-sync timers.
    */
   private static stopAutoSync(): void {
     if (this.syncDebounceTimer) {
       clearTimeout(this.syncDebounceTimer);
       this.syncDebounceTimer = null;
     }
+    if (this.periodicSyncTimer) {
+      clearInterval(this.periodicSyncTimer);
+      this.periodicSyncTimer = null;
+    }
+    this.nextPeriodicSyncAt = null;
     
     debugLog('🔄 SyncIntegration: Auto-sync disabled');
   }
@@ -166,8 +228,20 @@ export class SyncIntegrationService {
       clearTimeout(this.syncDebounceTimer);
     }
     this.syncDebounceTimer = setTimeout(() => {
-      this.processSyncQueue();
-    }, this.SYNC_DEBOUNCE_MS);
+      this.syncDebounceTimer = null;
+      void this.processSyncQueue();
+    }, this.syncDebounceMs);
+  }
+
+  /**
+   * Flush pending debounced sync immediately (e.g. app backgrounding).
+   */
+  private static async flushPendingSync(): Promise<void> {
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+      this.syncDebounceTimer = null;
+    }
+    await this.processSyncQueue();
   }
 
   /**
@@ -183,6 +257,15 @@ export class SyncIntegrationService {
   }
 
   private static async handleAppStateChange(nextState: AppStateStatus): Promise<void> {
+    if (
+      this.lastAppState === 'active' &&
+      (nextState === 'background' || nextState === 'inactive')
+    ) {
+      if (this.autoSyncEnabled) {
+        debugLog('🔄 SyncIntegration: App backgrounding — flushing pending sync');
+        await this.flushPendingSync();
+      }
+    }
     if (this.lastAppState !== 'active' && nextState === 'active') {
       await this.syncOnAppActive();
     }
@@ -223,10 +306,57 @@ export class SyncIntegrationService {
       
       this.lastSyncOnActiveTime = now;
       debugLog('🔄 SyncIntegration: App foregrounded (push then pull)');
-      await this.processSyncQueue();
-      await ApiSyncService.syncFromBackend(currentEmployee.id);
+      await this.flushPendingSync();
+      await this.runPeriodicSync(true);
+      await ApiSyncService.syncFromBackend(currentEmployee.id, undefined, { skipSyncQueue: true });
     } catch (error) {
       debugWarn('⚠️ SyncIntegration: Error syncing on app foreground:', error);
+    }
+  }
+
+  /**
+   * Periodic safety-net sync: push queued/local changes even if the user never taps Sync.
+   */
+  private static async runPeriodicSync(skipPull = false): Promise<void> {
+    try {
+      const { isLoginInProgress } = await import('../utils/loginGate');
+      if (isLoginInProgress()) {
+        return;
+      }
+      if (!this.autoSyncEnabled) {
+        return;
+      }
+
+      const currentEmployee = await DatabaseService.getCurrentEmployee();
+      if (!currentEmployee?.id) {
+        return;
+      }
+
+      const isConnected = await ApiSyncService.testConnection();
+      if (!isConnected) {
+        debugLog('🔄 SyncIntegration: Periodic sync skipped (offline)');
+        return;
+      }
+
+      debugLog('🔄 SyncIntegration: Running periodic auto-sync');
+      await this.processSyncQueue();
+
+      const queueStatus = this.getSyncQueueStatus();
+      const apiStatus = await ApiSyncService.getSyncStatus();
+      if (queueStatus.queueLength > 0 || apiStatus.pendingChanges > 0) {
+        await this.forceSync(currentEmployee.id);
+      }
+
+      this.nextPeriodicSyncAt = Date.now() + this.periodicSyncMs;
+
+      if (!skipPull) {
+        await ApiSyncService.syncFromBackend(currentEmployee.id, undefined, {
+          skipSyncQueue: true,
+          realtimePullThrottle: true,
+        });
+      }
+    } catch (error) {
+      debugWarn('⚠️ SyncIntegration: Periodic sync error:', error);
     }
   }
 
@@ -380,7 +510,7 @@ export class SyncIntegrationService {
     for (const operation of operations) {
       try {
         const endpoint = this.getDeleteEndpoint(entityType, operation.data.id);
-        const response = await fetch(endpoint, { method: 'DELETE' });
+        const response = await ApiSyncService.authenticatedDelete(endpoint);
         
         if (!response.ok) {
           throw new Error(`Delete failed: ${response.statusText}`);
@@ -523,12 +653,19 @@ export class SyncIntegrationService {
     isProcessing: boolean;
     autoSyncEnabled: boolean;
     nextSyncIn: number;
+    syncInterval: SyncInterval;
   } {
+    const nextFromDebounce = this.syncDebounceTimer ? this.syncDebounceMs : 0;
+    const nextFromPeriodic =
+      this.nextPeriodicSyncAt != null
+        ? Math.max(0, this.nextPeriodicSyncAt - Date.now())
+        : 0;
     return {
       queueLength: this.syncQueue.length,
       isProcessing: this.isProcessingQueue,
       autoSyncEnabled: this.autoSyncEnabled,
-      nextSyncIn: this.syncDebounceTimer ? this.SYNC_DEBOUNCE_MS : 0
+      nextSyncIn: nextFromDebounce > 0 ? nextFromDebounce : nextFromPeriodic,
+      syncInterval: this.syncInterval,
     };
   }
 

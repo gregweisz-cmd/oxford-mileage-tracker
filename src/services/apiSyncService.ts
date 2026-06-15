@@ -90,6 +90,11 @@ export class ApiSyncService {
     return response;
   }
 
+  /** Authenticated DELETE for sync queue delete operations. */
+  static async authenticatedDelete(url: string): Promise<Response> {
+    return this.authenticatedFetch(url, { method: 'DELETE' });
+  }
+
   /** For thrown sync errors when `response.ok` is false (prefers JSON `error` field). */
   private static formatHttpFailure(response: Response, bodyText: string): string {
     const status = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;

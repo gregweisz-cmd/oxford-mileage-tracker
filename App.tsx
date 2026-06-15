@@ -15,6 +15,7 @@ import GlobalGpsStopButton from './src/components/GlobalGpsStopButton';
 import GlobalGpsReturnButton from './src/components/GlobalGpsReturnButton';
 import { useGpsTracking } from './src/contexts/GpsTrackingContext';
 import { AppInitializer } from './src/services/appInitializer';
+import { SyncIntegrationService } from './src/services/syncIntegrationService';
 import { OtaUpdatePromptService } from './src/services/otaUpdatePromptService';
 import { DatabaseService } from './src/services/database';
 // Removed: Using backend employee data only
@@ -210,6 +211,8 @@ export default function App() {
       } else {
         console.log('⏭️ Setup Wizard already completed, skipping');
       }
+
+      void SyncIntegrationService.forceSync(freshEmployee.id);
     });
   };
 
