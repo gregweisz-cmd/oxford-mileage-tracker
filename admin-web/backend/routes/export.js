@@ -88,9 +88,11 @@ function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) 
     const prefix = ba === 'BA2' ? 'BA2' : 'BA';
     return baseAddr ? `${prefix} (${abbreviateForDisplay(baseAddr)})` : prefix;
   }
-  if (displayName && addr.toLowerCase() === displayName.toLowerCase()) return displayName;
   const abbr = abbreviateForDisplay(addr);
-  return displayName ? `${displayName} (${abbr})` : abbr;
+  if (displayName && addr.toLowerCase() === displayName.toLowerCase()) {
+    return `(${abbr})`;
+  }
+  return displayName ? `${displayName} (${abbr})` : `(${abbr})`;
 }
 
 // US state name -> 2-letter code for same-state checks (partial map of common ones).

@@ -3,7 +3,7 @@
  * Formats addresses for display in the application
  */
 
-import { looksLikeStreetAddress } from './locationName';
+import { looksLikeStreetAddress, formatAddressInParentheses } from './locationName';
 
 export interface AddressData {
   name?: string;
@@ -414,23 +414,23 @@ export function formatLocationNameAndAddress(
     return collapseDuplicateLocationText(addrOnly ? `${prefix} (${abbreviateAddressForDisplay(addrOnly)})` : prefix);
   }
 
-  // If "address" is the same as the name, don't show "Name (Name)" — show only the name
+  // If "address" is the same as the name, show (address) only.
   if (displayName && normalizeToken(addr) === normalizeToken(displayName)) {
-    return collapseDuplicateLocationText(displayName);
+    return collapseDuplicateLocationText(formatAddressInParentheses(abbreviateAddressForDisplay(addr)));
   }
 
-  // Street-number "names" (e.g. GPS geocode) should show address only.
+  // Street-number "names" (e.g. GPS geocode) should show (address) only.
   if (displayName && looksLikeStreetAddress(displayName) && addr.includes(',')) {
-    return collapseDuplicateLocationText(abbreviateAddressForDisplay(addr));
+    return collapseDuplicateLocationText(formatAddressInParentheses(abbreviateAddressForDisplay(addr)));
   }
 
   // If name is effectively an address label (same location with minor differences like "Road"/"Rd" or trailing "USA"),
-  // prefer a single address string instead of "Address (Address)".
+  // prefer (address) instead of "Address (Address)".
   if (displayName) {
     const nameKey = normalizeToken(displayName);
     const addrKey = normalizeToken(addr);
     if (nameKey && addrKey && (nameKey.includes(addrKey) || addrKey.includes(nameKey))) {
-      return collapseDuplicateLocationText(abbreviateAddressForDisplay(addr));
+      return collapseDuplicateLocationText(formatAddressInParentheses(abbreviateAddressForDisplay(addr)));
     }
   }
 
@@ -438,6 +438,6 @@ export function formatLocationNameAndAddress(
   if (displayName) {
     return collapseDuplicateLocationText(`${displayName} (${displayAddress})`);
   }
-  return collapseDuplicateLocationText(displayAddress);
+  return collapseDuplicateLocationText(formatAddressInParentheses(displayAddress));
 }
 

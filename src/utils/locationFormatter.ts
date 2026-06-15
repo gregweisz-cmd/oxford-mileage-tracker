@@ -1,5 +1,5 @@
 import { MileageEntry, LocationDetails } from '../types';
-import { sanitizeLocationName } from './locationName';
+import { sanitizeLocationName, formatAddressInParentheses } from './locationName';
 
 /**
  * Consistent UI label: stored/API names may use "Base Address" while other paths use "BA".
@@ -30,7 +30,7 @@ export const formatLocation = (
     if (name && address) {
       result = `${name} (${address})`;
     } else if (address) {
-      result = address;
+      result = formatAddressInParentheses(address);
     } else if (name) {
       result = name;
     } else {
@@ -38,6 +38,8 @@ export const formatLocation = (
     }
   } else if (locationText.includes('(') && locationText.includes(')')) {
     result = locationText;
+  } else if (locationText.includes(',')) {
+    result = formatAddressInParentheses(locationText);
   } else {
     result = locationText;
   }

@@ -34,3 +34,10 @@ export function sanitizeLocationName(
 
   return trimmed;
 }
+
+export function formatAddressInParentheses(address: string): string {
+  const trimmed = (address || '').trim();
+  if (!trimmed) return '';
+  if (/^\([^)]+\)$/.test(trimmed)) return trimmed;
+  return `(${trimmed})`;
+}
