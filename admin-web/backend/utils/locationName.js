@@ -32,4 +32,11 @@ function sanitizeLocationName(name, address) {
   return trimmed;
 }
 
-module.exports = { sanitizeLocationName, looksLikeStreetAddress };
+function formatAddressInParentheses(address) {
+  const trimmed = String(address || '').trim();
+  if (!trimmed) return '';
+  if (/^\([^)]+\)$/.test(trimmed)) return trimmed;
+  return `(${trimmed})`;
+}
+
+module.exports = { sanitizeLocationName, looksLikeStreetAddress, formatAddressInParentheses };

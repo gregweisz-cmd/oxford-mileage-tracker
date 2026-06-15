@@ -441,3 +441,17 @@ export function formatLocationNameAndAddress(
   return collapseDuplicateLocationText(formatAddressInParentheses(displayAddress));
 }
 
+/** Staff Portal / tables: always apply Name (address) or (address); never bare address. */
+export function formatMileageLocationForDisplay(
+  name: string | undefined,
+  address: string,
+  baseAddress?: string,
+  baseAddress2?: string
+): string {
+  const formatted = formatLocationNameAndAddress(name, address, baseAddress, baseAddress2);
+  if (formatted) return formatted;
+  const addr = (address || '').trim();
+  if (addr) return formatAddressInParentheses(addr);
+  return (name || '').trim() || 'N/A';
+}
+

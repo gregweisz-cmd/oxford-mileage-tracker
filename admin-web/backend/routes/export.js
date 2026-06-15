@@ -75,25 +75,7 @@ function abbreviateForDisplay(addr) {
   });
   return s.trim();
 }
-function formatLocationNameAndAddress(name, address, baseAddress, baseAddress2) {
-  const addr = (address || '').trim();
-  const displayName = (name || '').trim();
-  if (!addr) return displayName || '';
-  const ba = getBaseAddressLabel(addr, baseAddress, baseAddress2);
-  const nameIsBase = /^(ba|base address|base|home base)\s*$/i.test(displayName);
-  if (ba || nameIsBase) {
-    let baseAddr = (ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
-    const paren = (baseAddr || '').match(/\(([^)]+)\)/);
-    if (paren) baseAddr = paren[1].trim();
-    const prefix = ba === 'BA2' ? 'BA2' : 'BA';
-    return baseAddr ? `${prefix} (${abbreviateForDisplay(baseAddr)})` : prefix;
-  }
-  const abbr = abbreviateForDisplay(addr);
-  if (displayName && addr.toLowerCase() === displayName.toLowerCase()) {
-    return `(${abbr})`;
-  }
-  return displayName ? `${displayName} (${abbr})` : `(${abbr})`;
-}
+const { formatLocationNameAndAddress } = require('../utils/locationDisplay');
 
 // US state name -> 2-letter code for same-state checks (partial map of common ones).
 const STATE_NAME_TO_CODE = {

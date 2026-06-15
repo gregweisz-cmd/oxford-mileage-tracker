@@ -82,7 +82,7 @@ import { DashboardNotifications } from './components/DashboardNotifications';
 import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistoryEntry } from './components/EmployeeApprovalStatusCard';
 
 // Address formatting utility
-import { formatLocationNameAndAddress } from './utils/addressFormatter';
+import { formatLocationNameAndAddress, formatMileageLocationForDisplay } from './utils/addressFormatter';
 import { parseCalendarYearMonthFromStoredDate, parseCalendarYmdParts, formatStoredDateForDisplay, defaultDateForReport } from './utils/calendarDate';
 import { computeStaffPortalRevisionTabIndex } from './utils/revisionTabNavigation';
 import { isPendingApprovalStatus, isStaffReportEditable } from './utils/reportEditability';
@@ -7249,10 +7249,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                         : endAddrRaw;
                       const startLocation = startAddr.toLowerCase().includes('odometer:')
                         ? (entry.startLocationName || 'N/A')
-                        : (formatLocationNameAndAddress(entry.startLocationName, startAddr, baseAddress, baseAddress2) || entry.startLocationName || startAddr || 'N/A');
+                        : formatMileageLocationForDisplay(entry.startLocationName, startAddr, baseAddress, baseAddress2);
                       const endLocation = endAddr.toLowerCase().includes('odometer:')
                         ? (entry.endLocationName || 'N/A')
-                        : (formatLocationNameAndAddress(entry.endLocationName, endAddr, baseAddress, baseAddress2) || entry.endLocationName || endAddr || 'N/A');
+                        : formatMileageLocationForDisplay(entry.endLocationName, endAddr, baseAddress, baseAddress2);
                       
                       return (
                         <React.Fragment key={entry.id}>

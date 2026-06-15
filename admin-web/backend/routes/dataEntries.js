@@ -21,6 +21,7 @@ const { checkAndNotify50PlusHours } = require('../services/notificationService')
 const websocketService = require('../services/websocketService');
 const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
 const { sanitizeLocationName } = require('../utils/locationName');
+const { formatLocationNameAndAddress } = require('../utils/locationDisplay');
 const { enrichAddressIfNeeded } = require('../utils/addressEnrichment');
 const { resolveSuggestedStartingOdometer } = require('../utils/odometerSuggestion');
 const {
@@ -256,12 +257,16 @@ router.post('/api/mileage-entries', (req, res) => {
     const baseAddress2 = (employee && employee.baseAddress2) ? String(employee.baseAddress2) : '';
     const normStart = normalizeLocationForStorage(normalizedStartLocationName, normalizedStartLocationAddress, baseAddress, baseAddress2);
     const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
-    const finalStartLocation = normStart ? normStart.display : (startLocation || '');
     const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
     let finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
-    const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
     const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
     let finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
+    const finalStartLocation =
+      formatLocationNameAndAddress(finalStartName, finalStartAddr, baseAddress, baseAddress2) ||
+      (normStart ? normStart.display : (startLocation || ''));
+    const finalEndLocation =
+      formatLocationNameAndAddress(finalEndName, finalEndAddr, baseAddress, baseAddress2) ||
+      (normEnd ? normEnd.display : (endLocation || ''));
 
   // Check if entry with this ID already exists
   db.get('SELECT id, sortOrder FROM mileage_entries WHERE id = ?', [entryId], async (checkErr, existingRow) => {
@@ -407,12 +412,16 @@ router.put('/api/mileage-entries/:id', (req, res) => {
     const baseAddress2 = (employee && employee.baseAddress2) ? String(employee.baseAddress2) : '';
     const normStart = normalizeLocationForStorage(normalizedStartLocationName, normalizedStartLocationAddress, baseAddress, baseAddress2);
     const normEnd = normalizeLocationForStorage(normalizedEndLocationName, normalizedEndLocationAddress, baseAddress, baseAddress2);
-    const finalStartLocation = normStart ? normStart.display : (startLocation || '');
     const finalStartName = normStart ? normStart.name : normalizedStartLocationName;
     let finalStartAddr = normStart ? normStart.address : normalizeAddressLine(normalizedStartLocationAddress);
-    const finalEndLocation = normEnd ? normEnd.display : (endLocation || '');
     const finalEndName = normEnd ? normEnd.name : normalizedEndLocationName;
     let finalEndAddr = normEnd ? normEnd.address : normalizeAddressLine(normalizedEndLocationAddress);
+    const finalStartLocation =
+      formatLocationNameAndAddress(finalStartName, finalStartAddr, baseAddress, baseAddress2) ||
+      (normStart ? normStart.display : (startLocation || ''));
+    const finalEndLocation =
+      formatLocationNameAndAddress(finalEndName, finalEndAddr, baseAddress, baseAddress2) ||
+      (normEnd ? normEnd.display : (endLocation || ''));
 
   (async () => {
     try {
