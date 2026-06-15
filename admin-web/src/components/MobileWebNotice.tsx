@@ -13,7 +13,7 @@ import AndroidIcon from '@mui/icons-material/Android';
 import OpenInBrowserIcon from '@mui/icons-material/OpenInBrowser';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import { MOBILE_APP_LINKS } from '../config/mobileAppLinks';
-import { getMobilePlatform } from '../utils/mobileDetection';
+import { getMobilePlatform, setMobileWebPortalAsDeviceDefault } from '../utils/mobileDetection';
 
 interface MobileWebNoticeProps {
   onContinue: () => void;
@@ -28,6 +28,11 @@ const MobileWebNotice: React.FC<MobileWebNoticeProps> = ({
   const platform = getMobilePlatform();
   const continueLabel =
     variant === 'login' ? 'Continue to sign in on web' : 'Continue to web portal';
+
+  const handleSetDeviceDefault = () => {
+    setMobileWebPortalAsDeviceDefault();
+    onContinue();
+  };
 
   return (
     <Container component="main" maxWidth="sm" sx={{ px: 2 }}>
@@ -115,9 +120,22 @@ const MobileWebNotice: React.FC<MobileWebNoticeProps> = ({
           </Typography>
         </Paper>
 
-        <Typography variant="caption" color="text.secondary" align="center" sx={{ mt: 3 }}>
-          On a computer? Add <code>?desktop=1</code> to the URL to skip this screen.
-        </Typography>
+        <Button
+          variant="text"
+          color="inherit"
+          fullWidth
+          onClick={handleSetDeviceDefault}
+          sx={{
+            mt: 2,
+            textTransform: 'none',
+            color: 'text.secondary',
+            fontSize: '0.875rem',
+            lineHeight: 1.4,
+            py: 1,
+          }}
+        >
+          Set this device default to load web portal
+        </Button>
       </Box>
     </Container>
   );
