@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   Alert,
   Image,
@@ -694,6 +695,118 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     );
   };
 
+  const renderReceiptItem = useCallback(
+    ({ item: receipt }: { item: Receipt }) => (
+      <View
+        style={[
+          styles.receiptCard,
+          multiSelectMode && selectedReceiptIds.has(receipt.id) && styles.receiptCardSelected,
+        ]}
+      >
+        {multiSelectMode && (
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => toggleReceiptSelection(receipt.id)}
+          >
+            <MaterialIcons
+              name={selectedReceiptIds.has(receipt.id) ? 'check-box' : 'check-box-outline-blank'}
+              size={24}
+              color={selectedReceiptIds.has(receipt.id) ? '#2196F3' : '#ccc'}
+            />
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={styles.receiptImageContainer}
+          onPress={() =>
+            multiSelectMode ? toggleReceiptSelection(receipt.id) : viewReceiptImage(receipt)
+          }
+        >
+          {imageErrors.has(receipt.id) || !receipt.imageUri ? (
+            <View style={[styles.receiptThumbnail, styles.imagePlaceholder]}>
+              <MaterialIcons name="receipt" size={30} color="#999" />
+            </View>
+          ) : receipt.fileType === 'pdf' ? (
+            <View
+              style={[
+                styles.receiptThumbnail,
+                { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' },
+              ]}
+            >
+              <MaterialIcons name="picture-as-pdf" size={40} color="#F44336" />
+            </View>
+          ) : (
+            <Image
+              source={{ uri: resolveImageUri(receipt.imageUri) }}
+              style={styles.receiptThumbnail}
+              onError={() => handleImageError(receipt.id)}
+              onLoad={() => handleImageLoad(receipt.id)}
+            />
+          )}
+          <View style={styles.imageOverlay}>
+            <MaterialIcons name="zoom-in" size={20} color="#fff" />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.receiptInfo}
+          onPress={() => viewReceiptDetails(receipt)}
+        >
+          <View style={styles.receiptHeader}>
+            <Text style={styles.receiptVendor} numberOfLines={1} ellipsizeMode="tail">
+              {receipt.vendor}
+            </Text>
+            <Text style={styles.receiptAmount}>${receipt.amount.toFixed(2)}</Text>
+          </View>
+
+          <Text style={styles.receiptDescription}>
+            {sanitizeSplitDescription(receipt.description)}
+          </Text>
+
+          <View style={styles.receiptDetails}>
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryText}>{receipt.category}</Text>
+            </View>
+            <Text style={styles.receiptDate}>{formatDate(receipt.date)}</Text>
+          </View>
+
+          {receipt.costCenter && (
+            <View style={styles.costCenterBadge}>
+              <MaterialIcons name="business" size={14} color="#2196F3" />
+              <Text style={styles.costCenterText}>{receipt.costCenter}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {!multiSelectMode &&
+          (isPerDiemReceipt(receipt) ? (
+            <View style={styles.perDiemLockedBadge}>
+              <MaterialIcons name="lock" size={14} color="#757575" />
+              <Text style={styles.perDiemLockedText}>Per Diem</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => deleteReceipt(receipt)}
+            >
+              <MaterialIcons name="delete" size={20} color="#f44336" />
+            </TouchableOpacity>
+          ))}
+      </View>
+    ),
+    [
+      multiSelectMode,
+      selectedReceiptIds,
+      imageErrors,
+      toggleReceiptSelection,
+      viewReceiptImage,
+      viewReceiptDetails,
+      deleteReceipt,
+    ]
+  );
+
+  const receiptKeyExtractor = useCallback((receipt: Receipt) => receipt.id, []);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -717,13 +830,21 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
         rightButton={multiSelectMode ? { icon: 'delete', onPress: deleteSelectedReceipts } : undefined}
       />
 
-      <ScrollView
+      <FlatList
         style={styles.content}
+        data={receipts}
+        keyExtractor={receiptKeyExtractor}
+        renderItem={renderReceiptItem}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={7}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefreshFromServer} />
         }
-      >
+        ListHeaderComponent={
+          <>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
@@ -992,116 +1113,32 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
           </View>
         )}
 
-        {/* Receipts List */}
         <View style={styles.receiptsContainer}>
-          {!multiSelectMode && <Text style={styles.sectionTitle}>All Receipts</Text>}
-          
-          {receipts.length === 0 ? (
+          {!multiSelectMode && receipts.length > 0 && (
+            <Text style={styles.sectionTitle}>All Receipts</Text>
+          )}
+        </View>
+          </>
+        }
+        ListEmptyComponent={
+          <View style={styles.receiptsContainer}>
             <View style={styles.emptyState}>
               <MaterialIcons name="receipt" size={48} color="#ccc" />
               <Text style={styles.emptyStateText}>
-                {hasActiveFilters || searchQuery.trim() 
-                  ? 'No receipts found matching your filters' 
+                {hasActiveFilters || searchQuery.trim()
+                  ? 'No receipts found matching your filters'
                   : 'No receipts added yet'}
               </Text>
               <Text style={styles.emptyStateSubtext}>
-                {hasActiveFilters || searchQuery.trim() 
-                  ? 'Try adjusting your filters or search terms' 
+                {hasActiveFilters || searchQuery.trim()
+                  ? 'Try adjusting your filters or search terms'
                   : 'Tap the + button to add your first receipt'}
               </Text>
             </View>
-          ) : (
-            receipts.map((receipt) => (
-              <View key={receipt.id} style={[
-                styles.receiptCard,
-                multiSelectMode && selectedReceiptIds.has(receipt.id) && styles.receiptCardSelected
-              ]}>
-                {multiSelectMode && (
-                  <TouchableOpacity
-                    style={styles.checkboxContainer}
-                    onPress={() => toggleReceiptSelection(receipt.id)}
-                  >
-                    <MaterialIcons
-                      name={selectedReceiptIds.has(receipt.id) ? "check-box" : "check-box-outline-blank"}
-                      size={24}
-                      color={selectedReceiptIds.has(receipt.id) ? "#2196F3" : "#ccc"}
-                    />
-                  </TouchableOpacity>
-                )}
-                
-                <TouchableOpacity
-                  style={styles.receiptImageContainer}
-                  onPress={() => multiSelectMode ? toggleReceiptSelection(receipt.id) : viewReceiptImage(receipt)}
-                >
-                  {imageErrors.has(receipt.id) || !receipt.imageUri ? (
-                    <View style={[styles.receiptThumbnail, styles.imagePlaceholder]}>
-                      <MaterialIcons name="receipt" size={30} color="#999" />
-                    </View>
-                  ) : receipt.fileType === 'pdf' ? (
-                    <View style={[styles.receiptThumbnail, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
-                      <MaterialIcons name="picture-as-pdf" size={40} color="#F44336" />
-                    </View>
-                  ) : (
-                    <Image 
-                      source={{ uri: resolveImageUri(receipt.imageUri) }} 
-                      style={styles.receiptThumbnail}
-                      onError={() => handleImageError(receipt.id)}
-                      onLoad={() => handleImageLoad(receipt.id)}
-                    />
-                  )}
-                  <View style={styles.imageOverlay}>
-                    <MaterialIcons name="zoom-in" size={20} color="#fff" />
-                  </View>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={styles.receiptInfo}
-                  onPress={() => viewReceiptDetails(receipt)}
-                >
-                  <View style={styles.receiptHeader}>
-                    <Text style={styles.receiptVendor} numberOfLines={1} ellipsizeMode="tail">
-                      {receipt.vendor}
-                    </Text>
-                    <Text style={styles.receiptAmount}>${receipt.amount.toFixed(2)}</Text>
-                  </View>
-                  
-                  <Text style={styles.receiptDescription}>{sanitizeSplitDescription(receipt.description)}</Text>
-                  
-                  <View style={styles.receiptDetails}>
-                    <View style={styles.categoryBadge}>
-                      <Text style={styles.categoryText}>{receipt.category}</Text>
-                    </View>
-                    <Text style={styles.receiptDate}>{formatDate(receipt.date)}</Text>
-                  </View>
-                  
-                  {receipt.costCenter && (
-                    <View style={styles.costCenterBadge}>
-                      <MaterialIcons name="business" size={14} color="#2196F3" />
-                      <Text style={styles.costCenterText}>{receipt.costCenter}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                {!multiSelectMode && (
-                  isPerDiemReceipt(receipt) ? (
-                    <View style={styles.perDiemLockedBadge}>
-                      <MaterialIcons name="lock" size={14} color="#757575" />
-                      <Text style={styles.perDiemLockedText}>Per Diem</Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => deleteReceipt(receipt)}
-                    >
-                      <MaterialIcons name="delete" size={20} color="#f44336" />
-                    </TouchableOpacity>
-                  )
-                )}
-              </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
+          </View>
+        }
+        contentContainerStyle={styles.receiptsListContent}
+      />
 
       {/* Image Modal */}
       <Modal
@@ -1500,6 +1537,10 @@ const styles = StyleSheet.create({
   },
   receiptsContainer: {
     marginBottom: 20,
+  },
+  receiptsListContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
   emptyState: {
     alignItems: 'center',

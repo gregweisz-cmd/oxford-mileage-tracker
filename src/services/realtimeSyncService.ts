@@ -40,6 +40,7 @@ export interface ErrorMessage {
 
 export type WebSocketEventType = 
   | 'data_update'
+  | 'sync_complete'
   | 'notification'
   | 'connection_established'
   | 'heartbeat_response'
@@ -81,6 +82,7 @@ export class RealtimeSyncService {
     // Initialize event listener maps
     const eventTypes: WebSocketEventType[] = [
       'data_update',
+      'sync_complete',
       'notification', 
       'connection_established',
       'heartbeat_response',
@@ -272,6 +274,7 @@ export class RealtimeSyncService {
           skipSyncQueue: true,
           realtimePullThrottle: true
         });
+        this.notifySyncComplete();
       } catch (error) {
         console.error('❌ Error syncing after real-time update:', error);
       } finally {
@@ -316,6 +319,10 @@ export class RealtimeSyncService {
     
     // Exponential backoff
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+  }
+
+  public notifySyncComplete(): void {
+    this.emit('sync_complete', { timestamp: new Date().toISOString() });
   }
 
   public disconnect(): void {

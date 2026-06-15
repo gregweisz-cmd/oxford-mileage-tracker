@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   Alert,
 } from 'react-native';
@@ -117,6 +117,52 @@ export default function MileageEntriesScreen({ navigation, route }: MileageEntri
       year: 'numeric',
     });
 
+  const renderEntry = useCallback(
+    ({ item: entry }: { item: MileageEntry }) => (
+      <View style={styles.entryCard}>
+        <View style={styles.entryInfo}>
+          <Text style={styles.entryDate}>
+            {entry.date.toLocaleDateString()}
+          </Text>
+          <Text style={styles.entryRoute}>{formatLocationRoute(entry)}</Text>
+          <Text style={styles.entryPurpose}>{entry.purpose}</Text>
+          <Text style={styles.entryMiles}>{entry.miles.toFixed(1)} mi</Text>
+          {entry.isGpsTracked && (
+            <View style={styles.gpsBadge}>
+              <MaterialIcons name="gps-fixed" size={12} color="#4CAF50" />
+              <Text style={styles.gpsText}>GPS Tracked</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.entryActions}>
+          <TouchableOpacity onPress={() => handleEditEntry(entry.id)}>
+            <MaterialIcons name="edit" size={20} color="#2196F3" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleDeleteEntry(entry.id)}>
+            <MaterialIcons name="delete" size={20} color="#f44336" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    ),
+    [navigation]
+  );
+
+  const keyExtractor = useCallback((entry: MileageEntry) => entry.id, []);
+
+  const listEmpty = loading ? (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyStateText}>Loading entries...</Text>
+    </View>
+  ) : (
+    <View style={styles.emptyState}>
+      <MaterialIcons name="directions-car" size={48} color="#ccc" />
+      <Text style={styles.emptyStateText}>No mileage entries this month</Text>
+      <Text style={styles.emptyStateSubtext}>
+        Add an entry to see it here
+      </Text>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       <UnifiedHeader
@@ -141,48 +187,19 @@ export default function MileageEntriesScreen({ navigation, route }: MileageEntri
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>Loading entries...</Text>
-          </View>
-        ) : entries.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MaterialIcons name="directions-car" size={48} color="#ccc" />
-            <Text style={styles.emptyStateText}>No mileage entries this month</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Add an entry to see it here
-            </Text>
-          </View>
-        ) : (
-          entries.map((entry) => (
-            <View key={entry.id} style={styles.entryCard}>
-              <View style={styles.entryInfo}>
-                <Text style={styles.entryDate}>
-                  {entry.date.toLocaleDateString()}
-                </Text>
-                <Text style={styles.entryRoute}>{formatLocationRoute(entry)}</Text>
-                <Text style={styles.entryPurpose}>{entry.purpose}</Text>
-                <Text style={styles.entryMiles}>{entry.miles.toFixed(1)} mi</Text>
-                {entry.isGpsTracked && (
-                  <View style={styles.gpsBadge}>
-                    <MaterialIcons name="gps-fixed" size={12} color="#4CAF50" />
-                    <Text style={styles.gpsText}>GPS Tracked</Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.entryActions}>
-                <TouchableOpacity onPress={() => handleEditEntry(entry.id)}>
-                  <MaterialIcons name="edit" size={20} color="#2196F3" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteEntry(entry.id)}>
-                  <MaterialIcons name="delete" size={20} color="#f44336" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
+      <FlatList
+        style={styles.content}
+        contentContainerStyle={entries.length === 0 ? styles.contentEmpty : styles.contentList}
+        data={loading ? [] : entries}
+        keyExtractor={keyExtractor}
+        renderItem={renderEntry}
+        ListEmptyComponent={listEmpty}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+      />
     </View>
   );
 }
@@ -194,6 +211,12 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentList: {
+    padding: 16,
+  },
+  contentEmpty: {
+    flexGrow: 1,
     padding: 16,
   },
   monthNav: {
@@ -218,51 +241,52 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#eee',
+    alignItems: 'flex-start',
   },
   entryInfo: {
     flex: 1,
     marginRight: 12,
   },
   entryDate: {
-    fontSize: 13,
-    color: '#666',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 4,
   },
   entryRoute: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
   },
   entryPurpose: {
     fontSize: 13,
-    color: '#666',
-    marginTop: 4,
+    color: '#888',
+    marginBottom: 4,
   },
   entryMiles: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: 'bold',
     color: '#2196F3',
-    fontWeight: '600',
-    marginTop: 6,
   },
   gpsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
-    gap: 4,
+    marginTop: 4,
   },
   gpsText: {
     fontSize: 11,
     color: '#4CAF50',
-    fontWeight: '600',
+    marginLeft: 4,
   },
   entryActions: {
-    justifyContent: 'space-between',
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
   },
   emptyState: {
     alignItems: 'center',
-    marginTop: 40,
+    justifyContent: 'center',
+    paddingVertical: 48,
   },
   emptyStateText: {
     fontSize: 16,
@@ -270,8 +294,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   emptyStateSubtext: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#999',
-    marginTop: 6,
+    marginTop: 4,
   },
 });

@@ -273,6 +273,8 @@ export class SyncIntegrationService {
   }
 
   private static lastSyncOnActiveTime = 0;
+  private static lastBackendPullTime = 0;
+  private static readonly FOREGROUND_PULL_STALE_MS = 120000;
   /** iOS: shorter interval so returning from multitasking still pulls/pushes without waiting 30s. */
   private static readonly MIN_SYNC_INTERVAL_MS_IOS = 15000;
   private static readonly MIN_SYNC_INTERVAL_MS_DEFAULT = 30000;
@@ -305,13 +307,34 @@ export class SyncIntegrationService {
       }
       
       this.lastSyncOnActiveTime = now;
-      debugLog('🔄 SyncIntegration: App foregrounded (push then pull)');
+      debugLog('🔄 SyncIntegration: App foregrounded (flush pending, pull if stale)');
       await this.flushPendingSync();
-      await this.runPeriodicSync(true);
+
+      const pullStale = now - this.lastBackendPullTime > this.FOREGROUND_PULL_STALE_MS;
+      if (!pullStale) {
+        debugLog('🔄 SyncIntegration: Skipping foreground pull (recent pull)');
+        return;
+      }
+
+      const isConnected = await ApiSyncService.testConnection();
+      if (!isConnected) {
+        return;
+      }
+
       await ApiSyncService.syncFromBackend(currentEmployee.id, undefined, { skipSyncQueue: true });
+      this.lastBackendPullTime = Date.now();
+      const { default: RealtimeSyncService } = await import('./realtimeSyncService');
+      RealtimeSyncService.getInstance().notifySyncComplete();
     } catch (error) {
       debugWarn('⚠️ SyncIntegration: Error syncing on app foreground:', error);
     }
+  }
+
+  /**
+   * Flush debounced queue and process pending sync items (lighter than forceSync).
+   */
+  static async pushPendingChanges(): Promise<void> {
+    await this.flushPendingSync();
   }
 
   /**

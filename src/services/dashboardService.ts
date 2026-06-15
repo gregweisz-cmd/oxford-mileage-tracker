@@ -1,7 +1,6 @@
 /**
  * Dashboard Service
- * Uses backend as source of truth for dashboard tiles so numbers match the web portal
- * and Hours & Description page. Falls back to local DB if backend is unavailable.
+ * Local-first for responsive Home UI; optional background refresh from backend.
  */
 
 import { DatabaseService } from './database';
@@ -10,155 +9,195 @@ import { BackendDataService } from './backendDataService';
 import { MileageEntry, Receipt } from '../types';
 import { UnifiedDayData } from './unifiedDataService';
 
+export type DashboardStats = {
+  recentMileageEntries: MileageEntry[];
+  recentReceipts: Receipt[];
+  monthlyStats: {
+    totalMiles: number;
+    totalHours: number;
+    totalReceipts: number;
+    totalPerDiemReceipts: number;
+    mileageEntries: MileageEntry[];
+    receipts: Receipt[];
+  };
+};
+
+const emptyDashboardStats = (month: number, year: number): DashboardStats => ({
+  recentMileageEntries: [],
+  recentReceipts: [],
+  monthlyStats: {
+    totalMiles: 0,
+    totalHours: 0,
+    totalReceipts: 0,
+    totalPerDiemReceipts: 0,
+    mileageEntries: [],
+    receipts: [],
+  },
+});
+
+function monthYearOrNow(month?: number, year?: number): { month: number; year: number } {
+  const now = new Date();
+  return {
+    month: month || now.getMonth() + 1,
+    year: year || now.getFullYear(),
+  };
+}
+
 export class DashboardService {
   /**
-   * Get dashboard stats from backend so tiles match web portal and Hours & Description.
-   * Falls back to local DB (UnifiedDataService) if backend request fails.
+   * Fast path: SQLite / UnifiedDataService only (no network).
    */
-  static async getDashboardStats(employeeId: string, month?: number, year?: number): Promise<{
-    recentMileageEntries: MileageEntry[];
-    recentReceipts: Receipt[];
-    monthlyStats: {
-      totalMiles: number;
-      totalHours: number;
-      totalReceipts: number;
-      totalPerDiemReceipts: number;
-      mileageEntries: MileageEntry[];
-      receipts: Receipt[];
-    };
-  }> {
-    const now = new Date();
-    const selectedMonth = month || now.getMonth() + 1;
-    const selectedYear = year || now.getFullYear();
-
-    const emptyResult = {
-      recentMileageEntries: [] as MileageEntry[],
-      recentReceipts: [] as Receipt[],
-      monthlyStats: {
-        totalMiles: 0,
-        totalHours: 0,
-        totalReceipts: 0,
-        totalPerDiemReceipts: 0,
-        mileageEntries: [] as MileageEntry[],
-        receipts: [] as Receipt[]
-      }
-    };
+  static async getDashboardStatsFromLocal(
+    employeeId: string,
+    month?: number,
+    year?: number
+  ): Promise<DashboardStats> {
+    const { month: selectedMonth, year: selectedYear } = monthYearOrNow(month, year);
 
     try {
-      // Prefer backend so dashboard matches web portal and Hours & Description page
-      const monthlyData = await BackendDataService.getMonthData(employeeId, selectedMonth, selectedYear);
-      let result = this.aggregateMonthDataToDashboardStats(monthlyData);
-      // If backend returned no mileage (e.g. one request failed in allSettled), fill from local
-      // so Recent Entries, Monthly Mileage Summary, and Recent Activity show data until next full sync.
-      if (result.recentMileageEntries.length === 0 && result.monthlyStats.totalMiles === 0) {
-        const localMileage = await DatabaseService.getMileageEntries(employeeId);
-        const inMonth = localMileage.filter(e => {
-          const d = new Date(e.date);
-          return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
-        });
-        const totalMiles = inMonth.reduce((s, e) => s + e.miles, 0);
-        const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
-          new Date(b.date).getTime() - new Date(a.date).getTime();
-        const recentMileageEntries = [...inMonth].sort(byDateDesc).slice(0, 5);
-        result = {
-          ...result,
-          recentMileageEntries,
-          monthlyStats: {
-            ...result.monthlyStats,
-            totalMiles,
-            mileageEntries: inMonth
-          }
-        };
-      }
-      // If backend returned no receipts for recent list, fill from local for the month
-      if (result.recentReceipts.length === 0 && result.monthlyStats.receipts.length === 0) {
-        const localReceipts = await DatabaseService.getReceipts(employeeId);
-        const inMonth = localReceipts.filter(r => {
-          const d = new Date(r.date);
-          return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
-        });
-        const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
-          new Date(b.date).getTime() - new Date(a.date).getTime();
-        const recentReceipts = [...inMonth].sort(byDateDesc).slice(0, 5);
-        const totalReceipts = inMonth.filter(r => r.category !== 'Per Diem').reduce((s, r) => s + r.amount, 0);
-        const totalPerDiemReceipts = inMonth.filter(r => r.category === 'Per Diem').reduce((s, r) => s + r.amount, 0);
-        result = {
-          ...result,
-          recentReceipts,
-          monthlyStats: {
-            ...result.monthlyStats,
-            totalReceipts,
-            totalPerDiemReceipts: result.monthlyStats.totalPerDiemReceipts || totalPerDiemReceipts,
-            receipts: inMonth
-          }
-        };
-      }
-      return result;
-    } catch (backendError) {
-      console.warn('⚠️ DashboardService: Backend failed, using local data:', backendError);
-      try {
-        const [recentMileageEntries, recentReceipts] = await Promise.all([
-          DatabaseService.getMileageEntries(employeeId),
-          DatabaseService.getReceipts(employeeId)
-        ]);
-        const monthlySummary = await UnifiedDataService.getDashboardSummary(employeeId, selectedMonth, selectedYear);
-        const monthlyData = await UnifiedDataService.getMonthData(employeeId, selectedMonth, selectedYear);
-        const monthlyMileageEntries: MileageEntry[] = [];
-        const monthlyReceipts: Receipt[] = [];
-        monthlyData.forEach((day: { mileageEntries?: MileageEntry[]; receipts?: Receipt[] }) => {
-          monthlyMileageEntries.push(...(day.mileageEntries || []));
-          monthlyReceipts.push(...(day.receipts || []));
-        });
-        return {
-          recentMileageEntries: recentMileageEntries.slice(0, 5),
-          recentReceipts: recentReceipts.slice(0, 5),
-          monthlyStats: {
-            totalMiles: monthlySummary.totalMiles,
-            totalHours: monthlySummary.totalHours,
-            totalReceipts: monthlySummary.totalReceipts,
-            totalPerDiemReceipts: monthlySummary.totalPerDiemReceipts || 0,
-            mileageEntries: monthlyMileageEntries,
-            receipts: monthlyReceipts
-          }
-        };
-      } catch (localError) {
-        console.error('❌ DashboardService: Error getting dashboard stats:', localError);
-        return emptyResult;
-      }
+      const [recentMileageEntries, recentReceipts] = await Promise.all([
+        DatabaseService.getMileageEntries(employeeId, selectedMonth, selectedYear),
+        DatabaseService.getReceipts(employeeId, selectedMonth, selectedYear),
+      ]);
+      const monthlySummary = await UnifiedDataService.getDashboardSummary(
+        employeeId,
+        selectedMonth,
+        selectedYear
+      );
+      const monthlyData = await UnifiedDataService.getMonthData(
+        employeeId,
+        selectedMonth,
+        selectedYear
+      );
+      const monthlyMileageEntries: MileageEntry[] = [];
+      const monthlyReceipts: Receipt[] = [];
+      monthlyData.forEach((day: { mileageEntries?: MileageEntry[]; receipts?: Receipt[] }) => {
+        monthlyMileageEntries.push(...(day.mileageEntries || []));
+        monthlyReceipts.push(...(day.receipts || []));
+      });
+
+      const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
+        new Date(b.date).getTime() - new Date(a.date).getTime();
+
+      return {
+        recentMileageEntries: [...recentMileageEntries].sort(byDateDesc).slice(0, 5),
+        recentReceipts: [...recentReceipts].sort(byDateDesc).slice(0, 5),
+        monthlyStats: {
+          totalMiles: monthlySummary.totalMiles,
+          totalHours: monthlySummary.totalHours,
+          totalReceipts: monthlySummary.totalReceipts,
+          totalPerDiemReceipts: monthlySummary.totalPerDiemReceipts || 0,
+          mileageEntries: monthlyMileageEntries,
+          receipts: monthlyReceipts,
+        },
+      };
+    } catch (error) {
+      console.error('❌ DashboardService: Error loading local dashboard stats:', error);
+      return emptyDashboardStats(selectedMonth, selectedYear);
     }
   }
 
   /**
-   * Aggregate BackendDataService.getMonthData() result into dashboard stats format.
+   * Network path: backend month APIs (matches web portal).
    */
-  private static aggregateMonthDataToDashboardStats(monthlyData: UnifiedDayData[]): {
-    recentMileageEntries: MileageEntry[];
-    recentReceipts: Receipt[];
-    monthlyStats: {
-      totalMiles: number;
-      totalHours: number;
-      totalReceipts: number;
-      totalPerDiemReceipts: number;
-      mileageEntries: MileageEntry[];
-      receipts: Receipt[];
-    };
-  } {
+  static async getDashboardStatsFromBackend(
+    employeeId: string,
+    month?: number,
+    year?: number
+  ): Promise<DashboardStats> {
+    const { month: selectedMonth, year: selectedYear } = monthYearOrNow(month, year);
+
+    const monthlyData = await BackendDataService.getMonthData(
+      employeeId,
+      selectedMonth,
+      selectedYear
+    );
+    let result = this.aggregateMonthDataToDashboardStats(monthlyData);
+
+    if (result.recentMileageEntries.length === 0 && result.monthlyStats.totalMiles === 0) {
+      const localMileage = await DatabaseService.getMileageEntries(
+        employeeId,
+        selectedMonth,
+        selectedYear
+      );
+      const totalMiles = localMileage.reduce((s, e) => s + e.miles, 0);
+      const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
+        new Date(b.date).getTime() - new Date(a.date).getTime();
+      const recentMileageEntries = [...localMileage].sort(byDateDesc).slice(0, 5);
+      result = {
+        ...result,
+        recentMileageEntries,
+        monthlyStats: {
+          ...result.monthlyStats,
+          totalMiles,
+          mileageEntries: localMileage,
+        },
+      };
+    }
+
+    if (result.recentReceipts.length === 0 && result.monthlyStats.receipts.length === 0) {
+      const localReceipts = await DatabaseService.getReceipts(
+        employeeId,
+        selectedMonth,
+        selectedYear
+      );
+      const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
+        new Date(b.date).getTime() - new Date(a.date).getTime();
+      const recentReceipts = [...localReceipts].sort(byDateDesc).slice(0, 5);
+      const totalReceipts = localReceipts
+        .filter((r) => r.category !== 'Per Diem')
+        .reduce((s, r) => s + r.amount, 0);
+      const totalPerDiemReceipts = localReceipts
+        .filter((r) => r.category === 'Per Diem')
+        .reduce((s, r) => s + r.amount, 0);
+      result = {
+        ...result,
+        recentReceipts,
+        monthlyStats: {
+          ...result.monthlyStats,
+          totalReceipts,
+          totalPerDiemReceipts: result.monthlyStats.totalPerDiemReceipts || totalPerDiemReceipts,
+          receipts: localReceipts,
+        },
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * @deprecated Prefer getDashboardStatsFromLocal + optional background getDashboardStatsFromBackend.
+   */
+  static async getDashboardStats(
+    employeeId: string,
+    month?: number,
+    year?: number
+  ): Promise<DashboardStats> {
+    const { month: selectedMonth, year: selectedYear } = monthYearOrNow(month, year);
+    try {
+      return await this.getDashboardStatsFromBackend(employeeId, selectedMonth, selectedYear);
+    } catch (backendError) {
+      console.warn('⚠️ DashboardService: Backend failed, using local data:', backendError);
+      return this.getDashboardStatsFromLocal(employeeId, selectedMonth, selectedYear);
+    }
+  }
+
+  private static aggregateMonthDataToDashboardStats(monthlyData: UnifiedDayData[]): DashboardStats {
     const totalHours = monthlyData.reduce((sum, day) => sum + day.totalHours, 0);
     const totalMiles = monthlyData.reduce((sum, day) => sum + day.totalMiles, 0);
     const mileageEntries: MileageEntry[] = [];
     const receipts: Receipt[] = [];
-    monthlyData.forEach(day => {
+    monthlyData.forEach((day) => {
       mileageEntries.push(...(day.mileageEntries || []));
       receipts.push(...(day.receipts || []));
     });
     const totalPerDiemReceipts = receipts
-      .filter(r => r.category === 'Per Diem')
+      .filter((r) => r.category === 'Per Diem')
       .reduce((sum, r) => sum + r.amount, 0);
     const totalReceipts = receipts
-      .filter(r => r.category !== 'Per Diem')
+      .filter((r) => r.category !== 'Per Diem')
       .reduce((sum, r) => sum + r.amount, 0);
 
-    // Recent: sort by date descending, take first 5
     const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
       new Date(b.date).getTime() - new Date(a.date).getTime();
     const recentMileageEntries = [...mileageEntries].sort(byDateDesc).slice(0, 5);
@@ -173,8 +212,8 @@ export class DashboardService {
         totalReceipts,
         totalPerDiemReceipts,
         mileageEntries,
-        receipts
-      }
+        receipts,
+      },
     };
   }
 }

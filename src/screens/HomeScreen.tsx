@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -11,14 +11,12 @@ import {
   TextInput,
   Platform,
   Linking,
-  AppState,
-  AppStateStatus,
   InteractionManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
-import { DashboardService } from '../services/dashboardService';
+import { DashboardService, DashboardStats } from '../services/dashboardService';
 import { PerDiemService } from '../services/perDiemService';
 import { PreferencesService } from '../services/preferencesService';
 import { DemoDataService } from '../services/demoDataService';
@@ -61,6 +59,8 @@ let homeScreenIsSyncing = false;
 // trigger full employee/mileage re-sync (caused iOS freezes).
 let homeInitialBackendSyncDone = false;
 
+const LOAD_EMPLOYEE_DATA_DEBOUNCE_MS = 300;
+
 function HomeScreen({ navigation, route }: HomeScreenProps) {
   const { colors, isDark } = useTheme();
   const [recentEntries, setRecentEntries] = useState<MileageEntry[]>([]);
@@ -98,10 +98,11 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const isRefreshingLocalRef = useRef(false);
   const isLoadingEmployeeDataRef = useRef(false);
   const realtimeListenersRegisteredRef = useRef(false);
-  const dataUpdateListenerRef = useRef<((data: any) => void) | null>(null);
+  const syncCompleteListenerRef = useRef<(() => void) | null>(null);
   const notificationListenerRef = useRef<((notification: any) => void) | null>(null);
   const connectionListenerRef = useRef<(() => void) | null>(null);
   const errorListenerRef = useRef<((error: any) => void) | null>(null);
+  const loadEmployeeDataDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isEditingTiles, setIsEditingTiles] = useState(false);
   const [dashboardTiles, setDashboardTiles] = useState<TileConfig[]>([]);
   
@@ -123,8 +124,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
   const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
   
-  // Generate dynamic styles based on theme
-  const dynamicStyles = StyleSheet.create({
+  // Generate dynamic styles based on theme (memoized — avoid recreating StyleSheet every render)
+  const dynamicStyles = useMemo(() => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
@@ -325,7 +326,25 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       marginLeft: 8,
       color: isDark ? '#90CAF9' : '#1976d2',
     },
-  });
+  }), [colors, isDark]);
+
+  const applyDashboardData = useCallback((dashboardData: DashboardStats) => {
+    setRecentEntries(dashboardData.recentMileageEntries);
+    setRecentReceipts(dashboardData.recentReceipts);
+    setTotalMilesThisMonth(dashboardData.monthlyStats.totalMiles);
+    setTotalHoursThisMonth(dashboardData.monthlyStats.totalHours);
+    setTotalReceiptsThisMonth(dashboardData.monthlyStats.totalReceipts);
+
+    const perDiemFromReceipts = dashboardData.monthlyStats.totalPerDiemReceipts || 0;
+    setPerDiemThisMonth(perDiemFromReceipts);
+
+    const expenseBreakdown = PerDiemService.getExpenseBreakdown(
+      dashboardData.monthlyStats.totalMiles,
+      dashboardData.monthlyStats.totalReceipts,
+      perDiemFromReceipts
+    );
+    setTotalExpensesThisMonth(expenseBreakdown.totalExpenses);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -428,12 +447,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     });
   }, [colors.primary, isDark]);
 
-  // Reload data when selected month/year changes
+  // Reload data when selected month/year changes (debounced, local-first)
   useEffect(() => {
     if (currentEmployee) {
-      loadEmployeeData(currentEmployee.id, currentEmployee);
+      scheduleLoadEmployeeData(currentEmployee.id, currentEmployee);
     }
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, currentEmployee?.id]);
 
   // When returning to this screen, refresh dashboard stats so tiles show latest data after sync.
   // Defer until after navigation transition — running refresh immediately can freeze iOS when returning from GPS.
@@ -448,17 +467,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }, [])
   );
 
-  // When app comes to foreground, refresh dashboard so stats stay in sync (e.g. after background sync).
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'active' && initialLoadDoneRef.current && currentEmployee?.id) {
-        loadEmployeeData(currentEmployee.id, currentEmployee);
-      }
-    });
-    return () => subscription.remove();
-  }, [currentEmployee?.id]);
 
-  // One-time tip after first login: explore the app, then use the web portal from a computer.
+  // Smart notifications state
   useEffect(() => {
     if (loading || !currentEmployee?.id) return;
     let cancelled = false;
@@ -503,7 +513,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       if (employee) {
         setCurrentEmployee(employee);
         setViewingEmployee(employee);
-        await loadEmployeeData(employee.id, employee);
+        await loadEmployeeData(employee.id, employee, { localOnly: true });
         // Check for smart notifications when refreshing
         await checkSmartNotifications(employee.id);
       }
@@ -521,10 +531,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
     const realtimeSync = RealtimeSyncService.getInstance();
 
-    dataUpdateListenerRef.current = (data: any) => {
-      console.log('📡 Real-time data update received:', data);
-      // Refresh dashboard data when updates are received
-      void loadEmployeeData(employee.id, employee);
+    syncCompleteListenerRef.current = () => {
+      void refreshLocalDataOnly();
     };
     notificationListenerRef.current = (notification: any) => {
       console.log('📢 Real-time notification received:', notification);
@@ -537,7 +545,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       console.error('❌ Real-time sync error:', error);
     };
 
-    realtimeSync.on('data_update', dataUpdateListenerRef.current);
+    realtimeSync.on('sync_complete', syncCompleteListenerRef.current);
     realtimeSync.on('notification', notificationListenerRef.current);
     realtimeSync.on('connection_established', connectionListenerRef.current);
     realtimeSync.on('error', errorListenerRef.current);
@@ -547,8 +555,8 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   useEffect(() => {
     return () => {
       const realtimeSync = RealtimeSyncService.getInstance();
-      if (dataUpdateListenerRef.current) {
-        realtimeSync.off('data_update', dataUpdateListenerRef.current);
+      if (syncCompleteListenerRef.current) {
+        realtimeSync.off('sync_complete', syncCompleteListenerRef.current);
       }
       if (notificationListenerRef.current) {
         realtimeSync.off('notification', notificationListenerRef.current);
@@ -559,17 +567,19 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       if (errorListenerRef.current) {
         realtimeSync.off('error', errorListenerRef.current);
       }
+      if (loadEmployeeDataDebounceRef.current) {
+        clearTimeout(loadEmployeeDataDebounceRef.current);
+      }
       realtimeListenersRegisteredRef.current = false;
     };
   }, []);
 
   /**
-   * After user save/delete: push local changes to backend, then refresh UI from local only.
-   * Backend is source of truth; we never pull immediately after a save (avoids overwriting what the user just did).
+   * After user save/delete: push queued changes, then refresh UI from local only.
    */
   const refreshAfterLocalChange = async () => {
     try {
-      await SyncIntegrationService.forceSync(currentEmployee?.id);
+      await SyncIntegrationService.pushPendingChanges();
       await refreshLocalDataOnly();
     } catch (error) {
       console.error('Error pushing changes and refreshing:', error);
@@ -593,7 +603,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       const syncResult = await ApiSyncService.syncFromBackend(employee.id, undefined, { skipSyncQueue: true });
       if (syncResult.success) {
         setLastSyncTime(new Date());
-        await loadEmployeeData(employee.id, employee);
+        await loadEmployeeData(employee.id, employee, { localOnly: true });
       } else {
         Alert.alert('Sync failed', syncResult.error || 'Could not reach server. Check connection and try again.');
       }
@@ -606,53 +616,72 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     }
   };
 
-  const loadEmployeeData = async (employeeId: string, employeeParam?: Employee) => {
+  type LoadEmployeeDataOptions = {
+    localOnly?: boolean;
+  };
+
+  const loadEmployeeData = async (
+    employeeId: string,
+    employeeParam?: Employee,
+    options: LoadEmployeeDataOptions = {}
+  ) => {
     // Prevent concurrent dashboard loads. iOS was freezing when multiple triggers
-    // (focus/appstate/realtime) fired close together after GPS completion.
+    // (focus/realtime) fired close together after GPS completion.
     if (isLoadingEmployeeDataRef.current) {
       return;
     }
     isLoadingEmployeeDataRef.current = true;
     try {
-      
-      // Use provided employee parameter or fall back to currentEmployee
       const employee = employeeParam || currentEmployee;
       if (!employee || employee.id !== employeeId) {
         console.error('Employee not found or ID mismatch:', { employeeId, employee: employee?.name });
         return;
       }
 
+      const month = selectedMonthRef.current;
+      const year = selectedYearRef.current;
 
-      // Get all dashboard data using unified service with selected month/year
-      const dashboardData = await DashboardService.getDashboardStats(employeeId, selectedMonth, selectedYear);
-      
-      // Set recent entries and receipts
-      setRecentEntries(dashboardData.recentMileageEntries);
-      setRecentReceipts(dashboardData.recentReceipts);
-      
-      // Set monthly totals
-      setTotalMilesThisMonth(dashboardData.monthlyStats.totalMiles);
-      setTotalHoursThisMonth(dashboardData.monthlyStats.totalHours);
-      setTotalReceiptsThisMonth(dashboardData.monthlyStats.totalReceipts);
+      const localData = await DashboardService.getDashboardStatsFromLocal(employeeId, month, year);
+      applyDashboardData(localData);
 
-      // Use Per Diem receipts total (from receipts with category "Per Diem")
-      const perDiemFromReceipts = dashboardData.monthlyStats.totalPerDiemReceipts || 0;
-      setPerDiemThisMonth(perDiemFromReceipts);
-      
-      // Calculate total expenses
-      const expenseBreakdown = PerDiemService.getExpenseBreakdown(
-        dashboardData.monthlyStats.totalMiles,
-        dashboardData.monthlyStats.totalReceipts,
-        perDiemFromReceipts
-      );
-      
-      setTotalExpensesThisMonth(expenseBreakdown.totalExpenses);
-      
+      if (!options.localOnly) {
+        void (async () => {
+          try {
+            const backendData = await DashboardService.getDashboardStatsFromBackend(
+              employeeId,
+              month,
+              year
+            );
+            if (
+              selectedMonthRef.current === month &&
+              selectedYearRef.current === year
+            ) {
+              applyDashboardData(backendData);
+            }
+          } catch (backendError) {
+            debugWarn('⚠️ Background dashboard refresh failed:', backendError);
+          }
+        })();
+      }
     } catch (error) {
       console.error('Error loading employee data:', error);
     } finally {
       isLoadingEmployeeDataRef.current = false;
     }
+  };
+
+  const scheduleLoadEmployeeData = (
+    employeeId: string,
+    employeeParam?: Employee,
+    options?: LoadEmployeeDataOptions
+  ) => {
+    if (loadEmployeeDataDebounceRef.current) {
+      clearTimeout(loadEmployeeDataDebounceRef.current);
+    }
+    loadEmployeeDataDebounceRef.current = setTimeout(() => {
+      loadEmployeeDataDebounceRef.current = null;
+      void loadEmployeeData(employeeId, employeeParam, options);
+    }, LOAD_EMPLOYEE_DATA_DEBOUNCE_MS);
   };
 
 
@@ -792,7 +821,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         homeInitialBackendSyncDone = true;
       }
 
-      await loadEmployeeData(employee.id, employee);
+      await loadEmployeeData(employee.id, employee, { localOnly: true });
 
       const loadedDismissed = await loadDismissedNotificationIds(employee.id);
       setDismissedNotifications(loadedDismissed);
@@ -887,7 +916,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
     const employee = availableEmployees.find(emp => emp.id === employeeId);
     if (employee) {
       setViewingEmployee(employee);
-      await loadEmployeeData(employeeId);
+      await loadEmployeeData(employeeId, employee, { localOnly: true });
       // Clear batch selections when switching employees
       setSelectedMileageEntries([]);
       setSelectedReceipts([]);
