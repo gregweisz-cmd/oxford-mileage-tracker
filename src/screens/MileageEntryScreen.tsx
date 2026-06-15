@@ -23,6 +23,7 @@ import type { DistanceRouteOption } from '../services/distanceService';
 import { MileageEntry, Employee, LocationDetails, Vehicle } from '../types';
 import LocationCaptureModal from '../components/LocationCaptureModal';
 import { formatLocationForInput } from '../utils/locationFormatter';
+import { normalizeLocationDetails } from '../utils/locationName';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
 import { OxfordHouseService } from '../services/oxfordHouseService';
@@ -630,12 +631,14 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   const handleLocationConfirm = (locationDetails: LocationDetails) => {
+    const normalized = normalizeLocationDetails(locationDetails) || locationDetails;
+    const displayLabel = normalized.name || normalized.address || '';
     if (currentLocationType === 'start') {
-      setFormData(prev => ({ ...prev, startLocation: locationDetails.name }));
-      setStartLocationDetails(locationDetails);
+      setFormData(prev => ({ ...prev, startLocation: displayLabel }));
+      setStartLocationDetails(normalized);
     } else {
-      setFormData(prev => ({ ...prev, endLocation: locationDetails.name }));
-      setEndLocationDetails(locationDetails);
+      setFormData(prev => ({ ...prev, endLocation: displayLabel }));
+      setEndLocationDetails(normalized);
     }
     
     setShowStartLocationModal(false);

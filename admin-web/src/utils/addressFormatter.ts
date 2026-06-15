@@ -3,6 +3,8 @@
  * Formats addresses for display in the application
  */
 
+import { looksLikeStreetAddress } from './locationName';
+
 export interface AddressData {
   name?: string;
   address: string;
@@ -415,6 +417,11 @@ export function formatLocationNameAndAddress(
   // If "address" is the same as the name, don't show "Name (Name)" — show only the name
   if (displayName && normalizeToken(addr) === normalizeToken(displayName)) {
     return collapseDuplicateLocationText(displayName);
+  }
+
+  // Street-number "names" (e.g. GPS geocode) should show address only.
+  if (displayName && looksLikeStreetAddress(displayName) && addr.includes(',')) {
+    return collapseDuplicateLocationText(abbreviateAddressForDisplay(addr));
   }
 
   // If name is effectively an address label (same location with minor differences like "Road"/"Rd" or trailing "USA"),

@@ -4,6 +4,7 @@ import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdome
 import { MileageAnalysisService } from './mileageAnalysisService';
 import { ApiSyncService } from './apiSyncService';
 import { getFullLocationAddress } from '../utils/addressFormatter';
+import { sanitizeLocationName } from '../utils/locationName';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 import { getAuthHeaders } from './authHeaders';
 import { API_BASE_URL } from '../config/api';
@@ -1136,11 +1137,21 @@ export class DatabaseService {
         entry.odometerReading,
         entry.startLocation, 
         entry.endLocation,
-        entry.startLocationDetails?.name || null,
+        sanitizeLocationName(
+          entry.startLocationDetails?.name,
+          getFullLocationAddress(entry.startLocationDetails) ||
+            entry.startLocationDetails?.address ||
+            undefined
+        ) || null,
         getFullLocationAddress(entry.startLocationDetails) || entry.startLocationDetails?.address || null,
         entry.startLocationDetails?.latitude || null,
         entry.startLocationDetails?.longitude || null,
-        entry.endLocationDetails?.name || null,
+        sanitizeLocationName(
+          entry.endLocationDetails?.name,
+          getFullLocationAddress(entry.endLocationDetails) ||
+            entry.endLocationDetails?.address ||
+            undefined
+        ) || null,
         getFullLocationAddress(entry.endLocationDetails) || entry.endLocationDetails?.address || null,
         entry.endLocationDetails?.latitude || null,
         entry.endLocationDetails?.longitude || null,
@@ -1282,20 +1293,28 @@ export class DatabaseService {
     
     // Handle location details separately if they exist (store full address for geocoding/maps)
     if (updates.startLocationDetails) {
+      const startAddr =
+        getFullLocationAddress(updates.startLocationDetails) ||
+        updates.startLocationDetails.address ||
+        '';
       simpleFields.push('startLocationName', 'startLocationAddress', 'startLocationLat', 'startLocationLng');
       values.push(
-        updates.startLocationDetails.name || undefined,
-        getFullLocationAddress(updates.startLocationDetails) || updates.startLocationDetails.address || undefined,
+        sanitizeLocationName(updates.startLocationDetails.name, startAddr) || undefined,
+        startAddr || undefined,
         updates.startLocationDetails.latitude ?? undefined,
         updates.startLocationDetails.longitude ?? undefined
       );
     }
     
     if (updates.endLocationDetails) {
+      const endAddr =
+        getFullLocationAddress(updates.endLocationDetails) ||
+        updates.endLocationDetails.address ||
+        '';
       simpleFields.push('endLocationName', 'endLocationAddress', 'endLocationLat', 'endLocationLng');
       values.push(
-        updates.endLocationDetails.name || undefined,
-        getFullLocationAddress(updates.endLocationDetails) || updates.endLocationDetails.address || undefined,
+        sanitizeLocationName(updates.endLocationDetails.name, endAddr) || undefined,
+        endAddr || undefined,
         updates.endLocationDetails.latitude ?? undefined,
         updates.endLocationDetails.longitude ?? undefined
       );

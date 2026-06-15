@@ -1,4 +1,5 @@
 import { formatAddressFromParts, parseAddressToParts } from './addressFormatter';
+import { sanitizeLocationName } from './locationName';
 
 export type LocationSource =
   | 'baseAddress'
@@ -48,9 +49,9 @@ export const makeCanonicalLocationSelection = ({
   longitude,
 }: Partial<CanonicalLocationSelection>): CanonicalLocationSelection => {
   const canonicalAddress = toCanonicalAddress(address || '');
-  const fallbackName = canonicalAddress.split(',')[0]?.trim() || 'Location';
+  const sanitizedName = sanitizeLocationName(name, canonicalAddress);
   return {
-    name: (name || '').trim() || fallbackName,
+    name: sanitizedName,
     address: canonicalAddress || (name || '').trim(),
     source,
     sourceId,

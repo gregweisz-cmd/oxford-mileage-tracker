@@ -42,6 +42,7 @@ import {
   getDefaultOxfordHouseSelection,
 } from '../utils/oxfordHousePicker';
 import { buildPartsFromGeocode } from '../utils/addressFormatter';
+import { normalizeLocationDetails } from '../utils/locationName';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
 
@@ -985,8 +986,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (currentAddress && geocodeParts) {
         suggestions.newLocation = {
           details: {
-            name: geocodeParts.street || geocodeParts.city || 'Current Location',
-            address: geocodeParts.street || '',
+            name: '',
+            address: geocodeParts.oneLine || currentAddress,
             latitude: currentLat,
             longitude: currentLon,
             city: geocodeParts.city,
@@ -1152,8 +1153,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (currentAddress && geocodeParts) {
         suggestions.newLocation = {
           details: {
-            name: geocodeParts.street || geocodeParts.city || 'Current Location',
-            address: geocodeParts.street || '',
+            name: '',
+            address: geocodeParts.oneLine || currentAddress,
             latitude: currentLat,
             longitude: currentLon,
             city: geocodeParts.city,
@@ -1252,7 +1253,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleStartLocationConfirm = async (locationDetails: LocationDetails) => {
-    setStartLocationDetails(locationDetails);
+    const normalized = normalizeLocationDetails(locationDetails) || locationDetails;
+    setStartLocationDetails(normalized);
     setShowStartLocationModal(false);
     setManualStartInitialLocation(null);
     startGpsTracking();
@@ -1337,15 +1339,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
+    const normalizedDetails = normalizeLocationDetails(locationDetails) || locationDetails;
     // Safety guard: if any path tries to auto-submit a non-manual end location,
     // force the user back through the editable end-location modal first.
-    if (locationDetails.source !== 'manual') {
-      openEndLocationModalWithDetails(locationDetails);
+    if (normalizedDetails.source !== 'manual') {
+      openEndLocationModalWithDetails(normalizedDetails);
       return;
     }
 
-    console.log('📍 End location confirmed:', locationDetails);
-    setEndLocationDetails(locationDetails);
+    console.log('📍 End location confirmed:', normalizedDetails);
+    setEndLocationDetails(normalizedDetails);
     setShowEndLocationModal(false);
     setManualEndInitialLocation(null);
     setShowEndLocationOptionsModal(false);
@@ -1354,23 +1357,37 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     try {
       // Pass confirmed end location so we skip a slow post-stop GPS fix (avoids UI freeze on many devices)
       const completedSession = await withTimeout(
-        stopTracking(locationDetails),
+        stopTracking(normalizedDetails),
         12000,
         'Stop tracking'
       );
       
       // Use GPS-tracked miles
       const actualMiles = Math.round(completedSession?.totalMiles || 0);
+      const normalizedStart = startLocationDetails
+        ? normalizeLocationDetails(startLocationDetails) || startLocationDetails
+        : null;
       
       if (completedSession && currentEmployee) {
+        const endDisplay =
+          normalizedDetails.name ||
+          normalizedDetails.address ||
+          completedSession.endLocation ||
+          'Unknown';
+        const startDisplay =
+          normalizedStart?.name ||
+          normalizedStart?.address ||
+          completedSession.startLocation ||
+          'Unknown';
+
         console.log('🚗 GPS Trip completed, saving to database:', {
           employeeId: currentEmployee.id,
           employeeName: currentEmployee.name,
           date: completedSession.startTime,
-          startLocation: startLocationDetails?.name || startLocationDetails?.address || completedSession.startLocation || 'Unknown',
-          startAddress: startLocationDetails?.address,
-          endLocation: locationDetails.name || locationDetails.address || completedSession.endLocation || 'Unknown',
-          endAddress: locationDetails.address,
+          startLocation: startDisplay,
+          startAddress: normalizedStart?.address,
+          endLocation: endDisplay,
+          endAddress: normalizedDetails.address,
           purpose: completedSession.purpose,
           miles: actualMiles,
           odometerReading: completedSession.odometerReading,
@@ -1386,10 +1403,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               vehicleId: selectedVehicleId || undefined,
               date: completedSession.startTime,
               odometerReading: completedSession.odometerReading,
-              startLocation: startLocationDetails?.name || startLocationDetails?.address || completedSession.startLocation || 'Unknown',
-              endLocation: locationDetails.name || locationDetails.address || completedSession.endLocation || 'Unknown',
-              startLocationDetails: startLocationDetails || undefined,
-              endLocationDetails: locationDetails, // Use the parameter directly instead of state
+              startLocation: startDisplay,
+              endLocation: endDisplay,
+              startLocationDetails: normalizedStart || undefined,
+              endLocationDetails: normalizedDetails,
               purpose: completedSession.purpose,
               miles: actualMiles, // Use calculated miles from odometer if available
               notes: completedSession.notes,
@@ -1409,8 +1426,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         }
 
         // Update last destination for next trip
-        console.log('🔍 GPS: Updating last destination:', locationDetails.name);
-        setLastDestination(locationDetails);
+        console.log('🔍 GPS: Updating last destination:', endDisplay);
+        setLastDestination(normalizedDetails);
 
         setTrackingTime(0);
         setStartLocationDetails(null);

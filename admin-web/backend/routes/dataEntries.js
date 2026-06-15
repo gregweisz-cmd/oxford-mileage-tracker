@@ -20,6 +20,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { checkAndNotify50PlusHours } = require('../services/notificationService');
 const websocketService = require('../services/websocketService');
 const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/baseAddressNormalizer');
+const { sanitizeLocationName } = require('../utils/locationName');
 const { enrichAddressIfNeeded } = require('../utils/addressEnrichment');
 const { resolveSuggestedStartingOdometer } = require('../utils/odometerSuggestion');
 const {
@@ -240,10 +241,10 @@ router.post('/api/mileage-entries', (req, res) => {
   // Normalize manual entry locations into name/address fields if missing
   // If address is missing but location name exists, use name as fallback for address
   // This ensures addresses are always populated when location names are provided
-  const normalizedStartLocationName = startLocationName || startLocation || '';
   const normalizedStartLocationAddress = normalizeAddressLine(startLocationAddress || startLocation || '');
-  const normalizedEndLocationName = endLocationName || endLocation || '';
   const normalizedEndLocationAddress = normalizeAddressLine(endLocationAddress || endLocation || '');
+  const normalizedStartLocationName = sanitizeLocationName(startLocationName, normalizedStartLocationAddress);
+  const normalizedEndLocationName = sanitizeLocationName(endLocationName, normalizedEndLocationAddress);
 
   // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
   db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {
@@ -391,10 +392,10 @@ router.put('/api/mileage-entries/:id', (req, res) => {
 
   // Normalize manual entry locations into name/address fields if missing
   // This ensures addresses are always populated when location names are provided
-  const normalizedStartLocationName = startLocationName || startLocation || '';
   const normalizedStartLocationAddress = normalizeAddressLine(startLocationAddress || startLocation || '');
-  const normalizedEndLocationName = endLocationName || endLocation || '';
   const normalizedEndLocationAddress = normalizeAddressLine(endLocationAddress || endLocation || '');
+  const normalizedStartLocationName = sanitizeLocationName(startLocationName, normalizedStartLocationAddress);
+  const normalizedEndLocationName = sanitizeLocationName(endLocationName, normalizedEndLocationAddress);
 
   // Fetch employee base addresses and normalize base locations to "BA (address)" so storage is consistent
   db.get('SELECT baseAddress, baseAddress2 FROM employees WHERE id = ?', [employeeId], (empErr, employee) => {

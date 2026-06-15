@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
 import { getFullLocationAddress } from '../utils/addressFormatter';
+import { sanitizeLocationName } from '../utils/locationName';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 // API Configuration
 // Use central config so mobile uses the same base URL (local IP) as the app
@@ -792,8 +793,24 @@ export class ApiSyncService {
           
           const startLocationNameRaw = entry.startLocationDetails?.name || entry.startLocation || '';
           const endLocationNameRaw = entry.endLocationDetails?.name || entry.endLocation || '';
-          const startLocationName = normalizeLocationName(startLocationNameRaw);
-          const endLocationName = normalizeLocationName(endLocationNameRaw);
+          const startLocationAddressForName =
+            getFullLocationAddress(entry.startLocationDetails) ||
+            entry.startLocationDetails?.address ||
+            entry.startLocation ||
+            '';
+          const endLocationAddressForName =
+            getFullLocationAddress(entry.endLocationDetails) ||
+            entry.endLocationDetails?.address ||
+            entry.endLocation ||
+            '';
+          const startLocationName = sanitizeLocationName(
+            normalizeLocationName(startLocationNameRaw),
+            startLocationAddressForName
+          );
+          const endLocationName = sanitizeLocationName(
+            normalizeLocationName(endLocationNameRaw),
+            endLocationAddressForName
+          );
           
           const mileageData = {
             id: entry.id, // CRITICAL: Always include ID to prevent duplicates - backend uses INSERT OR REPLACE

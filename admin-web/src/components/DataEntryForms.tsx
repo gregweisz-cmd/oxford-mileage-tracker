@@ -46,6 +46,7 @@ import { formatAddressFromParts, parseAddressToParts, emptyAddressParts, updateA
 import type { AddressParts } from '../utils/addressFormatter';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { makeCanonicalLocationSelection } from '../utils/locationSelection';
+import { sanitizeLocationName } from '../utils/locationName';
 import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
 import { defaultDateForReport } from '../utils/calendarDate';
 
@@ -392,6 +393,14 @@ export const MileageEntryForm: React.FC<BaseFormProps & {
       ? dailyOdometerForDate
       : (payload.startingOdometer ?? 0);
     payload.startingOdometer = effectiveOdometer;
+    payload.startLocationName = sanitizeLocationName(
+      payload.startLocationName,
+      payload.startLocation
+    );
+    payload.endLocationName = sanitizeLocationName(
+      payload.endLocationName,
+      payload.endLocation
+    );
 
     try {
       if (dailyOdometerForDate == null && effectiveOdometer > 0) {
