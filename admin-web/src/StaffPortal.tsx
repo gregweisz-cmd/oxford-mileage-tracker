@@ -5283,7 +5283,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
     setLoading(true);
     const confirmMsg = isWeeklyCheckup
-      ? 'This report will be submitted for weekly review by your Regional Manager. Are you sure you want to submit this weekly checkup?'
+      ? 'This report will be submitted for weekly review. Are you sure you want to submit this weekly check-up?'
       : 'Are you sure you want to submit this expense report? Once submitted, you will not be able to make further edits.';
     const confirmSubmit = window.confirm(confirmMsg);
     if (!confirmSubmit) {
@@ -5357,13 +5357,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
         if (typeof showSuccess === 'function') {
           if (isWeeklyCheckup) {
-            showSuccess('Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+            showSuccess('Weekly check-up submitted successfully! It will be sent for weekly review.');
           } else {
             showSuccess('Expense report submitted! Your supervisor has been notified.');
           }
         } else {
           if (isWeeklyCheckup) {
-            alert('✅ Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+            alert('✅ Weekly check-up submitted successfully! It will be sent for weekly review.');
           } else {
             alert('🎉 Expense report submitted successfully! It has been sent to your supervisor for review.');
           }
@@ -5372,13 +5372,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setReportStatus('submitted');
         if (typeof showSuccess === 'function') {
           if (isWeeklyCheckup) {
-            showSuccess('Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+            showSuccess('Weekly check-up submitted successfully! It will be sent for weekly review.');
           } else {
             showSuccess('Expense report submitted! Your supervisor has been notified.');
           }
         } else {
           if (isWeeklyCheckup) {
-            alert('✅ Weekly checkup submitted successfully! Your Regional Manager will review this report.');
+            alert('✅ Weekly check-up submitted successfully! It will be sent for weekly review.');
           } else {
             alert('🎉 Expense report submitted successfully! It is now ready for supervisor review.');
           }
@@ -9922,7 +9922,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 📋 Weekly Check-up
               </Typography>
               <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Submit for weekly review by your Regional Manager.
+                Submit (or resubmit) for weekly review.
               </Typography>
               <Button
                 variant="outlined"
