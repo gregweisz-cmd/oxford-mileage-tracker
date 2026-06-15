@@ -17,6 +17,11 @@ import { ToastProvider } from './contexts/ToastContext';
 import { ErrorPromptProvider } from './contexts/ErrorPromptContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import AuthCallback from './components/AuthCallback';
+import MobileWebNotice from './components/MobileWebNotice';
+import {
+  acknowledgeMobileWebNotice,
+  shouldShowMobileWebNotice,
+} from './utils/mobileDetection';
 import { resetStaffPortalSessionExpiredDispatch } from './services/staffPortalSessionExpired';
 import { stickyTableThemeComponents } from './theme/stickyTableTheme';
 import { scrollableThemeComponents } from './theme/scrollableTheme';
@@ -222,6 +227,7 @@ const App: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
+  const [showMobileNotice, setShowMobileNotice] = useState(() => shouldShowMobileWebNotice());
 
   useEffect(() => {
     // Check if user is already logged in
@@ -624,6 +630,22 @@ const App: React.FC = () => {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Login onLoginSuccess={handleLoginSuccess} />
+      </ThemeProvider>
+    );
+  }
+
+  // Mobile web notice (returning sessions that skip the login screen)
+  if (showMobileNotice) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <MobileWebNotice
+          variant="portal"
+          onContinue={() => {
+            acknowledgeMobileWebNotice();
+            setShowMobileNotice(false);
+          }}
+        />
       </ThemeProvider>
     );
   }

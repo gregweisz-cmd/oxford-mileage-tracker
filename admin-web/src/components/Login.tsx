@@ -16,6 +16,11 @@ import {
   VisibilityOff
 } from '@mui/icons-material';
 import OxfordHouseLogo from './OxfordHouseLogo';
+import MobileWebNotice from './MobileWebNotice';
+import {
+  acknowledgeMobileWebNotice,
+  shouldShowMobileWebNotice,
+} from '../utils/mobileDetection';
 
 interface LoginProps {
   onLoginSuccess: (employee: any, token: string) => void;
@@ -25,6 +30,7 @@ const getApiOrigin = () =>
   (process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com').replace(/\/+$/, '');
 
 export default function Login({ onLoginSuccess }: LoginProps) {
+  const [showMobileNotice, setShowMobileNotice] = useState(() => shouldShowMobileWebNotice());
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
@@ -113,6 +119,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     const returnUrl = '/';
     window.location.assign(`${api}/api/auth/google?returnUrl=${encodeURIComponent(returnUrl)}`);
   };
+
+  const handleContinueOnWeb = () => {
+    acknowledgeMobileWebNotice();
+    setShowMobileNotice(false);
+  };
+
+  if (showMobileNotice) {
+    return <MobileWebNotice onContinue={handleContinueOnWeb} variant="login" />;
+  }
 
   return (
     <Container component="main" maxWidth="xs">
