@@ -55,42 +55,12 @@ export class DashboardService {
     const { month: selectedMonth, year: selectedYear } = monthYearOrNow(month, year);
 
     try {
-      const [recentMileageEntries, recentReceipts] = await Promise.all([
-        DatabaseService.getMileageEntries(employeeId, selectedMonth, selectedYear),
-        DatabaseService.getReceipts(employeeId, selectedMonth, selectedYear),
-      ]);
-      const monthlySummary = await UnifiedDataService.getDashboardSummary(
-        employeeId,
-        selectedMonth,
-        selectedYear
-      );
       const monthlyData = await UnifiedDataService.getMonthData(
         employeeId,
         selectedMonth,
         selectedYear
       );
-      const monthlyMileageEntries: MileageEntry[] = [];
-      const monthlyReceipts: Receipt[] = [];
-      monthlyData.forEach((day: { mileageEntries?: MileageEntry[]; receipts?: Receipt[] }) => {
-        monthlyMileageEntries.push(...(day.mileageEntries || []));
-        monthlyReceipts.push(...(day.receipts || []));
-      });
-
-      const byDateDesc = (a: { date: Date }, b: { date: Date }) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime();
-
-      return {
-        recentMileageEntries: [...recentMileageEntries].sort(byDateDesc).slice(0, 5),
-        recentReceipts: [...recentReceipts].sort(byDateDesc).slice(0, 5),
-        monthlyStats: {
-          totalMiles: monthlySummary.totalMiles,
-          totalHours: monthlySummary.totalHours,
-          totalReceipts: monthlySummary.totalReceipts,
-          totalPerDiemReceipts: monthlySummary.totalPerDiemReceipts || 0,
-          mileageEntries: monthlyMileageEntries,
-          receipts: monthlyReceipts,
-        },
-      };
+      return this.aggregateMonthDataToDashboardStats(monthlyData);
     } catch (error) {
       console.error('❌ DashboardService: Error loading local dashboard stats:', error);
       return emptyDashboardStats(selectedMonth, selectedYear);

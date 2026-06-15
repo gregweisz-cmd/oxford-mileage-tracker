@@ -744,97 +744,89 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   /**
-   * First load only: pull from backend (source of truth) then show data.
+   * First load: show local dashboard immediately, sync from backend in background.
    * Do not call after user save/delete — use refreshAfterLocalChange (push only) instead.
    */
+  const runInitialBackendSync = async (employee: Employee) => {
+    if (homeInitialBackendSyncDone || homeScreenIsSyncing) {
+      return;
+    }
+
+    const INITIAL_SYNC_TIMEOUT_MS = Platform.OS === 'android' ? 35000 : 20000;
+    homeScreenIsSyncing = true;
+    setIsSyncing(true);
+    try {
+      const { ApiSyncService } = await import('../services/apiSyncService');
+      const pushPromise = SyncIntegrationService.forceSync(employee.id);
+      const pushTimeout = new Promise<{ success: boolean; error?: string }>((resolve) =>
+        setTimeout(() => resolve({ success: true, error: 'Push timed out; pull will continue' }), 12000)
+      );
+      const pushResult = await Promise.race([pushPromise, pushTimeout]);
+      if (!pushResult.success) {
+        debugWarn('⚠️ Initial push had errors (continuing with pull):', pushResult.error);
+      }
+      const syncPromise = ApiSyncService.syncFromBackend(employee.id, undefined, { skipSyncQueue: true });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Initial sync timed out')), INITIAL_SYNC_TIMEOUT_MS)
+      );
+      const syncResult = await Promise.race([syncPromise, timeoutPromise]);
+      if (syncResult?.success) {
+        setLastSyncTime(new Date());
+        SyncIntegrationService.recordBackendPull();
+        await loadEmployeeData(employee.id, employee, { localOnly: true });
+        RealtimeSyncService.getInstance().notifySyncComplete();
+      } else if (syncResult && !syncResult.success) {
+        debugWarn('⚠️ Initial sync completed with some errors (this is normal):', syncResult.error);
+      }
+    } catch (syncError) {
+      const msg = syncError instanceof Error ? syncError.message : 'Unknown error';
+      debugWarn('⚠️ Initial backend sync failed or timed out (showing local data):', msg);
+    } finally {
+      homeScreenIsSyncing = false;
+      setIsSyncing(false);
+      homeInitialBackendSyncDone = true;
+    }
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
       initialLoadDoneRef.current = false;
 
-      await new Promise(resolve => setTimeout(resolve, 200));
-
       let employee = await DatabaseService.getCurrentEmployee();
       if (!employee) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
         employee = await DatabaseService.getCurrentEmployee();
       }
       if (!employee) {
         setLoading(false);
         return;
       }
-      
-      
+
       setCurrentEmployee(employee);
-      
-      // Permission checks removed - mobile app is staff-only, admin functions in web portal
-      // setHasAdminPermissions(PermissionService.hasAdminPermissions(employee));
-      // setHasTeamDashboardPermissions(PermissionService.hasTeamDashboardPermissions(employee));
-      
-      // Set viewing employee to current employee by default
       setViewingEmployee(employee);
-      
-      // Tips will be loaded on individual screens instead of home screen
-      
-      // Mobile app: Always show only the current employee's data
-      // Admin/Supervisor functions are handled in the web portal only
-      setAvailableEmployees([employee]); // Only show themselves
-      
-      // Initialize real-time sync
+      setAvailableEmployees([employee]);
+
       const realtimeSync = RealtimeSyncService.getInstance();
       realtimeSync.connect(API_BASE_URL, employee.id);
       registerRealtimeListeners(employee);
-
-      // Sync from backend only once per app process (with timeout so app doesn't spin forever).
-      // Re-running this on every Home remount after GPS end causes large DB churn and UI stalls on iOS.
-      const INITIAL_SYNC_TIMEOUT_MS = Platform.OS === 'android' ? 35000 : 20000;
-      if (!homeInitialBackendSyncDone && !homeScreenIsSyncing) {
-        homeScreenIsSyncing = true;
-        setIsSyncing(true);
-        try {
-          const { ApiSyncService } = await import('../services/apiSyncService');
-          const pushPromise = SyncIntegrationService.forceSync(employee.id);
-          const pushTimeout = new Promise<{ success: boolean; error?: string }>((resolve) =>
-            setTimeout(() => resolve({ success: true, error: 'Push timed out; pull will continue' }), 12000)
-          );
-          const pushResult = await Promise.race([pushPromise, pushTimeout]);
-          if (!pushResult.success) {
-            debugWarn('⚠️ Initial push had errors (continuing with pull):', pushResult.error);
-          }
-          const syncPromise = ApiSyncService.syncFromBackend(employee.id, undefined, { skipSyncQueue: true });
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Initial sync timed out')), INITIAL_SYNC_TIMEOUT_MS)
-          );
-          const syncResult = await Promise.race([syncPromise, timeoutPromise]);
-          if (syncResult?.success) {
-            setLastSyncTime(new Date());
-          } else if (syncResult && !syncResult.success) {
-            debugWarn('⚠️ Initial sync completed with some errors (this is normal):', syncResult.error);
-          }
-        } catch (syncError) {
-          const msg = syncError instanceof Error ? syncError.message : 'Unknown error';
-          debugWarn('⚠️ Initial backend sync failed or timed out (showing local data):', msg);
-        } finally {
-          homeScreenIsSyncing = false;
-          setIsSyncing(false);
-        }
-        homeInitialBackendSyncDone = true;
-      }
 
       await loadEmployeeData(employee.id, employee, { localOnly: true });
 
       const loadedDismissed = await loadDismissedNotificationIds(employee.id);
       setDismissedNotifications(loadedDismissed);
-      await checkSmartNotifications(employee.id, loadedDismissed);
+      void checkSmartNotifications(employee.id, loadedDismissed);
 
       initialLoadDoneRef.current = true;
+      setLoading(false);
+
+      void runInitialBackendSync(employee);
     } catch (error) {
       console.error('Error loading data:', error);
       if (currentEmployee) {
         Alert.alert('Error', 'Failed to load data');
       }
       initialLoadDoneRef.current = true;
-    } finally {
       setLoading(false);
     }
   };

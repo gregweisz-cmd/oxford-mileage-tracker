@@ -322,7 +322,7 @@ export class SyncIntegrationService {
       }
 
       await ApiSyncService.syncFromBackend(currentEmployee.id, undefined, { skipSyncQueue: true });
-      this.lastBackendPullTime = Date.now();
+      this.recordBackendPull();
       const { default: RealtimeSyncService } = await import('./realtimeSyncService');
       RealtimeSyncService.getInstance().notifySyncComplete();
     } catch (error) {
@@ -335,6 +335,11 @@ export class SyncIntegrationService {
    */
   static async pushPendingChanges(): Promise<void> {
     await this.flushPendingSync();
+  }
+
+  /** Call after a successful backend pull so foreground sync does not immediately re-pull. */
+  static recordBackendPull(): void {
+    this.lastBackendPullTime = Date.now();
   }
 
   /**
