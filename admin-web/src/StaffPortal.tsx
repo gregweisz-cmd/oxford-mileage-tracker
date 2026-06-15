@@ -85,6 +85,7 @@ import EmployeeApprovalStatusCard, { ApprovalWorkflowStepSummary, ApprovalHistor
 import { formatLocationNameAndAddress } from './utils/addressFormatter';
 import { parseCalendarYearMonthFromStoredDate, parseCalendarYmdParts, formatStoredDateForDisplay, defaultDateForReport } from './utils/calendarDate';
 import { computeStaffPortalRevisionTabIndex } from './utils/revisionTabNavigation';
+import { isPendingApprovalStatus, isStaffReportEditable } from './utils/reportEditability';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
@@ -1166,6 +1167,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const { showSuccess, showError } = useToast();
   const { showErrorPrompt } = useErrorPrompt();
   const { isLoading: uiLoading, startLoading, stopLoading } = useLoadingState();
+
+  const assertStaffCanEdit = useCallback((): boolean => {
+    if (supervisorMode || isAdminView) return true;
+    if (!isStaffReportEditable(reportStatus)) {
+      showError('This report has been approved and can no longer be edited.');
+      return false;
+    }
+    return true;
+  }, [supervisorMode, isAdminView, reportStatus, showError]);
 
   const revokeReceiptBlobUrl = (ref: React.MutableRefObject<string | null>) => {
     if (ref.current) {
@@ -3184,6 +3194,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const handleDailyDescriptionHoursChange = useCallback(
     async (entry: any, _dayDescription: any, rawValue: string) => {
       if (!employeeData || isAdminView) return;
+      if (!assertStaffCanEdit()) return;
       const value = Math.min(24, Math.max(0, parseFloat(rawValue) || 0));
       const entryDateStr = normalizeDate(entry.date);
       const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
@@ -3245,6 +3256,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     [
       employeeData,
       isAdminView,
+      assertStaffCanEdit,
       dailyDescriptions,
       normalizeDate,
       employeeId,
@@ -3262,6 +3274,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     formData: MileageEntryFormData,
     options?: { keepOpenAfterSave?: boolean }
   ) => {
+    if (!assertStaffCanEdit()) return;
     try {
       // Prepare the data for the backend, mapping startingOdometer to odometerReading
       const backendData = {
@@ -3297,6 +3310,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   const handleMileageEntryDelete = async (entryId: string) => {
+    if (!assertStaffCanEdit()) return;
     if (!window.confirm('Are you sure you want to delete this mileage entry? This action cannot be undone.')) {
       return;
     }
@@ -4931,6 +4945,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       showError('No employee data to save');
       return;
     }
+    if (!assertStaffCanEdit()) return;
 
     try {
       startLoading('Saving and syncing report...');
@@ -5074,7 +5089,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       // Refresh the data to update all tabs
       setRefreshTrigger(prev => prev + 1);
       
-      showSuccess('Report saved and synced successfully! Changes will appear in the mobile app.');
+      showSuccess(
+        isPendingApprovalStatus(reportStatus)
+          ? 'Changes saved. Your reviewer will see the updated report.'
+          : 'Report saved and synced successfully! Changes will appear in the mobile app.'
+      );
       
     } catch (error) {
       debugError('Error saving report:', error);
@@ -5283,8 +5302,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
     setLoading(true);
     const confirmMsg = isWeeklyCheckup
-      ? 'This report will be submitted for weekly review. Are you sure you want to submit this weekly check-up?'
-      : 'Are you sure you want to submit this expense report? Once submitted, you will not be able to make further edits.';
+      ? 'This report will be submitted for weekly review. You can still edit entries after submitting until the report is approved. Use Save Changes to update your submission.'
+      : 'Are you sure you want to submit this expense report? You can still edit entries after submitting until the report is approved. Use Save Changes to update your submission.';
     const confirmSubmit = window.confirm(confirmMsg);
     if (!confirmSubmit) {
       setLoading(false);
@@ -5409,7 +5428,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (!currentReportId) return;
     if (
       !window.confirm(
-        'Withdraw this submission? The report will return to draft and you can make changes, then submit again. No one has approved it yet.'
+        'Withdraw this submission? The report will return to draft. You can also keep editing without withdrawing — use Save Changes to update your submitted report.'
       )
     ) {
       return;
@@ -5945,6 +5964,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     isViewingOwnExpenseReport &&
     !supervisorMode &&
     (reportStatus === 'draft' || reportStatus === 'needs_revision');
+  const staffCanEditReport =
+    !supervisorMode && !isAdminView && isStaffReportEditable(reportStatus);
+  const reportPendingEdit =
+    !supervisorMode && !isAdminView && isPendingApprovalStatus(reportStatus);
 
   return (
     <Container ref={reportScopeRef} maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
@@ -5966,6 +5989,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         supervisorMode={supervisorMode}
         onExportPdf={handleExportPdf}
         onSaveReport={handleSaveReport}
+        saveReportDisabled={!staffCanEditReport}
         onSubmitReport={showHeaderSubmitReport ? handleSubmitReport : undefined}
         onApproveReport={onApproveReport}
         onRequestRevision={onRequestRevision}
@@ -6042,6 +6066,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           !supervisorMode && reportStatus === 'needs_revision' ? handleOpenRevisionsFromApprovalCard : undefined
         }
         onResubmit={reportStatus === 'needs_revision' ? handleSubmitReport : undefined}
+        onSaveChanges={reportPendingEdit ? handleSaveReport : undefined}
         onWithdraw={
           (reportStatus === 'submitted' ||
             reportStatus === 'pending_supervisor' ||
@@ -6053,7 +6078,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }
         disableResubmit={loading}
         disableWithdraw={loading}
+        disableSaveChanges={loading || uiLoading}
       />
+
+      {!supervisorMode && !isAdminView && reportStatus === 'approved' && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <AlertTitle>Report approved</AlertTitle>
+          This report has been approved and is locked for editing.
+        </Alert>
+      )}
 
       {/* Enhanced Tab Navigation - Now in header */}
 
@@ -7113,6 +7146,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   setEditingMileageEntry(null);
                   setMileageFormOpen(true);
                 }}
+                disabled={!staffCanEditReport}
                 sx={{ ml: 2 }}
               >
                 Add Mileage Entry
@@ -7317,6 +7351,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             <Box sx={{ display: 'flex', gap: 0.5 }}>
                               <IconButton
                                 size="small"
+                                disabled={!staffCanEditReport}
                                 onClick={() => {
                                   setEditingMileageEntry(entry);
                                   setMileageFormOpen(true);
@@ -7328,6 +7363,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               </IconButton>
                               <IconButton
                                 size="small"
+                                disabled={!staffCanEditReport}
                                 onClick={() => handleMileageEntryDelete(entry.id)}
                                 sx={{ color: 'error.main' }}
                                 title="Delete mileage entry"
@@ -10011,9 +10047,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <Fab
           variant="extended"
           color="primary"
-          aria-label="Save entries"
+          aria-label={reportPendingEdit ? 'Save changes' : 'Save entries'}
           onClick={() => handleSaveReport()}
-          disabled={loading || uiLoading}
+          disabled={loading || uiLoading || !staffCanEditReport}
           sx={{
             position: 'fixed',
             bottom: 24,
@@ -10022,7 +10058,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }}
         >
           <SaveIcon sx={{ mr: 1 }} />
-          Save Entries
+          {reportPendingEdit ? 'Save Changes' : 'Save Entries'}
         </Fab>
       )}
 

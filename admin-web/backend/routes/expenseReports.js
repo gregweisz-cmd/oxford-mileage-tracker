@@ -13,6 +13,7 @@ const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
 const constants = require('../utils/constants');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { assertStaffCanEditReportMonth } = require('../utils/reportEditability');
 const { requireAuth } = require('../middleware/auth');
 const { logAuditEvent } = require('../services/auditLogService');
 
@@ -191,9 +192,11 @@ router.post('/api/expense-reports', async (req, res) => {
       // Update existing report
       let updateData = {
         reportData: JSON.stringify(reportData),
-        status: status || 'draft',
         updatedAt: now
       };
+      if (status !== undefined) {
+        updateData.status = status || 'draft';
+      }
 
       // If submitting, initialize approval workflow
       if (status === 'submitted') {
@@ -535,6 +538,10 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
   debugLog('🔄 Syncing report data back to source tables for employee:', employeeId);
   
   try {
+    if (month && year) {
+      await assertStaffCanEditReportMonth(db, employeeId, month, year);
+    }
+
     // 1. Update employee profile (signature, personal info)
     if (reportData.employeeSignature || reportData.supervisorSignature) {
       await new Promise((resolve, reject) => {
@@ -993,6 +1000,10 @@ router.post('/api/expense-reports/sync-to-source', async (req, res) => {
   } catch (error) {
     const errorMessage = error?.message || String(error);
     const errorStack = error?.stack;
+
+    if (error && error.statusCode === 403) {
+      return res.status(403).json({ error: errorMessage });
+    }
 
     // Always log to stdout so Render shows it
     console.error('[sync-to-source] ERROR:', errorMessage);

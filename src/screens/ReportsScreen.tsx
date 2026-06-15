@@ -567,7 +567,7 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
   const submitMonthlyReport = (reportId: string) => {
     Alert.alert(
       'Submit Report',
-      'Are you sure you want to submit this report? Once submitted, it cannot be edited.',
+      'Are you sure you want to submit this report? You can still edit entries on the Staff Portal until the report is approved.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1129,7 +1129,7 @@ export default function ReportsScreen({ navigation }: ReportsScreenProps) {
                 <View style={styles.reviewWarningBox}>
                   <MaterialIcons name="info" size={20} color="#FF9800" />
                   <Text style={styles.reviewWarningText}>
-                    Once submitted, you won't be able to edit entries for this month until your supervisor reviews it.
+                    You can still edit entries on the Staff Portal after submitting, until your report is approved. Use Save Changes to update your submission.
                   </Text>
                 </View>
               </ScrollView>

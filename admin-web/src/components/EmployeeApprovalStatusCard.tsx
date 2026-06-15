@@ -17,6 +17,7 @@ import {
 import CommentIcon from '@mui/icons-material/ModeCommentOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReplayIcon from '@mui/icons-material/Replay';
+import SaveIcon from '@mui/icons-material/Save';
 import DoneIcon from '@mui/icons-material/TaskAltOutlined';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import PersonIcon from '@mui/icons-material/PersonOutline';
@@ -60,8 +61,10 @@ interface EmployeeApprovalStatusCardProps {
   onOpenRevisions?: () => void;
   onResubmit?: () => void;
   onWithdraw?: () => void;
+  onSaveChanges?: () => void;
   disableResubmit?: boolean;
   disableWithdraw?: boolean;
+  disableSaveChanges?: boolean;
 }
 
 const STATUS_COLOR_MAP: Record<string, { label: string; color: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' }> = {
@@ -134,8 +137,10 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
   onOpenRevisions,
   onResubmit,
   onWithdraw,
+  onSaveChanges,
   disableResubmit,
   disableWithdraw,
+  disableSaveChanges,
 }) => {
   const statusChip = getStatusChipProps(status);
   const normalizedStatus = (status || 'draft').toLowerCase();
@@ -206,6 +211,19 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
                 Open revisions
               </Button>
             )}
+            {onSaveChanges && (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<SaveIcon />}
+                color="primary"
+                onClick={onSaveChanges}
+                disabled={loading || disableSaveChanges}
+                sx={{ textTransform: 'none' }}
+              >
+                Save Changes
+              </Button>
+            )}
             {onWithdraw && (
               <Button
                 variant="outlined"
@@ -231,6 +249,12 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
             )}
           </Stack>
         </Box>
+
+        {onSaveChanges && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Your report is in review, but you can still edit entries below. Click Save Changes when you are done — your reviewer will see the latest version. Withdraw is optional if you prefer to return the report to draft.
+          </Typography>
+        )}
 
         <Box
           sx={{

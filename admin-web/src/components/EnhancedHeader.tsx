@@ -48,6 +48,7 @@ interface EnhancedHeaderProps {
   supervisorMode?: boolean;
   onExportPdf?: () => void;
   onSaveReport?: () => void;
+  saveReportDisabled?: boolean;
   onSubmitReport?: () => void;
   onApproveReport?: () => void;
   onRequestRevision?: () => void;
@@ -85,6 +86,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   supervisorMode = false,
   onExportPdf,
   onSaveReport,
+  saveReportDisabled = false,
   onSubmitReport,
   onApproveReport,
   onRequestRevision,
@@ -323,7 +325,7 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
               <Tooltip title="Save Report">
                 <IconButton
                   onClick={onSaveReport}
-                  disabled={loading || isAdminView}
+                  disabled={loading || isAdminView || saveReportDisabled}
                   size="small"
                   sx={{ 
                     border: '1px solid',
