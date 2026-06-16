@@ -889,10 +889,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     void fetchEmployeeSavedSignature(approverProfileId).then(setSavedFinanceSignature);
   }, [financeMode, approverProfileId]);
 
-  useEffect(() => {
-    setWeeklyCheckupStatus(buildWeeklyCheckupStatus(weeklyCheckupReportData, employeeReviewers));
-  }, [weeklyCheckupReportData, employeeReviewers]);
-
   // Get effective employeeId from props or localStorage (for dependency tracking)
   // This must be declared early so it can be used in callbacks and effects
   const effectiveEmployeeId = React.useMemo(() => {
@@ -956,7 +952,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     supervisorId?: string | null;
   }>({});
   const [weeklyCheckupReportData, setWeeklyCheckupReportData] = useState<Record<string, unknown> | null>(null);
-  const [weeklyCheckupStatus, setWeeklyCheckupStatus] = useState<WeeklyCheckupStatusSummary | null>(null);
+  const weeklyCheckupStatus = React.useMemo(
+    () => buildWeeklyCheckupStatus(weeklyCheckupReportData, employeeReviewers),
+    [weeklyCheckupReportData, employeeReviewers]
+  );
   
   // Notify parent component when selected items change
   // Use useRef to track previous values and only call callback when values actually change
