@@ -104,6 +104,7 @@ const getNotificationIcon = (type: string) => {
   switch (type) {
     case 'report_approved':
     case 'report_submitted':
+    case 'weekly_checkup_shared':
       return <CheckCircleIcon color="success" />;
     case 'report_rejected':
     case 'revision_requested':
@@ -124,6 +125,7 @@ const getNotificationColor = (type: string): 'success' | 'warning' | 'error' | '
   switch (type) {
     case 'report_approved':
     case 'report_submitted':
+    case 'weekly_checkup_shared':
       return 'success';
     case 'report_rejected':
     case 'revision_requested':

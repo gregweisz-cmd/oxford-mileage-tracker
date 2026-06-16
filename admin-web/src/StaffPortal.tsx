@@ -86,6 +86,12 @@ import { formatLocationNameAndAddress, formatMileageLocationForDisplay } from '.
 import { parseCalendarYearMonthFromStoredDate, parseCalendarYmdParts, formatStoredDateForDisplay, defaultDateForReport } from './utils/calendarDate';
 import { computeStaffPortalRevisionTabIndex } from './utils/revisionTabNavigation';
 import { isPendingApprovalStatus, isStaffReportEditable } from './utils/reportEditability';
+import {
+  formatNextWeeklyCheckupAvailableLabel,
+  getCalendarWeekStartKey,
+  isWeeklyCheckupOnCooldown,
+  resolveWeeklyCheckupNotificationWeekKey,
+} from './utils/weeklyCheckup';
 
 // Keyboard shortcuts
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
@@ -937,6 +943,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [itemsNeedingRevision, setItemsNeedingRevision] = useState<Set<string>>(new Set());
   const [daysNeedingRevision, setDaysNeedingRevision] = useState<Set<number>>(new Set()); // Days (1-31) that need revision for time tracking
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+  const [lastWeeklyCheckupNotificationWeekKey, setLastWeeklyCheckupNotificationWeekKey] = useState<string | null>(null);
   
   // Notify parent component when selected items change
   // Use useRef to track previous values and only call callback when values actually change
@@ -1093,7 +1100,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [allCostCenterOptions, setAllCostCenterOptions] = useState<string[]>([]);
   
   // Submission type dialog state
-  const [submissionTypeDialogOpen, setSubmissionTypeDialogOpen] = useState(false);
 
   // Report submission and approval state
   const [reportStatus, setReportStatus] = useState<
@@ -2040,6 +2046,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 if (savedExpenseReport.currentApproverName) {
                   setCurrentApproverName(savedExpenseReport.currentApproverName);
                 }
+
+                const weeklyWeekKey = resolveWeeklyCheckupNotificationWeekKey(savedExpenseReport.reportData);
+                setLastWeeklyCheckupNotificationWeekKey(weeklyWeekKey);
               }
             } catch (error) {
               debugWarn('Could not parse expense report data:', error);
@@ -5243,6 +5252,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
     setCurrentReportId(null);
     setReportStatus('draft');
+    setLastWeeklyCheckupNotificationWeekKey(null);
     setApprovalWorkflow([]);
     setApprovalHistory([]);
     setReportSubmittedAt(null);
@@ -5257,26 +5267,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  // Submit expense report (change status to submitted)
+  // Submit monthly expense report (enters approval workflow)
   const handleSubmitReport = async () => {
     if (!employeeData) {
       alert('No employee data to submit');
       return;
     }
 
-    // Check if employee has acknowledged the certification statement
     if (!employeeCertificationAcknowledged) {
       alert('Please check the employee acknowledgment box and add your signature before submitting your report.');
       return;
     }
-    
-    // Check if employee signature exists
+
     if (!signatureImage) {
       alert('Please add your employee signature before submitting. Use Upload Signature on the Cover Sheet and choose Upload saved or Upload new.');
       return;
     }
-    
-    // Check if supervisor has acknowledged and signed (if supervisor mode)
+
     if (supervisorMode) {
       if (!supervisorCertificationAcknowledged) {
         alert('Please check the supervisor acknowledgment box before submitting your report.');
@@ -5288,33 +5295,129 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
     }
 
-    // Open submission type dialog - actual submission will happen in handleSubmissionTypeSelected
-    setSubmissionTypeDialogOpen(true);
-  };
-
-  // Handle submission type selection from dialog
-  const handleSubmissionTypeSelected = async (isWeeklyCheckup: boolean) => {
-    setSubmissionTypeDialogOpen(false);
-    
-    if (!employeeData) {
-      return;
-    }
+    const confirmSubmit = window.confirm(
+      'Are you sure you want to submit this expense report for monthly approval? You can still edit entries after submitting until the report is approved. Use Save Changes to update your submission.'
+    );
+    if (!confirmSubmit) return;
 
     setLoading(true);
-    const confirmMsg = isWeeklyCheckup
-      ? 'This report will be submitted for weekly review. You can still edit entries after submitting until the report is approved. Use Save Changes to update your submission.'
-      : 'Are you sure you want to submit this expense report? You can still edit entries after submitting until the report is approved. Use Save Changes to update your submission.';
-    const confirmSubmit = window.confirm(confirmMsg);
-    if (!confirmSubmit) {
-      setLoading(false);
-      return;
-    }
-    await performSubmit(isWeeklyCheckup);
+    await performSubmit();
     setLoading(false);
   };
 
-  /** Runs POST for submission (confirm already done in handleSubmissionTypeSelected). */
-  const performSubmit = async (isWeeklyCheckup: boolean) => {
+  // Share a weekly check-up — notifies reviewers without changing monthly approval status
+  const handleWeeklyCheckup = async () => {
+    if (!employeeData) {
+      alert('No employee data to share');
+      return;
+    }
+
+    if (isWeeklyCheckupOnCooldown(lastWeeklyCheckupNotificationWeekKey)) {
+      const nextLabel = formatNextWeeklyCheckupAvailableLabel(
+        lastWeeklyCheckupNotificationWeekKey || getCalendarWeekStartKey()
+      );
+      alert(`Your reviewers were already notified this week. You can send another weekly check-up on ${nextLabel}.`);
+      return;
+    }
+
+    const confirmShare = window.confirm(
+      'Share a weekly check-up with your senior staff and supervisor? This sends them a quick heads-up to review your progress (once per week). It does not change your monthly submission or approval status, and you can keep editing.'
+    );
+    if (!confirmShare) return;
+
+    setLoading(true);
+    try {
+      const reportData = buildReportData();
+      if (!reportData) {
+        throw new Error('Missing report data');
+      }
+
+      await syncExpenseReportToSource({
+        employeeId: employeeData.employeeId,
+        month: currentMonth,
+        year: currentYear,
+        reportData,
+      });
+
+      let resolvedReportId = currentReportId;
+      if (!resolvedReportId) {
+        const created = await apiPost<{ id?: string }>('/api/expense-reports', {
+          employeeId: employeeData.employeeId,
+          month: currentMonth,
+          year: currentYear,
+          reportData: { ...reportData, submissionType: 'monthly_submission' },
+          status: 'draft',
+        });
+        if (created?.id) {
+          resolvedReportId = created.id;
+          setCurrentReportId(created.id);
+        } else {
+          const latestReport = await apiGet<any>(
+            `/api/expense-reports/${employeeData.employeeId}/${currentMonth}/${currentYear}`,
+            { skipCache: true }
+          );
+          if (latestReport?.id) {
+            resolvedReportId = latestReport.id;
+            setCurrentReportId(latestReport.id);
+          }
+        }
+      }
+
+      if (!resolvedReportId) {
+        throw new Error('Could not find or create an expense report for this month');
+      }
+
+      const result = await apiPost<{
+        notificationsSent?: number;
+        lastWeeklyCheckupNotificationWeekKey?: string;
+        code?: string;
+        error?: string;
+        nextAvailableLabel?: string;
+      }>(`/api/expense-reports/${resolvedReportId}/weekly-checkup`, { reportData });
+
+      if (result?.lastWeeklyCheckupNotificationWeekKey) {
+        setLastWeeklyCheckupNotificationWeekKey(result.lastWeeklyCheckupNotificationWeekKey);
+      } else {
+        setLastWeeklyCheckupNotificationWeekKey(getCalendarWeekStartKey());
+      }
+
+      const notifiedCount = result?.notificationsSent ?? 0;
+      const successMsg =
+        notifiedCount > 0
+          ? 'Weekly check-up shared! Your reviewers have been notified.'
+          : 'Weekly check-up saved. No reviewers are assigned on your profile to notify.';
+
+      if (typeof showSuccess === 'function') {
+        showSuccess(successMsg);
+      } else {
+        alert(`✅ ${successMsg}`);
+      }
+    } catch (error) {
+      debugError('Error sharing weekly check-up:', error);
+      let msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg.startsWith('HTTP ')) {
+        const jsonStart = msg.indexOf('{');
+        if (jsonStart !== -1) {
+          try {
+            const payload = JSON.parse(msg.slice(jsonStart));
+            if (payload?.error) msg = payload.error;
+          } catch {
+            // keep raw message
+          }
+        }
+      }
+      if (isHttpClientError(error)) {
+        showErrorPrompt(msg, { title: 'Could not share weekly check-up', goBackLabel: 'Back to report' });
+      } else {
+        alert(`Error sharing weekly check-up: ${msg}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Runs POST + status update for monthly submission. */
+  const performSubmit = async () => {
     if (!employeeData) return;
     try {
       const reportData = buildReportData();
@@ -5329,10 +5432,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         year: currentYear,
         reportData: {
           ...reportData,
-          submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission',
+          submissionType: 'monthly_submission',
         },
         status: 'submitted',
-        submissionType: isWeeklyCheckup ? 'weekly_checkup' : 'monthly_submission',
+        submissionType: 'monthly_submission',
       });
 
       let resolvedReportId = currentReportId;
@@ -5375,32 +5478,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         fetchApprovalHistory(resolvedReportId);
 
         if (typeof showSuccess === 'function') {
-          if (isWeeklyCheckup) {
-            showSuccess('Weekly check-up submitted successfully! It will be sent for weekly review.');
-          } else {
-            showSuccess('Expense report submitted! Your supervisor has been notified.');
-          }
+          showSuccess('Expense report submitted! Your supervisor has been notified.');
         } else {
-          if (isWeeklyCheckup) {
-            alert('✅ Weekly check-up submitted successfully! It will be sent for weekly review.');
-          } else {
-            alert('🎉 Expense report submitted successfully! It has been sent to your supervisor for review.');
-          }
+          alert('🎉 Expense report submitted successfully! It has been sent to your supervisor for review.');
         }
       } else {
         setReportStatus('submitted');
         if (typeof showSuccess === 'function') {
-          if (isWeeklyCheckup) {
-            showSuccess('Weekly check-up submitted successfully! It will be sent for weekly review.');
-          } else {
-            showSuccess('Expense report submitted! Your supervisor has been notified.');
-          }
+          showSuccess('Expense report submitted! Your supervisor has been notified.');
         } else {
-          if (isWeeklyCheckup) {
-            alert('✅ Weekly check-up submitted successfully! It will be sent for weekly review.');
-          } else {
-            alert('🎉 Expense report submitted successfully! It is now ready for supervisor review.');
-          }
+          alert('🎉 Expense report submitted successfully! It is now ready for supervisor review.');
         }
       }
       
@@ -5415,12 +5502,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  // Handle canceling submission type selection
-  const handleSubmissionTypeCancel = () => {
-    setSubmissionTypeDialogOpen(false);
-    setLoading(false);
   };
 
   // Withdraw submission: take report back to draft so staff can edit and resubmit (only before first approval)
@@ -5960,12 +6041,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     !loggedInEmployeeIdForSubmit ||
     !effectiveEmployeeId ||
     loggedInEmployeeIdForSubmit === effectiveEmployeeId;
+  const staffCanEditReport =
+    !supervisorMode && !isAdminView && isStaffReportEditable(reportStatus);
   const showHeaderSubmitReport =
     isViewingOwnExpenseReport &&
     !supervisorMode &&
     (reportStatus === 'draft' || reportStatus === 'needs_revision');
-  const staffCanEditReport =
-    !supervisorMode && !isAdminView && isStaffReportEditable(reportStatus);
+  const showHeaderWeeklyCheckup =
+    isViewingOwnExpenseReport && !supervisorMode && staffCanEditReport;
+  const weeklyCheckupOnCooldown = isWeeklyCheckupOnCooldown(lastWeeklyCheckupNotificationWeekKey);
+  const weeklyCheckupTooltip = weeklyCheckupOnCooldown
+    ? `Reviewers were already notified this week. Next available ${formatNextWeeklyCheckupAvailableLabel(
+        lastWeeklyCheckupNotificationWeekKey || getCalendarWeekStartKey()
+      )}.`
+    : 'Share a quick update with your reviewers (once per calendar week). No signature or certification required.';
   const reportPendingEdit =
     !supervisorMode && !isAdminView && isPendingApprovalStatus(reportStatus);
 
@@ -5991,6 +6080,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onSaveReport={handleSaveReport}
         saveReportDisabled={!staffCanEditReport}
         onSubmitReport={showHeaderSubmitReport ? handleSubmitReport : undefined}
+        onWeeklyCheckup={showHeaderWeeklyCheckup ? handleWeeklyCheckup : undefined}
+        weeklyCheckupDisabled={!staffCanEditReport || weeklyCheckupOnCooldown}
+        weeklyCheckupTooltip={weeklyCheckupTooltip}
         onApproveReport={onApproveReport}
         onRequestRevision={onRequestRevision}
         onViewAllReports={fetchAllReports}
@@ -9911,68 +10003,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setReportsDialogOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Submission Type Selection Dialog */}
-      <Dialog 
-        open={submissionTypeDialogOpen} 
-        onClose={handleSubmissionTypeCancel}
-        maxWidth={false}
-        PaperProps={{
-          sx: {
-            maxWidth: '90vw',
-            maxHeight: '90vh',
-            width: 'auto',
-            height: 'auto',
-          }
-        }}
-        fullWidth
-      >
-        <DialogTitle>
-          <Typography variant="h6" component="div">Select Submission Type</Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 3 }}>
-            Please select the type of submission:
-          </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                📅 Monthly Submission
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Full expense report submission. This is the standard monthly submission.
-              </Typography>
-              <Button
-                variant="contained"
-                color="primary"
-                fullWidth
-                onClick={() => handleSubmissionTypeSelected(false)}
-              >
-                Submit Monthly Report
-              </Button>
-            </Box>
-            <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                📋 Weekly Check-up
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Submit (or resubmit) for weekly review.
-              </Typography>
-              <Button
-                variant="outlined"
-                color="primary"
-                fullWidth
-                onClick={() => handleSubmissionTypeSelected(true)}
-              >
-                Submit Weekly Check-up
-              </Button>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleSubmissionTypeCancel}>Cancel</Button>
         </DialogActions>
       </Dialog>
 

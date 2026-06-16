@@ -50,6 +50,9 @@ interface EnhancedHeaderProps {
   onSaveReport?: () => void;
   saveReportDisabled?: boolean;
   onSubmitReport?: () => void;
+  onWeeklyCheckup?: () => void;
+  weeklyCheckupDisabled?: boolean;
+  weeklyCheckupTooltip?: string;
   onApproveReport?: () => void;
   onRequestRevision?: () => void;
   onViewAllReports?: () => void;
@@ -88,6 +91,9 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   onSaveReport,
   saveReportDisabled = false,
   onSubmitReport,
+  onWeeklyCheckup,
+  weeklyCheckupDisabled = false,
+  weeklyCheckupTooltip,
   onApproveReport,
   onRequestRevision,
   onViewAllReports,
@@ -373,18 +379,35 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                 </Button>
               </>
             ) : (
-              onSubmitReport && (
-                <Button
-                  variant="contained"
-                  startIcon={<SendIcon />}
-                  onClick={onSubmitReport}
-                  disabled={loading}
-                  size="small"
-                  sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
-                >
-                  Submit
-                </Button>
-              )
+              <>
+                {onWeeklyCheckup && (
+                  <Tooltip title={weeklyCheckupTooltip || 'Share a weekly check-up with your reviewers'}>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        onClick={onWeeklyCheckup}
+                        disabled={loading || weeklyCheckupDisabled}
+                        size="small"
+                        sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
+                      >
+                        Weekly check-up
+                      </Button>
+                    </span>
+                  </Tooltip>
+                )}
+                {onSubmitReport && (
+                  <Button
+                    variant="contained"
+                    startIcon={<SendIcon />}
+                    onClick={onSubmitReport}
+                    disabled={loading}
+                    size="small"
+                    sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
+                  >
+                    Submit
+                  </Button>
+                )}
+              </>
             )}
 
             {onExportPdf && (

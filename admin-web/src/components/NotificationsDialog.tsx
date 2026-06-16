@@ -320,6 +320,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'report_submitted':
+      case 'weekly_checkup_shared':
       case 'approval_needed':
         return <InfoIcon color="info" />;
       case 'revision_requested':

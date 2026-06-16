@@ -58,7 +58,34 @@ function normalizeDateString(dateValue) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/** Sunday (local) of the calendar week containing `dateInput`, as YYYY-MM-DD. */
+function getCalendarWeekStartKey(dateInput = new Date()) {
+  const d = dateInput instanceof Date ? new Date(dateInput.getTime()) : new Date(dateInput);
+  const weekStart = new Date(d);
+  weekStart.setDate(d.getDate() - d.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+  const year = weekStart.getFullYear();
+  const month = String(weekStart.getMonth() + 1).padStart(2, '0');
+  const day = String(weekStart.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** Human-readable date for the Sunday after `weekStartKey` (next allowed weekly check-up). */
+function formatNextWeeklyCheckupAvailableLabel(weekStartKey) {
+  if (!weekStartKey || typeof weekStartKey !== 'string') return 'next Sunday';
+  const parts = weekStartKey.split('-').map((p) => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return 'next Sunday';
+  const nextSunday = new Date(parts[0], parts[1] - 1, parts[2] + 7);
+  return nextSunday.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
 module.exports = {
   normalizeDateString,
+  getCalendarWeekStartKey,
+  formatNextWeeklyCheckupAvailableLabel,
 };
 

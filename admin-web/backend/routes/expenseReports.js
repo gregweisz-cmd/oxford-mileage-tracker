@@ -141,6 +141,111 @@ async function initializeApprovalWorkflow(report, reportDataOverride = null) {
 }
 
 /**
+ * Record a weekly check-up share — informational notification only; does not change approval status.
+ */
+function resolveWeeklyCheckupNotificationWeekKey(reportData) {
+  if (!reportData || typeof reportData !== 'object') return null;
+  if (reportData.lastWeeklyCheckupNotificationWeekKey) {
+    return reportData.lastWeeklyCheckupNotificationWeekKey;
+  }
+  if (reportData.lastWeeklyCheckupNotificationAt) {
+    return dateHelpers.getCalendarWeekStartKey(new Date(reportData.lastWeeklyCheckupNotificationAt));
+  }
+  const checkups = Array.isArray(reportData.weeklyCheckups) ? reportData.weeklyCheckups : [];
+  const lastNotified = [...checkups].reverse().find((entry) => entry && entry.at && entry.notified !== false);
+  if (lastNotified && lastNotified.at) {
+    return lastNotified.weekKey || dateHelpers.getCalendarWeekStartKey(new Date(lastNotified.at));
+  }
+  if (reportData.lastWeeklyCheckupAt) {
+    return dateHelpers.getCalendarWeekStartKey(new Date(reportData.lastWeeklyCheckupAt));
+  }
+  return null;
+}
+
+function assertWeeklyCheckupNotificationAllowed(reportData) {
+  const currentWeekKey = dateHelpers.getCalendarWeekStartKey();
+  const lastNotifiedWeekKey = resolveWeeklyCheckupNotificationWeekKey(reportData);
+  if (lastNotifiedWeekKey !== currentWeekKey) return currentWeekKey;
+
+  const nextLabel = dateHelpers.formatNextWeeklyCheckupAvailableLabel(currentWeekKey);
+  const error = new Error(
+    `Your reviewers were already notified this week. You can send another weekly check-up on ${nextLabel}.`
+  );
+  error.statusCode = 400;
+  error.code = 'weekly_checkup_cooldown';
+  error.nextAvailableLabel = nextLabel;
+  throw error;
+}
+
+async function recordWeeklyCheckupShare(report, reportDataUpdate = null) {
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+  const statusLower = String(report.status || 'draft').toLowerCase();
+  if (statusLower === 'approved') {
+    const error = new Error('This expense report has been approved and can no longer receive weekly check-ups.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  let reportData = helpers.parseJsonSafe(report.reportData, {});
+  const currentWeekKey = assertWeeklyCheckupNotificationAllowed(reportData);
+
+  if (reportDataUpdate && typeof reportDataUpdate === 'object') {
+    const { submissionType: _ignoredSubmissionType, ...rest } = reportDataUpdate;
+    reportData = { ...reportData, ...rest };
+  }
+
+  if (!Array.isArray(reportData.weeklyCheckups)) {
+    reportData.weeklyCheckups = [];
+  }
+  reportData.weeklyCheckups.push({
+    at: now,
+    employeeId: report.employeeId,
+    notified: true,
+    weekKey: currentWeekKey,
+  });
+  reportData.lastWeeklyCheckupAt = now;
+  reportData.lastWeeklyCheckupNotificationAt = now;
+  reportData.lastWeeklyCheckupNotificationWeekKey = currentWeekKey;
+
+  await new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE expense_reports SET reportData = ?, updatedAt = ? WHERE id = ?',
+      [JSON.stringify(reportData), now, report.id],
+      (err) => {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+
+  const employee = await dbService.getEmployeeById(report.employeeId);
+  const employeeName = employee?.preferredName || employee?.name || 'Employee';
+  const notificationIds = await notificationService.notifyWeeklyCheckupShared(
+    report.id,
+    report.employeeId,
+    employeeName
+  );
+
+  debugLog(`📋 Weekly check-up shared for report ${report.id}; ${notificationIds.length} notification(s) sent`);
+
+  return {
+    id: report.id,
+    lastWeeklyCheckupAt: now,
+    lastWeeklyCheckupNotificationWeekKey: currentWeekKey,
+    weeklyCheckupCount: reportData.weeklyCheckups.length,
+    notificationsSent: notificationIds.length,
+    message: 'Weekly check-up shared successfully',
+    status: report.status,
+  };
+}
+
+function isWeeklyCheckupSubmission(reportData, body) {
+  const submissionType = (reportData?.submissionType || body?.submissionType || '').toLowerCase();
+  return submissionType === 'weekly_checkup';
+}
+
+/**
  * Calculate total expenses from report data
  */
 function calculateTotalExpensesFromReportData(reportData) {
@@ -200,6 +305,17 @@ router.post('/api/expense-reports', async (req, res) => {
 
       // If submitting, initialize approval workflow
       if (status === 'submitted') {
+        if (isWeeklyCheckupSubmission(reportData, req.body)) {
+          const fullReport = await new Promise((resolve, reject) => {
+            db.get('SELECT * FROM expense_reports WHERE id = ?', [existingReport.id], (err, row) => {
+              if (err) reject(err);
+              else resolve(row);
+            });
+          });
+          const result = await recordWeeklyCheckupShare(fullReport, reportData);
+          res.json(result);
+          return;
+        }
         const employeeSig = reportData.employeeSignature || reportData.signatureImage;
         if (!employeeSig) {
           res.status(400).json({ error: 'Employee signature is required before submission. Upload a signature on the Cover Sheet.' });
@@ -267,6 +383,31 @@ router.post('/api/expense-reports', async (req, res) => {
 
       // If submitting, initialize approval workflow
       if (status === 'submitted') {
+        if (isWeeklyCheckupSubmission(reportData, req.body)) {
+          insertData.status = 'draft';
+          const insertFields = Object.keys(insertData).join(', ');
+          const insertValues = Object.values(insertData);
+          const placeholders = insertValues.map(() => '?').join(', ');
+          await new Promise((resolve, reject) => {
+            db.run(
+              `INSERT INTO expense_reports (${insertFields}) VALUES (${placeholders})`,
+              insertValues,
+              function(err) {
+                if (err) reject(err);
+                else resolve();
+              }
+            );
+          });
+          const fullReport = await new Promise((resolve, reject) => {
+            db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, row) => {
+              if (err) reject(err);
+              else resolve(row);
+            });
+          });
+          const result = await recordWeeklyCheckupShare(fullReport, reportData);
+          res.json(result);
+          return;
+        }
         const employeeSigInsert = reportData.employeeSignature || reportData.signatureImage;
         if (!employeeSigInsert) {
           res.status(400).json({ error: 'Employee signature is required before submission. Upload a signature on the Cover Sheet.' });
@@ -2930,6 +3071,59 @@ router.delete('/api/expense-reports/:id', async (req, res) => {
   } catch (err) {
     debugError('Delete expense report error:', err);
     res.status(500).json({ error: err.message || 'Failed to delete report' });
+  }
+});
+
+/**
+ * Share a weekly check-up — notifies senior staff/supervisor without changing approval workflow.
+ * POST /api/expense-reports/:id/weekly-checkup
+ * Body: { reportData?: object }
+ */
+router.post('/api/expense-reports/:id/weekly-checkup', async (req, res) => {
+  const { id } = req.params;
+  const { reportData } = req.body;
+  const db = dbService.getDb();
+
+  try {
+    const report = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (!report) {
+      res.status(404).json({ error: 'Expense report not found' });
+      return;
+    }
+
+    await assertStaffCanEditReportMonth(db, report.employeeId, report.month, report.year);
+
+    const result = await recordWeeklyCheckupShare(report, reportData);
+
+    logAuditEvent({
+      action: 'weekly_checkup_shared',
+      actor: req.authenticatedEmployee,
+      targetType: 'expense_report',
+      targetId: id,
+      details: {
+        employeeId: report.employeeId,
+        month: report.month,
+        year: report.year,
+        notificationsSent: result.notificationsSent,
+        reportStatus: report.status,
+      },
+    });
+
+    res.json(result);
+  } catch (error) {
+    debugError('❌ Error sharing weekly check-up:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
+      error: error.message || 'Failed to share weekly check-up',
+      code: error.code || undefined,
+      nextAvailableLabel: error.nextAvailableLabel || undefined,
+    });
   }
 });
 

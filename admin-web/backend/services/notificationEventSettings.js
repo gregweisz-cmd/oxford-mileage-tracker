@@ -29,6 +29,13 @@ const NOTIFICATION_EVENT_DEFINITIONS = {
     notificationType: 'report_submitted',
     placeholders: ['employeeName', 'monthName'],
   },
+  weekly_checkup_shared: {
+    displayName: 'Weekly check-up shared',
+    description:
+      'Notifies senior staff and/or the supervisor when an employee shares a weekly check-up (at most once per calendar week per report). Informational only — does not change the monthly approval workflow.',
+    notificationType: 'weekly_checkup_shared',
+    placeholders: ['employeeName', 'monthName'],
+  },
   supervisor_approval_needed: {
     displayName: 'Report ready for supervisor (after senior staff)',
     description: 'Notifies the employee’s supervisor when senior staff has approved and the report needs supervisor review.',

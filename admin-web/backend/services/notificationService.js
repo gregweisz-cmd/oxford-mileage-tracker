@@ -275,6 +275,72 @@ async function notifyReportSubmitted(reportId, employeeId, employeeName, firstAp
 }
 
 /**
+ * Notify senior staff and/or supervisor that an employee shared a weekly check-up (informational only).
+ */
+async function notifyWeeklyCheckupShared(reportId, employeeId, employeeName) {
+  try {
+    const db = dbService.getDb();
+    const employee = await dbService.getEmployeeById(employeeId);
+    if (!employee) return [];
+
+    const report = await new Promise((resolve) => {
+      db.get('SELECT id, month, year FROM expense_reports WHERE id = ?', [reportId], (err, row) => {
+        if (err) resolve(null);
+        else resolve(row);
+      });
+    });
+
+    const monthName = report
+      ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      : '';
+    const en = employeeName || employee.preferredName || employee.name || 'An employee';
+    const defaults = {
+      title: `Weekly Check-up Shared${monthName ? ` - ${monthName}` : ''}`,
+      message: `${en} shared a weekly check-up${monthName ? ` for ${monthName}` : ''}. Review when you have a moment — no approval action is required.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'weekly_checkup_shared',
+      defaults,
+      { employeeName: en, monthName, actorName: en }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return [];
+
+    const recipientIds = new Set();
+    if (employee.seniorStaffId) recipientIds.add(employee.seniorStaffId);
+    if (employee.supervisorId) recipientIds.add(employee.supervisorId);
+
+    const notifications = [];
+    for (const recipientId of recipientIds) {
+      const recipient = await dbService.getEmployeeById(recipientId);
+      if (!recipient) continue;
+
+      const notificationId = await createNotification({
+        recipientId: recipient.id,
+        recipientRole: recipient.role || 'supervisor',
+        type: r.notificationType,
+        title: r.title,
+        message: r.message,
+        reportId,
+        employeeId,
+        employeeName: en,
+        actorId: employeeId,
+        actorName: en,
+        actorRole: 'employee',
+        sendEmail: r.emailEnabled,
+        persistInApp: r.inAppEnabled,
+        metadata: { month: report?.month, year: report?.year, weeklyCheckup: true },
+      });
+      if (notificationId) notifications.push(notificationId);
+    }
+
+    return notifications;
+  } catch (error) {
+    debugError('❌ Error notifying weekly check-up:', error);
+    return [];
+  }
+}
+
+/**
  * Notify supervisor when senior staff has approved and report is ready for supervisor review.
  */
 async function notifySupervisorApprovalNeeded(reportId, seniorStaffId, seniorStaffName, employeeId) {
@@ -978,6 +1044,7 @@ async function notifySundayReminder(employeeId) {
 module.exports = {
   createNotification,
   notifyReportSubmitted,
+  notifyWeeklyCheckupShared,
   notifyFinanceRevisionRequest,
   notifySupervisorRevisionRequest,
   notifyExpenseReportRevisionRequested,
