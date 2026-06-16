@@ -40,3 +40,10 @@ export const VehicleApiService = {
     rateLimitedApi.clearCacheFor('/api/vehicles');
   },
 };
+
+export async function getDefaultVehicleId(employeeId: string): Promise<string | undefined> {
+  const vehicles = await VehicleApiService.getVehicles(employeeId);
+  const active = vehicles.filter((vehicle) => vehicle.isActive !== 0);
+  const defaultVehicle = active.find((vehicle) => vehicle.isDefault) || active[0];
+  return defaultVehicle?.id;
+}

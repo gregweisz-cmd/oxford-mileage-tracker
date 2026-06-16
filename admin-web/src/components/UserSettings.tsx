@@ -772,7 +772,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
               Vehicles
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Name your vehicles, set required starting odometers, and choose a default for mileage tracking.
+              Name your vehicles, set required starting odometers, and choose a default. The default vehicle is used for odometer suggestions and new mileage entries when no vehicle is explicitly selected.
             </Typography>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>

@@ -833,7 +833,8 @@ export class ApiSyncService {
             notes: entry.notes || '',
             hoursWorked: entry.hoursWorked,
             isGpsTracked: entry.isGpsTracked || false,
-            costCenter: entry.costCenter || '' // Include costCenter to ensure it's synced
+            costCenter: entry.costCenter || '', // Include costCenter to ensure it's synced
+            vehicleId: entry.vehicleId || undefined,
           };
           
           // Debug: Log address information to verify it's being sent

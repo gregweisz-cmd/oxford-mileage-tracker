@@ -40,6 +40,7 @@ import {
 import { DataSyncService } from '../services/dataSyncService';
 import { Employee, MileageEntry, Receipt, TimeTracking } from '../types';
 import { MileageEntryForm, ReceiptForm, TimeTrackingForm, MileageEntryFormData, ReceiptFormData, TimeTrackingFormData } from './DataEntryForms';
+import { getDefaultVehicleId } from '../services/vehicleApiService';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { debugError } from '../config/debug';
 
@@ -130,10 +131,12 @@ export const DataEntryManager: React.FC<DataEntryManagerProps> = ({ employee, mo
   const handleMileageSave = async (formData: MileageEntryFormData) => {
     setLoading(true);
     try {
+      const defaultVehicleId = await getDefaultVehicleId(employee.id);
       // Prepare the data for the backend, mapping startingOdometer to odometerReading
       const backendData = {
         ...formData,
-        odometerReading: formData.startingOdometer || 0
+        odometerReading: formData.startingOdometer || 0,
+        vehicleId: defaultVehicleId || null,
       };
       
       if (editingMileage) {

@@ -57,12 +57,39 @@ function dbAll(db, sql, params = []) {
   });
 }
 
-async function getDailyOdometerReading(db, employeeId, dateKey) {
+async function getDefaultVehicleId(db, employeeId) {
   const row = await dbGet(
     db,
-    'SELECT odometerReading FROM daily_odometer_readings WHERE employeeId = ? AND date = ?',
-    [employeeId, dateKey]
+    'SELECT id FROM vehicles WHERE employeeId = ? AND isActive = 1 ORDER BY isDefault DESC, createdAt ASC LIMIT 1',
+    [employeeId]
   );
+  return row?.id || null;
+}
+
+async function getDailyOdometerReading(db, employeeId, dateKey) {
+  const defaultVehicleId = await getDefaultVehicleId(db, employeeId);
+  let row = null;
+  if (defaultVehicleId) {
+    row = await dbGet(
+      db,
+      'SELECT odometerReading FROM daily_odometer_readings WHERE employeeId = ? AND date = ? AND vehicleId = ?',
+      [employeeId, dateKey, defaultVehicleId]
+    );
+  }
+  if (!row) {
+    row = await dbGet(
+      db,
+      'SELECT odometerReading FROM daily_odometer_readings WHERE employeeId = ? AND date = ? AND (vehicleId IS NULL OR vehicleId = \'\')',
+      [employeeId, dateKey]
+    );
+  }
+  if (!row) {
+    row = await dbGet(
+      db,
+      'SELECT odometerReading FROM daily_odometer_readings WHERE employeeId = ? AND date = ?',
+      [employeeId, dateKey]
+    );
+  }
   if (!row || row.odometerReading == null) return null;
   const reading = Number(row.odometerReading);
   return Number.isFinite(reading) ? reading : null;

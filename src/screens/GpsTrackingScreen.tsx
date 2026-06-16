@@ -1414,8 +1414,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         'Stop tracking'
       );
       
-      // Use GPS-tracked miles
-      const actualMiles = Math.round(completedSession?.totalMiles || 0);
+      // Use GPS-tracked miles (short trips round to 0 and disappear from daily totals)
+      const rawMiles = completedSession?.totalMiles || 0;
+      const actualMiles =
+        rawMiles > 0.1 ? Math.max(1, Math.round(rawMiles)) : Math.round(rawMiles);
       const normalizedStart = startLocationDetails
         ? normalizeLocationDetails(startLocationDetails) || startLocationDetails
         : null;
@@ -1475,6 +1477,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
         if (mileageSaved) {
           console.log('✅ GPS Trip saved successfully!');
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const updatedMilesToday = await DatabaseService.getTotalMilesForVehicleOnDate(
+            currentEmployee.id,
+            today,
+            selectedVehicleId || undefined
+          );
+          setMilesDrivenToday(updatedMilesToday);
         }
 
         // Update last destination for next trip
@@ -1499,14 +1509,21 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         void AsyncStorage.removeItem(GPS_TRIP_UI_STATE_KEY);
         dismissAllEndTripModals();
         setIsEndingTracking(false);
+        // Wait for the overFullScreen loading overlay to fully unmount before we
+        // reset navigation. Resetting while an iOS Modal is still dismissing can
+        // leave a transparent native view mounted over Home that swallows all
+        // touches (forcing a hard app restart). The delay lets RN remove the
+        // native modal container first.
         InteractionManager.runAfterInteractions(() => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Home' }],
-          });
           setTimeout(() => {
-            Alert.alert('Tracking Complete', message);
-          }, Platform.OS === 'ios' ? 400 : 300);
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Home' }],
+            });
+            setTimeout(() => {
+              Alert.alert('Tracking Complete', message);
+            }, Platform.OS === 'ios' ? 450 : 300);
+          }, Platform.OS === 'ios' ? 350 : 50);
         });
         return;
       } else {
@@ -2048,7 +2065,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               • Use "Pause mileage" for errands or stops so those miles are not billed to this trip{'\n'}
               • Tap "Stop Tracking" and confirm your current end location{'\n'}
               • Your trip will be automatically saved with detailed location info{'\n'}
-              • Vehicle is automatically set to "Personal Vehicle"{'\n'}
+              • Select the vehicle you are driving above; odometer and miles today are tracked per vehicle{'\n'}
               • Make sure location services are enabled for accurate tracking
             </Text>
           </View>

@@ -1112,6 +1112,7 @@ export class DatabaseService {
     const id = this.generateId();
     const now = new Date().toISOString();
     const database = await getDatabase();
+    const storedVehicleId = await this.resolveEffectiveVehicleId(entry.employeeId, entry.vehicleId);
     
     // Convert date to YYYY-MM-DD format only (no time/timezone)
     // This ensures the date stays the same regardless of device timezone
@@ -1132,7 +1133,7 @@ export class DatabaseService {
         entry.employeeId, 
         entry.oxfordHouseId, 
         entry.costCenter || '',
-        entry.vehicleId || '',
+        storedVehicleId || '',
         dateOnly, // Store as YYYY-MM-DD only (no time component)
         entry.odometerReading,
         entry.startLocation, 
@@ -1168,6 +1169,7 @@ export class DatabaseService {
     const newEntry = {
       id,
       ...entry,
+      vehicleId: storedVehicleId,
       notes: entry.notes,
       createdAt: new Date(now),
       updatedAt: new Date(now)
@@ -1181,10 +1183,8 @@ export class DatabaseService {
       console.error('❌ Database: Error analyzing mileage entry:', error);
     });
 
-    const vehicleIdForRefresh = (entry.vehicleId || '').trim()
-      || (await this.getSoleVehicleIdIfAny(entry.employeeId));
-    if (vehicleIdForRefresh) {
-      void this.refreshVehicleStartingOdometerFromTrips(entry.employeeId, vehicleIdForRefresh).catch(
+    if (storedVehicleId) {
+      void this.refreshVehicleStartingOdometerFromTrips(entry.employeeId, storedVehicleId).catch(
         (error) => {
           console.error('❌ Database: Failed to refresh vehicle starting odometer:', error);
         }
@@ -1331,8 +1331,10 @@ export class DatabaseService {
     const updatedEntry = await this.getMileageEntryById(id);
     if (updatedEntry) {
       await this.syncToApi('updateMileageEntry', updatedEntry);
-      const vehicleIdForRefresh = (updatedEntry.vehicleId || '').trim()
-        || (await this.getSoleVehicleIdIfAny(updatedEntry.employeeId));
+      const vehicleIdForRefresh = await this.resolveEffectiveVehicleId(
+        updatedEntry.employeeId,
+        updatedEntry.vehicleId
+      );
       if (vehicleIdForRefresh) {
         void this.refreshVehicleStartingOdometerFromTrips(
           updatedEntry.employeeId,
@@ -1953,6 +1955,7 @@ export class DatabaseService {
 
   // Daily Odometer Reading methods
   static async createDailyOdometerReading(reading: Omit<DailyOdometerReading, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }, skipSync = false): Promise<DailyOdometerReading> {
+    const storedVehicleId = await this.resolveEffectiveVehicleId(reading.employeeId, reading.vehicleId);
     const newReading = await withDatabase(async (database) => {
         const id = reading.id || this.generateId();
         const now = new Date().toISOString();
@@ -1965,7 +1968,7 @@ export class DatabaseService {
 
         debugLog('💾 Database: Creating daily odometer reading');
         debugLog('💾 Database: Employee ID:', reading.employeeId);
-        debugLog('💾 Database: Vehicle ID:', reading.vehicleId || '(none)');
+        debugLog('💾 Database: Vehicle ID:', storedVehicleId || '(none)');
         debugLog('💾 Database: Date (local):', dateStr);
         debugLog('💾 Database: Odometer Reading:', reading.odometerReading);
 
@@ -1974,7 +1977,7 @@ export class DatabaseService {
           [
             id,
             reading.employeeId,
-            reading.vehicleId || '',
+            storedVehicleId || '',
             dateStr,
             reading.odometerReading,
             reading.notes || '',
@@ -1988,6 +1991,7 @@ export class DatabaseService {
         return {
           id,
           ...reading,
+          vehicleId: storedVehicleId,
           notes: reading.notes,
           createdAt: new Date(now),
           updatedAt: new Date(now),
@@ -2002,8 +2006,9 @@ export class DatabaseService {
   }
 
   static async getDailyOdometerReading(employeeId: string, date: Date, vehicleId?: string): Promise<DailyOdometerReading | null> {
+    const effectiveVehicleId = await this.resolveEffectiveVehicleId(employeeId, vehicleId);
     return withDatabase(async (database) =>
-      this.getDailyOdometerReadingUnlocked(employeeId, date, vehicleId, database)
+      this.getDailyOdometerReadingUnlocked(employeeId, date, effectiveVehicleId, database)
     );
   }
 
@@ -2091,6 +2096,30 @@ export class DatabaseService {
 
   // --- Per-vehicle odometer helpers (day start, same-day roll-forward, vehicle baseline sync) ---
 
+  /** Treat empty SQLite vehicleId as unscoped. */
+  private static normalizeEntryVehicleId(vehicleId?: string | null): string | undefined {
+    const trimmed = (vehicleId || '').trim();
+    return trimmed || undefined;
+  }
+
+  static async getDefaultVehicleId(employeeId: string): Promise<string | null> {
+    const vehicles = await this.getVehicles(employeeId);
+    const active = vehicles.filter((v) => v.isActive !== false);
+    const defaultVehicle = active.find((v) => v.isDefault) || active[0];
+    return defaultVehicle?.id ?? null;
+  }
+
+  /** Use explicit vehicle when provided; otherwise fall back to the employee default vehicle. */
+  static async resolveEffectiveVehicleId(
+    employeeId: string,
+    explicitVehicleId?: string
+  ): Promise<string | undefined> {
+    const trimmed = (explicitVehicleId || '').trim();
+    if (trimmed) return trimmed;
+    const defaultId = await this.getDefaultVehicleId(employeeId);
+    return defaultId || undefined;
+  }
+
   static async getSoleVehicleIdIfAny(employeeId: string): Promise<string | null> {
     const vehicles = await this.getVehicles(employeeId);
     const active = vehicles.filter((v) => v.isActive !== false);
@@ -2104,13 +2133,14 @@ export class DatabaseService {
     vehicleId?: string
   ): Promise<MileageEntry[]> {
     const day = startOfLocalDay(date);
-    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const effectiveVehicleId = await this.resolveEffectiveVehicleId(employeeId, vehicleId);
+    const defaultVehicleId = await this.getDefaultVehicleId(employeeId);
     const entries = await this.getMileageEntries(employeeId);
     return entries.filter((entry) => {
       const entryDay = startOfLocalDay(new Date(entry.date));
       return (
         entryDay.getTime() === day.getTime() &&
-        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+        this.entryMatchesVehicle(entry, effectiveVehicleId, defaultVehicleId)
       );
     });
   }
@@ -2123,7 +2153,8 @@ export class DatabaseService {
   ): Promise<number> {
     return withDatabase(async (database) => {
       const dateStr = toLocalDateKey(startOfLocalDay(date));
-      const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+      const effectiveVehicleId = await this.resolveEffectiveVehicleId(employeeId, vehicleId);
+      const defaultVehicleId = await this.getDefaultVehicleId(employeeId);
       const rows = (await database.getAllAsync(
         'SELECT miles, vehicleId FROM mileage_entries WHERE employeeId = ? AND date(date) = date(?)',
         [employeeId, dateStr]
@@ -2133,8 +2164,8 @@ export class DatabaseService {
         .filter((row) =>
           this.entryMatchesVehicle(
             { vehicleId: row.vehicleId || undefined } as MileageEntry,
-            vehicleId,
-            soleVehicleId
+            effectiveVehicleId,
+            defaultVehicleId
           )
         )
         .reduce((sum, row) => sum + (Number(row.miles) || 0), 0);
@@ -2146,13 +2177,15 @@ export class DatabaseService {
   private static entryMatchesVehicle(
     entry: MileageEntry,
     vehicleId: string | undefined,
-    soleVehicleId: string | null
+    defaultVehicleId: string | null
   ): boolean {
+    const entryVehicleId = this.normalizeEntryVehicleId(entry.vehicleId);
     if (!vehicleId) {
-      return !entry.vehicleId;
+      return !entryVehicleId;
     }
-    if (entry.vehicleId === vehicleId) return true;
-    if (!entry.vehicleId && soleVehicleId === vehicleId) return true;
+    if (entryVehicleId === vehicleId) return true;
+    // Legacy rows saved before vehicle support belong to the default vehicle.
+    if (!entryVehicleId && defaultVehicleId === vehicleId) return true;
     return false;
   }
 
@@ -2202,9 +2235,10 @@ export class DatabaseService {
     const entries = await this.getMileageEntries(employeeId);
     if (!entries.length) return null;
 
-    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const effectiveVehicleId = await this.resolveEffectiveVehicleId(employeeId, vehicleId);
+    const defaultVehicleId = await this.getDefaultVehicleId(employeeId);
     const filteredEntries = entries.filter((entry) =>
-      this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+      this.entryMatchesVehicle(entry, effectiveVehicleId, defaultVehicleId)
     );
     if (!filteredEntries.length) return null;
 
@@ -2216,7 +2250,7 @@ export class DatabaseService {
       employeeId,
       latestDayKey,
       entriesByDay.get(latestDayKey) || [],
-      vehicleId
+      effectiveVehicleId
     );
   }
 
@@ -2231,12 +2265,13 @@ export class DatabaseService {
 
     const cutoff = startOfLocalDay(beforeDate ? new Date(beforeDate) : new Date());
 
-    const soleVehicleId = await this.getSoleVehicleIdIfAny(employeeId);
+    const effectiveVehicleId = await this.resolveEffectiveVehicleId(employeeId, vehicleId);
+    const defaultVehicleId = await this.getDefaultVehicleId(employeeId);
     const filteredEntries = entries.filter((entry) => {
       const entryDay = startOfLocalDay(new Date(entry.date));
       return (
         entryDay.getTime() < cutoff.getTime() &&
-        this.entryMatchesVehicle(entry, vehicleId, soleVehicleId)
+        this.entryMatchesVehicle(entry, effectiveVehicleId, defaultVehicleId)
       );
     });
     if (!filteredEntries.length) return null;
@@ -2249,7 +2284,7 @@ export class DatabaseService {
       employeeId,
       latestDayKey,
       entriesByDay.get(latestDayKey) || [],
-      vehicleId
+      effectiveVehicleId
     );
   }
 

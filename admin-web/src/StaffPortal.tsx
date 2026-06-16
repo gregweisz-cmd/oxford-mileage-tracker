@@ -61,6 +61,7 @@ import { useRealtimeSync, useRealtimeStatus } from './hooks/useRealtimeSync';
 // Per Diem Rules imports
 
 import { MileageEntryForm, MileageEntryFormData } from './components/DataEntryForms';
+import { getDefaultVehicleId } from './services/vehicleApiService';
 import { PerDiemTab } from './components/PerDiemTab';
 
 // UI Enhancement imports
@@ -3303,10 +3304,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   ) => {
     if (!assertStaffCanEdit()) return;
     try {
+      const defaultVehicleId = await getDefaultVehicleId(employeeId);
       // Prepare the data for the backend, mapping startingOdometer to odometerReading
       const backendData = {
         ...formData,
-        odometerReading: formData.startingOdometer || 0
+        odometerReading: formData.startingOdometer || 0,
+        vehicleId: defaultVehicleId || null,
       };
       
       const isEdit = editingMileageEntry && editingMileageEntry.id;
