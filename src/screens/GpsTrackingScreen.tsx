@@ -1338,12 +1338,64 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     ]);
   };
 
-  const handleEndLocationConfirm = async (locationDetails: LocationDetails) => {
+  const endLocationMatchesStart = (end: LocationDetails): boolean => {
+    if (!startLocationDetails) return false;
+    const start = normalizeLocationDetails(startLocationDetails) || startLocationDetails;
+
+    // Coordinate proximity (~150 ft) is the strongest signal.
+    if (
+      typeof start.latitude === 'number' &&
+      typeof start.longitude === 'number' &&
+      typeof end.latitude === 'number' &&
+      typeof end.longitude === 'number' &&
+      calculateDistanceMiles(start.latitude, start.longitude, end.latitude, end.longitude) <= 0.03
+    ) {
+      return true;
+    }
+
+    // Otherwise fall back to text equality on name/address.
+    const startName = (start.name || '').trim().toLowerCase();
+    const endName = (end.name || '').trim().toLowerCase();
+    const startAddr = normalizeAddress(start.address || '');
+    const endAddr = normalizeAddress(end.address || '');
+    const addrMatch = !!startAddr && startAddr === endAddr;
+    const nameMatch = !!startName && startName === endName;
+    return addrMatch || (nameMatch && !startAddr && !endAddr);
+  };
+
+  const handleEndLocationConfirm = async (
+    locationDetails: LocationDetails,
+    skipRoundTripCheck: boolean = false
+  ) => {
     const normalizedDetails = normalizeLocationDetails(locationDetails) || locationDetails;
     // Safety guard: if any path tries to auto-submit a non-manual end location,
     // force the user back through the editable end-location modal first.
     if (normalizedDetails.source !== 'manual') {
       openEndLocationModalWithDetails(normalizedDetails);
+      return;
+    }
+
+    // Guard against the rare-but-painful bug where the end location is saved
+    // identical to the start (e.g. an accidental "Same as Trip Start" tap, or a
+    // stale prefill). Round trips back to the start are uncommon, so confirm.
+    if (!skipRoundTripCheck && endLocationMatchesStart(normalizedDetails)) {
+      Alert.alert(
+        'End location same as start?',
+        'This trip would be saved with the same end location as where you started. Round trips back to your starting point are uncommon — did you mean to end here?',
+        [
+          {
+            text: 'Edit end location',
+            style: 'cancel',
+            onPress: () => openEndLocationModalWithDetails(null),
+          },
+          {
+            text: 'Yes, end here',
+            onPress: () => {
+              void handleEndLocationConfirm(locationDetails, true);
+            },
+          },
+        ]
+      );
       return;
     }
 

@@ -65,9 +65,10 @@ export default function LocationCaptureModal({
 
       setHasUserEditedAddress(false);
 
-      if (il?.name) {
-        setLocationName(il.name);
-      }
+      // Always derive the form fully from initialLocation so stale values from a
+      // previous open never leak in (e.g. a prior trip-start prefill becoming the
+      // end location). Clear any field the new initialLocation does not provide.
+      setLocationName(il?.name || '');
       if (hasStructured && il) {
         setLocationAddress((il.address || '').trim());
         setLocationCity(il.city?.trim() || '');
@@ -75,6 +76,11 @@ export default function LocationCaptureModal({
         setLocationZip((il.zipCode || '').replace(/\D/g, '').slice(0, 10));
       } else if (il?.address) {
         applyParsedAddress(il.address);
+      } else {
+        setLocationAddress('');
+        setLocationCity('');
+        setLocationState('');
+        setLocationZip('');
       }
       if (
         typeof il?.latitude === 'number' &&
@@ -92,6 +98,8 @@ export default function LocationCaptureModal({
           },
           timestamp: Date.now(),
         } as any);
+      } else {
+        setCurrentLocation(null);
       }
 
       // Keep a fresh GPS fix, but never overwrite a prefilled/editing address.
