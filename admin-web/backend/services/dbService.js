@@ -825,6 +825,8 @@ function ensureTablesExist() {
         'report_rejected',
         'sunday_reminder',
         'fifty_plus_hours_alert',
+        'weekly_checkup_shared',
+        'weekly_checkup_accepted',
       ];
       notificationEventKeys.forEach((eventKey) => {
         db.run(

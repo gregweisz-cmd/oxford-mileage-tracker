@@ -240,6 +240,116 @@ async function recordWeeklyCheckupShare(report, reportDataUpdate = null) {
   };
 }
 
+function getCurrentWeekCheckupEntry(reportData) {
+  const currentWeekKey = dateHelpers.getCalendarWeekStartKey();
+  const checkups = Array.isArray(reportData?.weeklyCheckups) ? reportData.weeklyCheckups : [];
+  return [...checkups].reverse().find((entry) => {
+    if (!entry || !entry.at) return false;
+    const weekKey = entry.weekKey || dateHelpers.getCalendarWeekStartKey(new Date(entry.at));
+    return weekKey === currentWeekKey;
+  }) || null;
+}
+
+function resolveApproverWeeklyCheckupRole(employee, approverId) {
+  if (!employee || !approverId) return null;
+  if (employee.seniorStaffId && String(employee.seniorStaffId) === String(approverId)) {
+    return 'senior_staff';
+  }
+  if (employee.supervisorId && String(employee.supervisorId) === String(approverId)) {
+    return 'supervisor';
+  }
+  return null;
+}
+
+async function recordWeeklyCheckupAcceptance(report, approverId, approverName) {
+  const db = dbService.getDb();
+  const now = new Date().toISOString();
+  const employee = await dbService.getEmployeeById(report.employeeId);
+  if (!employee) {
+    const error = new Error('Employee not found for this report.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const approverRole = resolveApproverWeeklyCheckupRole(employee, approverId);
+  if (!approverRole) {
+    const error = new Error('You are not assigned to acknowledge weekly check-ups for this employee.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  let reportData = helpers.parseJsonSafe(report.reportData, {});
+  const currentWeekKey = dateHelpers.getCalendarWeekStartKey();
+  const checkups = Array.isArray(reportData.weeklyCheckups) ? [...reportData.weeklyCheckups] : [];
+  const entryIndex = [...checkups].reverse().findIndex((entry) => {
+    if (!entry || !entry.at) return false;
+    const weekKey = entry.weekKey || dateHelpers.getCalendarWeekStartKey(new Date(entry.at));
+    return weekKey === currentWeekKey;
+  });
+
+  if (entryIndex === -1) {
+    const error = new Error('No weekly check-up has been shared for this week.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const actualIndex = checkups.length - 1 - entryIndex;
+  const entry = { ...checkups[actualIndex] };
+  if (!Array.isArray(entry.acknowledgments)) {
+    entry.acknowledgments = [];
+  }
+
+  if (entry.acknowledgments.some((ack) => ack.role === approverRole)) {
+    const error = new Error('You have already acknowledged this week\'s check-up.');
+    error.statusCode = 400;
+    error.code = 'weekly_checkup_already_accepted';
+    throw error;
+  }
+
+  entry.acknowledgments = [
+    ...entry.acknowledgments,
+    {
+      role: approverRole,
+      approverId,
+      approverName: approverName || (approverRole === 'senior_staff' ? 'Senior Staff' : 'Supervisor'),
+      acceptedAt: now,
+    },
+  ];
+  checkups[actualIndex] = entry;
+  reportData.weeklyCheckups = checkups;
+
+  await new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE expense_reports SET reportData = ?, updatedAt = ? WHERE id = ?',
+      [JSON.stringify(reportData), now, report.id],
+      (err) => {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+
+  await notificationService.notifyWeeklyCheckupAccepted(
+    report.id,
+    report.employeeId,
+    approverId,
+    approverName,
+    approverRole
+  );
+
+  debugLog(`✅ Weekly check-up acknowledged for report ${report.id} by ${approverRole} ${approverId}`);
+
+  return {
+    id: report.id,
+    weekKey: currentWeekKey,
+    approverRole,
+    acceptedAt: now,
+    reportData,
+    message: 'Weekly check-up acknowledged successfully',
+    status: report.status,
+  };
+}
+
 function isWeeklyCheckupSubmission(reportData, body) {
   const submissionType = (reportData?.submissionType || body?.submissionType || '').toLowerCase();
   return submissionType === 'weekly_checkup';
@@ -3123,6 +3233,60 @@ router.post('/api/expense-reports/:id/weekly-checkup', async (req, res) => {
       error: error.message || 'Failed to share weekly check-up',
       code: error.code || undefined,
       nextAvailableLabel: error.nextAvailableLabel || undefined,
+    });
+  }
+});
+
+/**
+ * Acknowledge a weekly check-up — notifies the employee without changing monthly approval status.
+ * POST /api/expense-reports/:id/weekly-checkup/accept
+ */
+router.post('/api/expense-reports/:id/weekly-checkup/accept', async (req, res) => {
+  const { id } = req.params;
+  const db = dbService.getDb();
+  const actor = req.authenticatedEmployee;
+
+  if (!actor?.id) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  try {
+    const report = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM expense_reports WHERE id = ?', [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (!report) {
+      res.status(404).json({ error: 'Expense report not found' });
+      return;
+    }
+
+    const approverName = actor.preferredName || actor.name || actor.email || 'Reviewer';
+    const result = await recordWeeklyCheckupAcceptance(report, actor.id, approverName);
+
+    logAuditEvent({
+      action: 'weekly_checkup_accepted',
+      actor,
+      targetType: 'expense_report',
+      targetId: id,
+      details: {
+        employeeId: report.employeeId,
+        month: report.month,
+        year: report.year,
+        approverRole: result.approverRole,
+        reportStatus: report.status,
+      },
+    });
+
+    res.json(result);
+  } catch (error) {
+    debugError('❌ Error acknowledging weekly check-up:', error);
+    res.status(error.statusCode || 500).json({
+      error: error.message || 'Failed to acknowledge weekly check-up',
+      code: error.code || undefined,
     });
   }
 });

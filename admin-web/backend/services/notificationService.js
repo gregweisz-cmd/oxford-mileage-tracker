@@ -341,6 +341,61 @@ async function notifyWeeklyCheckupShared(reportId, employeeId, employeeName) {
 }
 
 /**
+ * Notify employee when a reviewer acknowledges their weekly check-up.
+ */
+async function notifyWeeklyCheckupAccepted(reportId, employeeId, approverId, approverName, approverRole) {
+  try {
+    const db = dbService.getDb();
+    const employee = await dbService.getEmployeeById(employeeId);
+    if (!employee) return null;
+
+    const report = await new Promise((resolve) => {
+      db.get('SELECT id, month, year FROM expense_reports WHERE id = ?', [reportId], (err, row) => {
+        if (err) resolve(null);
+        else resolve(row);
+      });
+    });
+
+    const monthName = report
+      ? new Date(report.year, report.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      : '';
+    const reviewerRole =
+      approverRole === 'senior_staff' ? 'Senior Staff' : approverRole === 'supervisor' ? 'Supervisor' : 'Reviewer';
+    const actor = approverName || reviewerRole;
+    const defaults = {
+      title: `Weekly Check-up Acknowledged${monthName ? ` - ${monthName}` : ''}`,
+      message: `${actor} acknowledged your weekly check-up. You're good to go for this week.`,
+    };
+    const r = await notificationEventSettings.resolveDelivery(
+      'weekly_checkup_accepted',
+      defaults,
+      { employeeName: employee.preferredName || employee.name || 'Employee', monthName, actorName: actor, reviewerRole }
+    );
+    if (!r.inAppEnabled && !r.emailEnabled) return null;
+
+    return await createNotification({
+      recipientId: employeeId,
+      recipientRole: employee.role || 'employee',
+      type: r.notificationType,
+      title: r.title,
+      message: r.message,
+      reportId,
+      employeeId,
+      employeeName: employee.preferredName || employee.name || 'Employee',
+      actorId: approverId,
+      actorName: actor,
+      actorRole: approverRole || 'supervisor',
+      sendEmail: r.emailEnabled,
+      persistInApp: r.inAppEnabled,
+      metadata: { month: report?.month, year: report?.year, weeklyCheckup: true, weeklyCheckupAccepted: true },
+    });
+  } catch (error) {
+    debugError('❌ Error notifying weekly check-up acceptance:', error);
+    return null;
+  }
+}
+
+/**
  * Notify supervisor when senior staff has approved and report is ready for supervisor review.
  */
 async function notifySupervisorApprovalNeeded(reportId, seniorStaffId, seniorStaffName, employeeId) {
@@ -1045,6 +1100,7 @@ module.exports = {
   createNotification,
   notifyReportSubmitted,
   notifyWeeklyCheckupShared,
+  notifyWeeklyCheckupAccepted,
   notifyFinanceRevisionRequest,
   notifySupervisorRevisionRequest,
   notifyExpenseReportRevisionRequested,

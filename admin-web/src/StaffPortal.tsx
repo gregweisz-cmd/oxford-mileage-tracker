@@ -87,10 +87,13 @@ import { parseCalendarYearMonthFromStoredDate, parseCalendarYmdParts, formatStor
 import { computeStaffPortalRevisionTabIndex } from './utils/revisionTabNavigation';
 import { isPendingApprovalStatus, isStaffReportEditable } from './utils/reportEditability';
 import {
+  buildWeeklyCheckupStatus,
+  canViewerAcceptWeeklyCheckup,
   formatNextWeeklyCheckupAvailableLabel,
   getCalendarWeekStartKey,
   isWeeklyCheckupOnCooldown,
   resolveWeeklyCheckupNotificationWeekKey,
+  type WeeklyCheckupStatusSummary,
 } from './utils/weeklyCheckup';
 
 // Keyboard shortcuts
@@ -866,7 +869,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   }, [supervisorMode, onApproveReport, onRequestRevision]);
 
   const approverProfileId = supervisorMode
-    ? (supervisorId || localStorage.getItem('currentEmployeeId') || '')
+    ? (seniorStaffId || supervisorId || localStorage.getItem('currentEmployeeId') || '')
     : financeMode
       ? (financeUserId || localStorage.getItem('currentEmployeeId') || '')
       : '';
@@ -885,6 +888,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (!financeMode || !approverProfileId) return;
     void fetchEmployeeSavedSignature(approverProfileId).then(setSavedFinanceSignature);
   }, [financeMode, approverProfileId]);
+
+  useEffect(() => {
+    setWeeklyCheckupStatus(buildWeeklyCheckupStatus(weeklyCheckupReportData, employeeReviewers));
+  }, [weeklyCheckupReportData, employeeReviewers]);
 
   // Get effective employeeId from props or localStorage (for dependency tracking)
   // This must be declared early so it can be used in callbacks and effects
@@ -944,6 +951,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [daysNeedingRevision, setDaysNeedingRevision] = useState<Set<number>>(new Set()); // Days (1-31) that need revision for time tracking
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
   const [lastWeeklyCheckupNotificationWeekKey, setLastWeeklyCheckupNotificationWeekKey] = useState<string | null>(null);
+  const [employeeReviewers, setEmployeeReviewers] = useState<{
+    seniorStaffId?: string | null;
+    supervisorId?: string | null;
+  }>({});
+  const [weeklyCheckupReportData, setWeeklyCheckupReportData] = useState<Record<string, unknown> | null>(null);
+  const [weeklyCheckupStatus, setWeeklyCheckupStatus] = useState<WeeklyCheckupStatusSummary | null>(null);
   
   // Notify parent component when selected items change
   // Use useRef to track previous values and only call callback when values actually change
@@ -1891,6 +1904,11 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         } else {
           setEmployeeRole('employee'); // Default to employee
         }
+
+        setEmployeeReviewers({
+          seniorStaffId: employee?.seniorStaffId || null,
+          supervisorId: employee?.supervisorId || null,
+        });
         
         // Parse costCenters if it's a JSON string
         if (employee.costCenters) {
@@ -2049,6 +2067,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
 
                 const weeklyWeekKey = resolveWeeklyCheckupNotificationWeekKey(savedExpenseReport.reportData);
                 setLastWeeklyCheckupNotificationWeekKey(weeklyWeekKey);
+                setWeeklyCheckupReportData(savedExpenseReport.reportData || null);
               }
             } catch (error) {
               debugWarn('Could not parse expense report data:', error);
@@ -5253,6 +5272,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     setCurrentReportId(null);
     setReportStatus('draft');
     setLastWeeklyCheckupNotificationWeekKey(null);
+    setWeeklyCheckupReportData(null);
     setApprovalWorkflow([]);
     setApprovalHistory([]);
     setReportSubmittedAt(null);
@@ -5381,6 +5401,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         setLastWeeklyCheckupNotificationWeekKey(getCalendarWeekStartKey());
       }
 
+      if (reportData) {
+        setWeeklyCheckupReportData({
+          ...(weeklyCheckupReportData || {}),
+          ...reportData,
+          lastWeeklyCheckupNotificationWeekKey:
+            result?.lastWeeklyCheckupNotificationWeekKey || getCalendarWeekStartKey(),
+          lastWeeklyCheckupAt: new Date().toISOString(),
+        });
+      }
+
       const notifiedCount = result?.notificationsSent ?? 0;
       const successMsg =
         notifiedCount > 0
@@ -5410,6 +5440,58 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         showErrorPrompt(msg, { title: 'Could not share weekly check-up', goBackLabel: 'Back to report' });
       } else {
         alert(`Error sharing weekly check-up: ${msg}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAcceptWeeklyCheckup = async () => {
+    if (!currentReportId) {
+      alert('Report not found');
+      return;
+    }
+
+    const confirmAccept = window.confirm(
+      'Acknowledge this weekly check-up? The employee will be notified that they are good to go for this week. This does not approve their monthly expense report.'
+    );
+    if (!confirmAccept) return;
+
+    setLoading(true);
+    try {
+      const result = await apiPost<{ reportData?: Record<string, unknown>; message?: string }>(
+        `/api/expense-reports/${currentReportId}/weekly-checkup/accept`,
+        {}
+      );
+      if (result?.reportData) {
+        setWeeklyCheckupReportData(result.reportData);
+      } else {
+        setRefreshTrigger((prev) => prev + 1);
+      }
+      const successMsg = result?.message || 'Weekly check-up acknowledged. The employee has been notified.';
+      if (typeof showSuccess === 'function') {
+        showSuccess(successMsg);
+      } else {
+        alert(`✅ ${successMsg}`);
+      }
+    } catch (error) {
+      debugError('Error acknowledging weekly check-up:', error);
+      let msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg.startsWith('HTTP ')) {
+        const jsonStart = msg.indexOf('{');
+        if (jsonStart !== -1) {
+          try {
+            const payload = JSON.parse(msg.slice(jsonStart));
+            if (payload?.error) msg = payload.error;
+          } catch {
+            // keep raw message
+          }
+        }
+      }
+      if (isHttpClientError(error)) {
+        showErrorPrompt(msg, { title: 'Could not acknowledge weekly check-up', goBackLabel: 'Back to report' });
+      } else {
+        alert(`Error acknowledging weekly check-up: ${msg}`);
       }
     } finally {
       setLoading(false);
@@ -6055,6 +6137,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         lastWeeklyCheckupNotificationWeekKey || getCalendarWeekStartKey()
       )}.`
     : 'Share a quick update with your reviewers (once per calendar week). No signature or certification required.';
+  const canAcceptWeeklyCheckup =
+    supervisorMode &&
+    canViewerAcceptWeeklyCheckup(weeklyCheckupStatus, approverProfileId, employeeReviewers);
+  const acceptWeeklyCheckupTooltip = weeklyCheckupStatus?.sharedAt
+    ? 'Let the employee know their weekly check-up looks good. Does not approve the monthly report.'
+    : 'No weekly check-up shared this week.';
   const reportPendingEdit =
     !supervisorMode && !isAdminView && isPendingApprovalStatus(reportStatus);
 
@@ -6083,6 +6171,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onWeeklyCheckup={showHeaderWeeklyCheckup ? handleWeeklyCheckup : undefined}
         weeklyCheckupDisabled={!staffCanEditReport || weeklyCheckupOnCooldown}
         weeklyCheckupTooltip={weeklyCheckupTooltip}
+        onAcceptWeeklyCheckup={canAcceptWeeklyCheckup ? handleAcceptWeeklyCheckup : undefined}
+        acceptWeeklyCheckupDisabled={loading || !canAcceptWeeklyCheckup}
+        acceptWeeklyCheckupTooltip={acceptWeeklyCheckupTooltip}
         onApproveReport={onApproveReport}
         onRequestRevision={onRequestRevision}
         onViewAllReports={fetchAllReports}
@@ -6171,6 +6262,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         disableResubmit={loading}
         disableWithdraw={loading}
         disableSaveChanges={loading || uiLoading}
+        weeklyCheckupStatus={weeklyCheckupStatus}
       />
 
       {!supervisorMode && !isAdminView && reportStatus === 'approved' && (

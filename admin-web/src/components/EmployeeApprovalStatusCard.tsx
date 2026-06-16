@@ -21,6 +21,8 @@ import SaveIcon from '@mui/icons-material/Save';
 import DoneIcon from '@mui/icons-material/TaskAltOutlined';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import PersonIcon from '@mui/icons-material/PersonOutline';
+import type { WeeklyCheckupStatusSummary } from '../utils/weeklyCheckup';
+import { WEEKLY_CHECKUP_ROLE_LABELS } from '../utils/weeklyCheckup';
 
 type WorkflowStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'revision_requested';
 
@@ -65,6 +67,7 @@ interface EmployeeApprovalStatusCardProps {
   disableResubmit?: boolean;
   disableWithdraw?: boolean;
   disableSaveChanges?: boolean;
+  weeklyCheckupStatus?: WeeklyCheckupStatusSummary | null;
 }
 
 const STATUS_COLOR_MAP: Record<string, { label: string; color: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' }> = {
@@ -141,6 +144,7 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
   disableResubmit,
   disableWithdraw,
   disableSaveChanges,
+  weeklyCheckupStatus,
 }) => {
   const statusChip = getStatusChipProps(status);
   const normalizedStatus = (status || 'draft').toLowerCase();
@@ -254,6 +258,60 @@ const EmployeeApprovalStatusCard: React.FC<EmployeeApprovalStatusCardProps> = ({
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Your report is in review, but you can still edit entries below. Click Save Changes when you are done — your reviewer will see the latest version. Withdraw is optional if you prefer to return the report to draft.
           </Typography>
+        )}
+
+        {weeklyCheckupStatus?.sharedAt && (
+          <Box
+            sx={{
+              mb: 2,
+              p: 2,
+              border: '1px solid',
+              borderColor: weeklyCheckupStatus.isFullyAcknowledged ? 'success.light' : 'info.light',
+              borderRadius: 1,
+              bgcolor: weeklyCheckupStatus.isFullyAcknowledged
+                ? 'rgba(46, 125, 50, 0.08)'
+                : 'rgba(2, 136, 209, 0.08)',
+            }}
+          >
+            <Typography variant="subtitle2" gutterBottom>
+              Weekly check-up
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Shared {formatDateTime(weeklyCheckupStatus.sharedAt)}
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+              {(['senior_staff', 'supervisor'] as const).map((role) => {
+                const ack = weeklyCheckupStatus.acknowledgments.find((item) => item.role === role);
+                if (!ack && !weeklyCheckupStatus.pendingRoles.includes(role)) return null;
+                const label = WEEKLY_CHECKUP_ROLE_LABELS[role];
+                if (ack) {
+                  return (
+                    <Chip
+                      key={role}
+                      size="small"
+                      color="success"
+                      icon={<DoneIcon />}
+                      label={`${label}: ${ack.approverName || 'Acknowledged'}`}
+                    />
+                  );
+                }
+                return (
+                  <Chip
+                    key={role}
+                    size="small"
+                    color="warning"
+                    icon={<ScheduleIcon />}
+                    label={`${label}: waiting`}
+                  />
+                );
+              })}
+            </Stack>
+            <Typography variant="body2">
+              {weeklyCheckupStatus.isFullyAcknowledged
+                ? 'Your reviewers acknowledged this week\'s check-up. You\'re good to go.'
+                : 'Waiting for your reviewer(s) to acknowledge this week\'s check-up. This is separate from monthly approval.'}
+            </Typography>
+          </Box>
         )}
 
         <Box

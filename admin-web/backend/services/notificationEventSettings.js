@@ -36,6 +36,13 @@ const NOTIFICATION_EVENT_DEFINITIONS = {
     notificationType: 'weekly_checkup_shared',
     placeholders: ['employeeName', 'monthName'],
   },
+  weekly_checkup_accepted: {
+    displayName: 'Weekly check-up acknowledged (employee)',
+    description:
+      'Notifies the employee when senior staff or their supervisor acknowledges a weekly check-up so they know they are good to go for the week.',
+    notificationType: 'weekly_checkup_accepted',
+    placeholders: ['employeeName', 'monthName', 'actorName', 'reviewerRole'],
+  },
   supervisor_approval_needed: {
     displayName: 'Report ready for supervisor (after senior staff)',
     description: 'Notifies the employee’s supervisor when senior staff has approved and the report needs supervisor review.',

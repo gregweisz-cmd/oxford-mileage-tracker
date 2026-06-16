@@ -54,6 +54,9 @@ interface EnhancedHeaderProps {
   weeklyCheckupDisabled?: boolean;
   weeklyCheckupTooltip?: string;
   onApproveReport?: () => void;
+  onAcceptWeeklyCheckup?: () => void;
+  acceptWeeklyCheckupDisabled?: boolean;
+  acceptWeeklyCheckupTooltip?: string;
   onRequestRevision?: () => void;
   onViewAllReports?: () => void;
   onStartFreshReport?: () => void;
@@ -95,6 +98,9 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
   weeklyCheckupDisabled = false,
   weeklyCheckupTooltip,
   onApproveReport,
+  onAcceptWeeklyCheckup,
+  acceptWeeklyCheckupDisabled = false,
+  acceptWeeklyCheckupTooltip,
   onRequestRevision,
   onViewAllReports,
   onStartFreshReport,
@@ -347,6 +353,23 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
             {/* Primary action buttons keep text labels */}
             {supervisorMode ? (
               <>
+                {onAcceptWeeklyCheckup && (
+                  <Tooltip title={acceptWeeklyCheckupTooltip || 'Acknowledge weekly check-up'}>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        color="success"
+                        startIcon={<CheckCircleIcon />}
+                        onClick={onAcceptWeeklyCheckup}
+                        disabled={loading || acceptWeeklyCheckupDisabled}
+                        size="small"
+                        sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
+                      >
+                        Accept check-up
+                      </Button>
+                    </span>
+                  </Tooltip>
+                )}
                 <Button
                   variant="contained"
                   color="success"

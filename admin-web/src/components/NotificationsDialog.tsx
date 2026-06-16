@@ -321,6 +321,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     switch (type) {
       case 'report_submitted':
       case 'weekly_checkup_shared':
+      case 'weekly_checkup_accepted':
       case 'approval_needed':
         return <InfoIcon color="info" />;
       case 'revision_requested':
