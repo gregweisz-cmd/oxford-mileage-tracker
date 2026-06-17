@@ -38,6 +38,7 @@ After using a text field then tapping a **chip, dropdown, or checkbox**, the scr
 | **Receipt Crop** | Crop UI | Separate; map overlay uses `pointerEvents` |
 | **Global GPS overlay** | Floating buttons | Fixed earlier: `pointerEvents` / hide when not tracking |
 | **GPS stationary → end trip** | Notification/modal → destination save | Fixed OTA `071ea2d8`: clear end-trip modals before `navigation.reset`; block stationary prompt during end-trip flow (`GpsTrackingContext`, `GpsTrackingScreen`) |
+| **GPS end-trip coordinator** | Save + navigate races, invisible iOS modals | `useEndTripFlow` state machine + `endTripCoordinator` (`executeEndTripSave`, `finalizeEndTripNavigation`). See `docs/developer/GPS_END_TRIP_REGRESSION.md` before shipping GPS changes. |
 
 ## When adding new UI
 

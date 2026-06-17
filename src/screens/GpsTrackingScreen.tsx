@@ -16,7 +16,6 @@ import {
   Keyboard,
   AppState,
   AppStateStatus,
-  InteractionManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -26,7 +25,6 @@ import { GpsTrackingService } from '../services/gpsTrackingService';
 import { DatabaseService } from '../services/database';
 import { GpsTrackingSession, Employee, LocationDetails, OxfordHouse, SavedAddress, Vehicle } from '../types';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
-import { formatLocation } from '../utils/locationFormatter';
 import LocationCaptureModal from '../components/LocationCaptureModal';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
 import { CostCenterAiService, CostCenterSuggestion } from '../services/costCenterAiService';
@@ -53,6 +51,12 @@ import {
 } from '../utils/gpsLocationMatch';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
+import { useEndTripFlow } from '../hooks/useEndTripFlow';
+import {
+  executeEndTripSave,
+  finalizeEndTripNavigation,
+  GPS_TRIP_UI_STATE_KEY,
+} from '../services/endTripCoordinator';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -72,8 +76,6 @@ type EndLocationOption =
   | 'favoriteAddresses'
   | 'oxfordHouse'
   | 'newLocation';
-
-const GPS_TRIP_UI_STATE_KEY = '@gps_trip_ui_state';
 
 interface PersistedGpsTripUiState {
   employeeId: string;
@@ -157,6 +159,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setShouldShowEndLocationModal,
     clearEndTripUiState,
   } = useGpsTracking();
+  const endTripFlow = useEndTripFlow({
+    clearEndTripUiState,
+    navigation,
+    endTripOverlay,
+  });
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [showGpsDuration, setShowGpsDuration] = useState(false);
   const [trackingForm, setTrackingForm] = useState({
@@ -167,9 +174,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [trackingTime, setTrackingTime] = useState(0);
   const [showLocationOptionsModal, setShowLocationOptionsModal] = useState(false);
   const [showStartLocationModal, setShowStartLocationModal] = useState(false);
-  const [showEndLocationModal, setShowEndLocationModal] = useState(false);
-  /** Same choices as starting a trip (BA, favorites, Oxford search, manual) — not only the free-form capture modal. */
-  const [showEndLocationOptionsModal, setShowEndLocationOptionsModal] = useState(false);
   const [isEditingStartLocationOptions, setIsEditingStartLocationOptions] = useState(false);
   const [isEditingEndLocationOptions, setIsEditingEndLocationOptions] = useState(false);
   const [startLocationOptionOrder, setStartLocationOptionOrder] = useState<StartLocationOption[]>([
@@ -189,7 +193,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [showOxfordHouseSearchModal, setShowOxfordHouseSearchModal] = useState(false);
   const [oxfordHousePickerRole, setOxfordHousePickerRole] = useState<'start' | 'end'>('start');
   const [manualStartInitialLocation, setManualStartInitialLocation] = useState<Partial<LocationDetails> | null>(null);
-  const [manualEndInitialLocation, setManualEndInitialLocation] = useState<Partial<LocationDetails> | null>(null);
   const [oxfordHouseSearchQuery, setOxfordHouseSearchQuery] = useState('');
   const [oxfordHouseResults, setOxfordHouseResults] = useState<any[]>([]);
   const [oxfordHouseAllHouses, setOxfordHouseAllHouses] = useState<any[]>([]);
@@ -228,9 +231,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
   const [showCustomPurposeInput, setShowCustomPurposeInput] = useState(false);
-  const [isEndingTracking, setIsEndingTracking] = useState(false);
-  const isEndingTrackingRef = useRef(false);
-  isEndingTrackingRef.current = isEndingTracking;
   const [isStartingTracking, setIsStartingTracking] = useState(false);
   const isStartingTrackingRef = useRef(false);
   isStartingTrackingRef.current = isStartingTracking;
@@ -240,8 +240,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const isTrackingRef = useRef(isTracking);
   isTrackingRef.current = isTracking;
   const lastAppliedEndFromFavoritesRef = useRef<string | null>(null);
-  const endTripFlowPendingRef = useRef(false);
-  const endFlowOpenedThisFocusRef = useRef(false);
   const openEndLocationOptionsRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -253,8 +251,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     return () => {
       setShowLocationOptionsModal(false);
       setShowStartLocationModal(false);
-      setShowEndLocationModal(false);
-      setShowEndLocationOptionsModal(false);
+      endTripFlow.dismissEndTrip();
       setShowOxfordHouseSearchModal(false);
       setShowPurposeSuggestions(false);
     };
@@ -295,14 +292,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     React.useCallback(() => {
       const wantsOverlayEnd = route?.params?.endTripOverlay === true;
 
-      if (wantsOverlayEnd && !endFlowOpenedThisFocusRef.current) {
-        endFlowOpenedThisFocusRef.current = true;
+      if (wantsOverlayEnd && !endTripFlow.endFlowOpenedThisFocusRef.current) {
+        endTripFlow.endFlowOpenedThisFocusRef.current = true;
         if (isTrackingRef.current) {
           openEndLocationOptionsRef.current();
         } else {
-          endTripFlowPendingRef.current = true;
+          endTripFlow.endTripFlowPendingRef.current = true;
         }
-      } else if (!wantsOverlayEnd && !endFlowOpenedThisFocusRef.current) {
+      } else if (!wantsOverlayEnd && !endTripFlow.endFlowOpenedThisFocusRef.current) {
         // Never reset end-trip modals here — doing so closed the flow when deps changed mid-stop.
         setShowLocationOptionsModal(false);
         setShowStartLocationModal(false);
@@ -315,31 +312,26 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       }
 
       return () => {
-        endFlowOpenedThisFocusRef.current = false;
+        endTripFlow.endFlowOpenedThisFocusRef.current = false;
       };
     }, [currentEmployee, selectedVehicleId, route?.params?.endTripOverlay])
   );
 
   useEffect(() => {
-    if (!endTripFlowPendingRef.current || !isTracking) return;
-    endTripFlowPendingRef.current = false;
+    if (!endTripFlow.endTripFlowPendingRef.current || !isTracking) return;
+    endTripFlow.endTripFlowPendingRef.current = false;
     openEndLocationOptionsRef.current();
   }, [isTracking]);
 
   const dismissAllEndTripModals = useCallback(() => {
     setShowLocationOptionsModal(false);
     setShowStartLocationModal(false);
-    setShowEndLocationModal(false);
-    setShowEndLocationOptionsModal(false);
     setShowOxfordHouseSearchModal(false);
     setShowPurposePickerModal(false);
     setShowPurposeSuggestions(false);
-    setManualEndInitialLocation(null);
     setShouldShowEndLocationModal(false);
-    clearEndTripUiState();
-    endTripFlowPendingRef.current = false;
-    endFlowOpenedThisFocusRef.current = false;
-  }, [setShouldShowEndLocationModal, clearEndTripUiState]);
+    endTripFlow.dismissEndTrip();
+  }, [setShouldShowEndLocationModal, endTripFlow.dismissEndTrip]);
 
   const dismissStaleGpsModals = dismissAllEndTripModals;
 
@@ -350,7 +342,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (!GpsTrackingService.isTracking() && !isTrackingRef.current) {
         dismissStaleGpsModals();
         // Don't pop the overlay while save/navigation is in flight — races with navigation.reset.
-        if (endTripOverlay && !isEndingTrackingRef.current) {
+        if (endTripOverlay && !endTripFlow.isSavingRef.current) {
           navigation.goBack();
         }
       }
@@ -408,10 +400,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   }, [endTripOverlay, currentEmployee?.id]);
 
   const dismissEndTripOverlay = () => {
-    dismissAllEndTripModals();
-    if (endTripOverlay) {
-      navigation.goBack();
-    }
+    endTripFlow.dismissEndTripOverlay();
   };
 
   // Separate effect for timer that only restarts when session ID changes
@@ -1191,7 +1180,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const openEndLocationOptions = () => {
-    setShowEndLocationOptionsModal(true);
+    endTripFlow.openChoosing();
     setEndLocationSuggestions({});
     setIsDetectingEndSuggestions(true);
     void detectEndLocationSuggestions().finally(() => {
@@ -1211,9 +1200,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   }, [registerEndTripFlowHandler]);
 
   const openEndLocationModalWithDetails = (details: Partial<LocationDetails> | null) => {
-    setShowEndLocationOptionsModal(false);
-    setManualEndInitialLocation(details || null);
-    setShowEndLocationModal(true);
+    endTripFlow.openCapture(details);
   };
 
   const persistDailyOdometerForTripStart = async (
@@ -1313,7 +1300,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const handleEndLocationOption = (
     option: 'baseAddress' | 'tripStart' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation'
   ) => {
-    setShowEndLocationOptionsModal(false);
     setTimeout(() => {
       if (option === 'baseAddress' && currentEmployee?.baseAddress) {
         const suggested = endLocationSuggestions.baseAddress;
@@ -1368,19 +1354,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     await PreferencesService.updatePreferences({
       gpsEndLocationOptionOrder: newOrder,
     });
-  };
-
-  const withTimeout = async <T,>(
-    task: Promise<T>,
-    timeoutMs: number,
-    label: string
-  ): Promise<T> => {
-    return await Promise.race([
-      task,
-      new Promise<T>((_, reject) => {
-        setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
-      }),
-    ]);
   };
 
   const endLocationMatchesStart = (end: LocationDetails): boolean => {
@@ -1446,82 +1419,30 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
     console.log('📍 End location confirmed:', normalizedDetails);
     setEndLocationDetails(normalizedDetails);
-    setShowEndLocationModal(false);
-    setManualEndInitialLocation(null);
-    setShowEndLocationOptionsModal(false);
-    setIsEndingTracking(true);
+    endTripFlow.beginSaving();
 
     try {
-      // Pass confirmed end location so we skip a slow post-stop GPS fix (avoids UI freeze on many devices)
-      const completedSession = await withTimeout(
-        stopTracking(normalizedDetails),
-        12000,
-        'Stop tracking'
-      );
-      
-      // Use GPS-tracked miles (short trips round to 0 and disappear from daily totals)
-      const rawMiles = completedSession?.totalMiles || 0;
-      const actualMiles =
-        rawMiles > 0.1 ? Math.max(1, Math.round(rawMiles)) : Math.round(rawMiles);
       const normalizedStart = startLocationDetails
         ? normalizeLocationDetails(startLocationDetails) || startLocationDetails
         : null;
-      
-      if (completedSession && currentEmployee) {
-        const endDisplay =
-          normalizedDetails.name ||
-          normalizedDetails.address ||
-          completedSession.endLocation ||
-          'Unknown';
-        const startDisplay =
-          normalizedStart?.name ||
-          normalizedStart?.address ||
-          completedSession.startLocation ||
-          'Unknown';
 
-        console.log('🚗 GPS Trip completed, saving to database:', {
-          employeeId: currentEmployee.id,
-          employeeName: currentEmployee.name,
-          date: completedSession.startTime,
-          startLocation: startDisplay,
-          startAddress: normalizedStart?.address,
-          endLocation: endDisplay,
-          endAddress: normalizedDetails.address,
-          purpose: completedSession.purpose,
-          miles: actualMiles,
-          odometerReading: completedSession.odometerReading,
-          isGpsTracked: true
-        });
+      if (!currentEmployee) {
+        throw new Error('No employee loaded');
+      }
 
-        let mileageSaved = true;
-        try {
-          await withTimeout(
-            DatabaseService.createMileageEntry({
-              employeeId: currentEmployee.id,
-              oxfordHouseId: currentEmployee.oxfordHouseId,
-              vehicleId: selectedVehicleId || undefined,
-              date: completedSession.startTime,
-              odometerReading: completedSession.odometerReading,
-              startLocation: startDisplay,
-              endLocation: endDisplay,
-              startLocationDetails: normalizedStart || undefined,
-              endLocationDetails: normalizedDetails,
-              purpose: completedSession.purpose,
-              miles: actualMiles, // Use calculated miles from odometer if available
-              notes: completedSession.notes,
-              isGpsTracked: true,
-              costCenter: selectedCostCenter,
-            }),
-            12000,
-            'Save trip data'
-          );
-        } catch (saveError) {
-          mileageSaved = false;
-          console.error('⚠️ GPS trip save timed out/faulted:', saveError);
-        }
+      const saveResult = await executeEndTripSave({
+        normalizedDetails,
+        normalizedStart,
+        startLocationDetails,
+        currentEmployee,
+        selectedVehicleId,
+        selectedCostCenter,
+        trackingTimeSeconds: trackingTime,
+        stopTracking,
+      });
 
-        if (mileageSaved) {
-          console.log('✅ GPS Trip saved successfully!');
+      if (saveResult) {
+        if (saveResult.mileageSaved) {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const updatedMilesToday = await DatabaseService.getTotalMilesForVehicleOnDate(
@@ -1532,9 +1453,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           setMilesDrivenToday(updatedMilesToday);
         }
 
-        // Update last destination for next trip
-        console.log('🔍 GPS: Updating last destination:', endDisplay);
-        setLastDestination(normalizedDetails);
+        console.log('🔍 GPS: Updating last destination:', saveResult.endDisplay);
+        setLastDestination(saveResult.normalizedDetails);
 
         setTrackingTime(0);
         setStartLocationDetails(null);
@@ -1546,62 +1466,30 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         });
         setSelectedCostCenter('');
 
-        const saveWarning = mileageSaved
-          ? ''
-          : '\n\nWarning: Trip ended, but saving took too long. Please check your mileage list and refresh if needed.';
-        const message = `Trip completed!\nDistance: ${actualMiles} miles (GPS tracked)\nDuration: ${formatTime(trackingTime)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', locationDetails)}${saveWarning}`;
-        // Tear down modals/overlays before navigation so invisible layers don't block touches.
-        void AsyncStorage.removeItem(GPS_TRIP_UI_STATE_KEY);
         dismissAllEndTripModals();
-        setIsEndingTracking(false);
-        // Wait for the overFullScreen loading overlay to fully unmount before we
-        // reset navigation. Resetting while an iOS Modal is still dismissing can
-        // leave a transparent native view mounted over Home that swallows all
-        // touches (forcing a hard app restart). The delay lets RN remove the
-        // native modal container first.
-        InteractionManager.runAfterInteractions(() => {
-          setTimeout(() => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Home' }],
-            });
-            setTimeout(() => {
-              Alert.alert('Tracking Complete', message);
-            }, Platform.OS === 'ios' ? 450 : 300);
-          }, Platform.OS === 'ios' ? 350 : 50);
+        endTripFlow.finishSaving();
+        await finalizeEndTripNavigation({
+          navigation,
+          alertMessage: saveResult.alertMessage,
         });
         return;
-      } else {
-        setShowEndLocationOptionsModal(false);
       }
 
       setTrackingTime(0);
       setStartLocationDetails(null);
       setEndLocationDetails(null);
-      
-      // Reset all modal states to ensure screen is responsive
-      setShowLocationOptionsModal(false);
-      setShowStartLocationModal(false);
-      setShowEndLocationModal(false);
-      setShowEndLocationOptionsModal(false);
-      setShowOxfordHouseSearchModal(false);
-      setShowPurposeSuggestions(false);
-      
-      // Reset form state for next trip
       setTrackingForm({
         odometerReading: '',
         purpose: '',
         notes: '',
       });
-      
-      // Reset cost center selection
       setSelectedCostCenter('');
+      endTripFlow.finishSaving();
     } catch (error) {
       console.error('Error stopping tracking:', error);
-      setShowEndLocationOptionsModal(false);
+      endTripFlow.finishSaving();
+      endTripFlow.dismissEndTrip();
       Alert.alert('Error', 'Failed to stop GPS tracking');
-    } finally {
-      setIsEndingTracking(false);
     }
   };
 
@@ -2297,7 +2185,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       )}
 
       {/* End location: same discovery paths as start (BA, favorites, Oxford search, manual) */}
-      {showEndLocationOptionsModal && (
+      {endTripFlow.showOptionsModal && (
       <Modal
         visible
         transparent={true}
@@ -2448,17 +2336,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       />}
 
       {/* End Location Capture Modal - no "Cancel tracking" option; closing just returns to map and keeps tracking */}
-      {showEndLocationModal && <LocationCaptureModal
-        visible={showEndLocationModal}
+      {endTripFlow.showCaptureModal && <LocationCaptureModal
+        visible={endTripFlow.showCaptureModal}
         onClose={() => {
-          setShowEndLocationModal(false);
-          setManualEndInitialLocation(null);
+          endTripFlow.dismissEndTrip();
         }}
         onConfirm={handleEndLocationConfirm}
         title="Capture End Location"
         locationType="end"
         currentEmployee={currentEmployee}
-        initialLocation={manualEndInitialLocation}
+        initialLocation={endTripFlow.captureInitial}
       />}
 
       {/* Oxford House Search Modal - same experience as Manual Entry */}
@@ -2528,7 +2415,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     style={styles.manualEntryButton}
                     onPress={() => {
                       setShowOxfordHouseSearchModal(false);
-                      if (oxfordHousePickerRole === 'end') setShowEndLocationModal(true);
+                      if (oxfordHousePickerRole === 'end') endTripFlow.openCapture(endTripFlow.captureInitial);
                       else setShowStartLocationModal(true);
                     }}
                   >
@@ -2627,7 +2514,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       )}
 
       {/* Ending Tracking Loading Overlay */}
-      {isEndingTracking && (
+      {endTripFlow.isSaving && (
       <Modal
         visible
         transparent={true}
