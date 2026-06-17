@@ -43,6 +43,14 @@ import {
 } from '../utils/oxfordHousePicker';
 import { buildPartsFromGeocode } from '../utils/addressFormatter';
 import { normalizeLocationDetails } from '../utils/locationName';
+import {
+  addressesStrictlyMatch,
+  calculateDistanceMiles,
+  findBestOxfordHouseMatch,
+  findBestSavedAddressMatch,
+  getGpsLocationConfidenceLabel,
+  GPS_NEARBY_MATCH_MILES,
+} from '../utils/gpsLocationMatch';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
 
@@ -914,40 +922,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       .replace(/\s+/g, ' ')
       .trim();
 
-  const toRadians = (degrees: number): number => degrees * (Math.PI / 180);
-
-  const calculateDistanceMiles = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ): number => {
-    const earthRadiusMiles = 3959;
-    const dLat = toRadians(lat2 - lat1);
-    const dLon = toRadians(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRadians(lat1)) *
-        Math.cos(toRadians(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    return earthRadiusMiles * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-  };
-
-  const addressesLikelyMatch = (first: string, second: string): boolean => {
-    const a = normalizeAddress(first);
-    const b = normalizeAddress(second);
-    if (!a || !b) return false;
-    if (a === b) return true;
-    return a.includes(b) || b.includes(a);
-  };
-
-  const getConfidenceLabel = (distanceMatch: boolean, addressMatch: boolean): StartLocationSuggestion['confidenceLabel'] => {
-    if (distanceMatch && addressMatch) return 'Strong match';
-    if (addressMatch) return 'Address match';
-    return 'Nearby match';
-  };
-
   const detectStartLocationSuggestions = async () => {
     if (!currentEmployee) return;
     const suggestions: Partial<Record<StartLocationOption, StartLocationSuggestion>> = {};
@@ -983,7 +957,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (
         currentEmployee.baseAddress &&
         currentAddress &&
-        addressesLikelyMatch(currentAddress, currentEmployee.baseAddress)
+        addressesStrictlyMatch(currentAddress, currentEmployee.baseAddress)
       ) {
         suggestions.baseAddress = {
           details: {
@@ -1002,37 +976,30 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         OxfordHouseService.getAllOxfordHouses(),
       ]);
 
-      const matchedSavedAddress = savedAddresses
-        .map((saved: SavedAddress) => {
-          const distanceMatch =
-            typeof saved.latitude === 'number' &&
-            typeof saved.longitude === 'number' &&
-            calculateDistanceMiles(currentLat, currentLon, saved.latitude, saved.longitude) <= 0.12;
-          const addressMatch = !!currentAddress && addressesLikelyMatch(currentAddress, saved.address);
-          return { saved, distanceMatch, addressMatch };
-        })
-        .find((candidate) => candidate.distanceMatch || candidate.addressMatch);
+      const matchedSavedAddress = findBestSavedAddressMatch(
+        savedAddresses,
+        currentLat,
+        currentLon,
+        currentAddress
+      );
 
       if (matchedSavedAddress) {
         suggestions.favoriteAddresses = {
           details: {
-            name: matchedSavedAddress.saved.name,
-            address: matchedSavedAddress.saved.address,
-            latitude: matchedSavedAddress.saved.latitude ?? currentLat,
-            longitude: matchedSavedAddress.saved.longitude ?? currentLon,
+            name: matchedSavedAddress.item.name,
+            address: matchedSavedAddress.item.address,
+            latitude: matchedSavedAddress.item.latitude ?? currentLat,
+            longitude: matchedSavedAddress.item.longitude ?? currentLon,
           },
-          reason: `Looks like you're at saved address "${matchedSavedAddress.saved.name}".`,
-          confidenceLabel: getConfidenceLabel(
+          reason: `Looks like you're at saved address "${matchedSavedAddress.item.name}".`,
+          confidenceLabel: getGpsLocationConfidenceLabel(
             matchedSavedAddress.distanceMatch,
             matchedSavedAddress.addressMatch
           ),
         };
       }
 
-      const matchedOxfordHouse = oxfordHouses.find((house: OxfordHouse) => {
-        const houseAddress = `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`;
-        return !!currentAddress && addressesLikelyMatch(currentAddress, houseAddress);
-      });
+      const matchedOxfordHouse = findBestOxfordHouseMatch(oxfordHouses, currentAddress);
 
       if (matchedOxfordHouse) {
         suggestions.oxfordHouse = {
@@ -1122,7 +1089,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (
         currentEmployee.baseAddress &&
         currentAddress &&
-        addressesLikelyMatch(currentAddress, currentEmployee.baseAddress)
+        addressesStrictlyMatch(currentAddress, currentEmployee.baseAddress)
       ) {
         suggestions.baseAddress = {
           details: {
@@ -1146,9 +1113,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             currentLon,
             startLocationDetails.latitude,
             startLocationDetails.longitude
-          ) <= 0.12;
+          ) <= GPS_NEARBY_MATCH_MILES;
         const tripStartAddressMatch =
-          !!currentAddress && addressesLikelyMatch(currentAddress, tripStartAddress);
+          !!currentAddress && addressesStrictlyMatch(currentAddress, tripStartAddress);
 
         if (tripStartDistanceMatch || tripStartAddressMatch) {
           suggestions.tripStart = {
@@ -1159,7 +1126,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               longitude: startLocationDetails.longitude ?? currentLon,
             },
             reason: 'Looks like you are back at your trip start location.',
-            confidenceLabel: getConfidenceLabel(tripStartDistanceMatch, tripStartAddressMatch),
+            confidenceLabel: getGpsLocationConfidenceLabel(
+              tripStartDistanceMatch,
+              tripStartAddressMatch
+            ),
           };
         }
       }
@@ -1169,37 +1139,30 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         OxfordHouseService.getAllOxfordHouses(),
       ]);
 
-      const matchedSavedAddress = savedAddresses
-        .map((saved: SavedAddress) => {
-          const distanceMatch =
-            typeof saved.latitude === 'number' &&
-            typeof saved.longitude === 'number' &&
-            calculateDistanceMiles(currentLat, currentLon, saved.latitude, saved.longitude) <= 0.12;
-          const addressMatch = !!currentAddress && addressesLikelyMatch(currentAddress, saved.address);
-          return { saved, distanceMatch, addressMatch };
-        })
-        .find((candidate) => candidate.distanceMatch || candidate.addressMatch);
+      const matchedSavedAddress = findBestSavedAddressMatch(
+        savedAddresses,
+        currentLat,
+        currentLon,
+        currentAddress
+      );
 
       if (matchedSavedAddress) {
         suggestions.favoriteAddresses = {
           details: {
-            name: matchedSavedAddress.saved.name,
-            address: matchedSavedAddress.saved.address,
-            latitude: matchedSavedAddress.saved.latitude ?? currentLat,
-            longitude: matchedSavedAddress.saved.longitude ?? currentLon,
+            name: matchedSavedAddress.item.name,
+            address: matchedSavedAddress.item.address,
+            latitude: matchedSavedAddress.item.latitude ?? currentLat,
+            longitude: matchedSavedAddress.item.longitude ?? currentLon,
           },
-          reason: `Looks like you're at saved address "${matchedSavedAddress.saved.name}".`,
-          confidenceLabel: getConfidenceLabel(
+          reason: `Looks like you're at saved address "${matchedSavedAddress.item.name}".`,
+          confidenceLabel: getGpsLocationConfidenceLabel(
             matchedSavedAddress.distanceMatch,
             matchedSavedAddress.addressMatch
           ),
         };
       }
 
-      const matchedOxfordHouse = oxfordHouses.find((house: OxfordHouse) => {
-        const houseAddress = `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`;
-        return !!currentAddress && addressesLikelyMatch(currentAddress, houseAddress);
-      });
+      const matchedOxfordHouse = findBestOxfordHouseMatch(oxfordHouses, currentAddress);
 
       if (matchedOxfordHouse) {
         suggestions.oxfordHouse = {
