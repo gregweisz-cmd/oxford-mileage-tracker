@@ -61,7 +61,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (options?: { pullFromBackend?: boolean }) => {
     try {
       setLoading(true);
       
@@ -84,13 +84,14 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
       
       setCurrentEmployee(employee);
 
-      try {
-        await ApiSyncService.syncFromBackend(employee.id);
-      } catch (syncError) {
-        console.warn('SavedAddressesScreen: backend sync failed before loading local list:', syncError);
+      if (options?.pullFromBackend !== false) {
+        try {
+          await ApiSyncService.syncFromBackend(employee.id);
+        } catch (syncError) {
+          console.warn('SavedAddressesScreen: backend sync failed before loading local list:', syncError);
+        }
       }
       
-      // Load saved addresses
       const addresses = await DatabaseService.getSavedAddresses(employee.id);
       setSavedAddresses(addresses);
       
@@ -100,6 +101,12 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
     } finally {
       setLoading(false);
     }
+  };
+
+  const refreshLocalAddresses = async () => {
+    if (!currentEmployee) return;
+    const addresses = await DatabaseService.getSavedAddresses(currentEmployee.id);
+    setSavedAddresses(addresses);
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -210,7 +217,9 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
       }
 
       resetForm();
-      await loadData();
+      await refreshLocalAddresses();
+      const { SyncIntegrationService } = await import('../services/syncIntegrationService');
+      void SyncIntegrationService.processSyncQueue();
     } catch (error) {
       console.error('Error saving address:', error);
       Alert.alert('Error', 'Failed to save address');
@@ -230,7 +239,7 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
             try {
               await DatabaseService.deleteSavedAddress(address.id);
               Alert.alert('Success', 'Address deleted successfully');
-              await loadData();
+              await refreshLocalAddresses();
             } catch (error) {
               console.error('Error deleting address:', error);
               Alert.alert('Error', 'Failed to delete address');

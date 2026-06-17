@@ -24,6 +24,8 @@ import { MileageEntry, Employee, LocationDetails, Vehicle } from '../types';
 import LocationCaptureModal from '../components/LocationCaptureModal';
 import { formatLocationForInput } from '../utils/locationFormatter';
 import { normalizeLocationDetails } from '../utils/locationName';
+import { formatLocation } from '../utils/locationFormatter';
+import { resolveLocationForDistance } from '../utils/resolveLocationForDistance';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
 import { OxfordHouseService } from '../services/oxfordHouseService';
@@ -155,20 +157,26 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           const locType = route.params.locationType;
           
           if (locType === 'start') {
-            setFormData(prev => ({ ...prev, startLocation: address.name }));
+            setFormData(prev => ({
+              ...prev,
+              startLocation: formatLocation(address.name, address),
+            }));
             setStartLocationDetails({
               name: address.name,
               address: address.address,
               latitude: address.latitude,
-              longitude: address.longitude
+              longitude: address.longitude,
             });
           } else if (locType === 'end') {
-            setFormData(prev => ({ ...prev, endLocation: address.name }));
+            setFormData(prev => ({
+              ...prev,
+              endLocation: formatLocation(address.name, address),
+            }));
             setEndLocationDetails({
               name: address.name,
               address: address.address,
               latitude: address.latitude,
-              longitude: address.longitude
+              longitude: address.longitude,
             });
           }
           
@@ -602,12 +610,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     
     setTimeout(() => {
       if (option === 'lastDestination' && lastDestination) {
-        // Use last destination
+        const formatted = formatLocation(lastDestination.name, lastDestination);
         if (currentLocationType === 'start') {
-          setFormData(prev => ({ ...prev, startLocation: lastDestination.name }));
+          setFormData(prev => ({ ...prev, startLocation: formatted }));
           setStartLocationDetails(lastDestination);
         } else {
-          setFormData(prev => ({ ...prev, endLocation: lastDestination.name }));
+          setFormData(prev => ({ ...prev, endLocation: formatted }));
           setEndLocationDetails(lastDestination);
         }
       } else if (option === 'baseAddress' && currentEmployee?.baseAddress) {
@@ -650,7 +658,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
   const handleLocationConfirm = (locationDetails: LocationDetails) => {
     const normalized = normalizeLocationDetails(locationDetails) || locationDetails;
-    const displayLabel = normalized.name || normalized.address || '';
+    const displayLabel = formatLocation(normalized.name || normalized.address || '', normalized);
     if (currentLocationType === 'start') {
       setFormData(prev => ({ ...prev, startLocation: displayLabel }));
       setStartLocationDetails(normalized);
@@ -716,26 +724,26 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
     setCalculatingDistance(true);
     try {
-      // Prefer raw location string when it contains parentheses so backend extracts same address as web
-      // e.g. "Oxford House 37th Street (1105 Longview Dr...)" -> backend uses "1105 Longview Dr..."
-      // Only use locationDetails?.address for "BA" or when there's no parenthetical address
-      const hasAddressInParens = (s: string) => (s || '').trim().includes('(');
-      let startAddress = formData.startLocation.trim();
-      if (!hasAddressInParens(startAddress)) {
-        if (startAddress === 'BA' && startLocationDetails?.address) {
-          startAddress = startLocationDetails.address;
-        } else if (startLocationDetails?.address) {
-          startAddress = startLocationDetails.address;
-        }
+      const startResolved = resolveLocationForDistance(
+        formData.startLocation.trim(),
+        startLocationDetails
+      );
+      if (!startResolved.ok) {
+        Alert.alert('Start location needed', startResolved.userMessage);
+        return;
       }
-      let endAddress = formData.endLocation.trim();
-      if (!hasAddressInParens(endAddress)) {
-        if (endAddress === 'BA' && endLocationDetails?.address) {
-          endAddress = endLocationDetails.address;
-        } else if (endLocationDetails?.address) {
-          endAddress = endLocationDetails.address;
-        }
+
+      const endResolved = resolveLocationForDistance(
+        formData.endLocation.trim(),
+        endLocationDetails
+      );
+      if (!endResolved.ok) {
+        Alert.alert('End location needed', endResolved.userMessage);
+        return;
       }
+
+      const startAddress = startResolved.address;
+      const endAddress = endResolved.address;
       const options = await DistanceService.getRouteOptions(startAddress, endAddress);
       if (options.length > 1) {
         setRouteOptions(options);
@@ -1761,8 +1769,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                 <TouchableOpacity
                   style={styles.manualEntryButton}
                   onPress={() => {
-                    // Handle manual entry - could open a simple text input modal
-                    Alert.alert('Manual Travel Entry', 'Manual travel location entry feature coming soon!');
+                    setShowOxfordHouseSearchModal(false);
+                    setOxfordHouseSearchQuery('');
+                    if (currentLocationType === 'start') {
+                      setShowStartLocationModal(true);
+                    } else {
+                      setShowEndLocationModal(true);
+                    }
                   }}
                 >
                   <MaterialIcons name="edit" size={20} color="#2196F3" />

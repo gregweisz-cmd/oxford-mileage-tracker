@@ -17,6 +17,7 @@ import { LocationDetails, Employee } from '../types';
 import { DatabaseService } from '../services/database';
 import { makeLocationDetails } from '../utils/locationSelection';
 import { formatAddressParts, parseAddressParts, buildPartsFromGeocode } from '../utils/addressFormatter';
+import { looksLikeGeocodableAddress } from '../utils/resolveLocationForDistance';
 
 interface LocationCaptureModalProps {
   visible: boolean;
@@ -215,12 +216,33 @@ export default function LocationCaptureModal({
       return;
     }
 
+    const hasStructuredAddress =
+      !!trimmedAddress &&
+      !!(trimmedCity || trimmedState || trimmedZip) &&
+      looksLikeGeocodableAddress(
+        composedAddress ||
+          formatAddressParts({
+            street: trimmedAddress,
+            city: trimmedCity,
+            state: trimmedState,
+            zipCode: trimmedZip,
+          })
+      );
+
+    if (!hasStructuredAddress && !looksLikeGeocodableAddress(trimmedAddress || composedAddress)) {
+      Alert.alert(
+        'Full address required',
+        'Enter the street address, city, and state (or ZIP). A place name alone — like a house nickname — cannot be used for mileage distance.'
+      );
+      return;
+    }
+
     // Allow address-only manual entry by deriving a display name from the address.
     const finalName = trimmedName || trimmedAddress.split(',')[0]?.trim() || 'Location';
 
     const locationDetails: LocationDetails = makeLocationDetails({
       name: finalName,
-      address: trimmedAddress || composedAddress || finalName,
+      address: trimmedAddress || composedAddress,
       city: trimmedCity,
       state: trimmedState,
       zipCode: trimmedZip,
@@ -243,7 +265,10 @@ export default function LocationCaptureModal({
         console.log('Location saved to favorites');
       } catch (error) {
         console.error('Error saving location to favorites:', error);
-        // Don't block the main flow if saving to favorites fails
+        Alert.alert(
+          'Could not save favorite',
+          'Your trip location was captured, but saving to favorites failed. You can add it from Saved Addresses.'
+        );
       }
     }
 

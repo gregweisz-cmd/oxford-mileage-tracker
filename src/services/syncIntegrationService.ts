@@ -411,15 +411,14 @@ export class SyncIntegrationService {
       // Group operations by entity type for batch processing
       const groupedOperations = this.groupOperationsByType();
       
-      // Process each group
+      // Process each group — only dequeue items that actually synced.
+      const succeededQueueItemIds = new Set<string>();
       for (const [entityType, operations] of Object.entries(groupedOperations)) {
-        await this.processEntityGroup(entityType as any, operations);
+        const ids = await this.processEntityGroup(entityType as any, operations);
+        ids.forEach((id) => succeededQueueItemIds.add(id));
       }
-      
-      // Remove successfully processed items
-      this.syncQueue = this.syncQueue.filter(item => 
-        !groupedOperations[item.entityType]?.includes(item)
-      );
+
+      this.syncQueue = this.syncQueue.filter((item) => !succeededQueueItemIds.has(item.id));
       
       debugLog(`✅ SyncIntegration: Processed sync queue, ${this.syncQueue.length} items remaining`);
       
@@ -452,44 +451,43 @@ export class SyncIntegrationService {
   private static async processEntityGroup(
     entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
     operations: SyncQueueItem[]
-  ): Promise<void> {
-    try {
-      // Separate create/update operations from delete operations
-      const createUpdateOps = operations.filter(op => op.operation !== 'delete');
-      const deleteOps = operations.filter(op => op.operation === 'delete');
-      
-      // Process create/update operations
-      if (createUpdateOps.length > 0) {
+  ): Promise<string[]> {
+    const succeededQueueItemIds: string[] = [];
+    const createUpdateOps = operations.filter((op) => op.operation !== 'delete');
+    const deleteOps = operations.filter((op) => op.operation === 'delete');
+
+    if (createUpdateOps.length > 0) {
+      try {
         await this.processCreateUpdateOperations(entityType, createUpdateOps);
-      }
-      
-      // Process delete operations
-      if (deleteOps.length > 0) {
-        await this.processDeleteOperations(entityType, deleteOps);
-      }
-      
-    } catch (error) {
-      console.error(`❌ SyncIntegration: Error processing ${entityType} group:`, error);
-      console.error(`❌ SyncIntegration: Error details:`, {
-        entityType,
-        operationCount: operations.length,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        errorStack: error instanceof Error ? error.stack : undefined
-      });
-      
-      // Increment retry count for failed operations
-      operations.forEach(op => {
-        op.retryCount++;
-        if (op.retryCount >= this.MAX_RETRY_ATTEMPTS) {
-          console.error(`❌ SyncIntegration: Max retries exceeded for operation:`, op.id);
-          // Remove from queue after max retries
-          const index = this.syncQueue.indexOf(op);
-          if (index > -1) {
-            this.syncQueue.splice(index, 1);
+        succeededQueueItemIds.push(...createUpdateOps.map((op) => op.id));
+      } catch (error) {
+        console.error(`❌ SyncIntegration: Error processing ${entityType} group:`, error);
+        console.error(`❌ SyncIntegration: Error details:`, {
+          entityType,
+          operationCount: createUpdateOps.length,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorStack: error instanceof Error ? error.stack : undefined,
+        });
+
+        createUpdateOps.forEach((op) => {
+          op.retryCount++;
+          if (op.retryCount >= this.MAX_RETRY_ATTEMPTS) {
+            console.error(`❌ SyncIntegration: Max retries exceeded for operation:`, op.id);
+            const index = this.syncQueue.indexOf(op);
+            if (index > -1) {
+              this.syncQueue.splice(index, 1);
+            }
           }
-        }
-      });
+        });
+      }
     }
+
+    if (deleteOps.length > 0) {
+      const deleteSucceeded = await this.processDeleteOperations(entityType, deleteOps);
+      succeededQueueItemIds.push(...deleteSucceeded);
+    }
+
+    return succeededQueueItemIds;
   }
 
   /**
@@ -532,24 +530,34 @@ export class SyncIntegrationService {
   private static async processDeleteOperations(
     entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
     operations: SyncQueueItem[]
-  ): Promise<void> {
-    // For delete operations, we need to make individual API calls
-    // since the backend doesn't have batch delete endpoints
+  ): Promise<string[]> {
+    const succeededQueueItemIds: string[] = [];
+
     for (const operation of operations) {
       try {
         const endpoint = this.getDeleteEndpoint(entityType, operation.data.id);
         const response = await ApiSyncService.authenticatedDelete(endpoint);
-        
+
         if (!response.ok) {
           throw new Error(`Delete failed: ${response.statusText}`);
         }
-        
+
         debugLog(`✅ SyncIntegration: Successfully deleted ${entityType}:`, operation.data.id);
+        succeededQueueItemIds.push(operation.id);
       } catch (error) {
         console.error(`❌ SyncIntegration: Error deleting ${entityType}:`, error);
-        throw error;
+        operation.retryCount++;
+        if (operation.retryCount >= this.MAX_RETRY_ATTEMPTS) {
+          console.error(`❌ SyncIntegration: Max retries exceeded for delete operation:`, operation.id);
+          const index = this.syncQueue.indexOf(operation);
+          if (index > -1) {
+            this.syncQueue.splice(index, 1);
+          }
+        }
       }
     }
+
+    return succeededQueueItemIds;
   }
 
   /**
@@ -621,6 +629,8 @@ export class SyncIntegrationService {
 
       // Get all daily descriptions for current employee
       const dailyDescriptions = await DatabaseService.getDailyDescriptions(currentEmployeeId);
+
+      const savedAddresses = await DatabaseService.getSavedAddresses(currentEmployeeId);
         
         // Sync employee data (just the current employee)
         const employeeData = currentEmployee ? [currentEmployee] : [];
@@ -630,7 +640,8 @@ export class SyncIntegrationService {
           mileageEntries,
           receipts,
         timeTracking,
-        dailyDescriptions
+        dailyDescriptions,
+        savedAddresses,
         });
         
         if (result.success) {
