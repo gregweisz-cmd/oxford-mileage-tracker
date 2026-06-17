@@ -22,9 +22,8 @@ import { DistanceService } from '../services/distanceService';
 import type { DistanceRouteOption } from '../services/distanceService';
 import { MileageEntry, Employee, LocationDetails, Vehicle } from '../types';
 import LocationCaptureModal from '../components/LocationCaptureModal';
-import { formatLocationForInput } from '../utils/locationFormatter';
+import { formatLocation, parseDisplayLocationToDetails } from '../utils/locationFormatter';
 import { normalizeLocationDetails } from '../utils/locationName';
-import { formatLocation } from '../utils/locationFormatter';
 import { resolveLocationForDistance } from '../utils/resolveLocationForDistance';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { OxfordHouseSearchInput } from '../components/OxfordHouseSearchInput';
@@ -139,57 +138,62 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   }, []);
 
   useEffect(() => {
-    const initializeAndLoad = async () => {
+    const initialize = async () => {
       try {
-        // Initialize database first
         await DatabaseService.initDatabase();
         await loadEmployee();
-        
-        // Check if we're editing an existing entry
-        if (route.params?.entryId) {
-          setIsEditing(true);
-          await loadExistingEntry(route.params.entryId);
-        }
-        
-        // Check if a saved address was selected
-        if (route.params?.selectedAddress) {
-          const address = route.params.selectedAddress;
-          const locType = route.params.locationType;
-          
-          if (locType === 'start') {
-            setFormData(prev => ({
-              ...prev,
-              startLocation: formatLocation(address.name, address),
-            }));
-            setStartLocationDetails({
-              name: address.name,
-              address: address.address,
-              latitude: address.latitude,
-              longitude: address.longitude,
-            });
-          } else if (locType === 'end') {
-            setFormData(prev => ({
-              ...prev,
-              endLocation: formatLocation(address.name, address),
-            }));
-            setEndLocationDetails({
-              name: address.name,
-              address: address.address,
-              latitude: address.latitude,
-              longitude: address.longitude,
-            });
-          }
-          
-          // Clear the route params to prevent re-applying on next render
-          navigation.setParams({ selectedAddress: undefined, locationType: undefined });
-        }
       } catch (error) {
         console.error('Error initializing MileageEntryScreen:', error);
       }
     };
-    
-    initializeAndLoad();
-  }, [route.params]);
+
+    void initialize();
+  }, []);
+
+  const entryId = route.params?.entryId;
+
+  useEffect(() => {
+    if (!entryId) {
+      setIsEditing(false);
+      return;
+    }
+
+    setIsEditing(true);
+    void loadExistingEntry(entryId);
+  }, [entryId]);
+
+  useEffect(() => {
+    const selectedAddress = route.params?.selectedAddress;
+    const locType = route.params?.locationType;
+    if (!selectedAddress) return;
+
+    const address = selectedAddress;
+    if (locType === 'start') {
+      setFormData(prev => ({
+        ...prev,
+        startLocation: formatLocation(address.name, address),
+      }));
+      setStartLocationDetails({
+        name: address.name,
+        address: address.address,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      });
+    } else if (locType === 'end') {
+      setFormData(prev => ({
+        ...prev,
+        endLocation: formatLocation(address.name, address),
+      }));
+      setEndLocationDetails({
+        name: address.name,
+        address: address.address,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      });
+    }
+
+    navigation.setParams({ selectedAddress: undefined, locationType: undefined });
+  }, [route.params?.selectedAddress, route.params?.locationType, navigation]);
 
   // Check for daily odometer reading when date changes
   useEffect(() => {
@@ -503,13 +507,15 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         setFormData({
           date: entry.date,
           odometerReading: entry.odometerReading.toString(),
-          startLocation: filterPlaceholderText(formatLocationForInput(entry.startLocation, entry.startLocationDetails)),
-          endLocation: filterPlaceholderText(formatLocationForInput(entry.endLocation, entry.endLocationDetails)),
+          startLocation: filterPlaceholderText(formatLocation(entry.startLocation, entry.startLocationDetails)),
+          endLocation: filterPlaceholderText(formatLocation(entry.endLocation, entry.endLocationDetails)),
           purpose: entry.purpose,
           miles: entry.miles.toString(),
           notes: filterPlaceholderText(entry.notes || ''),
           isGpsTracked: entry.isGpsTracked,
         });
+        setStartLocationDetails(entry.startLocationDetails ?? null);
+        setEndLocationDetails(entry.endLocationDetails ?? null);
       }
     } catch (error) {
       console.error('Error loading entry:', error);
@@ -908,6 +914,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         );
       }
 
+      const resolvedStartDetails =
+        startLocationDetails ??
+        parseDisplayLocationToDetails(formData.startLocation.trim());
+      const resolvedEndDetails =
+        endLocationDetails ??
+        parseDisplayLocationToDetails(formData.endLocation.trim());
+
       const entryData = {
         employeeId: currentEmployee.id,
         oxfordHouseId: currentEmployee.oxfordHouseId,
@@ -916,8 +929,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         odometerReading: tripOdometer,
         startLocation: formData.startLocation.trim(),
         endLocation: formData.endLocation.trim(),
-        startLocationDetails: startLocationDetails,
-        endLocationDetails: endLocationDetails,
+        startLocationDetails: resolvedStartDetails,
+        endLocationDetails: resolvedEndDetails,
         purpose: formData.purpose.trim(),
         miles: Math.round(Number(formData.miles)),
         notes: formData.notes.trim(),

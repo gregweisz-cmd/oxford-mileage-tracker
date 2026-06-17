@@ -7324,6 +7324,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Typography variant="body2" color="textSecondary">
                   Enter mileage data for each day. The system will automatically track locations, miles traveled, and calculate reimbursement.
                 </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
+                  Use the arrows to order trips from top to bottom (first trip at the top) so each day reflects the correct sequence.
+                </Typography>
               </Box>
               <Button
                 variant="contained"
@@ -7454,7 +7457,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 }}
                               >
                                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.dark' }}>
-                                  {formatMileageDate(entry.date)} - {dayEntryCount} entr{dayEntryCount === 1 ? 'y' : 'ies'} (reorder only within this day)
+                                  {formatMileageDate(entry.date)} - {dayEntryCount} entr{dayEntryCount === 1 ? 'y' : 'ies'} (reorder within this day; top = first trip)
                                 </Typography>
                               </TableCell>
                             </TableRow>

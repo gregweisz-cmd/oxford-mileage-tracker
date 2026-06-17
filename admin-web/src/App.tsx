@@ -334,7 +334,7 @@ const App: React.FC = () => {
               const { apiGet } = await import('./services/rateLimitedApi');
               const preferences = await apiGet(`/api/dashboard-preferences/${employee.id}`).catch(() => ({}));
               debugLog('🔍 Loaded user preferences (checkAuthStatus):', preferences);
-              if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
+              if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'senior_staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
                 // Verify user has access to this portal
                 const availablePortals = getAvailablePortalsForUser(role, position, permissions);
                 debugLog('🔍 Available portals for user (checkAuthStatus):', availablePortals);
@@ -566,7 +566,7 @@ const App: React.FC = () => {
       const { apiGet } = await import('./services/rateLimitedApi');
       const preferences = await apiGet(`/api/dashboard-preferences/${employee.id}`).catch(() => ({}));
       debugLog('🔍 Loaded user preferences:', preferences);
-      if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
+      if (preferences.defaultPortal && ['admin', 'supervisor', 'staff', 'senior_staff', 'finance', 'contracts'].includes(preferences.defaultPortal)) {
         // Verify user has access to this portal
         const availablePortals = getAvailablePortalsForUser(role, position, permissions);
         debugLog('🔍 Available portals for user:', availablePortals);

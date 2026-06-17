@@ -127,6 +127,8 @@ function normalizeLocationForStorage(name, address, baseAddress, baseAddress2) {
   const ba = getBaseAddressLabel(addr || displayName, baseAddress, baseAddress2);
   const nameIsBase = /^(ba|base address|base|home base)\s*$/i.test(displayName);
   if (!ba && !nameIsBase) return null;
+  // Name-only "BA" must not override a changed address that is no longer the employee base.
+  if (nameIsBase && !ba) return null;
 
   let baseAddr = (ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
   const paren = (baseAddr || '').match(/\(([^)]+)\)/);

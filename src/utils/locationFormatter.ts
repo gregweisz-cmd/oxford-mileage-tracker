@@ -75,6 +75,30 @@ export const formatLocationForInput = (
   return normalizeBaseAddressDisplay(locationText);
 };
 
+/**
+ * Parse a display string like "Name (123 Main St, City, ST 12345)" into LocationDetails.
+ */
+export const parseDisplayLocationToDetails = (
+  locationText: string
+): LocationDetails | null => {
+  const trimmed = (locationText || '').trim();
+  if (!trimmed) return null;
+
+  const parenMatch = trimmed.match(/^(.+?)\s*\((.+)\)\s*$/);
+  if (parenMatch) {
+    return {
+      name: parenMatch[1].trim(),
+      address: parenMatch[2].trim(),
+    };
+  }
+
+  if (trimmed.includes(',')) {
+    return { name: '', address: trimmed };
+  }
+
+  return { name: trimmed, address: '' };
+};
+
 
 
 
