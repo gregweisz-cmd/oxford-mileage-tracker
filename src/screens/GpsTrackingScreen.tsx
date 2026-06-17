@@ -1045,16 +1045,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     });
   };
 
-  const orderedStartLocationOptions = useMemo(() => {
-    if (isEditingStartLocationOptions) {
-      return startLocationOptionOrder;
-    }
-
-    const suggested = startLocationOptionOrder.filter((option) => !!startLocationSuggestions[option]);
-    const unsuggested = startLocationOptionOrder.filter((option) => !startLocationSuggestions[option]);
-    return [...suggested, ...unsuggested];
-  }, [isEditingStartLocationOptions, startLocationOptionOrder, startLocationSuggestions]);
-
   const detectEndLocationSuggestions = async () => {
     if (!currentEmployee) return;
     const suggestions: Partial<Record<EndLocationOption, StartLocationSuggestion>> = {};
@@ -2214,8 +2204,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 </View>
               ) : null}
 
-              {orderedStartLocationOptions.map((option) => {
-                const index = startLocationOptionOrder.indexOf(option);
+              {startLocationOptionOrder.map((option, index) => {
                 const suggestion = startLocationSuggestions[option];
                 const isDisabled =
                   (option === 'lastDestination' && !lastDestination) ||
