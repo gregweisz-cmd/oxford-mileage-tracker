@@ -475,15 +475,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           const today = new Date();
           today.setHours(0, 0, 0, 0);
 
-          const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
-            currentEmployee.id,
-            today,
-            selectedVehicleId || undefined
-          );
+          const hasMileageToday =
+            (await DatabaseService.getMileageEntriesForVehicleOnDate(
+              currentEmployee.id,
+              today,
+              selectedVehicleId || undefined
+            )).length > 0;
 
           const odometerForTrip = await resolveOdometerForTripStart();
 
-          if (!hasGpsTripToday && odometerForTrip) {
+          if (!hasMileageToday && odometerForTrip) {
             await persistDailyOdometerForTripStart(
               currentEmployee.id,
               today,
@@ -635,11 +636,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           today,
           vehicleId
         );
-        const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
+        const entriesForDate = await DatabaseService.getMileageEntriesForVehicleOnDate(
           employeeId,
           today,
           vehicleId
         );
+        const hasMileageToday = entriesForDate.length > 0;
         const totalMilesToday = await DatabaseService.getTotalMilesForVehicleOnDate(
           employeeId,
           today,
@@ -647,8 +649,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         );
         setMilesDrivenToday(totalMilesToday);
 
-        if (hasGpsTripToday && existingReading) {
-          console.log('🚗 GPS: GPS trip already recorded today; showing locked daily start odometer');
+        if (hasMileageToday && existingReading) {
+          console.log('🚗 GPS: Mileage already recorded today; showing locked daily start odometer');
           setHasStartedGpsToday(true);
           setDailyStartingOdometer(existingReading.odometerReading.toString());
           setTrackingForm((prev) => ({
@@ -662,20 +664,18 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           );
           setNextTripStartingOdometer(nextTripOdometer);
         } else {
-          const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
+          const defaultStart = await DatabaseService.resolveDefaultStartingOdometer(
             employeeId,
             today,
             vehicleId
           );
-          console.log('🚗 GPS: Next trip starting odometer suggestion:', nextTripOdometer);
+          console.log('🚗 GPS: Suggested starting odometer from last travel day:', defaultStart);
           setHasStartedGpsToday(false);
           setDailyStartingOdometer('');
           setNextTripStartingOdometer(null);
-          const suggested =
-            existingReading?.odometerReading ?? nextTripOdometer ?? null;
           setTrackingForm((prev) => ({
             ...prev,
-            odometerReading: suggested != null ? String(suggested) : '',
+            odometerReading: defaultStart != null ? String(defaultStart) : '',
           }));
           await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
         }
@@ -703,12 +703,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
-      currentEmployee.id,
-      today,
-      selectedVehicleId || undefined
-    );
-    if (hasGpsTripToday) {
+    const hasMileageToday =
+      (await DatabaseService.getMileageEntriesForVehicleOnDate(
+        currentEmployee.id,
+        today,
+        selectedVehicleId || undefined
+      )).length > 0;
+    if (hasMileageToday) {
       const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
         currentEmployee.id,
         today,
@@ -1304,15 +1305,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       console.log('🚗 GPS: Starting GPS tracking for date:', today.toISOString().split('T')[0]);
       
-      const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
-        currentEmployee!.id,
-        today,
-        selectedVehicleId || undefined
-      );
+      const hasMileageToday =
+        (await DatabaseService.getMileageEntriesForVehicleOnDate(
+          currentEmployee!.id,
+          today,
+          selectedVehicleId || undefined
+        )).length > 0;
 
       const odometerForTrip = await resolveOdometerForTripStart();
 
-      if (!hasGpsTripToday && odometerForTrip) {
+      if (!hasMileageToday && odometerForTrip) {
         await persistDailyOdometerForTripStart(
           currentEmployee!.id,
           today,
@@ -1869,7 +1871,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 </ScrollToOnFocusView>
                 {lastTravelDayEndingOdometerNote ? (
                   <Text style={[styles.helpText, formThemedStyles.helpText]}>{lastTravelDayEndingOdometerNote}</Text>
-                ) : null}
+                ) : (
+                  <Text style={[styles.helpText, formThemedStyles.helpText]}>
+                    Prefilled from your last travel day when available — adjust if needed.
+                  </Text>
+                )}
               </View>
             ) : (
               <>
@@ -1888,7 +1894,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                         {dailyStartingOdometer}
                       </Text>
                       <Text style={[styles.odometerNote, formThemedStyles.odometerNote]}>
-                        Set from your first GPS trip today
+                        Daily starting odometer for today
                       </Text>
                       <TouchableOpacity style={styles.editOdometerButton} onPress={handleEditOdometer}>
                         <MaterialIcons name="edit" size={16} color="#2196F3" />
