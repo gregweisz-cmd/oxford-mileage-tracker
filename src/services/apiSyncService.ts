@@ -2297,6 +2297,11 @@ export class ApiSyncService {
             debugLog(`⚠️ ApiSync: Skipping mileage entry ${entry.id} - pending deletion in sync queue`);
             continue;
           }
+
+          if (pendingUpsertIds.has(entry.id)) {
+            debugLog(`⚠️ ApiSync: Skipping mileage entry ${entry.id} - pending local create/update in sync queue`);
+            continue;
+          }
           
           // Check if entry with this ID already exists
           const existing = await database.getFirstAsync(
@@ -2312,7 +2317,16 @@ export class ApiSyncService {
           const entryUpdatedAt = entry.updatedAt instanceof Date ? entry.updatedAt.toISOString() : (entry.updatedAt || new Date().toISOString());
           const existingUpdatedAt = existing?.updatedAt ? (existing.updatedAt instanceof Date ? existing.updatedAt.toISOString() : existing.updatedAt) : null;
           
-          // If entry exists and backend version is newer or same, update it
+          if (existing && existingUpdatedAt) {
+            const localTime = new Date(existingUpdatedAt).getTime();
+            const remoteTime = new Date(entryUpdatedAt).getTime();
+            if (!Number.isNaN(localTime) && !Number.isNaN(remoteTime) && localTime > remoteTime) {
+              debugLog(`⚠️ ApiSync: Skipping mileage entry ${entry.id} - local version is newer than backend`);
+              continue;
+            }
+          }
+          
+          // If entry exists, update it when backend is newer or same age
           // If entry doesn't exist, create it
           if (existing) {
             // Update existing entry to ensure it matches backend

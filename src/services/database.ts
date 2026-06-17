@@ -1360,14 +1360,14 @@ export class DatabaseService {
       date: this.parseDateSafe(result.date),
       costCenter: result.costCenter || '',
       isGpsTracked: Boolean(result.isGpsTracked),
-      startLocationDetails: result.startLocationName ? {
-        name: result.startLocationName,
+      startLocationDetails: result.startLocationName || result.startLocationAddress ? {
+        name: result.startLocationName || '',
         address: result.startLocationAddress || '',
         latitude: result.startLocationLat,
         longitude: result.startLocationLng
       } : undefined,
-      endLocationDetails: result.endLocationName ? {
-        name: result.endLocationName,
+      endLocationDetails: result.endLocationName || result.endLocationAddress ? {
+        name: result.endLocationName || '',
         address: result.endLocationAddress || '',
         latitude: result.endLocationLat,
         longitude: result.endLocationLng

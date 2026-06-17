@@ -1,4 +1,5 @@
 import { MileageEntry, LocationDetails } from '../types';
+import { getFullLocationAddress } from './addressFormatter';
 import { sanitizeLocationName, formatAddressInParentheses } from './locationName';
 
 /**
@@ -97,6 +98,44 @@ export const parseDisplayLocationToDetails = (
   }
 
   return { name: trimmed, address: '' };
+};
+
+/**
+ * Build persisted location details from what the user sees in the form, merging
+ * coordinates/metadata from any existing details (e.g. after picking from favorites).
+ */
+export const buildLocationDetailsForSave = (
+  displayText: string,
+  existingDetails?: LocationDetails | null
+): LocationDetails | null => {
+  const trimmed = (displayText || '').trim();
+  if (!trimmed && !existingDetails) return null;
+
+  const parsed = trimmed ? parseDisplayLocationToDetails(trimmed) : null;
+  const address =
+    parsed?.address?.trim() ||
+    getFullLocationAddress(existingDetails) ||
+    existingDetails?.address?.trim() ||
+    '';
+  const name = sanitizeLocationName(
+    parsed?.name || existingDetails?.name,
+    address || trimmed
+  );
+
+  if (!name && !address) return null;
+
+  return {
+    ...existingDetails,
+    name,
+    address,
+    city: existingDetails?.city,
+    state: existingDetails?.state,
+    zipCode: existingDetails?.zipCode,
+    latitude: existingDetails?.latitude,
+    longitude: existingDetails?.longitude,
+    source: existingDetails?.source,
+    sourceId: existingDetails?.sourceId,
+  };
 };
 
 

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { MileageEntry, Employee } from '../types';
@@ -49,9 +50,11 @@ export default function MileageEntriesScreen({ navigation, route }: MileageEntri
     setSelectedYear(next.year);
   }, [route?.params?.selectedMonth, route?.params?.selectedYear]);
 
-  useEffect(() => {
-    loadData();
-  }, [selectedMonth, selectedYear]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [selectedMonth, selectedYear])
+  );
 
   const loadData = async () => {
     try {

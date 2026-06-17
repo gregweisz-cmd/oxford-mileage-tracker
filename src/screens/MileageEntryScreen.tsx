@@ -22,7 +22,7 @@ import { DistanceService } from '../services/distanceService';
 import type { DistanceRouteOption } from '../services/distanceService';
 import { MileageEntry, Employee, LocationDetails, Vehicle } from '../types';
 import LocationCaptureModal from '../components/LocationCaptureModal';
-import { formatLocation, parseDisplayLocationToDetails } from '../utils/locationFormatter';
+import { formatLocation, buildLocationDetailsForSave } from '../utils/locationFormatter';
 import { normalizeLocationDetails } from '../utils/locationName';
 import { resolveLocationForDistance } from '../utils/resolveLocationForDistance';
 import UnifiedHeader from '../components/UnifiedHeader';
@@ -38,6 +38,7 @@ import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/Keyb
 import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
 import { DuplicateDetectionService } from '../services/duplicateDetectionService';
+import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { HoursEstimationService } from '../services/hoursEstimationService';
 import { TripPurposeAiService, PurposeSuggestion } from '../services/tripPurposeAiService';
 import { getTravelReasons, TravelReason } from '../services/travelReasonsService';
@@ -120,6 +121,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const milesInputRef = useRef<TextInput>(null);
   const notesInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const entryLoadSeqRef = useRef(0);
+  const locationsTouchedRef = useRef(false);
+
+  const markLocationsTouched = useCallback(() => {
+    locationsTouchedRef.current = true;
+  }, []);
 
   const dismissMileageUiOverlays = useCallback(() => {
     setShowLocationOptionsModal(false);
@@ -155,10 +162,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   useEffect(() => {
     if (!entryId) {
       setIsEditing(false);
+      locationsTouchedRef.current = false;
       return;
     }
 
     setIsEditing(true);
+    locationsTouchedRef.current = false;
     void loadExistingEntry(entryId);
   }, [entryId]);
 
@@ -169,6 +178,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
     const address = selectedAddress;
     if (locType === 'start') {
+      markLocationsTouched();
       setFormData(prev => ({
         ...prev,
         startLocation: formatLocation(address.name, address),
@@ -180,6 +190,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         longitude: address.longitude,
       });
     } else if (locType === 'end') {
+      markLocationsTouched();
       setFormData(prev => ({
         ...prev,
         endLocation: formatLocation(address.name, address),
@@ -496,27 +507,31 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   const loadExistingEntry = async (entryId: string) => {
+    const loadSeq = ++entryLoadSeqRef.current;
     try {
-      const entries = await DatabaseService.getMileageEntries();
-      const entry = entries.find(e => e.id === entryId);
-      
-      if (entry) {
-        if (entry.vehicleId) {
-          setSelectedVehicleId(entry.vehicleId);
-        }
-        setFormData({
-          date: entry.date,
-          odometerReading: entry.odometerReading.toString(),
-          startLocation: filterPlaceholderText(formatLocation(entry.startLocation, entry.startLocationDetails)),
-          endLocation: filterPlaceholderText(formatLocation(entry.endLocation, entry.endLocationDetails)),
-          purpose: entry.purpose,
-          miles: entry.miles.toString(),
-          notes: filterPlaceholderText(entry.notes || ''),
-          isGpsTracked: entry.isGpsTracked,
-        });
-        setStartLocationDetails(entry.startLocationDetails ?? null);
-        setEndLocationDetails(entry.endLocationDetails ?? null);
+      const entry = await DatabaseService.getMileageEntryById(entryId);
+      if (!entry || loadSeq !== entryLoadSeqRef.current) {
+        return;
       }
+      if (locationsTouchedRef.current) {
+        return;
+      }
+
+      if (entry.vehicleId) {
+        setSelectedVehicleId(entry.vehicleId);
+      }
+      setFormData({
+        date: entry.date,
+        odometerReading: entry.odometerReading.toString(),
+        startLocation: filterPlaceholderText(formatLocation(entry.startLocation, entry.startLocationDetails)),
+        endLocation: filterPlaceholderText(formatLocation(entry.endLocation, entry.endLocationDetails)),
+        purpose: entry.purpose,
+        miles: entry.miles.toString(),
+        notes: filterPlaceholderText(entry.notes || ''),
+        isGpsTracked: entry.isGpsTracked,
+      });
+      setStartLocationDetails(entry.startLocationDetails ?? null);
+      setEndLocationDetails(entry.endLocationDetails ?? null);
     } catch (error) {
       console.error('Error loading entry:', error);
       Alert.alert('Error', 'Failed to load entry');
@@ -617,6 +632,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     setTimeout(() => {
       if (option === 'lastDestination' && lastDestination) {
         const formatted = formatLocation(lastDestination.name, lastDestination);
+        markLocationsTouched();
         if (currentLocationType === 'start') {
           setFormData(prev => ({ ...prev, startLocation: formatted }));
           setStartLocationDetails(lastDestination);
@@ -626,6 +642,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         }
       } else if (option === 'baseAddress' && currentEmployee?.baseAddress) {
         // Use base address - format as "BA" for display
+        markLocationsTouched();
         if (currentLocationType === 'start') {
           setFormData(prev => ({ ...prev, startLocation: 'BA' }));
           setStartLocationDetails({
@@ -665,6 +682,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const handleLocationConfirm = (locationDetails: LocationDetails) => {
     const normalized = normalizeLocationDetails(locationDetails) || locationDetails;
     const displayLabel = formatLocation(normalized.name || normalized.address || '', normalized);
+    markLocationsTouched();
     if (currentLocationType === 'start') {
       setFormData(prev => ({ ...prev, startLocation: displayLabel }));
       setStartLocationDetails(normalized);
@@ -914,12 +932,14 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         );
       }
 
-      const resolvedStartDetails =
-        startLocationDetails ??
-        parseDisplayLocationToDetails(formData.startLocation.trim());
-      const resolvedEndDetails =
-        endLocationDetails ??
-        parseDisplayLocationToDetails(formData.endLocation.trim());
+      const resolvedStartDetails = buildLocationDetailsForSave(
+        formData.startLocation,
+        startLocationDetails
+      );
+      const resolvedEndDetails = buildLocationDetailsForSave(
+        formData.endLocation,
+        endLocationDetails
+      );
 
       const entryData = {
         employeeId: currentEmployee.id,
@@ -927,8 +947,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         vehicleId: selectedVehicleId || undefined,
         date: formData.date,
         odometerReading: tripOdometer,
-        startLocation: formData.startLocation.trim(),
-        endLocation: formData.endLocation.trim(),
+        startLocation: formatLocation(formData.startLocation.trim(), resolvedStartDetails ?? undefined),
+        endLocation: formatLocation(formData.endLocation.trim(), resolvedEndDetails ?? undefined),
         startLocationDetails: resolvedStartDetails,
         endLocationDetails: resolvedEndDetails,
         purpose: formData.purpose.trim(),
@@ -940,6 +960,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
       if (isEditing && route.params?.entryId) {
         await DatabaseService.updateMileageEntry(route.params.entryId, entryData);
+        try {
+          await SyncIntegrationService.pushPendingChanges();
+        } catch (syncError) {
+          console.warn('Mileage entry saved locally; background sync will retry:', syncError);
+        }
         Alert.alert('Success', 'Mileage entry updated successfully');
         navigation.goBack();
       } else {
@@ -1079,6 +1104,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const handleOxfordHouseSelect = (house: any) => {
     // Format as "Name (Address, City, State Zip)"
     const formattedLocation = `${house.name} (${house.address}, ${house.city}, ${house.state} ${house.zipCode})`;
+    markLocationsTouched();
     
     if (currentLocationType === 'start') {
       setFormData(prev => ({ ...prev, startLocation: formattedLocation }));
@@ -1711,6 +1737,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         title="Capture Start Location"
         locationType="start"
         currentEmployee={currentEmployee}
+        initialLocation={startLocationDetails}
       />
 
       {/* End Location Capture Modal */}
@@ -1721,6 +1748,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         title="Capture End Location"
         locationType="end"
         currentEmployee={currentEmployee}
+        initialLocation={endLocationDetails}
       />
 
       {/* Oxford House Search Modal - Direct Search Interface */}
