@@ -659,11 +659,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           });
         }
       } else if (option === 'favoriteAddresses') {
-        // Navigate to saved addresses screen with context (pass entryId so we return to this edit screen)
-        navigation.navigate('SavedAddresses', { 
+        // Pass this screen's route key so favorites return here (not a new MileageEntry).
+        navigation.navigate('SavedAddresses', {
           fromMileageEntry: true,
           locationType: currentLocationType,
-          entryId: route.params?.entryId
+          entryId: route.params?.entryId,
+          mileageEntryReturnKey: route.key,
         });
       } else if (option === 'oxfordHouse') {
         // Show Oxford House search modal

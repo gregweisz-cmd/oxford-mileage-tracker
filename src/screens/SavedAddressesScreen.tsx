@@ -279,8 +279,11 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const handleSelectForManualEntry = (address: SavedAddress) => {
-    // Go back to MileageEntryScreen with the selected address (preserve entryId when editing)
-    const params: any = {
+    const locType = route.params?.locationType ?? locationType;
+    const entryId = route.params?.entryId;
+    const returnKey = route.params?.mileageEntryReturnKey;
+
+    const params: Record<string, unknown> = {
       selectedAddress: makeLocationDetails({
         name: address.name,
         address: address.address,
@@ -289,12 +292,28 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
         latitude: address.latitude,
         longitude: address.longitude,
       }),
-      locationType: locationType, // 'start' or 'end'
+      locationType: locType,
     };
-    if (route.params?.entryId) {
-      params.entryId = route.params.entryId;
+    if (entryId) {
+      params.entryId = entryId;
+      params.isEditing = true;
     }
-    navigation.navigate('MileageEntry', params);
+
+    // Return to the exact MileageEntry screen we came from (preserves edit mode).
+    if (returnKey) {
+      navigation.navigate({
+        key: returnKey,
+        params,
+        merge: true,
+      });
+      return;
+    }
+
+    navigation.navigate({
+      name: 'MileageEntry',
+      params,
+      merge: true,
+    });
   };
 
   const handleSelectForGpsTracking = async (address: SavedAddress) => {
