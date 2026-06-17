@@ -215,6 +215,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const [dailyStartingOdometer, setDailyStartingOdometer] = useState('');
   const [milesDrivenToday, setMilesDrivenToday] = useState(0);
   const [lastTravelDayEndingOdometerNote, setLastTravelDayEndingOdometerNote] = useState('');
+  const [isEditingOdometer, setIsEditingOdometer] = useState(false);
+  const [nextTripStartingOdometer, setNextTripStartingOdometer] = useState<number | null>(null);
   const [travelReasons, setTravelReasons] = useState<TravelReason[]>([]);
   const [showPurposePickerModal, setShowPurposePickerModal] = useState(false);
   const [showCustomPurposeInput, setShowCustomPurposeInput] = useState(false);
@@ -472,25 +474,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           // Check if this is the first GPS tracking session of the day
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          
-          const existingReading = await DatabaseService.getDailyOdometerReading(
+
+          const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
             currentEmployee.id,
             today,
             selectedVehicleId || undefined
           );
-          
+
           const odometerForTrip = await resolveOdometerForTripStart();
 
-          // If no daily odometer reading exists, create one from the current odometer reading
-          if (!existingReading && odometerForTrip) {
-            console.log('📝 Creating daily odometer reading from GPS tracking:', odometerForTrip);
-            await DatabaseService.createDailyOdometerReading({
-              employeeId: currentEmployee.id,
-              vehicleId: selectedVehicleId || undefined,
-              date: today,
-              odometerReading: odometerForTrip,
-              notes: 'Auto-captured from first GPS tracking session'
-            });
+          if (!hasGpsTripToday && odometerForTrip) {
+            await persistDailyOdometerForTripStart(
+              currentEmployee.id,
+              today,
+              odometerForTrip,
+              selectedVehicleId || undefined
+            );
           }
 
           console.log('🚀 GPS: Calling startTracking with saved address data...');
@@ -501,10 +500,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             trackingForm.notes
           );
 
-          if (!existingReading && odometerForTrip) {
-            setHasStartedGpsToday(true);
-            setDailyStartingOdometer(String(odometerForTrip));
-          }
+          await checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
 
           setTrackingTime(0);
 
@@ -639,6 +635,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           today,
           vehicleId
         );
+        const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
+          employeeId,
+          today,
+          vehicleId
+        );
         const totalMilesToday = await DatabaseService.getTotalMilesForVehicleOnDate(
           employeeId,
           today,
@@ -646,22 +647,35 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         );
         setMilesDrivenToday(totalMilesToday);
 
-        if (existingReading) {
-          console.log('🚗 GPS: Daily starting odometer already set; showing locked summary');
+        if (hasGpsTripToday && existingReading) {
+          console.log('🚗 GPS: GPS trip already recorded today; showing locked daily start odometer');
           setHasStartedGpsToday(true);
           setDailyStartingOdometer(existingReading.odometerReading.toString());
+          setTrackingForm((prev) => ({
+            ...prev,
+            odometerReading: existingReading.odometerReading.toString(),
+          }));
+          const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
+            employeeId,
+            today,
+            vehicleId
+          );
+          setNextTripStartingOdometer(nextTripOdometer);
         } else {
           const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
             employeeId,
             today,
             vehicleId
           );
-          console.log('🚗 GPS: Next trip starting odometer:', nextTripOdometer);
+          console.log('🚗 GPS: Next trip starting odometer suggestion:', nextTripOdometer);
           setHasStartedGpsToday(false);
           setDailyStartingOdometer('');
+          setNextTripStartingOdometer(null);
+          const suggested =
+            existingReading?.odometerReading ?? nextTripOdometer ?? null;
           setTrackingForm((prev) => ({
             ...prev,
-            odometerReading: nextTripOdometer != null ? String(nextTripOdometer) : '',
+            odometerReading: suggested != null ? String(suggested) : '',
           }));
           await refreshLastTravelDayEndingOdometerNote(employeeId, vehicleId);
         }
@@ -689,7 +703,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (hasStartedGpsToday) {
+    const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
+      currentEmployee.id,
+      today,
+      selectedVehicleId || undefined
+    );
+    if (hasGpsTripToday) {
       const nextTripOdometer = await DatabaseService.resolveOdometerForNextTrip(
         currentEmployee.id,
         today,
@@ -703,7 +722,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleInputChange = (field: string, value: string) => {
-    if (field === 'odometerReading' && hasStartedGpsToday) {
+    if (field === 'odometerReading' && hasStartedGpsToday && !isEditingOdometer) {
       return;
     }
 
@@ -723,6 +742,50 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       return;
     }
     Keyboard.dismiss();
+  };
+
+  const handleEditOdometer = () => {
+    setIsEditingOdometer(true);
+  };
+
+  const handleSaveOdometer = async () => {
+    try {
+      if (!currentEmployee || !trackingForm.odometerReading.trim()) {
+        Alert.alert('Error', 'Please enter a valid odometer reading');
+        return;
+      }
+      const parsed = Number(trackingForm.odometerReading);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        Alert.alert('Error', 'Please enter a valid odometer reading');
+        return;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      await DatabaseService.updateDailyOdometerReadingByEmployeeAndDate(
+        currentEmployee.id,
+        dateStr,
+        { odometerReading: parsed, notes: 'Updated by user' },
+        selectedVehicleId || undefined
+      );
+
+      setIsEditingOdometer(false);
+      setDailyStartingOdometer(String(parsed));
+      Alert.alert('Success', 'Starting odometer reading updated successfully');
+      await checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
+    } catch (error) {
+      console.error('Error updating odometer reading:', error);
+      Alert.alert('Error', 'Failed to update odometer reading');
+    }
+  };
+
+  const handleCancelOdometerEdit = () => {
+    setIsEditingOdometer(false);
+    if (currentEmployee) {
+      void checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
+    }
   };
 
   const getPurposeSuggestions = async () => {
@@ -1199,6 +1262,39 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setShowEndLocationModal(true);
   };
 
+  const persistDailyOdometerForTripStart = async (
+    employeeId: string,
+    today: Date,
+    odometerForTrip: number,
+    vehicleId?: string
+  ) => {
+    const existingReading = await DatabaseService.getDailyOdometerReading(
+      employeeId,
+      today,
+      vehicleId
+    );
+    if (!existingReading) {
+      console.log('📝 Creating daily odometer reading from GPS tracking:', odometerForTrip);
+      await DatabaseService.createDailyOdometerReading({
+        employeeId,
+        vehicleId,
+        date: today,
+        odometerReading: odometerForTrip,
+        notes: 'Auto-captured from first GPS tracking session',
+      });
+      return;
+    }
+    if (Math.round(existingReading.odometerReading) !== Math.round(odometerForTrip)) {
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      await DatabaseService.updateDailyOdometerReadingByEmployeeAndDate(
+        employeeId,
+        dateStr,
+        { odometerReading: odometerForTrip, notes: 'Confirmed from first GPS tracking session' },
+        vehicleId
+      );
+    }
+  };
+
   const startGpsTracking = async () => {
     try {
       setIsStartingTracking(true);
@@ -1208,24 +1304,21 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       
       console.log('🚗 GPS: Starting GPS tracking for date:', today.toISOString().split('T')[0]);
       
-      const existingReading = await DatabaseService.getDailyOdometerReading(
+      const hasGpsTripToday = await DatabaseService.hasGpsMileageOnDate(
         currentEmployee!.id,
         today,
         selectedVehicleId || undefined
       );
-      
+
       const odometerForTrip = await resolveOdometerForTripStart();
 
-      // If no daily odometer reading exists, create one from the current odometer reading
-      if (!existingReading && odometerForTrip) {
-        console.log('📝 Creating daily odometer reading from GPS tracking:', odometerForTrip);
-        await DatabaseService.createDailyOdometerReading({
-          employeeId: currentEmployee!.id,
-          vehicleId: selectedVehicleId || undefined,
-          date: today,
-          odometerReading: odometerForTrip,
-          notes: 'Auto-captured from first GPS tracking session'
-        });
+      if (!hasGpsTripToday && odometerForTrip) {
+        await persistDailyOdometerForTripStart(
+          currentEmployee!.id,
+          today,
+          odometerForTrip,
+          selectedVehicleId || undefined
+        );
       }
 
       await startTracking(
@@ -1235,10 +1328,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         trackingForm.notes
       );
 
-      if (!existingReading && odometerForTrip) {
-        setHasStartedGpsToday(true);
-        setDailyStartingOdometer(String(odometerForTrip));
-      }
+      await checkGpsTrackingStatus(currentEmployee!.id, selectedVehicleId || undefined);
 
       setTrackingTime(0);
 
@@ -1784,22 +1874,52 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             ) : (
               <>
                 <View style={styles.inputGroup}>
-                  <Text style={[styles.label, formThemedStyles.label]}>Starting Odometer</Text>
-                  <View
-                    style={[
-                      styles.odometerDisplay,
-                      styles.odometerDisplayLocked,
-                      formThemedStyles.odometerDisplay,
-                      formThemedStyles.odometerDisplayLocked,
-                    ]}
-                  >
-                    <Text style={[styles.odometerValue, formThemedStyles.odometerValueLocked]}>
-                      {dailyStartingOdometer}
-                    </Text>
-                    <Text style={[styles.odometerNote, formThemedStyles.odometerNote]}>
-                      Set from your first trip today
-                    </Text>
-                  </View>
+                  <Text style={[styles.label, formThemedStyles.label]}>Daily Starting Odometer</Text>
+                  {!isEditingOdometer ? (
+                    <View
+                      style={[
+                        styles.odometerDisplay,
+                        styles.odometerDisplayLocked,
+                        formThemedStyles.odometerDisplay,
+                        formThemedStyles.odometerDisplayLocked,
+                      ]}
+                    >
+                      <Text style={[styles.odometerValue, formThemedStyles.odometerValueLocked]}>
+                        {dailyStartingOdometer}
+                      </Text>
+                      <Text style={[styles.odometerNote, formThemedStyles.odometerNote]}>
+                        Set from your first GPS trip today
+                      </Text>
+                      <TouchableOpacity style={styles.editOdometerButton} onPress={handleEditOdometer}>
+                        <MaterialIcons name="edit" size={16} color="#2196F3" />
+                        <Text style={styles.editOdometerButtonText}>Edit</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.odometerEditContainer}>
+                      <ScrollToOnFocusView>
+                        <TextInput
+                          style={[styles.input, formThemedStyles.input]}
+                          value={trackingForm.odometerReading}
+                          onChangeText={(value) => handleInputChange('odometerReading', value)}
+                          placeholder="e.g., 12345"
+                          keyboardType="numeric"
+                          placeholderTextColor={colors.textSecondary}
+                          autoFocus
+                        />
+                      </ScrollToOnFocusView>
+                      <View style={styles.odometerEditButtons}>
+                        <TouchableOpacity style={styles.saveOdometerButton} onPress={handleSaveOdometer}>
+                          <MaterialIcons name="check" size={16} color="#fff" />
+                          <Text style={styles.saveOdometerButtonText}>Save</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.cancelOdometerButton} onPress={handleCancelOdometerEdit}>
+                          <MaterialIcons name="close" size={16} color="#666" />
+                          <Text style={styles.cancelOdometerButtonText}>Cancel</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.inputGroup}>
                   <Text style={[styles.label, formThemedStyles.label]}>Miles Driven Today</Text>
@@ -1815,6 +1935,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       {milesDrivenToday.toLocaleString()}
                     </Text>
                   </View>
+                  {nextTripStartingOdometer != null ? (
+                    <Text style={[styles.helpText, formThemedStyles.helpText]}>
+                      This trip starts at {nextTripStartingOdometer.toLocaleString()}
+                    </Text>
+                  ) : null}
                 </View>
               </>
             )}
@@ -3450,6 +3575,68 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  editOdometerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginTop: 8,
+    alignSelf: 'center',
+  },
+  editOdometerButtonText: {
+    color: '#2196F3',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  odometerEditContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  odometerEditButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 12,
+  },
+  saveOdometerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+    flex: 1,
+  },
+  saveOdometerButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  cancelOdometerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+    flex: 1,
+  },
+  cancelOdometerButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
   },
   endingTrackingOverlay: {
     flex: 1,
