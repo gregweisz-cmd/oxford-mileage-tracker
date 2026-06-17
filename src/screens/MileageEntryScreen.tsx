@@ -13,6 +13,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -46,6 +47,7 @@ import { TripChainingAiService, TripChainSuggestion } from '../services/tripChai
 import TripChainingModal from '../components/TripChainingModal';
 import { COST_CENTERS } from '../constants/costCenters';
 import { CostCenterAutoSelectionService, CostCenterSuggestion } from '../services/costCenterAutoSelectionService';
+import { consumePendingMileageLocationPick } from '../utils/pendingLocationSelection';
 
 interface MileageEntryScreenProps {
   navigation: any;
@@ -129,6 +131,45 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     locationsTouchedRef.current = true;
   }, []);
 
+  const applyPickedLocation = useCallback(
+    (address: LocationDetails, locType: 'start' | 'end') => {
+      markLocationsTouched();
+      if (locType === 'start') {
+        setFormData((prev) => ({
+          ...prev,
+          startLocation: formatLocation(address.name, address),
+        }));
+        setStartLocationDetails({
+          name: address.name,
+          address: address.address,
+          latitude: address.latitude,
+          longitude: address.longitude,
+        });
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          endLocation: formatLocation(address.name, address),
+        }));
+        setEndLocationDetails({
+          name: address.name,
+          address: address.address,
+          latitude: address.latitude,
+          longitude: address.longitude,
+        });
+      }
+    },
+    [markLocationsTouched]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const pending = consumePendingMileageLocationPick();
+      if (pending) {
+        applyPickedLocation(pending.address, pending.locationType);
+      }
+    }, [applyPickedLocation])
+  );
+
   const dismissMileageUiOverlays = useCallback(() => {
     setShowLocationOptionsModal(false);
     setShowStartLocationModal(false);
@@ -177,41 +218,6 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     locationsTouchedRef.current = false;
     void loadExistingEntry(entryId);
   }, [entryId]);
-
-  useEffect(() => {
-    const selectedAddress = route.params?.selectedAddress;
-    const locType = route.params?.locationType ?? 'start';
-    if (!selectedAddress) return;
-
-    const address = selectedAddress;
-    if (locType === 'start') {
-      markLocationsTouched();
-      setFormData(prev => ({
-        ...prev,
-        startLocation: formatLocation(address.name, address),
-      }));
-      setStartLocationDetails({
-        name: address.name,
-        address: address.address,
-        latitude: address.latitude,
-        longitude: address.longitude,
-      });
-    } else if (locType === 'end') {
-      markLocationsTouched();
-      setFormData(prev => ({
-        ...prev,
-        endLocation: formatLocation(address.name, address),
-      }));
-      setEndLocationDetails({
-        name: address.name,
-        address: address.address,
-        latitude: address.latitude,
-        longitude: address.longitude,
-      });
-    }
-
-    navigation.setParams({ selectedAddress: undefined, locationType: undefined });
-  }, [route.params?.selectedAddress, route.params?.locationType, navigation]);
 
   // Check for daily odometer reading when date changes
   useEffect(() => {
@@ -671,7 +677,6 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           fromMileageEntry: true,
           locationType: currentLocationType,
           entryId: editingEntryIdRef.current ?? route.params?.entryId,
-          mileageEntryReturnKey: route.key,
         });
       } else if (option === 'oxfordHouse') {
         // Show Oxford House search modal

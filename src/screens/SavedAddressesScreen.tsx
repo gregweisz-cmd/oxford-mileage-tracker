@@ -23,7 +23,11 @@ import { GooglePlacesService } from '../services/googlePlacesService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { formatAddressParts, parseAddressParts, updateAddressPart } from '../utils/addressFormatter';
 import { makeLocationDetails } from '../utils/locationSelection';
-import { navigateBackWithParams } from '../utils/navigationReturn';
+import {
+  completeAddressPickerReturn,
+  setPendingGpsLocationPick,
+  setPendingMileageLocationPick,
+} from '../utils/pendingLocationSelection';
 
 interface SavedAddressesScreenProps {
   navigation: any;
@@ -51,11 +55,10 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   // Check if coming from MileageEntryScreen for address selection
   const fromMileageEntry = route?.params?.fromMileageEntry;
   const locationType = route?.params?.locationType; // 'start' or 'end'
-  /** Pick a favorite as GPS trip start (returns to GpsTracking with selectedAddress). */
+  /** Pick a favorite as GPS trip start (returns to GpsTracking via pending pick). */
   const fromGpsTrackingStart = route?.params?.fromGpsTrackingStart === true;
-  /** Pick a favorite as GPS trip end while session is active (returns with selectedEndAddress). */
+  /** Pick a favorite as GPS trip end while session is active (returns via pending pick). */
   const fromGpsTrackingEnd = route?.params?.fromGpsTrackingEnd === true;
-  const gpsTrackingReturnKey = route?.params?.gpsTrackingReturnKey as string | undefined;
   const isAddressPickerMode =
     fromMileageEntry || fromGpsTrackingStart || fromGpsTrackingEnd;
 
@@ -255,44 +258,9 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
   };
 
   const handleSelectForGpsStartFavorite = (address: SavedAddress) => {
-    const location = makeLocationDetails({
-      name: address.name,
-      address: address.address,
-      source: 'saved',
-      sourceId: address.id,
-      latitude: address.latitude,
-      longitude: address.longitude,
-    });
-    navigateBackWithParams(navigation, {
-      returnKey: gpsTrackingReturnKey,
-      fallbackRouteName: 'GpsTracking',
-      params: { selectedAddress: location },
-    });
-  };
-
-  const handleSelectForGpsEndFavorite = (address: SavedAddress) => {
-    const location = makeLocationDetails({
-      name: address.name,
-      address: address.address,
-      source: 'saved',
-      sourceId: address.id,
-      latitude: address.latitude,
-      longitude: address.longitude,
-    });
-    navigateBackWithParams(navigation, {
-      returnKey: gpsTrackingReturnKey,
-      fallbackRouteName: 'GpsTracking',
-      params: { selectedEndAddress: location },
-    });
-  };
-
-  const handleSelectForManualEntry = (address: SavedAddress) => {
-    const locType = route.params?.locationType ?? locationType ?? 'start';
-    const entryId = route.params?.entryId;
-    const returnKey = route.params?.mileageEntryReturnKey as string | undefined;
-
-    const params: Record<string, unknown> = {
-      selectedAddress: makeLocationDetails({
+    setPendingGpsLocationPick({
+      kind: 'start',
+      address: makeLocationDetails({
         name: address.name,
         address: address.address,
         source: 'saved',
@@ -300,18 +268,39 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
         latitude: address.latitude,
         longitude: address.longitude,
       }),
-      locationType: locType,
-    };
-    if (entryId) {
-      params.entryId = entryId;
-      params.isEditing = true;
-    }
-
-    navigateBackWithParams(navigation, {
-      returnKey,
-      fallbackRouteName: 'MileageEntry',
-      params,
     });
+    completeAddressPickerReturn(navigation);
+  };
+
+  const handleSelectForGpsEndFavorite = (address: SavedAddress) => {
+    setPendingGpsLocationPick({
+      kind: 'end',
+      address: makeLocationDetails({
+        name: address.name,
+        address: address.address,
+        source: 'saved',
+        sourceId: address.id,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      }),
+    });
+    completeAddressPickerReturn(navigation);
+  };
+
+  const handleSelectForManualEntry = (address: SavedAddress) => {
+    const locType = (route.params?.locationType ?? locationType ?? 'start') as 'start' | 'end';
+    setPendingMileageLocationPick({
+      locationType: locType,
+      address: makeLocationDetails({
+        name: address.name,
+        address: address.address,
+        source: 'saved',
+        sourceId: address.id,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      }),
+    });
+    completeAddressPickerReturn(navigation);
   };
 
   const handleSelectForGpsTracking = async (address: SavedAddress) => {
@@ -361,11 +350,11 @@ export default function SavedAddressesScreen({ navigation, route }: SavedAddress
                             `Destination: ${address.address}`
                           );
 
-                          navigateBackWithParams(navigation, {
-                            returnKey: gpsTrackingReturnKey,
-                            fallbackRouteName: 'GpsTracking',
-                            params: {},
-                          });
+                          if (navigation.canGoBack()) {
+                            navigation.goBack();
+                          } else {
+                            navigation.navigate('GpsTracking');
+                          }
 
                           Alert.alert(
                             'GPS Tracking Started',

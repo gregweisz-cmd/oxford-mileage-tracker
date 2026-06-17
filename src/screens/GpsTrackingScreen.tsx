@@ -57,6 +57,7 @@ import {
   finalizeEndTripNavigation,
   GPS_TRIP_UI_STATE_KEY,
 } from '../services/endTripCoordinator';
+import { consumePendingGpsLocationPick } from '../utils/pendingLocationSelection';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -437,103 +438,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
   // Removed: Poll for distance updates - now handled by GpsTrackingContext to avoid duplicate updates
 
-  // Handle selected address from SavedAddressesScreen
-  useEffect(() => {
-    const autoStartFromSavedAddress = async () => {
-      if (route?.params?.selectedAddress && currentEmployee && !isTracking) {
-        const selectedAddress = route.params.selectedAddress;
-        
-        // Validate that we have the required form data
-        if (!trackingForm.purpose.trim()) {
-          Alert.alert('Missing Information', 'Please enter purpose before selecting a location.');
-          navigation.setParams({ selectedAddress: undefined });
-          return;
-        }
-        
-        console.log('🚀 GPS: Auto-starting with saved address:', selectedAddress.name);
-        console.log('🚀 GPS: Odometer:', trackingForm.odometerReading);
-        console.log('🚀 GPS: Purpose:', trackingForm.purpose);
-        
-        // Set the start location
-        const locationDetails = {
-          name: selectedAddress.name,
-          address: selectedAddress.address,
-          latitude: selectedAddress.latitude,
-          longitude: selectedAddress.longitude
-        };
-        setStartLocationDetails(locationDetails);
-        
-        // Clear the route params to avoid re-triggering
-        navigation.setParams({ selectedAddress: undefined });
-        
-        try {
-          setIsStartingTracking(true);
-          // Check if this is the first GPS tracking session of the day
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-
-          const hasMileageToday =
-            (await DatabaseService.getMileageEntriesForVehicleOnDate(
-              currentEmployee.id,
-              today,
-              selectedVehicleId || undefined
-            )).length > 0;
-
-          const odometerForTrip = await resolveOdometerForTripStart();
-
-          if (!hasMileageToday && odometerForTrip) {
-            await persistDailyOdometerForTripStart(
-              currentEmployee.id,
-              today,
-              odometerForTrip,
-              selectedVehicleId || undefined
-            );
-          }
-
-          console.log('🚀 GPS: Calling startTracking with saved address data...');
-          await startTracking(
-            currentEmployee.id,
-            trackingForm.purpose,
-            odometerForTrip,
-            trackingForm.notes
-          );
-
-          await checkGpsTrackingStatus(currentEmployee.id, selectedVehicleId || undefined);
-
-          setTrackingTime(0);
-
-          Alert.alert('GPS Tracking Started', 'Your location is now being tracked. Use the red Stop button in the header when you reach your destination.');
-        } catch (error) {
-          console.error('❌ GPS: Error starting tracking:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Failed to start GPS tracking. Please check location permissions.';
-          Alert.alert('GPS Tracking Error', errorMessage);
-        } finally {
-          setIsStartingTracking(false);
-        }
-      }
-    };
-    
-    autoStartFromSavedAddress();
-  }, [route?.params?.selectedAddress, currentEmployee, isTracking]);
-
-  // End trip using an address chosen from Saved Addresses while tracking
-  useEffect(() => {
-    const end = route?.params?.selectedEndAddress;
-    if (!end || !isTracking || !currentEmployee || !currentSession?.id) return;
-    const dedupeKey = `${currentSession.id}|${end.name}|${end.address}`;
-    if (lastAppliedEndFromFavoritesRef.current === dedupeKey) return;
-    lastAppliedEndFromFavoritesRef.current = dedupeKey;
-    navigation.setParams({ selectedEndAddress: undefined });
-    const details: LocationDetails = {
-      name: end.name,
-      address: end.address,
-      latitude: end.latitude,
-      longitude: end.longitude,
-    };
-    openEndLocationModalWithDetails(details);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply once per navigation param + session
-  }, [route?.params?.selectedEndAddress, isTracking, currentEmployee, currentSession?.id]);
-
   const loadEmployee = async () => {
     try {
       const employee = await DatabaseService.getCurrentEmployee();
@@ -870,10 +774,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           startGpsTracking();
         } else {
           console.log('🔍 GPS: Navigating to favorite addresses');
-          navigation.navigate('SavedAddresses', {
-            fromGpsTrackingStart: true,
-            gpsTrackingReturnKey: route.key,
-          });
+          navigation.navigate('SavedAddresses', { fromGpsTrackingStart: true });
         }
       } else if (option === 'oxfordHouse') {
         const suggested = startLocationSuggestions.oxfordHouse;
@@ -1287,6 +1188,37 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
   };
 
+  const startGpsTrackingRef = useRef(startGpsTracking);
+  startGpsTrackingRef.current = startGpsTracking;
+  const openEndLocationModalWithDetailsRef = useRef(openEndLocationModalWithDetails);
+  openEndLocationModalWithDetailsRef.current = openEndLocationModalWithDetails;
+  const trackingFormRef = useRef(trackingForm);
+  trackingFormRef.current = trackingForm;
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const pending = consumePendingGpsLocationPick();
+      if (!pending || !currentEmployee) return;
+
+      if (pending.kind === 'start' && !isTrackingRef.current) {
+        if (!trackingFormRef.current.purpose.trim()) {
+          Alert.alert('Missing Information', 'Please enter purpose before selecting a location.');
+          return;
+        }
+        setStartLocationDetails(pending.address);
+        void startGpsTrackingRef.current();
+        return;
+      }
+
+      if (pending.kind === 'end' && isTrackingRef.current && currentSession?.id) {
+        const dedupeKey = `${currentSession.id}|${pending.address.name}|${pending.address.address}`;
+        if (lastAppliedEndFromFavoritesRef.current === dedupeKey) return;
+        lastAppliedEndFromFavoritesRef.current = dedupeKey;
+        openEndLocationModalWithDetailsRef.current(pending.address);
+      }
+    }, [currentEmployee, currentSession?.id])
+  );
+
   const handleStartLocationConfirm = async (locationDetails: LocationDetails) => {
     const normalized = normalizeLocationDetails(locationDetails) || locationDetails;
     setStartLocationDetails(normalized);
@@ -1331,10 +1263,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         if (suggested) {
           openEndLocationModalWithDetails(suggested.details);
         } else {
-          navigation.navigate('SavedAddresses', {
-            fromGpsTrackingEnd: true,
-            gpsTrackingReturnKey: route.key,
-          });
+          navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
         }
       } else if (option === 'oxfordHouse') {
         const suggested = endLocationSuggestions.oxfordHouse;
