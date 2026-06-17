@@ -123,6 +123,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   const scrollViewRef = useRef<ScrollView>(null);
   const entryLoadSeqRef = useRef(0);
   const locationsTouchedRef = useRef(false);
+  const editingEntryIdRef = useRef<string | undefined>(undefined);
 
   const markLocationsTouched = useCallback(() => {
     locationsTouchedRef.current = true;
@@ -157,7 +158,13 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     void initialize();
   }, []);
 
-  const entryId = route.params?.entryId;
+  const entryId = route.params?.entryId ?? editingEntryIdRef.current;
+
+  useEffect(() => {
+    if (route.params?.entryId) {
+      editingEntryIdRef.current = route.params.entryId;
+    }
+  }, [route.params?.entryId]);
 
   useEffect(() => {
     if (!entryId) {
@@ -173,7 +180,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
 
   useEffect(() => {
     const selectedAddress = route.params?.selectedAddress;
-    const locType = route.params?.locationType;
+    const locType = route.params?.locationType ?? 'start';
     if (!selectedAddress) return;
 
     const address = selectedAddress;
@@ -663,7 +670,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         navigation.navigate('SavedAddresses', {
           fromMileageEntry: true,
           locationType: currentLocationType,
-          entryId: route.params?.entryId,
+          entryId: editingEntryIdRef.current ?? route.params?.entryId,
           mileageEntryReturnKey: route.key,
         });
       } else if (option === 'oxfordHouse') {
@@ -959,8 +966,11 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         costCenter: selectedCostCenter,
       };
 
-      if (isEditing && route.params?.entryId) {
-        await DatabaseService.updateMileageEntry(route.params.entryId, entryData);
+      if (isEditing && (route.params?.entryId ?? editingEntryIdRef.current)) {
+        await DatabaseService.updateMileageEntry(
+          route.params?.entryId ?? editingEntryIdRef.current!,
+          entryData
+        );
         try {
           await SyncIntegrationService.pushPendingChanges();
         } catch (syncError) {
@@ -1022,7 +1032,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
   };
 
   const handleDelete = () => {
-    if (!isEditing || !route.params?.entryId) return;
+    if (!isEditing || !(route.params?.entryId ?? editingEntryIdRef.current)) return;
 
     Alert.alert(
       'Delete Entry',
@@ -1034,7 +1044,9 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
           style: 'destructive',
           onPress: async () => {
             try {
-              await DatabaseService.deleteMileageEntry(route.params.entryId);
+              await DatabaseService.deleteMileageEntry(
+                route.params?.entryId ?? editingEntryIdRef.current!
+              );
               Alert.alert('Success', 'Mileage entry deleted successfully');
               navigation.goBack();
             } catch (error) {

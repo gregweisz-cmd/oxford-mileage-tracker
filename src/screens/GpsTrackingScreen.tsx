@@ -870,7 +870,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           startGpsTracking();
         } else {
           console.log('🔍 GPS: Navigating to favorite addresses');
-          navigation.navigate('SavedAddresses', { fromGpsTrackingStart: true });
+          navigation.navigate('SavedAddresses', {
+            fromGpsTrackingStart: true,
+            gpsTrackingReturnKey: route.key,
+          });
         }
       } else if (option === 'oxfordHouse') {
         const suggested = startLocationSuggestions.oxfordHouse;
@@ -1328,7 +1331,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         if (suggested) {
           openEndLocationModalWithDetails(suggested.details);
         } else {
-          navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
+          navigation.navigate('SavedAddresses', {
+            fromGpsTrackingEnd: true,
+            gpsTrackingReturnKey: route.key,
+          });
         }
       } else if (option === 'oxfordHouse') {
         const suggested = endLocationSuggestions.oxfordHouse;
