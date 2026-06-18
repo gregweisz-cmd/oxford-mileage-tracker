@@ -1,9 +1,6 @@
 # HR Sync (External Employee API) Setup
 
-The "Sync from HR API" button in Admin Portal → Employee Management calls `https://api.appwarmer.com/api/employee` to pull names, emails, cost centers, etc. into your employee table. **This is the Appwarmer feed, not Rippling directly.** If Rippling shows updated data but sync does not, ask your Director of Tech to refresh the Appwarmer → Rippling integration.
-
-**Debug a specific employee:** after deploy, admins can call  
-`GET /api/employees/sync-from-external/lookup?q=jacklyn` (or `?q=39` for Rippling profile number) to see the raw Appwarmer rows our sync receives.
+The "Sync from HR API" button in Admin Portal → Employee Management calls `https://api.appwarmer.com/api/employee` to pull names, emails, cost centers, etc. into your employee table. To enable it, set the API token in your environment.
 
 ## Local development
 

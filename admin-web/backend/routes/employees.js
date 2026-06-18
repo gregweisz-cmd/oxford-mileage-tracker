@@ -270,52 +270,6 @@ router.post('/api/employees/sync-from-external/preview', requireAnyRole(['admin'
 }));
 
 /**
- * Debug HR feed: show raw Appwarmer rows for a search term (admin only).
- * GET /api/employees/sync-from-external/lookup?q=jacklyn
- */
-router.get('/api/employees/sync-from-external/lookup', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
-  const query = String(req.query.q || '').trim();
-  if (!query) {
-    return res.status(400).json({ error: 'Query parameter q is required (e.g. ?q=jacklyn or ?q=39)' });
-  }
-  try {
-    const matches = await externalEmployeeSync.lookupExternalEmployees(query);
-    res.json({
-      query,
-      source: 'https://api.appwarmer.com/api/employee',
-      note: 'This is the Appwarmer feed our sync uses — not Rippling directly. Compare raw fields to Rippling if they differ.',
-      count: matches.length,
-      matches,
-    });
-  } catch (err) {
-    if (err.message && err.message.includes('not configured')) {
-      return res.status(503).json({ error: err.message });
-    }
-    debugError('❌ HR lookup failed:', err);
-    res.status(500).json({ error: err.message || 'Lookup failed' });
-  }
-}));
-
-/**
- * List persisted HR sync "don't ask again" preferences.
- * GET /api/employees/sync-from-external/ignored
- */
-router.get('/api/employees/sync-from-external/ignored', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
-  const ignoredPreferences = await externalEmployeeSync.listIgnoredHrSyncChanges();
-  res.json({ count: ignoredPreferences.length, ignoredPreferences });
-}));
-
-/**
- * Clear HR sync "don't ask again" preferences so suppressed changes appear again.
- * DELETE /api/employees/sync-from-external/ignored
- * Body (optional): { all: true } or { emails: string[], employeeIds: string[] }
- */
-router.delete('/api/employees/sync-from-external/ignored', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
-  const result = await externalEmployeeSync.clearIgnoredHrSyncChanges(req.body || { all: true });
-  res.json({ message: 'HR sync suppressed preferences cleared', ...result });
-}));
-
-/**
  * Apply only approved HR sync changes.
  * POST /api/employees/sync-from-external/apply
  * Body: { toCreate: string[] (emails), toUpdate: string[] (emails), toArchive: string[] (ids) }

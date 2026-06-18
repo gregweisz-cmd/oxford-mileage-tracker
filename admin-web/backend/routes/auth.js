@@ -140,44 +140,6 @@ function persistGoogleRefreshToken(employeeId, refreshToken) {
   });
 }
 
-function googleOAuthUserErrorMessage(error) {
-  const msg = String(error?.message || error || '').toLowerCase();
-  if (msg.includes('redirect_uri_mismatch')) {
-    return 'Google redirect URI mismatch. Please contact support.';
-  }
-  if (msg.includes('invalid_grant') || msg.includes('invalid code')) {
-    return 'Google sign-in expired. Please try again.';
-  }
-  if (
-    msg.includes('googlerefreshtoken') ||
-    msg.includes('googleid') ||
-    msg.includes('authprovider') ||
-    msg.includes('emailverified') ||
-    msg.includes('no such column')
-  ) {
-    return 'Sign-in failed while updating your account. Please try again in a minute or contact support.';
-  }
-  if (msg.includes('id_token')) {
-    return 'Google did not return a valid sign-in token. Please try again.';
-  }
-  return 'Authentication failed. Please try again.';
-}
-
-function getEmployeeOAuthColumnStatus(db) {
-  return new Promise((resolve) => {
-    db.all('PRAGMA table_info(employees)', [], (err, rows) => {
-      if (err) {
-        resolve({ ok: false, error: err.message });
-        return;
-      }
-      const names = new Set((rows || []).map((row) => row.name));
-      const required = ['googleId', 'authProvider', 'emailVerified', 'googleRefreshToken'];
-      const missing = required.filter((col) => !names.has(col));
-      resolve({ ok: missing.length === 0, missing });
-    });
-  });
-}
-
 function getEmployeeByNormalizedEmail(email) {
   return new Promise((resolve, reject) => {
     const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -189,127 +151,10 @@ function getEmployeeByNormalizedEmail(email) {
   });
 }
 
-const GOOGLE_ACCOUNT_ARCHIVED_MSG =
-  'This account is archived. Please contact your administrator.';
-
-function googleEmailLocalPart(email) {
-  return String(email || '').split('@')[0].toLowerCase().trim();
-}
-
-function googleEmailNameSegment(email) {
-  const local = googleEmailLocalPart(email);
-  if (!local) return '';
-  return local.split('.')[0] || local;
-}
-
-function googleFirstNameToken(name) {
-  return String(name || '').split(/\s+/)[0].toLowerCase().trim();
-}
-
-function isLikelySamePersonForGoogle(googleEmail, googleName, googleId, localRow) {
-  if (!localRow) return false;
-  const gid = String(googleId || '').trim();
-  if (gid && String(localRow.googleId || '').trim() === gid) return true;
-
-  const gSeg = googleEmailNameSegment(googleEmail);
-  const lSeg = googleEmailNameSegment(localRow.email);
-  if (!gSeg || gSeg.length < 2 || gSeg !== lSeg) return false;
-
-  const gFirst = googleFirstNameToken(googleName);
-  const lFirst = googleFirstNameToken(localRow.name);
-  return Boolean(gFirst && lFirst && gFirst === lFirst);
-}
-
-/** Prefer active employees; match by googleId, email, or same first-name email prefix (e.g. marriage rename). */
-function findEmployeeForGoogleOAuth(db, { email, googleId, googleName }) {
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  const id = String(googleId || '').trim();
-
-  return new Promise((resolve, reject) => {
-    db.get(
-      `SELECT * FROM employees
-       WHERE LOWER(TRIM(email)) = ? OR (googleId = ? AND googleId IS NOT NULL AND googleId != '')
-       ORDER BY
-         CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END,
-         CASE WHEN googleId = ? AND googleId IS NOT NULL AND googleId != '' THEN 0 ELSE 1 END,
-         createdAt ASC, id ASC
-       LIMIT 1`,
-      [normalizedEmail, id, id],
-      (err, row) => {
-        if (err) return reject(err);
-        if (row) return resolve(row);
-
-        const nameSegment = googleEmailNameSegment(normalizedEmail);
-        const firstName = googleFirstNameToken(googleName);
-        if (!nameSegment || nameSegment.length < 2 || !firstName) return resolve(null);
-
-        db.all(
-          `SELECT * FROM employees
-           WHERE LOWER(TRIM(email)) LIKE ?
-           ORDER BY CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END, createdAt ASC, id ASC`,
-          [`${nameSegment}.%@%`],
-          (err2, rows) => {
-            if (err2) return reject(err2);
-            const match = (rows || []).find((candidate) =>
-              isLikelySamePersonForGoogle(normalizedEmail, googleName, id, candidate)
-            );
-            resolve(match || null);
-          }
-        );
-      }
-    );
-  });
-}
-
-async function linkGoogleOAuthToEmployee(db, employee, { googleId, email, emailVerified }) {
-  const now = new Date().toISOString();
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  const updateSet = [];
-  const updateValues = [];
-
-  if (!employee.googleId || employee.googleId !== googleId) {
-    updateSet.push('googleId = ?');
-    updateValues.push(googleId);
-  }
-
-  const currentAuthProvider = employee.authProvider || 'local';
-  if (currentAuthProvider === 'local' || (currentAuthProvider !== 'both' && currentAuthProvider !== 'google')) {
-    updateSet.push('authProvider = ?');
-    updateValues.push('both');
-  }
-
-  if (emailVerified) {
-    updateSet.push('emailVerified = ?');
-    updateValues.push(1);
-    if (normalizedEmail && normalizedEmail !== String(employee.email || '').trim().toLowerCase()) {
-      updateSet.push('email = ?');
-      updateValues.push(normalizedEmail);
-    }
-  }
-
-  updateSet.push('lastLoginAt = ?');
-  updateValues.push(now);
-  updateSet.push('updatedAt = ?');
-  updateValues.push(now);
-  updateValues.push(employee.id);
-
-  if (updateSet.length === 0) return employee;
-
-  const updateQuery = `UPDATE employees SET ${updateSet.join(', ')} WHERE id = ?`;
-  await new Promise((resolve, reject) => {
-    db.run(updateQuery, updateValues, (updateErr) => {
-      if (updateErr) reject(updateErr);
-      else resolve();
-    });
-  });
-
-  return new Promise((resolve, reject) => {
-    db.get('SELECT * FROM employees WHERE id = ?', [employee.id], (fetchErr, updated) => {
-      if (fetchErr) reject(fetchErr);
-      else resolve(updated || employee);
-    });
-  });
-}
+const GOOGLE_EMPLOYEE_LOOKUP_SQL = `SELECT * FROM employees
+       WHERE LOWER(TRIM(email)) = ? OR googleId = ?
+       ORDER BY CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END, createdAt ASC, id ASC
+       LIMIT 1`;
 
 function formatEmployeeAuthResponse(employee) {
   let costCenters = [];
@@ -338,12 +183,8 @@ async function issueSessionAfterGoogleTokens(userToReturn, tokens) {
     try {
       await persistGoogleRefreshToken(userToReturn.id, tokens.refresh_token);
     } catch (refreshErr) {
-      // Refresh token storage is optional for login; do not block session issuance.
       debugWarn('⚠️  Could not persist Google refresh token (login continues):', refreshErr);
     }
-  }
-  if (!userToReturn?.id) {
-    throw new Error('Employee record is missing an id after Google sign-in');
   }
   return signAuthToken(userToReturn);
 }
@@ -810,13 +651,12 @@ router.post('/api/employee-login', async (req, res) => {
 // ===== GOOGLE OAUTH ENDPOINTS =====
 
 /** Public config check for staff portal Google sign-in (no secrets). */
-router.get('/api/auth/google/status', async (req, res) => {
+router.get('/api/auth/google/status', (req, res) => {
   const redirectUri =
     process.env.GOOGLE_REDIRECT_URI ||
     `${(process.env.API_BASE_URL || 'http://localhost:3003').replace(/\/+$/, '')}/api/auth/google/callback`;
 
   const rawClientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
-  const employeeOAuthColumns = await getEmployeeOAuthColumnStatus(dbService.getDb());
   res.json({
     configured: !!googleClient,
     redirectUri,
@@ -825,7 +665,6 @@ router.get('/api/auth/google/status', async (req, res) => {
     allowedEmailDomains: ALLOWED_EMAIL_DOMAINS,
     autoCreateAccounts: process.env.AUTO_CREATE_ACCOUNTS === 'true',
     clientIdHasSchemePrefix: /^https?:\/\//i.test(rawClientId),
-    employeeOAuthColumns,
   });
 });
 
@@ -920,10 +759,6 @@ router.get('/api/auth/google/callback', async (req, res) => {
 
     debugLog('✅ Received tokens from Google, verifying ID token...');
 
-    if (!tokens?.id_token) {
-      throw new Error('Google did not return an id_token');
-    }
-
     // Verify and get user info
     const ticket = await googleClient.verifyIdToken({
       idToken: tokens.id_token,
@@ -951,126 +786,189 @@ router.get('/api/auth/google/callback', async (req, res) => {
 
     // Find or create user (case-insensitive email; googleId set after first Google login)
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    let employee;
-    try {
-      employee = await findEmployeeForGoogleOAuth(db, {
-        email: normalizedEmail,
-        googleId,
-        googleName: name,
-      });
-    } catch (lookupErr) {
-      debugError('❌ Database error during Google OAuth:', lookupErr);
-      const frontendUrl = resolveWebPortalRedirectBase();
-      return res.redirect(
-        `${frontendUrl}/login?error=${encodeURIComponent('Sign-in failed while loading your account. Please try again in a minute.')}`
-      );
-    }
+    db.get(
+      GOOGLE_EMPLOYEE_LOOKUP_SQL,
+      [normalizedEmail, googleId],
+      async (err, employee) => {
+        if (err) {
+          debugError('❌ Database error during Google OAuth:', err);
+          const frontendUrl = resolveWebPortalRedirectBase();
+          return res.redirect(
+            `${frontendUrl}/login?error=${encodeURIComponent('Sign-in failed while loading your account. Please try again in a minute.')}`
+          );
+        }
 
-    if (employee?.archived === 1) {
-      debugWarn(`⚠️  Google login blocked for archived account: ${employee.email}`);
-      const frontendUrl = resolveWebPortalRedirectBase();
-      return res.redirect(
-        `${frontendUrl}/login?error=${encodeURIComponent(GOOGLE_ACCOUNT_ARCHIVED_MSG)}`
-      );
-    }
+        let userToReturn = null;
+        const now = new Date().toISOString();
+        const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
 
-    let userToReturn = null;
-    const now = new Date().toISOString();
-    const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
-
-    if (employee) {
-      debugLog(`✅ Found existing user: ${employee.email}`);
-      try {
-        userToReturn = await linkGoogleOAuthToEmployee(db, employee, {
-          googleId,
-          email: normalizedEmail,
-          emailVerified,
-        });
-        debugLog(`✅ Updated user ${employee.email} with Google OAuth info`);
-      } catch (updateErr) {
-        debugError('❌ Error updating user with Google info:', updateErr);
-        userToReturn = employee;
-      }
-      await completeLogin();
-      return;
-    } else if (AUTO_CREATE_ACCOUNTS) {
-      debugLog(`🆕 Creating new user account for ${email}`);
-
-      const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-
-      await new Promise((resolve, reject) => {
-        db.run(
-          `INSERT INTO employees (
-            id, name, email, password, googleId, authProvider, emailVerified,
-            oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
-          ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
-          [
-            newEmployeeId,
-            name,
-            email,
-            googleId,
-            emailVerified ? 1 : 0,
-            '',
-            '',
-            '',
-            now,
-            now,
-            now
-          ],
-          (insertErr) => {
-            if (insertErr) {
-              debugError('❌ Error creating new user:', insertErr);
-              reject(insertErr);
-            } else {
-              debugLog(`✅ Created new user account for ${email}`);
-              resolve();
-            }
+        if (employee) {
+          if (employee.archived === 1) {
+            debugWarn(`⚠️  Google login blocked for archived account: ${employee.email}`);
+            const frontendUrl = resolveWebPortalRedirectBase();
+            return res.redirect(
+              `${frontendUrl}/login?error=${encodeURIComponent('This account is archived. Please contact your administrator.')}`
+            );
           }
-        );
-      });
 
-      userToReturn = await new Promise((resolve, reject) => {
-        db.get('SELECT * FROM employees WHERE id = ?', [newEmployeeId], (fetchErr, newEmployee) => {
-          if (fetchErr) reject(fetchErr);
-          else resolve(newEmployee || null);
-        });
-      });
-      await completeLogin();
-      return;
-    } else {
-      debugWarn(`⚠️  Google login attempted for non-existent user: ${email}`);
-      const frontendUrl = resolveWebPortalRedirectBase();
-      return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`);
-    }
+          // User exists - link Google account or update
+          debugLog(`✅ Found existing user: ${employee.email}`);
 
-    async function completeLogin() {
-      if (!userToReturn) {
-        debugError('❌ Failed to get user after Google OAuth');
-        const frontendUrl = resolveWebPortalRedirectBase();
-        return res.redirect(`${frontendUrl}/login?error=user_not_found`);
+          const updateFields = [];
+          const updateValues = [];
+          const updateSet = [];
+
+          // Link Google account if not already linked
+          if (!employee.googleId) {
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          } else if (employee.googleId !== googleId) {
+            // Google ID mismatch - update it
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          }
+
+          // Update auth provider
+          const currentAuthProvider = employee.authProvider || 'local';
+          if (currentAuthProvider === 'local') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          } else if (currentAuthProvider === 'google') {
+            // Already using Google, no change needed
+          } else if (currentAuthProvider !== 'both') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          }
+
+          // Update email verification status
+          if (emailVerified) {
+            updateSet.push('emailVerified = ?');
+            updateValues.push(1);
+          }
+
+          // Update last login
+          updateSet.push('lastLoginAt = ?');
+          updateValues.push(now);
+
+          // Update timestamp
+          updateSet.push('updatedAt = ?');
+          updateValues.push(now);
+
+          updateValues.push(employee.id);
+
+          if (updateSet.length > 0) {
+            const updateQuery = `UPDATE employees SET ${updateSet.join(', ')} WHERE id = ?`;
+            
+            await new Promise((resolve, reject) => {
+              db.run(updateQuery, updateValues, (updateErr) => {
+                if (updateErr) {
+                  debugError('❌ Error updating user with Google info:', updateErr);
+                  resolve();
+                } else {
+                  debugLog(`✅ Updated user ${employee.email} with Google OAuth info`);
+                  resolve();
+                }
+              });
+            });
+
+            // Fetch updated employee
+            db.get(
+              'SELECT * FROM employees WHERE id = ?',
+              [employee.id],
+              async (fetchErr, updatedEmployee) => {
+                if (!fetchErr && updatedEmployee) {
+                  userToReturn = updatedEmployee;
+                } else {
+                  userToReturn = { ...employee, googleId, emailVerified: emailVerified ? 1 : 0 };
+                }
+                await completeLogin();
+              }
+            );
+          } else {
+            userToReturn = employee;
+            await completeLogin();
+          }
+        } else if (AUTO_CREATE_ACCOUNTS) {
+          // New user - auto-create account
+          debugLog(`🆕 Creating new user account for ${email}`);
+          
+          const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+          
+          await new Promise((resolve, reject) => {
+            db.run(
+              `INSERT INTO employees (
+                id, name, email, password, googleId, authProvider, emailVerified,
+                oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
+              ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
+              [
+                newEmployeeId,
+                name,
+                email,
+                googleId,
+                emailVerified ? 1 : 0,
+                '', // oxfordHouseId - will need to be set by admin
+                '', // position - will need to be set by admin
+                '', // baseAddress - will need to be set by admin
+                now,
+                now,
+                now
+              ],
+              (insertErr) => {
+                if (insertErr) {
+                  debugError('❌ Error creating new user:', insertErr);
+                  reject(insertErr);
+                } else {
+                  debugLog(`✅ Created new user account for ${email}`);
+                  resolve();
+                }
+              }
+            );
+          });
+
+          // Fetch the new user
+          db.get(
+            'SELECT * FROM employees WHERE id = ?',
+            [newEmployeeId],
+            async (fetchErr, newEmployee) => {
+              if (!fetchErr && newEmployee) {
+                userToReturn = newEmployee;
+              }
+              await completeLogin();
+            }
+          );
+        } else {
+          // Don't auto-create - redirect to error page
+          debugWarn(`⚠️  Google login attempted for non-existent user: ${email}`);
+          const frontendUrl = resolveWebPortalRedirectBase();
+          return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`);
+        }
+
+        async function completeLogin() {
+          if (!userToReturn) {
+            debugError('❌ Failed to get user after Google OAuth');
+            const frontendUrl = resolveWebPortalRedirectBase();
+            return res.redirect(`${frontendUrl}/login?error=user_not_found`);
+          }
+
+          try {
+            const sessionToken = await issueSessionAfterGoogleTokens(userToReturn, tokens);
+            debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
+            const frontendUrl = resolveWebPortalRedirectBase();
+            const returnUrl = state || '/';
+            const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+            return res.redirect(redirectUrl);
+          } catch (loginErr) {
+            debugError('❌ Error finalizing Google login:', loginErr);
+            const frontendUrl = resolveWebPortalRedirectBase();
+            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
+          }
+        }
       }
-
-      try {
-        const sessionToken = await issueSessionAfterGoogleTokens(userToReturn, tokens);
-        debugLog(`✅ Google OAuth login successful for ${email}, redirecting to frontend...`);
-        const frontendUrl = resolveWebPortalRedirectBase();
-        const returnUrl = state || '/';
-        const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(sessionToken)}&email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(returnUrl)}`;
-        return res.redirect(redirectUrl);
-      } catch (loginErr) {
-        debugError('❌ Error finalizing Google login:', loginErr);
-        const frontendUrl = resolveWebPortalRedirectBase();
-        return res.redirect(
-          `${frontendUrl}/login?error=${encodeURIComponent(googleOAuthUserErrorMessage(loginErr))}`
-        );
-      }
-    }
+    );
   } catch (error) {
     debugError('❌ Google OAuth callback error:', error);
     const frontendUrl = resolveWebPortalRedirectBase();
-    res.redirect(
-      `${frontendUrl}/login?error=${encodeURIComponent(googleOAuthUserErrorMessage(error))}`
-    );
+    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
   }
 });
 
@@ -1394,18 +1292,14 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
     }
 
     // Find or create user
-    const normalizedMobileEmail = String(email || '').trim().toLowerCase();
-    let employee;
-    try {
-      employee = await findEmployeeForGoogleOAuth(db, {
-        email: normalizedMobileEmail,
-        googleId,
-        googleName: name,
-      });
-    } catch (lookupErr) {
-      debugError('❌ Mobile: Database error during Google OAuth:', lookupErr);
-      const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent('Database error')}`;
-      return res.send(`
+    db.get(
+      GOOGLE_EMPLOYEE_LOOKUP_SQL,
+      [String(email || '').trim().toLowerCase(), googleId],
+      async (err, employee) => {
+        if (err) {
+          debugError('❌ Mobile: Database error during Google OAuth:', err);
+          const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent('Database error')}`;
+          return res.send(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -1453,127 +1347,130 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
   </div>
 </body>
 </html>
-      `);
-    }
+          `);
+        }
 
-    if (employee?.archived === 1) {
-      debugWarn(`⚠️  Mobile: Google login blocked for archived account: ${employee.email}`);
-      const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent(GOOGLE_ACCOUNT_ARCHIVED_MSG)}`;
-      return res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Account Archived</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #f5f5f5;
-    }
-    .container {
-      background: white;
-      padding: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-      text-align: center;
-      max-width: 400px;
-      margin: 1rem;
-    }
-    h1 { color: #d32f2f; margin-bottom: 1rem; }
-    p { color: #666; margin-bottom: 2rem; }
-    button {
-      background: #667eea;
-      color: white;
-      border: none;
-      padding: 1rem 2rem;
-      font-size: 1.1rem;
-      border-radius: 8px;
-      cursor: pointer;
-      width: 100%;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>❌ Account Archived</h1>
-    <p>${GOOGLE_ACCOUNT_ARCHIVED_MSG}</p>
-    <button onclick="window.location.href='${redirectUrl}'">Return to App</button>
-  </div>
-</body>
-</html>
-      `);
-    }
+        let userToReturn = null;
+        const now = new Date().toISOString();
+        const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
 
-    let userToReturn = null;
-    const now = new Date().toISOString();
-    const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
-
-    if (employee) {
-      debugLog(`✅ Mobile: Found existing user: ${employee.email}`);
-      try {
-        userToReturn = await linkGoogleOAuthToEmployee(db, employee, {
-          googleId,
-          email: normalizedMobileEmail,
-          emailVerified,
-        });
-      } catch (updateErr) {
-        debugError('❌ Error updating user:', updateErr);
-        userToReturn = employee;
-      }
-      await completeMobileCallbackLogin();
-    } else if (AUTO_CREATE_ACCOUNTS) {
-      debugLog(`🆕 Mobile: Creating new user account for ${email}`);
-
-      const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-
-      await new Promise((resolve, reject) => {
-        db.run(
-          `INSERT INTO employees (
-            id, name, email, password, googleId, authProvider, emailVerified,
-            oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
-          ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
-          [
-            newEmployeeId,
-            name,
-            email,
-            googleId,
-            emailVerified ? 1 : 0,
-            '',
-            '',
-            '',
-            now,
-            now,
-            now
-          ],
-          (insertErr) => {
-            if (insertErr) {
-              debugError('❌ Error creating new user:', insertErr);
-              reject(insertErr);
-            } else {
-              debugLog(`✅ Mobile: Created new user account for ${email}`);
-              resolve();
-            }
+        if (employee) {
+          if (employee.archived === 1) {
+            debugWarn(`⚠️  Mobile: Google login blocked for archived account: ${employee.email}`);
+            const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent('This account is archived. Please contact your administrator.')}`;
+            return res.send(`<!DOCTYPE html><html><body><p>Account archived.</p><script>window.location.href=${JSON.stringify(redirectUrl)}</script></body></html>`);
           }
-        );
-      });
 
-      userToReturn = await new Promise((resolve, reject) => {
-        db.get('SELECT * FROM employees WHERE id = ?', [newEmployeeId], (fetchErr, newEmployee) => {
-          if (fetchErr) reject(fetchErr);
-          else resolve(newEmployee || null);
-        });
-      });
-      await completeMobileCallbackLogin();
-    } else {
-      debugWarn(`⚠️  Mobile: Google login attempted for non-existent user: ${email}`);
-      const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`;
-      return res.send(`
+          debugLog(`✅ Mobile: Found existing user: ${employee.email}`);
+
+          const updateSet = [];
+          const updateValues = [];
+
+          if (!employee.googleId || employee.googleId !== googleId) {
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          }
+
+          const currentAuthProvider = employee.authProvider || 'local';
+          if (currentAuthProvider === 'local') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          } else if (currentAuthProvider !== 'both' && currentAuthProvider !== 'google') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          }
+
+          if (emailVerified) {
+            updateSet.push('emailVerified = ?');
+            updateValues.push(1);
+          }
+
+          updateSet.push('lastLoginAt = ?');
+          updateValues.push(now);
+          updateSet.push('updatedAt = ?');
+          updateValues.push(now);
+          updateValues.push(employee.id);
+
+          if (updateSet.length > 0) {
+            const updateQuery = `UPDATE employees SET ${updateSet.join(', ')} WHERE id = ?`;
+            
+            await new Promise((resolve) => {
+              db.run(updateQuery, updateValues, (updateErr) => {
+                if (updateErr) {
+                  debugError('❌ Error updating user:', updateErr);
+                } else {
+                  debugLog(`✅ Mobile: Updated user ${employee.email}`);
+                }
+                resolve();
+              });
+            });
+
+            db.get(
+              'SELECT * FROM employees WHERE id = ?',
+              [employee.id],
+              async (fetchErr, updatedEmployee) => {
+                if (!fetchErr && updatedEmployee) {
+                  userToReturn = updatedEmployee;
+                } else {
+                  userToReturn = employee;
+                }
+                await completeMobileCallbackLogin();
+              }
+            );
+          } else {
+            userToReturn = employee;
+            await completeMobileCallbackLogin();
+          }
+        } else if (AUTO_CREATE_ACCOUNTS) {
+          debugLog(`🆕 Mobile: Creating new user account for ${email}`);
+          
+          const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+          
+          await new Promise((resolve, reject) => {
+            db.run(
+              `INSERT INTO employees (
+                id, name, email, password, googleId, authProvider, emailVerified,
+                oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
+              ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
+              [
+                newEmployeeId,
+                name,
+                email,
+                googleId,
+                emailVerified ? 1 : 0,
+                '',
+                '',
+                '',
+                now,
+                now,
+                now
+              ],
+              (insertErr) => {
+                if (insertErr) {
+                  debugError('❌ Error creating new user:', insertErr);
+                  reject(insertErr);
+                } else {
+                  debugLog(`✅ Mobile: Created new user account for ${email}`);
+                  resolve();
+                }
+              }
+            );
+          });
+
+          db.get(
+            'SELECT * FROM employees WHERE id = ?',
+            [newEmployeeId],
+            async (fetchErr, newEmployee) => {
+              if (!fetchErr && newEmployee) {
+                userToReturn = newEmployee;
+              }
+              await completeMobileCallbackLogin();
+            }
+          );
+        } else {
+          debugWarn(`⚠️  Mobile: Google login attempted for non-existent user: ${email}`);
+          const redirectUrl = `ohstafftracker://oauth/callback?error=${encodeURIComponent('Account not found. Please contact your administrator.')}`;
+          return res.send(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -1621,10 +1518,10 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
   </div>
 </body>
 </html>
-      `);
-    }
+          `);
+        }
 
-    async function completeMobileCallbackLogin() {
+        async function completeMobileCallbackLogin() {
           if (!userToReturn) {
             debugError('❌ Mobile: Failed to get user after Google OAuth');
             const redirectUrl = 'ohstafftracker://oauth/callback?error=user_not_found';
@@ -1832,7 +1729,9 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
 </body>
 </html>
           `);
-    }
+        }
+      }
+    );
   } catch (error) {
     debugError('❌ Mobile: Google OAuth callback error:', error);
     debugError('❌ Mobile: Full error object:', JSON.stringify(error, null, 2));
@@ -1960,115 +1859,175 @@ router.post('/api/auth/google/mobile', async (req, res) => {
     }
 
     // Find or create user (same logic as web callback)
-    const normalizedPostEmail = String(email || '').trim().toLowerCase();
-    let employee;
-    try {
-      employee = await findEmployeeForGoogleOAuth(db, {
-        email: normalizedPostEmail,
-        googleId,
-        googleName: name,
-      });
-    } catch (lookupErr) {
-      debugError('❌ Database error during Mobile Google OAuth:', lookupErr);
-      return res.status(500).json({ error: 'Database error' });
-    }
+    db.get(
+      GOOGLE_EMPLOYEE_LOOKUP_SQL,
+      [String(email || '').trim().toLowerCase(), googleId],
+      async (err, employee) => {
+        if (err) {
+          debugError('❌ Database error during Mobile Google OAuth:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
 
-    if (employee?.archived === 1) {
-      debugWarn(`⚠️  Mobile: Google login blocked for archived account: ${employee.email}`);
-      return res.status(403).json({ error: GOOGLE_ACCOUNT_ARCHIVED_MSG });
-    }
+        let userToReturn = null;
+        const now = new Date().toISOString();
+        const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
 
-    let userToReturn = null;
-    const now = new Date().toISOString();
-    const AUTO_CREATE_ACCOUNTS = process.env.AUTO_CREATE_ACCOUNTS === 'true';
-
-    if (employee) {
-      debugLog(`✅ Mobile: Found existing user: ${employee.email}`);
-      try {
-        userToReturn = await linkGoogleOAuthToEmployee(db, employee, {
-          googleId,
-          email: normalizedPostEmail,
-          emailVerified,
-        });
-      } catch (updateErr) {
-        debugError('❌ Error updating user with Mobile Google info:', updateErr);
-        userToReturn = employee;
-      }
-      await completeMobileLogin();
-    } else if (AUTO_CREATE_ACCOUNTS) {
-      debugLog(`🆕 Mobile: Creating new user account for ${email}`);
-
-      const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-
-      await new Promise((resolve, reject) => {
-        db.run(
-          `INSERT INTO employees (
-            id, name, email, password, googleId, authProvider, emailVerified,
-            oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
-          ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
-          [
-            newEmployeeId,
-            name,
-            email,
-            googleId,
-            emailVerified ? 1 : 0,
-            '',
-            '',
-            '',
-            now,
-            now,
-            now
-          ],
-          (insertErr) => {
-            if (insertErr) {
-              debugError('❌ Error creating new mobile user:', insertErr);
-              reject(insertErr);
-            } else {
-              debugLog(`✅ Mobile: Created new user account for ${email}`);
-              resolve();
-            }
+        if (employee) {
+          if (employee.archived === 1) {
+            debugWarn(`⚠️  Mobile: Google login blocked for archived account: ${employee.email}`);
+            return res.status(403).json({ error: 'This account is archived. Please contact your administrator.' });
           }
-        );
-      });
 
-      userToReturn = await new Promise((resolve, reject) => {
-        db.get('SELECT * FROM employees WHERE id = ?', [newEmployeeId], (fetchErr, newEmployee) => {
-          if (fetchErr) reject(fetchErr);
-          else resolve(newEmployee || null);
-        });
-      });
-      await completeMobileLogin();
-    } else {
-      debugWarn(`⚠️  Mobile: Google login attempted for non-existent user: ${email}`);
-      return res.status(404).json({ error: 'Account not found. Please contact your administrator.' });
-    }
+          // User exists - link Google account or update
+          debugLog(`✅ Mobile: Found existing user: ${employee.email}`);
 
-    async function completeMobileLogin() {
-      if (!userToReturn) {
-        debugError('❌ Mobile: Failed to get user after Google OAuth');
-        return res.status(500).json({ error: 'User not found after authentication' });
+          const updateFields = [];
+          const updateValues = [];
+          const updateSet = [];
+
+          if (!employee.googleId) {
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          } else if (employee.googleId !== googleId) {
+            updateSet.push('googleId = ?');
+            updateValues.push(googleId);
+          }
+
+          const currentAuthProvider = employee.authProvider || 'local';
+          if (currentAuthProvider === 'local') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          } else if (currentAuthProvider === 'google') {
+            // Already using Google, no change needed
+          } else if (currentAuthProvider !== 'both') {
+            updateSet.push('authProvider = ?');
+            updateValues.push('both');
+          }
+
+          if (emailVerified) {
+            updateSet.push('emailVerified = ?');
+            updateValues.push(1);
+          }
+
+          updateSet.push('lastLoginAt = ?');
+          updateValues.push(now);
+
+          updateSet.push('updatedAt = ?');
+          updateValues.push(now);
+
+          updateValues.push(employee.id);
+
+          if (updateSet.length > 0) {
+            const updateQuery = `UPDATE employees SET ${updateSet.join(', ')} WHERE id = ?`;
+            
+            await new Promise((resolve, reject) => {
+              db.run(updateQuery, updateValues, (updateErr) => {
+                if (updateErr) {
+                  debugError('❌ Error updating user with Mobile Google info:', updateErr);
+                  resolve();
+                } else {
+                  debugLog(`✅ Mobile: Updated user ${employee.email} with Google OAuth info`);
+                  resolve();
+                }
+              });
+            });
+
+            db.get(
+              'SELECT * FROM employees WHERE id = ?',
+              [employee.id],
+              async (fetchErr, updatedEmployee) => {
+                if (!fetchErr && updatedEmployee) {
+                  userToReturn = updatedEmployee;
+                } else {
+                  userToReturn = { ...employee, googleId, emailVerified: emailVerified ? 1 : 0 };
+                }
+                await completeMobileLogin();
+              }
+            );
+          } else {
+            userToReturn = employee;
+            await completeMobileLogin();
+          }
+        } else if (AUTO_CREATE_ACCOUNTS) {
+          // New user - auto-create account
+          debugLog(`🆕 Mobile: Creating new user account for ${email}`);
+          
+          const newEmployeeId = `emp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+          
+          await new Promise((resolve, reject) => {
+            db.run(
+              `INSERT INTO employees (
+                id, name, email, password, googleId, authProvider, emailVerified,
+                oxfordHouseId, position, role, baseAddress, createdAt, updatedAt, lastLoginAt
+              ) VALUES (?, ?, ?, '', ?, 'google', ?, ?, ?, 'employee', ?, ?, ?, ?)`,
+              [
+                newEmployeeId,
+                name,
+                email,
+                googleId,
+                emailVerified ? 1 : 0,
+                '', // oxfordHouseId - will need to be set by admin
+                '', // position - will need to be set by admin
+                '', // baseAddress - will need to be set by admin
+                now,
+                now,
+                now
+              ],
+              (insertErr) => {
+                if (insertErr) {
+                  debugError('❌ Error creating new mobile user:', insertErr);
+                  reject(insertErr);
+                } else {
+                  debugLog(`✅ Mobile: Created new user account for ${email}`);
+                  resolve();
+                }
+              }
+            );
+          });
+
+          db.get(
+            'SELECT * FROM employees WHERE id = ?',
+            [newEmployeeId],
+            async (fetchErr, newEmployee) => {
+              if (!fetchErr && newEmployee) {
+                userToReturn = newEmployee;
+              }
+              await completeMobileLogin();
+            }
+          );
+        } else {
+          debugWarn(`⚠️  Mobile: Google login attempted for non-existent user: ${email}`);
+          return res.status(404).json({ error: 'Account not found. Please contact your administrator.' });
+        }
+
+        async function completeMobileLogin() {
+          if (!userToReturn) {
+            debugError('❌ Mobile: Failed to get user after Google OAuth');
+            return res.status(500).json({ error: 'User not found after authentication' });
+          }
+
+          try {
+            const sessionToken = await issueSessionAfterGoogleTokens(userToReturn, tokens);
+            const employeePayload = formatEmployeeAuthResponse({ ...userToReturn, lastLoginAt: now });
+
+            debugLog(`✅ Mobile: Google OAuth login successful for ${email}`);
+
+            res.json({
+              success: true,
+              token: sessionToken,
+              email: email,
+              employee: {
+                ...employeePayload,
+                lastLoginAt: now,
+              },
+            });
+          } catch (loginErr) {
+            debugError('❌ Mobile: Error finalizing Google login:', loginErr);
+            return res.status(500).json({ error: 'Authentication failed' });
+          }
+        }
       }
-
-      try {
-        const sessionToken = await issueSessionAfterGoogleTokens(userToReturn, tokens);
-        const employeePayload = formatEmployeeAuthResponse({ ...userToReturn, lastLoginAt: now });
-
-        debugLog(`✅ Mobile: Google OAuth login successful for ${email}`);
-
-        res.json({
-          success: true,
-          token: sessionToken,
-          email: email,
-          employee: {
-            ...employeePayload,
-            lastLoginAt: now,
-          },
-        });
-      } catch (loginErr) {
-        debugError('❌ Mobile: Error finalizing Google login:', loginErr);
-        return res.status(500).json({ error: 'Authentication failed' });
-      }
-    }
+    );
   } catch (error) {
     debugError('❌ Mobile: Google OAuth callback error:', error);
     debugError('❌ Mobile: Error details:', {
