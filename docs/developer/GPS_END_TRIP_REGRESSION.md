@@ -65,6 +65,11 @@ Save + navigation must go through **`executeEndTripSave`** then **`finalizeEndTr
 - Awaiting `Location.getCurrentPositionAsync` on the stop path without a preset end location
 - Heavy sync/DB work in Home `useFocusEffect` without `InteractionManager` deferral
 
-## Related docs
+### 6. Dead zone / no cell service
+
+- [ ] Drive a known route (~3+ mi) with a no-service stretch mid-trip
+- [ ] Note miles on screen before, during (may lag), and after service returns
+- [ ] End trip: saved miles should be ~actual route (rounded), not route + dead-zone again
+- [ ] Repeat same route with full service; totals should match within ~1 mi rounding
 
 - `docs/scroll-touch-audit.md` — stale modal / touch patterns app-wide

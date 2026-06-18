@@ -8,6 +8,7 @@ import {
   GPS_TRACKING_STORAGE_KEY,
   PersistedGpsState,
   MAX_PERSISTED_TRACKING_SESSION_MS,
+  flushPendingGpsLocationUpdates,
 } from './gpsBackgroundTask';
 import { GooglePlacesService } from './googlePlacesService';
 import { promptForNotificationAccessIfNeeded } from './localNotificationSetup';
@@ -255,22 +256,46 @@ export class GpsTrackingService {
       StationaryNotificationService.resetAlertThrottle();
 
       if (!this.currentSession) {
-        // Don't block UI on location stop / storage clearing.
         void Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
         void AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY).catch(() => {});
         return null;
       }
 
-      // Stop background location updates
-      // Location APIs can be slow and are a common cause of "freezes" when awaited.
-      // We best-effort stop updates asynchronously and continue ending the session.
-      void Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
+      const sessionId = this.currentSession.id;
 
-      // Clear persisted state
-      void AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY).catch(() => {});
+      try {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      } catch {
+        /* best-effort */
+      }
+
+      await flushPendingGpsLocationUpdates();
+      await this.syncFromStorage();
+
+      let finalDistance = this.totalDistance;
+      try {
+        const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
+        if (raw) {
+          const parsed: unknown = JSON.parse(raw);
+          if (
+            isPersistedStateRestorable(parsed) &&
+            parsed.session.id === sessionId &&
+            typeof parsed.totalDistance === 'number' &&
+            Number.isFinite(parsed.totalDistance)
+          ) {
+            finalDistance = parsed.totalDistance;
+            this.totalDistance = parsed.totalDistance;
+            this.currentSession.totalMiles = parsed.session.totalMiles;
+          }
+        }
+      } catch {
+        /* use synced in-memory distance */
+      }
+
+      await AsyncStorage.removeItem(GPS_TRACKING_STORAGE_KEY).catch(() => {});
 
       this.currentSession.endTime = new Date();
-      this.currentSession.totalMiles = Math.round(this.totalDistance);
+      this.currentSession.totalMiles = Math.round(finalDistance);
       this.currentSession.isActive = false;
 
       if (presetEndLocation) {
