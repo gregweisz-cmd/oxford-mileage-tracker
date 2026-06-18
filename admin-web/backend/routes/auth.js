@@ -5,6 +5,9 @@
  */
 
 const express = require('express');
+const axios = require('axios');
+const http = require('http');
+const https = require('https');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const helpers = require('../utils/helpers');
@@ -158,7 +161,26 @@ function googleOAuthUserErrorMessage(error) {
   return 'Authentication failed. Please try again.';
 }
 
-async function exchangeGoogleAuthCodeViaFetch(code, redirectUri) {
+function logGoogleOAuth(label, message, err) {
+  const detail = err ? (err?.message || err) : '';
+  const code = err?.code ? ` (${err.code})` : '';
+  console.error(`[Google OAuth] ${label}: ${message}${detail ? ` — ${detail}${code}` : ''}`);
+}
+
+function formatGoogleTokenResponse(data) {
+  return {
+    tokens: {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      id_token: data.id_token,
+      expiry_date: data.expires_in ? Date.now() + Number(data.expires_in) * 1000 : undefined,
+      token_type: data.token_type,
+      scope: data.scope,
+    },
+  };
+}
+
+async function exchangeGoogleAuthCodeViaAxios(code, redirectUri) {
   const body = new URLSearchParams({
     code: String(code),
     client_id: googleClientId,
@@ -167,66 +189,67 @@ async function exchangeGoogleAuthCodeViaFetch(code, redirectUri) {
     grant_type: 'authorization_code',
   }).toString();
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  try {
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body,
-      signal: controller.signal,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = new Error(data.error_description || data.error || 'Token exchange failed');
-      err.code = data.error;
-      throw err;
-    }
-    return {
-      tokens: {
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        id_token: data.id_token,
-        expiry_date: data.expires_in ? Date.now() + Number(data.expires_in) * 1000 : undefined,
-        token_type: data.token_type,
-        scope: data.scope,
-      },
-    };
-  } finally {
-    clearTimeout(timeout);
+  const res = await axios.post('https://oauth2.googleapis.com/token', body, {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    timeout: 30000,
+    validateStatus: (status) => status >= 200 && status < 500,
+    httpAgent: new http.Agent({ keepAlive: false }),
+    httpsAgent: new https.Agent({ keepAlive: false }),
+  });
+
+  const data = res.data || {};
+  if (res.status >= 400 || data.error) {
+    const err = new Error(data.error_description || data.error || 'Token exchange failed');
+    err.code = data.error;
+    throw err;
   }
+  if (!data.id_token) {
+    throw new Error('Google token response did not include id_token');
+  }
+  return formatGoogleTokenResponse(data);
 }
 
-/** Exchange OAuth code for tokens; retry transient Render↔Google network failures. */
-async function exchangeGoogleAuthCode(oauthClient, code, options = {}) {
+/** Exchange OAuth code for tokens via axios (avoids gaxios premature-close on Render). */
+async function exchangeGoogleAuthCode(_oauthClient, code, options = {}) {
   const { label = 'OAuth', redirectUri = getWebGoogleRedirectUri() } = options;
-  const maxAttempts = 3;
+  const maxAttempts = 4;
   let lastErr;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      debugLog(`🔐 ${label}: exchanging auth code (attempt ${attempt}/${maxAttempts})...`);
-      return await oauthClient.getToken(String(code));
+      logGoogleOAuth(label, `token exchange attempt ${attempt}/${maxAttempts}`);
+      return await exchangeGoogleAuthCodeViaAxios(code, redirectUri);
     } catch (err) {
       lastErr = err;
-      debugError(`❌ ${label}: getToken failed (attempt ${attempt}/${maxAttempts}):`, err?.message || err);
+      logGoogleOAuth(label, `token exchange failed on attempt ${attempt}/${maxAttempts}`, err);
       if (!isTransientGoogleTokenError(err) || attempt === maxAttempts) break;
-      const delayMs = 300 * Math.pow(2, attempt - 1);
-      debugWarn(`⚠️  ${label}: retrying token exchange in ${delayMs}ms...`);
-      await sleep(delayMs);
+      await sleep(500 * attempt);
     }
   }
 
-  debugWarn(`⚠️  ${label}: falling back to native fetch token exchange...`);
-  try {
-    return await exchangeGoogleAuthCodeViaFetch(code, redirectUri);
-  } catch (fetchErr) {
-    debugError(`❌ ${label}: fetch token exchange failed:`, fetchErr?.message || fetchErr);
-    throw lastErr || fetchErr;
+  throw lastErr;
+}
+
+async function verifyGoogleIdToken(oauthClient, idToken, audience, label = 'OAuth') {
+  const maxAttempts = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await oauthClient.verifyIdToken({
+        idToken,
+        audience,
+      });
+    } catch (err) {
+      lastErr = err;
+      logGoogleOAuth(label, `verifyIdToken attempt ${attempt}/${maxAttempts} failed`, err);
+      if (!isTransientGoogleTokenError(err) || attempt === maxAttempts) break;
+      await sleep(400 * attempt);
+    }
   }
+  throw lastErr;
 }
 
 /** Build Google auth URL. Omit prompt so returning users reuse their Google session (no forced re-consent). */
@@ -881,15 +904,12 @@ router.get('/api/auth/google/callback', async (req, res) => {
       label: 'Web OAuth',
       redirectUri: getWebGoogleRedirectUri(),
     });
+    logGoogleOAuth('Web OAuth', 'token exchange succeeded');
     googleClient.setCredentials(tokens);
 
     debugLog('✅ Received tokens from Google, verifying ID token...');
 
-    // Verify and get user info
-    const ticket = await googleClient.verifyIdToken({
-      idToken: tokens.id_token,
-      audience: googleClientId
-    });
+    const ticket = await verifyGoogleIdToken(googleClient, tokens.id_token, googleClientId, 'Web OAuth');
     
     const googleUser = ticket.getPayload();
     const email = googleUser.email;
@@ -1092,7 +1112,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
       }
     );
   } catch (error) {
-    debugError('❌ Google OAuth callback error:', error);
+    logGoogleOAuth('Web OAuth', 'callback failed', error);
     const frontendUrl = resolveWebPortalRedirectBase();
     res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(googleOAuthUserErrorMessage(error))}`);
   }
@@ -1341,14 +1361,17 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
       label: 'Mobile OAuth',
       redirectUri: mobileRedirectUri,
     });
+    logGoogleOAuth('Mobile OAuth', 'token exchange succeeded');
     mobileGoogleClient.setCredentials(tokens);
 
     debugLog('✅ Mobile: Received tokens from Google, verifying ID token...');
 
-    const ticket = await mobileGoogleClient.verifyIdToken({
-      idToken: tokens.id_token,
-      audience: googleClientId
-    });
+    const ticket = await verifyGoogleIdToken(
+      mobileGoogleClient,
+      tokens.id_token,
+      googleClientId,
+      'Mobile OAuth'
+    );
     
     const googleUser = ticket.getPayload();
     const email = googleUser.email;
@@ -1958,14 +1981,17 @@ router.post('/api/auth/google/mobile', async (req, res) => {
       label: 'Mobile OAuth POST',
       redirectUri: mobileRedirectUri,
     });
+    logGoogleOAuth('Mobile OAuth', 'token exchange succeeded');
     mobileGoogleClient.setCredentials(tokens);
 
     debugLog('✅ Mobile: Received tokens from Google, verifying ID token...');
 
-    const ticket = await mobileGoogleClient.verifyIdToken({
-      idToken: tokens.id_token,
-      audience: googleClientId
-    });
+    const ticket = await verifyGoogleIdToken(
+      mobileGoogleClient,
+      tokens.id_token,
+      googleClientId,
+      'Mobile OAuth'
+    );
     
     const googleUser = ticket.getPayload();
     const email = googleUser.email;
