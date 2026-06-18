@@ -53,6 +53,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             'Sign-in failed while loading your account. Please try again in a minute or contact support.',
           'Authentication failed. Please try again.':
             'Google sign-in could not be completed. Please try again or use email and password.',
+          'Sign-in failed while updating your account. Please try again in a minute or contact support.':
+            'Google sign-in could not update your account. Try email/password, or contact support.',
+          'Google sign-in expired. Please try again.':
+            'Google sign-in timed out. Please try Continue with Google again.',
         };
         setError(friendly[decoded] || decoded);
       }

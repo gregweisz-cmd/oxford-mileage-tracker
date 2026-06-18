@@ -140,6 +140,44 @@ function persistGoogleRefreshToken(employeeId, refreshToken) {
   });
 }
 
+function googleOAuthUserErrorMessage(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  if (msg.includes('redirect_uri_mismatch')) {
+    return 'Google redirect URI mismatch. Please contact support.';
+  }
+  if (msg.includes('invalid_grant') || msg.includes('invalid code')) {
+    return 'Google sign-in expired. Please try again.';
+  }
+  if (
+    msg.includes('googlerefreshtoken') ||
+    msg.includes('googleid') ||
+    msg.includes('authprovider') ||
+    msg.includes('emailverified') ||
+    msg.includes('no such column')
+  ) {
+    return 'Sign-in failed while updating your account. Please try again in a minute or contact support.';
+  }
+  if (msg.includes('id_token')) {
+    return 'Google did not return a valid sign-in token. Please try again.';
+  }
+  return 'Authentication failed. Please try again.';
+}
+
+function getEmployeeOAuthColumnStatus(db) {
+  return new Promise((resolve) => {
+    db.all('PRAGMA table_info(employees)', [], (err, rows) => {
+      if (err) {
+        resolve({ ok: false, error: err.message });
+        return;
+      }
+      const names = new Set((rows || []).map((row) => row.name));
+      const required = ['googleId', 'authProvider', 'emailVerified', 'googleRefreshToken'];
+      const missing = required.filter((col) => !names.has(col));
+      resolve({ ok: missing.length === 0, missing });
+    });
+  });
+}
+
 function getEmployeeByNormalizedEmail(email) {
   return new Promise((resolve, reject) => {
     const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -297,7 +335,15 @@ function formatEmployeeAuthResponse(employee) {
 
 async function issueSessionAfterGoogleTokens(userToReturn, tokens) {
   if (tokens?.refresh_token && userToReturn?.id) {
-    await persistGoogleRefreshToken(userToReturn.id, tokens.refresh_token);
+    try {
+      await persistGoogleRefreshToken(userToReturn.id, tokens.refresh_token);
+    } catch (refreshErr) {
+      // Refresh token storage is optional for login; do not block session issuance.
+      debugWarn('⚠️  Could not persist Google refresh token (login continues):', refreshErr);
+    }
+  }
+  if (!userToReturn?.id) {
+    throw new Error('Employee record is missing an id after Google sign-in');
   }
   return signAuthToken(userToReturn);
 }
@@ -764,12 +810,13 @@ router.post('/api/employee-login', async (req, res) => {
 // ===== GOOGLE OAUTH ENDPOINTS =====
 
 /** Public config check for staff portal Google sign-in (no secrets). */
-router.get('/api/auth/google/status', (req, res) => {
+router.get('/api/auth/google/status', async (req, res) => {
   const redirectUri =
     process.env.GOOGLE_REDIRECT_URI ||
     `${(process.env.API_BASE_URL || 'http://localhost:3003').replace(/\/+$/, '')}/api/auth/google/callback`;
 
   const rawClientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+  const employeeOAuthColumns = await getEmployeeOAuthColumnStatus(dbService.getDb());
   res.json({
     configured: !!googleClient,
     redirectUri,
@@ -778,6 +825,7 @@ router.get('/api/auth/google/status', (req, res) => {
     allowedEmailDomains: ALLOWED_EMAIL_DOMAINS,
     autoCreateAccounts: process.env.AUTO_CREATE_ACCOUNTS === 'true',
     clientIdHasSchemePrefix: /^https?:\/\//i.test(rawClientId),
+    employeeOAuthColumns,
   });
 });
 
@@ -872,6 +920,10 @@ router.get('/api/auth/google/callback', async (req, res) => {
 
     debugLog('✅ Received tokens from Google, verifying ID token...');
 
+    if (!tokens?.id_token) {
+      throw new Error('Google did not return an id_token');
+    }
+
     // Verify and get user info
     const ticket = await googleClient.verifyIdToken({
       idToken: tokens.id_token,
@@ -940,6 +992,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
         userToReturn = employee;
       }
       await completeLogin();
+      return;
     } else if (AUTO_CREATE_ACCOUNTS) {
       debugLog(`🆕 Creating new user account for ${email}`);
 
@@ -983,6 +1036,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
         });
       });
       await completeLogin();
+      return;
     } else {
       debugWarn(`⚠️  Google login attempted for non-existent user: ${email}`);
       const frontendUrl = resolveWebPortalRedirectBase();
@@ -1006,13 +1060,17 @@ router.get('/api/auth/google/callback', async (req, res) => {
       } catch (loginErr) {
         debugError('❌ Error finalizing Google login:', loginErr);
         const frontendUrl = resolveWebPortalRedirectBase();
-        return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
+        return res.redirect(
+          `${frontendUrl}/login?error=${encodeURIComponent(googleOAuthUserErrorMessage(loginErr))}`
+        );
       }
     }
   } catch (error) {
     debugError('❌ Google OAuth callback error:', error);
     const frontendUrl = resolveWebPortalRedirectBase();
-    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
+    res.redirect(
+      `${frontendUrl}/login?error=${encodeURIComponent(googleOAuthUserErrorMessage(error))}`
+    );
   }
 });
 
