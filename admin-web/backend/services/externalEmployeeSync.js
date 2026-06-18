@@ -442,6 +442,12 @@ function isLikelySamePerson(mapped, localRow) {
     return true;
   }
 
+  const mappedPhone = normalizePhoneForMatch(mapped.phoneNumber);
+  const localPhone = normalizePhoneForMatch(localRow.phoneNumber);
+  if (mappedPhone && localPhone && mappedPhone === localPhone) {
+    return true;
+  }
+
   const mappedLocal = emailLocalPart(mapped.email);
   const localLocal = emailLocalPart(localRow.email);
   if (!mappedLocal || mappedLocal !== localLocal) return false;
@@ -451,40 +457,144 @@ function isLikelySamePerson(mapped, localRow) {
   return Boolean(mappedFirst && localFirst && mappedFirst === localFirst);
 }
 
+function scoreLocalEmployeeForHrMerge(row) {
+  let score = 0;
+  if (!row.archived && row.archived !== 1) score += 10_000;
+  const position = String(row.position || '').toLowerCase();
+  if (position.includes('senior staff')) score += 2_000;
+  if (position.includes('supervisor')) score += 1_000;
+  const created = Date.parse(String(row.createdAt || ''));
+  if (Number.isFinite(created)) {
+    // Prefer the original row (team assignments / senior staff links usually live here).
+    score -= created / 1_000_000_000_000;
+  }
+  return score;
+}
+
+async function findPersonHintCandidates(mapped) {
+  const localPart = emailLocalPart(mapped.email);
+  const firstName = firstNameToken(mapped.name);
+  if (!localPart || !firstName) return [];
+  const db = dbService.getDb();
+  const candidates = await new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM employees
+       WHERE LOWER(TRIM(email)) LIKE ?
+       ORDER BY CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END, createdAt ASC, id ASC`,
+      [`${localPart}@%`],
+      (err, rows) => (err ? reject(err) : resolve(rows || []))
+    );
+  });
+  return candidates.filter((row) => isLikelySamePerson(mapped, row));
+}
+
+function buildHrUpdatePreview(mapped, existing, ignored) {
+  const prevCC = existing.costCenters
+    ? (typeof existing.costCenters === 'string' ? JSON.parse(existing.costCenters || '[]') : existing.costCenters)
+    : [];
+  const prevSelected = existing.selectedCostCenters
+    ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters)
+    : [];
+  const nextCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
+    ? sanitizeCostCenters(mapped.costCenters)
+    : sanitizeCostCenters(prevCC);
+  const mergedPosition = mergePositionPreservingDesignations(mapped.position, existing.position);
+  const hadGroupedPrevCostCenter = (prevCC || []).some((cc) => shouldOmitCostCenter(cc));
+  const emailChanged =
+    (existing.email || '').toLowerCase().trim() !== (mapped.email || '').toLowerCase().trim();
+  const same =
+    (existing.name || '') === (mapped.name || '') &&
+    (existing.position || '') === mergedPosition &&
+    JSON.stringify(sanitizeCostCenters(prevCC).sort()) === JSON.stringify(nextCostCenters.sort()) &&
+    (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
+    !emailChanged &&
+    !existing.archived &&
+    !hadGroupedPrevCostCenter;
+  const ignoredEmail = (mapped.email || '').toLowerCase().trim();
+  const ignoredLegacyEmail = (existing.email || '').toLowerCase().trim();
+  const isIgnored =
+    ignored.update.has(ignoredEmail) || ignored.update.has(ignoredLegacyEmail);
+
+  return {
+    same,
+    isIgnored,
+    emailChanged,
+    update: {
+      email: mapped.email,
+      employeeId: existing.id,
+      previousEmail: emailChanged ? existing.email : undefined,
+      name: mapped.name,
+      position: mergedPosition,
+      costCenters: nextCostCenters,
+      phoneNumber: mapped.phoneNumber || '',
+      restoredFromArchive: existing.archived === 1,
+      previous: {
+        email: existing.email,
+        name: existing.name,
+        position: existing.position,
+        phoneNumber: existing.phoneNumber || '',
+        costCenters: sanitizeCostCenters(prevCC),
+        selectedCostCenters: prevSelected,
+      },
+    },
+    suppressed: {
+      email: mapped.email,
+      name: mapped.name,
+      employeeId: existing.id,
+      previousEmail: emailChanged ? existing.email : undefined,
+      reason: ignored.update.has(ignoredEmail) ? 'email' : 'legacyEmail',
+    },
+  };
+}
+
 /**
  * Resolve the local employee row for an HR person (email, HR id, or name/email hint).
  * @param {object} mapped
  * @returns {Promise<{ employee: object|null, matchReason: string|null }>}
  */
 async function findLocalEmployeeForHrMapped(mapped) {
+  const candidates = [];
+  const seenIds = new Set();
+
+  const pushCandidate = (row) => {
+    if (!row || !row.id || seenIds.has(row.id)) return;
+    seenIds.add(row.id);
+    candidates.push(row);
+  };
+
+  const hints = await findPersonHintCandidates(mapped);
+  hints.forEach(pushCandidate);
+
   const byEmail = await getEmployeeByEmail(mapped.email, { includeArchived: true });
-  if (byEmail) return { employee: byEmail, matchReason: 'email' };
+  pushCandidate(byEmail);
 
   if (mapped.externalId || mapped.oxfordHouseId) {
     const byExt = await getEmployeeByOxfordHouseId(mapped.externalId || mapped.oxfordHouseId, {
       includeArchived: true,
     });
-    if (byExt) return { employee: byExt, matchReason: 'externalId' };
+    pushCandidate(byExt);
   }
 
-  const localPart = emailLocalPart(mapped.email);
-  const firstName = firstNameToken(mapped.name);
-  if (localPart && firstName) {
-    const db = dbService.getDb();
-    const candidates = await new Promise((resolve, reject) => {
-      db.all(
-        `SELECT * FROM employees
-         WHERE LOWER(TRIM(email)) LIKE ?
-         ORDER BY CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END, createdAt ASC, id ASC`,
-        [`${localPart}@%`],
-        (err, rows) => (err ? reject(err) : resolve(rows || []))
-      );
-    });
-    const match = candidates.find((row) => isLikelySamePerson(mapped, row));
-    if (match) return { employee: match, matchReason: 'personHint' };
+  if (candidates.length === 0) {
+    return { employee: null, matchReason: null };
   }
 
-  return { employee: null, matchReason: null };
+  candidates.sort((a, b) => scoreLocalEmployeeForHrMerge(b) - scoreLocalEmployeeForHrMerge(a));
+  const best = candidates[0];
+
+  let matchReason = 'personHint';
+  if (byEmail && best.id === byEmail.id) {
+    matchReason = byEmail.archived ? 'emailArchived' : 'email';
+  } else if (
+    mapped.externalId &&
+    String(best.oxfordHouseId || '').toLowerCase() === String(mapped.externalId).toLowerCase()
+  ) {
+    matchReason = 'externalId';
+  } else if (hints.some((row) => row.id === best.id)) {
+    matchReason = 'personHint';
+  }
+
+  return { employee: best, matchReason };
 }
 
 /**
@@ -906,12 +1016,6 @@ async function previewSyncFromExternal() {
 
   for (const mapped of mappedList) {
     const { employee: existing } = await findLocalEmployeeForHrMapped(mapped);
-    const prevCC = existing && existing.costCenters
-      ? (typeof existing.costCenters === 'string' ? JSON.parse(existing.costCenters || '[]') : existing.costCenters)
-      : [];
-    const prevSelected = existing && existing.selectedCostCenters
-      ? (typeof existing.selectedCostCenters === 'string' ? JSON.parse(existing.selectedCostCenters || '[]') : existing.selectedCostCenters)
-      : [];
     if (!existing) {
       creates.push({
         email: mapped.email,
@@ -924,64 +1028,60 @@ async function previewSyncFromExternal() {
 
     matchedLocalIds.add(String(existing.id || '').trim());
 
-    const nextCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
-      ? sanitizeCostCenters(mapped.costCenters)
-      : sanitizeCostCenters(prevCC);
-    const mergedPosition = mergePositionPreservingDesignations(mapped.position, existing.position);
-    const hadGroupedPrevCostCenter = (prevCC || []).some((cc) => shouldOmitCostCenter(cc));
-    const emailChanged =
-      (existing.email || '').toLowerCase().trim() !== (mapped.email || '').toLowerCase().trim();
-    const same =
-      (existing.name || '') === (mapped.name || '') &&
-      (existing.position || '') === mergedPosition &&
-      JSON.stringify(sanitizeCostCenters(prevCC).sort()) === JSON.stringify(nextCostCenters.sort()) &&
-      (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
-      !emailChanged &&
-      !existing.archived &&
-      !hadGroupedPrevCostCenter;
-    const ignoredEmail = (mapped.email || '').toLowerCase().trim();
-    const ignoredLegacyEmail = (existing.email || '').toLowerCase().trim();
-    const isIgnored =
-      ignored.update.has(ignoredEmail) || ignored.update.has(ignoredLegacyEmail);
-    if (!same && isIgnored) {
-      suppressed.updates.push({
-        email: mapped.email,
-        name: mapped.name,
-        employeeId: existing.id,
-        previousEmail: emailChanged ? existing.email : undefined,
-        reason: ignored.update.has(ignoredEmail) ? 'email' : 'legacyEmail',
-      });
+    const preview = buildHrUpdatePreview(mapped, existing, ignored);
+    if (!preview.same && preview.isIgnored) {
+      suppressed.updates.push(preview.suppressed);
     }
-    if (!same && !isIgnored) {
-      updates.push({
-        email: mapped.email,
-        employeeId: existing.id,
-        previousEmail: emailChanged ? existing.email : undefined,
-        name: mapped.name,
-        position: mergedPosition,
-        costCenters: nextCostCenters,
-        phoneNumber: mapped.phoneNumber || '',
-        restoredFromArchive: existing.archived === 1,
-        previous: {
-          email: existing.email,
-          name: existing.name,
-          position: existing.position,
-          phoneNumber: existing.phoneNumber || '',
-          costCenters: sanitizeCostCenters(prevCC),
-          selectedCostCenters: prevSelected,
-        },
-      });
+    if (!preview.same && !preview.isIgnored) {
+      updates.push(preview.update);
     }
   }
   const db = dbService.getDb();
   const rows = await new Promise((resolve, reject) => {
-    db.all('SELECT id, name, email FROM employees WHERE (archived IS NULL OR archived = 0)', [], (err, r) => (err ? reject(err) : resolve(r || [])));
+    db.all('SELECT id, name, email, phoneNumber, oxfordHouseId, position, archived FROM employees WHERE (archived IS NULL OR archived = 0)', [], (err, r) => (err ? reject(err) : resolve(r || [])));
   });
   const archives = [];
   for (const r of rows) {
     const emailKey = (r.email || '').toLowerCase().trim();
     const idKey = String(r.id || '').trim();
     if (syncedEmails.has(emailKey) || matchedLocalIds.has(idKey)) continue;
+
+    const matchesHrPerson = mappedList.some((mapped) =>
+      isLikelySamePerson(mapped, {
+        email: r.email,
+        name: r.name,
+        phoneNumber: r.phoneNumber,
+        externalId: r.oxfordHouseId,
+        oxfordHouseId: r.oxfordHouseId,
+      })
+    );
+    if (matchesHrPerson) {
+      matchedLocalIds.add(idKey);
+      if (!updates.some((u) => u.employeeId === idKey)) {
+        const mapped = mappedList.find((m) =>
+          isLikelySamePerson(m, {
+            email: r.email,
+            name: r.name,
+            phoneNumber: r.phoneNumber,
+            externalId: r.oxfordHouseId,
+            oxfordHouseId: r.oxfordHouseId,
+          })
+        );
+        if (mapped) {
+          const fullRow = await new Promise((resolve, reject) => {
+            db.get('SELECT * FROM employees WHERE id = ?', [idKey], (err, row) => (err ? reject(err) : resolve(row)));
+          });
+          if (fullRow) {
+            const preview = buildHrUpdatePreview(mapped, fullRow, ignored);
+            if (!preview.same && !preview.isIgnored) {
+              updates.push(preview.update);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
     if (ignored.archive.has(idKey)) {
       suppressed.archives.push({ id: r.id, name: r.name, email: r.email });
       continue;
