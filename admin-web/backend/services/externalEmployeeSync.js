@@ -250,13 +250,19 @@ function mapExternalToOur(ext) {
  * Find the canonical employee by email (case-insensitive).
  * If multiple rows exist, returns the oldest by createdAt so we consistently update the same record.
  * @param {string} email
+ * @param {{ includeArchived?: boolean }} [opts]
  * @returns {Promise<object|null>}
  */
-function getEmployeeByEmail(email) {
+function getEmployeeByEmail(email, opts = {}) {
+  const includeArchived = opts.includeArchived === true;
   return new Promise((resolve, reject) => {
     const db = dbService.getDb();
+    const archivedOrder = includeArchived
+      ? 'CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END,'
+      : '';
+    const archivedFilter = includeArchived ? '' : ' AND (archived IS NULL OR archived = 0)';
     db.get(
-      'SELECT * FROM employees WHERE LOWER(TRIM(email)) = ? AND (archived IS NULL OR archived = 0) ORDER BY createdAt ASC, id ASC LIMIT 1',
+      `SELECT * FROM employees WHERE LOWER(TRIM(email)) = ?${archivedFilter} ORDER BY ${archivedOrder} createdAt ASC, id ASC LIMIT 1`,
       [email.trim().toLowerCase()],
       (err, row) => {
         if (err) reject(err);
@@ -264,6 +270,117 @@ function getEmployeeByEmail(email) {
       }
     );
   });
+}
+
+function emailLocalPart(email) {
+  return String(email || '').split('@')[0].toLowerCase().trim();
+}
+
+function firstNameToken(name) {
+  return String(name || '').split(/\s+/)[0].toLowerCase().trim();
+}
+
+/**
+ * HR stable id stored as oxfordHouseId and sometimes as employees.id (hr- prefix).
+ */
+function hrStableEmployeeId(externalId) {
+  const raw = String(externalId || '').trim();
+  if (!raw) return '';
+  return 'hr-' + raw.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 100);
+}
+
+/**
+ * Find a local employee row for an HR record when email changed (marriage, legal name, etc.).
+ * @param {string} oxfordHouseId
+ * @param {{ includeArchived?: boolean }} [opts]
+ * @returns {Promise<object|null>}
+ */
+function getEmployeeByOxfordHouseId(oxfordHouseId, opts = {}) {
+  const includeArchived = opts.includeArchived !== false;
+  const id = String(oxfordHouseId || '').trim();
+  if (!id) return Promise.resolve(null);
+  const hrId = hrStableEmployeeId(id);
+  return new Promise((resolve, reject) => {
+    const db = dbService.getDb();
+    const archivedOrder = includeArchived
+      ? 'CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END,'
+      : '';
+    const archivedFilter = includeArchived ? '' : ' AND (archived IS NULL OR archived = 0)';
+    db.get(
+      `SELECT * FROM employees
+       WHERE (
+         LOWER(TRIM(oxfordHouseId)) = LOWER(TRIM(?))
+         OR id = ?
+       )${archivedFilter}
+       ORDER BY ${archivedOrder} createdAt ASC, id ASC
+       LIMIT 1`,
+      [id, hrId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
+/**
+ * Same person when HR changed surname/email but mailbox prefix + first name still match.
+ * @param {object} mapped
+ * @param {object} localRow
+ * @returns {boolean}
+ */
+function isLikelySamePerson(mapped, localRow) {
+  if (!mapped || !localRow) return false;
+
+  const mappedExt = String(mapped.externalId || mapped.oxfordHouseId || '').trim();
+  const localExt = String(localRow.oxfordHouseId || '').trim();
+  if (mappedExt && localExt && mappedExt.toLowerCase() === localExt.toLowerCase()) {
+    return true;
+  }
+
+  const mappedLocal = emailLocalPart(mapped.email);
+  const localLocal = emailLocalPart(localRow.email);
+  if (!mappedLocal || mappedLocal !== localLocal) return false;
+
+  const mappedFirst = firstNameToken(mapped.name);
+  const localFirst = firstNameToken(localRow.name);
+  return Boolean(mappedFirst && localFirst && mappedFirst === localFirst);
+}
+
+/**
+ * Resolve the local employee row for an HR person (email, HR id, or name/email hint).
+ * @param {object} mapped
+ * @returns {Promise<{ employee: object|null, matchReason: string|null }>}
+ */
+async function findLocalEmployeeForHrMapped(mapped) {
+  const byEmail = await getEmployeeByEmail(mapped.email, { includeArchived: true });
+  if (byEmail) return { employee: byEmail, matchReason: 'email' };
+
+  if (mapped.externalId || mapped.oxfordHouseId) {
+    const byExt = await getEmployeeByOxfordHouseId(mapped.externalId || mapped.oxfordHouseId, {
+      includeArchived: true,
+    });
+    if (byExt) return { employee: byExt, matchReason: 'externalId' };
+  }
+
+  const localPart = emailLocalPart(mapped.email);
+  const firstName = firstNameToken(mapped.name);
+  if (localPart && firstName) {
+    const db = dbService.getDb();
+    const candidates = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT * FROM employees
+         WHERE LOWER(TRIM(email)) LIKE ?
+         ORDER BY CASE WHEN (archived IS NULL OR archived = 0) THEN 0 ELSE 1 END, createdAt ASC, id ASC`,
+        [`${localPart}@%`],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+    const match = candidates.find((row) => isLikelySamePerson(mapped, row));
+    if (match) return { employee: match, matchReason: 'personHint' };
+  }
+
+  return { employee: null, matchReason: null };
 }
 
 /**
@@ -368,7 +485,10 @@ async function upsertOne(mapped, existing) {
     const finalDefaultCostCenter = finalSelectedCostCenters.includes(existing.defaultCostCenter || '')
       ? (existing.defaultCostCenter || '')
       : (finalSelectedCostCenters[0] || '');
-    // Sync updates: name, position, phoneNumber, costCenters, additions/archivals only. baseAddress is preserved.
+    const mergedPosition = mergePositionPreservingDesignations(mapped.position, existing.position);
+    const emailChanged =
+      (existing.email || '').toLowerCase().trim() !== (mapped.email || '').toLowerCase().trim();
+    // Sync updates: name, email, position, phoneNumber, costCenters. baseAddress is preserved.
     // Always assign Employee ID from API when the API provides one; otherwise keep existing
     const oxfordHouseId =
       mapped.oxfordHouseId !== undefined && String(mapped.oxfordHouseId || '').trim() !== ''
@@ -377,13 +497,15 @@ async function upsertOne(mapped, existing) {
     await new Promise((resolve, reject) => {
       db.run(
         `UPDATE employees SET
-          name = ?, preferredName = ?, position = ?, phoneNumber = ?,
-          costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, oxfordHouseId = ?, updatedAt = ?
+          name = ?, preferredName = ?, email = ?, position = ?, phoneNumber = ?,
+          costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, oxfordHouseId = ?,
+          archived = 0, updatedAt = ?
         WHERE id = ?`,
         [
           mapped.name,
           existing.preferredName || '',
-          mergePositionPreservingDesignations(mapped.position, existing.position),
+          mapped.email,
+          mergedPosition,
           mapped.phoneNumber || '',
           JSON.stringify(syncedCostCenters),
           JSON.stringify(finalSelectedCostCenters),
@@ -395,7 +517,7 @@ async function upsertOne(mapped, existing) {
         (err) => (err ? reject(err) : resolve())
       );
     });
-    return { created: false, updated: true, id };
+    return { created: false, updated: true, id, emailChanged, restored: existing.archived === 1 };
   }
 
   // Re-check: another row with this email may exist (e.g. duplicate in same batch)
@@ -586,8 +708,10 @@ async function previewSyncFromExternal() {
   const syncedEmails = new Set(mappedList.map((m) => m.email.toLowerCase().trim()));
   const creates = [];
   const updates = [];
+  const matchedLocalIds = new Set();
+
   for (const mapped of mappedList) {
-    const existing = await getEmployeeByEmail(mapped.email);
+    const { employee: existing } = await findLocalEmployeeForHrMapped(mapped);
     const prevCC = existing && existing.costCenters
       ? (typeof existing.costCenters === 'string' ? JSON.parse(existing.costCenters || '[]') : existing.costCenters)
       : [];
@@ -601,33 +725,49 @@ async function previewSyncFromExternal() {
         position: mapped.position,
         costCenters: sanitizeCostCenters(mapped.costCenters),
       });
-    } else {
-      const nextCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
-        ? sanitizeCostCenters(mapped.costCenters)
-        : sanitizeCostCenters(prevCC);
-      const hadGroupedPrevCostCenter = (prevCC || []).some((cc) => shouldOmitCostCenter(cc));
-      const same =
-        (existing.name || '') === (mapped.name || '') &&
-        (existing.position || '') === (mapped.position || '') &&
-        JSON.stringify(sanitizeCostCenters(prevCC).sort()) === JSON.stringify(nextCostCenters.sort()) &&
-        (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
-        !hadGroupedPrevCostCenter;
-      if (!same && !ignored.update.has((mapped.email || '').toLowerCase().trim())) {
-        updates.push({
-          email: mapped.email,
-          name: mapped.name,
-          position: mapped.position,
-          costCenters: nextCostCenters,
-          phoneNumber: mapped.phoneNumber || '',
-          previous: {
-            name: existing.name,
-            position: existing.position,
-            phoneNumber: existing.phoneNumber || '',
-            costCenters: sanitizeCostCenters(prevCC),
-            selectedCostCenters: prevSelected,
-          },
-        });
-      }
+      continue;
+    }
+
+    matchedLocalIds.add(String(existing.id || '').trim());
+
+    const nextCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
+      ? sanitizeCostCenters(mapped.costCenters)
+      : sanitizeCostCenters(prevCC);
+    const mergedPosition = mergePositionPreservingDesignations(mapped.position, existing.position);
+    const hadGroupedPrevCostCenter = (prevCC || []).some((cc) => shouldOmitCostCenter(cc));
+    const emailChanged =
+      (existing.email || '').toLowerCase().trim() !== (mapped.email || '').toLowerCase().trim();
+    const same =
+      (existing.name || '') === (mapped.name || '') &&
+      (existing.position || '') === mergedPosition &&
+      JSON.stringify(sanitizeCostCenters(prevCC).sort()) === JSON.stringify(nextCostCenters.sort()) &&
+      (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
+      !emailChanged &&
+      !existing.archived &&
+      !hadGroupedPrevCostCenter;
+    const ignoredEmail = (mapped.email || '').toLowerCase().trim();
+    const ignoredLegacyEmail = (existing.email || '').toLowerCase().trim();
+    const isIgnored =
+      ignored.update.has(ignoredEmail) || ignored.update.has(ignoredLegacyEmail);
+    if (!same && !isIgnored) {
+      updates.push({
+        email: mapped.email,
+        employeeId: existing.id,
+        previousEmail: emailChanged ? existing.email : undefined,
+        name: mapped.name,
+        position: mergedPosition,
+        costCenters: nextCostCenters,
+        phoneNumber: mapped.phoneNumber || '',
+        restoredFromArchive: existing.archived === 1,
+        previous: {
+          email: existing.email,
+          name: existing.name,
+          position: existing.position,
+          phoneNumber: existing.phoneNumber || '',
+          costCenters: sanitizeCostCenters(prevCC),
+          selectedCostCenters: prevSelected,
+        },
+      });
     }
   }
   const db = dbService.getDb();
@@ -636,6 +776,7 @@ async function previewSyncFromExternal() {
   });
   const archives = rows
     .filter((r) => !syncedEmails.has((r.email || '').toLowerCase().trim()))
+    .filter((r) => !matchedLocalIds.has(String(r.id || '').trim()))
     .filter((r) => !ignored.archive.has(String(r.id || '').trim()))
     .map((r) => ({ id: r.id, name: r.name, email: r.email }));
   return { creates, updates, archives };
@@ -778,7 +919,7 @@ async function applySyncFromExternal(body) {
   const updateSet = new Set(toUpdate);
   for (const mapped of mappedList) {
     const emailKey = mapped.email.toLowerCase().trim();
-    const existing = await getEmployeeByEmail(mapped.email);
+    const { employee: existing } = await findLocalEmployeeForHrMapped(mapped);
     if (!existing && createSet.has(emailKey)) {
       try {
         await upsertOne(mapped, null);
@@ -787,7 +928,11 @@ async function applySyncFromExternal(body) {
       } catch (err) {
         stats.errors.push(`${mapped.email}: ${err.message}`);
       }
-    } else if (existing && updateSet.has(emailKey) && !ignored.update.has(emailKey)) {
+    } else if (existing && updateSet.has(emailKey)) {
+      const legacyEmail = (existing.email || '').toLowerCase().trim();
+      if (ignored.update.has(emailKey) || (legacyEmail && ignored.update.has(legacyEmail))) {
+        continue;
+      }
       try {
         await upsertOne(mapped, existing);
         stats.updated++;
@@ -861,12 +1006,15 @@ async function syncFromExternal() {
 
   for (const mapped of mappedList) {
     try {
-      const existing = await getEmployeeByEmail(mapped.email);
+      const { employee: existing } = await findLocalEmployeeForHrMapped(mapped);
       const result = await upsertOne(mapped, existing);
       stats.synced++;
       if (result.created) stats.created++;
       if (result.updated) stats.updated++;
       syncedEmails.add(mapped.email.toLowerCase().trim());
+      if (existing && existing.email) {
+        syncedEmails.add((existing.email || '').toLowerCase().trim());
+      }
     } catch (err) {
       stats.errors.push(`${mapped.email}: ${err.message}`);
       debugError('ExternalEmployeeSync: error for record', err);
@@ -920,5 +1068,6 @@ module.exports = {
   normalizeResponse,
   mapExternalToOur,
   getEmployeeByEmail,
+  findLocalEmployeeForHrMapped,
   dedupeAllByEmail,
 };

@@ -681,14 +681,24 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   };
 
   const getUpdateChangesText = (u: {
+    email?: string;
+    previousEmail?: string;
     name: string;
     position: string;
     phoneNumber?: string;
     costCenters: string[];
-    previous?: { name?: string; position?: string; phoneNumber?: string; costCenters?: string[] };
+    restoredFromArchive?: boolean;
+    previous?: { email?: string; name?: string; position?: string; phoneNumber?: string; costCenters?: string[] };
   }): string => {
     if (!u.previous) return `${u.position} · ${(u.costCenters || []).join(', ')}`;
     const changes: string[] = [];
+    const prevEmail = u.previousEmail || u.previous.email;
+    if (prevEmail && u.email && prevEmail.toLowerCase() !== u.email.toLowerCase()) {
+      changes.push(`Email: "${prevEmail}" → "${u.email}"`);
+    }
+    if (u.restoredFromArchive) {
+      changes.push('Restore from archive');
+    }
     if ((u.previous.name || '') !== (u.name || '')) {
       changes.push(`Name: "${u.previous.name || '-'}" -> "${u.name || '-'}"`);
     }
@@ -2640,6 +2650,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Select which changes to apply. Uncheck any you want to skip.
+            When HR changes someone&apos;s email or name (e.g. marriage), they appear under <strong>Update</strong> instead of create + archive so team assignments are kept.
           </Typography>
           {syncPreviewPlan && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
