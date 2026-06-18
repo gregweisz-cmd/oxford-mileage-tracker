@@ -58,6 +58,7 @@ import {
   GPS_TRIP_UI_STATE_KEY,
 } from '../services/endTripCoordinator';
 import { consumePendingGpsLocationPick } from '../utils/pendingLocationSelection';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface GpsTrackingScreenProps {
   navigation: any;
@@ -2325,6 +2326,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     }}
                     placeholder="Type house name, city, or address..."
                     placeholderTextColor="#999"
+                    {...searchTextInputProps}
                   />
                   <MaterialIcons name="search" size={24} color="#666" style={styles.searchInputIcon} />
                 </View>
@@ -2384,6 +2386,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       )}
                       style={styles.resultsList}
                       contentContainerStyle={oxfordHouseResults.length === 0 ? styles.resultsEmptyContainer : undefined}
+                      keyboardDismissMode="on-drag"
                       keyboardShouldPersistTaps="handled"
                       showsVerticalScrollIndicator={false}
                       ListEmptyComponent={

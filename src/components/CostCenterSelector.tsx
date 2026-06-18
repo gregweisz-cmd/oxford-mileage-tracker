@@ -14,6 +14,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { getCostCenters } from '../constants/costCenters';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface CostCenterSelectorProps {
   visible: boolean;
@@ -106,6 +107,7 @@ function CostCenterSelector({
                 value={searchText}
                 onChangeText={setSearchText}
                 placeholderTextColor="#999"
+                {...searchTextInputProps}
               />
             </View>
           </ScrollToOnFocusView>

@@ -48,6 +48,7 @@ import TripChainingModal from '../components/TripChainingModal';
 import { COST_CENTERS } from '../constants/costCenters';
 import { CostCenterAutoSelectionService, CostCenterSuggestion } from '../services/costCenterAutoSelectionService';
 import { consumePendingMileageLocationPick } from '../utils/pendingLocationSelection';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface MileageEntryScreenProps {
   navigation: any;
@@ -1802,6 +1803,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                   }}
                   placeholder="Type house name, city, or address..."
                   placeholderTextColor="#999"
+                  {...searchTextInputProps}
                 />
                 <MaterialIcons name="search" size={24} color="#666" style={styles.searchInputIcon} />
               </View>
@@ -1851,6 +1853,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
                 <FlatList
                   data={oxfordHouseResults}
                   keyExtractor={(item) => item.id}
+                  keyboardDismissMode="on-drag"
+                  keyboardShouldPersistTaps="handled"
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={styles.houseItem}

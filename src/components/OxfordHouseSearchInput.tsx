@@ -10,12 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { OxfordHouse, SavedAddress } from '../types';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import { SavedAddressService } from '../services/savedAddressService';
 import { DatabaseService } from '../services/database';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 type SearchResultItem = OxfordHouse & {
   isSavedAddress?: boolean;
@@ -267,6 +269,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
   };
 
   const handleCloseSearch = () => {
+    Keyboard.dismiss();
     setIsSearchVisible(false);
     setSearchQuery('');
     setIsManualEntry(false);
@@ -422,6 +425,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
                     placeholder={isManualEntry ? "Enter location manually..." : "Search by name, city, or state..."}
                     placeholderTextColor="#999"
                     autoFocus
+                    {...searchTextInputProps}
                   />
                   {searchQuery.length > 0 && (
                     <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
@@ -584,6 +588,8 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
                   renderItem={renderHouseItem}
                   style={styles.resultsList}
                   showsVerticalScrollIndicator={false}
+                  keyboardDismissMode="on-drag"
+                  keyboardShouldPersistTaps="handled"
                   contentContainerStyle={searchResults.length === 0 ? styles.emptyListContent : undefined}
                   ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
                   ListHeaderComponent={

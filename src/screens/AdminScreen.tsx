@@ -21,6 +21,7 @@ import EesRulesService, { EesRule } from '../services/eesRulesService';
 import { Employee } from '../types';
 import { COST_CENTERS } from '../constants/costCenters';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface AdminScreenProps {
   navigation: any;
@@ -489,6 +490,7 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
             onChangeText={setSearchQuery}
             placeholder="Search employees..."
             placeholderTextColor="#999"
+            {...searchTextInputProps}
           />
         </ScrollToOnFocusView>
       </View>
@@ -501,6 +503,8 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
         keyExtractor={(item) => item.id}
         style={styles.employeeList}
         showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
       />
 
       {/* Rules Management Section */}

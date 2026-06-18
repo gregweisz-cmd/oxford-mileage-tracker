@@ -13,6 +13,7 @@ import { ThemeProvider } from './src/contexts/ThemeContext';
 import { NotificationProvider } from './src/contexts/NotificationContext';
 import GlobalGpsStopButton from './src/components/GlobalGpsStopButton';
 import GlobalGpsReturnButton from './src/components/GlobalGpsReturnButton';
+import { KeyboardDoneAccessory } from './src/components/KeyboardDoneAccessory';
 import { useGpsTracking } from './src/contexts/GpsTrackingContext';
 import { AppInitializer } from './src/services/appInitializer';
 import { SyncIntegrationService } from './src/services/syncIntegrationService';
@@ -246,6 +247,7 @@ export default function App() {
         <ThemeProvider>
           <GpsTrackingProvider>
             <StatusBar style="light" />
+            <KeyboardDoneAccessory />
             <LoginScreen 
               navigation={null} 
               onLogin={handleLogin}
@@ -263,6 +265,7 @@ export default function App() {
         <ThemeProvider>
           <GpsTrackingProvider>
             <StatusBar style="light" />
+            <KeyboardDoneAccessory />
             <OnboardingScreen 
                 employeeId={currentEmployee.id}
                 onComplete={async () => {
@@ -289,6 +292,7 @@ export default function App() {
         <ThemeProvider>
           <GpsTrackingProvider>
             <StatusBar style="light" />
+            <KeyboardDoneAccessory />
             <SetupWizard 
                 employee={currentEmployee} 
                 onComplete={async () => {
@@ -322,6 +326,7 @@ export default function App() {
             }}
           >
           <StatusBar style="auto" />
+          <KeyboardDoneAccessory />
           <Stack.Navigator
             initialRouteName="Home"
             screenOptions={{

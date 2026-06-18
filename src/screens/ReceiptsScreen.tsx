@@ -26,6 +26,7 @@ import UnifiedHeader from '../components/UnifiedHeader';
 import { ApiSyncService } from '../services/apiSyncService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { getSyncMonthScope } from '../services/syncScopeService';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -836,6 +837,8 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
         keyExtractor={receiptKeyExtractor}
         renderItem={renderReceiptItem}
         showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         removeClippedSubviews
         initialNumToRender={10}
         maxToRenderPerBatch={8}
@@ -856,6 +859,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
             onChangeText={setSearchQuery}
             autoCapitalize="none"
             autoCorrect={false}
+            {...searchTextInputProps}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity

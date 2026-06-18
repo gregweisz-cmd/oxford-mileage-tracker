@@ -15,6 +15,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { SavedAddress, Employee } from '../types';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface AddressSelectorProps {
   visible: boolean;
@@ -247,6 +248,7 @@ export default function AddressSelector({
                 value={searchText}
                 onChangeText={setSearchText}
                 placeholderTextColor="#999"
+                {...searchTextInputProps}
               />
             </View>
 
@@ -266,6 +268,8 @@ export default function AddressSelector({
               keyExtractor={(item) => item.id}
               style={styles.list}
               showsVerticalScrollIndicator={false}
+              keyboardDismissMode="on-drag"
+              keyboardShouldPersistTaps="handled"
             />
 
             {filteredAddresses.length === 0 && (

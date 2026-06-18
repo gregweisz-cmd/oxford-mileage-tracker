@@ -7,6 +7,7 @@ import {
   GooglePlacesService,
 } from '../services/googlePlacesService';
 import { ScrollToOnFocusView } from './KeyboardAwareScrollView';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 import { toCanonicalAddress } from '../utils/locationSelection';
 
 interface GooglePlacesAddressInputProps {
@@ -116,6 +117,7 @@ export default function GooglePlacesAddressInput({
             setIsInputFocused(false);
             setShowPredictions(false);
           }}
+          {...searchTextInputProps}
         />
       </ScrollToOnFocusView>
       {showPredictions ? (

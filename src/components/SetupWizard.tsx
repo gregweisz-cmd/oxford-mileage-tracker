@@ -19,6 +19,7 @@ import { Employee } from '../types';
 import * as Location from 'expo-location';
 import GooglePlacesAddressInput from './GooglePlacesAddressInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface SetupWizardProps {
   employee: Employee;
@@ -283,6 +284,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
                   placeholderTextColor="#999"
                   value={costCenterSearchText}
                   onChangeText={setCostCenterSearchText}
+                  {...searchTextInputProps}
                 />
               </ScrollToOnFocusView>
               {costCenterSearchText.length > 0 && (

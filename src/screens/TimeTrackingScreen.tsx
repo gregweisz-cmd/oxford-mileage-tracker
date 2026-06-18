@@ -18,6 +18,7 @@ import UnifiedHeader from '../components/UnifiedHeader';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
 import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
+import { searchTextInputProps } from '../utils/keyboardDismiss';
 import { AnomalyDetectionService } from '../services/anomalyDetectionService';
 
 interface TimeTrackingScreenProps {
@@ -508,6 +509,7 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
               onChangeText={setSearchQuery}
               autoCapitalize="none"
               autoCorrect={false}
+              {...searchTextInputProps}
             />
           </ScrollToOnFocusView>
           {searchQuery.length > 0 && (
