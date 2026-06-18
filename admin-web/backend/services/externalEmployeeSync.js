@@ -50,6 +50,115 @@ function normalizeResponse(body) {
  * @param {string} name
  * @returns {string}
  */
+function resolveEmailFromExternal(ext) {
+  if (!ext || typeof ext !== 'object') return '';
+  const candidates = [
+    ext.workEmail,
+    ext.work_email,
+    ext.WorkEmail,
+    ext.email,
+    ext.Email,
+    ext.mail,
+    ext.primaryEmail,
+    ext.primary_email,
+    ext.PrimaryEmail,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim().toLowerCase();
+    if (value.includes('@')) return value;
+  }
+  const userName = String(ext.userName || ext.UserName || '').trim().toLowerCase();
+  if (userName.includes('@')) return userName;
+  return '';
+}
+
+function resolveNameFromExternal(ext, email) {
+  if (!ext || typeof ext !== 'object') return '';
+  const first = String(ext.firstName || ext.FirstName || '').trim();
+  const last = String(ext.lastName || ext.LastName || '').trim();
+  if (first || last) {
+    return formatNameForDisplay(`${first} ${last}`.trim());
+  }
+  let name = (
+    ext.name ||
+    ext.Name ||
+    ext.fullName ||
+    ext.full_name ||
+    ext.displayName ||
+    ext.DisplayName ||
+    ''
+  )
+    .toString()
+    .trim();
+  if (!name) name = nameFromEmail(email);
+  if (!name) return '';
+  return formatNameForDisplay(name);
+}
+
+function resolveExternalId(ext) {
+  if (!ext || typeof ext !== 'object') return undefined;
+  const id = String(
+    ext.id ||
+      ext.Id ||
+      ext.employeeId ||
+      ext.employee_id ||
+      ext.ripplingProfileNumber ||
+      ext.rippling_profile_number ||
+      ''
+  ).trim();
+  return id || undefined;
+}
+
+function normalizePhoneForMatch(value) {
+  return String(value || '').replace(/\D/g, '').slice(-10);
+}
+
+function parseApiTimestamp(ext) {
+  const raw =
+    ext?.updatedAt ||
+    ext?.UpdatedAt ||
+    ext?.lastModified ||
+    ext?.modifiedAt ||
+    ext?.lastUpdated ||
+    ext?.LastUpdated;
+  if (!raw) return 0;
+  const parsed = Date.parse(String(raw));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * When Appwarmer returns multiple rows for one person (e.g. stale login + current Rippling row),
+ * prefer work email fields and the most recently updated record.
+ */
+function pickBestExternalRecord(group) {
+  if (!group || group.length === 0) return null;
+  if (group.length === 1) return group[0];
+  const scored = group.map((ext) => {
+    let score = parseApiTimestamp(ext);
+    if (ext.workEmail || ext.work_email || ext.WorkEmail) score += 1_000_000_000_000;
+    if (ext.email || ext.Email) score += 100_000_000_000;
+    if (ext.id || ext.Id || ext.employeeId || ext.employee_id) score += 10_000_000_000;
+    if (ext.userName && !resolveEmailFromExternal(ext)) score -= 50_000_000_000;
+    return { ext, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].ext;
+}
+
+function externalPersonKey(ext) {
+  const id = resolveExternalId(ext);
+  if (id) return `id:${id}`;
+  const phone = normalizePhoneForMatch(
+    ext.phoneNumber || ext.phone || ext.Phone || ext.telephone || ext.workNumber || ext.work_number
+  );
+  if (phone) return `phone:${phone}`;
+  const email = resolveEmailFromExternal(ext);
+  if (email) return `email:${email}`;
+  const userName = String(ext.userName || ext.UserName || '').trim().toLowerCase();
+  if (userName) return `username:${userName}`;
+  return '';
+}
+
 function formatNameForDisplay(name) {
   if (!name || typeof name !== 'string') return '';
   return name
@@ -216,22 +325,17 @@ async function ensureCostCentersFromMappedEmployees(mappedList) {
  */
 function mapExternalToOur(ext) {
   if (!ext || typeof ext !== 'object') return null;
-  const email = (ext.email || ext.Email || ext.mail || ext.userName || '').toString().trim().toLowerCase();
+  const email = resolveEmailFromExternal(ext);
   if (!email || !email.includes('@')) return null;
-  let name = (ext.name || ext.Name || ext.fullName || ext.full_name || ext.displayName || ext.DisplayName || '').toString().trim();
-  if (!name) name = nameFromEmail(email);
+  const name = resolveNameFromExternal(ext, email);
   if (!name) return null;
-  name = formatNameForDisplay(name);
 
   const costCenters = sanitizeCostCenters(parseCostCenters(ext));
 
   const position = (ext.position || ext.Position || ext.title || ext.jobTitle || 'Staff').toString().trim() || 'Staff';
-  const phoneNumber = (ext.phoneNumber || ext.phone || ext.Phone || ext.telephone || '').toString().trim() || '';
+  const phoneNumber = (ext.phoneNumber || ext.phone || ext.Phone || ext.telephone || ext.workNumber || ext.work_number || '').toString().trim() || '';
   const baseAddress = (ext.baseAddress || ext.base_address || ext.address || ext.Address || '').toString().trim() || '';
-  // Employee ID from API (id, Id, userName, employeeId, employee_id) – assign for everyone when present
-  const externalId = (
-    ext.id || ext.Id || ext.userName || ext.employeeId || ext.employee_id || ''
-  ).toString().trim() || undefined;
+  const externalId = resolveExternalId(ext);
   const oxfordHouseId = externalId || '';
 
   return {
@@ -597,19 +701,36 @@ async function fetchAndMapExternal() {
   if (!res.ok) throw new Error(`External API returned ${res.status}: ${res.statusText}`);
   const body = await res.json().catch(() => ({}));
   const rawList = normalizeResponse(body);
-  const personKey = (ext) => (ext.id || ext.Id || '').toString().trim() || (ext.userName || ext.email || ext.Email || '').toString().trim().toLowerCase();
   const byPerson = new Map();
   for (const ext of rawList) {
-    const k = personKey(ext);
+    const k = externalPersonKey(ext);
     if (!k) continue;
     if (!byPerson.has(k)) byPerson.set(k, []);
     byPerson.get(k).push(ext);
   }
+
+  // Also merge rows that share a phone number (stale login alias + current Rippling row).
+  const phoneToKey = new Map();
+  for (const [key, group] of byPerson.entries()) {
+    const phone = normalizePhoneForMatch(
+      group[0]?.phoneNumber || group[0]?.phone || group[0]?.Phone || group[0]?.workNumber || group[0]?.work_number
+    );
+    if (!phone) continue;
+    const existingKey = phoneToKey.get(phone);
+    if (!existingKey) {
+      phoneToKey.set(phone, key);
+      continue;
+    }
+    if (existingKey === key) continue;
+    byPerson.get(existingKey).push(...group);
+    byPerson.delete(key);
+  }
+
   const mergedList = [];
   for (const group of byPerson.values()) {
-    const first = group[0];
+    const best = pickBestExternalRecord(group);
     const combined = [...new Set(group.flatMap((e) => parseCostCenters(e)))];
-    mergedList.push(combined.length ? { ...first, costCenters: combined } : first);
+    mergedList.push(combined.length ? { ...best, costCenters: combined } : best);
   }
   const mappedList = [];
   for (const ext of mergedList) {
@@ -1060,6 +1181,36 @@ async function syncFromExternal() {
   return stats;
 }
 
+/**
+ * Admin/debug: show raw Appwarmer rows and our mapped output for a search term.
+ * @param {string} query
+ * @returns {Promise<Array<{ personKey: string, raw: object, mapped: object|null }>>}
+ */
+async function lookupExternalEmployees(query) {
+  const token = getToken();
+  if (!token) {
+    throw new Error('External employee API not configured.');
+  }
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return [];
+
+  const res = await fetch(EXTERNAL_API_URL, {
+    method: 'GET',
+    headers: { token, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`External API returned ${res.status}: ${res.statusText}`);
+  const body = await res.json().catch(() => ({}));
+  const rawList = normalizeResponse(body);
+
+  return rawList
+    .filter((ext) => JSON.stringify(ext).toLowerCase().includes(q))
+    .map((ext) => ({
+      personKey: externalPersonKey(ext),
+      raw: ext,
+      mapped: mapExternalToOur(ext),
+    }));
+}
+
 module.exports = {
   getToken,
   syncFromExternal,
@@ -1069,5 +1220,6 @@ module.exports = {
   mapExternalToOur,
   getEmployeeByEmail,
   findLocalEmployeeForHrMapped,
+  lookupExternalEmployees,
   dedupeAllByEmail,
 };

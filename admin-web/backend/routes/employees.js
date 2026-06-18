@@ -270,6 +270,33 @@ router.post('/api/employees/sync-from-external/preview', requireAnyRole(['admin'
 }));
 
 /**
+ * Debug HR feed: show raw Appwarmer rows for a search term (admin only).
+ * GET /api/employees/sync-from-external/lookup?q=jacklyn
+ */
+router.get('/api/employees/sync-from-external/lookup', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
+  const query = String(req.query.q || '').trim();
+  if (!query) {
+    return res.status(400).json({ error: 'Query parameter q is required (e.g. ?q=jacklyn or ?q=39)' });
+  }
+  try {
+    const matches = await externalEmployeeSync.lookupExternalEmployees(query);
+    res.json({
+      query,
+      source: 'https://api.appwarmer.com/api/employee',
+      note: 'This is the Appwarmer feed our sync uses — not Rippling directly. Compare raw fields to Rippling if they differ.',
+      count: matches.length,
+      matches,
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('not configured')) {
+      return res.status(503).json({ error: err.message });
+    }
+    debugError('❌ HR lookup failed:', err);
+    res.status(500).json({ error: err.message || 'Lookup failed' });
+  }
+}));
+
+/**
  * Apply only approved HR sync changes.
  * POST /api/employees/sync-from-external/apply
  * Body: { toCreate: string[] (emails), toUpdate: string[] (emails), toArchive: string[] (ids) }
