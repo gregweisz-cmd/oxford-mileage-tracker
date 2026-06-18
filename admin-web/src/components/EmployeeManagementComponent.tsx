@@ -240,6 +240,11 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
       previous: { name: string; position: string; phoneNumber?: string; costCenters: string[] };
     }>;
     archives: Array<{ id: string; name: string; email: string }>;
+    suppressed?: {
+      updates: Array<{ email: string; name: string; employeeId?: string; previousEmail?: string }>;
+      archives: Array<{ id: string; name: string; email: string }>;
+    };
+    ignoredPreferenceCount?: number;
   } | null>(null);
   const [syncPreviewApproved, setSyncPreviewApproved] = useState<{
     creates: Set<string>;
@@ -251,6 +256,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     archives: Set<string>;
   }>({ updates: new Set(), archives: new Set() });
   const [syncApplyLoading, setSyncApplyLoading] = useState(false);
+  const [syncClearIgnoredLoading, setSyncClearIgnoredLoading] = useState(false);
   const [dedupeLoading, setDedupeLoading] = useState(false);
   const quickEditCostCenterContainerRef = useRef<HTMLDivElement>(null);
   const employeeCostCenterContainerRef = useRef<HTMLDivElement>(null);
@@ -562,48 +568,75 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     return [];
   };
 
+  const applyHrSyncPreviewPlan = (plan: NonNullable<typeof syncPreviewPlan>) => {
+    setSyncPreviewPlan(plan);
+    setSyncPreviewApproved({
+      creates: new Set((plan.creates || []).map((c) => c.email)),
+      updates: new Set((plan.updates || []).map((u) => u.email)),
+      archives: new Set((plan.archives || []).map((a) => a.id)),
+    });
+    setSyncPreviewIgnore({ updates: new Set(), archives: new Set() });
+    setSyncPreviewOpen(true);
+  };
+
+  const loadHrSyncPreview = async (): Promise<boolean> => {
+    const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/preview`, {
+      method: 'POST',
+      headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSyncFromExternalMessage({
+        type: 'error',
+        text: sessionExpiredMessage(res.status, (data as { error?: string }).error || `Preview failed (${res.status})`),
+      });
+      return false;
+    }
+    applyHrSyncPreviewPlan(data as NonNullable<typeof syncPreviewPlan>);
+    return true;
+  };
+
   const handleSyncFromExternalApi = async () => {
     setSyncFromExternalLoading(true);
     setSyncFromExternalMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/preview`, {
-        method: 'POST',
-        headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const plan = data as {
-          creates: Array<{ email: string; name: string; position: string; costCenters: string[] }>;
-          updates: Array<{
-            email: string;
-            name: string;
-            position: string;
-            phoneNumber?: string;
-            costCenters: string[];
-            previous: { name: string; position: string; phoneNumber?: string; costCenters: string[] };
-          }>;
-          archives: Array<{ id: string; name: string; email: string }>;
-        };
-        setSyncPreviewPlan(plan);
-        setSyncPreviewApproved({
-          creates: new Set((plan.creates || []).map((c: { email: string }) => c.email)),
-          updates: new Set((plan.updates || []).map((u: { email: string }) => u.email)),
-          archives: new Set((plan.archives || []).map((a: { id: string }) => a.id)),
-        });
-        setSyncPreviewIgnore({ updates: new Set(), archives: new Set() });
-        setSyncPreviewOpen(true);
-      } else {
-        setSyncFromExternalMessage({
-          type: 'error',
-          text: sessionExpiredMessage(res.status, (data as { error?: string }).error || `Preview failed (${res.status})`),
-        });
-      }
+      await loadHrSyncPreview();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Preview request failed';
       setSyncFromExternalMessage({ type: 'error', text: msg });
       debugError('Sync from HR API preview failed', e);
     } finally {
       setSyncFromExternalLoading(false);
+    }
+  };
+
+  const handleClearHrSyncSuppressed = async () => {
+    setSyncClearIgnoredLoading(true);
+    setSyncFromExternalMessage(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/employees/sync-from-external/ignored`, {
+        method: 'DELETE',
+        headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ all: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncFromExternalMessage({
+          type: 'error',
+          text: sessionExpiredMessage(res.status, (data as { error?: string }).error || 'Failed to clear suppressed preferences'),
+        });
+        return;
+      }
+      setSyncFromExternalMessage({
+        type: 'success',
+        text: 'Suppressed HR sync preferences cleared. Reloading preview…',
+      });
+      await loadHrSyncPreview();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to clear suppressed preferences';
+      setSyncFromExternalMessage({ type: 'error', text: msg });
+    } finally {
+      setSyncClearIgnoredLoading(false);
     }
   };
 
@@ -2738,6 +2771,43 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               )}
               {syncPreviewPlan.creates.length === 0 && syncPreviewPlan.updates.length === 0 && syncPreviewPlan.archives.length === 0 && (
                 <Typography variant="body2" color="text.secondary">No changes from HR.</Typography>
+              )}
+              {((syncPreviewPlan.suppressed?.updates?.length ?? 0) > 0 ||
+                (syncPreviewPlan.suppressed?.archives?.length ?? 0) > 0 ||
+                (syncPreviewPlan.ignoredPreferenceCount ?? 0) > 0) && (
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    {(syncPreviewPlan.suppressed?.updates?.length ?? 0) +
+                      (syncPreviewPlan.suppressed?.archives?.length ?? 0) >
+                    0
+                      ? `${(syncPreviewPlan.suppressed?.updates?.length ?? 0) + (syncPreviewPlan.suppressed?.archives?.length ?? 0)} change(s) are hidden because you previously chose "Don't ask again".`
+                      : `${syncPreviewPlan.ignoredPreferenceCount} suppressed preference(s) are saved.`}
+                  </Typography>
+                  {(syncPreviewPlan.suppressed?.updates?.length ?? 0) > 0 && (
+                    <Typography variant="caption" component="div" sx={{ mb: 0.5 }}>
+                      Hidden updates:{' '}
+                      {syncPreviewPlan.suppressed!.updates
+                        .map((u) => `${u.name} (${u.previousEmail || u.email})`)
+                        .join('; ')}
+                    </Typography>
+                  )}
+                  {(syncPreviewPlan.suppressed?.archives?.length ?? 0) > 0 && (
+                    <Typography variant="caption" component="div" sx={{ mb: 1 }}>
+                      Hidden archives:{' '}
+                      {syncPreviewPlan.suppressed!.archives
+                        .map((a) => `${a.name} (${a.email})`)
+                        .join('; ')}
+                    </Typography>
+                  )}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleClearHrSyncSuppressed}
+                    disabled={syncClearIgnoredLoading || syncApplyLoading}
+                  >
+                    {syncClearIgnoredLoading ? 'Clearing…' : 'Show suppressed changes again'}
+                  </Button>
+                </Alert>
               )}
             </Box>
           )}

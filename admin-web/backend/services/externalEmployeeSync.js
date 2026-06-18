@@ -819,6 +819,78 @@ async function saveIgnoredHrSyncChanges(body = {}) {
   return { ignoredUpdatesSaved, ignoredArchivesSaved };
 }
 
+async function listIgnoredHrSyncChanges() {
+  const db = dbService.getDb();
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT action, targetType, targetValue, createdAt FROM hr_sync_ignored_changes ORDER BY createdAt DESC',
+      [],
+      (err, rows) => (err ? reject(err) : resolve(rows || []))
+    );
+  });
+}
+
+/**
+ * Remove persisted "don't ask again" HR sync preferences.
+ * @param {{ all?: boolean, emails?: string[], employeeIds?: string[] }} [options]
+ */
+async function clearIgnoredHrSyncChanges(options = {}) {
+  const db = dbService.getDb();
+  const clearAll = options.all !== false && (!options.emails || options.emails.length === 0) && (!options.employeeIds || options.employeeIds.length === 0);
+
+  if (clearAll) {
+    const result = await new Promise((resolve, reject) => {
+      db.run('DELETE FROM hr_sync_ignored_changes', [], function onDelete(err) {
+        if (err) reject(err);
+        else resolve({ cleared: this.changes });
+      });
+    });
+    return result;
+  }
+
+  let cleared = 0;
+  const emails = Array.isArray(options.emails)
+    ? options.emails.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const employeeIds = Array.isArray(options.employeeIds)
+    ? options.employeeIds.map((v) => String(v || '').trim()).filter(Boolean)
+    : [];
+
+  for (const email of new Set(emails)) {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `DELETE FROM hr_sync_ignored_changes WHERE action = 'update' AND targetType = 'email' AND LOWER(targetValue) = ?`,
+        [email],
+        function onDelete(err) {
+          if (err) reject(err);
+          else {
+            cleared += this.changes;
+            resolve();
+          }
+        }
+      );
+    });
+  }
+
+  for (const employeeId of new Set(employeeIds)) {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `DELETE FROM hr_sync_ignored_changes WHERE action = 'archive' AND targetType = 'employeeId' AND targetValue = ?`,
+        [employeeId],
+        function onDelete(err) {
+          if (err) reject(err);
+          else {
+            cleared += this.changes;
+            resolve();
+          }
+        }
+      );
+    });
+  }
+
+  return { cleared };
+}
+
 /**
  * Preview what sync would do: returns creates, updates, and archives without writing.
  * @returns {Promise<{ creates: Array<{email,name,position,costCenters}>, updates: Array<{email,name,position,costCenters,previous}>, archives: Array<{id,name,email}> }>}
@@ -829,6 +901,7 @@ async function previewSyncFromExternal() {
   const syncedEmails = new Set(mappedList.map((m) => m.email.toLowerCase().trim()));
   const creates = [];
   const updates = [];
+  const suppressed = { updates: [], archives: [] };
   const matchedLocalIds = new Set();
 
   for (const mapped of mappedList) {
@@ -870,6 +943,15 @@ async function previewSyncFromExternal() {
     const ignoredLegacyEmail = (existing.email || '').toLowerCase().trim();
     const isIgnored =
       ignored.update.has(ignoredEmail) || ignored.update.has(ignoredLegacyEmail);
+    if (!same && isIgnored) {
+      suppressed.updates.push({
+        email: mapped.email,
+        name: mapped.name,
+        employeeId: existing.id,
+        previousEmail: emailChanged ? existing.email : undefined,
+        reason: ignored.update.has(ignoredEmail) ? 'email' : 'legacyEmail',
+      });
+    }
     if (!same && !isIgnored) {
       updates.push({
         email: mapped.email,
@@ -895,12 +977,27 @@ async function previewSyncFromExternal() {
   const rows = await new Promise((resolve, reject) => {
     db.all('SELECT id, name, email FROM employees WHERE (archived IS NULL OR archived = 0)', [], (err, r) => (err ? reject(err) : resolve(r || [])));
   });
-  const archives = rows
-    .filter((r) => !syncedEmails.has((r.email || '').toLowerCase().trim()))
-    .filter((r) => !matchedLocalIds.has(String(r.id || '').trim()))
-    .filter((r) => !ignored.archive.has(String(r.id || '').trim()))
-    .map((r) => ({ id: r.id, name: r.name, email: r.email }));
-  return { creates, updates, archives };
+  const archives = [];
+  for (const r of rows) {
+    const emailKey = (r.email || '').toLowerCase().trim();
+    const idKey = String(r.id || '').trim();
+    if (syncedEmails.has(emailKey) || matchedLocalIds.has(idKey)) continue;
+    if (ignored.archive.has(idKey)) {
+      suppressed.archives.push({ id: r.id, name: r.name, email: r.email });
+      continue;
+    }
+    archives.push({ id: r.id, name: r.name, email: r.email });
+  }
+
+  const ignoredPreferences = await listIgnoredHrSyncChanges();
+  return {
+    creates,
+    updates,
+    archives,
+    suppressed,
+    ignoredPreferenceCount: ignoredPreferences.length,
+    ignoredPreferences,
+  };
 }
 
 /** Tables that reference employees.id via employeeId (reassign to keepId before deleting duplicate) */
@@ -1221,5 +1318,7 @@ module.exports = {
   getEmployeeByEmail,
   findLocalEmployeeForHrMapped,
   lookupExternalEmployees,
+  listIgnoredHrSyncChanges,
+  clearIgnoredHrSyncChanges,
   dedupeAllByEmail,
 };

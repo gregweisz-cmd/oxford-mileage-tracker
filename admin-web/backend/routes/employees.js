@@ -297,6 +297,25 @@ router.get('/api/employees/sync-from-external/lookup', requireAnyRole(['admin'])
 }));
 
 /**
+ * List persisted HR sync "don't ask again" preferences.
+ * GET /api/employees/sync-from-external/ignored
+ */
+router.get('/api/employees/sync-from-external/ignored', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
+  const ignoredPreferences = await externalEmployeeSync.listIgnoredHrSyncChanges();
+  res.json({ count: ignoredPreferences.length, ignoredPreferences });
+}));
+
+/**
+ * Clear HR sync "don't ask again" preferences so suppressed changes appear again.
+ * DELETE /api/employees/sync-from-external/ignored
+ * Body (optional): { all: true } or { emails: string[], employeeIds: string[] }
+ */
+router.delete('/api/employees/sync-from-external/ignored', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
+  const result = await externalEmployeeSync.clearIgnoredHrSyncChanges(req.body || { all: true });
+  res.json({ message: 'HR sync suppressed preferences cleared', ...result });
+}));
+
+/**
  * Apply only approved HR sync changes.
  * POST /api/employees/sync-from-external/apply
  * Body: { toCreate: string[] (emails), toUpdate: string[] (emails), toArchive: string[] (ids) }
