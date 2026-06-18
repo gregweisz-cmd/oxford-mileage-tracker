@@ -58,7 +58,9 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginSuccess }) => {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch employee data: ${response.status}`);
+          const body = await response.json().catch(() => ({}));
+          const message = (body as { error?: string }).error || `Failed to verify session (${response.status})`;
+          throw new Error(message);
         }
 
         const verifiedSession = await response.json();

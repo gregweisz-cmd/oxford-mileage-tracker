@@ -51,6 +51,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         const friendly: Record<string, string> = {
           database_error:
             'Sign-in failed while loading your account. Please try again in a minute or contact support.',
+          'Authentication failed. Please try again.':
+            'Google sign-in could not be completed. Please try again or use email and password.',
         };
         setError(friendly[decoded] || decoded);
       }
