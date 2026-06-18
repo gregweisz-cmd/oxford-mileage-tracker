@@ -106,6 +106,129 @@ function getGoogleClientSecret() {
   return String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
 }
 
+function getWebGoogleRedirectUri() {
+  return (
+    process.env.GOOGLE_REDIRECT_URI ||
+    `${(process.env.API_BASE_URL || 'http://localhost:3003').replace(/\/+$/, '')}/api/auth/google/callback`
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientGoogleTokenError(err) {
+  const code = String(err?.code || err?.error?.code || '').toUpperCase();
+  const msg = String(err?.message || '').toLowerCase();
+  if (
+    code === 'ERR_STREAM_PREMATURE_CLOSE' ||
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNABORTED' ||
+    code === 'ENOTFOUND' ||
+    code === 'EAI_AGAIN' ||
+    code === 'UND_ERR_SOCKET'
+  ) {
+    return true;
+  }
+  return (
+    msg.includes('premature close') ||
+    msg.includes('socket hang up') ||
+    msg.includes('network') ||
+    msg.includes('fetch failed') ||
+    msg.includes('aborted')
+  );
+}
+
+function googleOAuthUserErrorMessage(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  const code = String(error?.code || error?.error || '').toLowerCase();
+  if (isTransientGoogleTokenError(error)) {
+    return 'Connection to Google was interrupted. Please try Continue with Google again.';
+  }
+  if (msg.includes('redirect_uri_mismatch') || code === 'redirect_uri_mismatch') {
+    return 'Google redirect URI mismatch. Please contact support.';
+  }
+  if (msg.includes('invalid_grant') || code === 'invalid_grant') {
+    return 'Google sign-in expired. Please try Continue with Google again.';
+  }
+  if (msg.includes('invalid_client') || code === 'invalid_client') {
+    return 'Google sign-in is misconfigured. Please contact support.';
+  }
+  return 'Authentication failed. Please try again.';
+}
+
+async function exchangeGoogleAuthCodeViaFetch(code, redirectUri) {
+  const body = new URLSearchParams({
+    code: String(code),
+    client_id: googleClientId,
+    client_secret: getGoogleClientSecret(),
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+  }).toString();
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body,
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error_description || data.error || 'Token exchange failed');
+      err.code = data.error;
+      throw err;
+    }
+    return {
+      tokens: {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        id_token: data.id_token,
+        expiry_date: data.expires_in ? Date.now() + Number(data.expires_in) * 1000 : undefined,
+        token_type: data.token_type,
+        scope: data.scope,
+      },
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Exchange OAuth code for tokens; retry transient Render↔Google network failures. */
+async function exchangeGoogleAuthCode(oauthClient, code, options = {}) {
+  const { label = 'OAuth', redirectUri = getWebGoogleRedirectUri() } = options;
+  const maxAttempts = 3;
+  let lastErr;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      debugLog(`🔐 ${label}: exchanging auth code (attempt ${attempt}/${maxAttempts})...`);
+      return await oauthClient.getToken(String(code));
+    } catch (err) {
+      lastErr = err;
+      debugError(`❌ ${label}: getToken failed (attempt ${attempt}/${maxAttempts}):`, err?.message || err);
+      if (!isTransientGoogleTokenError(err) || attempt === maxAttempts) break;
+      const delayMs = 300 * Math.pow(2, attempt - 1);
+      debugWarn(`⚠️  ${label}: retrying token exchange in ${delayMs}ms...`);
+      await sleep(delayMs);
+    }
+  }
+
+  debugWarn(`⚠️  ${label}: falling back to native fetch token exchange...`);
+  try {
+    return await exchangeGoogleAuthCodeViaFetch(code, redirectUri);
+  } catch (fetchErr) {
+    debugError(`❌ ${label}: fetch token exchange failed:`, fetchErr?.message || fetchErr);
+    throw lastErr || fetchErr;
+  }
+}
+
 /** Build Google auth URL. Omit prompt so returning users reuse their Google session (no forced re-consent). */
 function buildGoogleOAuthUrl(options = {}) {
   const { state = '/', redirectUri, ensureRefresh = false } = options;
@@ -754,7 +877,10 @@ router.get('/api/auth/google/callback', async (req, res) => {
     debugLog('🔐 Exchanging Google authorization code for tokens...');
 
     // Exchange code for tokens
-    const { tokens } = await googleClient.getToken(code);
+    const { tokens } = await exchangeGoogleAuthCode(googleClient, code, {
+      label: 'Web OAuth',
+      redirectUri: getWebGoogleRedirectUri(),
+    });
     googleClient.setCredentials(tokens);
 
     debugLog('✅ Received tokens from Google, verifying ID token...');
@@ -960,7 +1086,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
           } catch (loginErr) {
             debugError('❌ Error finalizing Google login:', loginErr);
             const frontendUrl = resolveWebPortalRedirectBase();
-            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
+            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(googleOAuthUserErrorMessage(loginErr))}`);
           }
         }
       }
@@ -968,7 +1094,7 @@ router.get('/api/auth/google/callback', async (req, res) => {
   } catch (error) {
     debugError('❌ Google OAuth callback error:', error);
     const frontendUrl = resolveWebPortalRedirectBase();
-    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Authentication failed. Please try again.')}`);
+    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(googleOAuthUserErrorMessage(error))}`);
   }
 });
 
@@ -1211,10 +1337,10 @@ router.get('/api/auth/google/mobile/callback', async (req, res) => {
       mobileRedirectUri
     );
 
-    // Exchange code for tokens
-    // The redirect URI is set in the OAuth2Client constructor above
-    // getToken() should use that redirect URI automatically
-    const { tokens } = await mobileGoogleClient.getToken(code);
+    const { tokens } = await exchangeGoogleAuthCode(mobileGoogleClient, code, {
+      label: 'Mobile OAuth',
+      redirectUri: mobileRedirectUri,
+    });
     mobileGoogleClient.setCredentials(tokens);
 
     debugLog('✅ Mobile: Received tokens from Google, verifying ID token...');
@@ -1828,8 +1954,10 @@ router.post('/api/auth/google/mobile', async (req, res) => {
       mobileRedirectUri
     );
 
-    // Exchange code for tokens using the mobile redirect URI
-    const { tokens } = await mobileGoogleClient.getToken(code);
+    const { tokens } = await exchangeGoogleAuthCode(mobileGoogleClient, code, {
+      label: 'Mobile OAuth POST',
+      redirectUri: mobileRedirectUri,
+    });
     mobileGoogleClient.setCredentials(tokens);
 
     debugLog('✅ Mobile: Received tokens from Google, verifying ID token...');
