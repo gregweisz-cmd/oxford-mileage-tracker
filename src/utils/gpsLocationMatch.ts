@@ -62,6 +62,36 @@ export function addressesStrictlyMatch(first: string, second: string): boolean {
   );
 }
 
+/**
+ * Same metro area: matching ZIP, or same city + state when ZIP is missing.
+ */
+export function addressesSameArea(first: string, second: string): boolean {
+  const a = parseLocationForMatch(first);
+  const b = parseLocationForMatch(second);
+  if (a.zip && b.zip && a.zip === b.zip) return true;
+  return !!(
+    a.city &&
+    b.city &&
+    a.city === b.city &&
+    a.state &&
+    b.state &&
+    a.state === b.state
+  );
+}
+
+/**
+ * Saved-address suggestions must agree on location text, not just stale coordinates.
+ * Wrong lat/lng on a favorite (e.g. WCCW pinned near base address) must not suggest a match.
+ */
+export function savedAddressCorroboratesCurrentLocation(
+  currentAddress: string,
+  savedAddress: string
+): boolean {
+  if (!currentAddress?.trim() || !savedAddress?.trim()) return true;
+  if (addressesStrictlyMatch(currentAddress, savedAddress)) return true;
+  return addressesSameArea(currentAddress, savedAddress);
+}
+
 export function calculateDistanceMiles(
   lat1: number,
   lon1: number,
@@ -100,15 +130,18 @@ export function findBestSavedAddressMatch(
       const distanceMiles = hasCoords
         ? calculateDistanceMiles(currentLat, currentLon, saved.latitude!, saved.longitude!)
         : Number.POSITIVE_INFINITY;
-      const distanceMatch = hasCoords && distanceMiles <= GPS_NEARBY_MATCH_MILES;
+      const withinDistance = hasCoords && distanceMiles <= GPS_NEARBY_MATCH_MILES;
       const addressMatch =
-        !hasCoords && !!currentAddress && addressesStrictlyMatch(currentAddress, saved.address);
+        !!currentAddress && addressesStrictlyMatch(currentAddress, saved.address);
+      const distanceMatch =
+        withinDistance &&
+        savedAddressCorroboratesCurrentLocation(currentAddress, saved.address);
       return {
         item: saved,
         distanceMiles,
         distanceMatch,
         addressMatch,
-        isMatch: distanceMatch || addressMatch,
+        isMatch: distanceMatch || (!hasCoords && addressMatch),
       };
     })
     .filter((candidate) => candidate.isMatch)
