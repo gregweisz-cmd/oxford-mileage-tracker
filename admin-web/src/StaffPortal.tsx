@@ -1130,6 +1130,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Mileage entry editing state
   const [editingMileageEntry, setEditingMileageEntry] = useState<any | null>(null);
   const [mileageFormOpen, setMileageFormOpen] = useState(false);
+  /** Local trip-order edits before POST /api/mileage-entries/reorder */
+  const [mileageOrderDraft, setMileageOrderDraft] = useState<any[] | null>(null);
+  const [mileageOrderSaving, setMileageOrderSaving] = useState(false);
   // Note: submissionLoading, approvalDialogOpen, approvalAction, approvalComments reserved for future approval workflow implementation
 
   // Approval workflow data
@@ -3365,9 +3368,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
+  useEffect(() => {
+    setMileageOrderDraft(null);
+  }, [effectiveEmployeeId, currentMonth, currentYear]);
+
+  const sortMileageEntriesForDisplay = React.useCallback(
+    (entries: any[]) => {
+      return [...entries].sort((a, b) => {
+        const dateA = normalizeDate(a.date);
+        const dateB = normalizeDate(b.date);
+        if (dateA !== dateB) return dateB.localeCompare(dateA);
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
+    },
+    [normalizeDate]
+  );
+
   // Current-month mileage list for display and reorder (same order as API: date DESC, sortOrder ASC)
   const currentMonthMileageList = React.useMemo(() => {
-    return rawMileageEntries.filter((entry: any) => {
+    if (mileageOrderDraft) return mileageOrderDraft;
+    const filtered = rawMileageEntries.filter((entry: any) => {
       const entryDateStr = normalizeDate(entry.date);
       const parts = entryDateStr.split('-');
       if (parts.length !== 3) return false;
@@ -3375,7 +3395,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const entryMonth = parseInt(parts[1], 10);
       return entryMonth === currentMonth && entryYear === currentYear;
     });
-  }, [rawMileageEntries, currentMonth, currentYear, normalizeDate]);
+    return sortMileageEntriesForDisplay(filtered);
+  }, [
+    mileageOrderDraft,
+    rawMileageEntries,
+    currentMonth,
+    currentYear,
+    normalizeDate,
+    sortMileageEntriesForDisplay,
+  ]);
+
+  const hasUnsavedMileageOrder = mileageOrderDraft !== null;
 
   // Per-diem by date for cost center tab row building (from dailyEntries)
   const perDiemByDate = React.useMemo(() => {
@@ -3391,24 +3421,48 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     return map;
   }, [employeeData?.dailyEntries, receipts, normalizeDate]);
 
-  const handleMileageReorder = async (newOrderedIds: string[]) => {
-    if (newOrderedIds.length === 0) return;
+  const shiftMileageEntry = (index: number, direction: 'up' | 'down') => {
+    if (!staffCanEditReport) return;
+    const list = mileageOrderDraft ?? currentMonthMileageList;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= list.length) return;
+
+    const currentDateKey = normalizeDate(list[index]?.date);
+    const targetDateKey = normalizeDate(list[targetIndex]?.date);
+    if (!currentDateKey || currentDateKey !== targetDateKey) return;
+
+    const newOrder = [...list];
+    [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
+    setMileageOrderDraft(newOrder);
+  };
+
+  const discardMileageOrder = () => {
+    setMileageOrderDraft(null);
+  };
+
+  const saveMileageOrder = async () => {
+    if (!mileageOrderDraft || mileageOrderDraft.length === 0 || !effectiveEmployeeId) return;
+    setMileageOrderSaving(true);
     try {
+      const orderedIds = mileageOrderDraft.map((entry: any) => entry.id);
       await apiPost('/api/mileage-entries/reorder', {
         employeeId: effectiveEmployeeId,
-        orderedIds: newOrderedIds,
+        orderedIds,
       });
-      const mileageEntries = await fetchMileageEntriesForMonth(
-        effectiveEmployeeId,
-        currentMonth,
-        currentYear,
-        { skipCache: true }
-      );
-      setRawMileageEntries(mileageEntries);
-      setRefreshTrigger(prev => prev + 1);
+      const orderById = new Map(orderedIds.map((id, index) => [id, index]));
+      setRawMileageEntries((prev) => {
+        const updated = prev.map((entry) =>
+          orderById.has(entry.id) ? { ...entry, sortOrder: orderById.get(entry.id) } : entry
+        );
+        return sortMileageEntriesForDisplay(updated);
+      });
+      setMileageOrderDraft(null);
+      showSuccess('Trip order saved');
     } catch (error) {
-      debugError('Error reordering mileage entries:', error);
-      alert('Failed to reorder mileage entries. Please try again.');
+      debugError('Error saving mileage entry order:', error);
+      showError('Failed to save trip order. Please try again.');
+    } finally {
+      setMileageOrderSaving(false);
     }
   };
 
@@ -7325,21 +7379,47 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   Enter mileage data for each day. The system will automatically track locations, miles traveled, and calculate reimbursement.
                 </Typography>
                 <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
-                  Use the arrows to order trips from top to bottom (first trip at the top) so each day reflects the correct sequence.
+                  Use the arrows to order trips within each day (first trip at the top), then click Save order when finished.
                 </Typography>
+                {hasUnsavedMileageOrder && (
+                  <Typography variant="body2" color="warning.main" sx={{ mt: 0.5, fontWeight: 600 }}>
+                    Unsaved trip order — save or discard before leaving this tab.
+                  </Typography>
+                )}
               </Box>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => {
-                  setEditingMileageEntry(null);
-                  setMileageFormOpen(true);
-                }}
-                disabled={!staffCanEditReport}
-                sx={{ ml: 2 }}
-              >
-                Add Mileage Entry
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1, ml: 2, flexShrink: 0 }}>
+                {hasUnsavedMileageOrder && (
+                  <>
+                    <Button
+                      variant="outlined"
+                      onClick={discardMileageOrder}
+                      disabled={mileageOrderSaving || !staffCanEditReport}
+                    >
+                      Discard order
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      startIcon={mileageOrderSaving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
+                      onClick={() => void saveMileageOrder()}
+                      disabled={mileageOrderSaving || !staffCanEditReport}
+                    >
+                      Save order
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    setEditingMileageEntry(null);
+                    setMileageFormOpen(true);
+                  }}
+                  disabled={!staffCanEditReport}
+                >
+                  Add Mileage Entry
+                </Button>
+              </Box>
             </Box>
             
             <TableContainer
@@ -7491,13 +7571,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
                               <IconButton
                                 size="small"
-                                onClick={() => {
-                                  if (!canMoveUp) return;
-                                  const newOrder = [...currentMonthMileageList];
-                                  [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
-                                  handleMileageReorder(newOrder.map((e: any) => e.id));
-                                }}
-                                disabled={!canMoveUp}
+                                onClick={() => shiftMileageEntry(index, 'up')}
+                                disabled={!canMoveUp || !staffCanEditReport || mileageOrderSaving}
                                 sx={{ p: 0.25 }}
                                 title={canMoveUp ? 'Move up' : 'Can only reorder within same day'}
                               >
@@ -7505,13 +7580,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               </IconButton>
                               <IconButton
                                 size="small"
-                                onClick={() => {
-                                  if (!canMoveDown) return;
-                                  const newOrder = [...currentMonthMileageList];
-                                  [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
-                                  handleMileageReorder(newOrder.map((e: any) => e.id));
-                                }}
-                                disabled={!canMoveDown}
+                                onClick={() => shiftMileageEntry(index, 'down')}
+                                disabled={!canMoveDown || !staffCanEditReport || mileageOrderSaving}
                                 sx={{ p: 0.25 }}
                                 title={canMoveDown ? 'Move down' : 'Can only reorder within same day'}
                               >
