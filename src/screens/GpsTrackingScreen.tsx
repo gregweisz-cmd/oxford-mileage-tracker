@@ -58,6 +58,7 @@ import {
   GPS_TRIP_UI_STATE_KEY,
 } from '../services/endTripCoordinator';
 import { toCanonicalAddress } from '../utils/locationSelection';
+import { consumePendingGpsLocationPick } from '../utils/pendingLocationSelection';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface GpsTrackingScreenProps {
