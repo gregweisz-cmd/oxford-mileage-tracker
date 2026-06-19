@@ -8,6 +8,10 @@
 
 const dbService = require('./dbService');
 const helpers = require('../utils/helpers');
+const {
+  resolveHrSyncPosition,
+  mergeLegacyDesignationsIntoPermissions,
+} = require('../utils/staffDesignations');
 const { debugLog, debugError } = require('../debug');
 
 const EXTERNAL_API_URL = 'https://api.appwarmer.com/api/employee';
@@ -316,31 +320,6 @@ function pickCanonicalEmployeeRow(rows) {
 }
 
 /**
- * Keep local supervisor/senior-staff designation suffixes when HR updates titles.
- * HR is source-of-truth for base title, but web-specific designations must persist.
- * @param {string} incomingPosition
- * @param {string} existingPosition
- * @returns {string}
- */
-function mergePositionPreservingDesignations(incomingPosition, existingPosition) {
-  const incoming = String(incomingPosition || '').trim();
-  const existing = String(existingPosition || '').trim();
-  const normalizedExisting = existing.toLowerCase();
-  const suffixes = [];
-
-  if (normalizedExisting.includes('senior staff') && !incoming.toLowerCase().includes('senior staff')) {
-    suffixes.push('Senior Staff');
-  }
-  if (normalizedExisting.includes('supervisor') && !incoming.toLowerCase().includes('supervisor')) {
-    suffixes.push('Supervisor');
-  }
-
-  if (suffixes.length === 0) return incoming || existing;
-  const base = incoming || existing || 'Staff';
-  return `${base} - ${suffixes.join(' - ')}`;
-}
-
-/**
  * Create or update one employee from mapped data
  * @param {object} mapped
  * @param {object} [existing] - existing row if update
@@ -374,16 +353,19 @@ async function upsertOne(mapped, existing) {
       mapped.oxfordHouseId !== undefined && String(mapped.oxfordHouseId || '').trim() !== ''
         ? String(mapped.oxfordHouseId).trim()
         : (existing.oxfordHouseId || '');
+    const nextPosition = resolveHrSyncPosition(mapped.position, existing.position);
+    const nextPermissions = mergeLegacyDesignationsIntoPermissions(existing.permissions, existing.position);
     await new Promise((resolve, reject) => {
       db.run(
         `UPDATE employees SET
-          name = ?, preferredName = ?, position = ?, phoneNumber = ?,
+          name = ?, preferredName = ?, position = ?, permissions = ?, phoneNumber = ?,
           costCenters = ?, selectedCostCenters = ?, defaultCostCenter = ?, oxfordHouseId = ?, updatedAt = ?
         WHERE id = ?`,
         [
           mapped.name,
           existing.preferredName || '',
-          mergePositionPreservingDesignations(mapped.position, existing.position),
+          nextPosition,
+          JSON.stringify(nextPermissions),
           mapped.phoneNumber || '',
           JSON.stringify(syncedCostCenters),
           JSON.stringify(finalSelectedCostCenters),
@@ -605,10 +587,11 @@ async function previewSyncFromExternal() {
       const nextCostCenters = sanitizeCostCenters(mapped.costCenters).length > 0
         ? sanitizeCostCenters(mapped.costCenters)
         : sanitizeCostCenters(prevCC);
+      const nextPosition = resolveHrSyncPosition(mapped.position, existing.position);
       const hadGroupedPrevCostCenter = (prevCC || []).some((cc) => shouldOmitCostCenter(cc));
       const same =
         (existing.name || '') === (mapped.name || '') &&
-        (existing.position || '') === (mapped.position || '') &&
+        (existing.position || '') === nextPosition &&
         JSON.stringify(sanitizeCostCenters(prevCC).sort()) === JSON.stringify(nextCostCenters.sort()) &&
         (existing.phoneNumber || '') === (mapped.phoneNumber || '') &&
         !hadGroupedPrevCostCenter;
@@ -616,7 +599,7 @@ async function previewSyncFromExternal() {
         updates.push({
           email: mapped.email,
           name: mapped.name,
-          position: mapped.position,
+          position: nextPosition,
           costCenters: nextCostCenters,
           phoneNumber: mapped.phoneNumber || '',
           previous: {

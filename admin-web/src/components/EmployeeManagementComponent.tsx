@@ -60,6 +60,7 @@ import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { toCanonicalAddress } from '../utils/locationSelection';
 import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart as updateParsedBaseAddressPart } from '../utils/addressParse';
+import { getDisplayPosition, hasSeniorStaffDesignation } from '../utils/staffDesignations';
 
 const API_BASE_URL = (
   process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'
@@ -1395,7 +1396,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             whiteSpace: 'nowrap'
                           }}
                         >
-                          {employee.position || '-'}
+                          {getDisplayPosition(employee.position)}
                         </Typography>
                       </TableCell>
                       <TableCell sx={{ width: '10%', minWidth: 90, padding: '10px' }}>
@@ -1946,10 +1947,10 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       <em>No Senior Staff</em>
                     </MenuItem>
                     {existingEmployees
-                      .filter(emp => (emp.position || '').toLowerCase().includes('senior staff'))
+                      .filter(emp => hasSeniorStaffDesignation(emp))
                       .map(emp => (
                         <MenuItem key={emp.id} value={emp.id}>
-                          {emp.name} ({emp.position})
+                          {emp.name} ({getDisplayPosition(emp.position)})
                         </MenuItem>
                       ))}
                   </Select>
@@ -2334,7 +2335,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Position</Typography>
-                  <Typography variant="body1">{viewingEmployee.position}</Typography>
+                  <Typography variant="body1">{getDisplayPosition(viewingEmployee.position)}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Phone</Typography>

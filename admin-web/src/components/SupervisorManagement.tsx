@@ -38,6 +38,15 @@ import { debugLog, debugError } from '../config/debug';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { toCanonicalAddress } from '../utils/locationSelection';
 import { formatBaseAddress, parseBaseAddress, updateBaseAddressPart as updateParsedBaseAddressPart } from '../utils/addressParse';
+import {
+  addDesignationPermission,
+  hasSeniorStaffDesignation,
+  hasSupervisorDesignation,
+  inferSupervisorType,
+  removeDesignationPermission,
+  stripDesignationSuffixes,
+  getDisplayPosition,
+} from '../utils/staffDesignations';
 
 interface SupervisorManagementProps {
   employees: Employee[];
@@ -94,25 +103,19 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     // Group employees by their supervisors
     const supervisorMap = new Map<string, SupervisorWithStaff>();
 
-    // Find all employees who are supervisors or senior staff
-    // Includes: explicit "- Supervisor"/"- Senior Staff" OR anyone with Manager/Director in title
-    // BUT exclude anyone in the excludedFromSupervisorList
+    // Find all employees who are supervisors or senior staff (permissions or legacy position suffix)
     employees.forEach(emp => {
       // Skip if this employee is in the excluded list
       if (excludedFromSupervisorList.has(emp.id)) {
         return;
       }
-      
-      const positionLower = emp.position.toLowerCase();
+
       let type: 'supervisor' | 'senior-staff' | null = null;
-      
-      // Check for Senior Staff designation
-      if (positionLower.includes('senior staff')) {
+
+      if (hasSeniorStaffDesignation(emp)) {
         type = 'senior-staff';
         debugLog('👥 Found senior staff:', emp.name, emp.position);
-      }
-      // Check for Supervisor designation
-      else if (positionLower.includes('supervisor')) {
+      } else if (hasSupervisorDesignation(emp)) {
         type = 'supervisor';
         debugLog('👔 Found supervisor:', emp.name, emp.position);
       }
@@ -131,8 +134,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       if (emp.supervisorId && !supervisorMap.has(emp.supervisorId)) {
         const supervisor = employees.find(e => e.id === emp.supervisorId);
         if (supervisor) {
-          const positionLower = supervisor.position.toLowerCase();
-          const type = positionLower.includes('senior staff') ? 'senior-staff' : 'supervisor';
+          const type = inferSupervisorType(supervisor);
           supervisorMap.set(supervisor.id, {
             supervisor,
             staffMembers: [],
@@ -195,14 +197,12 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     });
   };
 
-  /** Everyone who can be assigned to a supervisor or senior staff: not a supervisor/senior staff by position, and not the selected person. */
+  /** Everyone who can be assigned to a supervisor or senior staff: not designated themselves, and not the selected person. */
   const getAssignableStaff = () => {
-    const pos = (p: string) => (p || '').toLowerCase();
     return employees.filter(emp => {
       if (emp.id === selectedSupervisor?.id) return false;
       if (EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())) return false;
-      const p = pos(emp.position);
-      if (p.includes('supervisor') || p.includes('senior staff')) return false;
+      if (hasSeniorStaffDesignation(emp) || hasSupervisorDesignation(emp)) return false;
       return true;
     });
   };
@@ -251,21 +251,12 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     if (!employeeToPromote) return;
 
     try {
-      // Update their position to include "Supervisor" or "Senior Staff"
-      let newPosition = employeeToPromote.position;
-      
-      if (promoteType === 'senior-staff') {
-        newPosition = employeeToPromote.position.includes('Senior Staff')
-          ? employeeToPromote.position
-          : `${employeeToPromote.position} - Senior Staff`;
-      } else {
-        newPosition = employeeToPromote.position.includes('Supervisor')
-          ? employeeToPromote.position
-          : `${employeeToPromote.position} - Supervisor`;
-      }
-      
-      // Include all required employee fields in the update; keep existing supervisor (Senior Staff and Supervisors report to a supervisor)
-      await onUpdateEmployee(employeeToPromote.id, { 
+      const designation = promoteType === 'senior-staff' ? 'senior_staff' : 'supervisor';
+      const cleanedPosition = stripDesignationSuffixes(employeeToPromote.position);
+      const permissions = addDesignationPermission(employeeToPromote.permissions, designation);
+
+      // Designation is stored in permissions; keep HR job title unchanged
+      await onUpdateEmployee(employeeToPromote.id, {
         name: employeeToPromote.name,
         email: employeeToPromote.email,
         oxfordHouseId: employeeToPromote.oxfordHouseId,
@@ -275,7 +266,8 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         costCenters: employeeToPromote.costCenters,
         selectedCostCenters: employeeToPromote.selectedCostCenters,
         defaultCostCenter: employeeToPromote.defaultCostCenter,
-        position: newPosition,
+        position: cleanedPosition,
+        permissions,
         supervisorId: employeeToPromote.supervisorId ?? undefined
       });
       
@@ -353,19 +345,14 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     try {
       debugLog('🗑️ Removing from list:', supervisorToDelete.name);
 
-      // Update the employee's position to remove the Supervisor / Senior Staff suffix
-      const currentPosition = supervisorToDelete.position || '';
-      let updatedPosition = currentPosition;
-
-      if (isSeniorStaff) {
-        updatedPosition = currentPosition.replace(/\s*-\s*Senior Staff\b/, '');
-      } else {
-        updatedPosition = currentPosition.replace(/\s*-\s*Supervisor\b/, '');
-      }
+      const designation = isSeniorStaff ? 'senior_staff' : 'supervisor';
+      const cleanedPosition = stripDesignationSuffixes(supervisorToDelete.position || '');
+      const permissions = removeDesignationPermission(supervisorToDelete.permissions, designation);
 
       await onUpdateEmployee(supervisorToDelete.id, {
         ...supervisorToDelete,
-        position: updatedPosition,
+        position: cleanedPosition,
+        permissions,
       });
 
       // Also hide them locally from the list until the next refresh
@@ -383,7 +370,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
 
       setDeleteConfirmOpen(false);
       setSupervisorToDelete(null);
-      debugLog('✅ Removed designation and updated position');
+      debugLog('✅ Removed designation');
     } catch (error) {
       debugError('Error demoting:', error);
       setDeleteConfirmOpen(false);
@@ -419,15 +406,14 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             continue;
           }
 
-          // Update position to add designation
-          const positionSuffix = bulkImportType === 'supervisor' ? ' - Supervisor' : ' - Senior Staff';
-          const newPosition = employee.position.includes(positionSuffix) 
-            ? employee.position 
-            : employee.position + positionSuffix;
+          const designation = bulkImportType === 'supervisor' ? 'supervisor' : 'senior_staff';
+          const cleanedPosition = stripDesignationSuffixes(employee.position);
+          const permissions = addDesignationPermission(employee.permissions, designation);
 
           await onUpdateEmployee(employee.id, {
             ...employee,
-            position: newPosition
+            position: cleanedPosition,
+            permissions,
           });
 
           results.success++;
@@ -549,7 +535,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                       {formatNameForDisplay(supervisor.name)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {supervisor.position}
+                      {getDisplayPosition(supervisor.position)}
                     </Typography>
                   </Box>
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
@@ -690,7 +676,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                     >
                       <Checkbox checked={isSelected} size="small" sx={{ mr: 1 }} />
                       <ListItemText
-                        primary={`${formatNameForDisplay(emp.name)} - ${emp.position}`}
+                        primary={`${formatNameForDisplay(emp.name)} - ${getDisplayPosition(emp.position)}`}
                         primaryTypographyProps={{ variant: 'body2' }}
                       />
                     </ListItemButton>
@@ -749,7 +735,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             <FormControl fullWidth>
               <Autocomplete
                 options={employees}
-                getOptionLabel={(option) => `${formatNameForDisplay(option.name)} - ${option.position}`}
+                getOptionLabel={(option) => `${formatNameForDisplay(option.name)} - ${getDisplayPosition(option.position)}`}
                 value={employeeToPromote}
                 onChange={(_, newValue) => setEmployeeToPromote(newValue)}
                 filterOptions={(options, { inputValue }) => {
@@ -772,9 +758,10 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             
             {employeeToPromote && (
               <Alert severity="info" sx={{ mt: 2 }}>
-                This will update {formatNameForDisplay(employeeToPromote.name)}'s position to include "{promoteType === 'senior-staff' ? 'Senior Staff' : 'Supervisor'}"
-                {promoteType === 'supervisor' && ' and allow them to have staff assigned'}.
-                {promoteType === 'senior-staff' && '. Senior Staff can approve reports but do not manage staff members'}.
+                This will grant {formatNameForDisplay(employeeToPromote.name)} the {promoteType === 'senior-staff' ? 'Senior Staff' : 'Supervisor'} designation
+                {promoteType === 'supervisor' ? ' and allow them to have staff assigned' : ''}.
+                {promoteType === 'senior-staff' && ' Senior Staff can approve reports before their supervisor.'}
+                {' Their HR job title will not change.'}
               </Alert>
             )}
           </Box>
@@ -807,7 +794,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         fullWidth
       >
         <DialogTitle>
-          Remove {supervisorToDelete?.position.toLowerCase().includes('senior staff') ? 'Senior Staff' : 'Supervisor'} Designation?
+          Remove {supervisorToDelete && hasSeniorStaffDesignation(supervisorToDelete) ? 'Senior Staff' : 'Supervisor'} Designation?
         </DialogTitle>
         <DialogContent>
           {supervisorToDelete && (() => {
@@ -827,7 +814,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
               {staffCount > 0 && (
                 <li>Unassign their {staffCount} staff member(s)</li>
               )}
-              <li>Their job title will remain: <strong>{supervisorToDelete.position}</strong></li>
+              <li>Their job title will remain: <strong>{getDisplayPosition(supervisorToDelete.position)}</strong></li>
               <li>They will not appear in this supervisor management view</li>
             </ul>
               </Alert>
@@ -971,7 +958,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
           <Box sx={{ mt: 2 }}>
             <Alert severity="info" sx={{ mb: 2 }}>
               Enter email addresses (one per line) of employees to promote to {bulkImportType === 'supervisor' ? 'Supervisor' : 'Senior Staff'}.
-              The system will add "- {bulkImportType === 'supervisor' ? 'Supervisor' : 'Senior Staff'}" to their position title.
+              The system will grant the designation in the background without changing their HR job title.
             </Alert>
 
             <TextField
