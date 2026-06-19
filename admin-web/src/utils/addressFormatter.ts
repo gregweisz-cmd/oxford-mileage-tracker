@@ -32,13 +32,34 @@ function hasCompleteAddressParts(parts: AddressParts): boolean {
   return Boolean(parts.street.trim() && parts.city.trim() && parts.state.trim() && parts.zip.trim());
 }
 
+function normalizeStreetLine(street: string): string {
+  return (street || '')
+    .trim()
+    .replace(/^(\d+[A-Za-z0-9-]*),\s*/, '$1 ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeAddressInput(fullAddress: string): string {
+  return normalizeStreetLine((fullAddress || '').trim());
+}
+
+function joinStreetSegments(segments: string[]): string {
+  if (segments.length === 0) return '';
+  if (segments.length === 1) return normalizeStreetLine(segments[0]);
+  if (/^\d+[A-Za-z0-9-]*$/.test(segments[0].trim())) {
+    return normalizeStreetLine(segments.join(' '));
+  }
+  return normalizeStreetLine(segments.join(', '));
+}
+
 /**
  * Format address parts into a single string for storage/API (e.g. "123 Main St, Raleigh, NC 27601")
  */
 export function formatAddressFromParts(parts: AddressParts): string {
   const parsedStreet = parseAddressToParts(parts.street || '');
   const shouldUseParsedStreet = hasCompleteAddressParts(parsedStreet);
-  const street = (shouldUseParsedStreet ? parsedStreet.street : parts.street || '').trim();
+  const street = normalizeStreetLine((shouldUseParsedStreet ? parsedStreet.street : parts.street || '').trim());
   const city = (shouldUseParsedStreet ? parsedStreet.city : parts.city || '').trim();
   const state = (shouldUseParsedStreet ? parsedStreet.state : parts.state || '').trim().toUpperCase().slice(0, 2);
   const zip = (shouldUseParsedStreet ? parsedStreet.zip : parts.zip || '').trim().replace(/\D/g, '').slice(0, 10);
@@ -55,7 +76,7 @@ export function formatAddressFromParts(parts: AddressParts): string {
  * Handles formats like "123 Main St, Raleigh, NC 27601" or "123 Main St, City, ST 27601".
  */
 export function parseAddressToParts(fullAddress: string): AddressParts {
-  const trimmed = (fullAddress || '').trim();
+  const trimmed = normalizeAddressInput((fullAddress || '').trim());
   if (!trimmed) return { ...emptyAddressParts };
 
   // Extract optional "Name (address)" - use address part for parsing
@@ -76,7 +97,7 @@ export function parseAddressToParts(fullAddress: string): AddressParts {
     const stateMatch = statePart.match(/^([A-Za-z]{2})\s*$/);
     if (zipMatch && stateMatch) {
       return {
-        street: parts.slice(0, -3).join(', '),
+        street: joinStreetSegments(parts.slice(0, -3)),
         city: parts[parts.length - 3],
         state: stateMatch[1].toUpperCase(),
         zip: zipMatch[1],
@@ -97,7 +118,9 @@ export function parseAddressToParts(fullAddress: string): AddressParts {
   }
 
   const city = parts.length >= 3 ? parts[parts.length - 2] : '';
-  const street = parts.length >= 3 ? parts.slice(0, -2).join(', ') : parts[0] || '';
+  const street = normalizeStreetLine(
+    parts.length >= 3 ? joinStreetSegments(parts.slice(0, -2)) : parts[0] || ''
+  );
 
   return { street, city, state, zip };
 }

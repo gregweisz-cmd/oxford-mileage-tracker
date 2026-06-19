@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatabaseService } from '../services/database';
 import { Employee } from '../types';
 import * as Location from 'expo-location';
+import { buildPartsFromGeocode, formatAddressParts } from '../utils/addressFormatter';
 import GooglePlacesAddressInput from './GooglePlacesAddressInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from './KeyboardAwareScrollView';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
@@ -202,17 +203,8 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ employee, onComplete }) => {
       });
 
       if (reverseGeocode && reverseGeocode.length > 0) {
-        const address = reverseGeocode[0];
-        const addressString = [
-          address.streetNumber,
-          address.street,
-          address.city,
-          address.region,
-          address.postalCode,
-        ]
-          .filter(Boolean)
-          .join(', ');
-        setBaseAddress(addressString);
+        const geo = buildPartsFromGeocode(reverseGeocode[0]);
+        setBaseAddress(formatAddressParts(geo) || geo.oneLine);
       }
     } catch (error) {
       console.error('Error getting location:', error);

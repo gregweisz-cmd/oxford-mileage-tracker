@@ -2,6 +2,8 @@ import Constants from 'expo-constants';
 import API_BASE_URL from '../config/api';
 import {
   AddressParts,
+  formatAddressParts,
+  normalizeAddressInput,
   parseAddressParts,
   parseGoogleAddressComponents,
   GoogleAddressComponent,
@@ -261,7 +263,9 @@ export class GooglePlacesService {
         const data = (await response.json()) as ReverseGeocodeResponse;
         if (data.status === 'OK' && data.results && data.results.length > 0) {
           const best = data.results[0].formatted_address?.trim();
-          if (best) return best;
+          if (best) {
+            return formatAddressParts(parseAddressParts(best)) || normalizeAddressInput(best);
+          }
         }
       }
     } catch {
@@ -282,7 +286,10 @@ export class GooglePlacesService {
       if (data.status !== 'OK' || !data.results || data.results.length === 0) {
         return null;
       }
-      return data.results[0].formatted_address?.trim() || null;
+      const formatted = data.results[0].formatted_address?.trim() || null;
+      return formatted
+        ? formatAddressParts(parseAddressParts(formatted)) || normalizeAddressInput(formatted)
+        : null;
     } catch {
       return null;
     }

@@ -57,7 +57,7 @@ import {
   finalizeEndTripNavigation,
   GPS_TRIP_UI_STATE_KEY,
 } from '../services/endTripCoordinator';
-import { consumePendingGpsLocationPick } from '../utils/pendingLocationSelection';
+import { toCanonicalAddress } from '../utils/locationSelection';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 interface GpsTrackingScreenProps {
@@ -254,6 +254,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   isTrackingRef.current = isTracking;
   const lastAppliedEndFromFavoritesRef = useRef<string | null>(null);
   const openEndLocationOptionsRef = useRef<() => void>(() => {});
+
+  const canonicalBaseAddress = useMemo(
+    () => toCanonicalAddress(currentEmployee?.baseAddress || ''),
+    [currentEmployee?.baseAddress]
+  );
 
   useEffect(() => {
     loadEmployee();
@@ -778,7 +783,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         const suggested = startLocationSuggestions.baseAddress;
         const details = suggested?.details ?? {
           name: 'BA',
-          address: currentEmployee.baseAddress,
+          address: canonicalBaseAddress,
           source: 'baseAddress' as const,
         };
         void startGpsTracking(details);
@@ -863,12 +868,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (
         currentEmployee.baseAddress &&
         currentAddress &&
-        addressesStrictlyMatch(currentAddress, currentEmployee.baseAddress)
+        addressesStrictlyMatch(currentAddress, canonicalBaseAddress)
       ) {
         suggestions.baseAddress = {
           details: {
             name: 'BA',
-            address: currentEmployee.baseAddress,
+            address: canonicalBaseAddress,
             latitude: currentLat,
             longitude: currentLon,
           },
@@ -985,12 +990,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       if (
         currentEmployee.baseAddress &&
         currentAddress &&
-        addressesStrictlyMatch(currentAddress, currentEmployee.baseAddress)
+        addressesStrictlyMatch(currentAddress, canonicalBaseAddress)
       ) {
         suggestions.baseAddress = {
           details: {
             name: 'BA',
-            address: currentEmployee.baseAddress,
+            address: canonicalBaseAddress,
             latitude: currentLat,
             longitude: currentLon,
           },
@@ -1271,7 +1276,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         } else {
           openEndLocationModalWithDetails({
             name: 'BA',
-            address: currentEmployee.baseAddress,
+            address: canonicalBaseAddress,
           });
         }
       } else if (option === 'tripStart') {
@@ -2096,7 +2101,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     : option === 'lastDestination'
                     ? (lastDestination ? `${lastDestination.name} (${lastDestination.address})` : 'No previous destination found')
                     : option === 'baseAddress'
-                      ? (currentEmployee?.baseAddress || 'No base address set')
+                      ? (canonicalBaseAddress || 'No base address set')
                       : option === 'favoriteAddresses'
                         ? 'Select from your saved favorite locations'
                         : option === 'oxfordHouse'
@@ -2232,7 +2237,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   suggestion
                     ? suggestion.reason
                     : option === 'baseAddress'
-                    ? (currentEmployee?.baseAddress || 'No base address set')
+                    ? (canonicalBaseAddress || 'No base address set')
                     : option === 'tripStart'
                       ? (effectiveTripStartLocation
                         ? `${effectiveTripStartLocation.name} (${effectiveTripStartLocation.address || '—'})`

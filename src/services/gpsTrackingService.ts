@@ -11,6 +11,7 @@ import {
   flushPendingGpsLocationUpdates,
 } from './gpsBackgroundTask';
 import { GooglePlacesService } from './googlePlacesService';
+import { buildPartsFromGeocode } from '../utils/addressFormatter';
 import { promptForNotificationAccessIfNeeded } from './localNotificationSetup';
 import { StationaryNotificationService } from './stationaryNotificationService';
 
@@ -671,8 +672,7 @@ export class GpsTrackingService {
       });
 
       if (result.length > 0) {
-        const address = result[0];
-        return `${address.street || ''} ${address.city || ''}, ${address.region || ''} ${address.postalCode || ''}`.trim();
+        return buildPartsFromGeocode(result[0]).oneLine;
       }
 
       return `${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`;

@@ -40,6 +40,7 @@ import { setSyncMonthScope } from '../services/syncScopeService';
 import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { formatAddressParts, parseAddressParts, updateAddressPart } from '../utils/addressFormatter';
+import { toCanonicalAddress } from '../utils/locationSelection';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 const FIRST_LOGIN_PORTAL_TIP_KEY_PREFIX = 'first_login_portal_tip_shown:';
@@ -1357,7 +1358,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       <View style={dynamicStyles.baseAddressSection}>
         <TouchableOpacity onPress={handleEditBaseAddress} style={styles.baseAddressContainer}>
           <Text style={dynamicStyles.baseAddressText}>
-            BA: {currentEmployee?.baseAddress?.trim() || 'Not set — tap to add'}
+            BA: {toCanonicalAddress(currentEmployee?.baseAddress || '') || 'Not set — tap to add'}
           </Text>
           <MaterialIcons name="edit" size={16} color={colors.primary} />
         </TouchableOpacity>

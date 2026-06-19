@@ -8,6 +8,30 @@ export interface AddressParts {
 const hasCompleteAddressParts = (parts: AddressParts): boolean =>
   Boolean(parts.street?.trim() && parts.city?.trim() && parts.state?.trim() && parts.zipCode?.trim());
 
+/**
+ * Remove erroneous comma after a leading house number (e.g. "811, Waddell St" → "811 Waddell St").
+ */
+export const normalizeStreetLine = (street: string): string =>
+  (street || '')
+    .trim()
+    .replace(/^(\d+[A-Za-z0-9-]*),\s*/, '$1 ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** Normalize a full address string before comma-split parsing. */
+export const normalizeAddressInput = (fullAddress: string): string =>
+  normalizeStreetLine((fullAddress || '').trim());
+
+function joinStreetSegments(segments: string[]): string {
+  if (segments.length === 0) return '';
+  if (segments.length === 1) return normalizeStreetLine(segments[0]);
+  const first = segments[0].trim();
+  if (/^\d+[A-Za-z0-9-]*$/.test(first)) {
+    return normalizeStreetLine(segments.join(' '));
+  }
+  return normalizeStreetLine(segments.join(', '));
+}
+
 /** expo-location reverse geocode fields (Android often omits city; subregion/district may hold it) */
 export type GeocodeAddressFields = {
   streetNumber?: string | null;
@@ -32,7 +56,7 @@ export const stateFromGeocode = (g: GeocodeAddressFields): string =>
 export const buildPartsFromGeocode = (
   g: GeocodeAddressFields
 ): AddressParts & { oneLine: string } => {
-  const street = [g.streetNumber, g.street].filter(Boolean).join(' ').trim();
+  const street = normalizeStreetLine([g.streetNumber, g.street].filter(Boolean).join(' ').trim());
   let city = cityFromGeocode(g);
   let state = stateFromGeocode(g);
   let zipCode = (g.postalCode || '').trim();
@@ -73,7 +97,7 @@ export const getFullLocationAddress = (details: { address?: string; city?: strin
 export const formatAddressParts = ({ street, city, state, zipCode }: AddressParts): string => {
   const parsedStreet = parseAddressParts(street || '');
   const shouldUseParsedStreet = hasCompleteAddressParts(parsedStreet);
-  const line1 = (shouldUseParsedStreet ? parsedStreet.street : street)?.trim() || '';
+  const line1 = normalizeStreetLine((shouldUseParsedStreet ? parsedStreet.street : street)?.trim() || '');
   const normalizedCity = (shouldUseParsedStreet ? parsedStreet.city : city)?.trim() || '';
   const normalizedState = (shouldUseParsedStreet ? parsedStreet.state : state)?.trim().toUpperCase().slice(0, 2) || '';
   const normalizedZip = (shouldUseParsedStreet ? parsedStreet.zipCode : zipCode)?.trim().replace(/\D/g, '').slice(0, 10) || '';
@@ -133,17 +157,17 @@ export const parseGoogleAddressComponents = (
 
   const streetNumber = find('street_number')?.long_name || '';
   const route = find('route')?.long_name || '';
-  const street = [streetNumber, route].filter(Boolean).join(' ').trim();
+  const street = normalizeStreetLine([streetNumber, route].filter(Boolean).join(' ').trim());
   const city =
     find('locality', 'postal_town', 'sublocality', 'administrative_area_level_3')?.long_name || '';
   const state = (find('administrative_area_level_1')?.short_name || '').toUpperCase().slice(0, 2);
   const zipCode = find('postal_code')?.long_name || '';
 
-  return { street, city, state, zipCode };
+  return { street: normalizeStreetLine(street), city, state, zipCode };
 };
 
 export const parseAddressParts = (fullAddress: string): AddressParts => {
-  const trimmed = fullAddress?.trim() || '';
+  const trimmed = normalizeAddressInput(fullAddress?.trim() || '');
   if (!trimmed) return {};
 
   let parts = stripTrailingCountry(
@@ -171,7 +195,7 @@ export const parseAddressParts = (fullAddress: string): AddressParts => {
     const stateMatch = parts[parts.length - 2].match(/^([A-Za-z]{2})\s*$/);
     if (zipMatch && stateMatch) {
       return {
-        street: parts.slice(0, -3).join(', '),
+        street: joinStreetSegments(parts.slice(0, -3)),
         city: parts[parts.length - 3] || '',
         state: stateMatch[1].toUpperCase(),
         zipCode: zipMatch[1],
@@ -213,7 +237,7 @@ export const parseAddressParts = (fullAddress: string): AddressParts => {
   }
 
   return {
-    street: street || trimmed,
+    street: normalizeStreetLine(street || trimmed),
     city: city || '',
     state: (state || '').toUpperCase(),
     zipCode: zipCode || '',
