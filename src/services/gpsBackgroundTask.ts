@@ -7,6 +7,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { debugLog } from '../config/debug';
+import { LocationDetails } from '../types';
 import { StationaryNotificationService } from './stationaryNotificationService';
 
 const LOCATION_TASK_NAME = 'background-location-task';
@@ -22,6 +23,8 @@ export interface PersistedGpsState {
     startTime: string;
     odometerReading: number;
     startLocation?: string;
+    /** User-confirmed trip start (e.g. "Start from last destination"), not GPS reverse-geocode. */
+    startLocationDetails?: LocationDetails;
     totalMiles: number;
     purpose: string;
     notes?: string;

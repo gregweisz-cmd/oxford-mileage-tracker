@@ -98,6 +98,8 @@ export async function executeEndTripSave(
   const startDisplay =
     normalizedStart?.name ||
     normalizedStart?.address ||
+    completedSession.startLocationDetails?.name ||
+    completedSession.startLocationDetails?.address ||
     completedSession.startLocation ||
     'Unknown';
 
@@ -126,7 +128,7 @@ export async function executeEndTripSave(
         odometerReading: completedSession.odometerReading,
         startLocation: startDisplay,
         endLocation: endDisplay,
-        startLocationDetails: normalizedStart || undefined,
+        startLocationDetails: normalizedStart || completedSession.startLocationDetails || undefined,
         endLocationDetails: normalizedDetails,
         purpose: completedSession.purpose,
         miles: actualMiles,
@@ -150,7 +152,7 @@ export async function executeEndTripSave(
     ? ''
     : '\n\nWarning: Trip ended, but saving took too long. Please check your mileage list and refresh if needed.';
 
-  const alertMessage = `Trip completed!\nDistance: ${actualMiles} miles (GPS tracked)\nDuration: ${formatTripDuration(trackingTimeSeconds)}\nFrom: ${formatLocation(completedSession.startLocation || '', startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', normalizedDetails)}${saveWarning}`;
+  const alertMessage = `Trip completed!\nDistance: ${actualMiles} miles (GPS tracked)\nDuration: ${formatTripDuration(trackingTimeSeconds)}\nFrom: ${formatLocation(completedSession.startLocation || '', normalizedStart || completedSession.startLocationDetails || startLocationDetails || undefined)}\nTo: ${formatLocation(completedSession.endLocation || '', normalizedDetails)}${saveWarning}`;
 
   return {
     mileageSaved,

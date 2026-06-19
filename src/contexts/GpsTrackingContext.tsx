@@ -20,7 +20,13 @@ interface GpsTrackingContextType {
   setCurrentDistance: (distance: number) => void;
   showMapOverlay: boolean;
   setShowMapOverlay: (show: boolean) => void;
-  startTracking: (employeeId: string, purpose: string, odometerReading: number, notes?: string) => Promise<void>;
+  startTracking: (
+    employeeId: string,
+    purpose: string,
+    odometerReading: number,
+    notes?: string,
+    startLocationDetails?: LocationDetails
+  ) => Promise<void>;
   stopTracking: (presetEndLocation?: LocationDetails) => Promise<GpsTrackingSession | null>;
   requestStopTracking: () => void;
   /** GpsTrackingScreen registers this to open end-trip UI without navigation loops. */
@@ -297,9 +303,21 @@ export function GpsTrackingProvider({ children }: GpsTrackingProviderProps) {
     refreshTrackingStatus();
   };
 
-  const startTracking = async (employeeId: string, purpose: string, odometerReading: number, notes?: string) => {
+  const startTracking = async (
+    employeeId: string,
+    purpose: string,
+    odometerReading: number,
+    notes?: string,
+    startLocationDetails?: LocationDetails
+  ) => {
     try {
-      const session = await GpsTrackingService.startTracking(employeeId, purpose, odometerReading, notes);
+      const session = await GpsTrackingService.startTracking(
+        employeeId,
+        purpose,
+        odometerReading,
+        notes,
+        startLocationDetails
+      );
       setCurrentSession(session);
       setIsTracking(true);
       setTripPaused(false);

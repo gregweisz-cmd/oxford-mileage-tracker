@@ -115,7 +115,8 @@ export class GpsTrackingService {
     employeeId: string,
     purpose: string,
     odometerReading: number,
-    notes?: string
+    notes?: string,
+    chosenStartLocation?: LocationDetails
   ): Promise<GpsTrackingSession> {
     try {
       await StationaryNotificationService.cancelAllStationaryAlerts();
@@ -170,7 +171,11 @@ export class GpsTrackingService {
 
       debugLog('📍 GPS: Current location obtained:', location.coords);
 
-      const startLocation = await this.reverseGeocode(location.coords);
+      const geocodedStart = await this.reverseGeocode(location.coords);
+      const startLocation =
+        chosenStartLocation?.name?.trim() ||
+        chosenStartLocation?.address?.trim() ||
+        geocodedStart;
 
       // Create tracking session
       const session: GpsTrackingSession = {
@@ -179,6 +184,7 @@ export class GpsTrackingService {
         startTime: new Date(),
         odometerReading,
         startLocation,
+        startLocationDetails: chosenStartLocation ? { ...chosenStartLocation } : undefined,
         totalMiles: 0,
         isActive: true,
         purpose,
@@ -199,6 +205,7 @@ export class GpsTrackingService {
           startTime: session.startTime.toISOString(),
           odometerReading: session.odometerReading,
           startLocation,
+          startLocationDetails: session.startLocationDetails,
           totalMiles: 0,
           purpose: session.purpose,
           notes: session.notes,
@@ -393,6 +400,7 @@ export class GpsTrackingService {
         startTime: new Date(session.startTime),
         odometerReading: session.odometerReading,
         startLocation: session.startLocation,
+        startLocationDetails: session.startLocationDetails,
         totalMiles: session.totalMiles,
         isActive: true,
         purpose: session.purpose,

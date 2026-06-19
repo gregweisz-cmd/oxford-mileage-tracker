@@ -211,6 +211,17 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     Partial<Record<EndLocationOption, StartLocationSuggestion>>
   >({});
   const [startLocationDetails, setStartLocationDetails] = useState<LocationDetails | null>(null);
+  /** Synchronous source of truth for chosen trip start (React setState can lag behind startGpsTracking). */
+  const startLocationDetailsRef = useRef<LocationDetails | null>(null);
+  const applyTripStartLocation = useCallback((details: LocationDetails) => {
+    const normalized = normalizeLocationDetails(details) || details;
+    startLocationDetailsRef.current = normalized;
+    setStartLocationDetails(normalized);
+  }, []);
+  const clearTripStartLocation = useCallback(() => {
+    startLocationDetailsRef.current = null;
+    setStartLocationDetails(null);
+  }, []);
   const [endLocationDetails, setEndLocationDetails] = useState<LocationDetails | null>(null);
   const [lastDestination, setLastDestination] = useState<LocationDetails | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -357,7 +368,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
     const payload: PersistedGpsTripUiState = {
       employeeId: currentEmployee.id,
-      startLocationDetails,
+      startLocationDetails: startLocationDetailsRef.current ?? startLocationDetails,
       selectedVehicleId,
       selectedCostCenter,
       trackingForm,
@@ -372,6 +383,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     trackingForm,
   ]);
 
+  useEffect(() => {
+    if (!isTracking || !currentSession?.startLocationDetails) return;
+    if (!startLocationDetailsRef.current) {
+      applyTripStartLocation(currentSession.startLocationDetails);
+    }
+  }, [isTracking, currentSession?.id, currentSession?.startLocationDetails, applyTripStartLocation]);
+
   useLayoutEffect(() => {
     if (!endTripOverlay) return;
 
@@ -383,8 +401,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         if (saved.employeeId && currentEmployee?.id && saved.employeeId !== currentEmployee.id) {
           return;
         }
-        if (saved.startLocationDetails) {
-          setStartLocationDetails(saved.startLocationDetails);
+        if (currentSession?.startLocationDetails) {
+          applyTripStartLocation(currentSession.startLocationDetails);
+        } else if (saved.startLocationDetails) {
+          applyTripStartLocation(saved.startLocationDetails);
         }
         if (saved.selectedVehicleId) {
           setSelectedVehicleId(saved.selectedVehicleId);
@@ -399,7 +419,16 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         // Best-effort restore for end-trip overlay from Home.
       }
     })();
-  }, [endTripOverlay, currentEmployee?.id]);
+  }, [endTripOverlay, currentEmployee?.id, currentSession?.startLocationDetails, applyTripStartLocation]);
+
+  const effectiveTripStartLocation = useMemo(
+    () =>
+      startLocationDetailsRef.current ??
+      startLocationDetails ??
+      currentSession?.startLocationDetails ??
+      null,
+    [startLocationDetails, currentSession?.startLocationDetails]
+  );
 
   const dismissEndTripOverlay = () => {
     endTripFlow.dismissEndTripOverlay();
@@ -464,16 +493,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         await refreshLastTravelDayEndingOdometerNote(employee.id, defaultVehicle?.id);
       }
       
-      // Set base address as default start location if available
-      if (employee?.baseAddress) {
-        setStartLocationDetails({
-          name: 'BA',
-          address: employee.baseAddress,
-          source: 'baseAddress',
-          latitude: undefined,
-          longitude: undefined
-        });
-      }
+      // Do not pre-fill trip start with base address — it leaked into "Start from last destination" saves.
       
       // Load last destination from recent entries
       if (employee) {
@@ -752,27 +772,20 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     setTimeout(() => {
       if (option === 'lastDestination' && lastDestination) {
         console.log('🔍 GPS: Using last destination:', lastDestination.name);
-        // Use last destination as starting point
-        setStartLocationDetails(lastDestination);
-        startGpsTracking();
+        const normalized = normalizeLocationDetails(lastDestination) || lastDestination;
+        void startGpsTracking(normalized);
       } else if (option === 'baseAddress' && currentEmployee?.baseAddress) {
         const suggested = startLocationSuggestions.baseAddress;
-        if (suggested) {
-          setStartLocationDetails(suggested.details);
-        } else {
-          console.log('🔍 GPS: Using base address:', currentEmployee.baseAddress);
-          setStartLocationDetails({
-            name: 'BA',
-            address: currentEmployee.baseAddress,
-            source: 'baseAddress',
-          });
-        }
-        startGpsTracking();
+        const details = suggested?.details ?? {
+          name: 'BA',
+          address: currentEmployee.baseAddress,
+          source: 'baseAddress' as const,
+        };
+        void startGpsTracking(details);
       } else if (option === 'favoriteAddresses') {
         const suggested = startLocationSuggestions.favoriteAddresses;
         if (suggested) {
-          setStartLocationDetails(suggested.details);
-          startGpsTracking();
+          void startGpsTracking(suggested.details);
         } else {
           console.log('🔍 GPS: Navigating to favorite addresses');
           navigation.navigate('SavedAddresses', { fromGpsTrackingStart: true });
@@ -780,8 +793,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       } else if (option === 'oxfordHouse') {
         const suggested = startLocationSuggestions.oxfordHouse;
         if (suggested) {
-          setStartLocationDetails(suggested.details);
-          startGpsTracking();
+          void startGpsTracking(suggested.details);
         } else {
           console.log('🔍 GPS: Showing Oxford House search modal');
           setOxfordHousePickerRole('start');
@@ -987,16 +999,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         };
       }
 
-      if (startLocationDetails) {
-        const tripStartAddress = startLocationDetails.address?.trim() || startLocationDetails.name;
+      const tripStartForSuggestions =
+        startLocationDetailsRef.current ??
+        startLocationDetails ??
+        currentSession?.startLocationDetails ??
+        null;
+
+      if (tripStartForSuggestions) {
+        const tripStartAddress = tripStartForSuggestions.address?.trim() || tripStartForSuggestions.name;
         const tripStartDistanceMatch =
-          typeof startLocationDetails.latitude === 'number' &&
-          typeof startLocationDetails.longitude === 'number' &&
+          typeof tripStartForSuggestions.latitude === 'number' &&
+          typeof tripStartForSuggestions.longitude === 'number' &&
           calculateDistanceMiles(
             currentLat,
             currentLon,
-            startLocationDetails.latitude,
-            startLocationDetails.longitude
+            tripStartForSuggestions.latitude,
+            tripStartForSuggestions.longitude
           ) <= GPS_NEARBY_MATCH_MILES;
         const tripStartAddressMatch =
           !!currentAddress && addressesStrictlyMatch(currentAddress, tripStartAddress);
@@ -1004,10 +1022,10 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         if (tripStartDistanceMatch || tripStartAddressMatch) {
           suggestions.tripStart = {
             details: {
-              name: startLocationDetails.name,
+              name: tripStartForSuggestions.name,
               address: tripStartAddress,
-              latitude: startLocationDetails.latitude ?? currentLat,
-              longitude: startLocationDetails.longitude ?? currentLon,
+              latitude: tripStartForSuggestions.latitude ?? currentLat,
+              longitude: tripStartForSuggestions.longitude ?? currentLon,
             },
             reason: 'Looks like you are back at your trip start location.',
             confidenceLabel: getGpsLocationConfidenceLabel(
@@ -1141,9 +1159,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     }
   };
 
-  const startGpsTracking = async () => {
+  const startGpsTracking = async (chosenStart?: LocationDetails | null) => {
+    const tripStart =
+      chosenStart ??
+      startLocationDetailsRef.current ??
+      startLocationDetails;
+    if (!tripStart) {
+      Alert.alert('Missing start location', 'Please choose where this trip started before starting GPS tracking.');
+      return;
+    }
+
     try {
       setIsStartingTracking(true);
+      applyTripStartLocation(tripStart);
       // Check if this is the first GPS tracking session of the day using device's local timezone
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1172,7 +1200,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         currentEmployee!.id,
         trackingForm.purpose,
         odometerForTrip,
-        trackingForm.notes
+        trackingForm.notes,
+        tripStart
       );
 
       await checkGpsTrackingStatus(currentEmployee!.id, selectedVehicleId || undefined);
@@ -1206,8 +1235,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           Alert.alert('Missing Information', 'Please enter purpose before selecting a location.');
           return;
         }
-        setStartLocationDetails(pending.address);
-        void startGpsTrackingRef.current();
+        void startGpsTrackingRef.current(pending.address);
         return;
       }
 
@@ -1222,10 +1250,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
   const handleStartLocationConfirm = async (locationDetails: LocationDetails) => {
     const normalized = normalizeLocationDetails(locationDetails) || locationDetails;
-    setStartLocationDetails(normalized);
     setShowStartLocationModal(false);
     setManualStartInitialLocation(null);
-    startGpsTracking();
+    void startGpsTracking(normalized);
   };
 
   const handleStopTracking = async () => {
@@ -1247,16 +1274,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             address: currentEmployee.baseAddress,
           });
         }
-      } else if (option === 'tripStart' && startLocationDetails) {
+      } else if (option === 'tripStart') {
+        const tripStart =
+          startLocationDetailsRef.current ??
+          startLocationDetails ??
+          currentSession?.startLocationDetails ??
+          null;
+        if (!tripStart) return;
         const suggested = endLocationSuggestions.tripStart;
         if (suggested) {
           openEndLocationModalWithDetails(suggested.details);
         } else {
           openEndLocationModalWithDetails({
-            name: startLocationDetails.name,
-            address: startLocationDetails.address?.trim() || startLocationDetails.name,
-            latitude: startLocationDetails.latitude,
-            longitude: startLocationDetails.longitude,
+            name: tripStart.name,
+            address: tripStart.address?.trim() || tripStart.name,
+            latitude: tripStart.latitude,
+            longitude: tripStart.longitude,
           });
         }
       } else if (option === 'favoriteAddresses') {
@@ -1293,8 +1326,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const endLocationMatchesStart = (end: LocationDetails): boolean => {
-    if (!startLocationDetails) return false;
-    const start = normalizeLocationDetails(startLocationDetails) || startLocationDetails;
+    const tripStart =
+      startLocationDetailsRef.current ??
+      startLocationDetails ??
+      currentSession?.startLocationDetails ??
+      null;
+    if (!tripStart) return false;
+    const start = normalizeLocationDetails(tripStart) || tripStart;
 
     // Coordinate proximity (~150 ft) is the strongest signal.
     if (
@@ -1358,8 +1396,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     endTripFlow.beginSaving();
 
     try {
-      const normalizedStart = startLocationDetails
-        ? normalizeLocationDetails(startLocationDetails) || startLocationDetails
+      const effectiveStart =
+        startLocationDetailsRef.current ??
+        startLocationDetails ??
+        currentSession?.startLocationDetails ??
+        null;
+      const normalizedStart = effectiveStart
+        ? normalizeLocationDetails(effectiveStart) || effectiveStart
         : null;
 
       if (!currentEmployee) {
@@ -1369,7 +1412,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       const saveResult = await executeEndTripSave({
         normalizedDetails,
         normalizedStart,
-        startLocationDetails,
+        startLocationDetails: normalizedStart,
         currentEmployee,
         selectedVehicleId,
         selectedCostCenter,
@@ -1393,7 +1436,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setLastDestination(saveResult.normalizedDetails);
 
         setTrackingTime(0);
-        setStartLocationDetails(null);
+        clearTripStartLocation();
         setEndLocationDetails(null);
         setTrackingForm({
           odometerReading: '',
@@ -1412,7 +1455,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       }
 
       setTrackingTime(0);
-      setStartLocationDetails(null);
+      clearTripStartLocation();
       setEndLocationDetails(null);
       setTrackingForm({
         odometerReading: '',
@@ -1442,8 +1485,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     if (role === 'end') {
       openEndLocationModalWithDetails(locationDetails);
     } else {
-      setStartLocationDetails(locationDetails);
-      startGpsTracking();
+      void startGpsTracking(locationDetails);
     }
   };
 
@@ -2170,7 +2212,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 const suggestion = endLocationSuggestions[option];
                 const isDisabled =
                   (option === 'baseAddress' && !currentEmployee?.baseAddress) ||
-                  (option === 'tripStart' && !startLocationDetails);
+                  (option === 'tripStart' && !effectiveTripStartLocation);
                 const iconName =
                   option === 'baseAddress' ? 'home' :
                   option === 'tripStart' ? 'replay' :
@@ -2192,8 +2234,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     : option === 'baseAddress'
                     ? (currentEmployee?.baseAddress || 'No base address set')
                     : option === 'tripStart'
-                      ? (startLocationDetails
-                        ? `${startLocationDetails.name} (${startLocationDetails.address || '—'})`
+                      ? (effectiveTripStartLocation
+                        ? `${effectiveTripStartLocation.name} (${effectiveTripStartLocation.address || '—'})`
                         : 'Start location not recorded for this session')
                       : option === 'favoriteAddresses'
                         ? 'Select a saved location as your destination'
