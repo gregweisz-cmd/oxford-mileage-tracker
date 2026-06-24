@@ -57,7 +57,7 @@ import {
   finalizeEndTripNavigation,
   GPS_TRIP_UI_STATE_KEY,
 } from '../services/endTripCoordinator';
-import { toCanonicalAddress } from '../utils/locationSelection';
+import { makeLocationDetails, toCanonicalAddress } from '../utils/locationSelection';
 import { consumePendingGpsLocationPick } from '../utils/pendingLocationSelection';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
 
@@ -79,6 +79,11 @@ type EndLocationOption =
   | 'favoriteAddresses'
   | 'oxfordHouse'
   | 'newLocation';
+
+const TRUSTED_END_LOCATION_SOURCES = new Set<NonNullable<LocationDetails['source']>>([
+  'baseAddress',
+  'baseAddress2',
+]);
 
 interface PersistedGpsTripUiState {
   employeeId: string;
@@ -471,8 +476,6 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       }
     };
   }, [isTracking, currentSession?.id]); // Only restart when tracking status or session ID changes
-
-  // Removed: Poll for distance updates - now handled by GpsTrackingContext to avoid duplicate updates
 
   const loadEmployee = async () => {
     try {
@@ -1119,6 +1122,46 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
 
   openEndLocationOptionsRef.current = openEndLocationOptions;
 
+  const refreshEmployeeFromBackend = async (): Promise<Employee | null> => {
+    const local = currentEmployee ?? (await DatabaseService.getCurrentEmployee());
+    if (!local?.id) return null;
+
+    try {
+      const { ApiSyncService } = await import('../services/apiSyncService');
+      const { API_BASE_URL } = await import('../config/api');
+      const { getAuthHeaders } = await import('../services/authHeaders');
+      const backendId = (await ApiSyncService.resolveBackendEmployeeId(local.id)) || local.id;
+      const response = await fetch(`${API_BASE_URL}/employees/${encodeURIComponent(backendId)}`, {
+        headers: await getAuthHeaders(),
+      });
+      if (!response.ok) return local;
+
+      const emp = await response.json();
+      const merged: Employee = {
+        ...local,
+        baseAddress: emp.baseAddress || local.baseAddress,
+        baseAddress2: emp.baseAddress2 ?? local.baseAddress2,
+      };
+      setCurrentEmployee(merged);
+      return merged;
+    } catch (error) {
+      console.warn('⚠️ GPS: Could not refresh employee profile from backend:', error);
+      return local;
+    }
+  };
+
+  const buildBaseAddressEndDetails = (
+    employee: Employee,
+    suggested?: StartLocationSuggestion
+  ): LocationDetails =>
+    makeLocationDetails({
+      name: 'BA',
+      address: employee.baseAddress,
+      source: 'baseAddress',
+      latitude: suggested?.details.latitude,
+      longitude: suggested?.details.longitude,
+    });
+
   useEffect(() => {
     registerEndTripFlowHandler(() => {
       if (isTrackingRef.current) {
@@ -1270,16 +1313,22 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     option: 'baseAddress' | 'tripStart' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation'
   ) => {
     setTimeout(() => {
-      if (option === 'baseAddress' && currentEmployee?.baseAddress) {
-        const suggested = endLocationSuggestions.baseAddress;
-        if (suggested) {
-          openEndLocationModalWithDetails(suggested.details);
-        } else {
-          openEndLocationModalWithDetails({
-            name: 'BA',
-            address: canonicalBaseAddress,
-          });
-        }
+      if (option === 'baseAddress') {
+        void (async () => {
+          const employee = await refreshEmployeeFromBackend();
+          if (!employee?.baseAddress?.trim()) {
+            Alert.alert(
+              'No base address',
+              'Your profile does not have a base address on file. Add one in the web portal or choose another end location.'
+            );
+            return;
+          }
+
+          const suggested = endLocationSuggestions.baseAddress;
+          const details = buildBaseAddressEndDetails(employee, suggested);
+          await handleEndLocationConfirm(details);
+        })();
+        return;
       } else if (option === 'tripStart') {
         const tripStart =
           startLocationDetailsRef.current ??
@@ -1366,9 +1415,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     skipRoundTripCheck: boolean = false
   ) => {
     const normalizedDetails = normalizeLocationDetails(locationDetails) || locationDetails;
-    // Safety guard: if any path tries to auto-submit a non-manual end location,
-    // force the user back through the editable end-location modal first.
-    if (normalizedDetails.source !== 'manual') {
+    // Trusted profile locations (e.g. End at Base Address) skip manual capture.
+    if (
+      normalizedDetails.source &&
+      !TRUSTED_END_LOCATION_SOURCES.has(normalizedDetails.source) &&
+      normalizedDetails.source !== 'manual'
+    ) {
       openEndLocationModalWithDetails(normalizedDetails);
       return;
     }
