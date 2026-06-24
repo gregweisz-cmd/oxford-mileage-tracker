@@ -2,8 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { IconButton, Badge, Tooltip } from '@mui/material';
 import { Notifications as NotificationsIcon } from '@mui/icons-material';
 import { NotificationsDialog } from './NotificationsDialog';
-import { apiGet } from '../services/rateLimitedApi';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import {
+  fetchNotificationUnreadCount,
+  getNotificationRecipientId,
+  logNotificationApiError,
+} from '../services/notificationApi';
 
 interface NotificationBellProps {
   employeeId: string;
@@ -20,32 +24,29 @@ interface NotificationBellProps {
 export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, role, onReportClick }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
+  const recipientId = getNotificationRecipientId(employeeId) || employeeId;
 
   const fetchUnreadCount = useCallback(async () => {
-    if (!employeeId) return;
+    if (!recipientId) return;
     
     try {
-      const data = await apiGet<{ count: number }>(`/api/notifications/${employeeId}/count`);
-      setUnreadCount(data.count || 0);
+      const count = await fetchNotificationUnreadCount(recipientId);
+      setUnreadCount(count);
     } catch (error) {
-      // Silently fail - don't show errors for polling
-      // Rate limiting and network errors will resolve when connection is restored
+      logNotificationApiError('Error fetching notification count:', error);
     }
-  }, [employeeId]);
+  }, [recipientId]);
 
   useEffect(() => {
-    if (employeeId) {
+    if (recipientId) {
       fetchUnreadCount();
     }
-  }, [employeeId, fetchUnreadCount]);
+  }, [recipientId, fetchUnreadCount]);
 
-  // Poll for unread count every 60s while the tab is visible. Pauses when the
-  // tab is hidden so background tabs don't keep hammering the API.
-  useVisibilityPolling(fetchUnreadCount, 60000, { enabled: !!employeeId });
+  useVisibilityPolling(fetchUnreadCount, 60000, { enabled: !!recipientId });
 
   const handleOpen = () => {
     setOpen(true);
-    // Refresh count when opening dialog
     fetchUnreadCount();
   };
 
@@ -81,7 +82,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
       <NotificationsDialog
         open={open}
         onClose={handleClose}
-        employeeId={employeeId}
+        employeeId={recipientId}
         role={role}
         onUpdate={handleNotificationsUpdate}
         onReportClick={onReportClick}
@@ -89,4 +90,3 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ employeeId, 
     </>
   );
 };
-

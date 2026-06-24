@@ -897,11 +897,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     return employeeId || localStorage.getItem('currentEmployeeId') || '';
   }, [employeeId]);
 
-  /** Whose notifications to load in the header (always the authenticated viewer when acting on behalf of someone else). */
-  const notificationRecipientId = React.useMemo(
-    () => viewerUserIdForNotifications || employeeId,
-    [viewerUserIdForNotifications, employeeId]
-  );
+  /** Whose notifications to load in the header (always the authenticated viewer). */
+  const notificationRecipientId = React.useMemo(() => {
+    if (viewerUserIdForNotifications?.trim()) {
+      return viewerUserIdForNotifications.trim();
+    }
+    if (typeof window !== 'undefined') {
+      const loggedInId = localStorage.getItem('currentEmployeeId')?.trim();
+      if (loggedInId) return loggedInId;
+    }
+    return (employeeId || effectiveEmployeeId || '').trim();
+  }, [viewerUserIdForNotifications, employeeId, effectiveEmployeeId]);
 
   // Use state for current month/year so users can change them
   const [currentMonth, setCurrentMonth] = useState(reportMonth);
@@ -6258,10 +6264,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             debugVerbose('🔄 StaffPortal: Refreshing data from backend...');
             startLoading('Refreshing data from backend...');
             rateLimitedApi.invalidateStaffMonthDataCache();
+            rateLimitedApi.clearCacheFor('/api/notifications');
             try {
               await new Promise<void>((resolve, reject) => {
                 manualRefreshResolversRef.current = { resolve, reject };
                 setRefreshTrigger((prev) => prev + 1);
+              });
+              await new Promise<void>((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
               });
               showSuccess('Data refreshed successfully from backend!');
             } catch (error) {

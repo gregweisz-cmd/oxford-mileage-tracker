@@ -32,6 +32,14 @@ import {
 } from '@mui/icons-material';
 import { useToast } from '../contexts/ToastContext';
 import { debugError } from '../config/debug';
+import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
+import {
+  deleteNotification,
+  fetchNotificationList,
+  logNotificationApiError,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '../services/notificationApi';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -139,18 +147,18 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data || []);
+      const data = await fetchNotificationList(employeeId);
+      setNotifications((data as Notification[]) || []);
+    } catch (error) {
+      logNotificationApiError('Error fetching notifications:', error);
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('403')) {
+        showError('Could not load notifications — session user does not match this inbox. Try signing out and back in.');
+      } else if (message.includes('401')) {
+        showError('Session expired. Please sign in again.');
       } else {
         showError('Failed to load notifications');
       }
-    } catch (error) {
-      showError('Error loading notifications');
-      debugError('Error fetching notifications:', error);
     } finally {
       setLoading(false);
     }
@@ -160,9 +168,8 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     if (!employeeId || role !== 'employee') return;
     
     try {
-      // Fetch employee data to get sundayReminderEnabled preference
-      const response = await fetch(`${API_BASE_URL}/api/employees/${employeeId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com'}/api/employees/${employeeId}`, {
+        headers: getStaffPortalAuthHeaders(),
       });
       if (response.ok) {
         const employee = await response.json();
@@ -175,59 +182,47 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      await markNotificationRead(notificationId);
+      const now = new Date().toISOString();
+      const nextNotifications = notifications.map(n =>
+        (n.id === notificationId ? { ...n, isRead: true, readAt: now } : n)
+      );
+      setNotifications(nextNotifications);
+      onUpdate?.({
+        unreadCount: nextNotifications.filter(n => !n.isRead).length
       });
-      if (response.ok) {
-        const now = new Date().toISOString();
-        const nextNotifications = notifications.map(n =>
-          (n.id === notificationId ? { ...n, isRead: true, readAt: now } : n)
-        );
-        setNotifications(nextNotifications);
-        onUpdate?.({
-          unreadCount: nextNotifications.filter(n => !n.isRead).length
-        });
-      }
     } catch (error) {
       showError('Error marking notification as read');
+      logNotificationApiError('Error marking notification as read:', error);
     }
   };
 
   const markAllAsRead = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/read-all`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
-      });
-      if (response.ok) {
-        const now = new Date().toISOString();
-        const nextNotifications = notifications.map(n => ({ ...n, isRead: true, readAt: now }));
-        setNotifications(nextNotifications);
-        showSuccess('All notifications marked as read');
-        onUpdate?.({ markAllAsRead: true, unreadCount: 0 });
-      }
+      await markAllNotificationsRead(employeeId);
+      const now = new Date().toISOString();
+      const nextNotifications = notifications.map(n => ({ ...n, isRead: true, readAt: now }));
+      setNotifications(nextNotifications);
+      showSuccess('All notifications marked as read');
+      onUpdate?.({ markAllAsRead: true, unreadCount: 0 });
     } catch (error) {
       showError('Error marking all notifications as read');
+      logNotificationApiError('Error marking all notifications as read:', error);
     }
   };
 
-  const deleteNotification = async (notificationId: string) => {
+  const deleteNotificationHandler = async (notificationId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      await deleteNotification(notificationId);
+      const nextNotifications = notifications.filter(n => n.id !== notificationId);
+      setNotifications(nextNotifications);
+      showSuccess('Notification deleted');
+      onUpdate?.({
+        unreadCount: nextNotifications.filter(n => !n.isRead).length
       });
-      if (response.ok) {
-        const nextNotifications = notifications.filter(n => n.id !== notificationId);
-        setNotifications(nextNotifications);
-        showSuccess('Notification deleted');
-        onUpdate?.({
-          unreadCount: nextNotifications.filter(n => !n.isRead).length
-        });
-      }
     } catch (error) {
       showError('Error deleting notification');
+      logNotificationApiError('Error deleting notification:', error);
     }
     setAnchorEl(null);
     setSelectedNotification(null);
@@ -250,10 +245,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/api/notifications/preferences/sunday-reminder`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('authToken') || ''}`,
-        },
+        headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           employeeId,
           enabled,
@@ -288,7 +280,9 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
       const tab =
         typeof meta.staffPortalTabIndex === 'number' ? meta.staffPortalTabIndex : undefined;
       try {
-        const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${notification.reportId}`);
+        const response = await fetch(`${API_BASE_URL}/api/expense-reports/id/${notification.reportId}`, {
+          headers: getStaffPortalAuthHeaders(),
+        });
         if (response.ok) {
           const report = await response.json();
           onReportClick(
@@ -503,7 +497,7 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
         {selectedNotification && selectedNotification.isDismissible && (
           <MenuItem
             onClick={() => {
-              deleteNotification(selectedNotification.id);
+              deleteNotificationHandler(selectedNotification.id);
             }}
           >
             <ListItemIcon>

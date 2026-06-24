@@ -30,10 +30,15 @@ import {
   MarkEmailRead as MarkEmailReadIcon,
 } from '@mui/icons-material';
 import { NotificationsDialog } from './NotificationsDialog';
-import { debugError } from '../config/debug';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
+import {
+  clearReadNotifications,
+  fetchNotificationList,
+  fetchNotificationUnreadCount,
+  logNotificationApiError,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '../services/notificationApi';
 
 interface Notification {
   id: string;
@@ -151,31 +156,24 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
   const [expanded, setExpanded] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (options?: { background?: boolean }) => {
     if (!employeeId) return;
 
-    setLoading(true);
+    if (!options?.background) {
+      setLoading(true);
+    }
     try {
-      // Fetch unread count
-      const { apiGet } = await import('../services/rateLimitedApi');
       try {
-        const countData = await apiGet<{ count: number }>(`/api/notifications/${employeeId}/count`);
-        setUnreadCount(countData.count || 0);
+        const count = await fetchNotificationUnreadCount(employeeId);
+        setUnreadCount(count);
       } catch (error) {
-        // Silently handle rate limiting
+        logNotificationApiError('Error fetching notification count:', error);
       }
 
-      // Fetch recent notifications (unread first, then recent)
-      const notificationsResponse = await fetch(
-        `${API_BASE_URL}/api/notifications/${employeeId}?limit=${maxDisplay * 2}`,
-        { headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` } }
-      );
-      if (notificationsResponse.ok) {
-        const data = await notificationsResponse.json();
-        setNotifications(data || []);
-      }
+      const data = await fetchNotificationList(employeeId, { limit: maxDisplay * 2 });
+      setNotifications((data as Notification[]) || []);
     } catch (error) {
-      debugError('Error fetching notifications:', error);
+      logNotificationApiError('Error fetching notifications:', error);
     } finally {
       setLoading(false);
     }
@@ -190,56 +188,42 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
   // Poll for new notifications every 60s while the tab is visible. Pauses when
   // the tab is hidden so background staff/supervisor tabs don't keep hitting
   // the API all day.
-  useVisibilityPolling(fetchNotifications, 60000, { enabled: !!employeeId });
+  useVisibilityPolling(() => fetchNotifications({ background: true }), 60000, {
+    enabled: !!employeeId,
+  });
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
-      });
-      if (response.ok) {
-        // Update local state
-        setNotifications(prev =>
-          prev.map(n => (n.id === notificationId ? { ...n, isRead: true } : n))
-        );
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
+      await markNotificationRead(notificationId);
+      setNotifications(prev =>
+        prev.map(n => (n.id === notificationId ? { ...n, isRead: true } : n))
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
-      debugError('Error marking notification as read:', error);
+      logNotificationApiError('Error marking notification as read:', error);
     }
   };
 
   const markAllAsRead = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/read-all`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
-      });
-      if (response.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        setUnreadCount(0);
-      }
+      await markAllNotificationsRead(employeeId);
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadCount(0);
     } catch (error) {
-      debugError('Error marking all notifications as read:', error);
+      logNotificationApiError('Error marking all notifications as read:', error);
     }
   };
 
   const clearAllNotifications = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notifications/${employeeId}/clear-all`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('authToken') || ''}` },
+      await clearReadNotifications(employeeId);
+      setNotifications(prev => {
+        const remaining = prev.filter(n => !(n.isDismissible && n.isRead));
+        setUnreadCount(remaining.filter(n => !n.isRead).length);
+        return remaining;
       });
-      if (response.ok) {
-        setNotifications(prev => {
-          const remaining = prev.filter(n => !(n.isDismissible && n.isRead));
-          setUnreadCount(remaining.filter(n => !n.isRead).length);
-          return remaining;
-        });
-      }
     } catch (error) {
-      debugError('Error clearing notifications:', error);
+      logNotificationApiError('Error clearing notifications:', error);
     }
   };
 

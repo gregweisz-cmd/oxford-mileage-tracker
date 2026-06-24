@@ -33,8 +33,9 @@ function hasAdminAccess(employee) {
 
 function canAccessRecipient(req, recipientId) {
   const requester = req.authenticatedEmployee;
-  if (!requester) return false;
-  if (requester.id === recipientId) return true;
+  const authEmployeeId = req.auth?.employeeId;
+  if (!requester && !authEmployeeId) return false;
+  if (requester?.id === recipientId || authEmployeeId === recipientId) return true;
   return hasAdminAccess(requester);
 }
 
@@ -85,7 +86,7 @@ async function ensureAdminAccess(req, res) {
  * Get all notifications for a user (unified endpoint)
  * GET /api/notifications/:recipientId
  */
-router.get('/api/notifications/:recipientId', (req, res, next) => {
+router.get('/api/notifications/:recipientId', notificationPollingLimiter, (req, res, next) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
   const { unreadOnly, limit } = req.query;
