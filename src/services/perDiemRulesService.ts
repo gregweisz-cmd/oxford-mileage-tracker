@@ -181,40 +181,40 @@ export class PerDiemRulesService {
    */
   private static async storeRulesLocally(rules: PerDiemRule[]): Promise<void> {
     try {
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
 
-      // Use INSERT OR REPLACE to handle duplicates gracefully
-      for (const rule of rules) {
-        await database.runAsync(
-          `INSERT OR REPLACE INTO per_diem_rules (
+      await withDatabaseConnection(async (database) => {
+        // Use INSERT OR REPLACE to handle duplicates gracefully
+        for (const rule of rules) {
+          await database.runAsync(
+            `INSERT OR REPLACE INTO per_diem_rules (
             id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
             description, useActualAmount, createdAt, updatedAt
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            rule.id,
-            rule.costCenter,
-            rule.maxAmount,
-            rule.minHours,
-            rule.minMiles,
-            rule.minDistanceFromBase,
-            rule.description,
-            rule.useActualAmount ? 1 : 0,
-            rule.createdAt,
-            rule.updatedAt
-          ]
-        );
-      }
+            [
+              rule.id,
+              rule.costCenter,
+              rule.maxAmount,
+              rule.minHours,
+              rule.minMiles,
+              rule.minDistanceFromBase,
+              rule.description,
+              rule.useActualAmount ? 1 : 0,
+              rule.createdAt,
+              rule.updatedAt
+            ]
+          );
+        }
 
-      // Clean up any rules that are no longer in the backend (optional)
-      const ruleIds = rules.map(r => r.id);
-      if (ruleIds.length > 0) {
-        const placeholders = ruleIds.map(() => '?').join(',');
-        await database.runAsync(
-          `DELETE FROM per_diem_rules WHERE id NOT IN (${placeholders})`,
-          ruleIds
-        );
-      }
+        const ruleIds = rules.map(r => r.id);
+        if (ruleIds.length > 0) {
+          const placeholders = ruleIds.map(() => '?').join(',');
+          await database.runAsync(
+            `DELETE FROM per_diem_rules WHERE id NOT IN (${placeholders})`,
+            ruleIds
+          );
+        }
+      });
     } catch (error) {
       console.error('❌ PerDiemRules: Error storing rules locally:', error);
     }
@@ -225,24 +225,25 @@ export class PerDiemRulesService {
    */
   private static async getLocalRules(): Promise<PerDiemRule[]> {
     try {
-      const { getDatabaseConnection } = await import('../utils/databaseConnection');
-      const database = await getDatabaseConnection();
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
 
-      const rules = await database.getAllAsync(
-        'SELECT * FROM per_diem_rules ORDER BY costCenter'
-      );
-      return rules.map((rule: any) => ({
-        id: rule.id,
-        costCenter: rule.costCenter,
-        maxAmount: rule.maxAmount,
-        minHours: rule.minHours,
-        minMiles: rule.minMiles,
-        minDistanceFromBase: rule.minDistanceFromBase,
-        description: rule.description,
-        useActualAmount: Boolean(rule.useActualAmount),
-        createdAt: rule.createdAt,
-        updatedAt: rule.updatedAt
-      }));
+      return await withDatabaseConnection(async (database) => {
+        const rules = await database.getAllAsync(
+          'SELECT * FROM per_diem_rules ORDER BY costCenter'
+        );
+        return rules.map((rule: any) => ({
+          id: rule.id,
+          costCenter: rule.costCenter,
+          maxAmount: rule.maxAmount,
+          minHours: rule.minHours,
+          minMiles: rule.minMiles,
+          minDistanceFromBase: rule.minDistanceFromBase,
+          description: rule.description,
+          useActualAmount: Boolean(rule.useActualAmount),
+          createdAt: rule.createdAt,
+          updatedAt: rule.updatedAt
+        }));
+      });
     } catch (error) {
       console.error('❌ PerDiemRules: Error loading local rules:', error);
       return [];

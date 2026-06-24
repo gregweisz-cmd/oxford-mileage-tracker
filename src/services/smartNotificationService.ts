@@ -416,7 +416,9 @@ export class SmartNotificationService {
       const monthlyReports = await DatabaseService.getMonthlyReports(employeeId);
 
       // Check for reports pending approval (submitted but not yet approved)
-      const pendingReports = monthlyReports.filter(report => report.status === 'submitted');
+      const pendingReports = monthlyReports.filter(
+        (report) => report.status === 'submitted' || report.status === 'needs_revision'
+      );
 
       if (pendingReports.length > 0) {
         const mostRecent = pendingReports.sort((a, b) => {
@@ -430,12 +432,46 @@ export class SmartNotificationService {
           { month: 'long' }
         );
 
+        if (mostRecent.status === 'needs_revision') {
+          return {
+            id: `report_revision_${mostRecent.month}_${mostRecent.year}`,
+            type: 'report_status',
+            priority: 'high',
+            title: 'Report needs revision',
+            message: `Your ${monthName} ${mostRecent.year} expense report was sent back for revision. Open Reports to review and resubmit.`,
+            timestamp: currentDate,
+          };
+        }
+
         return {
           id: `report_status_${mostRecent.month}_${mostRecent.year}`,
           type: 'report_status',
           priority: 'low',
           title: 'Report pending supervisor approval',
           message: `Your ${monthName} ${mostRecent.year} expense report is awaiting supervisor approval. Track approval status from the web portal.`,
+          timestamp: currentDate,
+        };
+      }
+
+      const approvedReports = monthlyReports.filter((report) => report.status === 'approved');
+      if (approvedReports.length > 0) {
+        const mostRecentApproved = approvedReports.sort((a, b) => {
+          const dateA = new Date(`${a.year}-${a.month}-01`);
+          const dateB = new Date(`${b.year}-${b.month}-01`);
+          return dateB.getTime() - dateA.getTime();
+        })[0];
+        const monthName = new Date(
+          mostRecentApproved.year,
+          mostRecentApproved.month - 1,
+          1
+        ).toLocaleString('default', { month: 'long' });
+
+        return {
+          id: `report_approved_${mostRecentApproved.month}_${mostRecentApproved.year}`,
+          type: 'report_status',
+          priority: 'medium',
+          title: 'Report approved',
+          message: `Your ${monthName} ${mostRecentApproved.year} expense report has been approved.`,
           timestamp: currentDate,
         };
       }

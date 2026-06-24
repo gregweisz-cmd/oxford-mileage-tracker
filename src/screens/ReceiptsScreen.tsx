@@ -12,6 +12,7 @@ import {
   TextInput,
   Platform,
   RefreshControl,
+  InteractionManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -196,8 +197,11 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   // Refresh data when screen comes into focus (e.g., after adding a receipt)
   useFocusEffect(
     React.useCallback(() => {
-      console.log('📄 ReceiptsScreen: Screen focused, refreshing data');
-      loadData();
+      const task = InteractionManager.runAfterInteractions(() => {
+        console.log('📄 ReceiptsScreen: Screen focused, refreshing data');
+        void loadData();
+      });
+      return () => task.cancel();
     }, [selectedMonth, selectedYear, filterCategory])
   );
 

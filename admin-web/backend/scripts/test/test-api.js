@@ -2,11 +2,15 @@
  * API Test Script
  * Quick test script to verify backend API endpoints
  * Run with: node scripts/test/test-api.js
+ *
+ * Protected routes expect 401 without a token. To test authenticated access:
+ *   AUTH_TOKEN=your-jwt node scripts/test/test-api.js
  */
 
 const http = require('http');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3002';
+const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 const colors = {
   reset: '\x1b[0m',
   green: '\x1b[32m',
@@ -19,16 +23,25 @@ let passed = 0;
 let failed = 0;
 const issues = [];
 
+function authHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (AUTH_TOKEN.trim()) {
+    headers.Authorization = `Bearer ${AUTH_TOKEN.trim()}`;
+  }
+  return headers;
+}
+
 /**
  * Make HTTP request
  */
-function makeRequest(method, path, data = null) {
+function makeRequest(method, path, data = null, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(path, BASE_URL);
     const options = {
       method,
       headers: {
-        'Content-Type': 'application/json'
+        ...authHeaders(),
+        ...extraHeaders,
       }
     };
 
@@ -58,9 +71,9 @@ function makeRequest(method, path, data = null) {
 /**
  * Test an endpoint
  */
-async function test(name, method, path, expectedStatus = 200, data = null) {
+async function test(name, method, path, expectedStatus = 200, data = null, extraHeaders = {}) {
   try {
-    const result = await makeRequest(method, path, data);
+    const result = await makeRequest(method, path, data, extraHeaders);
     const success = result.status === expectedStatus;
     
     if (success) {
@@ -83,7 +96,8 @@ async function test(name, method, path, expectedStatus = 200, data = null) {
  */
 async function runTests() {
   console.log(`${colors.blue}=== API Endpoint Tests ===${colors.reset}\n`);
-  console.log(`Testing: ${BASE_URL}\n`);
+  console.log(`Testing: ${BASE_URL}`);
+  console.log(`Auth: ${AUTH_TOKEN.trim() ? 'Bearer token provided' : 'none (protected routes expect 401)'}\n`);
 
   // Health Check
   console.log(`${colors.yellow}Health Checks:${colors.reset}`);
@@ -91,48 +105,21 @@ async function runTests() {
   await test('GET /api', 'GET', '/api', 200);
   console.log('');
 
-  // Employees
-  console.log(`${colors.yellow}Employee Endpoints:${colors.reset}`);
-  await test('GET /api/employees', 'GET', '/api/employees', 200);
-  await test('GET /api/employees/archived', 'GET', '/api/employees/archived', 200);
-  await test('GET /api/supervisors', 'GET', '/api/supervisors', 200);
+  // Auth expectations for protected data routes
+  console.log(`${colors.yellow}Auth Guards (unauthenticated):${colors.reset}`);
+  const protectedExpected = AUTH_TOKEN.trim() ? 200 : 401;
+  await test('GET /api/mileage-entries (auth)', 'GET', '/api/mileage-entries', protectedExpected);
+  await test('GET /api/receipts (auth)', 'GET', '/api/receipts', protectedExpected);
+  await test('GET /api/time-tracking (auth)', 'GET', '/api/time-tracking', protectedExpected);
+  await test('GET /api/expense-reports (auth)', 'GET', '/api/expense-reports', protectedExpected);
+  await test('GET /api/dashboard-statistics (auth)', 'GET', '/api/dashboard-statistics', protectedExpected);
+  await test('POST /api/init-database (admin auth)', 'POST', '/api/init-database', AUTH_TOKEN.trim() ? 403 : 401);
   console.log('');
 
-  // Mileage Entries
-  console.log(`${colors.yellow}Mileage Entry Endpoints:${colors.reset}`);
-  await test('GET /api/mileage-entries', 'GET', '/api/mileage-entries', 200);
-  console.log('');
-
-  // Receipts
-  console.log(`${colors.yellow}Receipt Endpoints:${colors.reset}`);
-  await test('GET /api/receipts', 'GET', '/api/receipts', 200);
+  // Public-ish reference data (may still require auth depending on deployment)
+  console.log(`${colors.yellow}Reference Endpoints:${colors.reset}`);
   await test('GET /api/receipts/categories', 'GET', '/api/receipts/categories', 200);
-  console.log('');
-
-  // Time Tracking
-  console.log(`${colors.yellow}Time Tracking Endpoints:${colors.reset}`);
-  await test('GET /api/time-tracking', 'GET', '/api/time-tracking', 200);
-  console.log('');
-
-  // Expense Reports
-  console.log(`${colors.yellow}Expense Report Endpoints:${colors.reset}`);
-  await test('GET /api/expense-reports', 'GET', '/api/expense-reports', 200);
-  console.log('');
-
-  // Dashboard
-  console.log(`${colors.yellow}Dashboard Endpoints:${colors.reset}`);
-  await test('GET /api/dashboard/overview', 'GET', '/api/dashboard/overview', 200);
-  await test('GET /api/dashboard/trends', 'GET', '/api/dashboard/trends', 200);
-  console.log('');
-
-  // Cost Centers
-  console.log(`${colors.yellow}Cost Center Endpoints:${colors.reset}`);
   await test('GET /api/cost-centers', 'GET', '/api/cost-centers', 200);
-  console.log('');
-
-  // Notifications
-  console.log(`${colors.yellow}Notification Endpoints:${colors.reset}`);
-  await test('GET /api/notifications', 'GET', '/api/notifications', 200);
   console.log('');
 
   // Summary
@@ -158,9 +145,7 @@ async function runTests() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-// Run tests
-runTests().catch(error => {
-  console.error(`${colors.red}Fatal Error:${colors.reset}`, error);
+runTests().catch((error) => {
+  console.error('Test runner failed:', error);
   process.exit(1);
 });
-

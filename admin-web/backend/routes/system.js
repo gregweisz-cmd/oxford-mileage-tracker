@@ -11,6 +11,7 @@ const fs = require('fs');
 const dbService = require('../services/dbService');
 const constants = require('../utils/constants');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { requireAuth, requireAnyRole } = require('../middleware/auth');
 
 // System settings in-memory storage (in production, use database)
 let systemSettings = {
@@ -36,7 +37,7 @@ let systemSettings = {
 // ===== DATABASE INITIALIZATION =====
 
 // Manual database initialization endpoint for debugging
-router.post('/api/init-database', (req, res) => {
+router.post('/api/init-database', requireAuth, requireAnyRole(['admin']), (req, res) => {
   try {
     debugLog('🔧 Manual database initialization triggered');
     dbService.initDatabase().then(() => {
@@ -66,7 +67,7 @@ router.post('/api/init-database', (req, res) => {
 // ===== SYSTEM SETTINGS =====
 
 // Get system settings
-router.get('/api/admin/system-settings', (req, res) => {
+router.get('/api/admin/system-settings', requireAuth, requireAnyRole(['admin']), (req, res) => {
   try {
     const systemInfo = {
       databasePath: dbService.DB_PATH,
@@ -86,7 +87,7 @@ router.get('/api/admin/system-settings', (req, res) => {
 });
 
 // Update system settings
-router.put('/api/admin/system-settings', (req, res) => {
+router.put('/api/admin/system-settings', requireAuth, requireAnyRole(['admin']), (req, res) => {
   try {
     const updates = req.body;
     
@@ -116,7 +117,7 @@ router.put('/api/admin/system-settings', (req, res) => {
 // ===== DATABASE BACKUP =====
 
 // Create database backup
-router.post('/api/admin/system/backup', (req, res) => {
+router.post('/api/admin/system/backup', requireAuth, requireAnyRole(['admin']), (req, res) => {
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const backupFilename = `expense_tracker_backup_${timestamp}.db`;

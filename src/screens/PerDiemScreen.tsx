@@ -219,7 +219,10 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
   // Load when screen is focused or month changes (single path — avoids double load on mount)
   useFocusEffect(
     React.useCallback(() => {
-      loadData();
+      const task = InteractionManager.runAfterInteractions(() => {
+        void loadData();
+      });
+      return () => task.cancel();
     }, [currentMonth])
   );
 

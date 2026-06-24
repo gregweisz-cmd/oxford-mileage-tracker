@@ -1452,11 +1452,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         setSelectedCostCenter('');
 
         dismissAllEndTripModals();
-        endTripFlow.finishSaving();
         await finalizeEndTripNavigation({
           navigation,
           alertMessage: saveResult.alertMessage,
         });
+        endTripFlow.finishSaving();
         return;
       }
 
@@ -2506,6 +2506,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         transparent={true}
         animationType={Platform.OS === 'ios' ? 'none' : 'fade'}
         presentationStyle="overFullScreen"
+        onRequestClose={() => {}}
       >
         <View style={styles.endingTrackingOverlay}>
           <View style={styles.endingTrackingCard}>
@@ -2524,6 +2525,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         transparent={true}
         animationType={Platform.OS === 'ios' ? 'none' : 'fade'}
         presentationStyle="overFullScreen"
+        onRequestClose={() => {}}
       >
         <View style={styles.endingTrackingOverlay}>
           <View style={styles.endingTrackingCard}>

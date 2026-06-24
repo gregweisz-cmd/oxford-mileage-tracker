@@ -2,10 +2,13 @@
  * Shared SQLite connection for services that cannot import DatabaseService directly.
  * Must use the same singleton as database.ts — a second openDatabaseAsync on the same
  * file causes "database is locked" / finalizeAsync failures during login and sync.
+ *
+ * Prefer {@link withDatabaseConnection} so work runs through the global DB queue.
  */
 
 import type * as SQLite from 'expo-sqlite';
 
+/** @deprecated Prefer withDatabaseConnection for serialized SQLite access. */
 export async function getDatabaseConnection(): Promise<SQLite.SQLiteDatabase> {
   const { getSharedDatabase } = await import('../services/database');
   return getSharedDatabase();

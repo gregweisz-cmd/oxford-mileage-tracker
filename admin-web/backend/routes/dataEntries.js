@@ -31,6 +31,10 @@ const {
   canViewEmployeeReceipts,
 } = require('../utils/receiptFile');
 const { requireAuth } = require('../middleware/auth');
+const {
+  guardRequestedEmployeeAccess,
+  guardResourceEmployeeAccess,
+} = require('../utils/employeeAccess');
 
 const normalizeCostCenterKey = (value) =>
   String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -80,7 +84,7 @@ router.use([
   '/api/time-tracking',
   '/api/daily-descriptions',
   '/api/daily-odometer-readings',
-], requireAuth);
+], requireAuth, guardRequestedEmployeeAccess);
 
 // ===== MILEAGE ENTRIES ROUTES =====
 
@@ -357,7 +361,7 @@ router.post('/api/mileage-entries', (req, res) => {
 /**
  * Update mileage entry
  */
-router.put('/api/mileage-entries/:id', (req, res) => {
+router.put('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entries'), (req, res) => {
   const { id } = req.params;
   const {
     employeeId,
@@ -477,7 +481,7 @@ router.put('/api/mileage-entries/:id', (req, res) => {
 /**
  * Delete mileage entry
  */
-router.delete('/api/mileage-entries/:id', (req, res) => {
+router.delete('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entries'), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   
@@ -766,7 +770,7 @@ router.get('/api/receipts/:id/file', requireAuth, async (req, res) => {
 /**
  * Update receipt
  */
-router.put('/api/receipts/:id', (req, res) => {
+router.put('/api/receipts/:id', guardResourceEmployeeAccess('receipts'), (req, res) => {
   // Validate that "Other" category receipts have descriptions
   if (req.body.category === 'Other' && (!req.body.description || !req.body.description.trim())) {
     return res.status(400).json({ 
@@ -1358,7 +1362,7 @@ router.post('/api/receipts/ocr', async (req, res) => {
 /**
  * Delete receipt
  */
-router.delete('/api/receipts/:id', (req, res) => {
+router.delete('/api/receipts/:id', guardResourceEmployeeAccess('receipts'), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   
@@ -1483,7 +1487,7 @@ router.post('/api/time-tracking', async (req, res) => {
 /**
  * Update time tracking entry
  */
-router.put('/api/time-tracking/:id', async (req, res) => {
+router.put('/api/time-tracking/:id', guardResourceEmployeeAccess('time_tracking'), async (req, res) => {
   const { id } = req.params;
   const { employeeId, date, category, hours, description, costCenter } = req.body;
   const now = new Date().toISOString();
@@ -1571,7 +1575,7 @@ router.delete('/api/time-tracking', (req, res) => {
 /**
  * Delete time tracking entry by ID
  */
-router.delete('/api/time-tracking/:id', (req, res) => {
+router.delete('/api/time-tracking/:id', guardResourceEmployeeAccess('time_tracking'), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   db.run('DELETE FROM time_tracking WHERE id = ?', [id], function(err) {
@@ -1675,7 +1679,7 @@ router.post('/api/daily-descriptions', (req, res) => {
 /**
  * Update daily description by id (partial updates supported; used by mobile app)
  */
-router.put('/api/daily-descriptions/:id', (req, res) => {
+router.put('/api/daily-descriptions/:id', guardResourceEmployeeAccess('daily_descriptions'), (req, res) => {
   const { id } = req.params;
   const { description, costCenter, stayedOvernight, dayOff, dayOffType, hoursWorked } = req.body;
   const db = dbService.getDb();
@@ -1718,7 +1722,7 @@ router.put('/api/daily-descriptions/:id', (req, res) => {
 /**
  * Delete daily description
  */
-router.delete('/api/daily-descriptions/:id', (req, res) => {
+router.delete('/api/daily-descriptions/:id', guardResourceEmployeeAccess('daily_descriptions'), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   db.run('DELETE FROM daily_descriptions WHERE id = ?', [id], function(err) {
@@ -1829,7 +1833,7 @@ router.post('/api/daily-odometer-readings', (req, res) => {
 /**
  * Update daily odometer reading by id
  */
-router.put('/api/daily-odometer-readings/:id', (req, res) => {
+router.put('/api/daily-odometer-readings/:id', guardResourceEmployeeAccess('daily_odometer_readings'), (req, res) => {
   const { id } = req.params;
   const { odometerReading, notes, vehicleId } = req.body;
   const db = dbService.getDb();
@@ -1874,7 +1878,7 @@ router.put('/api/daily-odometer-readings/:id', (req, res) => {
 /**
  * Delete daily odometer reading
  */
-router.delete('/api/daily-odometer-readings/:id', (req, res) => {
+router.delete('/api/daily-odometer-readings/:id', guardResourceEmployeeAccess('daily_odometer_readings'), (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
   db.run('DELETE FROM daily_odometer_readings WHERE id = ?', [id], function(err) {

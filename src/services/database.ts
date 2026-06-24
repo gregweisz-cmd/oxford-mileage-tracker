@@ -3298,7 +3298,6 @@ export class DatabaseService {
   }
 
 
-  // Monthly Report Methods
   static async updateMonthlyReport(reportId: string, updates: Partial<MonthlyReport>): Promise<void> {
     const database = await getDatabase();
     
@@ -3323,6 +3322,80 @@ export class DatabaseService {
       
       debugLog('✅ Database: Monthly report updated successfully');
     }
+  }
+
+  /** Merge approval status from backend pull into local monthly_reports. */
+  static async upsertMonthlyReportFromSync(report: {
+    id: string;
+    employeeId: string;
+    month: number;
+    year: number;
+    totalMiles?: number;
+    status: string;
+    submittedAt?: string | null;
+    approvedAt?: string | null;
+    reviewedAt?: string | null;
+    reviewedBy?: string | null;
+    approvedBy?: string | null;
+    comments?: string | null;
+  }): Promise<void> {
+    const database = await getDatabase();
+    const now = new Date().toISOString();
+    const existing = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM monthly_reports WHERE employeeId = ? AND month = ? AND year = ?',
+      [report.employeeId, report.month, report.year]
+    );
+
+    const totalMiles = report.totalMiles ?? 0;
+    const submittedAt = report.submittedAt || null;
+    const approvedAt = report.approvedAt || null;
+    const reviewedAt = report.reviewedAt || null;
+
+    if (existing?.id) {
+      await database.runAsync(
+        `UPDATE monthly_reports SET
+          status = ?, totalMiles = ?, submittedAt = ?, approvedAt = ?,
+          reviewedAt = ?, reviewedBy = ?, approvedBy = ?, comments = ?, updatedAt = ?
+         WHERE id = ?`,
+        [
+          report.status,
+          totalMiles,
+          submittedAt,
+          approvedAt,
+          reviewedAt,
+          report.reviewedBy || null,
+          report.approvedBy || null,
+          report.comments || null,
+          now,
+          existing.id,
+        ]
+      );
+      return;
+    }
+
+    await database.runAsync(
+      `INSERT INTO monthly_reports (
+        id, employeeId, month, year, totalMiles, status,
+        submittedAt, approvedAt, reviewedAt, reviewedBy, approvedBy, comments,
+        createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        report.id,
+        report.employeeId,
+        report.month,
+        report.year,
+        totalMiles,
+        report.status,
+        submittedAt,
+        approvedAt,
+        reviewedAt,
+        report.reviewedBy || null,
+        report.approvedBy || null,
+        report.comments || null,
+        now,
+        now,
+      ]
+    );
   }
 
   static async deleteMonthlyReport(reportId: string): Promise<void> {

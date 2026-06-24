@@ -13,13 +13,25 @@ const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
 const { normalizeCostCenter } = require('../utils/costCenterNormalizer');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { requireAuth, requireAnyRole, getEffectiveRole } = require('../middleware/auth');
+
+// Admin reporting + schedules require authenticated admin/finance role
+router.use('/api/admin/reporting', requireAuth, requireAnyRole(['admin', 'finance']));
 
 // ===== DASHBOARD STATISTICS API ENDPOINTS =====
 
 // Get dashboard preferences for a user
-router.get('/api/dashboard-preferences/:userId', (req, res) => {
+router.get('/api/dashboard-preferences/:userId', requireAuth, (req, res) => {
   const db = dbService.getDb();
   const { userId } = req.params;
+  const role = getEffectiveRole(req.authenticatedEmployee);
+  if (
+    userId !== req.authenticatedEmployee.id &&
+    role !== 'admin' &&
+    role !== 'finance'
+  ) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
   
   db.get(
     'SELECT preferences FROM dashboard_preferences WHERE userId = ?',
@@ -48,9 +60,17 @@ router.get('/api/dashboard-preferences/:userId', (req, res) => {
 });
 
 // Save dashboard preferences for a user
-router.put('/api/dashboard-preferences/:userId', (req, res) => {
+router.put('/api/dashboard-preferences/:userId', requireAuth, (req, res) => {
   const db = dbService.getDb();
   const { userId } = req.params;
+  const role = getEffectiveRole(req.authenticatedEmployee);
+  if (
+    userId !== req.authenticatedEmployee.id &&
+    role !== 'admin' &&
+    role !== 'finance'
+  ) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
   const { enabledStatistics, categoryPresets, widgetLayouts, defaultPortal } = req.body;
   const now = new Date().toISOString();
 
@@ -1623,12 +1643,12 @@ async function getCostCenterTotalsForPeriod(startIso, endIso, costCenterSqlValue
 }
 
 // Get dashboard statistics
-router.get('/api/dashboard-statistics', async (req, res) => {
+router.get('/api/dashboard-statistics', requireAuth, async (req, res) => {
   const db = dbService.getDb();
   try {
     const { statistics, startDate, endDate, filterState, filterCostCenter } = req.query;
-    const userRole = req.headers['x-user-role'] || 'staff';
-    const userId = req.headers['x-user-id'] || '';
+    const userRole = getEffectiveRole(req.authenticatedEmployee);
+    const userId = req.authenticatedEmployee.id;
     
     const statIds = statistics ? statistics.split(',') : [];
     const results = [];

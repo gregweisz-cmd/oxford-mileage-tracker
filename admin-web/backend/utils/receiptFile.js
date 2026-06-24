@@ -1,8 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
-const dbService = require('../services/dbService');
-const { getEffectiveRole } = require('../middleware/auth');
+const { canAccessEmployeeData } = require('./employeeAccess');
 
 function resolveReceiptFilePath(imageUri) {
   const raw = String(imageUri || '').trim();
@@ -41,15 +40,7 @@ function parseDataUrl(imageUri) {
 }
 
 async function canViewEmployeeReceipts(viewer, employeeId) {
-  if (!viewer || !employeeId) return false;
-  if (viewer.id === employeeId) return true;
-  const role = getEffectiveRole(viewer);
-  if (role === 'admin' || role === 'finance') return true;
-  const subject = await dbService.getEmployeeById(employeeId);
-  if (!subject) return false;
-  if (subject.supervisorId && String(subject.supervisorId) === String(viewer.id)) return true;
-  if (subject.seniorStaffId && String(subject.seniorStaffId) === String(viewer.id)) return true;
-  return false;
+  return canAccessEmployeeData(viewer, employeeId);
 }
 
 module.exports = {

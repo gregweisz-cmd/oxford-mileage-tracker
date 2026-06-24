@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  InteractionManager,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -52,7 +53,10 @@ export default function MileageEntriesScreen({ navigation, route }: MileageEntri
 
   useFocusEffect(
     useCallback(() => {
-      void loadData();
+      const task = InteractionManager.runAfterInteractions(() => {
+        void loadData();
+      });
+      return () => task.cancel();
     }, [selectedMonth, selectedYear])
   );
 

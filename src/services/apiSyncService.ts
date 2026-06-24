@@ -614,6 +614,14 @@ export class ApiSyncService {
       await this.syncSavedAddressesToLocal(mappedSavedAddresses, employeeId ?? undefined);
       await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, employeeId ?? undefined, orphanCleanup);
       await this.syncDailyOdometerReadingsToLocal(mappedDailyOdometer, effectiveEmployeeId);
+
+      if (effectiveEmployeeId) {
+        try {
+          await this.syncMonthlyReportStatusesFromBackend(effectiveEmployeeId, employeeId);
+        } catch (reportSyncError) {
+          debugWarn('⚠️ ApiSync: Failed to sync monthly report statuses (continuing):', reportSyncError);
+        }
+      }
       
       // Per Diem rules sync removed - now loaded on-demand in AddReceiptScreen
       
@@ -3035,17 +3043,57 @@ export class ApiSyncService {
   }
 
   /**
+   * Pull expense report approval/revision status so mobile notifications stay current.
+   */
+  private static async syncMonthlyReportStatusesFromBackend(
+    backendEmployeeId: string,
+    localEmployeeId?: string
+  ): Promise<void> {
+    const { MonthlyReportService } = await import('./monthlyReportService');
+    const reports = await MonthlyReportService.getEmployeeReports(backendEmployeeId);
+    const targetEmployeeId = localEmployeeId || backendEmployeeId;
+
+    for (const report of reports) {
+      await DatabaseService.upsertMonthlyReportFromSync({
+        id: report.id,
+        employeeId: targetEmployeeId,
+        month: report.month,
+        year: report.year,
+        totalMiles: report.totalMiles,
+        status: report.status,
+        submittedAt: report.submittedAt,
+        approvedAt: report.approvedAt,
+        reviewedAt: report.reviewedAt,
+        reviewedBy: report.reviewedBy,
+        approvedBy: report.approvedBy,
+        comments: report.comments,
+      });
+    }
+
+    debugLog(`📥 ApiSync: Synced ${reports.length} monthly report status(es) for ${targetEmployeeId}`);
+  }
+
+  /**
    * Sync all data from backend for a specific employee
    */
   static async syncAllDataFromBackend(employeeId: string): Promise<SyncResult> {
     try {
       debugLog(`📥 ApiSync: Syncing all data for employee ${employeeId}...`);
-      
+      const backendEmployeeId = await this.resolveBackendEmployeeId(employeeId);
+
       const results = await Promise.all([
         this.syncMileageEntriesFromBackend(employeeId),
         this.syncReceiptsFromBackend(employeeId),
         this.syncTimeTrackingFromBackend(employeeId),
-        this.syncDailyDescriptionsFromBackend(employeeId)
+        this.syncDailyDescriptionsFromBackend(employeeId),
+        this.syncMonthlyReportStatusesFromBackend(backendEmployeeId || employeeId, employeeId).then(
+          () => ({ success: true, timestamp: new Date() }),
+          (error) => ({
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date(),
+          })
+        ),
       ]);
       
       const allSuccessful = results.every(result => result.success);

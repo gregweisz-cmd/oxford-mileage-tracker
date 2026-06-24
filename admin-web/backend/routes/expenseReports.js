@@ -16,8 +16,16 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { assertStaffCanEditReportMonth } = require('../utils/reportEditability');
 const { requireAuth } = require('../middleware/auth');
 const { logAuditEvent } = require('../services/auditLogService');
+const {
+  guardRequestedEmployeeAccess,
+  guardResourceEmployeeAccess,
+} = require('../utils/employeeAccess');
 
-router.use(['/api/expense-reports', '/api/monthly-reports'], requireAuth);
+router.use(
+  ['/api/expense-reports', '/api/monthly-reports'],
+  requireAuth,
+  guardRequestedEmployeeAccess
+);
 
 /**
  * Initialize approval workflow for a report

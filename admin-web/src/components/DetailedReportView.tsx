@@ -26,6 +26,7 @@ import {
   Alert,
 } from '@mui/material';
 import { debugError } from '../config/debug';
+import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
 import { formatLocationNameAndAddress } from '../utils/addressFormatter';
 import {
   Close as CloseIcon,
@@ -151,7 +152,9 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_BASE_URL}/api/monthly-reports/${reportId}/detailed`);
+      const response = await fetch(`${API_BASE_URL}/api/monthly-reports/${reportId}/detailed`, {
+        headers: getStaffPortalAuthHeaders(),
+      });
       
       if (!response.ok) {
         throw new Error('Failed to load detailed report');
@@ -274,13 +277,15 @@ const DetailedReportViewInner = ({ reportId, open, onClose, onApproveReport, onR
         reason: revisionReason
       }));
 
+      const requestedBy =
+        (typeof localStorage !== 'undefined' && localStorage.getItem('currentEmployeeId')) ||
+        '';
+
       const response = await fetch(`${API_BASE_URL}/api/monthly-reports/${reportId}/request-line-item-revision`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getStaffPortalAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          requestedBy: 'greg-weisz-001', // TODO: Get from current user context
+          requestedBy,
           items,
           reason: revisionReason
         }),

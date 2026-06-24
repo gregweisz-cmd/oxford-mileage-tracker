@@ -1,4 +1,5 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DatabaseService } from './database';
 import { ApiSyncService } from './apiSyncService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
@@ -38,6 +39,8 @@ export class SyncIntegrationService {
   private static appStateListener: { remove: () => void } | null = null;
   private static lastAppState: AppStateStatus = 'active';
   private static readonly MAX_RETRY_ATTEMPTS = 3;
+  private static readonly SYNC_QUEUE_STORAGE_KEY = '@sync_integration_queue';
+  private static queueHydrated = false;
 
   /**
    * Load auto-sync toggle and interval from user preferences.
@@ -87,6 +90,7 @@ export class SyncIntegrationService {
       debugLog('✅ SyncIntegration: Callback registered with DatabaseService');
 
       await this.applyPreferencesFromStorage();
+      await this.hydrateQueueFromStorage();
       
       // Initialize API sync service
       await ApiSyncService.initialize();
@@ -169,13 +173,58 @@ export class SyncIntegrationService {
     
     if (beforeLength > afterLength) {
       debugLog(`🗑️ SyncIntegration: Removed ${beforeLength - afterLength} ${entityType} items from queue for ID: ${entityId}`);
+      void this.persistQueueToStorage();
+    }
+  }
+
+  /**
+   * Load sync queue from persistent storage (survives app kill).
+   */
+  private static async hydrateQueueFromStorage(): Promise<void> {
+    if (this.queueHydrated) return;
+    try {
+      const raw = await AsyncStorage.getItem(this.SYNC_QUEUE_STORAGE_KEY);
+      if (!raw) {
+        this.queueHydrated = true;
+        return;
+      }
+      const parsed = JSON.parse(raw) as Array<Omit<SyncQueueItem, 'timestamp'> & { timestamp: string }>;
+      if (!Array.isArray(parsed)) {
+        this.queueHydrated = true;
+        return;
+      }
+      this.syncQueue = parsed.map((item) => ({
+        ...item,
+        timestamp: new Date(item.timestamp),
+      }));
+      debugLog(`🔄 SyncIntegration: Restored ${this.syncQueue.length} queued sync item(s) from storage`);
+    } catch (error) {
+      debugWarn('⚠️ SyncIntegration: Could not restore sync queue from storage:', error);
+    } finally {
+      this.queueHydrated = true;
+    }
+  }
+
+  private static async persistQueueToStorage(): Promise<void> {
+    try {
+      if (this.syncQueue.length === 0) {
+        await AsyncStorage.removeItem(this.SYNC_QUEUE_STORAGE_KEY);
+        return;
+      }
+      const serializable = this.syncQueue.map((item) => ({
+        ...item,
+        timestamp: item.timestamp.toISOString(),
+      }));
+      await AsyncStorage.setItem(this.SYNC_QUEUE_STORAGE_KEY, JSON.stringify(serializable));
+    } catch (error) {
+      debugWarn('⚠️ SyncIntegration: Could not persist sync queue:', error);
     }
   }
 
   /**
    * Queue a sync operation
    */
-  static queueSyncOperation(
+  static async queueSyncOperation(
     operation: 'create' | 'update' | 'delete',
     entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
     data: any
@@ -211,6 +260,7 @@ export class SyncIntegrationService {
     
     this.syncQueue.push(queueItem);
     debugLog(`🔄 SyncIntegration: Queued ${operation} operation for ${entityType}:`, data.id);
+    void this.persistQueueToStorage();
     
     if (this.autoSyncEnabled) {
       this.scheduleDebouncedSync();
@@ -426,6 +476,7 @@ export class SyncIntegrationService {
       console.error('❌ SyncIntegration: Error processing sync queue:', error);
     } finally {
       this.isProcessingQueue = false;
+      void this.persistQueueToStorage();
     }
   }
 
@@ -740,6 +791,7 @@ export class SyncIntegrationService {
    */
   static clearSyncQueue(): void {
     this.syncQueue = [];
+    void this.persistQueueToStorage();
     debugLog('🔄 SyncIntegration: Sync queue cleared');
   }
 

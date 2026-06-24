@@ -125,6 +125,7 @@ import {
   syncExpenseReportToSource,
 } from './services/staffPortalApi';
 import { getStaffPortalAuthHeaders } from './services/staffPortalAuthHeaders';
+import MileageOrderControls, { MileageOrderHint } from './components/staffPortal/MileageOrderControls';
 import { buildPerDiemBreakdownFromReceipts, getCostCenterAmountFromReport } from './utils/expenseReportTotals';
 
 // API URL configuration
@@ -1102,6 +1103,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [allReports, setAllReports] = useState<any[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Used to force data reload
+  const manualRefreshResolversRef = useRef<{
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  } | null>(null);
   
   // Summary Sheet editing state
   const [editingSummaryItem, setEditingSummaryItem] = useState<{field: string, label: string, index?: number} | null>(null);
@@ -2636,6 +2641,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             await refreshTimesheetData(expenseData);
           }
       } catch (error) {
+        if (manualRefreshResolversRef.current) {
+          manualRefreshResolversRef.current.reject(error);
+          manualRefreshResolversRef.current = null;
+        }
         debugError('Error loading employee data:', error);
         // Create dynamic fallback data instead of using hardcoded mock data
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -2723,6 +2732,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           await refreshTimesheetData();
         }
       } finally {
+        if (manualRefreshResolversRef.current) {
+          manualRefreshResolversRef.current.resolve();
+          manualRefreshResolversRef.current = null;
+        }
         hasLoadedCoreDataRef.current = true;
         setLoading(false);
         stopLoading(); // Clear overlay (e.g. "Refreshing data..." / "Loading report..." after month change)
@@ -6241,17 +6254,23 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             : undefined
         }
         onRefresh={() => {
-          debugVerbose('🔄 StaffPortal: Refreshing data from backend...');
-          startLoading('Refreshing data from backend...');
-          
-          // Increment the refresh trigger to force useEffect to re-run
-          setRefreshTrigger(prev => prev + 1);
-          
-          // Show success message after a brief delay to allow data to load
-          setTimeout(() => {
-            stopLoading();
-            showSuccess('Data refreshed successfully from backend!');
-          }, 1500);
+          void (async () => {
+            debugVerbose('🔄 StaffPortal: Refreshing data from backend...');
+            startLoading('Refreshing data from backend...');
+            rateLimitedApi.invalidateStaffMonthDataCache();
+            try {
+              await new Promise<void>((resolve, reject) => {
+                manualRefreshResolversRef.current = { resolve, reject };
+                setRefreshTrigger((prev) => prev + 1);
+              });
+              showSuccess('Data refreshed successfully from backend!');
+            } catch (error) {
+              debugError('❌ StaffPortal: Refresh failed:', error);
+              showError('Failed to refresh data from backend. Please try again.');
+            } finally {
+              stopLoading();
+            }
+          })();
         }}
         onSettings={() => setActiveTab(employeeData ? employeeData.costCenters.length + 7 : 7)}
         onMonthYearChange={(month, year) => {
@@ -7378,36 +7397,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 <Typography variant="body2" color="textSecondary">
                   Enter mileage data for each day. The system will automatically track locations, miles traveled, and calculate reimbursement.
                 </Typography>
-                <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
-                  Use the arrows to order trips within each day (first trip at the top), then click Save order when finished.
-                </Typography>
-                {hasUnsavedMileageOrder && (
-                  <Typography variant="body2" color="warning.main" sx={{ mt: 0.5, fontWeight: 600 }}>
-                    Unsaved trip order — save or discard before leaving this tab.
-                  </Typography>
-                )}
+                <MileageOrderHint hasUnsavedMileageOrder={hasUnsavedMileageOrder} />
               </Box>
               <Box sx={{ display: 'flex', gap: 1, ml: 2, flexShrink: 0 }}>
-                {hasUnsavedMileageOrder && (
-                  <>
-                    <Button
-                      variant="outlined"
-                      onClick={discardMileageOrder}
-                      disabled={mileageOrderSaving || !staffCanEditReport}
-                    >
-                      Discard order
-                    </Button>
-                    <Button
-                      variant="contained"
-                      color="secondary"
-                      startIcon={mileageOrderSaving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
-                      onClick={() => void saveMileageOrder()}
-                      disabled={mileageOrderSaving || !staffCanEditReport}
-                    >
-                      Save order
-                    </Button>
-                  </>
-                )}
+                <MileageOrderControls
+                  hasUnsavedMileageOrder={hasUnsavedMileageOrder}
+                  mileageOrderSaving={mileageOrderSaving}
+                  staffCanEditReport={staffCanEditReport}
+                  onDiscard={discardMileageOrder}
+                  onSave={() => void saveMileageOrder()}
+                />
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
