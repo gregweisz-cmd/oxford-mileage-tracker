@@ -200,9 +200,22 @@ async function fetchReceiptFileBlob(
 }
 
 const TIMESHEET_CATEGORY_TYPES = ['G&A', 'Holiday', 'PTO', 'STD/LTD', 'PFL/PFML'] as const;
+type TimesheetCategoryType = (typeof TIMESHEET_CATEGORY_TYPES)[number];
 
-function isTimesheetCategoryType(category: unknown): category is (typeof TIMESHEET_CATEGORY_TYPES)[number] {
-  return TIMESHEET_CATEGORY_TYPES.includes(category as (typeof TIMESHEET_CATEGORY_TYPES)[number]);
+// Map any stored category variant to the canonical timesheet category label.
+// Mobile saves categories with a trailing " Hours" (e.g. "PTO Hours") while the web
+// uses the bare label ("PTO"). Normalizing both keeps category hours (PTO, Holiday, etc.)
+// out of the billable/Working Hours rows even when a stray cost center is attached to the
+// entry. Returns null for working/regular hours (those are billable cost-center hours).
+function normalizeTimesheetCategory(category: unknown): TimesheetCategoryType | null {
+  if (typeof category !== 'string') return null;
+  const base = category.trim().replace(/\s+hours$/i, '').replace(/\s+/g, ' ').trim();
+  if (!base) return null;
+  return TIMESHEET_CATEGORY_TYPES.find((type) => type.toLowerCase() === base.toLowerCase()) ?? null;
+}
+
+function isTimesheetCategoryType(category: unknown): category is TimesheetCategoryType {
+  return normalizeTimesheetCategory(category) !== null;
 }
 
 function timesheetCategoryRevisionId(categoryIndex: number, day: number): string {
@@ -1555,9 +1568,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         if (day < 1 || day > daysInMonth) return;
         
         // Create a unique key for this entry: day-costCenter-category
+        // Categories (PTO, Holiday, etc.) always bucket by canonical category — never by
+        // cost center — so a stray cost center on a category entry can't collide with (or
+        // leak into) the billable Working Hours bucket.
         let key: string;
-        if (isTimesheetCategoryType(tracking.category)) {
-          key = `${day}--${tracking.category}`;
+        const normalizedCategory = normalizeTimesheetCategory(tracking.category);
+        if (normalizedCategory) {
+          key = `${day}--${normalizedCategory}`;
         } else if (tracking.costCenter && tracking.costCenter !== '') {
           key = `${day}-${tracking.costCenter}-Working Hours`;
         } else if (tracking.category) {
@@ -1591,9 +1608,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         if (day >= 1 && day <= daysInMonth) {
           const dayData = dailyHourDistributions[day];
           
-          if (isTimesheetCategoryType(tracking.category)) {
-            // Category entry (PTO, Holiday, etc.) — never billable
-            dayData.categoryHours[tracking.category] = (tracking.hours || 0);
+          const normalizedCategory = normalizeTimesheetCategory(tracking.category);
+          if (normalizedCategory) {
+            // Category entry (PTO, Holiday, etc.) — never billable, even if a cost center
+            // was mistakenly attached. Store under the canonical label so the category row
+            // displays it (and the billable rows ignore it).
+            dayData.categoryHours[normalizedCategory] = (tracking.hours || 0);
           } else if (tracking.costCenter && tracking.costCenter !== '') {
             // Cost center entry - use assignment (deduplication already handled)
             const costCenterIndex = data.costCenters.findIndex((cc: string) => cc === tracking.costCenter);
@@ -2289,8 +2309,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             const categoryHours: { [key: string]: number } = {};
             
             dayTimeTrackingEntries.forEach((tracking: any) => {
-              if (isTimesheetCategoryType(tracking.category)) {
-                categoryHours[tracking.category] = (tracking.hours || 0);
+              const normalizedCategory = normalizeTimesheetCategory(tracking.category);
+              if (normalizedCategory) {
+                categoryHours[normalizedCategory] = (tracking.hours || 0);
               } else if (tracking.costCenter && tracking.costCenter !== '') {
                 const costCenterIndex = costCenters.findIndex((cc: string) => cc === tracking.costCenter);
                 if (costCenterIndex >= 0) {
@@ -2592,15 +2613,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           expenseData.otherExpenses = [...receiptBackedOtherExpenses, ...manualOtherExpenses];
           expenseData.other = (expenseData.otherExpenses || []).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
           
-          // Calculate category hours for status indicators (gaHours, holidayHours, ptoHours)
+          // Calculate category hours for status indicators (gaHours, holidayHours, ptoHours).
+          // Normalize so mobile variants ("PTO Hours") are counted alongside web labels ("PTO").
           const gaHours = currentMonthTimeTracking
-            .filter((t: any) => t.category === 'G&A' || t.category === 'G&a')
+            .filter((t: any) => normalizeTimesheetCategory(t.category) === 'G&A')
             .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
           const holidayHours = currentMonthTimeTracking
-            .filter((t: any) => t.category === 'Holiday')
+            .filter((t: any) => normalizeTimesheetCategory(t.category) === 'Holiday')
             .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
           const ptoHours = currentMonthTimeTracking
-            .filter((t: any) => t.category === 'PTO')
+            .filter((t: any) => normalizeTimesheetCategory(t.category) === 'PTO')
             .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
           
           // Set fields required for status indicators
@@ -3044,13 +3066,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     });
     
     const gaHours = currentMonthTimeTracking
-      .filter((t: any) => t.category === 'G&A' || t.category === 'G&a')
+      .filter((t: any) => normalizeTimesheetCategory(t.category) === 'G&A')
       .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
     const holidayHours = currentMonthTimeTracking
-      .filter((t: any) => t.category === 'Holiday')
+      .filter((t: any) => normalizeTimesheetCategory(t.category) === 'Holiday')
       .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
     const ptoHours = currentMonthTimeTracking
-      .filter((t: any) => t.category === 'PTO')
+      .filter((t: any) => normalizeTimesheetCategory(t.category) === 'PTO')
       .reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
     
     // Update totals
@@ -3629,18 +3651,38 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         currentYear,
         { skipCache: true }
       );
-      let existingEntry = null;
-
-      // Find entry for this specific day and category
-      existingEntry = allEntries.find((entry: any) => {
+      // Find ALL entries for this day whose category normalizes to the same bucket
+      // (e.g. both "PTO" and the mobile "PTO Hours"), regardless of any stray cost center.
+      // This lets us clean up legacy/mobile variants that previously leaked into billable.
+      const matchingEntries = allEntries.filter((entry: any) => {
           const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
           const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
-          return entryDay === day && 
-                 entryMonth === currentMonth && 
+          return entryDay === day &&
+                 entryMonth === currentMonth &&
                  entryYear === currentYear &&
-                 entry.category === mappedCategory &&
-                 (!entry.costCenter || entry.costCenter === '');
+                 normalizeTimesheetCategory(entry.category) === mappedCategory;
         });
+
+      // Prefer the canonical (no cost center) entry to update; otherwise reuse any match.
+      const existingEntry =
+        matchingEntries.find((entry: any) => !entry.costCenter || entry.costCenter === '') ||
+        matchingEntries[0] ||
+        null;
+      const staleEntries = matchingEntries.filter((entry: any) => entry !== existingEntry);
+
+      const deleteEntrySafely = async (entryId: string) => {
+        try {
+          await apiDelete(`/api/time-tracking/${entryId}`);
+          debugLog(`✅ Deleted time tracking entry ${entryId} for day ${day}`);
+        } catch (deleteError) {
+          const message = deleteError instanceof Error ? deleteError.message : '';
+          if (message.includes('404')) {
+            debugLog(`ℹ️ Entry ${entryId} already deleted (404) - continuing`);
+          } else {
+            throw deleteError;
+          }
+        }
+      };
 
       const categoryEntryId = `time-${employeeData.employeeId}-${dateStr}-category-${mappedCategory}`;
       const requestBody = {
@@ -3654,37 +3696,34 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       };
       
       debugLog(`📤 Saving to time tracking API:`, requestBody);
-      debugLog(`🔍 Existing entry found:`, existingEntry);
+      debugLog(`🔍 Existing entry found:`, existingEntry, `stale variants:`, staleEntries.length);
       
-      // If value is 0, delete the entry if it exists
-      if (value === 0) {
-        if (existingEntry) {
-          debugLog(`🗑️ Deleting time tracking entry (0 hours):`, existingEntry.id);
-          try {
-            await apiDelete(`/api/time-tracking/${existingEntry.id}`);
-            debugLog(`✅ Deleted time tracking entry for day ${day}`);
-          } catch (deleteError) {
-            const message = deleteError instanceof Error ? deleteError.message : '';
-            if (message.includes('404')) {
-              debugLog(`ℹ️ Entry ${existingEntry.id} already deleted (404) - continuing`);
-            } else {
-              debugError(`❌ Failed to delete time tracking:`, deleteError);
-              refreshTimesheetData(employeeData).catch(() => {});
-              throw deleteError;
-            }
-          }
-        } else {
-          debugLog(`ℹ️ Value is 0 and no existing entry found - nothing to delete`);
+      try {
+        // Always remove stale/duplicate variants (e.g. mobile "PTO Hours" carrying a cost
+        // center) so category hours can never persist in the billable rows.
+        for (const stale of staleEntries) {
+          await deleteEntrySafely(stale.id);
         }
-      } else if (value > 0) {
-        // Use PUT if entry exists, POST if it doesn't (POST will use INSERT OR REPLACE with deterministic ID)
-        const result = existingEntry
-          ? await apiPut(`/api/time-tracking/${existingEntry.id}`, requestBody)
-          : await apiPost('/api/time-tracking', requestBody);
-        debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
-      } else {
-        // Value is 0 and no existing entry - nothing to do
-        debugLog(`ℹ️ Value is 0 and no existing entry - nothing to save`);
+
+        // If value is 0, delete the canonical entry if it exists
+        if (value === 0) {
+          if (existingEntry) {
+            debugLog(`🗑️ Deleting time tracking entry (0 hours):`, existingEntry.id);
+            await deleteEntrySafely(existingEntry.id);
+          } else {
+            debugLog(`ℹ️ Value is 0 and no existing entry found - nothing to delete`);
+          }
+        } else if (value > 0) {
+          // Use PUT if entry exists, POST if it doesn't (POST will use INSERT OR REPLACE with deterministic ID)
+          const result = existingEntry
+            ? await apiPut(`/api/time-tracking/${existingEntry.id}`, requestBody)
+            : await apiPost('/api/time-tracking', requestBody);
+          debugLog(`✅ Saved ${value} hours as "${mappedCategory}" for "${actualCostCenter}" on day ${day}. Response:`, result);
+        }
+      } catch (mutateError) {
+        debugError(`❌ Failed to persist category hours:`, mutateError);
+        refreshTimesheetData(employeeData).catch(() => {});
+        throw mutateError;
       }
     } catch (error) {
       debugError('❌ Error saving category hours to time tracking API:', error);

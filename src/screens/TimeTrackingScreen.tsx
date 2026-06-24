@@ -233,6 +233,11 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
         return;
       }
 
+      // Only billable Working Hours belong to a cost center. PTO/Holiday/G&A/etc. are
+      // company-wide categories — attaching a cost center makes the web portal count them
+      // as billable Working Hours (which it can't edit), so keep their cost center empty.
+      const isWorkingHoursCategory = formData.category === 'Working Hours';
+
       const timeTrackingData: TimeTracking = {
         id: editingEntry?.id || `temp-${Date.now()}`, // Temporary ID for new entries
         employeeId: currentEmployee.id,
@@ -240,7 +245,7 @@ export default function TimeTrackingScreen({ navigation }: TimeTrackingScreenPro
         category: formData.category as TimeTracking['category'],
         hours: Number(formData.hours),
         description: formData.description.trim(),
-        costCenter: selectedCostCenter,
+        costCenter: isWorkingHoursCategory ? selectedCostCenter : '',
         createdAt: editingEntry?.createdAt || new Date(),
         updatedAt: new Date()
       };

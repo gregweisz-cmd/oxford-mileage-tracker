@@ -53,6 +53,17 @@ const DAY_OFF_TYPES = [
   'Unpaid Leave'
 ];
 
+// A full day off is recorded as a standard 8-hour workday for paid-leave categories.
+const FULL_DAY_OFF_HOURS = 8;
+
+// Map a day-off type to the timesheet category-hours bucket it should populate so the
+// web Timesheet's category table reflects it. Types without a matching paid category
+// (plain "Day Off", "Sick Day", "Unpaid Leave") add no category hours.
+const DAY_OFF_TYPE_TO_HOURS_KEY: Record<string, 'ptoHours' | 'holidayHours'> = {
+  PTO: 'ptoHours',
+  Holiday: 'holidayHours',
+};
+
 const DEFAULT_DESCRIPTION_TEMPLATES = [
   'Telework from Base Address',
   'Staff Meeting',
@@ -501,6 +512,25 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
         await BackendDataService.updateDayHours(currentEmployee.id, selectedDay.date, {
           costCenterHours,
           hoursBreakdown
+        });
+      } else {
+        // Day off: clear any billable working hours for the day, and when the day-off type
+        // maps to a paid timesheet category (PTO/Holiday) record a full day of that category
+        // so it transfers to the web Timesheet's category table.
+        const hoursBreakdown = {
+          gahours: 0,
+          holidayHours: 0,
+          ptoHours: 0,
+          stdLtdHours: 0,
+          pflPfmlHours: 0,
+        };
+        const categoryKey = DAY_OFF_TYPE_TO_HOURS_KEY[dayOffType];
+        if (categoryKey) {
+          hoursBreakdown[categoryKey] = FULL_DAY_OFF_HOURS;
+        }
+        await BackendDataService.updateDayHours(currentEmployee.id, selectedDay.date, {
+          costCenterHours: {},
+          hoursBreakdown,
         });
       }
       
