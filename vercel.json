@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "cd admin-web && npm ci",
-  "buildCommand": "cd admin-web && GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true node --max-old-space-size=8192 ./node_modules/react-scripts/scripts/build.js",
+  "buildCommand": "cd admin-web && npm run build",
   "outputDirectory": "admin-web/build",
   "rewrites": [
     {
