@@ -370,36 +370,36 @@ export const EnhancedHeader: React.FC<EnhancedHeaderProps> = ({
                     </span>
                   </Tooltip>
                 )}
-                <Button
-                  variant="contained"
-                  color="success"
-                  startIcon={<CheckCircleIcon />}
-                  onClick={() => {
-                    if (onApproveReport) {
+                {onApproveReport && (
+                  <Button
+                    variant="contained"
+                    color="success"
+                    startIcon={<CheckCircleIcon />}
+                    onClick={() => {
                       onApproveReport();
-                    }
-                  }}
-                  disabled={loading}
-                  size="small"
-                  sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
-                >
-                  Approve
-                </Button>
-                <Button
-                  variant="contained"
-                  color="warning"
-                  startIcon={<WarningIcon />}
-                  onClick={() => {
-                    if (onRequestRevision) {
+                    }}
+                    disabled={loading}
+                    size="small"
+                    sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
+                  >
+                    Approve
+                  </Button>
+                )}
+                {onRequestRevision && (
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    startIcon={<WarningIcon />}
+                    onClick={() => {
                       onRequestRevision();
-                    }
-                  }}
-                  disabled={loading}
-                  size="small"
-                  sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
-                >
-                  Revision
-                </Button>
+                    }}
+                    disabled={loading}
+                    size="small"
+                    sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5 }}
+                  >
+                    Revision
+                  </Button>
+                )}
               </>
             ) : (
               <>

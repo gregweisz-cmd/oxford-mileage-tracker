@@ -6269,6 +6269,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     : 'No weekly check-up shared this week.';
   const reportPendingEdit =
     !supervisorMode && !isAdminView && isPendingApprovalStatus(reportStatus);
+  // Approve / Revision act on the monthly expense report, so only offer them when the
+  // report is actually with reviewers. A weekly check-up submission leaves the monthly
+  // report in draft/needs_revision, where only "Accept check-up" should be available.
+  const showApprovalActions = supervisorMode && isPendingApprovalStatus(reportStatus);
 
   return (
     <Container ref={reportScopeRef} maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
@@ -6298,8 +6302,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         onAcceptWeeklyCheckup={canAcceptWeeklyCheckup ? handleAcceptWeeklyCheckup : undefined}
         acceptWeeklyCheckupDisabled={loading || !canAcceptWeeklyCheckup}
         acceptWeeklyCheckupTooltip={acceptWeeklyCheckupTooltip}
-        onApproveReport={onApproveReport}
-        onRequestRevision={onRequestRevision}
+        onApproveReport={showApprovalActions ? onApproveReport : undefined}
+        onRequestRevision={showApprovalActions ? onRequestRevision : undefined}
         onViewAllReports={fetchAllReports}
         onStartFreshReport={
           currentMonth === new Date().getMonth() + 1 &&
