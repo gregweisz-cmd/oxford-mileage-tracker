@@ -263,66 +263,6 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     }
   };
 
-  const generateMonthlyReceiptsPdf = async () => {
-    if (!currentEmployee) {
-      Alert.alert('Error', 'No employee selected');
-      return;
-    }
-
-    try {
-      console.log('Starting PDF generation for employee:', currentEmployee.name);
-
-      console.log(`Getting receipts for ${selectedMonth}/${selectedYear}`);
-
-      // Get receipts for selected month/year
-      const monthlyReceipts = await DatabaseService.getReceipts(
-        currentEmployee.id,
-        selectedMonth,
-        selectedYear
-      );
-
-      console.log('Found receipts:', monthlyReceipts.length);
-
-      if (monthlyReceipts.length === 0) {
-        Alert.alert('No Data', 'No receipts found for this month');
-        return;
-      }
-
-      // Validate employee data
-      if (!currentEmployee.baseAddress) {
-        Alert.alert('Missing Data', 'Employee base address is required for PDF generation. Please update employee profile.');
-        return;
-      }
-
-      console.log('Generating PDF...');
-
-      // Generate PDF
-      const pdfUri = await PdfService.generateMonthlyReceiptsPdf(
-        monthlyReceipts,
-        currentEmployee,
-        selectedMonth,
-        selectedYear
-      );
-
-      console.log('PDF generated successfully, sharing...');
-
-      // Share PDF
-      await PdfService.shareReceiptsPdf(pdfUri, currentEmployee, selectedMonth, selectedYear);
-
-      Alert.alert('Success', 'Monthly receipts PDF generated and shared successfully');
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Failed to generate receipts PDF';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      Alert.alert('Error', errorMessage);
-    }
-  };
-
   const testPdfGeneration = async () => {
     try {
       console.log('Testing PDF generation...');
@@ -1056,14 +996,6 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
             <MaterialIcons name="add-circle" size={24} color="#fff" />
             <Text style={styles.addReceiptButtonText}>Add Receipt</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.generateButton}
-            onPress={generateMonthlyReceiptsPdf}
-          >
-            <MaterialIcons name="picture-as-pdf" size={24} color="#fff" />
-            <Text style={styles.generateButtonText}>Generate Monthly PDF</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Category Breakdown */}
@@ -1484,26 +1416,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   addReceiptButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  generateButton: {
-    backgroundColor: '#f44336',
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  generateButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

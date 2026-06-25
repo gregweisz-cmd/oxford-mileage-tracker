@@ -1874,6 +1874,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       }
 
       updatedEntries[entryIndex].description = fullDescription;
+      // Keep userDescription in sync. The main Save re-derives day-off state from
+      // userDescription, so leaving it stale here lets an old label (e.g. "Day Off")
+      // overwrite the type the user just picked in the dropdown (e.g. "PTO").
+      updatedEntries[entryIndex].userDescription = fullDescription;
 
       setEmployeeData({
         ...employeeData,
@@ -5148,15 +5152,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           const existing = byDate.get(dateStr);
           // Preserve cost center from Daily Descriptions tab when user changed it there; only fall back to entry.costCenter for new rows
           const costCenterToSave = (existing?.costCenter && String(existing.costCenter).trim()) ? existing.costCenter : (entry.costCenter || dataForSave.costCenters?.[0] || '');
+          // The Daily Descriptions day-off dropdown is the source of truth for the day-off type.
+          // If the description record already marks this date as a day off with a type, keep that
+          // type so a stale entry-derived label (e.g. "Day Off") can't clobber the user's pick (e.g. "PTO").
+          const existingDayOffType = existing?.dayOff ? (existing.dayOffType || null) : null;
+          const resolvedDayOffType = existingDayOffType ?? (isDayOffType ? userDesc : null);
+          const isDayOff = !!resolvedDayOffType || !!(existing?.dayOff);
           byDate.set(dateStr, {
             id: existing?.id || `desc-${dataForSave.employeeId}-${dateStr}`,
             employeeId: dataForSave.employeeId,
             date: dateStr,
-            description: userDesc,
+            description: resolvedDayOffType ?? userDesc,
             costCenter: costCenterToSave,
             stayedOvernight: existing?.stayedOvernight ?? false,
-            dayOff: isDayOffType || !!(existing?.dayOff),
-            dayOffType: isDayOffType ? userDesc : (existing?.dayOff ? existing.dayOffType : null),
+            dayOff: isDayOff,
+            dayOffType: resolvedDayOffType,
             createdAt: existing?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
           });

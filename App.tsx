@@ -377,7 +377,18 @@ export default function App() {
             <Stack.Screen name="SavedAddresses" component={SavedAddressesScreen} />
             <Stack.Screen name="DataSync" component={DataSyncScreen} />
             <Stack.Screen name="MileageEntries" component={MileageEntriesScreen} />
-            <Stack.Screen name="PerDiem" component={PerDiemScreen} />
+            <Stack.Screen
+              name="PerDiem"
+              component={PerDiemScreen}
+              options={{
+                // Per Diem is a long vertical ScrollView with unsaved edits. The swipe-back
+                // gesture was being triggered accidentally during scrolling, popping users
+                // back to Home (and risking data loss). Disable it; the header provides
+                // explicit Back and Home buttons.
+                gestureEnabled: false,
+              }}
+            />
+
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen}
