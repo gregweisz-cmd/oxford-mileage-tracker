@@ -28,10 +28,15 @@ async function notificationRequest(path: string, init: RequestInit = {}): Promis
 
 export async function fetchNotificationList(
   recipientId: string,
-  options?: { limit?: number }
+  options?: { limit?: number; portal?: string }
 ): Promise<unknown[]> {
-  const limitQuery = options?.limit ? `?limit=${options.limit}` : '';
-  const response = await notificationRequest(`/api/notifications/${recipientId}${limitQuery}`);
+  const query = new URLSearchParams();
+  if (options?.limit) query.set('limit', String(options.limit));
+  if (options?.portal) query.set('portal', options.portal);
+  const queryString = query.toString();
+  const response = await notificationRequest(
+    `/api/notifications/${recipientId}${queryString ? `?${queryString}` : ''}`
+  );
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
     throw new Error(
@@ -42,8 +47,12 @@ export async function fetchNotificationList(
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchNotificationUnreadCount(recipientId: string): Promise<number> {
-  const response = await notificationRequest(`/api/notifications/${recipientId}/count`);
+export async function fetchNotificationUnreadCount(
+  recipientId: string,
+  options?: { portal?: string }
+): Promise<number> {
+  const portalQuery = options?.portal ? `?portal=${encodeURIComponent(options.portal)}` : '';
+  const response = await notificationRequest(`/api/notifications/${recipientId}/count${portalQuery}`);
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
     throw new Error(

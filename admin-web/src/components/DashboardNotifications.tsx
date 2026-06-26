@@ -50,12 +50,15 @@ interface Notification {
   createdAt: string;
   reportId?: string;
   employeeId?: string;
+  portal?: string;
   metadata?: any;
 }
 
 interface DashboardNotificationsProps {
   employeeId: string;
   role?: 'employee' | 'supervisor' | 'admin' | 'finance' | 'contracts';
+  /** When set, only show notifications for this portal (e.g. the staff dashboard shows staff-only). */
+  portal?: string;
   onReportClick?: (
     reportId: string,
     employeeId?: string,
@@ -147,6 +150,7 @@ const getNotificationColor = (type: string): 'success' | 'warning' | 'error' | '
 export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
   employeeId,
   role = 'employee',
+  portal,
   onReportClick,
   maxDisplay = 3,
 }) => {
@@ -164,20 +168,20 @@ export const DashboardNotifications: React.FC<DashboardNotificationsProps> = ({
     }
     try {
       try {
-        const count = await fetchNotificationUnreadCount(employeeId);
+        const count = await fetchNotificationUnreadCount(employeeId, { portal });
         setUnreadCount(count);
       } catch (error) {
         logNotificationApiError('Error fetching notification count:', error);
       }
 
-      const data = await fetchNotificationList(employeeId, { limit: maxDisplay * 2 });
+      const data = await fetchNotificationList(employeeId, { limit: maxDisplay * 2, portal });
       setNotifications((data as Notification[]) || []);
     } catch (error) {
       logNotificationApiError('Error fetching notifications:', error);
     } finally {
       setLoading(false);
     }
-  }, [employeeId, maxDisplay]);
+  }, [employeeId, maxDisplay, portal]);
 
   useEffect(() => {
     if (employeeId) {

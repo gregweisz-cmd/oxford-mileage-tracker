@@ -39,14 +39,52 @@ const { debugLog, debugError, debugWarn } = require('../debug');
  * @type {Array<{ version: number, name: string, up: (sql: SqlHelper) => Promise<void> }>}
  */
 const MIGRATIONS = [
-  // Add new migrations here, e.g.:
-  // {
-  //   version: 1,
-  //   name: 'example: add index on receipts(date)',
-  //   up: async (sql) => {
-  //     await sql.run('CREATE INDEX IF NOT EXISTS idx_receipts_date ON receipts(date)');
-  //   },
-  // },
+  {
+    version: 1,
+    name: 'add portal column to notifications + backfill legacy rows',
+    up: async (sql) => {
+      const columns = await sql.all('PRAGMA table_info(notifications)');
+      const hasPortal = columns.some((c) => c.name === 'portal');
+      if (!hasPortal) {
+        await sql.run('ALTER TABLE notifications ADD COLUMN portal TEXT');
+      }
+
+      // Best-effort backfill so per-portal filtering works for existing notifications.
+      // New rows are written with an explicit, precise portal at the call site.
+      await sql.run(
+        `UPDATE notifications SET portal = 'staff'
+          WHERE portal IS NULL
+            AND type IN ('sunday_reminder', 'report_approved', 'report_rejected', 'weekly_checkup_accepted')`
+      );
+      await sql.run(
+        `UPDATE notifications SET portal = 'supervisor'
+          WHERE portal IS NULL
+            AND type IN ('50_plus_hours_alert', 'report_submitted', 'weekly_checkup_shared')`
+      );
+      await sql.run(
+        `UPDATE notifications SET portal = 'finance'
+          WHERE portal IS NULL AND type = 'approval_needed' AND recipientRole = 'finance'`
+      );
+      await sql.run(
+        `UPDATE notifications SET portal = 'supervisor'
+          WHERE portal IS NULL AND type = 'approval_needed'`
+      );
+      await sql.run(
+        `UPDATE notifications SET portal = 'staff'
+          WHERE portal IS NULL AND type = 'revision_requested' AND recipientRole = 'employee'`
+      );
+      await sql.run(
+        `UPDATE notifications SET portal = 'finance'
+          WHERE portal IS NULL AND type = 'revision_requested' AND recipientRole = 'finance'`
+      );
+      await sql.run(
+        `UPDATE notifications SET portal = 'supervisor'
+          WHERE portal IS NULL AND type = 'revision_requested'`
+      );
+      // Catch-all for anything left (unknown/legacy types).
+      await sql.run(`UPDATE notifications SET portal = 'staff' WHERE portal IS NULL`);
+    },
+  },
 ];
 
 /**

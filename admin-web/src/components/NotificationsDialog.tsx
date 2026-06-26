@@ -33,6 +33,7 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import { debugError } from '../config/debug';
 import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
+import { getPortalLabel, getPortalChipColor } from '../utils/notificationPortal';
 import {
   deleteNotification,
   fetchNotificationList,
@@ -101,6 +102,7 @@ export interface Notification {
   isDismissible: boolean;
   createdAt: string;
   readAt?: string;
+  portal?: string;
   metadata?: any;
 }
 
@@ -410,10 +412,19 @@ export const NotificationsDialog: React.FC<NotificationsDialogProps> = ({
                     </ListItemIcon>
                     <ListItemText
                       primary={
-                        <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                           <Typography component="span" variant="body2" fontWeight={notification.isRead ? 'normal' : 'bold'}>
                             {notification.title}
                           </Typography>
+                          {getPortalLabel(notification.portal) && (
+                            <Chip
+                              label={getPortalLabel(notification.portal)}
+                              color={getPortalChipColor(notification.portal)}
+                              size="small"
+                              variant="outlined"
+                              sx={{ height: 18, fontSize: '0.65rem' }}
+                            />
+                          )}
                           {!notification.isRead && (
                             <Chip label="New" color="error" size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
                           )}

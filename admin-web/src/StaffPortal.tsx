@@ -6373,11 +6373,14 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }
       />
 
-      {/* Dashboard Notifications - hidden in supervisor mode (viewing someone else's report) */}
-      {!supervisorMode && (
+      {/* Dashboard Notifications - hidden while reviewing someone else's report
+          (supervisor/finance embedded view or admin view), so a reviewer never sees
+          their own staff notifications inside a report they are reviewing. */}
+      {!embeddedReportView && !isAdminView && (
         <DashboardNotifications
           employeeId={notificationRecipientId}
           role={employeeRole}
+          portal="staff"
           onReportClick={navigateToReportFromNotification}
         />
       )}

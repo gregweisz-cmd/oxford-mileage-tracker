@@ -13,6 +13,7 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 const { notificationPollingLimiter } = require('../middleware/rateLimiter');
 const { requireAuth, getEffectiveRole } = require('../middleware/auth');
 const { logAuditEvent } = require('../services/auditLogService');
+const { resolvePortal, PORTALS } = require('../utils/notificationPortal');
 
 function parsePreferences(preferences) {
   if (!preferences) return {};
@@ -89,7 +90,7 @@ async function ensureAdminAccess(req, res) {
 router.get('/api/notifications/:recipientId', notificationPollingLimiter, (req, res, next) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
-  const { unreadOnly, limit } = req.query;
+  const { unreadOnly, limit, portal } = req.query;
 
   if (['email-recipients', 'preferences', 'test', 'test-email'].includes(recipientId)) {
     return next();
@@ -102,6 +103,11 @@ router.get('/api/notifications/:recipientId', notificationPollingLimiter, (req, 
     
     if (unreadOnly === 'true') {
       query += ' AND isRead = 0';
+    }
+
+    if (portal && PORTALS.includes(portal)) {
+      query += ' AND portal = ?';
+      params.push(portal);
     }
     
     query += ' ORDER BY createdAt DESC';
@@ -120,9 +126,10 @@ router.get('/api/notifications/:recipientId', notificationPollingLimiter, (req, 
         return;
       }
       
-      // Parse metadata JSON if present
+      // Parse metadata JSON if present; ensure every row reports a portal (derive for legacy rows).
       const notifications = rows.map(row => ({
         ...row,
+        portal: resolvePortal(row.portal, row.type, row.recipientRole),
         metadata: row.metadata ? JSON.parse(row.metadata) : null,
         isRead: row.isRead === 1,
         isDismissible: row.isDismissible === 1,
@@ -141,10 +148,18 @@ router.get('/api/notifications/:recipientId', notificationPollingLimiter, (req, 
 router.get('/api/notifications/:recipientId/count', notificationPollingLimiter, requireRecipientAccess('recipientId'), (req, res) => {
   const db = dbService.getDb();
   const { recipientId } = req.params;
-  
+  const { portal } = req.query;
+
+  let query = 'SELECT COUNT(*) as count FROM notifications WHERE recipientId = ? AND isRead = 0';
+  const params = [recipientId];
+  if (portal && PORTALS.includes(portal)) {
+    query += ' AND portal = ?';
+    params.push(portal);
+  }
+
   db.get(
-    'SELECT COUNT(*) as count FROM notifications WHERE recipientId = ? AND isRead = 0',
-    [recipientId],
+    query,
+    params,
     (err, row) => {
       if (err) {
         debugError('❌ Error counting unread notifications:', err);

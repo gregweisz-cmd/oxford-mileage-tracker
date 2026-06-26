@@ -6,6 +6,7 @@
 const dbService = require('./dbService');
 const emailService = require('./emailService');
 const notificationEventSettings = require('./notificationEventSettings');
+const { resolvePortal, portalForRole } = require('../utils/notificationPortal');
 const { debugLog, debugWarn, debugError } = require('../debug');
 
 async function hasFiftyPlusHoursWeeklyAlertBeenSent(supervisorId, employeeId, weekStartKey) {
@@ -86,6 +87,7 @@ async function createNotification({
   type,
   title,
   message,
+  portal = null,
   reportId = null,
   employeeId = null,
   employeeName = null,
@@ -128,16 +130,18 @@ async function createNotification({
       actor = await dbService.getEmployeeById(actorId);
     }
 
+    const resolvedPortal = resolvePortal(portal, type, recipientRole);
+
     let notificationId = null;
     if (persistInApp) {
       notificationId = `notif-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
       await new Promise((resolve, reject) => {
         db.run(
           `INSERT INTO notifications (
-          id, recipientId, recipientRole, type, title, message,
+          id, recipientId, recipientRole, type, title, message, portal,
           reportId, employeeId, employeeName, actorId, actorName, actorRole,
           isRead, isDismissible, createdAt, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
           [
             notificationId,
             recipientId,
@@ -145,6 +149,7 @@ async function createNotification({
             type,
             title,
             message,
+            resolvedPortal,
             reportId,
             employeeId,
             employeeName || (relatedEmployee ? (relatedEmployee.preferredName || relatedEmployee.name) : null),
@@ -253,12 +258,15 @@ async function notifyReportSubmitted(reportId, employeeId, employeeName, firstAp
     );
     if (!r.inAppEnabled && !r.emailEnabled) return null;
 
+    const recipientIsSeniorStaff = !!(employee && employee.seniorStaffId && recipient.id === employee.seniorStaffId);
+
     return await createNotification({
       recipientId: recipient.id,
       recipientRole: recipient.role || 'supervisor',
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: recipientIsSeniorStaff ? 'senior_staff' : 'supervisor',
       reportId,
       employeeId,
       employeeName: employeeName || employee?.preferredName || employee?.name || 'Employee',
@@ -314,12 +322,15 @@ async function notifyWeeklyCheckupShared(reportId, employeeId, employeeName) {
       const recipient = await dbService.getEmployeeById(recipientId);
       if (!recipient) continue;
 
+      const recipientIsSeniorStaff = !!(employee.seniorStaffId && recipient.id === employee.seniorStaffId);
+
       const notificationId = await createNotification({
         recipientId: recipient.id,
         recipientRole: recipient.role || 'supervisor',
         type: r.notificationType,
         title: r.title,
         message: r.message,
+        portal: recipientIsSeniorStaff ? 'senior_staff' : 'supervisor',
         reportId,
         employeeId,
         employeeName: en,
@@ -379,6 +390,7 @@ async function notifyWeeklyCheckupAccepted(reportId, employeeId, approverId, app
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: 'staff',
       reportId,
       employeeId,
       employeeName: employee.preferredName || employee.name || 'Employee',
@@ -432,6 +444,7 @@ async function notifySupervisorApprovalNeeded(reportId, seniorStaffId, seniorSta
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: 'supervisor',
       reportId,
       employeeId,
       employeeName: employee?.preferredName || employee?.name || 'Employee',
@@ -492,6 +505,7 @@ async function notifyFinanceRevisionRequest(reportId, financeId, financeName, em
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: 'supervisor',
       reportId,
       employeeId,
       employeeName: employee.preferredName || employee.name,
@@ -551,6 +565,7 @@ async function notify50PlusHours(employeeId, employeeName, weekStart, totalHours
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: 'supervisor',
       employeeId,
       employeeName,
       actorId: employeeId,
@@ -678,6 +693,7 @@ async function notifySupervisorRevisionRequest(reportId, supervisorId, superviso
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: 'staff',
       reportId,
       employeeId,
       employeeName: employee.preferredName || employee.name,
@@ -756,6 +772,7 @@ async function notifyExpenseReportRevisionRequested(reportId, actorId, actorName
         type: employeeDelivery.notificationType,
         title: employeeDelivery.title,
         message: employeeDelivery.message,
+        portal: 'staff',
         reportId,
         employeeId,
         employeeName: employeeDisplay,
@@ -817,6 +834,7 @@ async function notifyExpenseReportRevisionRequested(reportId, actorId, actorName
         type: observerDelivery.notificationType,
         title: observerDelivery.title,
         message: observerDelivery.message,
+        portal: portalForRole(observer.role),
         reportId,
         employeeId,
         employeeName: employeeDisplay,
@@ -892,6 +910,7 @@ async function notifyFinanceApprovalNeeded(reportId, supervisorId, supervisorNam
         type: r.notificationType,
         title: r.title,
         message: r.message,
+        portal: 'finance',
         reportId,
         employeeId,
         employeeName: employee?.preferredName || employee?.name,
@@ -948,6 +967,7 @@ async function notifyEmployeeReportApproved(reportId, approverId, approverName, 
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: 'staff',
       reportId,
       employeeId,
       actorId: approverId,
@@ -1079,6 +1099,7 @@ async function notifySundayReminder(employeeId) {
       type: r.notificationType,
       title: r.title,
       message: r.message,
+      portal: 'staff',
       reportId: null,
       employeeId: null,
       employeeName: null,
