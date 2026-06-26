@@ -20,11 +20,24 @@ const SERVER_CONFIG = {
 
 /**
  * Database Configuration
- * In production without DATABASE_PATH (e.g. Render free tier), use in-memory so the app can start.
+ * Production REQUIRES a durable DATABASE_PATH (e.g. a Render persistent disk). Running in-memory in
+ * production silently loses all data on restart, so we refuse unless ALLOW_EPHEMERAL_DB=true is set
+ * to consciously opt into a throwaway database.
  */
 function getDatabasePath() {
   if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
-  if (process.env.NODE_ENV === 'production') return ':memory:';
+  if (process.env.NODE_ENV === 'production') {
+    if (process.env.ALLOW_EPHEMERAL_DB === 'true') {
+      console.warn(
+        '⚠️ DATABASE_PATH is not set and ALLOW_EPHEMERAL_DB=true — running on an in-memory DB. ALL DATA WILL BE LOST on restart.'
+      );
+      return ':memory:';
+    }
+    throw new Error(
+      'DATABASE_PATH is required in production. Point it at a persistent disk (e.g. /data/expense_tracker.db). ' +
+        'To intentionally run on a throwaway in-memory DB, set ALLOW_EPHEMERAL_DB=true.'
+    );
+  }
   return path.join(__dirname, '..', 'expense_tracker.db');
 }
 const DATABASE_CONFIG = {

@@ -138,14 +138,24 @@ export class RealtimeSyncService {
     const isDev = process.env.NODE_ENV === 'development' || 
                   window.location.hostname === 'localhost' ||
                   window.location.hostname === '127.0.0.1';
-    
+
+    let url: string;
     if (isDev) {
-      return 'ws://localhost:3003/ws';
+      url = 'ws://localhost:3003/ws';
     } else {
       // Production WebSocket URL (Render.com)
       const baseUrl = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
-      return baseUrl.replace('http', 'ws').replace('https', 'wss') + '/ws';
+      url = baseUrl.replace('http', 'ws').replace('https', 'wss') + '/ws';
     }
+
+    // The server authenticates the socket from this token and scopes which data events we receive.
+    let token: string | null = null;
+    try {
+      token = localStorage.getItem('authToken');
+    } catch {
+      token = null;
+    }
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url;
   }
 
   /**

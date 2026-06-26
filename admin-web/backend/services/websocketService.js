@@ -6,9 +6,46 @@
 
 const WebSocket = require('ws');
 const { debugLog, debugError } = require('../debug');
+const { verifyAuthToken, getEffectiveRole } = require('../middleware/auth');
 
 // WebSocket clients management
 const connectedClients = new Set();
+
+// Roles that are allowed to receive data-change events for employees other than themselves.
+// (Regular employees only ever receive events for their own data; unauthenticated sockets receive none.)
+const ELEVATED_ROLES = new Set(['admin', 'finance', 'contracts', 'supervisor', 'senior_staff']);
+
+/**
+ * Authenticate an incoming WebSocket upgrade using a `token` query-string parameter.
+ * Browsers cannot set custom headers on a WebSocket handshake, so the signed JWT is passed in the URL.
+ * @returns {{ employeeId: string, role: string }|null} auth context, or null when unauthenticated
+ */
+function authenticateConnection(req) {
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    const verified = verifyAuthToken(token);
+    if (!verified || !verified.employeeId) return null;
+    const role = getEffectiveRole({
+      email: verified.payload && verified.payload.email,
+      role: verified.payload && verified.payload.role,
+    });
+    return { employeeId: verified.employeeId, role };
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Decide whether a connected client may receive a data-change event for a given owner employee.
+ * @param {{ employeeId: string, role: string }|null} auth - the client's auth context
+ * @param {string|null} ownerEmployeeId - employee the changed data belongs to
+ */
+function clientMayReceive(auth, ownerEmployeeId) {
+  if (!auth) return false; // unauthenticated sockets never receive data events
+  if (ownerEmployeeId && auth.employeeId === ownerEmployeeId) return true; // own data
+  return ELEVATED_ROLES.has(auth.role); // reviewers/admins may receive others' events
+}
 
 /**
  * Initialize WebSocket service with the WebSocket server instance
@@ -17,12 +54,16 @@ const connectedClients = new Set();
 function initializeWebSocket(wss) {
   // WebSocket connection handling
   wss.on('connection', (ws, req) => {
-    debugLog('🔌 WebSocket client connected from:', req.headers.origin);
+    ws.authContext = authenticateConnection(req);
+    debugLog(
+      `🔌 WebSocket client connected from: ${req.headers.origin} (${ws.authContext ? `auth=${ws.authContext.role}` : 'unauthenticated'})`
+    );
     connectedClients.add(ws);
     
     // Send welcome message
     ws.send(JSON.stringify({
       type: 'connection_established',
+      authenticated: !!ws.authContext,
       timestamp: new Date().toISOString()
     }));
     
@@ -109,13 +150,25 @@ function handleRefreshRequest(ws, requestData) {
  * @param {Object} updateData - Update data
  */
 function handleDataChangeNotification(updateData) {
-  debugLog('🔄 Broadcasting data change:', updateData);
-  
-  // Broadcast update to all connected clients
-  broadcastToClients({
-    type: 'data_update',
-    data: updateData
+  const ownerEmployeeId =
+    (updateData && (updateData.employeeId || (updateData.data && updateData.data.employeeId))) || null;
+  debugLog('🔄 Broadcasting data change for employee:', ownerEmployeeId || '(unknown)');
+
+  // Deliver only to the owning employee's sockets and to elevated-role reviewers/admins.
+  const message = JSON.stringify({ type: 'data_update', data: updateData });
+  let delivered = 0;
+  connectedClients.forEach((client) => {
+    if (client.readyState !== WebSocket.OPEN) return;
+    if (!clientMayReceive(client.authContext, ownerEmployeeId)) return;
+    try {
+      client.send(message);
+      delivered += 1;
+    } catch (error) {
+      debugError('❌ Error sending WebSocket data_update:', error);
+      connectedClients.delete(client);
+    }
   });
+  debugLog(`📤 data_update delivered to ${delivered} client(s)`);
 }
 
 /**

@@ -46,6 +46,29 @@ function waitForEmployeesTable(db, maxWaitMs = 5000) {
   });
 }
 
+/**
+ * Resolve a seed account password.
+ *
+ * Production must supply passwords via environment variables (passwordEnv) so that no real credential
+ * lives in source/git. When the env var is missing in production we return null and the caller skips
+ * that account (existing rows keep their current password; nothing is overwritten with a known value).
+ * Outside production we fall back to a clearly-non-production dev password for local convenience.
+ *
+ * @param {{ passwordEnv?: string, devPassword?: string, name: string }} account
+ * @returns {string|null}
+ */
+function resolveSeedPassword(account) {
+  const fromEnv = account.passwordEnv ? process.env[account.passwordEnv] : null;
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === 'production') {
+    debugLog(
+      `🔐 ${account.name}: ${account.passwordEnv || 'seed password env'} not set in production; skipping (existing password preserved).`
+    );
+    return null;
+  }
+  return account.devPassword || `${(account.preferredName || account.name || 'user').split(' ')[0]}-dev`;
+}
+
 async function seedTestAccounts() {
   const db = dbService.getDb();
   const ready = await waitForEmployeesTable(db);
@@ -59,7 +82,8 @@ async function seedTestAccounts() {
       name: 'Greg Weisz',
       preferredName: 'Greg',
       email: 'greg.weisz@oxfordhouse.org',
-      password: 'ImtheBoss5!',
+      passwordEnv: 'SEED_GREG_PASSWORD',
+      devPassword: 'Greg-dev-password',
       oxfordHouseId: 'oxford-house-001',
       position: 'Senior Data Analyst/Administrator',
       phoneNumber: '(555) 123-4567',
@@ -73,7 +97,8 @@ async function seedTestAccounts() {
       name: 'Jackson Longan',
       preferredName: 'Jackson',
       email: 'jackson.longan@oxfordhouse.org',
-      password: 'Jacksonwelcome1',
+      passwordEnv: 'SEED_JACKSON_PASSWORD',
+      devPassword: 'Jacksonwelcome1',
       oxfordHouseId: 'oxford-house-002',
       position: 'Director of Communication and Information/Administrator',
       phoneNumber: '(555) 345-6789',
@@ -87,7 +112,8 @@ async function seedTestAccounts() {
       name: 'Kathleen Gibson',
       preferredName: 'Kathleen',
       email: 'kathleen.gibson@oxfordhouse.org',
-      password: 'Kathleenwelcome1',
+      passwordEnv: 'SEED_KATHLEEN_PASSWORD',
+      devPassword: 'Kathleenwelcome1',
       oxfordHouseId: 'oxford-house-003',
       position: 'CEO/Administrator',
       phoneNumber: '(555) 234-5678',
@@ -101,7 +127,8 @@ async function seedTestAccounts() {
       name: 'Alex Szary',
       preferredName: 'Alex',
       email: 'alex.szary@oxfordhouse.org',
-      password: 'Alexwelcome1',
+      passwordEnv: 'SEED_ALEX_PASSWORD',
+      devPassword: 'Alexwelcome1',
       oxfordHouseId: 'oxford-house-004',
       position: 'Senior Manager of Data and Analytics/Administrator',
       phoneNumber: '(555) 456-7890',
@@ -117,7 +144,8 @@ async function seedTestAccounts() {
       name: 'App Review User',
       preferredName: 'App Review',
       email: 'appreview@oxfordhouse.org',
-      password: 'Q7nK3xP2mL9aT4bC',
+      passwordEnv: 'SEED_APPREVIEW_PASSWORD',
+      devPassword: 'AppReview-dev-password',
       oxfordHouseId: 'oxford-house-999',
       position: 'App Review Tester',
       phoneNumber: '(555) 000-0000',
@@ -132,8 +160,13 @@ async function seedTestAccounts() {
 
   for (const account of testAccounts) {
     try {
+      const seedPassword = resolveSeedPassword(account);
+      if (!seedPassword) {
+        // No password source in production — leave any existing account untouched.
+        continue;
+      }
       // Hash password so auth (bcrypt compare) works
-      const hashedPassword = await helpers.hashPassword(account.password);
+      const hashedPassword = await helpers.hashPassword(seedPassword);
 
       // Check if account already exists
       const existingAccount = await new Promise((resolve, reject) => {

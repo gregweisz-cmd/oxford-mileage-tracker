@@ -10,12 +10,25 @@ const os = require('os');
 const { debugLog, debugError, debugWarn } = require('../debug');
 const constants = require('../utils/constants');
 
-// Database path: use DATABASE_PATH when set (e.g. Render persistent disk). In production without
-// DATABASE_PATH (e.g. Render free tier), use in-memory DB so the app always starts (ephemeral, no disk).
+// Database path resolution.
+//
+// Production REQUIRES a durable path via DATABASE_PATH (e.g. a Render persistent disk). We refuse to
+// start on an in-memory database in production because that silently discards every record on each
+// restart/redeploy — a data-loss footgun. To consciously accept ephemeral storage (e.g. a throwaway
+// preview environment) set ALLOW_EPHEMERAL_DB=true.
 function getDatabasePath() {
   if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
   if (process.env.NODE_ENV === 'production') {
-    return ':memory:';
+    if (process.env.ALLOW_EPHEMERAL_DB === 'true') {
+      debugWarn(
+        '⚠️ DATABASE_PATH is not set and ALLOW_EPHEMERAL_DB=true — running on an in-memory DB. ALL DATA WILL BE LOST on restart.'
+      );
+      return ':memory:';
+    }
+    throw new Error(
+      'DATABASE_PATH is required in production. Point it at a persistent disk (e.g. /data/expense_tracker.db). ' +
+        'To intentionally run on a throwaway in-memory DB, set ALLOW_EPHEMERAL_DB=true.'
+    );
   }
   return path.join(__dirname, '..', 'expense_tracker.db');
 }

@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const dbService = require('../services/dbService');
-const { debugError, debugWarn } = require('../debug');
+const { debugError } = require('../debug');
 
 const SUPER_ADMIN_EMAIL = 'greg.weisz@oxfordhouse.org';
 const ALLOWED_ROLES = ['employee', 'supervisor', 'admin', 'finance', 'contracts'];
@@ -10,8 +10,11 @@ function getJwtSecret() {
   const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET || process.env.AUTH_TOKEN_SECRET;
   if (secret) return secret;
 
+  // Never fall back to a known, hardcoded secret in production — that makes every token forgeable.
   if (process.env.NODE_ENV === 'production') {
-    debugWarn('⚠️ JWT_SECRET is not set. Set JWT_SECRET in production environment variables.');
+    throw new Error(
+      'JWT_SECRET is required in production. Set JWT_SECRET (or SESSION_SECRET / AUTH_TOKEN_SECRET) to a strong random value.'
+    );
   }
   return 'development-only-change-me';
 }
@@ -57,15 +60,9 @@ function verifyAuthToken(token) {
     });
     return { employeeId: payload.sub, tokenType: 'jwt', payload };
   } catch (error) {
-    // Temporary compatibility so existing logged-in sessions survive the deploy.
-    const legacyMatch = /^session_(.+)_(\d+)$/.exec(token);
-    if (legacyMatch) {
-      return {
-        employeeId: legacyMatch[1],
-        tokenType: 'legacy-session',
-        payload: { sub: legacyMatch[1], iat: Number(legacyMatch[2]) },
-      };
-    }
+    // Only signed JWTs are accepted. The previous `session_<id>_<ts>` compatibility path was an
+    // unsigned, trivially-forgeable token format and has been removed. Holders of those legacy
+    // tokens simply re-authenticate.
     return null;
   }
 }

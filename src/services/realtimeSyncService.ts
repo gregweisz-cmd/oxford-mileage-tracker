@@ -105,11 +105,28 @@ export class RealtimeSyncService {
     // Remove /api suffix if present, then convert to WebSocket URL
     const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
     const wsUrl = cleanBaseUrl.replace('http', 'ws') + '/ws';
-    
-    debugLog('📡 Connecting to WebSocket:', wsUrl);
-    
+
+    void this.openSocket(wsUrl, baseUrl, employeeId);
+  }
+
+  /** Resolve the auth token (async, from SecureStore) and open the authenticated socket. */
+  private async openSocket(wsUrl: string, baseUrl: string, employeeId: string): Promise<void> {
+    let urlWithAuth = wsUrl;
     try {
-      this.ws = new WebSocket(wsUrl);
+      const { getAuthToken } = await import('./authHeaders');
+      const token = await getAuthToken();
+      if (token) {
+        // Server authenticates the socket from this token and scopes which data events we receive.
+        urlWithAuth = `${wsUrl}?token=${encodeURIComponent(token)}`;
+      }
+    } catch {
+      // No token available — connect unauthenticated (will only receive non-data messages).
+    }
+
+    debugLog('📡 Connecting to WebSocket:', wsUrl);
+
+    try {
+      this.ws = new WebSocket(urlWithAuth);
       this.setupWebSocketHandlers();
     } catch (error) {
       console.error('❌ WebSocket connection error:', error);

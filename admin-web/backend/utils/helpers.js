@@ -70,12 +70,21 @@ async function hashPassword(password) {
  * Compare password with hash
  */
 async function comparePassword(password, hash) {
-  // Handle legacy plain text passwords (for migration)
-  // If hash doesn't look like bcrypt hash (starts with $2a$ or $2b$), compare as plain text
-  if (!hash || (!hash.startsWith('$2a$') && !hash.startsWith('$2b$') && !hash.startsWith('$2y$'))) {
-    debugLog('⚠️ Legacy plain text password detected, comparing directly');
-    return password === hash;
+  const looksHashed = !!hash && (hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$'));
+
+  if (!looksHashed) {
+    // A stored password that isn't a bcrypt hash is a legacy plain-text record. Comparing it directly
+    // is insecure, so it is rejected by default. If a migration left some accounts un-hashed and you
+    // need a temporary window to let them log in (so they can be re-hashed), set
+    // ALLOW_LEGACY_PLAINTEXT_PASSWORDS=true — but do not leave it on.
+    if (process.env.ALLOW_LEGACY_PLAINTEXT_PASSWORDS === 'true') {
+      debugLog('⚠️ ALLOW_LEGACY_PLAINTEXT_PASSWORDS=true — comparing a legacy plain-text password directly.');
+      return password === hash;
+    }
+    debugLog('⛔ Rejected login against a non-bcrypt (legacy plain-text) stored password.');
+    return false;
   }
+
   return await bcrypt.compare(password, hash);
 }
 

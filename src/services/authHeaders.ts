@@ -19,6 +19,15 @@ function employeeIdFromSessionToken(token: string): string | null {
   return legacy?.[1] ?? null;
 }
 
+/** Raw stored session token (JWT), or null. Used e.g. to authenticate the realtime WebSocket. */
+export async function getAuthToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   try {
     const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
