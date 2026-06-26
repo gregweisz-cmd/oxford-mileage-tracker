@@ -71,10 +71,6 @@ import {
 
 // Import StaffPortal for team member report viewing
 import StaffPortal from '../StaffPortal';
-import {
-  fetchExpenseReportById,
-  requiresSupervisorCertification,
-} from '../utils/signatureApi';
 import OxfordHouseLogo from './OxfordHouseLogo';
 import { NotificationBell } from './NotificationBell';
 import DetailedReportView from './DetailedReportView';
@@ -101,6 +97,7 @@ import {
   getDueInfo,
 } from './reviewerPortal/shared';
 import ReviewDialog from './reviewerPortal/ReviewDialog';
+import { createReviewerApprovalHandlers } from './reviewerPortal/approvalHandlers';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -304,96 +301,6 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
     calculateDashboardStats();
   }, [calculateDashboardStats]);
 
-  const handleApproveReport = async (reportId: string) => {
-    const report = teamReports.find((r) => r.id === reportId);
-    const needsCert = requiresSupervisorCertification(report?.submissionType);
-
-    if (needsCert && !supervisorCertificationAcknowledged) {
-      alert('Please acknowledge the certification statement before approving the report.');
-      return;
-    }
-
-    try {
-      const fullReport = await fetchExpenseReportById(reportId);
-      const reportData = (fullReport.reportData || {}) as Record<string, unknown>;
-      if (needsCert && !reportData.supervisorSignature) {
-        alert(
-          'Please upload your signature on the Cover Sheet before approving. Use Upload Signature and choose Upload saved or Upload new.'
-        );
-        return;
-      }
-    } catch (error) {
-      debugError('Error validating signature:', error);
-      alert('Could not verify signature. Please try again.');
-      return;
-    }
-
-    setSavingAction(true);
-    try {
-      await putExpenseReportApproval(reportId, {
-        action: 'approve',
-        approverId: seniorStaffId,
-        approverName: seniorStaffName,
-        supervisorCertificationAcknowledged: needsCert
-          ? supervisorCertificationAcknowledged
-          : false,
-      });
-
-      closeReviewDialog();
-      await loadTeamReports();
-      if (showEmployeeReportView) {
-        setShowEmployeeReportView(false);
-        alert('Report approved and sent to the next reviewer successfully!');
-      }
-    } catch (error) {
-      debugError('Error approving report:', error);
-      alert('Failed to approve report. Please try again.');
-    } finally {
-      setSavingAction(false);
-    }
-  };
-
-  const handleRejectReport = async (reportId: string) => {
-    if (!reviewComment.trim()) {
-      alert('Please provide a reason for rejection.');
-      return;
-    }
-
-    setSavingAction(true);
-    try {
-      // Use request_revision_to_employee action to send back to employee
-      const body: any = {
-        action: 'request_revision_to_employee',
-        approverId: seniorStaffId,
-        approverName: seniorStaffName,
-        comments: reviewComment.trim(),
-      };
-      
-      // Include selected items if any were selected
-      if (selectedItemsForRevision) {
-        body.selectedItems = {
-          mileage: Array.from(selectedItemsForRevision.mileage),
-          dailyDescriptions: Array.from(selectedItemsForRevision.dailyDescriptions),
-          receipts: Array.from(selectedItemsForRevision.receipts),
-          timeTracking: Array.from(selectedItemsForRevision.timeTracking),
-          perDiemDays: Array.from(selectedItemsForRevision.perDiemDays),
-        };
-      }
-      
-      await putExpenseReportApproval(reportId, body);
-
-      closeReviewDialog();
-      await loadTeamReports();
-      alert('Report sent back to employee for revision.');
-    } catch (error) {
-      debugError('Error requesting revision:', error);
-      const message = error instanceof Error ? error.message : 'Failed to request revision. Please try again.';
-      alert(message);
-    } finally {
-      setSavingAction(false);
-    }
-  };
-
   // Memoized callback for selected items change to prevent infinite loops
   const handleSelectedItemsChange = useCallback((selectedItems: {
     mileage: Set<string>;
@@ -528,32 +435,6 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
     }
   }, [showEmployeeReportView, viewingEmployeeReport, handleApproveFromPortal, handleRequestRevisionFromPortal, viewingReportMonth, viewingReportYear, seniorStaffId, seniorStaffName]);
 
-  const handleResubmitToFinance = async (reportId: string) => {
-    if (!reviewComment.trim()) {
-      alert('Please provide comments about the changes made (e.g., "Changes made per finance feedback").');
-      return;
-    }
-
-    setSavingAction(true);
-    try {
-      await putExpenseReportApproval(reportId, {
-        action: 'resubmit_to_finance',
-        approverId: seniorStaffId,
-        approverName: seniorStaffName,
-        comments: reviewComment.trim(),
-      });
-
-      closeReviewDialog();
-      await loadTeamReports();
-      alert('Report resubmitted to Finance team.');
-    } catch (error) {
-      debugError('Error resubmitting to finance:', error);
-      alert('Failed to resubmit to finance. Please try again.');
-    } finally {
-      setSavingAction(false);
-    }
-  };
-
   const loadDelegates = useCallback(async () => {
     setLoadingDelegates(true);
     try {
@@ -597,68 +478,43 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
     setSelectedDelegateId('');
   };
 
-  const handleDelegateSubmit = async () => {
-    if (!delegateReport || !selectedDelegateId) {
-      alert('Please select a delegate.');
-      return;
-    }
-
-    setSavingAction(true);
-    try {
-      await putExpenseReportApproval(delegateReport.id, {
-        action: 'delegate',
-        approverId: seniorStaffId,
-        approverName: seniorStaffName,
-        delegateId: selectedDelegateId,
-      });
-
-      await loadTeamReports();
-      handleCloseDelegateDialog();
-    } catch (error) {
-      debugError('Error delegating report:', error);
-      alert('Failed to delegate report. Please try again.');
-    } finally {
-      setSavingAction(false);
-    }
-  };
-
-  const handleSendReminder = async (reportId: string) => {
-    try {
-      await putExpenseReportApproval(reportId, {
-        action: 'remind',
-        approverId: seniorStaffId,
-        approverName: seniorStaffName,
-      });
-
-      await loadTeamReports();
-    } catch (error) {
-      debugError('Error sending reminder:', error);
-      alert('Failed to send reminder. Please try again.');
-    }
-  };
-
-  const handleAddComment = async (reportId: string) => {
-    if (!reviewComment.trim()) return;
-
-    setSavingAction(true);
-    try {
-      await putExpenseReportApproval(reportId, {
-        action: 'comment',
-        approverId: seniorStaffId,
-        approverName: seniorStaffName,
-        comments: reviewComment.trim(),
-      });
-
-      setCommentDialogOpen(false);
-      setReviewComment('');
-      await loadTeamReports();
-    } catch (error) {
-      debugError('Error adding comment:', error);
-      alert('Failed to add comment. Please try again.');
-    } finally {
-      setSavingAction(false);
-    }
-  };
+  // Approval-action handlers are shared with the Supervisor portal; only id/name,
+  // a few alert strings, and the revision-error strategy differ between the two.
+  const {
+    handleApproveReport,
+    handleRejectReport,
+    handleResubmitToFinance,
+    handleDelegateSubmit,
+    handleSendReminder,
+    handleAddComment,
+  } = createReviewerApprovalHandlers({
+    reviewerId: seniorStaffId,
+    reviewerName: seniorStaffName,
+    requiresCertification: false,
+    labels: {
+      signatureMissingAlert:
+        'Please upload your signature on the Cover Sheet before approving. Use Upload Signature and choose Upload saved or Upload new.',
+      signatureVerifyError: 'Could not verify signature. Please try again.',
+      approveSuccessAlert: 'Report approved and sent to the next reviewer successfully!',
+    },
+    teamReports,
+    certificationAcknowledged: supervisorCertificationAcknowledged,
+    reviewComment,
+    selectedItemsForRevision,
+    showEmployeeReportView,
+    delegateReport,
+    selectedDelegateId,
+    setSavingAction,
+    closeReviewDialog,
+    loadTeamReports,
+    setShowEmployeeReportView,
+    closeDelegateDialog: handleCloseDelegateDialog,
+    setCommentDialogOpen,
+    setReviewComment,
+    onRequestRevisionError: (_error, message) => {
+      alert(message);
+    },
+  });
 
   const handleDeleteReportClick = (report: TeamReport) => {
     setReportToDelete(report);
@@ -1398,6 +1254,7 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
         certificationAcknowledged={supervisorCertificationAcknowledged}
         onCertificationAcknowledgedChange={setSupervisorCertificationAcknowledged}
         savingAction={savingAction}
+        requiresCertification={false}
         labels={{
           approveTitle: 'Approve and advance report',
           approveAlert:

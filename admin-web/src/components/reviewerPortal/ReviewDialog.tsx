@@ -42,6 +42,11 @@ export interface ReviewDialogProps {
   certificationAcknowledged: boolean;
   onCertificationAcknowledgedChange: (value: boolean) => void;
   savingAction: boolean;
+  /**
+   * Whether this reviewer signs/certifies on approval. Supervisors do; senior staff (a
+   * review-only first pass) do not, so the certification UI and gating are hidden for them.
+   */
+  requiresCertification: boolean;
   labels: ReviewDialogLabels;
   /** Resolves the author name shown under a previous comment (role-specific field). */
   commentAuthorName: (comment: ReviewerComment) => string | undefined;
@@ -66,6 +71,7 @@ const ReviewDialog: React.FC<ReviewDialogProps> = ({
   certificationAcknowledged,
   onCertificationAcknowledgedChange,
   savingAction,
+  requiresCertification,
   labels,
   commentAuthorName,
   onViewFullDetails,
@@ -138,7 +144,7 @@ const ReviewDialog: React.FC<ReviewDialogProps> = ({
                 </>
               )}
 
-              {mode === 'approve' && requiresSupervisorCertification && (
+              {mode === 'approve' && requiresCertification && requiresSupervisorCertification && (
                 <Box sx={{ mt: 2, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
                   <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
                     By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
@@ -156,7 +162,7 @@ const ReviewDialog: React.FC<ReviewDialogProps> = ({
                 </Box>
               )}
 
-              {mode === 'finance_return' && requiresSupervisorCertification && (
+              {mode === 'finance_return' && requiresCertification && requiresSupervisorCertification && (
                 <Box sx={{ mt: 2, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
                   <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
                     By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
@@ -208,7 +214,7 @@ const ReviewDialog: React.FC<ReviewDialogProps> = ({
                   <Alert severity="success" sx={{ mb: 2 }} variant="outlined">
                     {labels.approveAlert}
                   </Alert>
-                  {!requiresSupervisorCertification && (
+                  {requiresCertification && !requiresSupervisorCertification && (
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       {labels.certNotRequiredText}
                     </Typography>
@@ -259,7 +265,8 @@ const ReviewDialog: React.FC<ReviewDialogProps> = ({
             onClick={() => report && onApprove(report.id)}
             disabled={
               savingAction ||
-              ((report?.submissionType || '').toLowerCase() !== 'weekly_checkup' &&
+              (requiresCertification &&
+                (report?.submissionType || '').toLowerCase() !== 'weekly_checkup' &&
                 !certificationAcknowledged)
             }
           >

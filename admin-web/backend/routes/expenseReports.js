@@ -2368,7 +2368,10 @@ router.put('/api/expense-reports/:id/approval', async (req, res) => {
         const reportDataForSig = helpers.parseJsonSafe(report.reportData, {});
         const submissionTypeForSig = (report.submissionType || reportDataForSig.submissionType || '').toLowerCase();
         const approverRole = currentStep.role || '';
-        if (approverRole === 'supervisor' || approverRole === 'senior_staff') {
+        // Senior staff are a review-only first pass: approving just advances the report to the
+        // supervisor (and notifies them). The signature + certification belong to the SUPERVISOR
+        // step, so only require them there — never at the senior_staff stage.
+        if (approverRole === 'supervisor') {
           if (submissionTypeForSig !== 'weekly_checkup') {
             if (!reportDataForSig.supervisorSignature) {
               res.status(400).json({ error: 'Supervisor signature is required before approval. Upload a signature on the Cover Sheet.' });
