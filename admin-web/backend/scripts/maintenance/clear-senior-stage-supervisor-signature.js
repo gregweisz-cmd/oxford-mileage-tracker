@@ -9,7 +9,7 @@
  * the signature belongs to the supervisor step. The code has been fixed so senior staff no
  * longer sign, but reports that were touched before the fix may still carry a stray signature.
  *
- * This script scopes the cleanup to reports that are STILL at the senior-staff stage
+ * By default this script scopes the cleanup to reports that are STILL at the senior-staff stage
  * (status = 'pending_senior_staff' or currentApprovalStage = 'senior_staff'). At that point the
  * supervisor has not yet entered the flow, so any `supervisorSignature` /
  * `supervisorCertificationAcknowledged` present was placed by the senior and is safe to remove.
@@ -18,8 +18,15 @@
  * supervisor may have legitimately uploaded their own signature there before approving, and any
  * stray senior signature self-heals as soon as the supervisor uploads/approves.
  *
+ * --include-supervisor-pending: ALSO clean reports sitting at `pending_supervisor` whose
+ * supervisor step has NOT yet been approved. This catches reports a senior already advanced
+ * (carrying a stray senior signature into the supervisor's slot). It is safe to run as a one-time
+ * migration right after deploying the senior-staff fix, BEFORE any supervisor signs under the new
+ * flow. Caveat: if a supervisor pre-uploaded their own signature without approving yet, it would
+ * also be cleared and they'd re-upload it — acceptable for a one-time cleanup.
+ *
  * Usage:
- *   node scripts/maintenance/clear-senior-stage-supervisor-signature.js [--dry-run] [--verbose]
+ *   node scripts/maintenance/clear-senior-stage-supervisor-signature.js [--dry-run] [--verbose] [--include-supervisor-pending] [--report-id=<id>]
  *
  * Recommended:
  *   1. Run with `--dry-run` first to see how many reports would change.
@@ -34,6 +41,9 @@ const dbService = require('../../services/dbService');
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
 const VERBOSE = args.includes('--verbose');
+const INCLUDE_SUPERVISOR_PENDING = args.includes('--include-supervisor-pending');
+const REPORT_ID_ARG = args.find((a) => a.startsWith('--report-id='));
+const REPORT_ID = REPORT_ID_ARG ? REPORT_ID_ARG.slice('--report-id='.length) : null;
 
 function parseReportData(raw) {
   if (!raw) return {};
@@ -44,6 +54,23 @@ function parseReportData(raw) {
   } catch {
     return {};
   }
+}
+
+function parseWorkflow(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// A report at the supervisor stage is only safe to clean if the supervisor has NOT approved yet
+// (otherwise the signature is a legitimate, recorded supervisor approval and must be preserved).
+function supervisorAlreadyApproved(workflow) {
+  return workflow.some((step) => step && step.role === 'supervisor' && step.status === 'approved');
 }
 
 async function main() {
@@ -63,22 +90,41 @@ async function main() {
     );
 
   console.log(
-    `Scanning senior-stage reports for stray supervisor signatures (dry run: ${DRY_RUN})`
+    `Scanning for stray supervisor signatures (dry run: ${DRY_RUN}` +
+      `${INCLUDE_SUPERVISOR_PENDING ? ', incl. pending_supervisor' : ''}` +
+      `${REPORT_ID ? `, report ${REPORT_ID}` : ''})`
   );
 
-  const rows = await all(
-    `SELECT id, status, currentApprovalStage, reportData
-       FROM expense_reports
-      WHERE status = 'pending_senior_staff'
-         OR LOWER(COALESCE(currentApprovalStage, '')) = 'senior_staff'
-      ORDER BY id ASC`
-  );
+  let rows;
+  if (REPORT_ID) {
+    rows = await all(
+      `SELECT id, status, currentApprovalStage, approvalWorkflow, reportData
+         FROM expense_reports
+        WHERE id = ?`,
+      [REPORT_ID]
+    );
+    if (rows.length === 0) {
+      console.warn(`No report found with id ${REPORT_ID}.`);
+    }
+  } else {
+    const seniorStageClause = `status = 'pending_senior_staff' OR LOWER(COALESCE(currentApprovalStage, '')) = 'senior_staff'`;
+    const whereClause = INCLUDE_SUPERVISOR_PENDING
+      ? `(${seniorStageClause}) OR status = 'pending_supervisor'`
+      : seniorStageClause;
+    rows = await all(
+      `SELECT id, status, currentApprovalStage, approvalWorkflow, reportData
+         FROM expense_reports
+        WHERE ${whereClause}
+        ORDER BY id ASC`
+    );
+  }
 
   let scanned = rows.length;
   let cleaned = 0;
   let noChange = 0;
   let updateErrors = 0;
   let parseSkipped = 0;
+  let protectedApproved = 0;
 
   for (const row of rows) {
     let reportData;
@@ -87,6 +133,17 @@ async function main() {
     } catch (err) {
       parseSkipped++;
       console.warn(`Warning: ${row.id}: could not parse reportData - ${err.message}`);
+      continue;
+    }
+
+    // Never strip a signature that backs a real supervisor approval. This protects
+    // supervisor-stage reports (reached via --include-supervisor-pending or --report-id)
+    // where the supervisor has already signed off; senior-stage reports never match this.
+    if (supervisorAlreadyApproved(parseWorkflow(row.approvalWorkflow))) {
+      protectedApproved++;
+      if (VERBOSE) {
+        console.log(`- ${row.id} (status ${row.status}) -> skipped: supervisor already approved`);
+      }
       continue;
     }
 
@@ -127,14 +184,17 @@ async function main() {
   }
 
   console.log('\nCleanup summary');
-  console.log(`  Scanned senior-stage reports: ${scanned}`);
-  console.log(`  ${DRY_RUN ? 'Would clear' : 'Cleared'}:                   ${cleaned}`);
-  console.log(`  Already clean:                ${noChange}`);
+  console.log(`  Scanned reports:                 ${scanned}`);
+  console.log(`  ${DRY_RUN ? 'Would clear' : 'Cleared'}:                      ${cleaned}`);
+  console.log(`  Already clean:                   ${noChange}`);
+  if (protectedApproved > 0) {
+    console.log(`  Protected (supervisor approved): ${protectedApproved}`);
+  }
   if (parseSkipped > 0) {
-    console.log(`  Skipped (bad reportData):     ${parseSkipped}`);
+    console.log(`  Skipped (bad reportData):        ${parseSkipped}`);
   }
   if (updateErrors > 0) {
-    console.log(`  Update errors:                ${updateErrors}`);
+    console.log(`  Update errors:                   ${updateErrors}`);
   }
 
   if (DRY_RUN) {
