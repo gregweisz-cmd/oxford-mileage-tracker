@@ -1,14 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { CssBaseline, Box } from '@mui/material';
+import { CssBaseline, Box, CircularProgress } from '@mui/material';
 
-// Import all portal components
-import StaffPortal from './StaffPortal';
-import SupervisorPortal from './components/SupervisorPortal';
-import SeniorStaffPortal from './components/SeniorStaffPortal';
-import { AdminPortal } from './components/AdminPortal';
-import FinancePortal from './components/FinancePortal';
-import ContractsPortal from './components/ContractsPortal';
 import Login from './components/Login';
 import PortalSwitcher from './components/PortalSwitcher';
 import OnboardingScreen from './components/OnboardingScreen';
@@ -28,6 +21,17 @@ import { scrollableThemeComponents } from './theme/scrollableTheme';
 
 // Debug logging
 import { debugLog, debugError, debugVerbose } from './config/debug';
+
+// Portals are code-split: each loads on demand so the initial bundle ships only the shared shell
+// instead of all six portals up front. They render inside the Suspense boundary in renderPortal().
+const StaffPortal = lazy(() => import('./StaffPortal'));
+const SupervisorPortal = lazy(() => import('./components/SupervisorPortal'));
+const SeniorStaffPortal = lazy(() => import('./components/SeniorStaffPortal'));
+const AdminPortal = lazy(() =>
+  import('./components/AdminPortal').then((m) => ({ default: m.AdminPortal }))
+);
+const FinancePortal = lazy(() => import('./components/FinancePortal'));
+const ContractsPortal = lazy(() => import('./components/ContractsPortal'));
 
 /**
  * Returns list of portal IDs the user can access, based on role, position, and permissions.
@@ -769,7 +773,15 @@ const App: React.FC = () => {
               onPortalChange={handlePortalChange}
               onLogout={handleLogout}
             />
-            {renderPortal(goToDashboard)}
+            <Suspense
+              fallback={
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                  <CircularProgress />
+                </Box>
+              }
+            >
+              {renderPortal(goToDashboard)}
+            </Suspense>
           </Box>
         </ErrorPromptProvider>
       </ToastProvider>
