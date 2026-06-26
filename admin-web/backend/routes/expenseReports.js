@@ -149,6 +149,47 @@ async function initializeApprovalWorkflow(report, reportDataOverride = null) {
 }
 
 /**
+ * Detect the "finance sent it back" case so a resubmission can return straight to finance.
+ *
+ * When finance requests a revision, the senior-staff and supervisor approvals (and the supervisor's
+ * signature in reportData) still stand — only finance had a concern. Restarting the whole chain on
+ * resubmit would force everyone to re-approve, so instead we resume at the finance step.
+ *
+ * Returns a resume descriptor (with the finance step reset to `pending`) or null when this is not a
+ * finance-stage revision (in which case the caller rebuilds the workflow from scratch as before).
+ */
+function detectFinanceRevisionResume(report) {
+  if (!report || !report.approvalWorkflow) return null;
+  const workflow = helpers.parseJsonSafe(report.approvalWorkflow, []);
+  if (!Array.isArray(workflow) || workflow.length === 0) return null;
+
+  const financeIdx = workflow.findIndex((s) => s && s.role === 'finance');
+  if (financeIdx === -1) return null;
+  const financeStep = workflow[financeIdx];
+  if (!financeStep || financeStep.status !== 'revision_requested') return null;
+
+  // Only resume at finance when the earlier reviewers had already approved (their work stands).
+  const priorApproved = workflow
+    .filter((s) => s && (s.role === 'senior_staff' || s.role === 'supervisor'))
+    .every((s) => s.status === 'approved');
+  if (!priorApproved) return null;
+
+  const dueAt = helpers.computeEscalationDueAt(constants.FINANCE_ESCALATION_HOURS);
+  financeStep.status = 'pending';
+  financeStep.actedAt = null;
+  financeStep.dueAt = dueAt;
+  workflow[financeIdx] = financeStep;
+
+  return {
+    workflow,
+    stepIndex: financeIdx,
+    approverId: financeStep.approverId || null,
+    approverName: financeStep.approverName || 'Finance Team',
+    dueAt,
+  };
+}
+
+/**
  * Record a weekly check-up share — informational notification only; does not change approval status.
  */
 function resolveWeeklyCheckupNotificationWeekKey(reportData) {
@@ -1972,7 +2013,30 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
         !!report.currentApprovalStage &&
         !!report.approvalWorkflow;
 
-      if (isAlreadyInApproval) {
+      // If finance previously sent this back for revision, resubmit returns straight to finance
+      // (senior staff + supervisor approvals and the supervisor signature stand).
+      const financeResume =
+        !isAlreadyInApproval && report.status === 'needs_revision'
+          ? detectFinanceRevisionResume(report)
+          : null;
+
+      if (financeResume) {
+        updateData.status = 'pending_finance';
+        updateData.submittedAt = nowIso;
+        updateData.approvalWorkflow = JSON.stringify(financeResume.workflow);
+        updateData.currentApprovalStep = financeResume.stepIndex;
+        updateData.currentApprovalStage = 'finance';
+        updateData.currentApproverId = financeResume.approverId;
+        updateData.currentApproverName = financeResume.approverName;
+        updateData.escalationDueAt = financeResume.dueAt;
+        debugLog(`📝 Report ${id} resubmitted after a finance revision; returning directly to finance.`);
+
+        notificationService
+          .notifyFinanceApprovalNeeded(id, null, null, report.employeeId)
+          .catch((err) => {
+            debugError('❌ Error notifying finance after resubmission:', err);
+          });
+      } else if (isAlreadyInApproval) {
         debugLog(`📝 Report ${id} is already in approval (${report.status}); preserving existing workflow`);
       } else {
         debugLog(`📝 Submitting report ${id} for employee ${report.employeeId}`);

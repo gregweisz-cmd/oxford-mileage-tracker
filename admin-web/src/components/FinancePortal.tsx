@@ -1091,9 +1091,36 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       case 'approved': return 'success';
       case 'rejected': return 'error';
       case 'needs_revision': return 'warning';
+      case 'pending_finance': return 'info';
+      case 'pending_senior_staff':
+      case 'pending_supervisor': return 'default';
       default: return 'default';
     }
   };
+
+  const STATUS_LABELS: Record<string, string> = {
+    draft: 'Draft',
+    submitted: 'Submitted',
+    approved: 'Approved',
+    rejected: 'Rejected',
+    needs_revision: 'Needs Revision',
+    pending_finance: 'Pending Finance',
+    pending_supervisor: 'Pending Supervisor',
+    pending_senior_staff: 'Pending Senior Staff',
+    under_review: 'Under Review',
+  };
+
+  const formatStatusLabel = (status: string) =>
+    STATUS_LABELS[status] ||
+    status
+      .split('_')
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+      .join(' ');
+
+  // A report is in Finance's actual work queue only once it has reached the finance stage.
+  // Earlier stages (senior staff / supervisor) are shown for oversight but are not yet actionable.
+  const isAwaitingEarlierReview = (status: string) =>
+    status === 'pending_senior_staff' || status === 'pending_supervisor';
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -1222,11 +1249,21 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                 <TableCell align="right">${report.totalMileageAmount.toFixed(2)}</TableCell>
                 <TableCell align="right">${report.totalExpenses.toFixed(2)}</TableCell>
                 <TableCell>
-                  <Chip
-                    label={report.status.replace('_', ' ').toUpperCase()}
-                    color={getStatusColor(report.status) as any}
-                    size="small"
-                  />
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
+                    <Chip
+                      label={formatStatusLabel(report.status)}
+                      color={getStatusColor(report.status) as any}
+                      size="small"
+                    />
+                    {isAwaitingEarlierReview(report.status) && (
+                      <Chip
+                        label="Not in your queue yet"
+                        size="small"
+                        variant="outlined"
+                        sx={{ height: 18, fontSize: '0.65rem', color: 'text.secondary', borderColor: 'divider' }}
+                      />
+                    )}
+                  </Box>
                 </TableCell>
                 <TableCell>
                   {report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : '-'}
