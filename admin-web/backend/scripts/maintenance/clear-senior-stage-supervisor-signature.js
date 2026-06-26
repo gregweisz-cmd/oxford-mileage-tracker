@@ -25,8 +25,13 @@
  * flow. Caveat: if a supervisor pre-uploaded their own signature without approving yet, it would
  * also be cleared and they'd re-upload it — acceptable for a one-time cleanup.
  *
+ * --list: read-only inventory. Print every report (ANY status) that currently carries a
+ * supervisor signature, with employee name, month/year, status, and ID. Use this to find the
+ * exact ID of a draft/needs-revision report (which the stage-scoped scans never touch) and then
+ * clear it with --report-id=<id>.
+ *
  * Usage:
- *   node scripts/maintenance/clear-senior-stage-supervisor-signature.js [--dry-run] [--verbose] [--include-supervisor-pending] [--report-id=<id>]
+ *   node scripts/maintenance/clear-senior-stage-supervisor-signature.js [--dry-run] [--verbose] [--include-supervisor-pending] [--report-id=<id>] [--list]
  *
  * Recommended:
  *   1. Run with `--dry-run` first to see how many reports would change.
@@ -42,6 +47,7 @@ const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
 const VERBOSE = args.includes('--verbose');
 const INCLUDE_SUPERVISOR_PENDING = args.includes('--include-supervisor-pending');
+const LIST_ONLY = args.includes('--list');
 const REPORT_ID_ARG = args.find((a) => a.startsWith('--report-id='));
 const REPORT_ID = REPORT_ID_ARG ? REPORT_ID_ARG.slice('--report-id='.length) : null;
 
@@ -88,6 +94,39 @@ async function main() {
         else resolve(this);
       })
     );
+
+  // Read-only inventory: list every report (any status) that currently carries a supervisor
+  // signature, so you can identify the exact report ID to target with --report-id.
+  if (LIST_ONLY) {
+    const employees = await all(`SELECT id, name, preferredName FROM employees`);
+    const nameById = new Map(
+      employees.map((e) => [e.id, e.preferredName || e.name || e.id])
+    );
+    const allReports = await all(
+      `SELECT id, employeeId, month, year, status, currentApprovalStage, approvalWorkflow, reportData
+         FROM expense_reports
+        ORDER BY year DESC, month DESC`
+    );
+    let listed = 0;
+    console.log('\nReports currently carrying a supervisor signature:');
+    for (const row of allReports) {
+      const data = parseReportData(row.reportData);
+      const hasSig =
+        data.supervisorSignature !== undefined &&
+        data.supervisorSignature !== null &&
+        data.supervisorSignature !== '';
+      if (!hasSig) continue;
+      listed++;
+      const approved = supervisorAlreadyApproved(parseWorkflow(row.approvalWorkflow));
+      console.log(
+        `- ${row.id} | ${nameById.get(row.employeeId) || row.employeeId} | ` +
+          `${row.month}/${row.year} | status ${row.status}` +
+          `${approved ? ' | PROTECTED (supervisor approved)' : ''}`
+      );
+    }
+    console.log(`\n${listed} report(s) with a supervisor signature.`);
+    process.exit(0);
+  }
 
   console.log(
     `Scanning for stray supervisor signatures (dry run: ${DRY_RUN}` +
