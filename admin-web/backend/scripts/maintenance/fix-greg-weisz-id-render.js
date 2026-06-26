@@ -13,8 +13,8 @@
 const https = require('https');
 const http = require('http');
 
-// Get Render backend URL from environment or use default
-const RENDER_BACKEND_URL = process.env.RENDER_BACKEND_URL || process.env.BACKEND_URL || 'https://oxford-mileage-tracker.onrender.com';
+// Get Render backend URL from environment or use default (the API service, not the UI host)
+const RENDER_BACKEND_URL = process.env.RENDER_BACKEND_URL || process.env.BACKEND_URL || 'https://oxford-mileage-backend.onrender.com';
 
 const OLD_GREG_ID = 'greg-weisz-001';
 const TESTADD_ID = 'greg-testadd-1761926170922-wwi4c';

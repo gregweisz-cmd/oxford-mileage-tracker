@@ -19,15 +19,16 @@ const constants = require('../utils/constants');
 function getDatabasePath() {
   if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
   if (process.env.NODE_ENV === 'production') {
-    if (process.env.ALLOW_EPHEMERAL_DB === 'true') {
+    // WEB_ONLY hosts only serve the built UI (data lives on the API service), so an ephemeral DB is fine.
+    if (process.env.ALLOW_EPHEMERAL_DB === 'true' || process.env.WEB_ONLY === 'true') {
       debugWarn(
-        '⚠️ DATABASE_PATH is not set and ALLOW_EPHEMERAL_DB=true — running on an in-memory DB. ALL DATA WILL BE LOST on restart.'
+        '⚠️ DATABASE_PATH is not set — running on an in-memory DB (ALLOW_EPHEMERAL_DB/WEB_ONLY). DATA WILL NOT PERSIST across restarts.'
       );
       return ':memory:';
     }
     throw new Error(
       'DATABASE_PATH is required in production. Point it at a persistent disk (e.g. /data/expense_tracker.db). ' +
-        'To intentionally run on a throwaway in-memory DB, set ALLOW_EPHEMERAL_DB=true.'
+        'To intentionally run on a throwaway in-memory DB, set ALLOW_EPHEMERAL_DB=true (or WEB_ONLY=true for a UI-only host).'
     );
   }
   return path.join(__dirname, '..', 'expense_tracker.db');

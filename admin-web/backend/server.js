@@ -377,6 +377,13 @@ dbService.initDatabase().then(() => {
     debugLog(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     debugLog('✅ Server startup completed successfully!');
 
+    // WEB_ONLY hosts only serve the built UI; the API service owns the data, seeding, and the
+    // scheduled jobs. Running seeds/jobs here would duplicate emails and backups, so skip them.
+    if (process.env.WEB_ONLY === 'true') {
+      debugLog('🖥️ WEB_ONLY=true — skipping account seeding and background jobs (UI-only host).');
+      return;
+    }
+
     // Run seeds and jobs after server is up (non-blocking for deploy health checks)
     (async () => {
       try {
