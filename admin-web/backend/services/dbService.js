@@ -9,6 +9,7 @@ const path = require('path');
 const os = require('os');
 const { debugLog, debugError, debugWarn } = require('../debug');
 const constants = require('../utils/constants');
+const { runMigrations } = require('./migrationRunner');
 
 // Database path resolution.
 //
@@ -78,8 +79,11 @@ function initDatabase() {
       } else {
         debugLog('✅ Connected to the SQLite database');
         applyConcurrencyPragmas();
-        // Always ensure tables exist, even if database already exists
-        ensureTablesExist().then(resolve).catch(reject);
+        // Always ensure the baseline tables exist, then apply any versioned migrations on top.
+        ensureTablesExist()
+          .then(() => runMigrations(db))
+          .then(resolve)
+          .catch(reject);
       }
     });
   });
