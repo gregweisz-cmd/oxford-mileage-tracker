@@ -1166,7 +1166,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [reportSubmittedAt, setReportSubmittedAt] = useState<string | null>(null);
   const [, setReportApprovedAt] = useState<string | null>(null);
   const [currentApprovalStage, setCurrentApprovalStage] = useState<string | null>(null);
-  const [currentApprovalStep, setCurrentApprovalStep] = useState<number>(0);
+  const [, setCurrentApprovalStep] = useState<number>(0);
   const [currentApproverName, setCurrentApproverName] = useState<string | null>(null);
   const [approvalCommentDialogOpen, setApprovalCommentDialogOpen] = useState(false);
   const [approvalCommentText, setApprovalCommentText] = useState('');
@@ -6269,6 +6269,21 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     : 'No weekly check-up shared this week.';
   const reportPendingEdit =
     !supervisorMode && !isAdminView && isPendingApprovalStatus(reportStatus);
+  // Withdraw: staff can pull a submitted report back to draft until a *binding* approval
+  // happens. Senior staff are a non-binding first-pass review, so the report stays
+  // withdrawable while it sits with senior staff OR the supervisor. Once the supervisor
+  // (or finance) approves, the report is locked and changes require a revision request.
+  const hasBindingApproval = approvalWorkflow.some(
+    (step) => (step.role === 'supervisor' || step.role === 'finance') && step.status === 'approved'
+  );
+  const canWithdrawReport =
+    !supervisorMode &&
+    !isAdminView &&
+    isViewingOwnExpenseReport &&
+    (['submitted', 'pending_senior_staff', 'pending_supervisor', 'pending_finance', 'under_review'] as string[]).includes(
+      reportStatus
+    ) &&
+    !hasBindingApproval;
   // Approve / Revision act on the monthly expense report, so only offer them when the
   // report is actually with reviewers. A weekly check-up submission leaves the monthly
   // report in draft/needs_revision, where only "Accept check-up" should be available.
@@ -6388,15 +6403,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         }
         onResubmit={reportStatus === 'needs_revision' ? handleSubmitReport : undefined}
         onSaveChanges={reportPendingEdit ? handleSaveReport : undefined}
-        onWithdraw={
-          (reportStatus === 'submitted' ||
-            reportStatus === 'pending_supervisor' ||
-            reportStatus === 'pending_senior_staff' ||
-            reportStatus === 'pending_finance') &&
-          currentApprovalStep === 0
-            ? handleWithdrawReport
-            : undefined
-        }
+        onWithdraw={canWithdrawReport ? handleWithdrawReport : undefined}
         disableResubmit={loading}
         disableWithdraw={loading}
         disableSaveChanges={loading || uiLoading}

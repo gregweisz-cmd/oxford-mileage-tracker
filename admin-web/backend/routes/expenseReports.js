@@ -2011,17 +2011,21 @@ router.put('/api/expense-reports/:id/status', async (req, res) => {
       updateData.currentApproverName = null;
       updateData.escalationDueAt = null;
     } else if (status === 'draft') {
-      // Withdraw submission: staff can take report back to draft if no one has approved yet
-      const withdrawableStatuses = ['submitted', 'pending_supervisor', 'pending_finance', 'pending_senior_staff'];
-      const currentStep = Number.isInteger(report.currentApprovalStep)
-        ? report.currentApprovalStep
-        : parseInt(report.currentApprovalStep || '0', 10) || 0;
+      // Withdraw submission: staff can take a report back to draft until a *binding*
+      // approval happens. Senior staff are a non-binding first-pass review, so their
+      // approval does NOT lock the report — staff can still withdraw while it sits with
+      // the senior staff OR the supervisor. Once the supervisor (or finance) approves,
+      // the report is locked and can only be changed via a revision request.
+      const withdrawableStatuses = ['submitted', 'pending_supervisor', 'pending_finance', 'pending_senior_staff', 'under_review'];
       if (!withdrawableStatuses.includes(report.status)) {
         res.status(400).json({ error: 'Report cannot be withdrawn in its current status. Only submitted reports that have not yet been approved can be withdrawn.' });
         return;
       }
-      if (currentStep !== 0) {
-        res.status(400).json({ error: 'Report has already been approved by the first reviewer. It cannot be withdrawn.' });
+      const withdrawWorkflowSteps = helpers.parseJsonSafe(report.approvalWorkflow, []);
+      const hasBindingApproval = Array.isArray(withdrawWorkflowSteps)
+        && withdrawWorkflowSteps.some((step) => step && (step.role === 'supervisor' || step.role === 'finance') && step.status === 'approved');
+      if (hasBindingApproval) {
+        res.status(400).json({ error: 'Report has already been approved by a reviewer. It cannot be withdrawn.' });
         return;
       }
       updateData.status = 'draft';
