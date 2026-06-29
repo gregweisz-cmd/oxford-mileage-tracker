@@ -692,7 +692,14 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   ) => {
     try {
       const notifications = await SmartNotificationService.checkNotifications(employeeId);
-      const dismissed = dismissedSet ?? dismissedNotifications;
+      // Always reconcile against the persisted dismissed set. Some callers (e.g.
+      // the realtime `sync_complete` listener registered once on first render)
+      // capture a stale `dismissedNotifications` closure; reading from storage
+      // here ensures notifications a user cleared stay gone across refreshes.
+      const dismissed = dismissedSet ?? (await loadDismissedNotificationIds(employeeId));
+      if (!dismissedSet) {
+        setDismissedNotifications(dismissed);
+      }
       const activeNotifications = notifications.filter(
         notification => !dismissed.has(notification.id)
       );
