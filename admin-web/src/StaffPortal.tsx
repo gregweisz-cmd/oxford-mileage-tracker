@@ -218,34 +218,6 @@ function isTimesheetCategoryType(category: unknown): category is TimesheetCatego
   return normalizeTimesheetCategory(category) !== null;
 }
 
-// A full workday for day-off accounting. PTO under this amount is treated as a partial
-// leave day (the rest of the day is still workable), 8h+ is a full day off.
-const FULL_DAY_HOURS = 8;
-
-// Day-off types that contribute timesheet category hours. PTO supports partial amounts;
-// Holiday is recorded as a flat full day. The other types (Day Off, Sick Day, Unpaid
-// Leave) carry no category hours.
-const DAY_OFF_TYPE_TO_CATEGORY: Record<string, TimesheetCategoryType> = {
-  PTO: 'PTO',
-  Holiday: 'Holiday',
-};
-
-/** Sum the hours stored under a given timesheet category for a specific day (YYYY-MM-DD). */
-function getCategoryHoursForDay(
-  entries: any[],
-  dateStr: string,
-  category: TimesheetCategoryType
-): number {
-  if (!Array.isArray(entries) || !dateStr) return 0;
-  return entries.reduce((sum, entry) => {
-    const entryDate = typeof entry?.date === 'string' ? entry.date.split('T')[0] : entry?.date;
-    if (entryDate !== dateStr) return sum;
-    if (normalizeTimesheetCategory(entry?.category) !== category) return sum;
-    const hours = Number(entry?.hours);
-    return Number.isFinite(hours) ? sum + hours : sum;
-  }, 0);
-}
-
 function timesheetCategoryRevisionId(categoryIndex: number, day: number): string {
   return `time-category-${categoryIndex}-${day}`;
 }
@@ -3268,119 +3240,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     [employeeData, currentMonth, currentYear]
   );
 
-  // Serializes category writes so rapid day-off/PTO changes can never interleave (e.g. a
-  // checkbox's category-clear landing after a dropdown's PTO write and wiping it). Each write
-  // also updates the UI optimistically so the grid/tag stay correct without a racy refresh.
-  const categoryWriteChainRef = useRef<Promise<unknown>>(Promise.resolve());
-
-  /**
-   * Persist a timesheet category (PTO, Holiday, ...) value for a single day to time_tracking,
-   * the source of truth for the Timesheet grid and report totals. Writes run one-at-a-time and
-   * are reflected optimistically, then reconciled against the backend with a canonical entry.
-   */
-  const persistCategoryHoursForDay = useCallback(
-    (day: number, category: TimesheetCategoryType, value: number): Promise<void> => {
-      const employeeIdForWrite = employeeData?.employeeId;
-      if (!employeeIdForWrite) return Promise.resolve();
-      const month = currentMonth;
-      const year = currentYear;
-      const dateStr = `${year}-${month.toString().padStart(2, '0')}-${day
-        .toString()
-        .padStart(2, '0')}`;
-      const canonicalId = `time-${employeeIdForWrite}-${dateStr}-category-${category}`;
-      const safeValue = Math.max(0, value);
-
-      const run = async (): Promise<void> => {
-        // Optimistic UI — the category grid reads employeeData.dailyEntries[].categoryHours.
-        setEmployeeData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            dailyEntries: prev.dailyEntries.map((e: any) =>
-              e.day === day
-                ? { ...e, categoryHours: { ...(e.categoryHours || {}), [category]: safeValue } }
-                : e
-            ),
-          };
-        });
-        // Optimistic raw entries — the "PTO · Xh" tag reads from here via getCategoryHoursForDay.
-        setRawTimeEntries((prev) => {
-          const filtered = prev.filter((e: any) => {
-            const eDate = typeof e.date === 'string' ? e.date.split('T')[0] : e.date;
-            return !(eDate === dateStr && normalizeTimesheetCategory(e.category) === category);
-          });
-          if (safeValue > 0) {
-            filtered.push({
-              id: canonicalId,
-              employeeId: employeeIdForWrite,
-              date: dateStr,
-              category,
-              hours: safeValue,
-              description: `${category} hours worked on ${dateStr}`,
-              costCenter: '',
-              updatedAt: new Date().toISOString(),
-            });
-          }
-          return dedupeTimeTrackingEntries(filtered);
-        });
-
-        const deleteSafely = async (entryId: string) => {
-          try {
-            await apiDelete(`/api/time-tracking/${entryId}`);
-          } catch (deleteError) {
-            const message = deleteError instanceof Error ? deleteError.message : '';
-            if (!message.includes('404')) throw deleteError;
-          }
-        };
-
-        // Reconcile the backend: remove any variants for this day+category (including mobile
-        // "PTO Hours" carrying a stray cost center), then upsert the canonical entry by id.
-        const allEntries = await fetchTimeTrackingForMonth(employeeIdForWrite, month, year, {
-          skipCache: true,
-        });
-        const matchingEntries = allEntries.filter((entry: any) => {
-          const entryDateStr =
-            typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
-          return entryDateStr === dateStr && normalizeTimesheetCategory(entry.category) === category;
-        });
-
-        if (safeValue <= 0) {
-          for (const entry of matchingEntries) {
-            await deleteSafely(entry.id);
-          }
-          return;
-        }
-
-        for (const entry of matchingEntries) {
-          if (entry.id !== canonicalId) {
-            await deleteSafely(entry.id);
-          }
-        }
-        // INSERT OR REPLACE by deterministic id keeps the write idempotent and day-scoped.
-        await apiPost('/api/time-tracking', {
-          id: canonicalId,
-          employeeId: employeeIdForWrite,
-          date: dateStr,
-          hours: safeValue,
-          category,
-          description: `${category} hours worked on ${dateStr}`,
-          costCenter: '',
-        });
-      };
-
-      const next = categoryWriteChainRef.current.then(run, run);
-      categoryWriteChainRef.current = next.catch(() => {});
-      return next;
-    },
-    [employeeData?.employeeId, currentMonth, currentYear]
-  );
-
-  /** PTO hours currently recorded (in time_tracking) for a given day. */
-  const getPtoHoursForDay = useCallback(
-    (dateStr: string): number => getCategoryHoursForDay(rawTimeEntries, normalizeDate(dateStr), 'PTO'),
-    [rawTimeEntries, normalizeDate]
-  );
-
   const getDailyDescriptionHoursDisplay = useCallback(
     (dayDescription: any, entry: any) => {
       if (
@@ -3483,231 +3342,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       setDailyDescriptionsWithRef,
       currentMonth,
       currentYear,
-    ]
-  );
-
-  /** Create or update a daily description, persisting it and syncing the cost-center view. */
-  const upsertDailyDescription = useCallback(
-    async (entry: any, patch: Record<string, any>): Promise<any> => {
-      const entryDateStr = normalizeDate(entry.date);
-      const source = dailyDescriptionsRef.current ?? dailyDescriptions;
-      const newDescriptions = [...source];
-      const idx = newDescriptions.findIndex((d: any) => normalizeDate(d.date) === entryDateStr);
-      let descToSave: any;
-      if (idx >= 0) {
-        descToSave = { ...newDescriptions[idx], ...patch, updatedAt: new Date().toISOString() };
-        newDescriptions[idx] = descToSave;
-      } else {
-        descToSave = {
-          id: `desc-${employeeId}-${entryDateStr}`,
-          employeeId,
-          date: entryDateStr,
-          description: '',
-          costCenter: entry.costCenter || employeeData?.costCenters?.[0] || '',
-          stayedOvernight: false,
-          dayOff: false,
-          dayOffType: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          ...patch,
-        };
-        newDescriptions.push(descToSave);
-      }
-      setDailyDescriptionsWithRef(newDescriptions);
-      await saveDailyDescription({
-        id: descToSave.id,
-        employeeId: descToSave.employeeId,
-        date: entryDateStr,
-        description: descToSave.description || '',
-        costCenter: descToSave.costCenter || '',
-        stayedOvernight: descToSave.stayedOvernight || false,
-        dayOff: descToSave.dayOff || false,
-        dayOffType: descToSave.dayOffType || null,
-      });
-      syncDescriptionToCostCenter(descToSave, new Date(entry.date));
-      return descToSave;
-    },
-    [dailyDescriptions, employeeId, employeeData, normalizeDate, setDailyDescriptionsWithRef]
-  );
-
-  /** Toggle a full Day Off. Defaults to the generic "Day Off" type and clears leave hours. */
-  const handleDayOffToggle = useCallback(
-    async (entry: any, checked: boolean): Promise<void> => {
-      if (isAdminView || !assertStaffCanEdit()) return;
-      const entryDateStr = normalizeDate(entry.date);
-      const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
-      try {
-        // Enqueue category clears synchronously so they hold their place in the serialized
-        // write order even if the description save (below) takes longer to resolve.
-        const writes = [
-          persistCategoryHoursForDay(day, 'PTO', 0),
-          persistCategoryHoursForDay(day, 'Holiday', 0),
-        ];
-        const descWrite = checked
-          ? upsertDailyDescription(entry, { dayOff: true, dayOffType: 'Day Off', description: 'Day Off' })
-          : upsertDailyDescription(entry, { dayOff: false, dayOffType: null, description: '' });
-        await Promise.all([descWrite, ...writes]);
-      } catch (error) {
-        debugError('Error saving day off status:', error);
-      }
-    },
-    [isAdminView, assertStaffCanEdit, normalizeDate, upsertDailyDescription, persistCategoryHoursForDay]
-  );
-
-  /** Change the day-off type. Records category hours (PTO/Holiday = full day) as needed. */
-  const handleDayOffTypeChange = useCallback(
-    async (entry: any, newType: string): Promise<void> => {
-      if (isAdminView || !assertStaffCanEdit()) return;
-      const entryDateStr = normalizeDate(entry.date);
-      const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
-      try {
-        const category = DAY_OFF_TYPE_TO_CATEGORY[newType];
-        // Enqueue the category writes synchronously and in order: clear the bucket(s) we are
-        // not using, then set the selected one. The serialized chain guarantees this order.
-        const writes: Promise<void>[] = [];
-        if (category === 'PTO') {
-          writes.push(persistCategoryHoursForDay(day, 'Holiday', 0));
-          writes.push(persistCategoryHoursForDay(day, 'PTO', FULL_DAY_HOURS));
-        } else if (category === 'Holiday') {
-          writes.push(persistCategoryHoursForDay(day, 'PTO', 0));
-          writes.push(persistCategoryHoursForDay(day, 'Holiday', FULL_DAY_HOURS));
-        } else {
-          writes.push(persistCategoryHoursForDay(day, 'PTO', 0));
-          writes.push(persistCategoryHoursForDay(day, 'Holiday', 0));
-        }
-        const descWrite = upsertDailyDescription(entry, {
-          dayOff: true,
-          dayOffType: newType,
-          description: newType,
-        });
-        await Promise.all([descWrite, ...writes]);
-      } catch (error) {
-        debugError('Error saving day off type:', error);
-      }
-    },
-    [isAdminView, assertStaffCanEdit, normalizeDate, upsertDailyDescription, persistCategoryHoursForDay]
-  );
-
-  /**
-   * Set the PTO hours for a day. 8h+ is a full PTO day off (locked); a value below 8 is a
-   * partial leave day that stays editable with mileage allowed; 0 clears PTO entirely.
-   */
-  const handlePtoHoursChange = useCallback(
-    async (entry: any, rawValue: string): Promise<void> => {
-      if (isAdminView || !assertStaffCanEdit()) return;
-      const entryDateStr = normalizeDate(entry.date);
-      const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
-      const hours = Math.min(FULL_DAY_HOURS, Math.max(0, parseFloat(rawValue) || 0));
-      const current = (dailyDescriptionsRef.current ?? dailyDescriptions).find(
-        (d: any) => normalizeDate(d.date) === entryDateStr
-      );
-      try {
-        if (hours <= 0) {
-          // Clear PTO; if it was a full PTO day off, revert it to a normal empty day.
-          const ptoWrite = persistCategoryHoursForDay(day, 'PTO', 0);
-          const descWrite =
-            current?.dayOff && current?.dayOffType === 'PTO'
-              ? upsertDailyDescription(entry, { dayOff: false, dayOffType: null, description: '' })
-              : Promise.resolve();
-          await Promise.all([ptoWrite, descWrite]);
-          return;
-        }
-        if (hours >= FULL_DAY_HOURS) {
-          const ptoWrite = persistCategoryHoursForDay(day, 'PTO', FULL_DAY_HOURS);
-          const descWrite = upsertDailyDescription(entry, {
-            dayOff: true,
-            dayOffType: 'PTO',
-            description: 'PTO',
-          });
-          await Promise.all([ptoWrite, descWrite]);
-          return;
-        }
-        // Partial PTO: a normal working day that also carries PTO hours.
-        const forcedDescription =
-          (current?.description || '') === 'PTO' ||
-          (current?.dayOff && (current?.description || '') === (current?.dayOffType || ''));
-        const ptoWrite = persistCategoryHoursForDay(day, 'PTO', hours);
-        const descWrite = upsertDailyDescription(entry, {
-          dayOff: false,
-          dayOffType: null,
-          description: forcedDescription ? '' : current?.description || '',
-        });
-        await Promise.all([ptoWrite, descWrite]);
-      } catch (error) {
-        debugError('Error saving PTO hours:', error);
-        alert('Failed to save PTO hours. Please try again.');
-      }
-    },
-    [isAdminView, assertStaffCanEdit, normalizeDate, dailyDescriptions, upsertDailyDescription, persistCategoryHoursForDay]
-  );
-
-  /** Clear a day's description, day-off flag, and all time-tracking hours (billable + category). */
-  const clearDay = useCallback(
-    async (entry: any): Promise<void> => {
-      const employeeIdForWrite = employeeData?.employeeId;
-      if (isAdminView || !employeeIdForWrite || !assertStaffCanEdit()) return;
-      const entryDateStr = normalizeDate(entry.date);
-      const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
-      const month = currentMonth;
-      const year = currentYear;
-
-      const run = async (): Promise<void> => {
-        // Optimistic UI: drop this day's category + cost-center hours immediately.
-        setEmployeeData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            dailyEntries: prev.dailyEntries.map((e: any) => {
-              if (e.day !== day) return e;
-              const cleared: any = { ...e, categoryHours: {}, costCenterHours: {}, hoursWorked: 0 };
-              (prev.costCenters || []).forEach((_: string, idx: number) => {
-                cleared[`costCenter${idx}Hours`] = 0;
-              });
-              return cleared;
-            }),
-          };
-        });
-        setRawTimeEntries((prev) => {
-          const eDay = (e: any) => (typeof e.date === 'string' ? e.date.split('T')[0] : e.date);
-          return prev.filter((e: any) => eDay(e) !== entryDateStr);
-        });
-
-        const allEntries = await fetchTimeTrackingForMonth(employeeIdForWrite, month, year, {
-          skipCache: true,
-        });
-        const dayEntries = allEntries.filter((e: any) => {
-          const d = typeof e.date === 'string' ? e.date.split('T')[0] : e.date;
-          return d === entryDateStr;
-        });
-        await Promise.allSettled(
-          dayEntries.map((e: any) => apiDelete(`/api/time-tracking/${e.id}`))
-        );
-      };
-
-      try {
-        // Serialize with category writes so a queued PTO/Holiday write can't repopulate the day.
-        const next = categoryWriteChainRef.current.then(run, run);
-        categoryWriteChainRef.current = next.catch(() => {});
-        const descWrite = upsertDailyDescription(entry, {
-          dayOff: false,
-          dayOffType: null,
-          description: '',
-          hoursWorked: 0,
-        });
-        await Promise.all([next, descWrite]);
-      } catch (error) {
-        debugError('Error clearing day:', error);
-        alert('Failed to clear the day. Please try again.');
-      }
-    },
-    [
-      isAdminView,
-      employeeData?.employeeId,
-      assertStaffCanEdit,
-      normalizeDate,
-      currentMonth,
-      currentYear,
-      upsertDailyDescription,
     ]
   );
 
@@ -8236,20 +7870,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             <Typography variant="caption" color="text.secondary">
                               {formatWeekdayForDateCell(entry.date)}
                             </Typography>
-                            {!isAdminView && (
-                              <Button
-                                size="small"
-                                color="inherit"
-                                onClick={() => {
-                                  if (window.confirm(`Clear all descriptions and hours for ${entry.date}? Mileage entries are not affected.`)) {
-                                    clearDay(entry);
-                                  }
-                                }}
-                                sx={{ mt: 0.25, p: 0, minWidth: 0, justifyContent: 'flex-start', fontSize: '0.65rem', textTransform: 'none', color: 'text.secondary' }}
-                              >
-                                Clear day
-                              </Button>
-                            )}
                           </Box>
                         </TableCell>
                         <TableCell sx={{ border: '1px solid #ccc', p: 1 }}>
@@ -8498,7 +8118,71 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             <Checkbox
                               checked={dayDescription?.dayOff || false}
                               disabled={isAdminView || hasMileageForDay || (!dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0)}
-                              onChange={(e) => { handleDayOffToggle(entry, e.target.checked); }}
+                              onChange={async (e) => {
+                                try {
+                                  // Update or create daily description
+                                  const newDescriptions = [...dailyDescriptions];
+                                  // Normalize entry date to YYYY-MM-DD format
+                                  const entryDateStr = normalizeDate(entry.date);
+                                  const existingIndex = newDescriptions.findIndex((desc: any) => {
+                                    const descDateStr = normalizeDate(desc.date);
+                                    return entryDateStr === descDateStr;
+                                  });
+                                  
+                                  let descToSave: any;
+                                  
+                                  if (existingIndex >= 0) {
+                                    // Update existing
+                                    const dayOffType = e.target.checked ? (newDescriptions[existingIndex].dayOffType || 'Day Off') : null;
+                                    // When user unchecks Day off, always clear the description so it doesn't persist on Cost Center tab.
+                                    // Mileage entries for that day are unchanged (RM can decide if they keep mileage).
+                                    newDescriptions[existingIndex] = {
+                                      ...newDescriptions[existingIndex],
+                                      dayOff: e.target.checked,
+                                      dayOffType: dayOffType,
+                                      description: e.target.checked ? (dayOffType || 'Day Off') : ''
+                                    };
+                                    descToSave = newDescriptions[existingIndex];
+                                  } else {
+                                    // Create new - use normalized date string (YYYY-MM-DD) instead of ISO string
+                                    const dayOffType = e.target.checked ? 'Day Off' : null;
+                                    descToSave = {
+                                      id: `desc-${employeeId}-${entryDateStr}`,
+                                      employeeId: employeeId,
+                                      date: entryDateStr, // Use normalized date string
+                                      description: e.target.checked ? (dayOffType || 'Day Off') : '',
+                                      costCenter: entry.costCenter || employeeData.costCenters[0] || '',
+                                      dayOff: e.target.checked,
+                                      dayOffType: dayOffType,
+                                      stayedOvernight: false,
+                                      createdAt: new Date().toISOString(),
+                                      updatedAt: new Date().toISOString()
+                                    };
+                                    newDescriptions.push(descToSave);
+                                  }
+                                  
+                                  // Update state first for immediate UI feedback
+                                  setDailyDescriptionsWithRef(newDescriptions);
+                                  
+                                  // Also update the corresponding entry in dailyEntries (for cost center screen)
+                                  syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                  
+                                  // Immediately save to backend - use normalized date string
+                                  const dateToSave = normalizeDate(descToSave.date);
+                                  await saveDailyDescription({
+                                    id: descToSave.id,
+                                    employeeId: descToSave.employeeId,
+                                    date: dateToSave,
+                                    description: descToSave.description || '',
+                                    costCenter: descToSave.costCenter || '',
+                                    stayedOvernight: descToSave.stayedOvernight || false,
+                                    dayOff: descToSave.dayOff || false,
+                                    dayOffType: descToSave.dayOffType || null,
+                                  });
+                                } catch (error) {
+                                  debugError('Error saving day off status:', error);
+                                }
+                              }}
                             />
                               </span>
                             </Tooltip>
@@ -8506,7 +8190,46 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               <FormControl size="small" sx={{ minWidth: 120 }}>
                                 <Select
                                   value={dayDescription?.dayOffType || 'Day Off'}
-                                  onChange={(e) => { handleDayOffTypeChange(entry, e.target.value as string); }}
+                                  onChange={async (e) => {
+                                    try {
+                                      const newDescriptions = [...dailyDescriptions];
+                                      const entryDateStr = normalizeDate(entry.date);
+                                      const existingIndex = newDescriptions.findIndex((desc: any) => {
+                                        const descDateStr = normalizeDate(desc.date);
+                                        return entryDateStr === descDateStr;
+                                      });
+                                      
+                                      if (existingIndex >= 0) {
+                                        const dayOffType = e.target.value;
+                                        newDescriptions[existingIndex] = {
+                                          ...newDescriptions[existingIndex],
+                                          dayOffType: dayOffType,
+                                          description: dayOffType // Update description to match day off type
+                                        };
+                                        
+                                        setDailyDescriptionsWithRef(newDescriptions);
+                                        
+                                        // Also update the corresponding entry in dailyEntries (for cost center screen)
+                                        const descToSave = newDescriptions[existingIndex];
+                                        syncDescriptionToCostCenter(descToSave, new Date(entry.date));
+                                        
+                                        // Save to backend
+                                        const dateToSave = normalizeDate(descToSave.date);
+                                        await saveDailyDescription({
+                                          id: descToSave.id,
+                                          employeeId: descToSave.employeeId,
+                                          date: dateToSave,
+                                          description: descToSave.description || '',
+                                          costCenter: descToSave.costCenter || '',
+                                          stayedOvernight: descToSave.stayedOvernight || false,
+                                          dayOff: descToSave.dayOff || false,
+                                          dayOffType: descToSave.dayOffType || null,
+                                        });
+                                      }
+                                    } catch (error) {
+                                      debugError('Error saving day off type:', error);
+                                    }
+                                  }}
                                   disabled={isAdminView}
                                 >
                                   <MenuItem value="Day Off">Day Off</MenuItem>
@@ -8516,50 +8239,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                   <MenuItem value="Unpaid Leave">Unpaid Leave</MenuItem>
                                 </Select>
                               </FormControl>
-                            )}
-                            {/* Full PTO day off: editable hours. Lowering below a full day turns it
-                                into a partial leave day (description + mileage stay editable). */}
-                            {dayDescription?.dayOff && dayDescription?.dayOffType === 'PTO' && (
-                              <TextField
-                                key={`pto-full-${entryDateStr}-${getPtoHoursForDay(entryDateStr)}`}
-                                type="number"
-                                size="small"
-                                label="PTO hrs"
-                                defaultValue={(() => {
-                                  const h = getPtoHoursForDay(entryDateStr);
-                                  return h > 0 ? String(h) : String(FULL_DAY_HOURS);
-                                })()}
-                                onBlur={(e) => handlePtoHoursChange(entry, e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                disabled={isAdminView}
-                                inputProps={{ min: 0, max: FULL_DAY_HOURS, step: 0.25 }}
-                                sx={{ width: 96 }}
-                              />
-                            )}
-                            {/* Partial PTO tag on an otherwise-normal working day. */}
-                            {!dayDescription?.dayOff && getPtoHoursForDay(entryDateStr) > 0 && (
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <Chip label="PTO" size="small" color="info" variant="outlined" sx={{ height: 20, fontSize: '0.65rem' }} />
-                                <TextField
-                                  key={`pto-partial-${entryDateStr}-${getPtoHoursForDay(entryDateStr)}`}
-                                  type="number"
-                                  size="small"
-                                  defaultValue={String(getPtoHoursForDay(entryDateStr))}
-                                  onBlur={(e) => handlePtoHoursChange(entry, e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                  disabled={isAdminView}
-                                  inputProps={{ min: 0, max: FULL_DAY_HOURS, step: 0.25 }}
-                                  sx={{ width: 64 }}
-                                />
-                                <Typography variant="caption" color="text.secondary">h</Typography>
-                                {!isAdminView && (
-                                  <Tooltip title="Clear PTO">
-                                    <IconButton size="small" onClick={() => handlePtoHoursChange(entry, '0')}>
-                                      <CloseIcon fontSize="inherit" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                              </Box>
                             )}
                           </Box>
                         </TableCell>
