@@ -3268,82 +3268,111 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     [employeeData, currentMonth, currentYear]
   );
 
+  // Serializes category writes so rapid day-off/PTO changes can never interleave (e.g. a
+  // checkbox's category-clear landing after a dropdown's PTO write and wiping it). Each write
+  // also updates the UI optimistically so the grid/tag stay correct without a racy refresh.
+  const categoryWriteChainRef = useRef<Promise<unknown>>(Promise.resolve());
+
   /**
    * Persist a timesheet category (PTO, Holiday, ...) value for a single day to time_tracking,
-   * the source of truth for the Timesheet grid and report totals. Mirrors the canonical
-   * (no cost center) entry used by handleCategoryCellSave and cleans up stale variants.
+   * the source of truth for the Timesheet grid and report totals. Writes run one-at-a-time and
+   * are reflected optimistically, then reconciled against the backend with a canonical entry.
    */
   const persistCategoryHoursForDay = useCallback(
-    async (day: number, category: TimesheetCategoryType, value: number): Promise<void> => {
-      if (!employeeData?.employeeId) return;
-      const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day
+    (day: number, category: TimesheetCategoryType, value: number): Promise<void> => {
+      const employeeIdForWrite = employeeData?.employeeId;
+      if (!employeeIdForWrite) return Promise.resolve();
+      const month = currentMonth;
+      const year = currentYear;
+      const dateStr = `${year}-${month.toString().padStart(2, '0')}-${day
         .toString()
         .padStart(2, '0')}`;
+      const canonicalId = `time-${employeeIdForWrite}-${dateStr}-category-${category}`;
+      const safeValue = Math.max(0, value);
 
-      const allEntries = await fetchTimeTrackingForMonth(
-        employeeData.employeeId,
-        currentMonth,
-        currentYear,
-        { skipCache: true }
-      );
-      const matchingEntries = allEntries.filter((entry: any) => {
-        const entryDateStr = typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
-        const [entryYear, entryMonth, entryDay] = entryDateStr.split('-').map(Number);
-        return (
-          entryDay === day &&
-          entryMonth === currentMonth &&
-          entryYear === currentYear &&
-          normalizeTimesheetCategory(entry.category) === category
-        );
-      });
-      const existingEntry =
-        matchingEntries.find((entry: any) => !entry.costCenter || entry.costCenter === '') ||
-        matchingEntries[0] ||
-        null;
-      const staleEntries = matchingEntries.filter((entry: any) => entry !== existingEntry);
+      const run = async (): Promise<void> => {
+        // Optimistic UI — the category grid reads employeeData.dailyEntries[].categoryHours.
+        setEmployeeData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            dailyEntries: prev.dailyEntries.map((e: any) =>
+              e.day === day
+                ? { ...e, categoryHours: { ...(e.categoryHours || {}), [category]: safeValue } }
+                : e
+            ),
+          };
+        });
+        // Optimistic raw entries — the "PTO · Xh" tag reads from here via getCategoryHoursForDay.
+        setRawTimeEntries((prev) => {
+          const filtered = prev.filter((e: any) => {
+            const eDate = typeof e.date === 'string' ? e.date.split('T')[0] : e.date;
+            return !(eDate === dateStr && normalizeTimesheetCategory(e.category) === category);
+          });
+          if (safeValue > 0) {
+            filtered.push({
+              id: canonicalId,
+              employeeId: employeeIdForWrite,
+              date: dateStr,
+              category,
+              hours: safeValue,
+              description: `${category} hours worked on ${dateStr}`,
+              costCenter: '',
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          return dedupeTimeTrackingEntries(filtered);
+        });
 
-      const deleteSafely = async (entryId: string) => {
-        try {
-          await apiDelete(`/api/time-tracking/${entryId}`);
-        } catch (deleteError) {
-          const message = deleteError instanceof Error ? deleteError.message : '';
-          if (!message.includes('404')) throw deleteError;
+        const deleteSafely = async (entryId: string) => {
+          try {
+            await apiDelete(`/api/time-tracking/${entryId}`);
+          } catch (deleteError) {
+            const message = deleteError instanceof Error ? deleteError.message : '';
+            if (!message.includes('404')) throw deleteError;
+          }
+        };
+
+        // Reconcile the backend: remove any variants for this day+category (including mobile
+        // "PTO Hours" carrying a stray cost center), then upsert the canonical entry by id.
+        const allEntries = await fetchTimeTrackingForMonth(employeeIdForWrite, month, year, {
+          skipCache: true,
+        });
+        const matchingEntries = allEntries.filter((entry: any) => {
+          const entryDateStr =
+            typeof entry.date === 'string' ? entry.date.split('T')[0] : entry.date;
+          return entryDateStr === dateStr && normalizeTimesheetCategory(entry.category) === category;
+        });
+
+        if (safeValue <= 0) {
+          for (const entry of matchingEntries) {
+            await deleteSafely(entry.id);
+          }
+          return;
         }
-      };
 
-      for (const stale of staleEntries) {
-        await deleteSafely(stale.id);
-      }
-
-      if (value <= 0) {
-        if (existingEntry) await deleteSafely(existingEntry.id);
-      } else {
-        const requestBody = {
-          id: `time-${employeeData.employeeId}-${dateStr}-category-${category}`,
-          employeeId: employeeData.employeeId,
+        for (const entry of matchingEntries) {
+          if (entry.id !== canonicalId) {
+            await deleteSafely(entry.id);
+          }
+        }
+        // INSERT OR REPLACE by deterministic id keeps the write idempotent and day-scoped.
+        await apiPost('/api/time-tracking', {
+          id: canonicalId,
+          employeeId: employeeIdForWrite,
           date: dateStr,
-          hours: value,
+          hours: safeValue,
           category,
           description: `${category} hours worked on ${dateStr}`,
           costCenter: '',
-        };
-        if (existingEntry) {
-          await apiPut(`/api/time-tracking/${existingEntry.id}`, requestBody);
-        } else {
-          await apiPost('/api/time-tracking', requestBody);
-        }
-      }
+        });
+      };
 
-      await refreshTimesheetData(employeeData);
-      const refreshed = await fetchTimeTrackingForMonth(
-        employeeData.employeeId,
-        currentMonth,
-        currentYear,
-        { skipCache: true }
-      );
-      setRawTimeEntries(dedupeTimeTrackingEntries(refreshed));
+      const next = categoryWriteChainRef.current.then(run, run);
+      categoryWriteChainRef.current = next.catch(() => {});
+      return next;
     },
-    [employeeData, currentMonth, currentYear, refreshTimesheetData]
+    [employeeData?.employeeId, currentMonth, currentYear]
   );
 
   /** PTO hours currently recorded (in time_tracking) for a given day. */
@@ -3508,17 +3537,16 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const entryDateStr = normalizeDate(entry.date);
       const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
       try {
-        if (checked) {
-          await upsertDailyDescription(entry, {
-            dayOff: true,
-            dayOffType: 'Day Off',
-            description: 'Day Off',
-          });
-        } else {
-          await upsertDailyDescription(entry, { dayOff: false, dayOffType: null, description: '' });
-        }
-        await persistCategoryHoursForDay(day, 'PTO', 0);
-        await persistCategoryHoursForDay(day, 'Holiday', 0);
+        // Enqueue category clears synchronously so they hold their place in the serialized
+        // write order even if the description save (below) takes longer to resolve.
+        const writes = [
+          persistCategoryHoursForDay(day, 'PTO', 0),
+          persistCategoryHoursForDay(day, 'Holiday', 0),
+        ];
+        const descWrite = checked
+          ? upsertDailyDescription(entry, { dayOff: true, dayOffType: 'Day Off', description: 'Day Off' })
+          : upsertDailyDescription(entry, { dayOff: false, dayOffType: null, description: '' });
+        await Promise.all([descWrite, ...writes]);
       } catch (error) {
         debugError('Error saving day off status:', error);
       }
@@ -3533,18 +3561,26 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       const entryDateStr = normalizeDate(entry.date);
       const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
       try {
-        await upsertDailyDescription(entry, {
+        const category = DAY_OFF_TYPE_TO_CATEGORY[newType];
+        // Enqueue the category writes synchronously and in order: clear the bucket(s) we are
+        // not using, then set the selected one. The serialized chain guarantees this order.
+        const writes: Promise<void>[] = [];
+        if (category === 'PTO') {
+          writes.push(persistCategoryHoursForDay(day, 'Holiday', 0));
+          writes.push(persistCategoryHoursForDay(day, 'PTO', FULL_DAY_HOURS));
+        } else if (category === 'Holiday') {
+          writes.push(persistCategoryHoursForDay(day, 'PTO', 0));
+          writes.push(persistCategoryHoursForDay(day, 'Holiday', FULL_DAY_HOURS));
+        } else {
+          writes.push(persistCategoryHoursForDay(day, 'PTO', 0));
+          writes.push(persistCategoryHoursForDay(day, 'Holiday', 0));
+        }
+        const descWrite = upsertDailyDescription(entry, {
           dayOff: true,
           dayOffType: newType,
           description: newType,
         });
-        // Reset both category buckets for the day, then apply the selected type.
-        await persistCategoryHoursForDay(day, 'PTO', 0);
-        await persistCategoryHoursForDay(day, 'Holiday', 0);
-        const category = DAY_OFF_TYPE_TO_CATEGORY[newType];
-        if (category) {
-          await persistCategoryHoursForDay(day, category, FULL_DAY_HOURS);
-        }
+        await Promise.all([descWrite, ...writes]);
       } catch (error) {
         debugError('Error saving day off type:', error);
       }
@@ -3567,27 +3603,36 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       );
       try {
         if (hours <= 0) {
-          await persistCategoryHoursForDay(day, 'PTO', 0);
-          if (current?.dayOff && current?.dayOffType === 'PTO') {
-            await upsertDailyDescription(entry, { dayOff: false, dayOffType: null, description: '' });
-          }
+          // Clear PTO; if it was a full PTO day off, revert it to a normal empty day.
+          const ptoWrite = persistCategoryHoursForDay(day, 'PTO', 0);
+          const descWrite =
+            current?.dayOff && current?.dayOffType === 'PTO'
+              ? upsertDailyDescription(entry, { dayOff: false, dayOffType: null, description: '' })
+              : Promise.resolve();
+          await Promise.all([ptoWrite, descWrite]);
           return;
         }
         if (hours >= FULL_DAY_HOURS) {
-          await upsertDailyDescription(entry, { dayOff: true, dayOffType: 'PTO', description: 'PTO' });
-          await persistCategoryHoursForDay(day, 'PTO', FULL_DAY_HOURS);
+          const ptoWrite = persistCategoryHoursForDay(day, 'PTO', FULL_DAY_HOURS);
+          const descWrite = upsertDailyDescription(entry, {
+            dayOff: true,
+            dayOffType: 'PTO',
+            description: 'PTO',
+          });
+          await Promise.all([ptoWrite, descWrite]);
           return;
         }
         // Partial PTO: a normal working day that also carries PTO hours.
         const forcedDescription =
           (current?.description || '') === 'PTO' ||
           (current?.dayOff && (current?.description || '') === (current?.dayOffType || ''));
-        await upsertDailyDescription(entry, {
+        const ptoWrite = persistCategoryHoursForDay(day, 'PTO', hours);
+        const descWrite = upsertDailyDescription(entry, {
           dayOff: false,
           dayOffType: null,
           description: forcedDescription ? '' : current?.description || '',
         });
-        await persistCategoryHoursForDay(day, 'PTO', hours);
+        await Promise.all([ptoWrite, descWrite]);
       } catch (error) {
         debugError('Error saving PTO hours:', error);
         alert('Failed to save PTO hours. Please try again.');
@@ -3599,15 +3644,37 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   /** Clear a day's description, day-off flag, and all time-tracking hours (billable + category). */
   const clearDay = useCallback(
     async (entry: any): Promise<void> => {
-      if (isAdminView || !employeeData?.employeeId || !assertStaffCanEdit()) return;
+      const employeeIdForWrite = employeeData?.employeeId;
+      if (isAdminView || !employeeIdForWrite || !assertStaffCanEdit()) return;
       const entryDateStr = normalizeDate(entry.date);
-      try {
-        const allEntries = await fetchTimeTrackingForMonth(
-          employeeData.employeeId,
-          currentMonth,
-          currentYear,
-          { skipCache: true }
-        );
+      const day = entry.day ?? parseInt(entryDateStr.split('-')[2], 10);
+      const month = currentMonth;
+      const year = currentYear;
+
+      const run = async (): Promise<void> => {
+        // Optimistic UI: drop this day's category + cost-center hours immediately.
+        setEmployeeData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            dailyEntries: prev.dailyEntries.map((e: any) => {
+              if (e.day !== day) return e;
+              const cleared: any = { ...e, categoryHours: {}, costCenterHours: {}, hoursWorked: 0 };
+              (prev.costCenters || []).forEach((_: string, idx: number) => {
+                cleared[`costCenter${idx}Hours`] = 0;
+              });
+              return cleared;
+            }),
+          };
+        });
+        setRawTimeEntries((prev) => {
+          const eDay = (e: any) => (typeof e.date === 'string' ? e.date.split('T')[0] : e.date);
+          return prev.filter((e: any) => eDay(e) !== entryDateStr);
+        });
+
+        const allEntries = await fetchTimeTrackingForMonth(employeeIdForWrite, month, year, {
+          skipCache: true,
+        });
         const dayEntries = allEntries.filter((e: any) => {
           const d = typeof e.date === 'string' ? e.date.split('T')[0] : e.date;
           return d === entryDateStr;
@@ -3615,20 +3682,19 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         await Promise.allSettled(
           dayEntries.map((e: any) => apiDelete(`/api/time-tracking/${e.id}`))
         );
-        await upsertDailyDescription(entry, {
+      };
+
+      try {
+        // Serialize with category writes so a queued PTO/Holiday write can't repopulate the day.
+        const next = categoryWriteChainRef.current.then(run, run);
+        categoryWriteChainRef.current = next.catch(() => {});
+        const descWrite = upsertDailyDescription(entry, {
           dayOff: false,
           dayOffType: null,
           description: '',
           hoursWorked: 0,
         });
-        await refreshTimesheetData(employeeData);
-        const refreshed = await fetchTimeTrackingForMonth(
-          employeeData.employeeId,
-          currentMonth,
-          currentYear,
-          { skipCache: true }
-        );
-        setRawTimeEntries(dedupeTimeTrackingEntries(refreshed));
+        await Promise.all([next, descWrite]);
       } catch (error) {
         debugError('Error clearing day:', error);
         alert('Failed to clear the day. Please try again.');
@@ -3636,13 +3702,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     },
     [
       isAdminView,
-      employeeData,
+      employeeData?.employeeId,
       assertStaffCanEdit,
       normalizeDate,
       currentMonth,
       currentYear,
       upsertDailyDescription,
-      refreshTimesheetData,
     ]
   );
 
