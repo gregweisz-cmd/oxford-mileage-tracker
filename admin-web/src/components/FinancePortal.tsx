@@ -376,7 +376,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       setAssignedCostCenterNames(userAssignedCenters);
       setAssignedCostCenterKeys(userAssignedCenters.map(normalizeCostCenter).filter(Boolean));
 
-      const data = await apiGet<any[]>('/api/expense-reports');
+      // Summary mode drops the heavy per-day arrays from each report (full data is fetched on demand
+      // when a report is opened). Totals are still computed identically from the kept summary fields.
+      const data = await apiGet<any[]>('/api/expense-reports?summary=true');
       debugVerbose('📊 Loaded reports:', data.length, 'reports');
       debugVerbose('📊 First report structure:', data[0]);
       

@@ -1511,8 +1511,49 @@ router.get('/api/expense-reports/:employeeId', (req, res) => {
 /**
  * Get all expense reports (for admin/supervisor view)
  */
+/**
+ * Fields the Finance/Contracts list views actually read from reportData: the small summary scalars
+ * plus everything calculateGrandTotalFromReportData() needs (cost-center breakdowns, otherExpenses,
+ * legacy top-level category totals). The heavy per-day arrays (dailyEntries, mileage, receipts,
+ * timeTracking, etc.) are intentionally dropped so the list response stays small. Full data is still
+ * available via /api/expense-reports/id/:id and the embedded detailed view.
+ */
+const REPORT_SUMMARY_FIELDS = [
+  'totalMiles',
+  'totalMileageAmount',
+  'costCenters',
+  'costCenterBreakdowns',
+  'otherExpenses',
+  'perDiem',
+  'baseAddress',
+  'submissionType',
+  // Legacy top-level category totals (used by calculateGrandTotalFromReportData fallback)
+  'airRailBus',
+  'vehicleRentalFuel',
+  'parkingTolls',
+  'groundTransportation',
+  'hotelsAirbnb',
+  'phoneInternetFax',
+  'shippingPostage',
+  'printingCopying',
+  'officeSupplies',
+  'eesReceipt',
+  'meals',
+  'other',
+];
+
+function summarizeReportData(reportData) {
+  if (!reportData || typeof reportData !== 'object') return {};
+  const summary = {};
+  for (const key of REPORT_SUMMARY_FIELDS) {
+    if (reportData[key] !== undefined) summary[key] = reportData[key];
+  }
+  return summary;
+}
+
 router.get('/api/expense-reports', async (req, res) => {
   const { status, month, year, approverId, stage, teamSupervisorId, teamSeniorStaffId, employeeId } = req.query;
+  const summaryMode = String(req.query.summary || '') === 'true';
   const db = dbService.getDb();
   
   let query = `
@@ -1597,6 +1638,13 @@ router.get('/api/expense-reports', async (req, res) => {
       row.totalMiles = row.reportData?.totalMiles ?? row.totalMiles ?? 0;
       row.totalMileageAmount = row.reportData?.totalMileageAmount ?? row.totalMileageAmount ?? 0;
       row.comments = [];
+
+      // Trim the heavy per-day arrays out of the list payload when the caller opts in. Totals were
+      // already computed above from the full data, and the kept fields preserve the client-side
+      // grand-total calculation exactly.
+      if (summaryMode) {
+        row.reportData = summarizeReportData(row.reportData);
+      }
     });
 
     // Fallback: if LEFT JOIN left employeeName/employeeFullName null (e.g. archived employee or ID mismatch), look up by employeeId
