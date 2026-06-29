@@ -113,6 +113,9 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('');
   const [isDayOff, setIsDayOff] = useState(false);
   const [dayOffType, setDayOffType] = useState<string>('Day Off');
+  // PTO hours entered when the day-off type is PTO. A value below a full day keeps the day
+  // editable (description + mileage allowed) and records the hours as partial PTO.
+  const [dayOffPtoHours, setDayOffPtoHours] = useState<string>(String(FULL_DAY_OFF_HOURS));
   const [stayedOvernight, setStayedOvernight] = useState(false);
   const [showDayOffDropdown, setShowDayOffDropdown] = useState(false);
   const [showDescriptionDropdown, setShowDescriptionDropdown] = useState(false);
@@ -361,6 +364,11 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
     setIsDayOff(dailyDesc.dayOff || false);
     setDayOffType(dailyDesc.dayOffType || 'Day Off');
     setStayedOvernight(dailyDesc.stayedOvernight ?? false);
+    // Seed the PTO hours field from any existing PTO on the day (full day off defaults to 8).
+    const existingPto = dailyDesc.dayOff
+      ? FULL_DAY_OFF_HOURS
+      : Number(day.hoursBreakdown?.ptoHours) || 0;
+    setDayOffPtoHours(String(existingPto > 0 ? existingPto : FULL_DAY_OFF_HOURS));
     
     const costCenters = currentEmployee?.selectedCostCenters || currentEmployee?.costCenters || [];
     const inputs: {[key: string]: number} = {};
@@ -473,13 +481,26 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
       // If user unchecks "Day Off" and clears description, delete the entry
       // If user checks "Day Off", save the dayOffType
       // If user enters text (not day off), save the text
-      const descriptionToSave = isDayOff ? dayOffType : (descriptionText || '').trim();
-      const shouldDelete = !isDayOff && !descriptionToSave;
+      // PTO can be partial. A value below a full workday keeps the day editable (descriptions
+      // and mileage allowed) and records the hours as partial PTO rather than a full day off.
+      let partialPtoHours = 0;
+      if (isDayOff && dayOffType === 'PTO') {
+        const parsed = Math.max(0, Math.min(FULL_DAY_OFF_HOURS, parseFloat(dayOffPtoHours) || 0));
+        if (parsed > 0 && parsed < FULL_DAY_OFF_HOURS) {
+          partialPtoHours = parsed;
+        }
+      }
+      const effectiveIsDayOff = isDayOff && partialPtoHours === 0;
+
+      const descriptionToSave = effectiveIsDayOff ? dayOffType : (descriptionText || '').trim();
+      const shouldDelete = !effectiveIsDayOff && !descriptionToSave;
       
       console.log(`💾 DailyHoursScreen: Saving description for ${selectedDay.date.toISOString()}:`, {
         descriptionToSave,
         shouldDelete,
         isDayOff,
+        effectiveIsDayOff,
+        partialPtoHours,
         originalDescription: selectedDay.description
       });
       
@@ -490,12 +511,12 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
         descriptionToSave,
         selectedCostCenter,
         stayedOvernight,
-        isDayOff, // Only set dayOff if user explicitly checked it
-        isDayOff ? dayOffType : undefined,
+        effectiveIsDayOff, // partial PTO is treated as a normal working day, not a day off
+        effectiveIsDayOff ? dayOffType : undefined,
         selectedDay.descriptionId // use id when available so delete/update always targets the right row
       );
       
-      if (!isDayOff) {
+      if (!effectiveIsDayOff) {
         const costCenters = currentEmployee.selectedCostCenters || currentEmployee.costCenters || [];
         const costCenterHours: Record<string, number> = {};
         costCenters.forEach(cc => {
@@ -505,7 +526,7 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
         const hoursBreakdown = {
           gahours: timeTrackingInputs['G&A Hours'] ?? 0,
           holidayHours: timeTrackingInputs['Holiday Hours'] ?? 0,
-          ptoHours: timeTrackingInputs['PTO Hours'] ?? 0,
+          ptoHours: partialPtoHours > 0 ? partialPtoHours : (timeTrackingInputs['PTO Hours'] ?? 0),
           stdLtdHours: timeTrackingInputs['STD/LTD Hours'] ?? 0,
           pflPfmlHours: timeTrackingInputs['PFL/PFML Hours'] ?? 0
         };
@@ -545,6 +566,7 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
       setTimeTrackingInputs({});
       setIsDayOff(false);
       setDayOffType('Day Off');
+      setDayOffPtoHours(String(FULL_DAY_OFF_HOURS));
       setStayedOvernight(false);
       
       // Reload data from backend (no sync needed - already saved directly)
@@ -981,8 +1003,11 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                       const newValue = !isDayOff;
                       setIsDayOff(newValue);
                       markHoursDirty();
-                      if (!newValue) {
+                      if (newValue) {
+                        setDayOffPtoHours(String(FULL_DAY_OFF_HOURS));
+                      } else {
                         setDayOffType('Day Off');
+                        setDayOffPtoHours(String(FULL_DAY_OFF_HOURS));
                         setDescriptionText(''); // Clear description when unchecking so the stored value is removed on save
                       }
                     }}
@@ -1041,6 +1066,30 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                         </View>
                       </View>
                     </Modal>
+                  </View>
+                )}
+
+                {isDayOff && dayOffType === 'PTO' && (
+                  <View style={{ marginTop: 12 }}>
+                    <View style={styles.inputRow}>
+                      <Text style={styles.inputLabel}>PTO hours</Text>
+                      <ScrollToOnFocusView>
+                        <TextInput
+                          style={styles.input}
+                          value={dayOffPtoHours}
+                          onChangeText={(text) => {
+                            setDayOffPtoHours(text);
+                            markHoursDirty();
+                          }}
+                          keyboardType="numeric"
+                          placeholder={String(FULL_DAY_OFF_HOURS)}
+                          selectTextOnFocus
+                        />
+                      </ScrollToOnFocusView>
+                    </View>
+                    <Text style={styles.dayOffHelperText}>
+                      Enter less than {FULL_DAY_OFF_HOURS} hours to keep the day editable for descriptions and mileage.
+                    </Text>
                   </View>
                 )}
               </View>
@@ -1671,6 +1720,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     minWidth: 80,
+  },
+  dayOffHelperText: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 6,
   },
   totalSection: {
     flexDirection: 'row',
