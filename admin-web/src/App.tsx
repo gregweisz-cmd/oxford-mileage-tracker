@@ -24,6 +24,30 @@ import { debugLog, debugError, debugVerbose } from './config/debug';
 
 // Portals are code-split: each loads on demand so the initial bundle ships only the shared shell
 // instead of all six portals up front. They render inside the Suspense boundary in renderPortal().
+//
+// The import() factories are shared between React.lazy (render-time load) and prefetchPortal()
+// (intent-time load), so hovering/opening the switcher can warm a portal's chunk before the click.
+type PortalId = 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts';
+
+const portalImporters: Record<PortalId, () => Promise<unknown>> = {
+  staff: () => import('./StaffPortal'),
+  supervisor: () => import('./components/SupervisorPortal'),
+  senior_staff: () => import('./components/SeniorStaffPortal'),
+  admin: () => import('./components/AdminPortal'),
+  finance: () => import('./components/FinancePortal'),
+  contracts: () => import('./components/ContractsPortal'),
+};
+
+/** Warm a portal's lazy chunk ahead of time. Safe to call repeatedly (webpack dedupes). */
+export function prefetchPortal(portalId: PortalId): void {
+  const importer = portalImporters[portalId];
+  if (importer) {
+    importer().catch(() => {
+      /* prefetch is best-effort; ignore network/cancel errors */
+    });
+  }
+}
+
 const StaffPortal = lazy(() => import('./StaffPortal'));
 const SupervisorPortal = lazy(() => import('./components/SupervisorPortal'));
 const SeniorStaffPortal = lazy(() => import('./components/SeniorStaffPortal'));
@@ -771,6 +795,7 @@ const App: React.FC = () => {
               currentUser={currentUser}
               currentPortal={currentPortal}
               onPortalChange={handlePortalChange}
+              onPrefetchPortal={prefetchPortal}
               onLogout={handleLogout}
             />
             <Suspense

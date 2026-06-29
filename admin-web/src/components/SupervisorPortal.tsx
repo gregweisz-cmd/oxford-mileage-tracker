@@ -182,9 +182,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
   const loadTeamMembers = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/supervisors/${supervisorId}/team`);
-      if (!response.ok) throw new Error('Failed to load team members');
-      const data = await response.json();
+      const { apiGet } = await import('../services/rateLimitedApi');
+      const data = await apiGet<any[]>(`/api/supervisors/${supervisorId}/team`);
       const mapped: Employee[] = data.map((member: any) => ({
         id: member.id,
         name: member.name,

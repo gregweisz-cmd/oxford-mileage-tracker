@@ -35,6 +35,8 @@ interface PortalSwitcherProps {
   currentUser: any;
   currentPortal: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts';
   onPortalChange: (portal: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts') => void;
+  /** Warm a portal's lazy chunk on intent (menu open / hover) so the switch feels instant. */
+  onPrefetchPortal?: (portal: 'admin' | 'supervisor' | 'senior_staff' | 'staff' | 'finance' | 'contracts') => void;
   onLogout: () => void;
 }
 
@@ -42,6 +44,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
   currentUser,
   currentPortal,
   onPortalChange,
+  onPrefetchPortal,
   onLogout,
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -50,6 +53,10 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
 
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
+    // Opening the menu signals intent to switch — warm every accessible portal's chunk now.
+    if (onPrefetchPortal) {
+      availablePortals.forEach((portal) => onPrefetchPortal(portal.id));
+    }
   };
 
   const handleClose = () => {
@@ -605,6 +612,7 @@ const PortalSwitcher: React.FC<PortalSwitcherProps> = ({
             <MenuItem
               key={portal.id}
               onClick={() => handlePortalSelect(portal.id)}
+              onMouseEnter={() => onPrefetchPortal?.(portal.id)}
               selected={portal.id === currentPortal}
               sx={{
                 py: 2,

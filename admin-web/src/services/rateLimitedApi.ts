@@ -33,13 +33,36 @@ interface RequestQueueItem {
 
 class RateLimitedApiService {
   private requestQueue: RequestQueueItem[] = [];
-  private isProcessing = false;
-  private lastRequestTime = 0;
-  private minRequestInterval = 100; // Minimum 100ms between requests
+  private activeCount = 0;
+  // Allow several requests in flight at once so a portal's Promise.all batch actually runs in
+  // parallel. The backend general limiter is ~1000 req / 15 min (~66/min), so a small concurrency
+  // pool is well within budget, and the 429 backoff below remains a safety net.
+  private maxConcurrent = 6;
   private maxRetries = 3;
   private retryDelay = 1000; // Start with 1 second
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
-  private cacheTTL = 60000; // 60 seconds cache (increased to reduce API calls)
+  private cacheTTL = 60000; // Default 60s in-memory cache for GETs
+  // Slow-changing resources can be cached longer so repeat portal switches reuse them.
+  private longCacheTTL = 5 * 60 * 1000; // 5 minutes
+  private longCachePatterns = [
+    '/api/cost-centers',
+    '/api/employees',
+    '/supervisors/',
+    '/senior-staff/',
+    '/team',
+    '/api/per-diem-rules',
+  ];
+
+  /** Canonical cache key so the same URL hits the same entry regardless of caller (apiGet vs apiFetch). */
+  private cacheKey(url: string, options: RequestInit): string {
+    const method = (options.method || 'GET').toUpperCase();
+    const body = typeof options.body === 'string' ? options.body : '';
+    return `${method}:${url}:${body}`;
+  }
+
+  private ttlForUrl(url: string): number {
+    return this.longCachePatterns.some((p) => url.includes(p)) ? this.longCacheTTL : this.cacheTTL;
+  }
 
   /**
    * Add request to queue and process
@@ -47,9 +70,9 @@ class RateLimitedApiService {
   async fetch(url: string, options: RequestInit = {}): Promise<Response> {
     // Check cache first (only for GET requests)
     if (!options.method || options.method === 'GET') {
-      const cacheKey = `${url}-${JSON.stringify(options)}`;
+      const cacheKey = this.cacheKey(url, options);
       const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+      if (cached && Date.now() - cached.timestamp < this.ttlForUrl(url)) {
         // Return cached response as a Response-like object
         return new Response(JSON.stringify(cached.data), {
           status: 200,
@@ -67,78 +90,70 @@ class RateLimitedApiService {
         reject,
         retries: 0
       });
-      
-      this.processQueue();
+
+      this.pump();
     });
   }
 
   /**
-   * Process request queue with throttling
+   * Start as many queued requests as the concurrency budget allows. Each completion pumps again.
    */
-  private async processQueue() {
-    if (this.isProcessing || this.requestQueue.length === 0) {
-      return;
-    }
-
-    this.isProcessing = true;
-
-    while (this.requestQueue.length > 0) {
+  private pump() {
+    while (this.activeCount < this.maxConcurrent && this.requestQueue.length > 0) {
       const item = this.requestQueue.shift();
       if (!item) break;
+      this.activeCount++;
+      void this.runItem(item).finally(() => {
+        this.activeCount--;
+        this.pump();
+      });
+    }
+  }
 
-      // Throttle requests
-      const timeSinceLastRequest = Date.now() - this.lastRequestTime;
-      if (timeSinceLastRequest < this.minRequestInterval) {
-        await new Promise(resolve => 
-          setTimeout(resolve, this.minRequestInterval - timeSinceLastRequest)
-        );
+  /**
+   * Execute a single queued request, caching GETs and applying 429 backoff/retry.
+   */
+  private async runItem(item: RequestQueueItem): Promise<void> {
+    try {
+      const response = await this.executeRequest(item);
+
+      const method = (item.options.method || 'GET').toUpperCase();
+
+      // Cache successful GET requests
+      if (method === 'GET') {
+        try {
+          const data = await response.clone().json();
+          this.cache.set(this.cacheKey(item.url, item.options), {
+            data,
+            timestamp: Date.now()
+          });
+        } catch {
+          // If response isn't JSON, don't cache
+        }
+      } else {
+        invalidateCachesForMutation(item.url, method);
       }
 
-      try {
-        const response = await this.executeRequest(item);
-        this.lastRequestTime = Date.now();
-        
-        const method = (item.options.method || 'GET').toUpperCase();
+      item.resolve(response);
+    } catch (error) {
+      // Handle rate limiting with exponential backoff
+      if (error instanceof Error && error.message.includes('429') && item.retries < this.maxRetries) {
+        const delay = this.retryDelay * Math.pow(2, item.retries);
+        console.warn(`Rate limited. Retrying in ${delay}ms... (attempt ${item.retries + 1}/${this.maxRetries})`);
+        item.retries++;
+        setTimeout(() => {
+          this.requestQueue.unshift(item);
+          this.pump();
+        }, delay);
+        return;
+      }
 
-        // Cache successful GET requests
-        if (method === 'GET') {
-          try {
-            const data = await response.clone().json();
-            this.cache.set(`${item.url}-${JSON.stringify(item.options)}`, {
-              data,
-              timestamp: Date.now()
-            });
-          } catch {
-            // If response isn't JSON, don't cache
-          }
-        } else if (method !== 'GET') {
-          invalidateCachesForMutation(item.url, method);
-        }
-
-        item.resolve(response);
-      } catch (error) {
-        // Handle rate limiting with exponential backoff
-        if (error instanceof Error && error.message.includes('429')) {
-          if (item.retries < this.maxRetries) {
-            const delay = this.retryDelay * Math.pow(2, item.retries);
-            console.warn(`Rate limited. Retrying in ${delay}ms... (attempt ${item.retries + 1}/${this.maxRetries})`);
-            
-            await new Promise(resolve => setTimeout(resolve, delay));
-            
-            // Re-queue with incremented retry count
-            item.retries++;
-            this.requestQueue.unshift(item);
-            continue;
-          } else {
-            item.reject(new Error('Rate limit exceeded. Please wait a moment and try again.'));
-          }
-        } else {
-          item.reject(error as Error);
-        }
+      if (error instanceof Error && error.message.includes('429')) {
+        item.reject(new Error('Rate limit exceeded. Please wait a moment and try again.'));
+      } else {
+        item.reject(error as Error);
       }
     }
-
-    this.isProcessing = false;
   }
 
   /**
@@ -268,6 +283,14 @@ export function invalidateCachesForMutation(url: string, method: string): void {
 
   if (path.includes('/api/per-diem-rules')) {
     rateLimitedApi.clearCacheFor('/api/per-diem-rules');
+  }
+
+  if (path.includes('/api/cost-centers')) {
+    rateLimitedApi.clearCacheFor('/api/cost-centers');
+  }
+
+  if (path.includes('/api/finance-cost-center-assignments')) {
+    rateLimitedApi.clearCacheFor('/api/finance-cost-center-assignments');
   }
 
   if (path.includes('/api/notifications')) {
