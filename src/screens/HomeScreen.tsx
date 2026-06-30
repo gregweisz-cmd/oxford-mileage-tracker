@@ -12,6 +12,7 @@ import {
   Platform,
   Linking,
   InteractionManager,
+  Keyboard,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -457,8 +458,10 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   // When returning to this screen, refresh dashboard stats so tiles show latest data after sync.
   // Defer until after navigation transition — running refresh immediately can freeze iOS when returning from GPS.
+  // Also dismiss keyboard so a detached iOS InputAccessoryView cannot ghost at the status bar.
   useFocusEffect(
     React.useCallback(() => {
+      Keyboard.dismiss();
       if (!initialLoadDoneRef.current) return;
       const task = InteractionManager.runAfterInteractions(() => {
         const delay = Platform.OS === 'ios' ? 600 : 100;

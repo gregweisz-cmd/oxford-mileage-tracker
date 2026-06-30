@@ -158,6 +158,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderBottomWidth: 1,
     borderBottomColor: '#D6D6D6',
+    overflow: 'hidden',
   },
   logo: {
     height: 46,

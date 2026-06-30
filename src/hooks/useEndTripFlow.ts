@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { EndTripPhase } from '../services/endTripCoordinator';
 import { LocationDetails } from '../types';
+import { InteractionManager } from 'react-native';
 
 export interface UseEndTripFlowOptions {
   clearEndTripUiState: () => void;
@@ -75,7 +76,9 @@ export function useEndTripFlow(options: UseEndTripFlowOptions): UseEndTripFlowRe
   const dismissEndTripOverlay = useCallback(() => {
     dismissEndTrip();
     if (endTripOverlay) {
-      navigation.goBack();
+      InteractionManager.runAfterInteractions(() => {
+        navigation.goBack();
+      });
     }
   }, [dismissEndTrip, endTripOverlay, navigation]);
 

@@ -54,7 +54,6 @@ function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteNam
   const { isTracking, restoredTrackingOnLaunch, shouldShowEndLocationModal } = useGpsTracking();
   const hasNavigatedForRestore = useRef(false);
   const hasNavigatedForStopRequestRef = useRef(false);
-  const passThroughOnGpsScreen = currentRouteName === 'GpsTracking' && !isTracking;
 
   // When we restored a session after app was killed, navigate back to GpsTracking
   useEffect(() => {
@@ -83,22 +82,13 @@ function GlobalGpsOverlay({ currentRouteName, navigationRef }: { currentRouteNam
     return null;
   }
 
+  // Render GPS chrome without a full-screen wrapper — an absolute fill View at zIndex 9999
+  // has caused intermittent iOS compositing glitches (dark smears near the status bar).
   return (
-    <View
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 9999,
-        elevation: 9999,
-      }}
-      pointerEvents={passThroughOnGpsScreen ? 'none' : 'box-none'}
-    >
+    <>
       <GlobalGpsReturnButton currentRouteName={currentRouteName} />
       <GlobalGpsStopButton currentRouteName={currentRouteName} />
-    </View>
+    </>
   );
 }
 
