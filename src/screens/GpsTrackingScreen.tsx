@@ -18,7 +18,7 @@ import {
   AppStateStatus,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { GpsTrackingService } from '../services/gpsTrackingService';
@@ -70,6 +70,7 @@ type StartLocationOption =
   | 'lastDestination'
   | 'baseAddress'
   | 'favoriteAddresses'
+  | 'myFlock'
   | 'oxfordHouse'
   | 'newLocation';
 
@@ -77,6 +78,7 @@ type EndLocationOption =
   | 'baseAddress'
   | 'tripStart'
   | 'favoriteAddresses'
+  | 'myFlock'
   | 'oxfordHouse'
   | 'newLocation';
 
@@ -188,6 +190,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     'lastDestination',
     'baseAddress',
     'favoriteAddresses',
+    'myFlock',
     'oxfordHouse',
     'newLocation',
   ]);
@@ -195,6 +198,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     'baseAddress',
     'tripStart',
     'favoriteAddresses',
+    'myFlock',
     'oxfordHouse',
     'newLocation',
   ]);
@@ -295,13 +299,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       setShowGpsDuration(prefs.showGpsDuration);
       setStartLocationOptionOrder(
         (prefs.gpsStartLocationOptionOrder?.filter((option): option is StartLocationOption =>
-          ['lastDestination', 'baseAddress', 'favoriteAddresses', 'oxfordHouse', 'newLocation'].includes(option)
-        ) || ['lastDestination', 'baseAddress', 'favoriteAddresses', 'oxfordHouse', 'newLocation']) as StartLocationOption[]
+          ['lastDestination', 'baseAddress', 'favoriteAddresses', 'myFlock', 'oxfordHouse', 'newLocation'].includes(option)
+        ) || ['lastDestination', 'baseAddress', 'favoriteAddresses', 'myFlock', 'oxfordHouse', 'newLocation']) as StartLocationOption[]
       );
       setEndLocationOptionOrder(
         (prefs.gpsEndLocationOptionOrder?.filter((option): option is EndLocationOption =>
-          ['baseAddress', 'tripStart', 'favoriteAddresses', 'oxfordHouse', 'newLocation'].includes(option)
-        ) || ['baseAddress', 'tripStart', 'favoriteAddresses', 'oxfordHouse', 'newLocation']) as EndLocationOption[]
+          ['baseAddress', 'tripStart', 'favoriteAddresses', 'myFlock', 'oxfordHouse', 'newLocation'].includes(option)
+        ) || ['baseAddress', 'tripStart', 'favoriteAddresses', 'myFlock', 'oxfordHouse', 'newLocation']) as EndLocationOption[]
       );
     } catch (error) {
       console.error('Error loading preferences:', error);
@@ -772,7 +776,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     openStartLocationOptions();
   };
 
-  const handleLocationOption = (option: 'lastDestination' | 'baseAddress' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation') => {
+  const handleLocationOption = (option: 'lastDestination' | 'baseAddress' | 'favoriteAddresses' | 'myFlock' | 'oxfordHouse' | 'newLocation') => {
     console.log('🔍 GPS: Location option selected:', option);
     console.log('🔍 GPS: Closing location options modal');
     setShowLocationOptionsModal(false);
@@ -799,6 +803,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           console.log('🔍 GPS: Navigating to favorite addresses');
           navigation.navigate('SavedAddresses', { fromGpsTrackingStart: true });
         }
+      } else if (option === 'myFlock') {
+        console.log('🔍 GPS: Navigating to My Flock');
+        navigation.navigate('MyFlock', { fromGpsTrackingStart: true });
       } else if (option === 'oxfordHouse') {
         const suggested = startLocationSuggestions.oxfordHouse;
         if (suggested) {
@@ -1310,7 +1317,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   };
 
   const handleEndLocationOption = (
-    option: 'baseAddress' | 'tripStart' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation'
+    option: 'baseAddress' | 'tripStart' | 'favoriteAddresses' | 'myFlock' | 'oxfordHouse' | 'newLocation'
   ) => {
     setTimeout(() => {
       if (option === 'baseAddress') {
@@ -1354,6 +1361,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         } else {
           navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
         }
+      } else if (option === 'myFlock') {
+        navigation.navigate('MyFlock', { fromGpsTrackingEnd: true });
       } else if (option === 'oxfordHouse') {
         const suggested = endLocationSuggestions.oxfordHouse;
         if (suggested) {
@@ -2137,16 +2146,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   option === 'lastDestination' ? 'location-on' :
                   option === 'baseAddress' ? 'home' :
                   option === 'favoriteAddresses' ? 'star' :
+                  option === 'myFlock' ? 'sheep' :
                   option === 'oxfordHouse' ? 'home' : 'add-location';
                 const iconColor =
                   option === 'lastDestination' ? '#4CAF50' :
                   option === 'baseAddress' ? '#2196F3' :
                   option === 'favoriteAddresses' ? '#FFC107' :
+                  option === 'myFlock' ? '#7CB342' :
                   option === 'oxfordHouse' ? '#9C27B0' : '#FF9800';
                 const title =
                   option === 'lastDestination' ? 'Start from Last Destination' :
                   option === 'baseAddress' ? 'Start from Base Address' :
                   option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
+                  option === 'myFlock' ? 'My Flock' :
                   option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter New Starting Point';
                 const subtitle =
                   suggestion
@@ -2157,6 +2169,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       ? (canonicalBaseAddress || 'No base address set')
                       : option === 'favoriteAddresses'
                         ? 'Select from your saved favorite locations'
+                        : option === 'myFlock'
+                          ? 'Quick pick from Oxford Houses in your flock'
                         : option === 'oxfordHouse'
                           ? 'Search and select from Oxford House locations'
                           : 'Manually enter location name and address';
@@ -2168,7 +2182,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       onPress={() => handleLocationOption(option)}
                       disabled={isDisabled}
                     >
-                      <MaterialIcons name={iconName as any} size={24} color={iconColor} />
+                      {option === 'myFlock' ? (
+                        <MaterialCommunityIcons name="sheep" size={24} color={iconColor} />
+                      ) : (
+                        <MaterialIcons name={iconName as any} size={24} color={iconColor} />
+                      )}
                       <View style={styles.locationOptionText}>
                         <Text style={styles.locationOptionTitle}>{title}</Text>
                         <Text style={styles.locationOptionSubtitle}>{subtitle}</Text>
@@ -2275,16 +2293,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   option === 'baseAddress' ? 'home' :
                   option === 'tripStart' ? 'replay' :
                   option === 'favoriteAddresses' ? 'star' :
+                  option === 'myFlock' ? 'sheep' :
                   option === 'oxfordHouse' ? 'home' : 'add-location';
                 const iconColor =
                   option === 'baseAddress' ? '#2196F3' :
                   option === 'tripStart' ? '#4CAF50' :
                   option === 'favoriteAddresses' ? '#FFC107' :
+                  option === 'myFlock' ? '#7CB342' :
                   option === 'oxfordHouse' ? '#9C27B0' : '#FF9800';
                 const title =
                   option === 'baseAddress' ? 'End at Base Address' :
                   option === 'tripStart' ? 'Same as Trip Start' :
                   option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
+                  option === 'myFlock' ? 'My Flock' :
                   option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter Destination Manually';
                 const subtitle =
                   suggestion
@@ -2297,6 +2318,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                         : 'Start location not recorded for this session')
                       : option === 'favoriteAddresses'
                         ? 'Select a saved location as your destination'
+                        : option === 'myFlock'
+                          ? 'Quick pick from Oxford Houses in your flock'
                         : option === 'oxfordHouse'
                           ? 'Search and select from Oxford House locations'
                           : 'Use GPS + name/address (same as manual mileage)';
@@ -2308,7 +2331,11 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                       onPress={() => handleEndLocationOption(option)}
                       disabled={isDisabled}
                     >
-                      <MaterialIcons name={iconName as any} size={24} color={iconColor} />
+                      {option === 'myFlock' ? (
+                        <MaterialCommunityIcons name="sheep" size={24} color={iconColor} />
+                      ) : (
+                        <MaterialIcons name={iconName as any} size={24} color={iconColor} />
+                      )}
                       <View style={styles.locationOptionText}>
                         <Text style={styles.locationOptionTitle}>{title}</Text>
                         <Text style={styles.locationOptionSubtitle}>{subtitle}</Text>

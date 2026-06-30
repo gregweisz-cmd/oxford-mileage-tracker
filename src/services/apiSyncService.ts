@@ -1,6 +1,6 @@
 import { Platform, Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription } from '../types';
+import { Employee, MileageEntry, Receipt, DailyOdometerReading, SavedAddress, FlockHouse, TimeTracking, DailyDescription } from '../types';
 import { DatabaseService } from './database';
 import { getFullLocationAddress } from '../utils/addressFormatter';
 import { sanitizeLocationName } from '../utils/locationName';
@@ -333,6 +333,7 @@ export class ApiSyncService {
     dailyDescriptions?: DailyDescription[];
     dailyOdometerReadings?: DailyOdometerReading[];
     savedAddresses?: SavedAddress[];
+    flockHouses?: FlockHouse[];
   }): Promise<SyncResult> {
     try {
       debugLog('📤 ApiSync: Syncing data to backend...');
@@ -389,6 +390,13 @@ export class ApiSyncService {
       if (data.savedAddresses && data.savedAddresses.length > 0) {
         const savedAddressesResult = await this.syncSavedAddresses(data.savedAddresses);
         results.push(savedAddressesResult);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // Sync flock houses (My Flock)
+      if (data.flockHouses && data.flockHouses.length > 0) {
+        const flockHousesResult = await this.syncFlockHouses(data.flockHouses);
+        results.push(flockHousesResult);
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
@@ -572,6 +580,20 @@ export class ApiSyncService {
         debugWarn(`⚠️ ApiSync: Failed to fetch saved addresses (continuing sync):`, error);
         syncData.savedAddresses = [];
       }
+
+      let mappedFlockHouses: FlockHouse[] = [];
+      try {
+        const flockHouses = await this.fetchFlockHouses(effectiveEmployeeId);
+        mappedFlockHouses = this.mapEmployeeIdForLocal(
+          flockHouses,
+          employeeId,
+          backendEmployeeId
+        ) as FlockHouse[];
+        syncData.flockHouses = mappedFlockHouses;
+      } catch (error) {
+        debugWarn(`⚠️ ApiSync: Failed to fetch flock houses (continuing sync):`, error);
+        syncData.flockHouses = [];
+      }
       
       let mappedDailyDescriptions: DailyDescription[] = [];
       try {
@@ -612,6 +634,7 @@ export class ApiSyncService {
       await this.syncReceiptsToLocal(mappedReceipts, employeeId ?? undefined, orphanCleanup);
       await this.syncTimeTrackingToLocal(mappedTimeTracking, employeeId ?? undefined, orphanCleanup);
       await this.syncSavedAddressesToLocal(mappedSavedAddresses, employeeId ?? undefined);
+      await this.syncFlockHousesToLocal(mappedFlockHouses, employeeId ?? undefined);
       await this.syncDailyDescriptionsToLocal(mappedDailyDescriptions, employeeId ?? undefined, orphanCleanup);
       await this.syncDailyOdometerReadingsToLocal(mappedDailyOdometer, effectiveEmployeeId);
 
@@ -634,6 +657,7 @@ export class ApiSyncService {
         receipts: mappedReceipts.length,
         timeTracking: mappedTimeTracking.length,
         savedAddresses: mappedSavedAddresses.length,
+        flockHouses: mappedFlockHouses.length,
         dailyDescriptions: mappedDailyDescriptions.length,
         dailyOdometerReadings: mappedDailyOdometer.length
       });
@@ -1704,6 +1728,61 @@ export class ApiSyncService {
   }
 
   /**
+   * Sync flock houses (My Flock) to backend
+   */
+  private static async syncFlockHouses(entries: FlockHouse[]): Promise<SyncResult> {
+    try {
+      const results = [];
+      for (const entry of entries) {
+        try {
+          if (results.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+
+          const backendEmployeeId = await this.resolveBackendEmployeeId(entry.employeeId);
+          const employeeIdToSend = backendEmployeeId || entry.employeeId;
+
+          const response = await this.authenticatedFetch(`${this.config.baseUrl}/flock-houses/${entry.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              employeeId: employeeIdToSend,
+              oxfordHouseId: entry.oxfordHouseId,
+              sortOrder: entry.sortOrder ?? 0,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || response.statusText);
+          }
+          results.push({ success: true, id: entry.id });
+        } catch (error) {
+          results.push({ success: false, id: entry.id, error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+      }
+
+      const allSuccessful = results.every((r: any) => r.success);
+      const failedResults = results.filter((r: any) => !r.success && r.error);
+      const errorMessages = failedResults.map((r: any) => r.error).filter(Boolean);
+      return {
+        success: allSuccessful,
+        data: results,
+        error: errorMessages.length > 0
+          ? errorMessages.join('; ')
+          : (allSuccessful ? undefined : 'One or more flock house sync operations failed'),
+        timestamp: new Date(),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date(),
+      };
+    }
+  }
+
+  /**
    * Fetch employees from backend
    */
   private static async fetchEmployees(): Promise<Employee[]> {
@@ -1965,6 +2044,29 @@ export class ApiSyncService {
       latitude: entry.latitude ?? undefined,
       longitude: entry.longitude ?? undefined,
       category: entry.category || '',
+      createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date(),
+      updatedAt: entry.updatedAt ? new Date(entry.updatedAt) : new Date(),
+    }));
+  }
+
+  /**
+   * Fetch flock houses from backend
+   */
+  private static async fetchFlockHouses(employeeId?: string | null): Promise<FlockHouse[]> {
+    if (!employeeId) return [];
+    const response = await this.authenticatedFetch(
+      `${this.config.baseUrl}/flock-houses?employeeId=${encodeURIComponent(employeeId)}`
+    );
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(`Failed to fetch flock houses: ${this.formatHttpFailure(response, responseText)}`);
+    }
+    const data = JSON.parse(responseText);
+    return (data || []).map((entry: any) => ({
+      id: entry.id,
+      employeeId: entry.employeeId,
+      oxfordHouseId: entry.oxfordHouseId,
+      sortOrder: Number(entry.sortOrder) || 0,
       createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date(),
       updatedAt: entry.updatedAt ? new Date(entry.updatedAt) : new Date(),
     }));
@@ -2879,6 +2981,89 @@ export class ApiSyncService {
       });
     } catch (error) {
       console.error('❌ ApiSync: Error syncing saved addresses to local database:', error);
+    }
+  }
+
+  /**
+   * Sync flock houses from backend to local database
+   */
+  private static async syncFlockHousesToLocal(
+    flockHouses: FlockHouse[],
+    localEmployeeId?: string | null
+  ): Promise<void> {
+    try {
+      if (!localEmployeeId) return;
+      debugLog(`📥 ApiSync: Syncing ${flockHouses.length} flock houses to local database...`);
+
+      const { withDatabaseConnection } = await import('../utils/databaseConnection');
+      await withDatabaseConnection(async (database) => {
+        const backendIds = new Set(flockHouses.map((entry) => entry.id).filter(Boolean));
+        let pendingDeletionIds = new Set<string>();
+        let pendingUpsertIds = new Set<string>();
+        try {
+          const { SyncIntegrationService } = await import('./syncIntegrationService');
+          pendingDeletionIds = SyncIntegrationService.getPendingDeletionIds('flockHouse');
+          pendingUpsertIds = SyncIntegrationService.getPendingUpsertIds('flockHouse');
+        } catch {
+          // Ignore queue lookup failures and continue with backend truth.
+        }
+
+        for (const entry of flockHouses) {
+          if (!entry.id) continue;
+          const existing = await database.getFirstAsync(
+            'SELECT id FROM flock_houses WHERE id = ?',
+            [entry.id]
+          ) as { id: string } | null;
+
+          const createdAt =
+            entry.createdAt instanceof Date ? entry.createdAt.toISOString() : new Date().toISOString();
+          const updatedAt =
+            entry.updatedAt instanceof Date ? entry.updatedAt.toISOString() : new Date().toISOString();
+
+          if (existing) {
+            await database.runAsync(
+              `UPDATE flock_houses SET
+                employeeId = ?, oxfordHouseId = ?, sortOrder = ?, updatedAt = ?
+              WHERE id = ?`,
+              [
+                entry.employeeId || localEmployeeId,
+                entry.oxfordHouseId,
+                entry.sortOrder ?? 0,
+                updatedAt,
+                entry.id,
+              ]
+            );
+          } else {
+            await database.runAsync(
+              `INSERT INTO flock_houses (
+                id, employeeId, oxfordHouseId, sortOrder, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                entry.id,
+                entry.employeeId || localEmployeeId,
+                entry.oxfordHouseId,
+                entry.sortOrder ?? 0,
+                createdAt,
+                updatedAt,
+              ]
+            );
+          }
+        }
+
+        const localRows = await database.getAllAsync(
+          'SELECT id FROM flock_houses WHERE employeeId = ?',
+          [localEmployeeId]
+        ) as Array<{ id: string }>;
+        for (const row of localRows) {
+          if (!backendIds.has(row.id) && !pendingDeletionIds.has(row.id) && !pendingUpsertIds.has(row.id)) {
+            await database.runAsync('DELETE FROM flock_houses WHERE id = ?', [row.id]);
+          }
+        }
+
+        debugLog(`✅ ApiSync: Flock houses sync completed`);
+      });
+    } catch (error) {
+      console.error('❌ ApiSync: Error syncing flock houses to local database:', error);
     }
   }
 

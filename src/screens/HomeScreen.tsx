@@ -417,6 +417,14 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         color: colors.primary,
         onPress: () => navigation.navigate('SavedAddresses'),
       },
+      'my-flock': {
+        id: 'my-flock',
+        icon: 'sheep',
+        iconFamily: 'material-community',
+        label: 'My Flock',
+        color: colors.primary,
+        onPress: () => navigation.navigate('MyFlock'),
+      },
     };
 
     // Get saved order from preferences

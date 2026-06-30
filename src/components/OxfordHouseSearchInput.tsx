@@ -12,15 +12,17 @@ import {
   Alert,
   Keyboard,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { OxfordHouse, SavedAddress } from '../types';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import { SavedAddressService } from '../services/savedAddressService';
+import { FlockService } from '../services/flockService';
 import { DatabaseService } from '../services/database';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
 
 type SearchResultItem = OxfordHouse & {
   isSavedAddress?: boolean;
+  isFlockHouse?: boolean;
   isRecentAddress?: boolean;
   isFrequentAddress?: boolean;
   sourceAddress?: string;
@@ -56,6 +58,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
   const [loading, setLoading] = useState(false);
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]); // New state for saved addresses
+  const [flockHouseIds, setFlockHouseIds] = useState<Set<string>>(new Set());
   const [recentAddresses, setRecentAddresses] = useState<SearchResultItem[]>([]);
   const [frequentAddresses, setFrequentAddresses] = useState<SearchResultItem[]>([]);
   const [selectedState, setSelectedState] = useState<string>(''); // State filter
@@ -66,9 +69,20 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     loadOxfordHouses();
     if (employeeId) {
       loadSavedAddresses(employeeId); // Load saved addresses on mount
+      loadFlockHouseIds(employeeId);
       loadFrequentAndRecentAddresses(employeeId);
     }
   }, [employeeId]);
+
+  const loadFlockHouseIds = async (empId: string) => {
+    try {
+      const flock = await FlockService.getFlockHouses(empId);
+      setFlockHouseIds(new Set(flock.map((entry) => entry.oxfordHouseId)));
+    } catch (error) {
+      console.error('Error loading flock houses:', error);
+      setFlockHouseIds(new Set());
+    }
+  };
 
   // Auto-open search interface if autoOpen prop is true
   useEffect(() => {
@@ -79,7 +93,7 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
 
   useEffect(() => {
     performSearch(searchQuery);
-  }, [searchQuery, allHouses, selectedState, recentAddresses, frequentAddresses]);
+  }, [searchQuery, allHouses, selectedState, recentAddresses, frequentAddresses, flockHouseIds]);
 
 
   const loadOxfordHouses = async () => {
@@ -223,7 +237,10 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
         updatedAt: addr.updatedAt,
         isSavedAddress: true, // Flag to identify saved addresses
         sourceAddress: addr.address,
-      } as SearchResultItem)), ...recentResults, ...frequentResults, ...oxfordResults];
+      } as SearchResultItem)), ...recentResults, ...frequentResults, ...oxfordResults.map(house => ({
+        ...house,
+        isFlockHouse: flockHouseIds.has(house.id),
+      }))];
 
       const seen = new Set<string>();
       const deduped = combinedResults.filter((item) => {
@@ -322,6 +339,37 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     }
   };
 
+  const handleAddToFlock = async (item: SearchResultItem) => {
+    if (!employeeId) {
+      Alert.alert('No Employee', 'Please select an employee first.');
+      return;
+    }
+    if (item.isSavedAddress || item.isRecentAddress || item.isFrequentAddress) {
+      return;
+    }
+    if (flockHouseIds.has(item.id)) {
+      Alert.alert('Already in Flock', 'This Oxford House is already in My Flock.');
+      return;
+    }
+    try {
+      const added = await FlockService.addToFlock(employeeId, item.id);
+      if (!added) {
+        Alert.alert('Already in Flock', 'This Oxford House is already in My Flock.');
+        return;
+      }
+      await loadFlockHouseIds(employeeId);
+      const { SyncIntegrationService } = await import('../services/syncIntegrationService');
+      void SyncIntegrationService.processSyncQueue();
+      Alert.alert('Added to Flock', `${item.name} is now in My Flock.`);
+      if (searchQuery.trim()) {
+        await performSearch(searchQuery);
+      }
+    } catch (error) {
+      console.error('Error adding to flock:', error);
+      Alert.alert('Add Failed', 'Could not add this house to My Flock.');
+    }
+  };
+
   const renderHouseItem = ({ item }: { item: SearchResultItem }) => (
     <TouchableOpacity
       style={styles.wazeHouseItem}
@@ -330,9 +378,9 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
     >
       <View style={styles.wazeHouseIconContainer}>
         <MaterialIcons 
-          name={item.isSavedAddress ? "star" : "home"} 
+          name={item.isSavedAddress ? "star" : item.isFlockHouse ? "home" : "home"} 
           size={24} 
-          color={item.isSavedAddress ? "#FFD700" : "#2196F3"} 
+          color={item.isSavedAddress ? "#FFD700" : item.isFlockHouse ? "#7CB342" : "#2196F3"} 
         />
       </View>
       <View style={styles.wazeHouseInfo}>
@@ -342,6 +390,12 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
             <View style={styles.savedBadge}>
               <MaterialIcons name="star" size={14} color="#FFD700" />
               <Text style={styles.savedBadgeText}>Saved</Text>
+            </View>
+          )}
+          {item.isFlockHouse && !item.isSavedAddress && (
+            <View style={[styles.savedBadge, { backgroundColor: '#E8F5E9' }]}>
+              <MaterialCommunityIcons name="sheep" size={14} color="#7CB342" />
+              <Text style={[styles.savedBadgeText, { color: '#558B2F' }]}>Flock</Text>
             </View>
           )}
         </View>
@@ -359,6 +413,19 @@ export const OxfordHouseSearchInput: React.FC<OxfordHouseSearchInputProps> = ({
         )}
       </View>
       <View style={styles.itemActions}>
+        {!item.isSavedAddress && !item.isRecentAddress && !item.isFrequentAddress && (
+          <TouchableOpacity
+            onPress={() => void handleAddToFlock(item)}
+            style={styles.inlineSaveButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons
+              name="sheep"
+              size={22}
+              color={item.isFlockHouse ? '#7CB342' : '#9E9E9E'}
+            />
+          </TouchableOpacity>
+        )}
         {!item.isSavedAddress && (
           <TouchableOpacity
             onPress={() => handleSaveAddress(item)}

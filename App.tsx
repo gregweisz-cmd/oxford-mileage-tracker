@@ -38,6 +38,7 @@ import DailyHoursScreen from './src/screens/DailyHoursScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import ManagerDashboardScreen from './src/screens/ManagerDashboardScreen';
 import SavedAddressesScreen from './src/screens/SavedAddressesScreen';
+import MyFlockScreen from './src/screens/MyFlockScreen';
 import DataSyncScreen from './src/screens/DataSyncScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import PreferencesScreen from './src/screens/PreferencesScreen';
@@ -365,6 +366,7 @@ export default function App() {
             <Stack.Screen name="Admin" component={AdminScreen} />
             <Stack.Screen name="ManagerDashboard" component={ManagerDashboardScreen} />
             <Stack.Screen name="SavedAddresses" component={SavedAddressesScreen} />
+            <Stack.Screen name="MyFlock" component={MyFlockScreen} />
             <Stack.Screen name="DataSync" component={DataSyncScreen} />
             <Stack.Screen name="MileageEntries" component={MileageEntriesScreen} />
             <Stack.Screen

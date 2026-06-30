@@ -5,6 +5,7 @@ export const LOCATION_SOURCE_ORDER: Array<NonNullable<LocationDetails['source']>
   'baseAddress',
   'baseAddress2',
   'saved',
+  'flock',
   'oxfordHouse',
   'manual',
   'recent',

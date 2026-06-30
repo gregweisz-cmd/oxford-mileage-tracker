@@ -417,6 +417,16 @@ function ensureTablesExist() {
         updatedAt TEXT NOT NULL
       )`);
 
+      db.run(`CREATE TABLE IF NOT EXISTS flock_houses (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        oxfordHouseId TEXT NOT NULL,
+        sortOrder INTEGER DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(employeeId, oxfordHouseId)
+      )`);
+
       // Create monthly reports table for approval workflow
       db.run(`CREATE TABLE IF NOT EXISTS monthly_reports (
         id TEXT PRIMARY KEY,
@@ -1514,6 +1524,16 @@ function createSampleDatabase() {
           category TEXT DEFAULT '',
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
+        )`);
+
+        db.run(`CREATE TABLE IF NOT EXISTS flock_houses (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          oxfordHouseId TEXT NOT NULL,
+          sortOrder INTEGER DEFAULT 0,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          UNIQUE(employeeId, oxfordHouseId)
         )`);
 
         // Create cost centers table

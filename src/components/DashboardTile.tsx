@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { hapticLight } from '../utils/haptics';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -11,6 +11,7 @@ export interface TileConfig {
   color: string;
   onPress: () => void;
   isPrimary?: boolean;
+  iconFamily?: 'material' | 'material-community';
 }
 
 interface DashboardTileProps {
@@ -45,11 +46,19 @@ function DashboardTile({ tile, isDragging }: DashboardTileProps) {
       }}
       activeOpacity={0.7}
     >
-      <MaterialIcons
-        name={tile.icon as any}
-        size={tile.isPrimary ? 28 : 24}
-        color={tile.color}
-      />
+      {tile.iconFamily === 'material-community' ? (
+        <MaterialCommunityIcons
+          name={tile.icon as any}
+          size={tile.isPrimary ? 28 : 24}
+          color={tile.color}
+        />
+      ) : (
+        <MaterialIcons
+          name={tile.icon as any}
+          size={tile.isPrimary ? 28 : 24}
+          color={tile.color}
+        />
+      )}
       <Text
         style={[
           tile.isPrimary ? styles.primaryText : styles.secondaryText,

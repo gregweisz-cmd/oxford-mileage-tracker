@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
-import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdometerReading, SavedAddress, TimeTracking, DailyDescription, CostCenterSummary, Vehicle } from '../types';
+import { Employee, OxfordHouse, MileageEntry, MonthlyReport, Receipt, DailyOdometerReading, SavedAddress, FlockHouse, TimeTracking, DailyDescription, CostCenterSummary, Vehicle } from '../types';
 import { MileageAnalysisService } from './mileageAnalysisService';
 import { ApiSyncService } from './apiSyncService';
 import { getFullLocationAddress } from '../utils/addressFormatter';
@@ -171,6 +171,8 @@ export class DatabaseService {
         entityType = 'dailyOdometerReading';
       } else if (operation === 'addSavedAddress' || operation === 'updateSavedAddress') {
         entityType = 'savedAddress';
+      } else if (operation === 'addFlockHouse' || operation === 'updateFlockHouse') {
+        entityType = 'flockHouse';
       } else {
         entityType = operation.replace('add', '').replace('update', '').toLowerCase();
       }
@@ -190,6 +192,7 @@ export class DatabaseService {
         const database = await getDatabase();
         await this.runReceiptsMigrations(database);
         await this.runVehicleMigrations(database);
+        await this.runFlockMigrations(database);
 
         const allEmployees = await this.getEmployees();
         debugLog('🔧 Database: Found employees:', allEmployees.length);
@@ -444,6 +447,19 @@ export class DatabaseService {
         );
       `);
       await this.runVehicleMigrations(database);
+
+      // Create flock_houses table (My Flock — pinned Oxford Houses)
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS flock_houses (
+          id TEXT PRIMARY KEY,
+          employeeId TEXT NOT NULL,
+          oxfordHouseId TEXT NOT NULL,
+          sortOrder INTEGER DEFAULT 0,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          UNIQUE(employeeId, oxfordHouseId)
+        );
+      `);
 
       // Create saved_addresses table
       await database.execAsync(`
@@ -797,6 +813,7 @@ export class DatabaseService {
         'daily_odometer_readings',
         'vehicles',
         'saved_addresses',
+        'flock_houses',
         'time_tracking',
         'daily_descriptions',
         'cost_center_summaries',
@@ -2931,6 +2948,102 @@ export class DatabaseService {
     queueSyncOperation('delete', 'savedAddress', { id });
   }
 
+  // My Flock (pinned Oxford Houses)
+  static async createFlockHouse(
+    entry: Omit<FlockHouse, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<FlockHouse> {
+    const id = this.generateId();
+    const now = new Date().toISOString();
+    const database = await getDatabase();
+
+    await database.runAsync(
+      `INSERT INTO flock_houses (id, employeeId, oxfordHouseId, sortOrder, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, entry.employeeId, entry.oxfordHouseId, entry.sortOrder ?? 0, now, now]
+    );
+
+    const newEntry: FlockHouse = {
+      id,
+      employeeId: entry.employeeId,
+      oxfordHouseId: entry.oxfordHouseId,
+      sortOrder: entry.sortOrder ?? 0,
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    };
+
+    await this.syncToApi('addFlockHouse', newEntry);
+    return newEntry;
+  }
+
+  static async getFlockHouses(employeeId?: string): Promise<FlockHouse[]> {
+    const database = await getDatabase();
+    let query = 'SELECT * FROM flock_houses';
+    const params: string[] = [];
+
+    if (employeeId) {
+      query += ' WHERE employeeId = ?';
+      params.push(employeeId);
+    }
+
+    query += ' ORDER BY sortOrder ASC, createdAt ASC';
+
+    const result = await database.getAllAsync(query, params);
+    return result.map((row: any) => ({
+      id: row.id,
+      employeeId: row.employeeId,
+      oxfordHouseId: row.oxfordHouseId,
+      sortOrder: Number(row.sortOrder) || 0,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    }));
+  }
+
+  static async getFlockHouse(id: string): Promise<FlockHouse | null> {
+    const database = await getDatabase();
+    const result = await database.getFirstAsync('SELECT * FROM flock_houses WHERE id = ?', [id]) as any;
+    if (!result) return null;
+    return {
+      id: result.id,
+      employeeId: result.employeeId,
+      oxfordHouseId: result.oxfordHouseId,
+      sortOrder: Number(result.sortOrder) || 0,
+      createdAt: new Date(result.createdAt),
+      updatedAt: new Date(result.updatedAt),
+    };
+  }
+
+  static async updateFlockHouse(id: string, updates: Partial<FlockHouse>): Promise<void> {
+    const now = new Date().toISOString();
+    const database = await getDatabase();
+
+    const fields = Object.keys(updates).filter(
+      key => key !== 'id' && key !== 'createdAt' && key !== 'updatedAt'
+    );
+    if (fields.length === 0) return;
+
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = fields.map(field => {
+      const value = updates[field as keyof FlockHouse];
+      return value instanceof Date ? value.toISOString() : value;
+    });
+
+    await database.runAsync(
+      `UPDATE flock_houses SET ${setClause}, updatedAt = ? WHERE id = ?`,
+      [...values, now, id] as any[]
+    );
+
+    const updated = await this.getFlockHouse(id);
+    if (updated) {
+      await this.syncToApi('updateFlockHouse', updated);
+    }
+  }
+
+  static async deleteFlockHouse(id: string): Promise<void> {
+    const database = await getDatabase();
+    await database.runAsync('DELETE FROM flock_houses WHERE id = ?', [id]);
+    queueSyncOperation('delete', 'flockHouse', { id });
+  }
+
 
   static async getMileageEntry(id: string): Promise<MileageEntry | null> {
     const database = await getDatabase();
@@ -3303,6 +3416,20 @@ export class DatabaseService {
         debugLog(`ℹ️ Column ${migration.column} already exists in vehicles table`);
       }
     }
+  }
+
+  private static async runFlockMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS flock_houses (
+        id TEXT PRIMARY KEY,
+        employeeId TEXT NOT NULL,
+        oxfordHouseId TEXT NOT NULL,
+        sortOrder INTEGER DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(employeeId, oxfordHouseId)
+      );
+    `);
   }
 
 

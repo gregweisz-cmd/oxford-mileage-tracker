@@ -42,6 +42,7 @@ import { parseBaseAddress, formatBaseAddress, updateBaseAddressPart } from '../u
 import { toCanonicalAddress } from '../utils/locationSelection';
 import GooglePlacesTextField from './GooglePlacesTextField';
 import { Vehicle, VehicleApiService } from '../services/vehicleApiService';
+import MyFlockManagement from './MyFlockManagement';
 
 interface UserSettingsProps {
   employeeId: string;
@@ -858,6 +859,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
             </Box>
           </CardContent>
         </Card>
+
+        <MyFlockManagement employeeId={employeeId} />
 
         {/* Base Addresses */}
         <Card>

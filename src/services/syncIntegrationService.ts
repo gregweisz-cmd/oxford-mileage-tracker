@@ -20,7 +20,7 @@ function redactEntityForDebugLog(entity: unknown): unknown {
 export interface SyncQueueItem {
   id: string;
   operation: 'create' | 'update' | 'delete';
-  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress';
+  entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse';
   data: any;
   timestamp: Date;
   retryCount: number;
@@ -226,7 +226,7 @@ export class SyncIntegrationService {
    */
   static async queueSyncOperation(
     operation: 'create' | 'update' | 'delete',
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse',
     data: any
   ): void {
     // Validate data before queuing
@@ -500,7 +500,7 @@ export class SyncIntegrationService {
    * Process a group of operations for a specific entity type
    */
   private static async processEntityGroup(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse',
     operations: SyncQueueItem[]
   ): Promise<string[]> {
     const succeededQueueItemIds: string[] = [];
@@ -545,7 +545,7 @@ export class SyncIntegrationService {
    * Process create/update operations
    */
   private static async processCreateUpdateOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse',
     operations: SyncQueueItem[]
   ): Promise<void> {
     const entities = operations.map(op => op.data);
@@ -555,6 +555,7 @@ export class SyncIntegrationService {
                 entityType === 'timeTracking' ? 'timeTracking' :
                 entityType === 'dailyOdometerReading' ? 'dailyOdometerReadings' :
                 entityType === 'savedAddress' ? 'savedAddresses' :
+                entityType === 'flockHouse' ? 'flockHouses' :
                 `${entityType}s`;
     syncData[key] = entities;
     
@@ -579,7 +580,7 @@ export class SyncIntegrationService {
    * Process delete operations
    */
   private static async processDeleteOperations(
-    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress',
+    entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse',
     operations: SyncQueueItem[]
   ): Promise<string[]> {
     const succeededQueueItemIds: string[] = [];
@@ -634,6 +635,8 @@ export class SyncIntegrationService {
         return `${baseUrl}/daily-odometer-readings/${id}`;
       case 'savedAddress':
         return `${baseUrl}/saved-addresses/${id}`;
+      case 'flockHouse':
+        return `${baseUrl}/flock-houses/${id}`;
       default:
         throw new Error(`Unknown entity type: ${entityType}`);
     }
@@ -682,6 +685,8 @@ export class SyncIntegrationService {
       const dailyDescriptions = await DatabaseService.getDailyDescriptions(currentEmployeeId);
 
       const savedAddresses = await DatabaseService.getSavedAddresses(currentEmployeeId);
+
+      const flockHouses = await DatabaseService.getFlockHouses(currentEmployeeId);
         
         // Sync employee data (just the current employee)
         const employeeData = currentEmployee ? [currentEmployee] : [];
@@ -693,6 +698,7 @@ export class SyncIntegrationService {
         timeTracking,
         dailyDescriptions,
         savedAddresses,
+        flockHouses,
         });
         
         if (result.success) {
@@ -762,7 +768,7 @@ export class SyncIntegrationService {
   /**
    * Get IDs of items pending deletion for a specific entity type
    */
-  static getPendingDeletionIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress'): Set<string> {
+  static getPendingDeletionIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse'): Set<string> {
     const pendingIds = new Set<string>();
     this.syncQueue.forEach(item => {
       if (item.operation === 'delete' && item.entityType === entityType && item.data?.id) {
@@ -776,7 +782,7 @@ export class SyncIntegrationService {
    * Get IDs of items pending create/update for a specific entity type.
    * Useful to avoid deleting unsynced local records during backend pull cleanup.
    */
-  static getPendingUpsertIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress'): Set<string> {
+  static getPendingUpsertIds(entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse'): Set<string> {
     const pendingIds = new Set<string>();
     this.syncQueue.forEach(item => {
       if ((item.operation === 'create' || item.operation === 'update') && item.entityType === entityType && item.data?.id) {

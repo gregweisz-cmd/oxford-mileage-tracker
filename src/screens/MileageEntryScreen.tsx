@@ -16,7 +16,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { DistanceService } from '../services/distanceService';
@@ -640,7 +640,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
     setShowLocationOptionsModal(true);
   };
 
-  const handleLocationOption = (option: 'lastDestination' | 'baseAddress' | 'favoriteAddresses' | 'oxfordHouse' | 'newLocation') => {
+  const handleLocationOption = (option: 'lastDestination' | 'baseAddress' | 'favoriteAddresses' | 'myFlock' | 'oxfordHouse' | 'newLocation') => {
     setShowLocationOptionsModal(false);
     
     setTimeout(() => {
@@ -675,6 +675,12 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
       } else if (option === 'favoriteAddresses') {
         // Pass this screen's route key so favorites return here (not a new MileageEntry).
         navigation.navigate('SavedAddresses', {
+          fromMileageEntry: true,
+          locationType: currentLocationType,
+          entryId: editingEntryIdRef.current ?? route.params?.entryId,
+        });
+      } else if (option === 'myFlock') {
+        navigation.navigate('MyFlock', {
           fromMileageEntry: true,
           locationType: currentLocationType,
           entryId: editingEntryIdRef.current ?? route.params?.entryId,
@@ -1712,6 +1718,17 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
               <View style={styles.locationOptionText}>
                 <Text style={styles.locationOptionTitle}>Choose from Favorite Addresses</Text>
                 <Text style={styles.locationOptionSubtitle}>Select from your saved favorite locations</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationOptionButton}
+              onPress={() => handleLocationOption('myFlock')}
+            >
+              <MaterialCommunityIcons name="sheep" size={24} color="#7CB342" />
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>My Flock</Text>
+                <Text style={styles.locationOptionSubtitle}>Quick pick from Oxford Houses in your flock</Text>
               </View>
             </TouchableOpacity>
 

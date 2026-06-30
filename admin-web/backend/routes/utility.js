@@ -283,6 +283,140 @@ router.delete('/api/saved-addresses/:id', requireAuth, (req, res) => {
   });
 });
 
+// ===== MY FLOCK (pinned Oxford Houses) =====
+
+router.get('/api/flock-houses', requireAuth, (req, res) => {
+  const db = dbService.getDb();
+  const { employeeId } = req.query;
+
+  if (!employeeId) {
+    res.status(400).json({ error: 'employeeId is required' });
+    return;
+  }
+
+  db.all(
+    'SELECT * FROM flock_houses WHERE employeeId = ? ORDER BY sortOrder ASC, createdAt ASC',
+    [employeeId],
+    (err, rows) => {
+      if (err) {
+        debugError('❌ Error fetching flock houses:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows || []);
+    }
+  );
+});
+
+router.post('/api/flock-houses', requireAuth, (req, res) => {
+  const db = dbService.getDb();
+  const { employeeId, oxfordHouseId, sortOrder } = req.body || {};
+
+  if (!employeeId || !String(oxfordHouseId || '').trim()) {
+    res.status(400).json({ error: 'employeeId and oxfordHouseId are required' });
+    return;
+  }
+
+  const id = `flock-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  const order = Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0;
+
+  db.run(
+    `INSERT INTO flock_houses (id, employeeId, oxfordHouseId, sortOrder, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, String(employeeId), String(oxfordHouseId).trim(), order, now, now],
+    function(err) {
+      if (err) {
+        if (String(err.message || '').includes('UNIQUE')) {
+          res.status(409).json({ error: 'This Oxford House is already in your flock' });
+          return;
+        }
+        debugError('❌ Error creating flock house:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.status(201).json({
+        id,
+        employeeId: String(employeeId),
+        oxfordHouseId: String(oxfordHouseId).trim(),
+        sortOrder: order,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  );
+});
+
+router.put('/api/flock-houses/:id', requireAuth, (req, res) => {
+  const db = dbService.getDb();
+  const { id } = req.params;
+  const { employeeId, oxfordHouseId, sortOrder } = req.body || {};
+  const now = new Date().toISOString();
+
+  db.run(
+    `UPDATE flock_houses
+     SET oxfordHouseId = COALESCE(?, oxfordHouseId),
+         sortOrder = COALESCE(?, sortOrder),
+         updatedAt = ?
+     WHERE id = ?`,
+    [
+      oxfordHouseId != null ? String(oxfordHouseId).trim() : null,
+      sortOrder != null && Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
+      now,
+      id,
+    ],
+    function(err) {
+      if (err) {
+        debugError('❌ Error updating flock house:', err);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes > 0) {
+        res.json({ message: 'Flock house updated', id, updatedAt: now });
+        return;
+      }
+
+      if (!String(employeeId || '').trim() || !String(oxfordHouseId || '').trim()) {
+        res.status(404).json({ error: 'Flock house not found and employeeId/oxfordHouseId missing for create' });
+        return;
+      }
+
+      const order = Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0;
+      db.run(
+        `INSERT INTO flock_houses (id, employeeId, oxfordHouseId, sortOrder, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id, String(employeeId).trim(), String(oxfordHouseId).trim(), order, now, now],
+        function(insertErr) {
+          if (insertErr) {
+            debugError('❌ Error upserting flock house:', insertErr);
+            res.status(500).json({ error: insertErr.message });
+            return;
+          }
+          res.status(201).json({ message: 'Flock house created', id, createdAt: now, updatedAt: now });
+        }
+      );
+    }
+  );
+});
+
+router.delete('/api/flock-houses/:id', requireAuth, (req, res) => {
+  const db = dbService.getDb();
+  const { id } = req.params;
+
+  db.run('DELETE FROM flock_houses WHERE id = ?', [id], function(err) {
+    if (err) {
+      debugError('❌ Error deleting flock house:', err);
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (this.changes === 0) {
+      res.status(404).json({ error: 'Flock house not found' });
+      return;
+    }
+    res.json({ message: 'Flock house removed from flock', id });
+  });
+});
+
 // ===== OXFORD HOUSES =====
 
 // Cache for Oxford Houses data

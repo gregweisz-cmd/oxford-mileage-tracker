@@ -44,6 +44,7 @@ export interface LocationDetails {
     | 'baseAddress'
     | 'baseAddress2'
     | 'saved'
+    | 'flock'
     | 'oxfordHouse'
     | 'manual'
     | 'recent'
@@ -64,6 +65,16 @@ export interface SavedAddress {
   latitude?: number;
   longitude?: number;
   category?: string; // e.g., 'Office', 'Client', 'Home', 'Other'
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Oxford House pinned to a staff member's "My Flock" list for quick location picking. */
+export interface FlockHouse {
+  id: string;
+  employeeId: string;
+  oxfordHouseId: string;
+  sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -247,7 +258,20 @@ export type RootStackParamList = {
   DailyHours: undefined;
   Admin: undefined;
   ManagerDashboard: undefined;
-  SavedAddresses: undefined;
+  SavedAddresses: {
+    fromMileageEntry?: boolean;
+    locationType?: 'start' | 'end';
+    entryId?: string;
+    fromGpsTrackingStart?: boolean;
+    fromGpsTrackingEnd?: boolean;
+  } | undefined;
+  MyFlock: {
+    fromMileageEntry?: boolean;
+    locationType?: 'start' | 'end';
+    entryId?: string;
+    fromGpsTrackingStart?: boolean;
+    fromGpsTrackingEnd?: boolean;
+  } | undefined;
   DataSync: undefined;
   EmployeeProfile: undefined;
   Settings: { currentEmployeeId?: string };
