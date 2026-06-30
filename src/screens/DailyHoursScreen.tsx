@@ -571,22 +571,19 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
     }
   };
 
-  /** Same pattern as Per Diem: save day, sync, then go to dashboard (floating Save). */
+  /** Floating Save: persist the day and stay on the day list so the user can keep editing. */
   const handleFloatingSave = async () => {
     if (!currentEmployee || !hasUnsavedChanges) return;
     try {
       setSaving(true);
       const saved = await handleSave();
       if (!saved) return;
-      const result = await SyncIntegrationService.forceSync(currentEmployee.id);
-      if (!result.success) {
-        Alert.alert(
-          'Sync issue',
-          result.error || 'Could not sync. Check your connection or try again from Settings.'
-        );
-        return;
-      }
-      navigation.navigate('Home');
+      // handleSave() already persisted this day directly to the backend, so a full
+      // forceSync (re-push of every entry + full pull) is redundant and was tripping
+      // the backend rate limit (HTTP 429) after a few saves. Just flush any lightweight
+      // queued changes (e.g. mileage created elsewhere) instead. handleSave() already
+      // closed the edit modal, so we stay on the day list for continued editing.
+      await SyncIntegrationService.pushPendingChanges();
     } catch (e) {
       if (__DEV__) console.error('DailyHoursScreen: handleFloatingSave', e);
       Alert.alert('Error', 'Something went wrong while saving.');
@@ -1216,7 +1213,7 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                   disabled={saving}
                   activeOpacity={0.85}
                   accessibilityRole="button"
-                  accessibilityLabel="Save, sync, and return to dashboard"
+                  accessibilityLabel="Save day"
                 >
                   <MaterialIcons name="save" size={20} color="#fff" style={styles.hoursFloatingSaveIcon} />
                   <Text style={styles.hoursFloatingSaveText}>

@@ -1358,11 +1358,23 @@ function ensureTablesExist() {
       // REMOVED: All sample mileage, receipt, and time tracking entries
       // Real data will come from mobile app and web portal
 
-      debugLog('✅ All tables ensured to exist with sample data');
-      
       // REMOVED: cleanupDuplicates() - was deleting employees incorrectly
-      
-      resolve();
+
+      // Resolve ONLY after all queued DDL above has actually executed. db.serialize()
+      // queues these CREATE statements but they run asynchronously on the SQLite worker;
+      // resolving synchronously here let runMigrations() fire its ALTER TABLE before the
+      // CREATE TABLEs had run, causing "SQLITE_ERROR: no such table: notifications" on boot.
+      // A trailing statement inside the same serialize() block runs last, so its callback
+      // is a reliable completion barrier for everything queued before it.
+      db.get('SELECT 1 AS ok', (err) => {
+        if (err) {
+          debugError('❌ Error finalizing table creation:', err.message);
+          reject(err);
+          return;
+        }
+        debugLog('✅ All tables ensured to exist');
+        resolve();
+      });
     });
   });
 }
