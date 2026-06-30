@@ -611,9 +611,26 @@ function ensureTablesExist() {
         minDistanceFromBase REAL NOT NULL,
         description TEXT NOT NULL,
         useActualAmount INTEGER DEFAULT 0,
+        ruleType TEXT DEFAULT 'single',
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS per_diem_tiers (
+        id TEXT PRIMARY KEY,
+        costCenter TEXT NOT NULL,
+        label TEXT NOT NULL,
+        amount REAL NOT NULL,
+        minHours REAL NOT NULL DEFAULT 0,
+        minMiles REAL NOT NULL DEFAULT 0,
+        minDistanceFromBase REAL NOT NULL DEFAULT 0,
+        requiresOvernight INTEGER DEFAULT 0,
+        sortOrder INTEGER NOT NULL DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_per_diem_tiers_cost_center ON per_diem_tiers(costCenter)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS ees_rules (
         id TEXT PRIMARY KEY,
@@ -1161,8 +1178,29 @@ function ensureTablesExist() {
               else debugLog('✅ Added useActualAmount column to per_diem_rules table');
             });
           }
+          if (!columnNames.includes('ruleType')) {
+            db.run(`ALTER TABLE per_diem_rules ADD COLUMN ruleType TEXT DEFAULT 'single'`, (err) => {
+              if (err) debugLog('Note: ruleType column may already exist');
+              else debugLog('✅ Added ruleType column to per_diem_rules table');
+            });
+          }
         }
       });
+
+      db.run(`CREATE TABLE IF NOT EXISTS per_diem_tiers (
+        id TEXT PRIMARY KEY,
+        costCenter TEXT NOT NULL,
+        label TEXT NOT NULL,
+        amount REAL NOT NULL,
+        minHours REAL NOT NULL DEFAULT 0,
+        minMiles REAL NOT NULL DEFAULT 0,
+        minDistanceFromBase REAL NOT NULL DEFAULT 0,
+        requiresOvernight INTEGER DEFAULT 0,
+        sortOrder INTEGER NOT NULL DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_per_diem_tiers_cost_center ON per_diem_tiers(costCenter)`);
 
       // Add stayedOvernight column to daily_descriptions table if it doesn't exist
       db.all(`PRAGMA table_info(daily_descriptions)`, (err, columns) => {
@@ -1564,6 +1602,22 @@ function createSampleDatabase() {
           minMiles REAL NOT NULL,
           minDistanceFromBase REAL NOT NULL,
           description TEXT NOT NULL,
+          useActualAmount INTEGER DEFAULT 0,
+          ruleType TEXT DEFAULT 'single',
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        )`);
+
+        db.run(`CREATE TABLE IF NOT EXISTS per_diem_tiers (
+          id TEXT PRIMARY KEY,
+          costCenter TEXT NOT NULL,
+          label TEXT NOT NULL,
+          amount REAL NOT NULL,
+          minHours REAL NOT NULL DEFAULT 0,
+          minMiles REAL NOT NULL DEFAULT 0,
+          minDistanceFromBase REAL NOT NULL DEFAULT 0,
+          requiresOvernight INTEGER DEFAULT 0,
+          sortOrder INTEGER NOT NULL DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`);

@@ -15,7 +15,7 @@ const { requireAuth, requireAnyRole, requireSelfOrRole } = require('../middlewar
 const externalEmployeeSync = require('../services/externalEmployeeSync');
 const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
 const { logAuditEvent } = require('../services/auditLogService');
-const { repairAfterSeniorStaffUnavailable } = require('../services/seniorStaffRepairService');
+const { repairAfterSeniorStaffUnavailable, repairAfterSupervisorUnavailable, repairAllStaffAssignedToArchivedSupervisors } = require('../services/seniorStaffRepairService');
 const { hasSeniorStaffDesignation } = require('../utils/staffDesignations');
 
 function withoutSensitiveEmployeeFields(employee) {
@@ -895,6 +895,23 @@ router.put('/api/employees/:id', requireSelfOrRole('id', ['admin']), async (req,
 });
 
 /**
+ * Repair staff still assigned to archived supervisors (one-time / bulk cleanup).
+ */
+router.post('/api/employees/repair-supervisor-assignments', requireAnyRole(['admin']), async (req, res) => {
+  try {
+    const result = await repairAllStaffAssignedToArchivedSupervisors();
+    debugLog(`✅ Repaired supervisor assignments: cleared ${result.clearedStaff} staff`);
+    res.json({
+      message: `Cleared supervisor assignment for ${result.clearedStaff} staff member(s).`,
+      ...result,
+    });
+  } catch (err) {
+    debugError('❌ Error repairing supervisor assignments:', err);
+    res.status(500).json({ error: err.message || 'Failed to repair supervisor assignments' });
+  }
+});
+
+/**
  * Archive employee (soft delete)
  */
 router.post('/api/employees/:id/archive', requireAnyRole(['admin']), (req, res) => {
@@ -920,17 +937,26 @@ router.post('/api/employees/:id/archive', requireAnyRole(['admin']), (req, res) 
       }
       debugLog(`✅ Employee archived successfully: ${id} (${this.changes} row(s) updated)`);
       let seniorStaffRepair = { clearedStaff: 0, reroutedReports: 0 };
+      let supervisorRepair = { clearedStaff: 0, reroutedReports: 0 };
       try {
         seniorStaffRepair = await repairAfterSeniorStaffUnavailable(id);
       } catch (repairErr) {
         debugWarn('⚠️ Senior staff repair after archive failed:', repairErr?.message || repairErr);
+      }
+      try {
+        supervisorRepair = await repairAfterSupervisorUnavailable(id);
+      } catch (repairErr) {
+        debugWarn('⚠️ Supervisor repair after archive failed:', repairErr?.message || repairErr);
       }
       logAuditEvent({
         action: 'employee_archived',
         actor: req.authenticatedEmployee,
         targetType: 'employee',
         targetId: id,
-        details: seniorStaffRepair.clearedStaff > 0 ? { seniorStaffRepair } : undefined,
+        details:
+          seniorStaffRepair.clearedStaff > 0 || supervisorRepair.clearedStaff > 0
+            ? { seniorStaffRepair, supervisorRepair }
+            : undefined,
       });
       
       // Verify the archive was successful
@@ -940,7 +966,11 @@ router.post('/api/employees/:id/archive', requireAnyRole(['admin']), (req, res) 
         }
       });
       
-      res.json({ message: 'Employee archived successfully', seniorStaffRepair });
+      res.json({
+        message: 'Employee archived successfully',
+        seniorStaffRepair,
+        supervisorRepair,
+      });
     }
   );
 });

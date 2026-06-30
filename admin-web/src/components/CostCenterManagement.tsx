@@ -45,7 +45,8 @@ import {
 import { CostCenterApiService, CostCenter } from '../services/costCenterApiService';
 import { EmployeeApiService } from '../services/employeeApiService';
 
-import { PerDiemRulesService } from '../services/perDiemRulesService';
+import { PerDiemRulesService, PerDiemTier } from '../services/perDiemRulesService';
+import { ARIZONA_TIER_TEMPLATE } from '../utils/perDiemTierEvaluator';
 import { debugError } from '../config/debug';
 
 /** Sub-tab index under Cost Center Management (must match <Tab> order). */
@@ -218,9 +219,12 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
       const existingRules = await PerDiemRulesService.getRulesByCostCenter(costCenter.name);
       
       if (existingRules) {
-        setPerDiemRules(existingRules);
+        setPerDiemRules({
+          ...existingRules,
+          ruleType: existingRules.ruleType || 'single',
+          tiers: existingRules.tiers || [],
+        });
       } else {
-        // Set default rules for this cost center
         setPerDiemRules({
           costCenter: costCenter.name,
           maxAmount: 35,
@@ -228,7 +232,9 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
           minMiles: 100,
           minDistanceFromBase: 50,
           description: 'Standard Per Diem rules',
-          useActualAmount: false
+          useActualAmount: false,
+          ruleType: 'single',
+          tiers: [],
         });
       }
       
@@ -238,6 +244,60 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
       debugError('Error loading Per Diem rules:', error);
       setError('Failed to load Per Diem rules');
     }
+  };
+
+  const handleLoadArizonaTemplate = () => {
+    if (!editingPerDiemCostCenter || !perDiemRules) return;
+    const tiers: PerDiemTier[] = ARIZONA_TIER_TEMPLATE.map((tier, index) => ({
+      ...tier,
+      id: `tier-${Date.now()}-${index}`,
+      costCenter: editingPerDiemCostCenter.name,
+    }));
+    setPerDiemRules({
+      ...perDiemRules,
+      ruleType: 'tiered',
+      description: 'Arizona tiered per diem',
+      tiers,
+    });
+  };
+
+  const handleTierFieldChange = (
+    tierId: string,
+    field: keyof PerDiemTier,
+    value: string | number | boolean
+  ) => {
+    if (!perDiemRules) return;
+    const tiers = (perDiemRules.tiers || []).map((tier: PerDiemTier) =>
+      tier.id === tierId ? { ...tier, [field]: value } : tier
+    );
+    setPerDiemRules({ ...perDiemRules, tiers });
+  };
+
+  const handleAddTier = () => {
+    if (!editingPerDiemCostCenter || !perDiemRules) return;
+    const nextTier: PerDiemTier = {
+      id: `tier-${Date.now()}`,
+      costCenter: editingPerDiemCostCenter.name,
+      label: 'New Tier',
+      amount: 35,
+      minHours: 8,
+      minMiles: 100,
+      minDistanceFromBase: 0,
+      requiresOvernight: false,
+      sortOrder: ((perDiemRules.tiers || []).length + 1) * 100,
+    };
+    setPerDiemRules({
+      ...perDiemRules,
+      tiers: [...(perDiemRules.tiers || []), nextTier],
+    });
+  };
+
+  const handleRemoveTier = (tierId: string) => {
+    if (!perDiemRules) return;
+    setPerDiemRules({
+      ...perDiemRules,
+      tiers: (perDiemRules.tiers || []).filter((tier: PerDiemTier) => tier.id !== tierId),
+    });
   };
 
   const handleSavePerDiemRules = async () => {
@@ -1056,56 +1116,179 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
         </DialogTitle>
         <DialogContent>
           {perDiemRules && (
-            <Box sx={{ pt: 2 }}>
+            <Box sx={{ pt: 2, minWidth: 560 }}>
               <Alert severity="info" sx={{ mb: 3 }}>
                 Configure Per Diem eligibility rules for <strong>{editingPerDiemCostCenter?.name}</strong>
               </Alert>
 
-              <TextField
-                fullWidth
-                label="Max Per Diem Amount"
-                type="number"
-                value={perDiemRules.maxAmount || 35}
-                onChange={(e) => setPerDiemRules({ ...perDiemRules, maxAmount: parseFloat(e.target.value) })}
-                margin="normal"
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">$</InputAdornment>
-                }}
-                helperText="Maximum Per Diem amount per day"
-              />
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Rule type
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Chip
+                    label="Single amount"
+                    color={perDiemRules.ruleType !== 'tiered' ? 'primary' : 'default'}
+                    onClick={() => setPerDiemRules({ ...perDiemRules, ruleType: 'single' })}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                  <Chip
+                    label="Tiered (multiple rates)"
+                    color={perDiemRules.ruleType === 'tiered' ? 'primary' : 'default'}
+                    onClick={() => setPerDiemRules({ ...perDiemRules, ruleType: 'tiered', tiers: perDiemRules.tiers || [] })}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </Box>
+              </Box>
 
-              <TextField
-                fullWidth
-                label="Minimum Hours Worked"
-                type="number"
-                value={perDiemRules.minHours || 8}
-                onChange={(e) => setPerDiemRules({ ...perDiemRules, minHours: parseFloat(e.target.value) })}
-                margin="normal"
-                helperText="Minimum hours worked to qualify for Per Diem"
-              />
+              {perDiemRules.ruleType === 'tiered' ? (
+                <Box>
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                    <Button size="small" variant="outlined" onClick={handleLoadArizonaTemplate}>
+                      Load Arizona template
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={handleAddTier}>
+                      Add tier
+                    </Button>
+                  </Box>
+                  {(perDiemRules.tiers || []).length === 0 && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      Add at least one tier, or load the Arizona template.
+                    </Alert>
+                  )}
+                  {(perDiemRules.tiers || []).map((tier: PerDiemTier) => (
+                    <Paper key={tier.id} variant="outlined" sx={{ p: 2, mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle2">{tier.label || 'Tier'}</Typography>
+                        <IconButton size="small" color="error" onClick={() => handleRemoveTier(tier.id)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Box>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Label"
+                          size="small"
+                          value={tier.label}
+                          onChange={(e) => handleTierFieldChange(tier.id, 'label', e.target.value)}
+                        />
+                        <TextField
+                          label="Amount ($)"
+                          size="small"
+                          type="number"
+                          value={tier.amount}
+                          onChange={(e) => handleTierFieldChange(tier.id, 'amount', parseFloat(e.target.value) || 0)}
+                        />
+                        <TextField
+                          label="Min hours"
+                          size="small"
+                          type="number"
+                          value={tier.minHours}
+                          onChange={(e) => handleTierFieldChange(tier.id, 'minHours', parseFloat(e.target.value) || 0)}
+                        />
+                        <TextField
+                          label="Min miles driven"
+                          size="small"
+                          type="number"
+                          value={tier.minMiles}
+                          onChange={(e) => handleTierFieldChange(tier.id, 'minMiles', parseFloat(e.target.value) || 0)}
+                        />
+                        <TextField
+                          label="Min miles from BA"
+                          size="small"
+                          type="number"
+                          value={tier.minDistanceFromBase}
+                          onChange={(e) => handleTierFieldChange(tier.id, 'minDistanceFromBase', parseFloat(e.target.value) || 0)}
+                        />
+                        <TextField
+                          label="Priority (higher wins)"
+                          size="small"
+                          type="number"
+                          value={tier.sortOrder}
+                          onChange={(e) => handleTierFieldChange(tier.id, 'sortOrder', parseInt(e.target.value, 10) || 0)}
+                        />
+                      </Box>
+                      <FormControlLabel
+                        sx={{ mt: 1 }}
+                        control={
+                          <Checkbox
+                            checked={tier.requiresOvernight}
+                            onChange={(e) => handleTierFieldChange(tier.id, 'requiresOvernight', e.target.checked)}
+                          />
+                        }
+                        label="Requires stayed overnight"
+                      />
+                    </Paper>
+                  ))}
+                </Box>
+              ) : (
+                <>
+                  <TextField
+                    fullWidth
+                    label="Max Per Diem Amount"
+                    type="number"
+                    value={perDiemRules.maxAmount || 35}
+                    onChange={(e) => setPerDiemRules({ ...perDiemRules, maxAmount: parseFloat(e.target.value) })}
+                    margin="normal"
+                    InputProps={{
+                      startAdornment: <InputAdornment position="start">$</InputAdornment>
+                    }}
+                    helperText="Maximum Per Diem amount per day"
+                  />
 
-              <TextField
-                fullWidth
-                label="Minimum Miles Driven"
-                type="number"
-                value={perDiemRules.minMiles || 100}
-                onChange={(e) => setPerDiemRules({ ...perDiemRules, minMiles: parseFloat(e.target.value) })}
-                margin="normal"
-                helperText="Minimum miles driven to qualify for Per Diem"
-              />
+                  <TextField
+                    fullWidth
+                    label="Minimum Hours Worked"
+                    type="number"
+                    value={perDiemRules.minHours || 8}
+                    onChange={(e) => setPerDiemRules({ ...perDiemRules, minHours: parseFloat(e.target.value) })}
+                    margin="normal"
+                    helperText="Minimum hours worked to qualify for Per Diem"
+                  />
 
-              <TextField
-                fullWidth
-                label="Minimum Distance from Base"
-                type="number"
-                value={perDiemRules.minDistanceFromBase || 50}
-                onChange={(e) => setPerDiemRules({ ...perDiemRules, minDistanceFromBase: parseFloat(e.target.value) })}
-                margin="normal"
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">miles</InputAdornment>
-                }}
-                helperText="Minimum distance from base address to qualify"
-              />
+                  <TextField
+                    fullWidth
+                    label="Minimum Miles Driven"
+                    type="number"
+                    value={perDiemRules.minMiles || 100}
+                    onChange={(e) => setPerDiemRules({ ...perDiemRules, minMiles: parseFloat(e.target.value) })}
+                    margin="normal"
+                    helperText="Minimum miles driven to qualify for Per Diem"
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Minimum Distance from Base"
+                    type="number"
+                    value={perDiemRules.minDistanceFromBase || 50}
+                    onChange={(e) => setPerDiemRules({ ...perDiemRules, minDistanceFromBase: parseFloat(e.target.value) })}
+                    margin="normal"
+                    InputProps={{
+                      endAdornment: <InputAdornment position="end">miles</InputAdornment>
+                    }}
+                    helperText="Minimum distance from base address to qualify"
+                  />
+
+                  <Box sx={{ mt: 2, mb: 1 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Per Diem Type:
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                      <Chip
+                        label="Fixed Amount"
+                        color={!perDiemRules.useActualAmount ? 'primary' : 'default'}
+                        onClick={() => setPerDiemRules({ ...perDiemRules, useActualAmount: false })}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                      <Chip
+                        label="Actual Amount (up to max)"
+                        color={perDiemRules.useActualAmount ? 'primary' : 'default'}
+                        onClick={() => setPerDiemRules({ ...perDiemRules, useActualAmount: true })}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                    </Box>
+                  </Box>
+                </>
+              )}
 
               <TextField
                 fullWidth
@@ -1117,32 +1300,6 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
                 rows={2}
                 helperText="Optional description for these rules"
               />
-
-              <Box sx={{ mt: 2, mb: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Per Diem Type:
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <Chip
-                    label="Fixed Amount ($35)"
-                    color={!perDiemRules.useActualAmount ? 'primary' : 'default'}
-                    onClick={() => setPerDiemRules({ ...perDiemRules, useActualAmount: false })}
-                    sx={{ cursor: 'pointer' }}
-                  />
-                  <Chip
-                    label="Actual Amount (up to max)"
-                    color={perDiemRules.useActualAmount ? 'primary' : 'default'}
-                    onClick={() => setPerDiemRules({ ...perDiemRules, useActualAmount: true })}
-                    sx={{ cursor: 'pointer' }}
-                  />
-                </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                  {!perDiemRules.useActualAmount 
-                    ? 'Employees receive fixed $' + (perDiemRules.maxAmount || 35) + ' when eligible'
-                    : 'Employees enter actual expenses up to $' + (perDiemRules.maxAmount || 35)
-                  }
-                </Typography>
-              </Box>
             </Box>
           )}
         </DialogContent>

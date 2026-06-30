@@ -10,7 +10,8 @@ import {
   Alert,
 } from '@mui/material';
 import { Today as TodayIcon } from '@mui/icons-material';
-import { PerDiemRulesService } from '../services/perDiemRulesService';
+import { PerDiemRulesService, PerDiemRule } from '../services/perDiemRulesService';
+import { getMaxDailyAmount } from '../utils/perDiemTierEvaluator';
 import { apiGet, rateLimitedApi } from '../services/rateLimitedApi';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
@@ -25,6 +26,7 @@ export interface PerDiemEntry {
   amount: number;
   isEligible: boolean;
   receiptId?: string;
+  suggestedAmount?: number;
 }
 
 export interface PerDiemTabProps {
@@ -34,7 +36,6 @@ export interface PerDiemTabProps {
   month: number;
   year: number;
   onDataChange?: () => void;
-  /** When user clicks "Go to today", parent should set its month/year to current month/year */
   onGoToToday?: () => void;
   supervisorMode?: boolean;
   selectedRevisionItems?: Set<string>;
@@ -44,6 +45,60 @@ export interface PerDiemTabProps {
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
+}
+
+async function fetchDistanceMiles(from: string, to: string): Promise<number> {
+  const fromEnc = encodeURIComponent(from);
+  const toEnc = encodeURIComponent(to);
+  const res = await fetch(`${API_BASE_URL}/api/distance?from=${fromEnc}&to=${toEnc}`, {
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || typeof data.miles !== 'number') return 0;
+  return data.miles;
+}
+
+async function computeMaxDistanceFromBase(
+  baseAddress: string,
+  mileageEntries: any[],
+  cache: Map<string, number>
+): Promise<number> {
+  if (!baseAddress.trim() || !mileageEntries.length) return 0;
+
+  let maxDistance = 0;
+  const locations = new Set<string>();
+
+  for (const entry of mileageEntries) {
+    for (const loc of [
+      entry.startLocation,
+      entry.endLocation,
+      entry.startLocationAddress,
+      entry.endLocationAddress,
+    ]) {
+      const trimmed = String(loc || '').trim();
+      if (trimmed) locations.add(trimmed);
+    }
+  }
+
+  for (const location of locations) {
+    const cacheKey = `${baseAddress}|${location}`;
+    let distance = cache.get(cacheKey);
+    if (distance == null) {
+      distance = await fetchDistanceMiles(baseAddress, location);
+      cache.set(cacheKey, distance);
+    }
+    maxDistance = Math.max(maxDistance, distance);
+  }
+
+  return maxDistance;
+}
+
+function needsDistanceFromBase(rule: PerDiemRule | null): boolean {
+  if (!rule) return false;
+  if (rule.ruleType === 'tiered') {
+    return (rule.tiers || []).some((tier) => tier.minDistanceFromBase > 0);
+  }
+  return (rule.minDistanceFromBase ?? 0) > 0;
 }
 
 export const PerDiemTab: React.FC<PerDiemTabProps> = ({
@@ -60,6 +115,7 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
   revisionHighlightItems,
 }) => {
   const [entries, setEntries] = useState<Map<string, PerDiemEntry>>(new Map());
+  const [perDiemRule, setPerDiemRule] = useState<PerDiemRule | null>(null);
   const [dailyMaxAmount, setDailyMaxAmount] = useState(DEFAULT_DAILY_AMOUNT);
   const [monthlyLimit, setMonthlyLimit] = useState(DEFAULT_MONTHLY_LIMIT);
   const [loading, setLoading] = useState(true);
@@ -67,39 +123,59 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<'success' | null>(null);
-  /** Per-day rule eligibility: 8+ hours AND (100+ mi OR stayed overnight). Same rule as app. */
-  const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
+  const [eligibilityByDay, setEligibilityByDay] = useState<
+    Map<string, { isEligible: boolean; reason: string; suggestedAmount: number }>
+  >(new Map());
 
   const costCenter = costCenters?.[0] || 'Program Services';
   const daysInMonth = getDaysInMonth(year, month);
-
-  const MIN_HOURS = 8;
-  const MIN_MILES = 100;
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [perDiemRule, monthlyRules, receipts, timeTracking, mileageEntries, dailyDescriptions] = await Promise.all([
-        PerDiemRulesService.getPerDiemRule(costCenter),
-        apiGet<{ costCenter: string; maxAmount: number }[]>('/api/per-diem-monthly-rules'),
-        apiGet<any[]>(`/api/receipts?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
-        apiGet<any[]>(`/api/time-tracking?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
-        apiGet<any[]>(`/api/mileage-entries?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
-        apiGet<any[]>(`/api/daily-descriptions?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
-      ]);
+      const [rule, monthlyRules, receipts, timeTracking, mileageEntries, dailyDescriptions, employee] =
+        await Promise.all([
+          PerDiemRulesService.getPerDiemRule(costCenter),
+          apiGet<{ costCenter: string; maxAmount: number }[]>('/api/per-diem-monthly-rules'),
+          apiGet<any[]>(`/api/receipts?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
+          apiGet<any[]>(`/api/time-tracking?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
+          apiGet<any[]>(`/api/mileage-entries?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
+          apiGet<any[]>(`/api/daily-descriptions?employeeId=${encodeURIComponent(employeeId)}&month=${month}&year=${year}`),
+          apiGet<any>(`/api/employees/${encodeURIComponent(employeeId)}`),
+        ]);
 
-      setDailyMaxAmount(perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT);
+      setPerDiemRule(rule);
+      setDailyMaxAmount(getMaxDailyAmount(
+        rule
+          ? {
+              costCenter: rule.costCenter,
+              maxAmount: rule.maxAmount,
+              minHours: rule.minHours,
+              minMiles: rule.minMiles,
+              minDistanceFromBase: rule.minDistanceFromBase,
+              ruleType: rule.ruleType,
+              tiers: rule.tiers,
+            }
+          : {
+              costCenter,
+              maxAmount: DEFAULT_DAILY_AMOUNT,
+              minHours: 8,
+              minMiles: 100,
+              minDistanceFromBase: 0,
+            }
+      ));
+
       const normalizedCostCenter = normalizeCostCenter(costCenter);
       const monthlyRule = (monthlyRules || []).find(
         (r: any) => normalizeCostCenter(r.costCenter) === normalizedCostCenter
       );
       setMonthlyLimit(monthlyRule?.maxAmount ?? DEFAULT_MONTHLY_LIMIT);
 
-      const perDiemReceipts = (receipts || []).filter((r: any) => r.category === 'Per Diem');
-      const entriesMap = new Map<string, PerDiemEntry>();
+      const baseAddress = String(employee?.baseAddress || '').trim();
+      const computeDistance = needsDistanceFromBase(rule);
+      const distanceCache = new Map<string, number>();
 
-      // Normalize date to YYYY-MM-DD for reliable matching (avoids timezone "shift back a day")
       const toDateKey = (r: any): string => {
         if (!r?.date) return '';
         const s = typeof r.date === 'string' ? r.date : new Date(r.date).toISOString();
@@ -107,13 +183,16 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
         return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
       };
 
-      // Build per-day eligibility: 8+ hours AND (100+ miles OR stayed overnight) — same rule as app
-      const eligibilityMap = new Map<string, { isEligible: boolean; reason: string }>();
+      const eligibilityMap = new Map<
+        string,
+        { isEligible: boolean; reason: string; suggestedAmount: number }
+      >();
       const descByDate = new Map<string, { stayedOvernight: boolean }>();
       (dailyDescriptions || []).forEach((d: any) => {
         const key = toDateKey(d);
         if (key) descByDate.set(key, { stayedOvernight: !!(d.stayedOvernight) });
       });
+
       for (let day = 1; day <= daysInMonth; day++) {
         const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayTime = (timeTracking || []).filter((e: any) => toDateKey(e) === dateKey);
@@ -126,39 +205,54 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           .reduce((s: number, e: any) => s + (e.hours || 0), 0);
         const milesDriven = dayMileage.reduce((s: number, e: any) => s + (e.miles || 0), 0);
         const { stayedOvernight } = descByDate.get(dateKey) || { stayedOvernight: false };
-        const meetsHours = hoursWorked >= MIN_HOURS;
-        const meetsMiles = milesDriven >= MIN_MILES;
-        const isEligible = meetsHours && (meetsMiles || stayedOvernight);
-        let reason = '';
-        if (!meetsHours) reason = `Under ${MIN_HOURS} hours`;
-        else if (meetsMiles) reason = `${hoursWorked.toFixed(1)}h, ${milesDriven} mi`;
-        else if (stayedOvernight) reason = `${hoursWorked.toFixed(1)}h, stayed overnight`;
-        else reason = `Need ${MIN_HOURS}+ hours and (${MIN_MILES}+ mi or overnight)`;
-        eligibilityMap.set(dateKey, { isEligible, reason });
+
+        let distanceFromBase = 0;
+        if (computeDistance && baseAddress && dayMileage.length > 0) {
+          distanceFromBase = await computeMaxDistanceFromBase(baseAddress, dayMileage, distanceCache);
+        }
+
+        const evaluation = PerDiemRulesService.evaluateDay(rule, costCenter, {
+          hoursWorked,
+          milesTraveled: milesDriven,
+          distanceFromBase,
+          stayedOvernight,
+        });
+
+        eligibilityMap.set(dateKey, {
+          isEligible: evaluation.isEligible,
+          reason: evaluation.reason,
+          suggestedAmount: evaluation.amount,
+        });
       }
       setEligibilityByDay(eligibilityMap);
 
+      const perDiemReceipts = (receipts || []).filter((r: any) => r.category === 'Per Diem');
+      const entriesMap = new Map<string, PerDiemEntry>();
       const receiptDateKey = toDateKey;
 
       for (let day = 1; day <= daysInMonth; day++) {
         const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const date = new Date(year, month - 1, day);
         const existing = perDiemReceipts.find((r: any) => receiptDateKey(r) === dateKey);
-        const dailyMax = perDiemRule?.maxAmount ?? DEFAULT_DAILY_AMOUNT;
+        const dayEval = eligibilityMap.get(dateKey);
+        const suggested = dayEval?.suggestedAmount ?? dailyMaxAmount;
+
         if (existing) {
           entriesMap.set(dateKey, {
             date,
             dateKey,
-            amount: existing.amount ?? dailyMax,
+            amount: existing.amount ?? suggested,
             isEligible: true,
             receiptId: existing.id,
+            suggestedAmount: suggested,
           });
         } else {
           entriesMap.set(dateKey, {
             date,
             dateKey,
-            amount: dailyMax,
+            amount: suggested,
             isEligible: false,
+            suggestedAmount: suggested,
           });
         }
       }
@@ -181,19 +275,33 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
 
   const handleToggleEligible = (dateKey: string) => {
     const entry = entries.get(dateKey);
+    const dayEligibility = eligibilityByDay.get(dateKey);
     if (!entry) return;
+
+    if (!entry.isEligible && !dayEligibility?.isEligible) {
+      setError(dayEligibility?.reason || 'This day is not eligible for per diem.');
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+
     if (!entry.isEligible) {
       const otherTotal = Array.from(entries.values())
         .filter((e) => e.isEligible && e.dateKey !== dateKey)
         .reduce((sum, e) => sum + e.amount, 0);
-      if (otherTotal + entry.amount > monthlyLimit) {
+      const amountToAdd = dayEligibility?.suggestedAmount ?? entry.amount;
+      if (otherTotal + amountToAdd > monthlyLimit) {
         setError(`Adding this day would exceed your monthly limit of $${monthlyLimit}. Remaining: $${(monthlyLimit - otherTotal).toFixed(2)}`);
         setTimeout(() => setError(null), 5000);
         return;
       }
     }
+
     const next = new Map(entries);
-    next.set(dateKey, { ...entry, isEligible: !entry.isEligible });
+    next.set(dateKey, {
+      ...entry,
+      isEligible: !entry.isEligible,
+      amount: !entry.isEligible ? (dayEligibility?.suggestedAmount ?? entry.amount) : entry.amount,
+    });
     setEntries(next);
     setHasUnsavedChanges(true);
     setError(null);
@@ -227,7 +335,11 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       if (!eligibility.isEligible) return;
       const entry = next.get(dateKey);
       if (!entry || entry.isEligible) return;
-      next.set(dateKey, { ...entry, isEligible: true });
+      next.set(dateKey, {
+        ...entry,
+        isEligible: true,
+        amount: eligibility.suggestedAmount ?? entry.amount,
+      });
       changed = true;
     });
 
@@ -314,9 +426,6 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
       setSaveMessage('success');
       onDataChange?.();
       setTimeout(() => setSaveMessage(null), 3000);
-      // Clear caches so next load (e.g. change month or refresh) gets fresh data. Do NOT refetch
-      // here—keeping current UI state so the user's selections stay visible instead of being
-      // overwritten by a possibly empty or delayed GET response.
       rateLimitedApi.clearCache();
       PerDiemRulesService.clearCache();
     } catch (err: any) {
@@ -328,6 +437,11 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
     }
   };
 
+  const ruleSummary =
+    perDiemRule?.ruleType === 'tiered'
+      ? `Tiered per diem (${(perDiemRule.tiers || []).length} tiers, up to $${dailyMaxAmount}/day)`
+      : `$${dailyMaxAmount} max per day · eligible days must meet cost center rules`;
+
   if (loading) {
     return (
       <Box sx={{ p: 2, textAlign: 'center' }}>
@@ -338,7 +452,6 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
 
   return (
     <Box sx={{ p: 2, maxWidth: 720, mx: 'auto', pb: hasUnsavedChanges ? 14 : 2 }}>
-      {/* Top bar: title, month, summary (no sticky - scrolls with content) */}
       <Box sx={{ pb: 2, mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Typography variant="h6" sx={{ mb: 1 }}>
           Per Diem
@@ -402,11 +515,10 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
         )}
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          ${dailyMaxAmount} max per day · ${monthlyLimit} max per month. Eligible = 8+ hours and (100+ mi or stayed overnight). Check the days you are claiming; receipt is optional.
+          {ruleSummary}. ${monthlyLimit} max per month. Only eligible days can be selected; suggested amounts apply when you check a day.
         </Typography>
       </Box>
 
-      {/* Days list - use calendar dateKey (YYYY-MM-DD) only; show Eligible / Not eligible like app */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
           const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -417,8 +529,22 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
           const revisionItemId = `perdiem-${dateKey}`;
           const needsRevision = !!revisionHighlightItems?.has(revisionItemId);
           if (!entry) return null;
+
+          const checkboxDisabled = !supervisorMode && !isEligibleByRule && !entry.isEligible;
+
           return (
-            <Paper key={dateKey} variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 2, ...(needsRevision ? { bgcolor: '#ffcccc' } : {}) }}>
+            <Paper
+              key={dateKey}
+              variant="outlined"
+              sx={{
+                p: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                opacity: checkboxDisabled ? 0.55 : 1,
+                ...(needsRevision ? { bgcolor: '#ffcccc' } : {}),
+              }}
+            >
               <Checkbox
                 checked={supervisorMode ? !!selectedRevisionItems?.has(revisionItemId) : entry.isEligible}
                 onChange={() => {
@@ -427,16 +553,14 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
                     return;
                   }
                   const next = new Set(selectedRevisionItems || []);
-                  if (next.has(revisionItemId)) {
-                    next.delete(revisionItemId);
-                  } else {
-                    next.add(revisionItemId);
-                  }
+                  if (next.has(revisionItemId)) next.delete(revisionItemId);
+                  else next.add(revisionItemId);
                   onSelectedRevisionItemsChange?.(next);
                 }}
                 color="primary"
+                disabled={checkboxDisabled}
               />
-              <Box sx={{ minWidth: 140 }}>
+              <Box sx={{ minWidth: 140, flex: 1 }}>
                 <Typography>
                   {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                 </Typography>
@@ -450,10 +574,13 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
                   sx={{
                     color: isEligibleByRule ? 'success.main' : 'text.secondary',
                     fontWeight: isEligibleByRule ? 600 : 400,
+                    display: 'block',
                   }}
                   title={dayEligibility?.reason}
                 >
-                  {isEligibleByRule ? 'Eligible' : 'Not eligible'}
+                  {isEligibleByRule
+                    ? `Eligible${dayEligibility?.suggestedAmount ? ` · suggest $${dayEligibility.suggestedAmount.toFixed(2)}` : ''}`
+                    : dayEligibility?.reason || 'Not eligible'}
                 </Typography>
               </Box>
               {entry.isEligible && !supervisorMode && (
@@ -472,7 +599,6 @@ export const PerDiemTab: React.FC<PerDiemTabProps> = ({
         })}
       </Box>
 
-      {/* Fixed Save bar at bottom of viewport so it stays visible when user scrolls */}
       {!supervisorMode && hasUnsavedChanges && (
         <Box
           sx={{

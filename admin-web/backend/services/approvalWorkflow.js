@@ -36,7 +36,10 @@ async function initializeApprovalWorkflow(report, reportDataOverride = null) {
   }
   let supervisor = null;
   if (employee && employee.supervisorId) {
-    supervisor = await dbService.getEmployeeById(employee.supervisorId);
+    const candidate = await dbService.getEmployeeById(employee.supervisorId);
+    if (candidate && candidate.archived !== 1) {
+      supervisor = candidate;
+    }
   }
 
   // Step 1: Senior Staff (if applicable) — before supervisor

@@ -135,8 +135,10 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
   const [saving, setSaving] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const androidKeyboardHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Per-day eligibility: 8+ hours AND (100+ mi OR Daily Hours "out of town" checkbox) */
-  const [eligibilityByDay, setEligibilityByDay] = useState<Map<string, { isEligible: boolean; reason: string }>>(new Map());
+  /** Per-day eligibility from cost center rules */
+  const [eligibilityByDay, setEligibilityByDay] = useState<
+    Map<string, { isEligible: boolean; reason: string; suggestedAmount: number }>
+  >(new Map());
   /** True after eligibility map has been computed for the current month (avoids blocking on Android) */
   const [eligibilityReady, setEligibilityReady] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -264,7 +266,7 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
       const limit = (rule as any)?.monthlyLimit || 350;
       setMonthlyLimit(limit);
 
-      const maxPerDay = (rule as any)?.maxAmount ?? 35;
+      const maxPerDay = PerDiemRulesService.getDailyMaxAmount(rule);
 
       await DatabaseService.dedupePerDiemReceiptsForMonth(employee.id, month, year);
       const receipts = await DatabaseService.getReceipts(employee.id, month, year);
@@ -344,6 +346,12 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
     if (saving) return;
     const entry = perDiemEntries.get(dateKey);
     if (!entry) return;
+
+    const dayEligibility = eligibilityByDay.get(dateKey);
+    if (!entry.isEligible && !dayEligibility?.isEligible) {
+      Alert.alert('Not eligible', dayEligibility?.reason || 'This day does not meet per diem requirements.');
+      return;
+    }
     
     // If enabling, check if we would exceed monthly limit (based on current state)
     if (!entry.isEligible) {
@@ -351,7 +359,8 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
         .filter(e => e.isEligible)
         .reduce((sum, e) => sum + e.amount, 0);
       
-      const newTotal = currentTotal + entry.amount;
+      const amountToAdd = dayEligibility?.suggestedAmount ?? entry.amount;
+      const newTotal = currentTotal + amountToAdd;
       if (newTotal > monthlyLimit) {
         Alert.alert(
           'Monthly Limit Reached',
@@ -365,6 +374,7 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
     const updatedEntry = {
       ...entry,
       isEligible: !entry.isEligible,
+      amount: !entry.isEligible ? (dayEligibility?.suggestedAmount ?? entry.amount) : entry.amount,
     };
     
     // Update state immediately for responsive UI (no save yet)
@@ -433,6 +443,7 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
       nextMap.set(dateKey, {
         ...entry,
         isEligible: true,
+        amount: eligibility.suggestedAmount ?? entry.amount,
       });
       changed = true;
     });
@@ -881,11 +892,12 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
           };
           const dayEligibility = eligibilityByDay.get(dateKey);
           const isEligibleByRule = dayEligibility?.isEligible ?? false;
+          const toggleDisabled = saving || (!isEligibleByRule && !perDiemEntry.isEligible);
           
           return (
             <View
               key={dateKey}
-              style={styles.dayCard}
+              style={[styles.dayCard, toggleDisabled && !perDiemEntry.isEligible ? styles.dayCardDisabled : null]}
               onLayout={(e) => registerDayCardLayout(dateKey, e.nativeEvent.layout.y)}
             >
               <View style={styles.dayHeader}>
@@ -893,13 +905,15 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
                   <Text style={styles.dayDate}>{formatDate(date)}</Text>
                   <Text style={styles.dayWeekday}>{formatWeekday(date)}</Text>
                   <Text style={[styles.eligibilityLabel, !eligibilityReady ? styles.eligibilityLabelPending : (isEligibleByRule ? styles.eligibilityLabelEligible : styles.eligibilityLabelNotEligible)]}>
-                    {!eligibilityReady ? '…' : (isEligibleByRule ? 'Eligible' : 'Not eligible')}
+                    {!eligibilityReady ? '…' : (isEligibleByRule
+                      ? `Eligible${dayEligibility?.suggestedAmount ? ` · $${dayEligibility.suggestedAmount.toFixed(2)}` : ''}`
+                      : (dayEligibility?.reason || 'Not eligible'))}
                   </Text>
                 </View>
                 <TouchableOpacity
-                  style={styles.checkbox}
+                  style={[styles.checkbox, toggleDisabled && !perDiemEntry.isEligible ? styles.checkboxDisabled : null]}
                   onPress={() => handleToggleEligible(dateKey)}
-                  disabled={saving}
+                  disabled={toggleDisabled}
                 >
                   {perDiemEntry.isEligible && (
                     <MaterialIcons name="check" size={20} color="#007AFF" />
@@ -1032,6 +1046,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  dayCardDisabled: {
+    opacity: 0.55,
+  },
   dayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1072,6 +1089,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkboxDisabled: {
+    borderColor: '#ccc',
+    backgroundColor: '#f5f5f5',
   },
   dayContent: {
     marginTop: 8,

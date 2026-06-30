@@ -2188,6 +2188,8 @@ export class ApiSyncService {
       minDistanceFromBase: rule.minDistanceFromBase,
       description: rule.description,
       useActualAmount: Boolean(rule.useActualAmount),
+      ruleType: rule.ruleType === 'tiered' ? 'tiered' : 'single',
+      tiers: Array.isArray(rule.tiers) ? rule.tiers : [],
       createdAt: rule.createdAt,
       updatedAt: rule.updatedAt
     }));
@@ -2203,13 +2205,14 @@ export class ApiSyncService {
       const { withDatabaseConnection } = await import('../utils/databaseConnection');
       await withDatabaseConnection(async (database) => {
         await database.runAsync('DELETE FROM per_diem_rules');
+        await database.runAsync('DELETE FROM per_diem_tiers');
 
         for (const rule of perDiemRules) {
           await database.runAsync(
             `INSERT INTO per_diem_rules (
               id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
-              description, useActualAmount, createdAt, updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              description, useActualAmount, ruleType, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               rule.id,
               rule.costCenter,
@@ -2219,10 +2222,33 @@ export class ApiSyncService {
               rule.minDistanceFromBase,
               rule.description,
               rule.useActualAmount ? 1 : 0,
+              rule.ruleType === 'tiered' ? 'tiered' : 'single',
               rule.createdAt,
               rule.updatedAt,
             ]
           );
+
+          for (const tier of rule.tiers || []) {
+            await database.runAsync(
+              `INSERT INTO per_diem_tiers (
+                id, costCenter, label, amount, minHours, minMiles, minDistanceFromBase,
+                requiresOvernight, sortOrder, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                tier.id,
+                tier.costCenter,
+                tier.label,
+                tier.amount,
+                tier.minHours,
+                tier.minMiles,
+                tier.minDistanceFromBase,
+                tier.requiresOvernight ? 1 : 0,
+                tier.sortOrder,
+                rule.createdAt,
+                rule.updatedAt,
+              ]
+            );
+          }
         }
       });
 

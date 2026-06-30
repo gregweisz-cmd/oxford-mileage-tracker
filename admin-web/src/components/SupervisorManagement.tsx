@@ -47,6 +47,7 @@ import {
   stripDesignationSuffixes,
   getDisplayPosition,
 } from '../utils/staffDesignations';
+import { EmployeeApiService } from '../services/employeeApiService';
 
 interface SupervisorManagementProps {
   employees: Employee[];
@@ -93,6 +94,22 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   const [bulkImportType, setBulkImportType] = useState<'supervisor' | 'senior-staff'>('supervisor');
   const [bulkImportResult, setBulkImportResult] = useState<{success: number; failed: number; errors: string[]} | null>(null);
   const [assignStaffSearchInput, setAssignStaffSearchInput] = useState('');
+  const [repairingSupervisorAssignments, setRepairingSupervisorAssignments] = useState(false);
+
+  const employeeById = React.useMemo(
+    () => new Map(employees.map((emp) => [emp.id, emp])),
+    [employees]
+  );
+
+  const hasActiveSupervisor = React.useCallback(
+    (emp: Employee) => !!(emp.supervisorId && employeeById.has(emp.supervisorId)),
+    [employeeById]
+  );
+
+  const hasActiveSeniorStaff = React.useCallback(
+    (emp: Employee) => !!(emp.seniorStaffId && employeeById.has(emp.seniorStaffId)),
+    [employeeById]
+  );
 
   // Save excluded list to localStorage whenever it changes
   useEffect(() => {
@@ -131,8 +148,8 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
 
     // Also add employees who have staff reporting to them (by supervisorId or seniorStaffId)
     employees.forEach(emp => {
-      if (emp.supervisorId && !supervisorMap.has(emp.supervisorId)) {
-        const supervisor = employees.find(e => e.id === emp.supervisorId);
+      if (emp.supervisorId && employeeById.has(emp.supervisorId) && !supervisorMap.has(emp.supervisorId)) {
+        const supervisor = employeeById.get(emp.supervisorId);
         if (supervisor) {
           const type = inferSupervisorType(supervisor);
           supervisorMap.set(supervisor.id, {
@@ -143,8 +160,8 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
         }
       }
       const seniorId = emp.seniorStaffId;
-      if (seniorId && !supervisorMap.has(seniorId)) {
-        const senior = employees.find(e => e.id === seniorId);
+      if (seniorId && employeeById.has(seniorId) && !supervisorMap.has(seniorId)) {
+        const senior = employeeById.get(seniorId);
         if (senior) {
           supervisorMap.set(senior.id, {
             supervisor: senior,
@@ -157,14 +174,14 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
 
     // Now assign staff to their supervisors (by supervisorId) or senior staff (by seniorStaffId)
     employees.forEach(emp => {
-      if (emp.supervisorId && supervisorMap.has(emp.supervisorId)) {
+      if (emp.supervisorId && employeeById.has(emp.supervisorId) && supervisorMap.has(emp.supervisorId)) {
         const data = supervisorMap.get(emp.supervisorId);
         if (data && data.type === 'supervisor') {
           data.staffMembers.push(emp);
         }
       }
       const seniorId = emp.seniorStaffId;
-      if (seniorId && supervisorMap.has(seniorId)) {
+      if (seniorId && employeeById.has(seniorId) && supervisorMap.has(seniorId)) {
         const data = supervisorMap.get(seniorId);
         if (data && data.type === 'senior-staff') {
           data.staffMembers.push(emp);
@@ -173,18 +190,18 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
     });
 
     setSupervisors(Array.from(supervisorMap.values()));
-  }, [employees, excludedFromSupervisorList]);
+  }, [employees, excludedFromSupervisorList, employeeById]);
 
   useEffect(() => {
     debugLog('🔄 SupervisorManagement: Reorganizing supervisors, employee count:', employees.length);
     organizeSupervisors();
   }, [employees, organizeSupervisors]);
 
-  /** Staff who have no supervisor (for warning alert on Supervisor tab). One row per email (DB may have duplicate rows). */
+  /** Staff with no active supervisor (includes those still linked to an archived supervisor). */
   const getUnassignedStaff = () => {
     const list = employees.filter(
       (emp) =>
-        !emp.supervisorId &&
+        !hasActiveSupervisor(emp) &&
         !EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())
     );
     const seen = new Set<string>();
@@ -195,6 +212,30 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       seen.add(key);
       return true;
     });
+  };
+
+  /** Staff whose supervisorId points at someone who is archived (not in active employee list). */
+  const getOrphanedSupervisorStaff = () => {
+    return employees.filter(
+      (emp) =>
+        emp.supervisorId &&
+        !employeeById.has(emp.supervisorId) &&
+        !EXCLUDED_FROM_SUPERVISOR_REQUIREMENT.includes((emp.email || '').toLowerCase())
+    );
+  };
+
+  const handleRepairOrphanedSupervisorAssignments = async () => {
+    setRepairingSupervisorAssignments(true);
+    try {
+      const result = await EmployeeApiService.repairSupervisorAssignments();
+      await onRefresh();
+      alert(result.message || `Released ${result.clearedStaff} staff from archived supervisors.`);
+    } catch (error) {
+      debugError('Error repairing supervisor assignments:', error);
+      alert(error instanceof Error ? error.message : 'Failed to release staff from archived supervisors.');
+    } finally {
+      setRepairingSupervisorAssignments(false);
+    }
   };
 
   /** Everyone who can be assigned to a supervisor or senior staff: not designated themselves, and not the selected person. */
@@ -432,20 +473,21 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
   };
 
   const unassignedStaff = getUnassignedStaff();
+  const orphanedSupervisorStaff = getOrphanedSupervisorStaff();
   const assignableStaff = getAssignableStaff();
   const assignableStaffUnique = React.useMemo(() => {
     const entry = selectedSupervisor ? supervisors.find(s => s.supervisor.id === selectedSupervisor.id) : null;
     const type = entry?.type ?? 'supervisor';
     const withoutAssignment = type === 'senior-staff'
-      ? assignableStaff.filter(emp => !emp.seniorStaffId)
-      : assignableStaff.filter(emp => !emp.supervisorId);
+      ? assignableStaff.filter(emp => !hasActiveSeniorStaff(emp))
+      : assignableStaff.filter(emp => !hasActiveSupervisor(emp));
     const seen = new Set<string>();
     return withoutAssignment.filter((emp) => {
       if (seen.has(emp.id)) return false;
       seen.add(emp.id);
       return true;
     });
-  }, [assignableStaff, selectedSupervisor, supervisors]);
+  }, [assignableStaff, selectedSupervisor, supervisors, hasActiveSeniorStaff, hasActiveSupervisor]);
   const assignStaffOptions = React.useMemo(() => {
     const q = assignStaffSearchInput.trim().toLowerCase();
     if (!q) return assignableStaffUnique;
@@ -506,6 +548,31 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
           iconPosition="start"
         />
       </Tabs>
+
+      {/* Staff still linked to an archived supervisor */}
+      {orphanedSupervisorStaff.length > 0 && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={handleRepairOrphanedSupervisorAssignments}
+              disabled={repairingSupervisorAssignments}
+            >
+              {repairingSupervisorAssignments ? 'Releasing…' : 'Release staff'}
+            </Button>
+          }
+        >
+          <Typography variant="body1" gutterBottom>
+            <strong>{orphanedSupervisorStaff.length} staff still assigned to an archived supervisor</strong>
+          </Typography>
+          <Typography variant="body2">
+            {orphanedSupervisorStaff.map((s) => formatNameForDisplay(s.name)).join(', ')} — release them to reassign.
+          </Typography>
+        </Alert>
+      )}
 
       {/* Unassigned Staff Alert */}
       {unassignedStaff.length > 0 && (

@@ -1,7 +1,16 @@
 import { DatabaseService } from './database';
-import { debugLog, debugError, debugWarn } from '../config/debug';
+import { debugLog, debugError } from '../config/debug';
 import { API_BASE_URL } from '../config/api';
 import { getAuthHeaders } from './authHeaders';
+import {
+  evaluatePerDiemDay,
+  getMaxDailyAmount,
+  PerDiemDayInput,
+  PerDiemDayEvaluation,
+  PerDiemRuleConfig,
+  PerDiemRuleType,
+  PerDiemTier,
+} from '../utils/perDiemTierEvaluator';
 
 export interface PerDiemRule {
   id: string;
@@ -12,6 +21,8 @@ export interface PerDiemRule {
   minDistanceFromBase: number;
   description: string;
   useActualAmount: boolean;
+  ruleType: PerDiemRuleType;
+  tiers: PerDiemTier[];
   createdAt: string;
   updatedAt: string;
 }
@@ -19,29 +30,75 @@ export interface PerDiemRule {
 export class PerDiemRulesService {
   private static rulesCache: PerDiemRule[] = [];
   private static lastFetchTime: Date | null = null;
-  private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private static CACHE_DURATION = 5 * 60 * 1000;
   private static fetchInFlight: Promise<PerDiemRule[]> | null = null;
-
-  /** Timeout in ms for backend fetch — fail fast so app doesn't hang on Loading */
   private static readonly FETCH_TIMEOUT_MS = 12000;
+
   private static normalizeCostCenter(value: string | null | undefined): string {
     if (!value) return '';
     return String(value).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
-  /**
-   * Fetch Per Diem rules from backend (or from local fallback on timeout/error).
-   * Concurrent callers share one in-flight request.
-   */
-  static async fetchPerDiemRules(): Promise<PerDiemRule[]> {
-    if (this.fetchInFlight) {
-      return this.fetchInFlight;
+  private static mapRule(rule: any): PerDiemRule {
+    return {
+      id: rule.id,
+      costCenter: rule.costCenter,
+      maxAmount: Number(rule.maxAmount ?? 35),
+      minHours: Number(rule.minHours ?? 0),
+      minMiles: Number(rule.minMiles ?? 0),
+      minDistanceFromBase: Number(rule.minDistanceFromBase ?? 0),
+      description: rule.description || '',
+      useActualAmount: Boolean(rule.useActualAmount),
+      ruleType: rule.ruleType === 'tiered' ? 'tiered' : 'single',
+      tiers: Array.isArray(rule.tiers)
+        ? rule.tiers.map((tier: any) => ({
+            id: tier.id,
+            costCenter: tier.costCenter,
+            label: tier.label,
+            amount: Number(tier.amount),
+            minHours: Number(tier.minHours),
+            minMiles: Number(tier.minMiles),
+            minDistanceFromBase: Number(tier.minDistanceFromBase),
+            requiresOvernight: Boolean(tier.requiresOvernight),
+            sortOrder: Number(tier.sortOrder),
+          }))
+        : [],
+      createdAt: rule.createdAt,
+      updatedAt: rule.updatedAt,
+    };
+  }
+
+  private static toRuleConfig(rule: PerDiemRule | null, costCenter: string): PerDiemRuleConfig {
+    if (!rule) {
+      return {
+        costCenter,
+        maxAmount: 35,
+        minHours: 8,
+        minMiles: 100,
+        minDistanceFromBase: 0,
+        ruleType: 'single',
+        useActualAmount: false,
+      };
     }
+    return {
+      id: rule.id,
+      costCenter: rule.costCenter,
+      maxAmount: rule.maxAmount,
+      minHours: rule.minHours,
+      minMiles: rule.minMiles,
+      minDistanceFromBase: rule.minDistanceFromBase,
+      useActualAmount: rule.useActualAmount,
+      ruleType: rule.ruleType,
+      tiers: rule.tiers,
+    };
+  }
+
+  static async fetchPerDiemRules(): Promise<PerDiemRule[]> {
+    if (this.fetchInFlight) return this.fetchInFlight;
     const promise = this.doFetchPerDiemRules();
     this.fetchInFlight = promise;
     try {
-      const result = await promise;
-      return result;
+      return await promise;
     } finally {
       this.fetchInFlight = null;
     }
@@ -67,130 +124,104 @@ export class PerDiemRulesService {
       }
 
       const rules = await response.json();
-      
-      // Cache the rules
-      this.rulesCache = rules;
+      this.rulesCache = rules.map((rule: any) => this.mapRule(rule));
       this.lastFetchTime = new Date();
-      
-      // Store rules locally for offline access
-      await this.storeRulesLocally(rules);
-      
-      return rules;
+      await this.storeRulesLocally(this.rulesCache);
+      return this.rulesCache;
     } catch (error) {
       console.error('❌ PerDiemRules: Error fetching rules from backend:', error);
       const local = await this.getLocalRules();
-      // Treat local fallback as valid cache to avoid repeated failed fetches
       this.rulesCache = local;
       this.lastFetchTime = new Date();
       return local;
     }
   }
 
-  /**
-   * Get Per Diem rule for a specific cost center
-   */
   static async getPerDiemRule(costCenter: string): Promise<PerDiemRule | null> {
     try {
       const normalizedTarget = this.normalizeCostCenter(costCenter);
       const findMatchingRule = (rules: PerDiemRule[]): PerDiemRule | undefined =>
         rules.find((r) => this.normalizeCostCenter(r.costCenter) === normalizedTarget);
 
-      // Check cache first
       if (this.isCacheValid()) {
         const rule = findMatchingRule(this.rulesCache);
-        if (rule) {
-          return rule;
-        }
+        if (rule) return rule;
       }
 
-      // Fetch from backend if cache is invalid
       await this.fetchPerDiemRules();
-      const rule = findMatchingRule(this.rulesCache);
-      
-      return rule || null;
+      return findMatchingRule(this.rulesCache) || null;
     } catch (error) {
       console.error('❌ PerDiemRules: Error getting rule for cost center:', error);
       return null;
     }
   }
 
-  /**
-   * Calculate Per Diem amount based on rules and activity
-   */
+  static evaluateDay(
+    rule: PerDiemRule | null,
+    costCenter: string,
+    input: PerDiemDayInput
+  ): PerDiemDayEvaluation {
+    return evaluatePerDiemDay(this.toRuleConfig(rule, costCenter), input);
+  }
+
+  static getDailyMaxAmount(rule: PerDiemRule | null): number {
+    return getMaxDailyAmount(this.toRuleConfig(rule, rule?.costCenter || ''));
+  }
+
   static async calculatePerDiem(
     costCenter: string,
     hoursWorked: number = 0,
     milesTraveled: number = 0,
     distanceFromBase: number = 0,
-    actualExpenses: number = 0
-  ): Promise<{ amount: number; rule: PerDiemRule | null; meetsRequirements: boolean }> {
+    actualExpenses: number = 0,
+    stayedOvernight: boolean = false
+  ): Promise<{
+    amount: number;
+    rule: PerDiemRule | null;
+    meetsRequirements: boolean;
+    tierLabel: string | null;
+    reason: string;
+  }> {
     try {
       const rule = await this.getPerDiemRule(costCenter);
-      
-      // Default rule if none found
-      const defaultRule: PerDiemRule = {
-        id: 'default',
-        costCenter,
-        maxAmount: 35,
-        minHours: 0,
-        minMiles: 0,
-        minDistanceFromBase: 0,
-        description: 'Default Per Diem rule',
-        useActualAmount: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      const activeRule = rule || defaultRule;
-      
-      // Check if requirements are met
-      const meetsRequirements = 
-        hoursWorked >= activeRule.minHours &&
-        milesTraveled >= activeRule.minMiles &&
-        distanceFromBase >= activeRule.minDistanceFromBase;
-
-      let amount = 0;
-      
-      if (meetsRequirements) {
-        if (activeRule.useActualAmount) {
-          // Use actual expenses up to the maximum
-          amount = Math.min(actualExpenses, activeRule.maxAmount);
-        } else {
-          // Use fixed maximum amount
-          amount = activeRule.maxAmount;
-        }
-      }
+      const evaluation = this.evaluateDay(rule, costCenter, {
+        hoursWorked,
+        milesTraveled,
+        distanceFromBase,
+        stayedOvernight,
+        actualExpenses,
+      });
 
       return {
-        amount,
-        rule: activeRule,
-        meetsRequirements
+        amount: evaluation.amount,
+        rule,
+        meetsRequirements: evaluation.isEligible,
+        tierLabel: evaluation.tierLabel,
+        reason: evaluation.reason,
       };
     } catch (error) {
       console.error('❌ PerDiemRules: Error calculating Per Diem:', error);
       return {
         amount: 0,
         rule: null,
-        meetsRequirements: false
+        meetsRequirements: false,
+        tierLabel: null,
+        reason: 'Error calculating per diem',
       };
     }
   }
 
-  /**
-   * Store rules locally for offline access
-   */
   private static async storeRulesLocally(rules: PerDiemRule[]): Promise<void> {
     try {
       const { withDatabaseConnection } = await import('../utils/databaseConnection');
 
       await withDatabaseConnection(async (database) => {
-        // Use INSERT OR REPLACE to handle duplicates gracefully
         for (const rule of rules) {
           await database.runAsync(
             `INSERT OR REPLACE INTO per_diem_rules (
             id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
-            description, useActualAmount, createdAt, updatedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            description, useActualAmount, ruleType, createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               rule.id,
               rule.costCenter,
@@ -200,13 +231,14 @@ export class PerDiemRulesService {
               rule.minDistanceFromBase,
               rule.description,
               rule.useActualAmount ? 1 : 0,
+              rule.ruleType || 'single',
               rule.createdAt,
-              rule.updatedAt
+              rule.updatedAt,
             ]
           );
         }
 
-        const ruleIds = rules.map(r => r.id);
+        const ruleIds = rules.map((r) => r.id);
         if (ruleIds.length > 0) {
           const placeholders = ruleIds.map(() => '?').join(',');
           await database.runAsync(
@@ -214,24 +246,63 @@ export class PerDiemRulesService {
             ruleIds
           );
         }
+
+        await database.runAsync('DELETE FROM per_diem_tiers');
+        for (const rule of rules) {
+          for (const tier of rule.tiers || []) {
+            await database.runAsync(
+              `INSERT OR REPLACE INTO per_diem_tiers (
+                id, costCenter, label, amount, minHours, minMiles, minDistanceFromBase,
+                requiresOvernight, sortOrder, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                tier.id,
+                tier.costCenter,
+                tier.label,
+                tier.amount,
+                tier.minHours,
+                tier.minMiles,
+                tier.minDistanceFromBase,
+                tier.requiresOvernight ? 1 : 0,
+                tier.sortOrder,
+                rule.createdAt,
+                rule.updatedAt,
+              ]
+            );
+          }
+        }
       });
     } catch (error) {
       console.error('❌ PerDiemRules: Error storing rules locally:', error);
     }
   }
 
-  /**
-   * Get rules from local storage
-   */
   private static async getLocalRules(): Promise<PerDiemRule[]> {
     try {
       const { withDatabaseConnection } = await import('../utils/databaseConnection');
 
       return await withDatabaseConnection(async (database) => {
-        const rules = await database.getAllAsync(
-          'SELECT * FROM per_diem_rules ORDER BY costCenter'
-        );
-        return rules.map((rule: any) => ({
+        const rules = await database.getAllAsync('SELECT * FROM per_diem_rules ORDER BY costCenter');
+        const tiers = await database.getAllAsync('SELECT * FROM per_diem_tiers ORDER BY sortOrder DESC');
+
+        const tiersByCostCenter = new Map<string, PerDiemTier[]>();
+        for (const tier of tiers as any[]) {
+          const list = tiersByCostCenter.get(tier.costCenter) || [];
+          list.push({
+            id: tier.id,
+            costCenter: tier.costCenter,
+            label: tier.label,
+            amount: Number(tier.amount),
+            minHours: Number(tier.minHours),
+            minMiles: Number(tier.minMiles),
+            minDistanceFromBase: Number(tier.minDistanceFromBase),
+            requiresOvernight: Boolean(tier.requiresOvernight),
+            sortOrder: Number(tier.sortOrder),
+          });
+          tiersByCostCenter.set(tier.costCenter, list);
+        }
+
+        return (rules as any[]).map((rule) => ({
           id: rule.id,
           costCenter: rule.costCenter,
           maxAmount: rule.maxAmount,
@@ -240,8 +311,10 @@ export class PerDiemRulesService {
           minDistanceFromBase: rule.minDistanceFromBase,
           description: rule.description,
           useActualAmount: Boolean(rule.useActualAmount),
+          ruleType: rule.ruleType === 'tiered' ? 'tiered' : 'single',
+          tiers: tiersByCostCenter.get(rule.costCenter) || [],
           createdAt: rule.createdAt,
-          updatedAt: rule.updatedAt
+          updatedAt: rule.updatedAt,
         }));
       });
     } catch (error) {
@@ -250,29 +323,20 @@ export class PerDiemRulesService {
     }
   }
 
-  /**
-   * Check if cache is still valid
-   */
   private static isCacheValid(): boolean {
-    if (!this.lastFetchTime || this.rulesCache.length === 0) {
-      return false;
-    }
-    
+    if (!this.lastFetchTime || this.rulesCache.length === 0) return false;
     const now = new Date();
-    const timeDiff = now.getTime() - this.lastFetchTime.getTime();
-    return timeDiff < this.CACHE_DURATION;
+    return now.getTime() - this.lastFetchTime.getTime() < this.CACHE_DURATION;
   }
 
-  /**
-   * Validate Per Diem eligibility and amount for a specific date and employee
-   */
   static async validatePerDiem(
     employeeId: string,
     date: Date,
     hoursWorked: number = 0,
     milesDriven: number = 0,
     distanceFromBase: number = 0,
-    actualExpenses: number = 0
+    actualExpenses: number = 0,
+    stayedOvernight: boolean = false
   ): Promise<{
     isEligible: boolean;
     suggestedAmount: number;
@@ -291,10 +355,7 @@ export class PerDiemRulesService {
     };
   }> {
     try {
-      // Get employee info to determine cost center
-      const { DatabaseService } = await import('./database');
       const employee = await DatabaseService.getEmployeeById(employeeId);
-      
       if (!employee) {
         return {
           isEligible: false,
@@ -302,87 +363,58 @@ export class PerDiemRulesService {
           reason: 'Employee not found',
           confidence: 0,
           criteria: { hoursWorked: false, milesDriven: false, distanceFromBase: false },
-          details: { baseAddress: '', hoursWorked, milesDriven, distanceFromBase }
+          details: { baseAddress: '', hoursWorked, milesDriven, distanceFromBase },
         };
       }
 
-      // Get employee's cost center
       const costCenter = employee.defaultCostCenter || employee.costCenters?.[0] || 'Program Services';
-      
-      // Calculate Per Diem using rules
       const perDiemResult = await this.calculatePerDiem(
         costCenter,
         hoursWorked,
         milesDriven,
         distanceFromBase,
-        actualExpenses
+        actualExpenses,
+        stayedOvernight
       );
 
+      const rule = perDiemResult.rule;
       const criteria = {
-        hoursWorked: hoursWorked >= (perDiemResult.rule?.minHours || 0),
-        milesDriven: milesDriven >= (perDiemResult.rule?.minMiles || 0),
-        distanceFromBase: distanceFromBase >= (perDiemResult.rule?.minDistanceFromBase || 0)
+        hoursWorked: hoursWorked >= (rule?.minHours || 0),
+        milesDriven: milesDriven >= (rule?.minMiles || 0),
+        distanceFromBase: distanceFromBase >= (rule?.minDistanceFromBase || 0),
       };
 
-      const meetsAnyRequirement = criteria.hoursWorked || criteria.milesDriven || criteria.distanceFromBase;
-      
-      let reason = '';
-      if (perDiemResult.meetsRequirements) {
-        reason = `Eligible: ${perDiemResult.rule?.useActualAmount ? 'Actual expenses' : 'Fixed amount'} (${perDiemResult.rule?.maxAmount || 35})`;
-      } else if (meetsAnyRequirement) {
-        reason = `Partially eligible: Some requirements met`;
-      } else {
-        const rule = perDiemResult.rule;
-        if (rule) {
-          const requirements = [];
-          if (rule.minHours > 0) requirements.push(`${rule.minHours}+ hours`);
-          if (rule.minMiles > 0) requirements.push(`${rule.minMiles}+ miles`);
-          if (rule.minDistanceFromBase > 0) requirements.push(`${rule.minDistanceFromBase}+ miles from base`);
-          reason = `Not eligible: Need ${requirements.join(' OR ')}`;
-        } else {
-          reason = `Not eligible: No specific rule found for ${costCenter}`;
-        }
-      }
-
-      const result = {
+      return {
         isEligible: perDiemResult.meetsRequirements,
         suggestedAmount: perDiemResult.amount,
-        reason,
-        confidence: perDiemResult.meetsRequirements ? 0.9 : (meetsAnyRequirement ? 0.5 : 0.1),
+        reason: perDiemResult.reason,
+        confidence: perDiemResult.meetsRequirements ? 0.9 : 0.1,
         criteria,
         details: {
           baseAddress: employee.baseAddress || '',
           hoursWorked,
           milesDriven,
-          distanceFromBase
-        }
+          distanceFromBase,
+        },
       };
-
-      return result;
     } catch (error) {
-      console.error('❌ PerDiemAI: Error validating Per Diem:', error);
+      console.error('❌ PerDiemRules: Error validating Per Diem:', error);
       return {
         isEligible: false,
         suggestedAmount: 0,
         reason: 'Error calculating eligibility',
         confidence: 0,
         criteria: { hoursWorked: false, milesDriven: false, distanceFromBase: false },
-        details: { baseAddress: '', hoursWorked, milesDriven, distanceFromBase }
+        details: { baseAddress: '', hoursWorked, milesDriven, distanceFromBase },
       };
     }
   }
 
-  /**
-   * Clear cache (useful for testing or forcing refresh)
-   */
   static clearCache(): void {
     this.rulesCache = [];
     this.lastFetchTime = null;
   }
 
-  /**
-   * Backward-compatible helpers used by AdminScreen.
-   */
   static async getAllRules(): Promise<PerDiemRule[]> {
     return this.fetchPerDiemRules();
   }
@@ -402,6 +434,8 @@ export class PerDiemRulesService {
       minDistanceFromBase: Number(rule.minDistanceFromBase ?? existing?.minDistanceFromBase ?? 0),
       description: String(rule.description ?? existing?.description ?? '').trim(),
       useActualAmount: Boolean(rule.useActualAmount ?? existing?.useActualAmount ?? false),
+      ruleType: rule.ruleType ?? existing?.ruleType ?? 'single',
+      tiers: rule.tiers ?? existing?.tiers ?? [],
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
@@ -424,3 +458,5 @@ export class PerDiemRulesService {
     await this.storeRulesLocally(nextRules);
   }
 }
+
+export type { PerDiemDayInput, PerDiemDayEvaluation, PerDiemTier };

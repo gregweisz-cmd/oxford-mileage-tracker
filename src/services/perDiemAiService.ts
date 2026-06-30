@@ -2,6 +2,7 @@ import { MileageEntry, TimeTracking, Employee } from '../types';
 import { DatabaseService } from './database';
 import { BackendDataService } from './backendDataService';
 import { DistanceService } from './distanceService';
+import { PerDiemRulesService, PerDiemRule } from './perDiemRulesService';
 import { debugLog, debugError, debugWarn } from '../config/debug';
 
 export interface PerDiemEligibility {
@@ -161,7 +162,7 @@ export class PerDiemAiService {
           distanceFromBase,
           baseAddress: employee.baseAddress || ''
         },
-        suggestedAmount: dayResult.isEligible ? this.PER_DIEM_AMOUNT : 0,
+        suggestedAmount: dayResult.isEligible ? (dayResult.suggestedAmount ?? this.PER_DIEM_AMOUNT) : 0,
         confidence
       };
 
@@ -184,20 +185,22 @@ export class PerDiemAiService {
     employeeId: string,
     month: number,
     year: number
-  ): Promise<Map<string, { isEligible: boolean; reason: string }>> {
-    const result = new Map<string, { isEligible: boolean; reason: string }>();
+  ): Promise<Map<string, { isEligible: boolean; reason: string; suggestedAmount: number }>> {
+    const result = new Map<string, { isEligible: boolean; reason: string; suggestedAmount: number }>();
     try {
       const employees = await DatabaseService.getEmployees();
       const employee = employees.find(emp => emp.id === employeeId);
       if (!employee) return result;
 
+      const costCenter = employee.defaultCostCenter || employee.selectedCostCenters?.[0] || employee.costCenters?.[0] || 'Program Services';
+      const rule = await PerDiemRulesService.getPerDiemRule(costCenter);
+      const needsDistance = this.ruleNeedsDistanceFromBase(rule);
+
       const baseAddress = (employee.baseAddress || '').trim();
 
-      // Prefer backend so eligibility matches dashboard and web (hours/mileage from same source).
       try {
         const monthlyData = await BackendDataService.getMonthData(employeeId, month, year);
         const monthMiles = monthlyData.reduce((s, d) => s + (d.totalMiles || 0), 0);
-        // If backend returned no mileage (e.g. mileage API failed on Android), use local mileage so eligibility still works.
         let localMileageEntries: MileageEntry[] = [];
         if (monthMiles === 0) {
           try {
@@ -211,7 +214,6 @@ export class PerDiemAiService {
         }
 
         const distanceCache = new Map<string, number>();
-
         const localMileageByDate = localMileageEntries.length > 0
           ? this.groupMileageByDate(localMileageEntries)
           : null;
@@ -226,40 +228,35 @@ export class PerDiemAiService {
           const milesDriven = useLocalMiles
             ? dayMileageEntries.reduce((s, e) => s + e.miles, 0)
             : (day.totalMiles || 0);
-          const distanceFromMileage = this.getMaxDistanceFromCache(dayMileageEntries, distanceCache);
-          const criteria = {
-            hoursWorked: day.totalHours >= this.MIN_HOURS,
-            milesDriven: milesDriven >= this.MIN_MILES,
-            distanceFromBase:
-              distanceFromMileage >= this.MIN_DISTANCE_FROM_BASE || stayedOvernight
-          };
-          const isEligible =
-            criteria.hoursWorked && (criteria.milesDriven || stayedOvernight);
-          const reason = this.generateEligibilityReason(
-            criteria,
-            {
-              hoursWorked: day.totalHours,
-              milesDriven,
-              distanceFromBase: distanceFromMileage
-            },
+
+          let distanceFromBase = 0;
+          if (needsDistance && baseAddress && dayMileageEntries.length > 0) {
+            distanceFromBase = await this.calculateDistanceFromBase(dayMileageEntries, baseAddress);
+          }
+
+          const evaluation = PerDiemRulesService.evaluateDay(rule, costCenter, {
+            hoursWorked: day.totalHours,
+            milesTraveled: milesDriven,
+            distanceFromBase,
             stayedOvernight,
-            isEligible
-          );
-          result.set(dateKey, { isEligible, reason });
+          });
+
+          result.set(dateKey, {
+            isEligible: evaluation.isEligible,
+            reason: evaluation.reason,
+            suggestedAmount: evaluation.amount,
+          });
         }
         return result;
       } catch (backendErr) {
         debugWarn('PerDiemAI: Backend month data failed, using local:', backendErr);
       }
 
-      // Fallback: local DB (use local date keys to avoid timezone bugs)
       const [dailyDescriptions, timeTracking, mileageEntries] = await Promise.all([
         DatabaseService.getDailyDescriptions(employeeId, month, year),
         DatabaseService.getTimeTrackingEntries(employeeId, month, year),
         DatabaseService.getMileageEntries(employeeId, month, year)
       ]);
-
-      const distanceCache = new Map<string, number>();
 
       const daysInMonth = new Date(year, month, 0).getDate();
       const descByDate = new Map<string, { stayedOvernight: boolean }>();
@@ -284,28 +281,37 @@ export class PerDiemAiService {
           .reduce((s, e: any) => s + e.hours, 0);
         const milesDriven = dayMileage.reduce((s, e: any) => s + e.miles, 0);
         const { stayedOvernight } = descByDate.get(dateKey) || { stayedOvernight: false };
-        const distanceFromMileage = this.getMaxDistanceFromCache(dayMileage, distanceCache);
 
-        const criteria = {
-          hoursWorked: hoursWorked >= this.MIN_HOURS,
-          milesDriven: milesDriven >= this.MIN_MILES,
-          distanceFromBase:
-            distanceFromMileage >= this.MIN_DISTANCE_FROM_BASE || stayedOvernight
-        };
-        const isEligible =
-          criteria.hoursWorked && (criteria.milesDriven || stayedOvernight);
-        const reason = this.generateEligibilityReason(
-          criteria,
-          { hoursWorked, milesDriven, distanceFromBase: distanceFromMileage },
+        let distanceFromBase = 0;
+        if (needsDistance && baseAddress && dayMileage.length > 0) {
+          distanceFromBase = await this.calculateDistanceFromBase(dayMileage, baseAddress);
+        }
+
+        const evaluation = PerDiemRulesService.evaluateDay(rule, costCenter, {
+          hoursWorked,
+          milesTraveled: milesDriven,
+          distanceFromBase,
           stayedOvernight,
-          isEligible
-        );
-        result.set(dateKey, { isEligible, reason });
+        });
+
+        result.set(dateKey, {
+          isEligible: evaluation.isEligible,
+          reason: evaluation.reason,
+          suggestedAmount: evaluation.amount,
+        });
       }
     } catch (error) {
       debugError('PerDiemAI: getEligibilityForMonth error', error);
     }
     return result;
+  }
+
+  private static ruleNeedsDistanceFromBase(rule: PerDiemRule | null): boolean {
+    if (!rule) return false;
+    if (rule.ruleType === 'tiered') {
+      return (rule.tiers || []).some((tier) => tier.minDistanceFromBase > 0);
+    }
+    return (rule.minDistanceFromBase ?? 0) > 0;
   }
 
   /**

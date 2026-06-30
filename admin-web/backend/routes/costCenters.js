@@ -8,10 +8,12 @@ const router = express.Router();
 const dbService = require('../services/dbService');
 const { debugLog, debugError } = require('../debug');
 const { requireAuth } = require('../middleware/auth');
+const { normalizeTierRow } = require('../utils/perDiemTierEvaluator');
 
 router.use([
   '/api/cost-centers',
   '/api/per-diem-rules',
+  '/api/per-diem-tiers',
   '/api/ees-rules',
   '/api/per-diem-monthly-rules',
   '/api/finance-cost-center-assignments',
@@ -19,6 +21,122 @@ router.use([
 
 const normalizeCostCenter = (value) =>
   String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+function mapRuleRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    useActualAmount: Boolean(row.useActualAmount),
+    ruleType: row.ruleType || 'single',
+  };
+}
+
+function fetchAllTiers(db) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM per_diem_tiers ORDER BY costCenter, sortOrder DESC',
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(normalizeTierRow));
+      }
+    );
+  });
+}
+
+function fetchTiersForCostCenter(db, costCenter) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM per_diem_tiers WHERE costCenter = ? ORDER BY sortOrder DESC',
+      [costCenter],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(normalizeTierRow));
+      }
+    );
+  });
+}
+
+function attachTiersToRules(rules, tiers) {
+  const tiersByCostCenter = new Map();
+  for (const tier of tiers) {
+    const key = tier.costCenter;
+    if (!tiersByCostCenter.has(key)) tiersByCostCenter.set(key, []);
+    tiersByCostCenter.get(key).push(tier);
+  }
+  return rules.map((rule) => ({
+    ...mapRuleRow(rule),
+    tiers: tiersByCostCenter.get(rule.costCenter) || [],
+  }));
+}
+
+function saveTiersForCostCenter(db, costCenter, tiers) {
+  return new Promise((resolve, reject) => {
+    const now = new Date().toISOString();
+    db.run('DELETE FROM per_diem_tiers WHERE costCenter = ?', [costCenter], (deleteErr) => {
+      if (deleteErr) {
+        reject(deleteErr);
+        return;
+      }
+      if (!Array.isArray(tiers) || tiers.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      const saved = [];
+      let pending = tiers.length;
+      let failed = false;
+
+      tiers.forEach((tier, index) => {
+        const tierId =
+          tier.id || `${Date.now().toString(36)}${Math.random().toString(36).substr(2)}${index}`;
+        db.run(
+          `INSERT INTO per_diem_tiers (
+            id, costCenter, label, amount, minHours, minMiles, minDistanceFromBase,
+            requiresOvernight, sortOrder, createdAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            tierId,
+            costCenter,
+            tier.label || `Tier ${index + 1}`,
+            Number(tier.amount) || 0,
+            Number(tier.minHours) || 0,
+            Number(tier.minMiles) || 0,
+            Number(tier.minDistanceFromBase) || 0,
+            tier.requiresOvernight ? 1 : 0,
+            Number(tier.sortOrder) || 0,
+            tier.createdAt || now,
+            now,
+          ],
+          (insertErr) => {
+            if (failed) return;
+            if (insertErr) {
+              failed = true;
+              reject(insertErr);
+              return;
+            }
+            saved.push(
+              normalizeTierRow({
+                id: tierId,
+                costCenter,
+                label: tier.label || `Tier ${index + 1}`,
+                amount: Number(tier.amount) || 0,
+                minHours: Number(tier.minHours) || 0,
+                minMiles: Number(tier.minMiles) || 0,
+                minDistanceFromBase: Number(tier.minDistanceFromBase) || 0,
+                requiresOvernight: tier.requiresOvernight ? 1 : 0,
+                sortOrder: Number(tier.sortOrder) || 0,
+                createdAt: tier.createdAt || now,
+                updatedAt: now,
+              })
+            );
+            pending -= 1;
+            if (pending === 0) resolve(saved);
+          }
+        );
+      });
+    });
+  });
+}
 
 /**
  * Get all cost centers
@@ -156,43 +274,91 @@ router.delete('/api/cost-centers/:id', (req, res) => {
 });
 
 /**
- * Get all per diem rules
+ * Get all per diem rules (with tiers when tiered)
  */
-router.get('/api/per-diem-rules', (req, res) => {
+router.get('/api/per-diem-rules', async (req, res) => {
   const db = dbService.getDb();
-  db.all('SELECT * FROM per_diem_rules ORDER BY costCenter', (err, rows) => {
-    if (err) {
-      debugError('Error fetching per diem rules:', err);
-      res.status(500).json({ error: err.message });
+  try {
+    const [rules, tiers] = await Promise.all([
+      new Promise((resolve, reject) => {
+        db.all('SELECT * FROM per_diem_rules ORDER BY costCenter', (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      }),
+      fetchAllTiers(db),
+    ]);
+    res.json(attachTiersToRules(rules, tiers));
+  } catch (err) {
+    debugError('Error fetching per diem rules:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Get all tiers (optional filter by costCenter query param)
+ */
+router.get('/api/per-diem-tiers', async (req, res) => {
+  const db = dbService.getDb();
+  const { costCenter } = req.query;
+  try {
+    if (costCenter) {
+      const tiers = await fetchTiersForCostCenter(db, String(costCenter));
+      res.json(tiers);
       return;
     }
-    res.json(rows);
-  });
+    const tiers = await fetchAllTiers(db);
+    res.json(tiers);
+  } catch (err) {
+    debugError('Error fetching per diem tiers:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
  * Get per diem rule by cost center
  */
-router.get('/api/per-diem-rules/:costCenter', (req, res) => {
+router.get('/api/per-diem-rules/:costCenter', async (req, res) => {
   const { costCenter } = req.params;
   const db = dbService.getDb();
-  db.get('SELECT * FROM per_diem_rules WHERE costCenter = ?', [costCenter], (err, row) => {
-    if (err) {
-      debugError('Error fetching per diem rule:', err);
-      res.status(500).json({ error: err.message });
+  try {
+    const row = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM per_diem_rules WHERE costCenter = ?', [costCenter], (err, result) => {
+        if (err) reject(err);
+        else resolve(result || null);
+      });
+    });
+    if (!row) {
+      res.json(null);
       return;
     }
-    res.json(row || null);
-  });
+    const tiers = await fetchTiersForCostCenter(db, costCenter);
+    res.json({ ...mapRuleRow(row), tiers });
+  } catch (err) {
+    debugError('Error fetching per diem rule:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
- * Create or update per diem rule
+ * Create or update per diem rule (and tiers when provided)
  */
-router.post('/api/per-diem-rules', (req, res) => {
-  const { id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, useActualAmount } = req.body;
-  const ruleId = id || (Date.now().toString(36) + Math.random().toString(36).substr(2));
+router.post('/api/per-diem-rules', async (req, res) => {
+  const {
+    id,
+    costCenter,
+    maxAmount,
+    minHours,
+    minMiles,
+    minDistanceFromBase,
+    description,
+    useActualAmount,
+    ruleType,
+    tiers,
+  } = req.body;
+  const ruleId = id || Date.now().toString(36) + Math.random().toString(36).substr(2);
   const now = new Date().toISOString();
+  const normalizedRuleType = ruleType === 'tiered' ? 'tiered' : 'single';
 
   debugLog('📝 Creating/updating per diem rule:', {
     ruleId,
@@ -201,46 +367,130 @@ router.post('/api/per-diem-rules', (req, res) => {
     minHours,
     minMiles,
     minDistanceFromBase,
-    useActualAmount
+    useActualAmount,
+    ruleType: normalizedRuleType,
+    tierCount: Array.isArray(tiers) ? tiers.length : 0,
   });
 
   const db = dbService.getDb();
-  db.run(
-    'INSERT OR REPLACE INTO per_diem_rules (id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, useActualAmount, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM per_diem_rules WHERE id = ?), ?), ?)',
-    [ruleId, costCenter, maxAmount, minHours || 0, minMiles || 0, minDistanceFromBase || 0, description || '', useActualAmount || 0, ruleId, now, now],
-    function(err) {
-      if (err) {
-        debugError('Database error:', err.message);
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      debugLog(`✅ Per diem rule ${ruleId} saved for ${costCenter}`);
-      res.json({ id: ruleId, message: 'Per diem rule saved successfully' });
+  try {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR REPLACE INTO per_diem_rules (
+          id, costCenter, maxAmount, minHours, minMiles, minDistanceFromBase,
+          description, useActualAmount, ruleType, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM per_diem_rules WHERE id = ?), ?), ?)`,
+        [
+          ruleId,
+          costCenter,
+          maxAmount,
+          minHours || 0,
+          minMiles || 0,
+          minDistanceFromBase || 0,
+          description || '',
+          useActualAmount ? 1 : 0,
+          normalizedRuleType,
+          ruleId,
+          now,
+          now,
+        ],
+        function (err) {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    let savedTiers = [];
+    if (normalizedRuleType === 'tiered' && Array.isArray(tiers)) {
+      savedTiers = await saveTiersForCostCenter(db, costCenter, tiers);
+    } else if (normalizedRuleType === 'single') {
+      await saveTiersForCostCenter(db, costCenter, []);
     }
-  );
+
+    debugLog(`✅ Per diem rule ${ruleId} saved for ${costCenter}`);
+    res.json({
+      id: ruleId,
+      costCenter,
+      maxAmount,
+      minHours: minHours || 0,
+      minMiles: minMiles || 0,
+      minDistanceFromBase: minDistanceFromBase || 0,
+      description: description || '',
+      useActualAmount: Boolean(useActualAmount),
+      ruleType: normalizedRuleType,
+      tiers: savedTiers,
+      message: 'Per diem rule saved successfully',
+    });
+  } catch (err) {
+    debugError('Database error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
  * Update per diem rule
  */
-router.put('/api/per-diem-rules/:id', (req, res) => {
+router.put('/api/per-diem-rules/:id', async (req, res) => {
   const { id } = req.params;
-  const { costCenter, maxAmount, minHours, minMiles, minDistanceFromBase, description, useActualAmount } = req.body;
+  const {
+    costCenter,
+    maxAmount,
+    minHours,
+    minMiles,
+    minDistanceFromBase,
+    description,
+    useActualAmount,
+    ruleType,
+    tiers,
+  } = req.body;
   const now = new Date().toISOString();
+  const normalizedRuleType = ruleType === 'tiered' ? 'tiered' : 'single';
 
   const db = dbService.getDb();
-  db.run(
-    'UPDATE per_diem_rules SET costCenter = ?, maxAmount = ?, minHours = ?, minMiles = ?, minDistanceFromBase = ?, description = ?, useActualAmount = ?, updatedAt = ? WHERE id = ?',
-    [costCenter, maxAmount, minHours || 0, minMiles || 0, minDistanceFromBase || 0, description || '', useActualAmount || 0, now, id],
-    function(err) {
-      if (err) {
-        debugError('Database error:', err.message);
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ message: 'Per diem rule updated successfully' });
+  try {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE per_diem_rules SET costCenter = ?, maxAmount = ?, minHours = ?, minMiles = ?,
+          minDistanceFromBase = ?, description = ?, useActualAmount = ?, ruleType = ?, updatedAt = ?
+          WHERE id = ?`,
+        [
+          costCenter,
+          maxAmount,
+          minHours || 0,
+          minMiles || 0,
+          minDistanceFromBase || 0,
+          description || '',
+          useActualAmount ? 1 : 0,
+          normalizedRuleType,
+          now,
+          id,
+        ],
+        function (err) {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    let savedTiers = [];
+    if (normalizedRuleType === 'tiered' && Array.isArray(tiers)) {
+      savedTiers = await saveTiersForCostCenter(db, costCenter, tiers);
+    } else if (normalizedRuleType === 'single') {
+      await saveTiersForCostCenter(db, costCenter, []);
     }
-  );
+
+    res.json({
+      id,
+      costCenter,
+      ruleType: normalizedRuleType,
+      tiers: savedTiers,
+      message: 'Per diem rule updated successfully',
+    });
+  } catch (err) {
+    debugError('Database error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
@@ -249,12 +499,21 @@ router.put('/api/per-diem-rules/:id', (req, res) => {
 router.delete('/api/per-diem-rules/:id', (req, res) => {
   const { id } = req.params;
   const db = dbService.getDb();
-  db.run('DELETE FROM per_diem_rules WHERE id = ?', [id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
+  db.get('SELECT costCenter FROM per_diem_rules WHERE id = ?', [id], (lookupErr, row) => {
+    if (lookupErr) {
+      res.status(500).json({ error: lookupErr.message });
       return;
     }
-    res.json({ message: 'Per diem rule deleted successfully' });
+    db.run('DELETE FROM per_diem_rules WHERE id = ?', [id], function (err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (row?.costCenter) {
+        db.run('DELETE FROM per_diem_tiers WHERE costCenter = ?', [row.costCenter]);
+      }
+      res.json({ message: 'Per diem rule deleted successfully' });
+    });
   });
 });
 

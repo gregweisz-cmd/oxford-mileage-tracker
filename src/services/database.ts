@@ -589,6 +589,29 @@ export class DatabaseService {
           minDistanceFromBase REAL NOT NULL,
           description TEXT NOT NULL,
           useActualAmount INTEGER DEFAULT 0,
+          ruleType TEXT DEFAULT 'single',
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+      `);
+
+      try {
+        await database.execAsync(`ALTER TABLE per_diem_rules ADD COLUMN ruleType TEXT DEFAULT 'single';`);
+      } catch {
+        // column may already exist
+      }
+
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS per_diem_tiers (
+          id TEXT PRIMARY KEY,
+          costCenter TEXT NOT NULL,
+          label TEXT NOT NULL,
+          amount REAL NOT NULL,
+          minHours REAL NOT NULL DEFAULT 0,
+          minMiles REAL NOT NULL DEFAULT 0,
+          minDistanceFromBase REAL NOT NULL DEFAULT 0,
+          requiresOvernight INTEGER DEFAULT 0,
+          sortOrder INTEGER NOT NULL DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         );

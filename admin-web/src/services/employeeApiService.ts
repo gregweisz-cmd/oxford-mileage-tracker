@@ -142,4 +142,13 @@ export class EmployeeApiService {
       throw error;
     }
   }
+
+  static async repairSupervisorAssignments(): Promise<{
+    message: string;
+    clearedStaff: number;
+    reroutedReports: number;
+    staff: Array<{ id: string; name: string; formerSupervisorId: string }>;
+  }> {
+    return apiPost('/api/employees/repair-supervisor-assignments');
+  }
 }
